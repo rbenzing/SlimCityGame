@@ -20,6 +20,7 @@ import {
   BERTH_WIDTH_M,
   CURB_CUT_M,
   ENTRANCE_WALK_M,
+  FOOT_M,
   ISLAND_WIDTH_M,
   SPACES_BETWEEN_ISLANDS,
   STALL_LENGTH_M,
@@ -66,6 +67,8 @@ export interface LotLayoutInput {
   rearYard?: number;
   /** Lay a drive-through lane round the body, where the ground left over holds one. */
   driveThrough?: boolean;
+  /** Stripe trailer stalls in the truck court before the wall the berths lie beside, on the ground left over. */
+  trailerCourt?: boolean;
 }
 
 /** A drive-through lane is 12 ft (3.66 m) wide. */
@@ -75,8 +78,19 @@ export const DRIVE_THROUGH_STACK_M = 6 * 6.1;
 /** The least lane worth drawing: three stacking spaces. */
 const DRIVE_THROUGH_MIN_M = 3 * 6.1;
 
+/** A trailer stall: 12 × 55 ft (3.66 × 16.8 m), a standard tractor-trailer parked off its tractor. */
+export const TRAILER_STALL_WIDTH_M = 12 * FOOT_M;
+export const TRAILER_STALL_LENGTH_M = 55 * FOOT_M;
+/** The platform a loading dock stands out from its wall, which a trailer stall starts beyond. */
+export const DOCK_PLATFORM_DEPTH_M = 2.6;
+/** The most trailer stalls striped in one truck court. */
+const TRAILER_STALL_CAP = 6;
+
 /** Which wall of the body its pickup window opens in, named by the way the wall faces. */
 export type PickupFace = 'u+' | 'u-' | 'v+';
+
+/** A wall of the body a loading dock can stand on, named by the way it faces; never the street face. */
+export type LoadingWall = 'u+' | 'u-' | 'v+';
 
 /** A lane of paving from the lot's drive along the far side of the body to a pickup window. */
 export interface DriveThrough {
@@ -116,6 +130,10 @@ export interface LotLayout {
   throat: LotRect | null;
   /** A restaurant's drive-through lane, where the ground left over holds it; null otherwise. */
   driveThrough: DriveThrough | null;
+  /** The wall of the body the loading berths lie beside, for a kind that docks trucks; the dock stands on it. */
+  loadingWall: LoadingWall | null;
+  /** Trailer stalls striped in the truck court before the loading wall, on ground the car park left over. */
+  trailerStalls: LotRect[];
   required: number;
   provided: number;
   /** The most spaces this lot could hold, laid out the way it is. */
@@ -729,6 +747,8 @@ export function computeLotLayout(input: LotLayoutInput): LotLayout {
     curbCut: built.curbCut,
     throat: filled.aisles.length > 0 ? built.throat : null,
     driveThrough: null,
+    loadingWall: null,
+    trailerStalls: [],
     required: input.spaces,
     provided: filled.provided,
     capacity: filled.capacity,
@@ -740,7 +760,103 @@ export function computeLotLayout(input: LotLayoutInput): LotLayout {
   };
   // Laid last, on ground the car park left over, so the code's count never moves for it.
   if (input.driveThrough) layout.driveThrough = driveThroughFor(layout);
+  if (input.trailerCourt) {
+    layout.loadingWall = loadingWallFor(layout);
+    if (layout.loadingWall) layout.trailerStalls = trailerStallsFor(layout, layout.loadingWall);
+  }
   return layout;
+}
+
+/**
+ * The wall of the body the berths lie nearest, outside it: the side or rear
+ * wall a dock stands on. Null where the lot has no berths or they all lie
+ * before the street face.
+ */
+function loadingWallFor(layout: LotLayout): LoadingWall | null {
+  if (layout.berths.length === 0) return null;
+  const b = layout.body;
+  const u = layout.berths.reduce((s, r) => s + (r.u0 + r.u1) / 2, 0) / layout.berths.length;
+  const v = layout.berths.reduce((s, r) => s + (r.v0 + r.v1) / 2, 0) / layout.berths.length;
+  const gaps: readonly [LoadingWall, number][] = [
+    ['u-', b.u0 - u],
+    ['u+', u - b.u1],
+    ['v+', v - b.v1],
+  ];
+  let best: LoadingWall | null = null;
+  let nearest = Infinity;
+  for (const [wall, gap] of gaps) {
+    if (gap >= -EPS && gap < nearest) {
+      best = wall;
+      nearest = gap;
+    }
+  }
+  return best;
+}
+
+/**
+ * Trailer stalls laid out from the loading wall: each 3.66 m wide along the
+ * wall and 16.8 m deep into the court, beginning past the dock's platform, on
+ * a lattice from the wall's end. It takes only ground no stall, aisle, berth,
+ * island, walk, yard or the body stands on, so the code's count never moves
+ * for it, and keeps the longest unbroken row.
+ */
+function trailerStallsFor(layout: LotLayout, wall: LoadingWall): LotRect[] {
+  const b = layout.body;
+  const W = TRAILER_STALL_WIDTH_M;
+  const taken: LotRect[] = [
+    b,
+    ...layout.stalls.map((s) => s.rect),
+    ...layout.accessAisles,
+    ...layout.aisles,
+    ...(layout.throat ? [layout.throat] : []),
+    ...layout.berths,
+    ...layout.islands,
+    ...(layout.forecourt ? [layout.forecourt] : []),
+    ...(layout.rearYard ? [layout.rearYard] : []),
+    ...(layout.frontWalk ? [layout.frontWalk] : []),
+    ...(layout.entranceWalk ? [layout.entranceWalk] : []),
+  ];
+  const L = TRAILER_STALL_LENGTH_M;
+  const start = DOCK_PLATFORM_DEPTH_M;
+  const alongU = wall === 'v+';
+  const from = alongU ? b.u0 : b.v0;
+  const room = (alongU ? b.u1 : b.v1) - from;
+  /** A stall `across` metres wide along the wall and `deep` out from it, `a` along and `o` out from the platform. */
+  const stallAt = (a: number, o: number, across: number, deep: number): LotRect => {
+    const a0 = from + a;
+    const a1 = a0 + across;
+    const o0 = start + o;
+    const o1 = o0 + deep;
+    if (wall === 'v+') return { u0: a0, u1: a1, v0: b.v1 + o0, v1: b.v1 + o1 };
+    if (wall === 'u+') return { u0: b.u1 + o0, u1: b.u1 + o1, v0: a0, v1: a1 };
+    return { u0: b.u0 - o1, u1: b.u0 - o0, v0: a0, v1: a1 };
+  };
+  const clear = (r: LotRect): boolean =>
+    inside(r, layout.lot) && !taken.some((t) => rectsOverlap(t, r));
+
+  // Nose to the dock, side by side along the wall: the longest unbroken row.
+  let best: LotRect[] = [];
+  let run: LotRect[] = [];
+  for (let k = 0; k * W + W <= room + EPS; k++) {
+    const stall = stallAt(k * W, 0, W, L);
+    if (!clear(stall)) {
+      run = [];
+      continue;
+    }
+    run.push(stall);
+    if (run.length > best.length) best = [...run];
+  }
+  if (best.length > 0) return best.slice(0, TRAILER_STALL_CAP);
+
+  // A court too shallow for that parks them along the wall, rows stepping out from it.
+  const parallel: LotRect[] = [];
+  for (let row = 0; row < TRAILER_STALL_CAP; row++) {
+    for (let k = 0; k * L + L <= room + EPS; k++) {
+      const stall = stallAt(k * L, row * W, L, W);
+      if (clear(stall)) parallel.push(stall);
+    }
+  }
+  return parallel.slice(0, TRAILER_STALL_CAP);
 }
 
 const rectsTouch = (a: LotRect, b: LotRect): boolean =>
@@ -873,7 +989,7 @@ export interface LotPaving {
 
 /**
  * The paved ground of a laid-out lot: the drive and its aisles and throat,
- * every space and access aisle, the berths, the forecourt and the tank farm
+ * every space and access aisle, the berths, the trailer stalls, the forecourt and the tank farm
  * on the yard's paving; the body and its walks in concrete. The rest of the
  * lot, the islands among it, is planted.
  */
@@ -885,6 +1001,7 @@ export function lotPaving(layout: LotLayout): LotPaving {
       ...layout.stalls.map((s) => s.rect),
       ...layout.accessAisles,
       ...layout.berths,
+      ...layout.trailerStalls,
       ...(layout.forecourt ? [layout.forecourt] : []),
       ...(layout.rearYard ? [layout.rearYard] : []),
     ],

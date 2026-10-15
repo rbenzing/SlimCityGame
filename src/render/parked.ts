@@ -226,14 +226,14 @@ export const YAW_JITTER_MAX = 0.03;
  */
 export const CAR_PALETTE: readonly number[] = VEHICLE_PALETTE_HEX;
 
-const NEAR_WHITE_STRIPE_COLOR: readonly [number, number, number] = [0.93, 0.93, 0.9];
+export const NEAR_WHITE_STRIPE_COLOR: readonly [number, number, number] = [0.93, 0.93, 0.9];
 /** Bay aprons are asphalt, and asphalt is a measured material. */
 const APRON_COLOR: readonly [number, number, number] = materialUnit('brightAsphalt');
 
 /** Apron rides above the terrain overlays but below the road plate (0.15). */
 const APRON_Y_OFFSET = 0.12;
-const STRIPE_LINE_Y_OFFSET = 0.135;
-const STRIPE_LINE_HALF_WIDTH_M = 0.06;
+export const STRIPE_LINE_Y_OFFSET = 0.135;
+export const STRIPE_LINE_HALF_WIDTH_M = 0.06;
 
 /** Sidewalk slabs sit this far above the road plate; the curb cut must clear them. */
 const SIDEWALK_TOP_ABOVE_ROAD_M = 0.08;

@@ -54,6 +54,11 @@ export interface FarmWindow {
   nz: number;
 }
 
+/** An open-sided shed: its walls' box, and which way the open side faces, as a unit vector out of it. */
+export interface FarmShed extends FarmBox {
+  open: FarmRound;
+}
+
 export interface FarmPlan {
   kind: FarmKind;
   level: number;
@@ -72,10 +77,16 @@ export interface FarmPlan {
   field: FarmRect;
   /** Whether the crop rows, orchard rows and the field's long side run along world X. */
   rowsAlongX: boolean;
+  /** The unit vector from the farmstead out to the gate: the way the farmhouse and the barn face. */
+  front: FarmRound;
+  /** The unit vector along the gate edge, in the direction the farmstead's u grows. */
+  along: FarmRound;
   house: FarmBox;
   barn: FarmBox;
   silos: FarmRound[];
   bins: FarmRound[];
+  /** A crop farm's equipment shed in the gravel yard, where the yard has room for it. */
+  shed: FarmShed | null;
   /** The farmhouse's windows, in the order their lights are keyed by. */
   houseWindows: FarmWindow[];
   /**
@@ -92,16 +103,37 @@ export interface FarmPlan {
 export const YARD_DEPTH_M = 30;
 /** A barn is 11 m across, the width of a dairy barn; a large farm's is a metre wider. */
 export const BARN_WIDTH_M = 11;
+/**
+ * The gambrel's rise is this multiple of the wall under it: the historic dairy
+ * barn is 29 ft to the ridge, 10 ft of wall under 19 ft of loft.
+ */
+export const GAMBREL_RISE_RATIO = 1.9;
 /** The walls stand to this share of the ridge; the gambrel roof takes the rest. */
-export const BARN_EAVE_SHARE = 0.55;
-/** A farmhouse: one and a half storeys on a 9 × 8 m plan. */
+export const BARN_EAVE_SHARE = 1 / (1 + GAMBREL_RISE_RATIO);
+/** A barn roof and a house roof overhang their walls a little. */
+export const ROOF_OVERHANG_M = 0.4;
+/** A farmhouse, an American foursquare: two storeys on a near-square 9 × 8 m plan under a hipped roof. */
 export const HOUSE_W_M = 9;
 export const HOUSE_D_M = 8;
-export const HOUSE_EAVE_M = 4.8;
+export const HOUSE_EAVE_M = 5.4;
 /** Where the farmhouse stands: in from the lot's corner along the gate, and back from it. */
 const HOUSE_U = 3;
 const HOUSE_V = 4;
-export const HOUSE_RIDGE_M = 8;
+/** The hipped roof is 6:12, rising half a metre for every metre in from the eave. */
+export const HOUSE_ROOF_PITCH = 0.5;
+export const HOUSE_ROOF_RISE_M = HOUSE_ROOF_PITCH * (HOUSE_D_M / 2 + ROOF_OVERHANG_M);
+export const HOUSE_RIDGE_M = HOUSE_EAVE_M + HOUSE_ROOF_RISE_M;
+/** The full-width porch: 2.4 m deep, its floor 0.45 m up on two risers, posts 0.2 m square 2.4 m tall. */
+export const PORCH_DEPTH_M = 2.4;
+export const PORCH_FLOOR_M = 0.45;
+export const PORCH_POST_M = 0.2;
+export const PORCH_POST_HEIGHT_M = 2.4;
+/** A one-bay dormer on the front slope. */
+export const DORMER_WIDTH_M = 2;
+export const DORMER_DEPTH_M = 1.6;
+export const DORMER_HEIGHT_M = 1.6;
+/** How far in from the wall's face the dormer's front stands, along the plan. */
+export const DORMER_INSET_M = 1;
 /** A stave silo, 6 m across and 16 m to the eave of its dome. */
 export const SILO_DIAMETER_M = 6;
 export const SILO_HEIGHT_M = 16;
@@ -115,7 +147,7 @@ export const WINDOW_W_M = 0.91;
 export const WINDOW_H_M = 1.52;
 /** Ground-floor sills, under the 44-inch limit for a bedroom window. */
 export const WINDOW_SILL_M = 0.9;
-/** The half storey's floor, a 2.4 m ceiling and its joists above the ground floor. */
+/** The upper storey's floor, a 2.4 m ceiling and its joists above the ground floor. */
 const UPPER_FLOOR_M = 2.7;
 /**
  * The farm truck, a full-size regular-cab pickup: 5.31 m long, 2.03 m wide and
@@ -128,6 +160,13 @@ const TRUCK_CLEARANCE_M = 2.5;
 const TRUCK_FRONT_V_M = 3;
 /** Where it parks on the drive, beside the farmhouse. */
 const TRUCK_PARK_V_M = 9;
+/** An equipment shed: a three-sided pole barn 12 × 6 m, 3.7 m (12 ft) to the eave, a post every 3.7 m along its open side. */
+export const SHED_LENGTH_M = 12;
+export const SHED_DEPTH_M = 6;
+export const SHED_EAVE_M = 3.7;
+export const SHED_POST_SPACING_M = 3.7;
+/** What a shed keeps clear between itself and the buildings, silos, bins and truck lane. */
+const SHED_CLEARANCE_M = 1.5;
 /** The corners of its round are turned on this radius. */
 const TRUCK_TURN_RADIUS_M = 4;
 const TRUCK_TURN_SEGMENTS = 6;
@@ -242,9 +281,10 @@ function localDirection(frame: EdgeFrame, du: number, dv: number): FarmRound {
 
 /**
  * The farmhouse's windows on its walls from u0 to u1 along the gate and v0 to
- * v1 into the lot: two in the front wall facing the road and two in the back,
- * each a quarter of the way in from a corner, and in the middle of each gable
- * end one at ground level and one up in the gable for the half storey.
+ * v1 into the lot: two upstairs in the front wall facing the road, above the
+ * porch, and two downstairs in the back, each a quarter of the way in from a
+ * corner, and in the middle of each end wall one at ground level and one
+ * upstairs.
  */
 function farmhouseWindows(
   frame: EdgeFrame,
@@ -260,7 +300,7 @@ function farmhouseWindows(
     windows.push({ x: p.x, z: p.z, sill, nx: n.x, nz: n.z });
   };
   const bay = (u1 - u0) / 4;
-  for (const u of [u0 + bay, u1 - bay]) at(u, v0, 0, -1, WINDOW_SILL_M);
+  for (const u of [u0 + bay, u1 - bay]) at(u, v0, 0, -1, UPPER_FLOOR_M + WINDOW_SILL_M);
   for (const u of [u0 + bay, u1 - bay]) at(u, v1, 0, 1, WINDOW_SILL_M);
   const middle = (v0 + v1) / 2;
   for (const [u, du] of [
@@ -323,6 +363,63 @@ function truckRound(
   return { points, stop };
 }
 
+interface UVRect {
+  u0: number;
+  v0: number;
+  u1: number;
+  v1: number;
+}
+
+/** The gap between two rectangles in the lot's frame, 0 where they touch or overlap. */
+const rectGap = (a: UVRect, b: UVRect): number =>
+  Math.hypot(Math.max(a.u0 - b.u1, 0, b.u0 - a.u1), Math.max(a.v0 - b.v1, 0, b.v0 - a.v1));
+
+/**
+ * Where an equipment shed stands in the gravel yard: the spot nearest the
+ * middle of the barn's back wall that holds it inside the apron, clear of the
+ * barn, the house, every silo and bin, and the truck's lane. Null where the
+ * yard has no such ground.
+ */
+function shedSpot(
+  apron: UVRect,
+  barn: UVRect,
+  house: UVRect,
+  rounds: ReadonlyArray<{ u: number; v: number; r: number }>,
+  route: ReadonlyArray<readonly [number, number]> | null,
+): UVRect | null {
+  const lane: UVRect[] = [];
+  for (let i = 1; route && i < route.length; i++) {
+    const [au, av] = route[i - 1]!;
+    const [bu, bv] = route[i]!;
+    const steps = Math.max(1, Math.ceil(Math.hypot(bu - au, bv - av) / 0.5));
+    for (let s = 0; s <= steps; s++) {
+      const u = au + ((bu - au) * s) / steps;
+      const v = av + ((bv - av) * s) / steps;
+      lane.push({ u0: u, v0: v, u1: u, v1: v });
+    }
+  }
+  const target = { u: (barn.u0 + barn.u1) / 2, v: barn.v1 };
+  let best: { rect: UVRect; cost: number } | null = null;
+  for (let u0 = apron.u0; u0 + SHED_LENGTH_M <= apron.u1 + 1e-9; u0 += 0.5) {
+    for (let v0 = barn.v1; v0 + SHED_DEPTH_M <= apron.v1 + 1e-9; v0 += 0.5) {
+      const rect = { u0, v0, u1: u0 + SHED_LENGTH_M, v1: v0 + SHED_DEPTH_M };
+      const cost = Math.hypot(
+        (rect.u0 + rect.u1) / 2 - target.u,
+        (rect.v0 + rect.v1) / 2 - target.v,
+      );
+      if (best && cost >= best.cost) continue;
+      if (rectGap(rect, barn) < SHED_CLEARANCE_M || rectGap(rect, house) < SHED_CLEARANCE_M)
+        continue;
+      const near = (p: UVRect, clear: number): boolean => rectGap(rect, p) < clear;
+      if (rounds.some((c) => near({ u0: c.u, v0: c.v, u1: c.u, v1: c.v }, c.r + SHED_CLEARANCE_M)))
+        continue;
+      if (lane.some((p) => near(p, TRUCK_SIZE_M[0] / 2 + SHED_CLEARANCE_M))) continue;
+      best = { rect, cost };
+    }
+  }
+  return best?.rect ?? null;
+}
+
 /** The plan of a farm, or null when the entry is not a farm. */
 export function planFarm(
   building: BuildingInstance,
@@ -379,6 +476,37 @@ export function planFarm(
   const truckFits = uFar + TRUCK_SIZE_M[0] <= along && vBack + TRUCK_SIZE_M[0] <= YARD_DEPTH_M;
   const round = truckFits ? truckRound(driveU + DRIVE_WIDTH_M / 2, uFar, vBack) : null;
 
+  // A crop farm keeps its machinery under a shed in the gravel yard, where the yard has the room.
+  let shed: FarmShed | null = null;
+  if (kind === 'crops') {
+    const rounds = [
+      ...Array.from({ length: siloCount }, (_, i) => ({
+        u: barnU0 + barnLength + 5 + i * (SILO_DIAMETER_M + 2),
+        v: siloV,
+        r: SILO_DIAMETER_M / 2,
+      })),
+      ...Array.from({ length: binCount }, (_, i) => ({
+        u: barnU0 + 3 + i * (BIN_DIAMETER_M + 1.5),
+        v: binV,
+        r: BIN_DIAMETER_M / 2,
+      })),
+    ];
+    const spot = shedSpot(
+      { u0: barnU0 - 3, v0: barnV0 - 3, u1: workEnd, v1: YARD_DEPTH_M - 2 },
+      { u0: barnU0, v0: barnV0, u1: barnU0 + barnLength, v1: barnV0 + barnWidth },
+      { u0: HOUSE_U, v0: HOUSE_V, u1: HOUSE_U + HOUSE_W_M, v1: HOUSE_V + HOUSE_D_M },
+      rounds,
+      round?.points ?? null,
+    );
+    if (spot) {
+      shed = {
+        ...localRect(frame, spot.u0, spot.v0, spot.u1, spot.v1),
+        ridgeAlongX: alongX,
+        open: localDirection(frame, 0, -1),
+      };
+    }
+  }
+
   return {
     kind,
     level,
@@ -391,10 +519,13 @@ export function planFarm(
     field: localRect(frame, 0, YARD_DEPTH_M, along, deep),
     // Rows run away from the road, into the field: across the gate edge.
     rowsAlongX: !alongX,
+    front: localDirection(frame, 0, -1),
+    along: localDirection(frame, 1, 0),
     house: { ...house, ridgeAlongX: alongX },
     barn: { ...barn, ridgeAlongX: alongX },
     silos,
     bins,
+    shed,
     houseWindows: farmhouseWindows(
       frame,
       HOUSE_U,

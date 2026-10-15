@@ -135,18 +135,67 @@ describe('archetypeFor', () => {
     const ind = (kind: BuildingKind, level = 1, pollution = 40) =>
       entry({ category: 'ind', kind, level, pollution });
     expect(archetypeFor(ind('workshop'))).toBe('workshop');
-    expect(partsFor(ind('workshop'))).toEqual(['rollUpDoors']);
     expect(archetypeFor(ind('warehouse', 3))).toBe('warehouse');
     expect(archetypeFor(ind('factory', 1))).toBe('factory');
     expect(archetypeFor(ind('flex', 1, 0))).toBe('greenWorks');
     expect(archetypeFor(ind('foodplant'))).toBe('foodPlant');
-    expect(partsFor(ind('foodplant'))).toEqual(['loadingDock', 'rollUpDoors']);
     expect(archetypeFor(ind('chemical'))).toBe('chemicalPlant');
-    expect(partsFor(ind('chemical'))).toEqual(['tanks']);
     expect(archetypeFor(ind('metals'))).toBe('steelworks');
-    expect(partsFor(ind('metals'))).toEqual(['monitorRoof']);
     expect(archetypeFor(ind('paper'))).toBe('paperMill');
-    expect(partsFor(ind('paper'))).toEqual(['monitorRoof', 'tanks']);
+  });
+
+  it('dresses each industrial kind with its own parts', () => {
+    const ind = (kind: BuildingKind, level = 1, pollution = 40) =>
+      entry({ category: 'ind', kind, level, pollution });
+    const dockBank = [
+      'loadingDock',
+      'rollUpDoors',
+      'dockShelter',
+      'dockBumper',
+      'dockLight',
+      'officeCorner',
+      'officeCanopy',
+    ];
+    expect(partsFor(ind('workshop'))).toEqual([
+      'rollUpDoors',
+      'walkDoor',
+      'wainscot',
+      'gutter',
+      'downspout',
+      'ridgeVent',
+    ]);
+    expect(partsFor(ind('warehouse', 2, 0))).toEqual([...dockBank, 'panelReveal', 'parapetBand']);
+    expect(partsFor(ind('factory'))).toEqual([
+      'monitorRoof',
+      'clerestory',
+      'rollUpDoors',
+      'walkDoor',
+      'wainscot',
+      'gutter',
+      'downspout',
+    ]);
+    expect(partsFor(ind('flex', 1, 0))).toEqual(['roofArray', 'entryCanopy', 'wainscot']);
+    expect(partsFor(ind('foodplant'))).toEqual([...dockBank, 'condenser']);
+    expect(partsFor(ind('chemical'))).toEqual([
+      'tanks',
+      'bundWall',
+      'bullet',
+      'pipeRack',
+      'processColumn',
+    ]);
+    expect(partsFor(ind('metals'))).toEqual([
+      'monitorRoof',
+      'furnace',
+      'stove',
+      'skipBridge',
+      'duct',
+    ]);
+    expect(partsFor(ind('paper'))).toEqual(['monitorRoof', 'tanks', 'chipPile', 'stacker']);
+  });
+
+  it('leaves a kindless industrial building the plain parts of its archetype', () => {
+    expect(partsFor(entry({ level: 1, pollution: 60 }))).toEqual(['loadingDock', 'rollUpDoors']);
+    expect(partsFor(entry({ level: 2, pollution: 90 }))).toEqual(['monitorRoof']);
   });
 
   it('splits commerce with no kind into a shopfront and a bigger block, as before', () => {
