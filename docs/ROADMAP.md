@@ -25,7 +25,7 @@ current behavior only and carry no dates of their own._
 
 ## Status (2026-09-29)
 
-**Test suite:** 6,238 tests passing across 187 test files, run 2026-10-14.
+**Test suite:** 6,394 tests passing across 188 test files, run 2026-10-15.
 This is the only test count in the documentation set. When the suite changes
 again, update the figure here and nowhere else.
 
@@ -133,6 +133,16 @@ not a test to fix.
   a station's crews are.
 - Incident pins stand about 18 m tall and cover the building they mark; size
   them against the art anchors.
+- The frame measurement (2026-10-15) found the overview drawing 4,118 calls
+  against the oblique's 575 of the same city, so ground geometry is batched
+  per chunk in several materials; a house's yard (trees, bushes, cars) at
+  1,000–2,700 triangles against a 12-triangle body; and the solar farm at
+  9,000 triangles for its module frames. All three are the building-detail
+  programme's performance slice.
+- Placing a district-edge column of road across the street rows in
+  `tools/frame-budget.mjs` logs about 27 "road network (command): tile(s)
+  derived differently … roadMask" errors at the junctions; the city stands,
+  but the conversion disagrees with itself there.
 - The placement ghost does not read `requiresAdjacent`: a reactor, pumping
   station, drain or treatment works shows as placeable over dry land, and only
   the commit is refused, with a toast. The ghost should refuse it as it refuses
@@ -340,6 +350,27 @@ roads, and pinning the Three.js version. See [adr/](engineering/adr/README.md).
 ---
 
 ## 10. History (newest first)
+
+### The frame, measured (first slice of building detail, built 2026-10-15)
+
+Before any building gets its parts, the programme measures what the frame
+costs today. Nothing in the game changes.
+
+- **`tools/frame-budget.mjs`** builds a synthetic Metropolis by command,
+  8,759 buildings in the catalog's real mix and one of every kit on a
+  street grid, and reads frame time, draw calls and triangles over four
+  views by day and night, against the empty map, through a new dev hook
+  (`renderInfo`). The record is `tools/shots-framebudget/result.md`.
+- **What it read**, on a laptop GPU: 23–38 ms a frame and 575–4,118 draw
+  calls, so the stated 60 fps and ~300 calls are not met before any detail
+  is added. The overview draws seven times the calls of the oblique; a
+  house's yard costs more than the house; the solar farm is 9,000
+  triangles.
+- **`src/render/geometrybudget.test.ts`** counts every kit's and every
+  zoned entry's triangles over its whole lot and holds them to the tiers
+  the player chose: a house 3,000, a block 1,500, a ploppable 30,000.
+- The modeling standard's budget is rewritten on the measurement, and the
+  player chose a performance slice before the houses.
 
 ### The power plants drawn as plants (last slice of power generation, built 2026-10-14)
 

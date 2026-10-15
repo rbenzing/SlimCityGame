@@ -1,6 +1,6 @@
 # Building detail — technical design
 
-- **Status:** Planned 2026-10-14; nothing built
+- **Status:** Slice 1, the measurement, built 2026-10-15; the performance slice next, then the recipes
 - **Date:** 2026-10-14
 - **Author:** Claude Fable 5.1
 
@@ -90,31 +90,61 @@ already computes.
 
 ### The budget, and how it is measured
 
-The art bible's figure is "under a hundred triangles" per assembly and it
-is not what the kits do; the water tower is about 1,500–2,000. The player
-chose **tiered and measured**:
+The art bible's figure was "under a hundred triangles" per assembly and it
+is not what the kits do; the water tower is about 2,500. The player chose
+**tiered and measured**, and on 2026-10-15, once the measurement had
+counted, chose that a tier covers **everything on the lot** — body, roof,
+parts, paving, yard, trees, cars, interments — so the tiers describe what
+ships:
 
-| Tier      | Buildings                                 | Triangles per building, all parts | Held by                    |
-| --------- | ----------------------------------------- | --------------------------------- | -------------------------- |
-| House     | detached, duplex, fourplex, townhouse row | about 600                         | a geometry test per recipe |
-| Block     | every other zoned kind                    | about 1,500                       | a geometry test per recipe |
-| Ploppable | every kit                                 | about 3,000                       | a geometry test per kit    |
-| The city  | a Metropolis: ~10,000 buildings           | the frame                         | `tools/frame-budget.mjs`   |
+| Tier      | Buildings                                 | Triangles, the whole lot | Held by                    |
+| --------- | ----------------------------------------- | ------------------------ | -------------------------- |
+| House     | detached, duplex, fourplex, townhouse row | 3,000                    | a geometry test per recipe |
+| Block     | every other zoned kind                    | 1,500                    | a geometry test per recipe |
+| Ploppable | every kit                                 | 30,000                   | a geometry test per kit    |
+| The city  | a Metropolis: ~10,000 buildings           | the frame                | `tools/frame-budget.mjs`   |
 
-The numbers are starting points. Slice 1 builds the measurement before any
-recipe exists: a Playwright script that loads a generated city grown to the
-Metropolis milestone (the playthrough fixture, or a save made from it),
-turns off the browser's frame cap as `tools/power-shots.mjs` does, and reads
-frame time over a fixed camera path by day and by night, with the result
-written beside the shots. The modeling standard is rewritten on what it
-reads, and every later slice runs it again; a slice that moves the frame
-past the budget the standard states shrinks its parts, not the budget.
-`docs/engineering/performance-budget.md` says today that nothing measures
-frame time; after slice 1 one thing does, and the document says so.
+Slice 1 built the measurement before any recipe existed. No save-sized city
+existed and growth is tick-driven, so `tools/frame-budget.mjs` builds a
+**synthetic Metropolis by command**: sandbox mode makes the place command
+take any catalog entry, so the script lays streets over the dry ground of a
+generated map and places about nine thousand zoned buildings in the
+catalog's real mix, plus one of every kit, in about eighty seconds, with
+the sim paused (a running sim clears a city with no power or zones). It
+reads frame time with the browser's frame cap off, and draw calls and
+triangles from a dev hook, `window.__slimcity.renderInfo()`, over four
+fixed views by day and night, against the empty map, and writes the record
+beside the shots. The figures it read, and what they say, are in
+[../../art/modeling-standards.md](../../art/modeling-standards.md#what-the-measurement-read):
+23–38 ms a frame on a laptop GPU before any detail, an overview at 4,118
+draw calls, and yards that cost more than houses. Every later slice runs
+it again; a slice that moves the frame past the standard's figure shrinks
+its parts, not the budget.
 
-A geometry test counts triangles per recipe at every level and lot, the
-way the stations' tests count storeys, so a recipe cannot grow past its
-tier without the test being edited.
+`src/render/geometrybudget.test.ts` counts triangles per kit and per zoned
+entry over the whole lot, so a recipe cannot grow past its tier without the
+test being edited.
+
+### The performance slice
+
+The measurement put a slice the plan did not have between itself and the
+houses, chosen by the player on 2026-10-15: the frame is already past the
+stated target on a laptop GPU, so the detail is paid for by what this slice
+saves, and the budget the houses build to is the improved frame.
+
+- **The overview's draw calls.** 4,118 against 575 for the oblique of the
+  same city: ground geometry is batched per chunk in several materials.
+  Find which (lots, paint, kerbs, roads), merge per chunk into as few
+  meshes as the materials allow, and re-read the overview.
+- **The yard.** A house's trees, bushes and cars are 1,000–2,700 of its
+  triangles. Read where the cost is (segments per tree, bushes per yard,
+  cars) and bring it down without losing the read; a tree at 40 m needs
+  fewer segments than it has.
+- **The solar farm.** 9,000 triangles from drawing every module's frame;
+  the frame seams become colour, as the stations' panel seams are, and the
+  farm lands near a thousand.
+- Re-run `tools/frame-budget.mjs`; the standard's table gains the second
+  reading beside the first.
 
 ### Each slice, the same shape
 
@@ -175,9 +205,12 @@ for the tiered, measured budget.
 
 ## How we will know it works
 
-- Slice 1: `tools/frame-budget.mjs` runs and writes a figure for a Metropolis
-  city by day and night, and `modeling-standards.md` and
+- Slice 1 (built): `tools/frame-budget.mjs` runs and writes a figure for a
+  Metropolis city by day and night, and `modeling-standards.md` and
   `performance-budget.md` say what it measured.
+- The performance slice: the overview's draw calls fall to the order of the
+  oblique's, the house tier's low end drops, the solar farm counts near a
+  thousand, and the frame-budget table shows both readings.
 - Every slice: the tests above, the shots looked at, the frame figure
   before and after in the PR.
 - The first-town test is untouched throughout: nothing here touches growth.

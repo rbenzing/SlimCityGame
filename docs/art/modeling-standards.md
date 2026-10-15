@@ -27,23 +27,86 @@ they govern every building kit:
 
 ## Geometry budget
 
-A kit part is one box: 12 triangles. A full archetype assembly composes
-at most a handful of parts (`partsFor` never returns more than two — see
-`archetypes.ts`), so a whole building's kit dressing stays under a hundred
-triangles. This is deliberately far under any commonly-cited per-mesh
-vertex cap (a 65,536-vertex limit, for instance) — that number is never
-the binding constraint here. The actual limiting factor is the **merged
-ground geometry** each renderer batches per chunk (terrain, roads, lots),
-not per-building instance count, since every building instance shares one
-`InstancedMesh` bucket per shape regardless of how many exist (see
-[asset-guidelines.md](asset-guidelines.md)).
+A building's budget is a **tier**, in triangles over **everything it stands
+with** — body, roof, parts, its paving and paint, its yard, its trees, its
+parked cars, its interments — held by a test; the city's budget is the
+**frame**, held by a measurement. The player chose both on 2026-10-15: the
+tier counts the whole lot, because that is what the player sees and the
+frame pays for, and the tiers are set where the measurement found the
+buildings that ship.
+
+| Tier      | Buildings                                 | Triangles, the whole lot | Held by                                 |
+| --------- | ----------------------------------------- | ------------------------ | --------------------------------------- |
+| House     | detached, duplex, fourplex, townhouse row | 3,000                    | `src/render/geometrybudget.test.ts`     |
+| Block     | every other zoned kind                    | 1,500                    | `src/render/geometrybudget.test.ts`     |
+| Ploppable | every kit                                 | 30,000                   | `src/render/geometrybudget.test.ts`     |
+| The city  | a Metropolis, about 10,000 buildings      | the frame                | `tools/frame-budget.mjs`, run per slice |
+
+A recipe that grows past its tier fails the test; a slice that moves the
+frame past the figure below shrinks its parts, never the budget. The old
+rule here, that a kit part is one 12-triangle box and an assembly stays
+under a hundred, was true of the archetype parts and not of the kits: the
+water tower is a lathe, a torus and braced legs, and it is the standard
+the rest are drawn to.
+
+A tier is a ceiling per building, and what the frame pays is the tier
+**times the count**: a Metropolis holds six thousand houses and one
+hospital, so a hundred triangles on a house costs the frame what a hundred
+thousand on the hospital does. A kind that a city builds by the hundred —
+a house, a solar farm — is drawn to the low end of its tier.
+
+### What the measurement read
+
+Measured 2026-10-15 by `tools/frame-budget.mjs` on an Intel Arc Pro 140T
+(a laptop-class GPU) at 1280 × 800, headless, the browser's frame cap off:
+a synthetic Metropolis of 8,759 buildings in the catalog's real mix and one
+of every kit, placed by command on seed 7, the sim paused. The record is
+`tools/shots-framebudget/result.md`.
+
+| View           | Frame, mean | Draw calls | Triangles | The buildings' share  |
+| -------------- | ----------- | ---------- | --------- | --------------------- |
+| Street         | 23.4 ms     | 809        | 38.0 M    | +743 calls, +24.2 M   |
+| Oblique        | 25.0 ms     | 575        | 40.7 M    | +497 calls, +26.9 M   |
+| Overview       | 38.5 ms     | 4,118      | 44.4 M    | +3,956 calls, +30.5 M |
+| Oblique, night | 26.1 ms     | 583        | 40.7 M    | +505 calls, +26.9 M   |
+
+The empty map draws 13.8 M triangles of terrain, water and scattered trees
+at 66–162 calls; its frame time is a CPU submission rate and is not
+comparable, so the buildings' share is read from calls and triangles. What
+the figures say:
+
+- The frame is **23–38 ms, 26–43 fps**, before the building-detail
+  programme adds a triangle; the stated 60 fps and ~300 draw calls in
+  [../engineering/performance-budget.md](../engineering/performance-budget.md)
+  are not met on this GPU today. The programme's performance slice comes
+  before its houses for that reason.
+- The **overview draws 4,118 calls, seven times the oblique** of the same
+  buildings: ground geometry is drawn per chunk in several materials, so
+  every visible chunk costs a dozen calls.
+- **A house's yard costs more than the house.** The body is 12 triangles;
+  with its roof, trees, bushes and parked cars a house is 1,170 on a half
+  lot and 2,758 on an acre, and six thousand of them are most of the
+  city's triangles. Every zoned block is under 400. The kits run from 64
+  (the drain) to 27,616 (a full cemetery, 780 headstones) and 24,920 (the
+  hospital, its deck full of cars); the solar farm is 9,000 for drawing
+  every module's frame, which at three hundred farms is a frame of its own.
+
+The commonly cited per-mesh vertex cap is never the binding constraint
+here: every building instance shares one `InstancedMesh` bucket per part
+regardless of how many exist (see
+[asset-guidelines.md](asset-guidelines.md)), so the cost of a part is its
+triangles times its instances, in a handful of draw calls. The merged
+**ground geometry** each renderer batches per chunk (terrain, roads, lots)
+is the other large cost, and the overview above is where it shows.
 
 ## Topology
 
-- **Boxes, not organic forms.** Every procedural part — a body mass, a
-  dock platform, a monitor roof, a garage — is an axis-aligned box (or a
-  small merge of a few), placed and rotated with the building's own
-  footprint frame. Nothing in the kit sculpts curved or freeform geometry.
+- **Boxes first, lathes where the thing is round.** A procedural part — a
+  body mass, a dock platform, a monitor roof, a garage — is an axis-aligned
+  box or a small merge of a few, placed and rotated with the building's
+  own footprint frame. A part that is round in the world (a tank, a silo, a
+  stack, a cooling-tower cell) is a lathe or a cylinder at the segment
+  count the tier allows. Nothing sculpts freeform geometry.
 - **Merged multi-part geometry where a single shape needs internal colour
   variation.** The vehicle kit (`src/render/vehicles.ts`, covered in
   [props-and-vehicles.md](props-and-vehicles.md)) merges a body slab, a

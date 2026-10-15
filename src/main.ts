@@ -450,6 +450,8 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
   let devDayTOverride: number | null = null;
   // Incident markers a screenshot has stood by hand; null = the sim's own.
   let devIncidents: readonly Incident[] | null = null;
+  // The last frame's animation-loop delta, for the frame-budget harness.
+  let lastFrameMs = 0;
   if (import.meta.env.DEV) {
     (window as unknown as Record<string, unknown>).__slimcity = {
       map,
@@ -518,6 +520,14 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
         snapshotAgeMs = 0;
       },
       getStats: (): CityStats => useCityStore.getState().stats,
+      // What the last frame drew, whole: the renderer resets its counters at the
+      // top of each animation-loop frame, so every pass of the frame (scene,
+      // shadow, bloom) is in the figure. frameMs is that frame's loop delta.
+      renderInfo: (): { drawCalls: number; triangles: number; frameMs: number } => ({
+        drawCalls: handle.renderer.info.render.drawCalls,
+        triangles: handle.renderer.info.render.triangles,
+        frameMs: lastFrameMs,
+      }),
       setOverlay: (overlay: LensId | null): void => {
         useCityStore.getState().setOverlay(overlay);
       },
@@ -2343,6 +2353,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
   let visualSeconds = 0; // elapsed visual time for the outline pulse / pin bob
   let signalSeconds = 0; // elapsed TRAFFIC time, which is what the signal cycle runs on
   handle.start((dtMs) => {
+    lastFrameMs = dtMs;
     rig.update(dtMs);
     // Shadow sweep: keep the limited-span sun shadow frustum centred on the
     // camera target so lamp/prop/pedestrian shadows stay resolved on screen.
