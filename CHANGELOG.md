@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.64.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.63.0...slimcity-v1.64.0) (2026-10-15)
+
+
+### Features
+
+* **render:** the industrial kit's parts and the farmstead ([c654bb9](https://github.com/rbenzing/SlimCityGame/commit/c654bb90d93659563233cfd5d301a59acce6f2e9))
+* **render:** the industrial kit's parts and the farmstead, each kind drawn as the plant it is ([4cb42d7](https://github.com/rbenzing/SlimCityGame/commit/4cb42d7b7f4c00f169f6b2628248600e40fbb25b))
+
 ## [1.63.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.62.0...slimcity-v1.63.0) (2026-10-15)
 
 
