@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import catalogData from '../data/catalog.json';
 import { footprintForRotation } from '../shared/footprint';
 import { DRIVE_THROUGH_STACK_M } from '../shared/lotlayout';
-import { partsFor, type BuildingPart } from './archetypes';
+import { isApartmentEntry, partsFor, type BuildingPart } from './archetypes';
 import {
   alongPath,
   BuildingKitRenderer,
@@ -29,8 +29,46 @@ import {
   TANK_GAP_M,
   TANK_HEIGHT_M,
   TANK_SPACING_M,
+  BALCONY_DEPTH_M,
+  BLOCK_BALCONY_SLAB_M,
+  BLOCK_PARAPET_M,
+  BOX_BAY_DARKEN,
+  BOX_BAY_PROUD_M,
+  BREEZEWAY_PROUD_M,
+  BREEZEWAY_WIDTH_M,
+  BRICK_PIER_M,
+  BULKHEAD_HEIGHT_M,
+  ELEVATOR_BULKHEAD_SIZE_M,
+  ENTRY_HOOD_SIZE_M,
+  ENTRY_HOOD_UNDERSIDE_M,
+  GUARD_HEIGHT_M,
+  HIP_EAVE_M,
+  HIP_PITCH,
+  HIP_RISE_CAP_M,
+  LANDING_DEPTH_M,
+  LANDING_THICKNESS_M,
+  MAIL_KIOSK_SIZE_M,
+  PENTHOUSE_HEIGHT_M,
+  PENTHOUSE_PLATE_SHARE,
+  ROOF_SETBACK_FROM_STREET_M,
+  STAIR_PITCH,
+  STOOP_DEPTH_M,
+  STOOP_RISE_M,
+  STOOP_WIDTH_M,
+  STOREFRONT_GLAZING_M,
+  TOWER_BALCONY_END_M,
+  WALK_UP_BALCONY_SLAB_M,
+  WALK_UP_BRICK_BASE_HEIGHT_M,
+  WALK_UP_BRICK_BASE_PROUD_M,
+  windowBays,
+  storeysOf,
 } from './buildingkit';
-import type { SetbackBox } from './massing';
+import { computeSetbacks, type SetbackBox } from './massing';
+import { bodyMetresFor } from '../shared/floorarea';
+import { WALK_UP_REAR_YARD_M } from '../shared/parkingcode';
+import { deriveFacadeParams } from './facade';
+import { trimColor } from './houses';
+import type { Side } from './frontage';
 import {
   BuildingState,
   ZoneType,
@@ -315,6 +353,10 @@ const byId = (id: string): BuildingCatalogEntry => commercial.find((e) => e.id =
 /** The Industrial and Heavy Industrial zones' kinds; a farm has its own kit. */
 const industrial = (catalogData as { buildings: BuildingCatalogEntry[] }).buildings.filter(
   (e) => e.category === 'ind' && e.zone !== ZoneType.Agriculture,
+);
+/** The four apartment kinds at every level. */
+const apartments = (catalogData as { buildings: BuildingCatalogEntry[] }).buildings.filter((e) =>
+  isApartmentEntry(e),
 );
 
 type StreetSide = 'N' | 'E' | 'S' | 'W';
@@ -906,8 +948,10 @@ describe('a restaurant’s drive-through', () => {
 
 describe('the storefront and industrial kits on the map', () => {
   const road = (x: number, z: number): boolean => z === 40 && x >= 0 && x < 1000;
-  /** One of each kind, commercial and industrial, each fronting the street along z = 40. */
-  const row = [...commercial, ...industrial].filter((e) => e.bodyFootprint === undefined);
+  /** One of each kind, commercial, industrial and apartment, each fronting the street along z = 40. */
+  const row = [...commercial, ...industrial, ...apartments].filter(
+    (e) => e.bodyFootprint === undefined,
+  );
   const inst = (
     e: BuildingCatalogEntry,
     i: number,
@@ -1231,6 +1275,8 @@ describe('a chemical plant, a steelworks and a paper mill', () => {
     const lotOf = (half: number): KitLot => ({
       lot: { x0: -half, x1: half, z0: -half, z1: half },
       curbCut: { x0: 0, x1: 4, z0: 20, z1: 21 },
+      walk: null,
+      frontWalk: null,
       islands: [],
       dock: null,
       loadingFacing: null,
@@ -1248,5 +1294,455 @@ describe('a chemical plant, a steelworks and a paper mill', () => {
     }
     const tight = computePartPlacements(e, body, body, 'S', lotOf(30));
     expect(tight.filter((p) => p.part === 'chipPile')).toEqual([]);
+  });
+});
+
+const aptById = (id: string): BuildingCatalogEntry => apartments.find((e) => e.id === id)!;
+
+describe('the apartment kit: where every part stands', () => {
+  const bodyOf = (e: BuildingCatalogEntry): SetbackBox => computeSetbacks(e, 1).boxes[0]!;
+  const podiumOf = (e: BuildingCatalogEntry): SetbackBox | null =>
+    computeSetbacks(e, 1).podium ?? null;
+  const placed = (
+    e: BuildingCatalogEntry,
+    side: Side | null = 'S',
+    lot: KitLot | null = null,
+    id = 1,
+  ): PartPlacement[] => computePartPlacements(e, bodyOf(e), bodyOf(e), side, lot, id, podiumOf(e));
+  const ofKind = (list: readonly PartPlacement[], part: BuildingPart): PartPlacement[] =>
+    list.filter((p) => p.part === part);
+  const bottom = (p: PartPlacement): number => p.offset[1] - p.size[1] / 2;
+  const overlaps = (a: PartPlacement, b: PartPlacement): boolean => {
+    const r = placementBounds(a);
+    const s = placementBounds(b);
+    return r.x0 < s.x1 && s.x0 < r.x1 && r.z0 < s.z1 && s.z0 < r.z1;
+  };
+
+  it('stands a hip at 5:12 over 0.45 m eaves on every walk-up, its rise capped at 4.5 m, on a body that is square at every level', () => {
+    for (const e of apartments.filter((a) => a.kind === 'multiplex' || a.kind === 'garden')) {
+      const body = bodyMetresFor(e);
+      expect(body.w, e.id).toBeCloseTo(body.d, 9);
+      const [hip] = ofKind(placed(e), 'hipRoofBlock');
+      expect(hip, e.id).toBeDefined();
+      const span = body.w + 2 * HIP_EAVE_M;
+      expect(hip!.size[0]).toBeCloseTo(span, 9);
+      expect(hip!.size[2]).toBeCloseTo(span, 9);
+      expect(hip!.size[1]).toBeCloseTo(Math.min(HIP_RISE_CAP_M, (HIP_PITCH * span) / 2), 9);
+      expect(bottom(hip!)).toBeCloseTo(e.height, 9);
+      expect(hip!.color).toBeDefined();
+    }
+    // A 13.6 m body takes the full pitch; the catalog's 24 m and 27.2 m bodies meet the cap.
+    const small = { ...aptById('res-multiplex-1'), footprint: { w: 1, d: 1 } };
+    const [hip] = ofKind(placed(small), 'hipRoofBlock');
+    expect(hip!.size[1]).toBeCloseTo((HIP_PITCH * (13.6 + 2 * HIP_EAVE_M)) / 2, 9);
+    expect(hip!.size[1]).toBeLessThan(HIP_RISE_CAP_M);
+    expect(ofKind(placed(aptById('res-multiplex-1')), 'hipRoofBlock')[0]!.size[1]).toBe(
+      HIP_RISE_CAP_M,
+    );
+  });
+
+  it('turns the hip so its ridge runs along the frontage', () => {
+    const e = aptById('res-medium-1');
+    expect(ofKind(placed(e, 'S'), 'hipRoofBlock')[0]!.yaw).toBeUndefined();
+    expect(ofKind(placed(e, 'E'), 'hipRoofBlock')[0]!.yaw).toBeCloseTo(Math.PI / 2, 9);
+  });
+
+  it('wraps a 0.9 m brick base 0.05 m proud round every face of a walk-up', () => {
+    for (const e of apartments.filter((a) => a.kind === 'multiplex' || a.kind === 'garden')) {
+      const bases = ofKind(placed(e), 'brickBase');
+      expect(bases, e.id).toHaveLength(4);
+      for (const b of bases) {
+        expect(b.size[1]).toBe(WALK_UP_BRICK_BASE_HEIGHT_M);
+        expect(Math.min(b.size[0], b.size[2])).toBe(WALK_UP_BRICK_BASE_PROUD_M);
+        expect(bottom(b)).toBeCloseTo(0, 9);
+      }
+    }
+  });
+
+  it('stands the mail kiosk, 0.77 × 0.45 × 1.93 m, beside the door at the street', () => {
+    for (const id of ['res-multiplex-1', 'res-medium-1']) {
+      const e = aptById(id);
+      const [kiosk] = ofKind(placed(e), 'mailKiosk');
+      expect(kiosk, id).toBeDefined();
+      expect(kiosk!.size).toEqual([
+        MAIL_KIOSK_SIZE_M[0],
+        MAIL_KIOSK_SIZE_M[1],
+        MAIL_KIOSK_SIZE_M[2],
+      ]);
+      expect(bottom(kiosk!)).toBeCloseTo(0, 9);
+      expect(kiosk!.offset[2]).toBeGreaterThan(bodyOf(e).d / 2);
+    }
+  });
+
+  it('gives a multiplex one shared stoop, 2.4 × 1.5 m and 0.45 m up on two risers, under a 2.4 × 1.2 m gabled hood on two posts', () => {
+    const e = aptById('res-multiplex-2');
+    const parts = placed(e);
+    const half = bodyOf(e).d / 2;
+    const stoop = ofKind(parts, 'stoop');
+    expect(stoop).toHaveLength(2);
+    const [landing, step] = stoop;
+    expect(landing!.size).toEqual([STOOP_WIDTH_M, STOOP_RISE_M, STOOP_DEPTH_M]);
+    expect(landing!.offset[0]).toBe(0);
+    expect(landing!.offset[2]).toBeCloseTo(half + STOOP_DEPTH_M / 2, 9);
+    expect(step!.size[1]).toBeCloseTo(STOOP_RISE_M / 2, 9);
+    expect(step!.offset[2]).toBeGreaterThan(landing!.offset[2]);
+    const [hood] = ofKind(parts, 'entryHood');
+    expect(hood!.size[0]).toBe(ENTRY_HOOD_SIZE_M[0]);
+    expect(hood!.size[2]).toBe(ENTRY_HOOD_SIZE_M[1]);
+    expect(bottom(hood!)).toBeCloseTo(ENTRY_HOOD_UNDERSIDE_M, 9);
+    expect(hood!.color).toEqual(ofKind(parts, 'hipRoofBlock')[0]!.color);
+    const posts = ofKind(parts, 'signPole');
+    expect(posts).toHaveLength(2);
+    for (const post of posts) {
+      expect(post.size[0]).toBe(0.15);
+      expect(post.size[2]).toBe(0.15);
+      expect(bottom(post)).toBeCloseTo(STOOP_RISE_M, 9);
+      expect(post.offset[1] + post.size[1] / 2).toBeCloseTo(ENTRY_HOOD_UNDERSIDE_M, 9);
+    }
+    expect(Math.abs(posts[0]!.offset[0] + posts[1]!.offset[0])).toBeLessThan(1e-9);
+  });
+
+  it('opens a garden walk-up’s breezeway on the street and rear faces, 1.8 m wide and 0.05 m proud to the eave, with a 1.8 × 1.2 m landing and a 1.07 m guard per upper floor', () => {
+    const e = aptById('res-medium-2');
+    const parts = placed(e);
+    const half = bodyOf(e).d / 2;
+    const { rows, pitch } = storeysOf(e, bodyOf(e));
+    expect(rows).toBe(3);
+    expect(pitch).toBeCloseTo(3.2, 9);
+    const slots = ofKind(parts, 'breezeway');
+    expect(slots).toHaveLength(2);
+    expect(slots.map((s) => Math.sign(s.offset[2])).sort()).toEqual([-1, 1]);
+    for (const s of slots) {
+      expect(s.size).toEqual([BREEZEWAY_WIDTH_M, e.height, BREEZEWAY_PROUD_M]);
+      expect(s.offset[0]).toBe(0);
+      expect(Math.abs(s.offset[2])).toBeCloseTo(half + BREEZEWAY_PROUD_M / 2, 9);
+    }
+    const landings = ofKind(parts, 'landing');
+    const guards = ofKind(parts, 'landingGuard');
+    expect(landings).toHaveLength(2 * (rows - 1));
+    expect(guards).toHaveLength(2 * (rows - 1));
+    const floors = landings.map(bottom).sort((a, b) => a - b);
+    for (const [i, y] of [3.2, 3.2, 6.4, 6.4].entries()) expect(floors[i]).toBeCloseTo(y, 9);
+    for (const l of landings) {
+      expect(l.size).toEqual([BREEZEWAY_WIDTH_M, LANDING_THICKNESS_M, LANDING_DEPTH_M]);
+    }
+    for (const g of guards) {
+      expect(g.size[1]).toBe(GUARD_HEIGHT_M);
+      expect(g.size[0]).toBe(BREEZEWAY_WIDTH_M);
+      // Each guard stands on the top of a landing on its own face.
+      const onItsLanding = landings.some(
+        (l) =>
+          Math.sign(l.offset[2]) === Math.sign(g.offset[2]) &&
+          Math.abs(l.offset[1] + LANDING_THICKNESS_M / 2 - bottom(g)) < 1e-9,
+      );
+      expect(onItsLanding).toBe(true);
+    }
+  });
+
+  it('runs a 1 m flight at the 7:11 pitch from the ground to the first landing beside each slot, on opposite sides front and back', () => {
+    const e = aptById('res-medium-2');
+    const flights = ofKind(placed(e), 'stairFlight');
+    expect(flights).toHaveLength(2);
+    expect((STAIR_PITCH * 180) / Math.PI).toBeCloseTo(32, 0);
+    for (const f of flights) {
+      expect(f.pitch).toBe(STAIR_PITCH);
+      expect(f.size[0]).toBe(1);
+      expect(f.size[2]).toBeCloseTo(3.2 / Math.sin(STAIR_PITCH), 9);
+      expect(f.offset[1]).toBeCloseTo(1.6, 9);
+      // The top end is at the slot's edge, the foot a run away along the wall.
+      const run = 3.2 / Math.tan(STAIR_PITCH);
+      expect(Math.abs(f.offset[0])).toBeCloseTo(BREEZEWAY_WIDTH_M / 2 + run / 2, 9);
+    }
+    expect(Math.sign(flights[0]!.offset[0])).toBe(-Math.sign(flights[1]!.offset[0]));
+    // Another seed puts the street flight on the other side.
+    const other = ofKind(placed(e, 'S', null, 2), 'stairFlight');
+    expect(Math.sign(other[0]!.offset[0])).toBe(-Math.sign(flights[0]!.offset[0]));
+  });
+
+  it('hangs a balcony in every bay clear of the breezeway on every upper floor, 1.8 m deep and the bay less 1 m, and lays a patio with no guard on the ground', () => {
+    const e = aptById('res-medium-2');
+    const parts = placed(e);
+    const body = bodyOf(e);
+    const { count, width } = windowBays(e, body.w);
+    expect(count).toBe(4);
+    const clearBays = 2;
+    const slabs = ofKind(parts, 'balconySlab');
+    const patios = ofKind(parts, 'patio');
+    expect(patios).toHaveLength(2 * clearBays);
+    expect(slabs).toHaveLength(2 * clearBays * 2);
+    for (const p of [...slabs, ...patios]) {
+      expect(p.size[0]).toBeCloseTo(width - 1, 9);
+      expect(p.size[2]).toBe(BALCONY_DEPTH_M);
+      expect(p.size[1]).toBe(WALK_UP_BALCONY_SLAB_M);
+      for (const slot of ofKind(parts, 'breezeway')) expect(overlaps(p, slot)).toBe(false);
+    }
+    for (const s of slabs) expect(bottom(s)).toBeGreaterThanOrEqual(3.2 - 1e-9);
+    for (const p of patios) expect(bottom(p)).toBeCloseTo(0, 9);
+    // Three guards a balcony, front and sides, 1.07 m tall on the slab; none on a patio.
+    const guards = ofKind(parts, 'balconyGuard');
+    expect(guards).toHaveLength(3 * slabs.length);
+    // A rail is painted in the house kit's trim colour, so it reads against the wall.
+    const rail = new THREE.Color(trimColor(1, deriveFacadeParams(e, 1).wallColor));
+    for (const g of [...guards, ...ofKind(parts, 'landingGuard')]) {
+      expect(g.size[1]).toBe(GUARD_HEIGHT_M);
+      expect(g.color).toEqual([rail.r, rail.g, rail.b]);
+    }
+    for (const g of guards) {
+      expect(bottom(g)).toBeGreaterThanOrEqual(3.2 + WALK_UP_BALCONY_SLAB_M - 1e-9);
+    }
+  });
+
+  it('bands a podium’s street face with 3 m of lit glazing over the 0.6 m bulkhead between 0.6 m brick piers at each end and every bay', () => {
+    const e = aptById('res-high-2');
+    const podium = podiumOf(e)!;
+    expect(podium.h).toBe(4.6);
+    const parts = placed(e);
+    const { count } = windowBays(e, podium.w);
+    const piers = ofKind(parts, 'brickPier');
+    expect(piers).toHaveLength(count + 1);
+    for (const p of piers) {
+      expect(p.size[0]).toBe(BRICK_PIER_M);
+      expect(p.size[1]).toBe(podium.h);
+      expect(p.offset[2]).toBeGreaterThan(podium.d / 2);
+    }
+    expect(Math.min(...piers.map((p) => p.offset[0]))).toBeCloseTo(
+      -podium.w / 2 + BRICK_PIER_M / 2,
+      9,
+    );
+    const glazing = ofKind(parts, 'storefrontBand');
+    const bulkheads = ofKind(parts, 'bulkhead');
+    expect(glazing).toHaveLength(count);
+    expect(bulkheads).toHaveLength(count);
+    for (const g of glazing) {
+      expect(g.size[1]).toBe(STOREFRONT_GLAZING_M);
+      expect(bottom(g)).toBeCloseTo(BULKHEAD_HEIGHT_M, 9);
+      expect(LIT_PARTS.has(g.part)).toBe(true);
+    }
+    for (const b of bulkheads) expect(bottom(b)).toBeCloseTo(0, 9);
+  });
+
+  it('stands box bays 0.6 m proud on alternate bays of a mid-rise from the podium to the parapet, in the wall colour darkened, with balconies in the bays between', () => {
+    const e = aptById('res-high-2');
+    const parts = placed(e);
+    const body = bodyOf(e);
+    const { count, width } = windowBays(e, body.w);
+    const boxes = ofKind(parts, 'boxBay');
+    expect(boxes).toHaveLength(2 * Math.ceil(count / 2));
+    const { wallColor } = deriveFacadeParams(e, 1);
+    for (const b of boxes) {
+      expect(b.size[0]).toBeCloseTo(width - 1, 9);
+      expect(Math.min(b.size[0], b.size[2])).toBe(BOX_BAY_PROUD_M);
+      expect(bottom(b)).toBeCloseTo(4.6, 9);
+      expect(b.offset[1] + b.size[1] / 2).toBeCloseTo(e.height - BLOCK_PARAPET_M, 9);
+      expect(b.color![0]).toBeCloseTo(wallColor[0] * BOX_BAY_DARKEN, 9);
+      expect(b.color![2]).toBeCloseTo(wallColor[2] * BOX_BAY_DARKEN, 9);
+    }
+    const slabs = ofKind(parts, 'balconySlab');
+    const { rows, pitch } = storeysOf(e, body);
+    const upper = Array.from({ length: rows - 1 }, (_, i) => (i + 1) * pitch).filter(
+      (y) => y >= 4.6,
+    );
+    expect(slabs).toHaveLength(2 * Math.floor(count / 2) * upper.length);
+    for (const s of slabs) {
+      expect(s.size[1]).toBe(BLOCK_BALCONY_SLAB_M);
+      expect(bottom(s)).toBeGreaterThanOrEqual(4.6);
+      for (const b of boxes) expect(overlaps(s, b)).toBe(false);
+    }
+    const bays = new Set([...boxes, ...slabs].map((p) => p.offset[0].toFixed(3)));
+    expect(bays.size).toBe(count);
+    const rail = new THREE.Color(trimColor(1, wallColor));
+    for (const g of ofKind(parts, 'balconyGuard')) {
+      expect(g.color).toEqual([rail.r, rail.g, rail.b]);
+    }
+  });
+
+  it('crowns a mid-rise with a 0.76 m parapet band, a 3 × 4 × 4.1 m bulkhead 3 m back from the street face, and the commercial kit’s units and hatch clear of it', () => {
+    const e = aptById('res-high-3');
+    const parts = placed(e);
+    const body = bodyOf(e);
+    const bands = ofKind(parts, 'parapetBand');
+    expect(bands).toHaveLength(4);
+    for (const b of bands) {
+      expect(b.size[1]).toBe(BLOCK_PARAPET_M);
+      expect(b.offset[1] + b.size[1] / 2).toBeCloseTo(e.height, 9);
+    }
+    const [bulk] = ofKind(parts, 'elevatorBulkhead');
+    expect(bulk!.size).toEqual([
+      ELEVATOR_BULKHEAD_SIZE_M[0],
+      ELEVATOR_BULKHEAD_SIZE_M[1],
+      ELEVATOR_BULKHEAD_SIZE_M[2],
+    ]);
+    expect(bottom(bulk!)).toBeCloseTo(e.height, 9);
+    expect(bulk!.offset[2] + bulk!.size[2] / 2).toBeCloseTo(
+      body.d / 2 - ROOF_SETBACK_FROM_STREET_M,
+      9,
+    );
+    const units = ofKind(parts, 'rooftopUnit');
+    expect(units.length).toBeGreaterThan(0);
+    expect(ofKind(parts, 'roofHatch')).toHaveLength(1);
+    for (const u of [...units, ...ofKind(parts, 'roofHatch')])
+      expect(overlaps(u, bulk!)).toBe(false);
+  });
+
+  it('runs a tower’s continuous balcony along both long faces at every floor above the podium, 1 m short of each end, behind a glass guard, and none on the podium', () => {
+    const e = aptById('res-tower-1');
+    const parts = placed(e);
+    const body = bodyOf(e);
+    const podium = podiumOf(e)!;
+    expect(podium.h).toBeCloseTo(6.4, 9);
+    const { rows, pitch } = storeysOf(e, body);
+    // The floor whose level is the podium's top is the first above it.
+    const upper = Array.from({ length: rows - 1 }, (_, i) => (i + 1) * pitch).filter(
+      (y) => y >= 6.4 - 1e-9,
+    );
+    expect(upper).toHaveLength(10);
+    const slabs = ofKind(parts, 'balconySlab');
+    expect(slabs).toHaveLength(2 * upper.length);
+    expect(slabs.map((s) => Math.sign(s.offset[2])).filter((s) => s > 0)).toHaveLength(
+      upper.length,
+    );
+    for (const s of slabs) {
+      expect(s.size[0]).toBeCloseTo(body.w - 2 * TOWER_BALCONY_END_M, 9);
+      expect(s.size[2]).toBe(BALCONY_DEPTH_M);
+      expect(s.size[1]).toBe(BLOCK_BALCONY_SLAB_M);
+      expect(bottom(s)).toBeGreaterThanOrEqual(podium.h - 1e-9);
+      expect(s.offset[0]).toBe(0);
+    }
+    const guards = ofKind(parts, 'balconyGuard');
+    expect(guards).toHaveLength(slabs.length);
+    for (const g of guards) {
+      expect(g.size[1]).toBe(GUARD_HEIGHT_M);
+      expect(g.color).toBeDefined();
+      expect(g.color![2]).toBeGreaterThan(g.color![0]);
+    }
+  });
+
+  it('centres a tower’s lit lobby portal on its podium’s street face with the storefront band either side of it, and sets a penthouse of 30% of the plate 3 m back from the street face', () => {
+    const e = aptById('res-tower-2');
+    const parts = placed(e);
+    const podium = podiumOf(e)!;
+    const body = bodyOf(e);
+    const [portal] = ofKind(parts, 'lobbyPortal');
+    expect(portal!.offset[0]).toBe(0);
+    expect(portal!.offset[2] - portal!.size[2] / 2).toBeCloseTo(podium.d / 2, 9);
+    for (const g of [...ofKind(parts, 'storefrontBand'), ...ofKind(parts, 'brickPier')]) {
+      expect(overlaps(g, portal!), g.part).toBe(false);
+    }
+    expect(ofKind(parts, 'storefrontBand').length).toBeGreaterThan(1);
+    const [pent] = ofKind(parts, 'penthouse');
+    expect(pent!.size[1]).toBe(PENTHOUSE_HEIGHT_M);
+    expect(pent!.size[0] * pent!.size[2]).toBeCloseTo(PENTHOUSE_PLATE_SHARE * body.w * body.d, 9);
+    expect(pent!.size[0] / pent!.size[2]).toBeCloseTo(body.w / body.d, 9);
+    expect(pent!.offset[2] + pent!.size[2] / 2).toBeCloseTo(
+      body.d / 2 - ROOF_SETBACK_FROM_STREET_M,
+      9,
+    );
+    expect(bottom(pent!)).toBeCloseTo(e.height, 9);
+    expect(ofKind(parts, 'rooftopUnit')).toHaveLength(0);
+  });
+
+  it('leaves the street-face parts off a block that fronts no street, keeping a walk-up’s hip and base', () => {
+    const multiplex = placed(aptById('res-multiplex-1'), null);
+    expect(new Set(multiplex.map((p) => p.part))).toEqual(new Set(['hipRoofBlock', 'brickBase']));
+    expect(placed(aptById('res-high-1'), null)).toEqual([]);
+    expect(placed(aptById('res-tower-1'), null)).toEqual([]);
+  });
+
+  it('lays the same block the same way every time', () => {
+    for (const e of apartments) {
+      expect(placed(e, 'S', null, 5)).toEqual(placed(e, 'S', null, 5));
+    }
+  });
+});
+
+describe('the apartment kit on the map', () => {
+  const street =
+    (lot: { w: number; d: number }, side: Side) =>
+    (x: number, z: number): boolean => {
+      switch (side) {
+        case 'S':
+          return z === 10 + lot.d && x >= 4 && x < 30;
+        case 'N':
+          return z === 9 && x >= 4 && x < 30;
+        case 'E':
+          return x === 10 + lot.w && z >= 4 && z < 30;
+        default:
+          return x === 9 && z >= 4 && z < 30;
+      }
+    };
+  const inside = (
+    r: ReturnType<typeof placementBounds>,
+    lot: ReturnType<typeof placementBounds>,
+  ): boolean =>
+    r.x0 >= lot.x0 - 1e-6 &&
+    r.x1 <= lot.x1 + 1e-6 &&
+    r.z0 >= lot.z0 - 1e-6 &&
+    r.z1 <= lot.z1 + 1e-6;
+
+  it('keeps every part inside its lot at all four rotations, fronting any side', () => {
+    for (const e of apartments) {
+      for (const rotation of [0, 1, 2, 3] as const) {
+        const lot = footprintForRotation(e, rotation);
+        for (const side of ['N', 'E', 'S', 'W'] as const) {
+          const plan = kitPlanFor(e, { id: 3, x: 10, z: 10, rotation }, street(lot, side))!;
+          expect(plan.placements.length, `${e.id} turned ${rotation}, ${side}`).toBeGreaterThan(0);
+          for (const p of plan.placements) {
+            expect(
+              inside(placementBounds(p), plan.tiles),
+              `${e.id} ${p.part} turned ${rotation}, ${side}`,
+            ).toBe(true);
+          }
+        }
+      }
+    }
+  });
+
+  it('stands a multiplex’s kiosk by its stoop, off the stalls, the aisles and the walk from the street', () => {
+    for (const e of apartments.filter((a) => a.kind === 'multiplex')) {
+      const plan = kitPlanFor(e, { id: 3, x: 10, z: 10, rotation: 0 }, street(e.footprint, 'S'))!;
+      expect(plan.lot, e.id).not.toBeNull();
+      const [kiosk] = plan.placements.filter((p) => p.part === 'mailKiosk');
+      expect(kiosk, e.id).toBeDefined();
+      const b = placementBounds(kiosk!);
+      const blocked = [...plan.lot!.hard, ...(plan.lot!.walk ? [plan.lot!.walk] : [])];
+      for (const t of blocked) {
+        expect(
+          b.x0 < t.x1 && t.x0 < b.x1 && b.z0 < t.z1 && t.z0 < b.z1,
+          `${e.id} kiosk on a stall or walk`,
+        ).toBe(false);
+      }
+      expect(plan.placements.filter((p) => p.part === 'stoop')).toHaveLength(2);
+    }
+  });
+
+  it('lays a garden on its 2×2 lot no car park, keeping its lawn, both breezeways, its balconies and patios, the body centred', () => {
+    for (const e of apartments.filter((a) => a.kind === 'garden')) {
+      const plan = kitPlanFor(e, { id: 3, x: 10, z: 10, rotation: 0 }, street(e.footprint, 'S'))!;
+      expect(plan.lot, e.id).toBeNull();
+      expect(plan.frontage.centerXM).toBe(0);
+      expect(plan.frontage.centerZM).toBe(0);
+      const counts = (part: BuildingPart): number =>
+        plan.placements.filter((p) => p.part === part).length;
+      expect(counts('breezeway')).toBe(2);
+      expect(counts('brickBase')).toBe(4);
+      expect(counts('mailKiosk')).toBe(1);
+      expect(counts('patio')).toBe(4);
+      expect(counts('balconySlab')).toBeGreaterThan(0);
+    }
+  });
+
+  it('keeps the rear yard the lot leaves a walk-up as deep as what hangs off its rear face', () => {
+    expect(WALK_UP_REAR_YARD_M.garden).toBeGreaterThanOrEqual(BALCONY_DEPTH_M + BREEZEWAY_PROUD_M);
+    expect(WALK_UP_REAR_YARD_M.garden).toBeGreaterThanOrEqual(LANDING_DEPTH_M + BREEZEWAY_PROUD_M);
+    expect(WALK_UP_REAR_YARD_M.multiplex).toBeGreaterThanOrEqual(HIP_EAVE_M);
+    expect(WALK_UP_REAR_YARD_M.garden).toBeGreaterThanOrEqual(HIP_EAVE_M);
+  });
+
+  it('keeps a multiplex’s stoop on the door path, centred on the street face', () => {
+    const e = aptById('res-multiplex-1');
+    const plan = kitPlanFor(e, { id: 3, x: 10, z: 10, rotation: 0 }, street(e.footprint, 'S'))!;
+    const stoop = plan.placements.filter((p) => p.part === 'stoop');
+    expect(stoop.length).toBe(2);
+    for (const s of stoop) expect(s.offset[0]).toBe(0);
   });
 });

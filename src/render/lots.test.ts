@@ -97,6 +97,17 @@ describe('lotSurfaceFor', () => {
     expect(lotSurfaceFor(entry({ category: 'res', zone: ZoneType.ResHigh, kind: 'midrise' }))).toBe(
       'stainedConcrete',
     );
+    expect(lotSurfaceFor(entry({ category: 'res', zone: ZoneType.ResHigh, kind: 'tower' }))).toBe(
+      'stainedConcrete',
+    );
+  });
+
+  it('paves a walk-up’s car park in asphalt, on a lawn', () => {
+    for (const kind of ['multiplex', 'garden'] as const) {
+      expect(lotSurfaceFor(entry({ category: 'res', zone: ZoneType.ResMedium, kind }))).toBe(
+        'brightAsphalt',
+      );
+    }
   });
 
   it('gives a house a garden rather than paving it over', () => {

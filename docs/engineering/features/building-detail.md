@@ -1,6 +1,6 @@
 # Building detail — technical design
 
-- **Status:** The measurement, the performance slice, the houses, the storefronts and industry and farms built 2026-10-15; apartment blocks and towers next
+- **Status:** The measurement, the performance slice, the houses, the storefronts, industry and farms and the apartment blocks and towers built 2026-10-15; the kitless ploppables next
 - **Date:** 2026-10-14
 - **Author:** Claude Fable 5.1
 
@@ -325,6 +325,67 @@ orchard and paddock.
   beside a 7 m box truck; a crop farm, an orchard and a pasture with their
   farmsteads; the same at night.
 - `tools/frame-budget.mjs` before and after.
+
+### Apartment blocks and towers
+
+The four block kinds — multiplex, garden (courtyard apartments), midrise
+and tower — reach `archetypeFor` as `'apartment'` with an empty part list
+today, and their level 2 and 3 bodies are stacked setback tiers. The slice
+gives them the apartment kit in
+[../../art/buildings.md](../../art/buildings.md#the-apartment-kits-parts)
+and one body each.
+
+- **One body, a podium for two.** `tierCountOf` in `massing.ts` returns 1
+  for the four kinds as it does for a house, so `computeSetbacks` yields one
+  box at the catalog height; the podium it already makes for a tower it
+  makes for a midrise too, `PODIUM_STOREYS` becoming per kind: two for the
+  tower, one of 4.6 m for the midrise (a named metre constant, not a
+  storey count, because the 15 ft retail floor is taller than 3.2 m). The
+  facade's window rows keep cutting to the body's own height.
+- **Parts.** `PART` gains hipRoofBlock, brickBase, mailKiosk, stoop,
+  entryHood, breezeway, landing, landingGuard, stairFlight, balconySlab,
+  balconyGuard, patio, storefrontBand, brickPier, boxBay, bulkhead,
+  penthouse; the existing parapetBand, lobbyPortal, rooftop units and
+  hatch are reused. An `APARTMENT_PARTS` table per kind, keyed like
+  `STOREFRONT_PARTS`, replaces `PARTS.apartment`'s empty list, and
+  `partsFor` dispatches the four residential block kinds to it.
+- **The hip roof** reuses the house kit's hip geometry at the block's
+  span, pitch 5:12, rise capped at 4.5 m, ridge along the frontage; it is a
+  kit part so the block's body stays the body instancer's box.
+- **By the bay.** Box bays, balconies and patios go by the facade's window
+  columns (`windowGrid` in `facade.ts`, two to the tile), so they line up
+  with the windows the shader draws. The box bay's alternate colour is the
+  instance colour: the wall colour times 0.78.
+- **The glass guard** is the only part in the kit's glazing blue; it is a
+  solid thin slab on the kit's own material, not a transparent one, because
+  the kit draws in one material and one lit material and a third would be a
+  draw call per pool for a guard nobody sees through at the default pitch.
+- **Lit parts:** storefrontBand joins `LIT_PARTS`; lobbyPortal is there
+  already.
+- **The car park.** `lots.ts` sends the multiplex and the garden kinds down
+  the commercial car-park path in `lotlayout.ts` with a code of 1.4 spaces
+  per `units`, lawn on the rest of the pad; the midrise and the tower keep
+  the downtown pad. The stalls, islands, curb cut and cars are the existing
+  ones.
+- **The tall tier:** `geometrybudget.test.ts` gains `TALL_TIER = 4000` and
+  applies it to the midrise and tower rows; the two walk-ups stay in
+  `BLOCK_TIER`, car park and cars included.
+- Tests: each kind's part list; one tier for every block kind at every
+  level and the midrise's 4.6 m podium; the breezeway on the street and
+  rear faces with a landing and guard per upper floor; balconies in every
+  bay clear of the breezeway and on no ground floor, patios on it; box bays
+  on alternate bays and balconies on the rest; the tower's continuous
+  balcony per floor on the long faces and none on the podium; the bulkhead
+  and penthouse 3 m back from the street face and the penthouse at 30% of
+  the plate; the stair pitch; every part inside the lot at all four
+  rotations; lit parts on the lit material only; the car park's space count
+  from `units`; determinism; the tiers with the measured figures reported.
+- Shots, `tools/apartment-shots.mjs`: each of the four kinds at every level
+  at the default pitch beside the 4 m car, a street of each kind, a close-up
+  of the walk-up's breezeway and of the tower's podium, and the same at
+  night.
+- `tools/frame-budget.mjs` before and after; the industry record is kept
+  beside it as `result-2026-10-15-industry.md`.
 
 ### Each slice, the same shape
 

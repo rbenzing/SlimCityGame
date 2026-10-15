@@ -14,6 +14,9 @@ import {
   MAX_SETBACK_INSET,
   MIN_SETBACK_INSET,
   DETACHED_BODY_MIN_M,
+  MIDRISE_PODIUM_M,
+  PODIUM_STOREYS,
+  podiumHeightOf,
   RES_LOW_BODY_M_PER_TILE,
   tierCountOf,
 } from './massing';
@@ -146,15 +149,24 @@ describe('computeSetbacks', () => {
     }
   });
 
-  it('returns exactly 1 box for a house of any level, whose pitched roof has nowhere to step', () => {
-    for (const kind of ['detached', 'duplex', 'fourplex', 'townhouse'] as const) {
+  it('returns exactly 1 box for a house or an apartment block of any level, which never step; a mixed-use block still does', () => {
+    for (const kind of [
+      'detached',
+      'duplex',
+      'fourplex',
+      'townhouse',
+      'multiplex',
+      'garden',
+      'midrise',
+      'tower',
+    ] as const) {
       for (const level of [2, 3]) {
         const { boxes } = computeSetbacks(entry({ level, height: 12, kind }), 3);
-        expect(boxes).toHaveLength(1);
+        expect(boxes, kind).toHaveLength(1);
         expect(boxes[0]!.h).toBeCloseTo(12, 9);
       }
     }
-    expect(computeSetbacks(entry({ level: 3, height: 30, kind: 'garden' }), 3).boxes).toHaveLength(
+    expect(computeSetbacks(entry({ level: 3, height: 30, kind: 'mixed' }), 3).boxes).toHaveLength(
       3,
     );
   });
@@ -702,12 +714,14 @@ describe('MassingRenderer', () => {
     );
     expect(() => renderer.apply(deltaAdd(...added))).not.toThrow();
 
-    // Every tier is the body instancer's; only a tower's podium is drawn here.
+    // Every tier is the body instancer's; only a tower's or a mid-rise's podium is drawn here.
     for (let i = 0; i < realCatalog.length; i++) {
-      const expected = realCatalog[i]!.kind === 'tower' ? 1 : 0;
+      const kind = realCatalog[i]!.kind;
+      const expected = kind === 'tower' || kind === 'midrise' ? 1 : 0;
       expect(renderer.upperBoxSlotsFor(i + 1)).toHaveLength(expected);
     }
     expect(realCatalog.some((c) => c.kind === 'tower')).toBe(true);
+    expect(realCatalog.some((c) => c.kind === 'midrise')).toBe(true);
   });
 });
 
@@ -927,7 +941,7 @@ describe('a building keeps its real proportions whatever the tile measures', () 
   });
 });
 
-describe('a high-density block houses what its drawn floor area holds', () => {
+describe('a high-density block houses the homes its catalog plates were counted on: one stepped tier per level, though a mid-rise and a tower are now drawn as one body', () => {
   const NET_TO_GROSS = 0.85;
   const APARTMENT_M2 = 93;
   const STEP_INSET = (MIN_SETBACK_INSET + MAX_SETBACK_INSET) / 2;
@@ -935,11 +949,13 @@ describe('a high-density block houses what its drawn floor area holds', () => {
     (e) => e.kind === 'midrise' || e.kind === 'tower' || e.kind === 'mixed',
   );
 
-  // Homes in the stacked body: equal storeys per tier, each tier inset on both
-  // axes; a mixed block's ground storey is shops, so it holds no homes.
+  // Homes in the stacked body the figures were worked out on: equal storeys
+  // per tier, one tier per level, each tier inset on both axes; a mixed block's
+  // ground storey is shops, so it holds no homes. The catalog's `units` are the
+  // sim's and stay; the one-body mid-rise and tower draw more floor than that.
   const expectedHomes = (e: BuildingCatalogEntry): number => {
     const body = bodyMetresFor(e);
-    const tiers = tierCountOf(e);
+    const tiers = e.kind === 'mixed' ? tierCountOf(e) : Math.min(3, e.level ?? 1);
     const storeysPerTier = e.height / FLOOR_HEIGHT_METERS / tiers;
     let floorAreaM2 = 0;
     for (let tier = 0; tier < tiers; tier++) {
@@ -987,8 +1003,25 @@ describe('a tower stands on a podium', () => {
     expect(podium!.d).toBeCloseTo(2 * TILE_METERS * MAX_FOOTPRINT_FILL - 4, 9);
   });
 
-  it('gives no podium to a block that is not a tower', () => {
-    expect(computeSetbacks({ ...tower(1), kind: 'midrise' }, 7).podium).toBeUndefined();
+  it('stands a mid-rise on a one-storey podium of 4.6 m, the retail floor-to-floor, at the same fill', () => {
+    const { boxes, podium } = computeSetbacks({ ...tower(1), kind: 'midrise', height: 16 }, 7);
+    expect(boxes).toHaveLength(1);
+    expect(podium).toEqual({
+      w: 2 * TILE_METERS * MAX_FOOTPRINT_FILL,
+      d: 2 * TILE_METERS * MAX_FOOTPRINT_FILL,
+      h: MIDRISE_PODIUM_M,
+      yOffset: 0,
+    });
+    expect(MIDRISE_PODIUM_M).toBe(4.6);
+    expect(podiumHeightOf({ ...tower(1), kind: 'midrise' })).toBe(MIDRISE_PODIUM_M);
+    expect(podiumHeightOf(tower(1))).toBe(PODIUM_STOREYS * FLOOR_HEIGHT_METERS);
+  });
+
+  it('gives no podium to a walk-up, which stands on the ground under its hip', () => {
+    for (const kind of ['multiplex', 'garden'] as const) {
+      expect(computeSetbacks({ ...tower(1), kind }, 7).podium).toBeUndefined();
+      expect(podiumHeightOf({ ...tower(1), kind })).toBeNull();
+    }
   });
 });
 

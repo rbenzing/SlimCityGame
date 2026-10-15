@@ -29,7 +29,7 @@ import { footprintForRotation } from '../shared/footprint';
 import { pushConformingQuad, conformingQuadVertexCount } from './groundquad';
 import { materialUnit, type MaterialName } from './palette';
 import { massingLifecycleTint } from './massing';
-import { isFarmEntry, isHouseEntry } from './archetypes';
+import { isFarmEntry, isHouseEntry, isWalkUpEntry } from './archetypes';
 import { cropBands, planFarm, type FarmPlan, type FarmRect } from './farmlot';
 import { NO_STREETS, type StreetLookup } from './frontage';
 import { lotToWorld, planHouseLot, type HouseLotPlan, type LotRect } from './houselot';
@@ -84,8 +84,10 @@ export function lotSurfaceFor(entry: BuildingCatalogEntry): MaterialName | null 
   if (entry.category === 'ind') return 'darkAsphalt';
   if (entry.category === 'com') return 'brightAsphalt';
   if (entry.category === 'res') {
-    // Detached homes and attached rows keep a garden; denser housing is paved.
-    return isHouseEntry(entry) ? 'mownLawn' : 'stainedConcrete';
+    // Detached homes and attached rows keep a garden; a walk-up lays a car
+    // park on a lawn; the mid-rise and the tower are paved downtown.
+    if (isHouseEntry(entry)) return 'mownLawn';
+    return isWalkUpEntry(entry) ? 'brightAsphalt' : 'stainedConcrete';
   }
   // Utilities, services, parks and landmarks bring their own ground treatment.
   return null;
@@ -251,11 +253,12 @@ export class LotRenderer {
       bounds.x1,
       bounds.z1,
       LOT_Y_OFFSET,
-      tinted(carPark ? 'mownLawn' : surface),
+      // A lot laid to code is lawn but for what it paves; a walk-up fronting no street is all lawn.
+      tinted(carPark || isWalkUpEntry(entry) ? 'mownLawn' : surface),
       this.heightAt,
     );
     if (carPark) {
-      this.layCarPark(carPark, surface, tinted, positions, colors);
+      this.layCarPark(carPark, entry, surface, tinted, positions, colors);
       this.store(building, positions, colors);
       return;
     }
@@ -299,6 +302,7 @@ export class LotRenderer {
    */
   private layCarPark(
     plan: LotPlan,
+    entry: BuildingCatalogEntry,
     surface: MaterialName,
     tinted: (name: MaterialName) => readonly [number, number, number],
     positions: number[],
@@ -321,7 +325,11 @@ export class LotRenderer {
     };
     const { layout, edge } = plan;
     const paving = lotPaving(layout);
-    for (const r of paving.yard) lay(r, DRIVE_Y_OFFSET, surface);
+    // A walk-up's rear yard is the lawn its balconies open onto, never paved.
+    const yard = isWalkUpEntry(entry)
+      ? paving.yard.filter((r) => r !== layout.rearYard)
+      : paving.yard;
+    for (const r of yard) lay(r, DRIVE_Y_OFFSET, surface);
     for (const r of paving.concrete) lay(r, WALK_Y_OFFSET, 'cleanConcrete');
     for (const r of paving.lane) lay(r, LANE_Y_OFFSET, 'darkAsphalt');
     for (const r of trailerStripes(layout.trailerStalls)) {

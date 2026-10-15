@@ -757,8 +757,8 @@ describe('ParkedCarRenderer', () => {
     const scene = new THREE.Scene();
     const flats = makeCatalogEntry({
       category: 'res',
-      zone: ZoneType.ResMedium,
-      kind: 'garden',
+      zone: ZoneType.ResHigh,
+      kind: 'midrise',
       footprint: { w: 2, d: 2 },
     });
     const renderer = new ParkedCarRenderer(
@@ -810,8 +810,8 @@ describe('ParkedCarRenderer', () => {
     const scene = new THREE.Scene();
     const flats = makeCatalogEntry({
       category: 'res',
-      zone: ZoneType.ResMedium,
-      kind: 'garden',
+      zone: ZoneType.ResHigh,
+      kind: 'midrise',
       footprint: { w: 2, d: 2 },
     });
     const laned: RoadProfile = {
@@ -1324,8 +1324,8 @@ describe('hasOwnLotParking', () => {
   it('does not count an apartment block, which has nowhere of its own', () => {
     const flats = makeCatalogEntry({
       category: 'res',
-      zone: ZoneType.ResMedium,
-      kind: 'garden',
+      zone: ZoneType.ResHigh,
+      kind: 'midrise',
       footprint: { w: 2, d: 2 },
     });
     expect(hasOwnLotParking(flats, 4, 6, roadSouthOf(4, 6, 2, 2))).toBe(false);
@@ -1398,8 +1398,8 @@ describe('usesRoadsideParking', () => {
 
   const smallHome = makeCatalogEntry({
     category: 'res',
-    zone: ZoneType.ResMedium,
-    kind: 'garden',
+    zone: ZoneType.ResHigh,
+    kind: 'midrise',
     footprint: { w: 2, d: 2 },
   });
 
@@ -1635,8 +1635,8 @@ describe('no kerbside car stands inside a junction’s no-parking zone', () => {
   );
   const flats = makeCatalogEntry({
     category: 'res',
-    zone: ZoneType.ResMedium,
-    kind: 'garden',
+    zone: ZoneType.ResHigh,
+    kind: 'midrise',
     footprint: { w: 2, d: 2 },
   });
   const parkedBeside = (asksTheRoad: boolean, x = 6): ParkedCarRenderer => {
@@ -1716,8 +1716,8 @@ describe('kerbside cars in angled and head-in stalls', () => {
   const roadAt = roadAtTiles(tiles);
   const flats = makeCatalogEntry({
     category: 'res',
-    zone: ZoneType.ResMedium,
-    kind: 'garden',
+    zone: ZoneType.ResHigh,
+    kind: 'midrise',
     footprint: { w: 2, d: 2 },
   });
   const TAN60 = Math.tan(Math.PI / 3);
@@ -1828,5 +1828,53 @@ describe('a building turned a quarter parks on the lot it stands on', () => {
   it('puts the curb cut on the road tile beside the turned footprint', () => {
     expect(curbCutTileFor(shop, 5, 5, roadAboveSecondTile, 0)).toBeNull();
     expect(curbCutTileFor(shop, 5, 5, roadAboveSecondTile, 1)).toEqual({ x: 6, z: 4 });
+  });
+});
+
+describe('a walk-up parks on its own lot', () => {
+  const walkUp = (kind: 'multiplex' | 'garden', units: number): BuildingCatalogEntry =>
+    makeCatalogEntry({
+      id: kind,
+      category: 'res',
+      zone: ZoneType.ResMedium,
+      kind,
+      units,
+      footprint: { w: 2, d: 2 },
+      height: 8,
+    });
+  const roadAt = roadAtTiles(Array.from({ length: 12 }, (_, x): [number, number] => [x, 8]));
+
+  it('lays a multiplex a car park of cars only, keeps its residents’ hours and lines no kerb', () => {
+    const flats = walkUp('multiplex', 8);
+    expect(hasOwnLotParking(flats, 4, 6, roadAt)).toBe(true);
+    expect(usesRoadsideParking(flats, 4, 6, roadAt, () => RoadTier.TwoLane)).toBe(false);
+    const scene = new THREE.Scene();
+    const renderer = new ParkedCarRenderer(
+      scene,
+      flatHeightAt,
+      [flats],
+      roadAt,
+      () => RoadTier.TwoLane,
+    );
+    renderer.apply(deltaAdd(makeBuilding({ id: 1, catalogId: 'multiplex', x: 4, z: 6, level: 1 })));
+    const stalls = lotPlanFor(flats, 4, 6, roadAt)!.layout.stalls.length;
+    expect(stalls).toBeGreaterThan(0);
+    expect(renderer.stallSlotsFor(1)).toHaveLength(stalls);
+    expect(renderer.carMeshCount()).toBe(1);
+    expect(stallKind('res', 1, 3)).toBe(VehicleKind.Car);
+    expect(lotOccupancy('res', 0.1)).toBe(lotOccupancy('residents', 0.1));
+    expect(lotOccupancy('res', 0.5)).toBe(lotOccupancy('residents', 0.5));
+  });
+
+  it('keeps the mid-rise and the tower at the kerb, downtown', () => {
+    const slab = makeCatalogEntry({
+      category: 'res',
+      zone: ZoneType.ResHigh,
+      kind: 'tower',
+      units: 81,
+      footprint: { w: 2, d: 2 },
+    });
+    expect(hasOwnLotParking(slab, 4, 6, roadAt)).toBe(false);
+    expect(usesRoadsideParking(slab, 4, 6, roadAt, () => RoadTier.TwoLane)).toBe(true);
   });
 });

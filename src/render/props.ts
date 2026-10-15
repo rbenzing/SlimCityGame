@@ -39,7 +39,13 @@ import {
   SetbackBox,
 } from './massing';
 import { materialHex } from './palette';
-import { isCleanIndustry, isFarmEntry, isHeavyIndustryEntry, isHouseEntry } from './archetypes';
+import {
+  isApartmentEntry,
+  isCleanIndustry,
+  isFarmEntry,
+  isHeavyIndustryEntry,
+  isHouseEntry,
+} from './archetypes';
 
 // ---------------------------------------------------------------------------
 // Deterministic hashing (never Math.random/Date.now) — each render/*.ts file
@@ -537,8 +543,10 @@ export class RoofPropRenderer {
     if (entry.category !== 'res' && entry.category !== 'com' && entry.category !== 'ind') return;
     // Detached/row homes get a pitched roof (houses.ts) instead of a flat roof
     // with vents/AC/antennas — rooftop clutter would poke through the pitch.
-    // A farm's barn has a gambrel roof and its silos are its own (farms.ts).
-    if (isHouseEntry(entry) || isFarmEntry(entry)) return;
+    // A farm's barn has a gambrel roof and its silos are its own (farms.ts),
+    // and an apartment block's roof is its kit's: a hip, or units, a bulkhead
+    // or a penthouse placed by the kit.
+    if (isHouseEntry(entry) || isFarmEntry(entry) || isApartmentEntry(entry)) return;
 
     // Same frontage setback as the body renderers so com/ind rooftop clutter
     // stays on the set-back roof instead of floating over the parking bays.

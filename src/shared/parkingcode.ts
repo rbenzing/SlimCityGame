@@ -8,6 +8,7 @@
 import { ZoneType } from './types';
 import type { BuildingCatalogEntry, BuildingKind } from './types';
 import { grossFloorSqFt } from './floorarea';
+import { isWalkUpKind } from './buildingkind';
 
 /**
  * Spaces per 1,000 sq ft of gross floor, the modal minimum across US
@@ -194,4 +195,47 @@ export function lotParkingRequirement(entry: BuildingCatalogEntry): ParkingRequi
     spaces: requiredSpaces(entry.kind, grossSqFt, category),
     berths: loadingBerths(category === 'ind' ? 'industrial' : 'retail', grossSqFt),
   };
+}
+
+/**
+ * Spaces a walk-up lays per home: the 1.41 a 2023 study of garden apartments
+ * measured in use, rounded up as a code would. It is what the lot is drawn
+ * with and never a condition of growth: a walk-up short of it paints what fits.
+ */
+export const WALK_UP_SPACES_PER_HOME = 1.4;
+
+/** The car park a multiplex or a garden walk-up lays for its homes, with no berths; null for any other building. */
+export function walkUpParkingRequirement(entry: BuildingCatalogEntry): ParkingRequirement | null {
+  if (!isWalkUpKind(entry.kind)) return null;
+  return {
+    grossSqFt: grossFloorSqFt(entry),
+    spaces: Math.ceil(WALK_UP_SPACES_PER_HOME * (entry.units ?? 0) - 1e-9),
+    berths: 0,
+  };
+}
+
+/**
+ * The ground a walk-up keeps behind its body for what hangs off its rear
+ * face, as lawn: a garden's balconies and landings, 1.8 m past its
+ * breezeway's 0.05 m; a multiplex's 0.45 m eaves. The kit's own figures, which
+ * its test holds to these. On a 2×2 lot a garden's 27.2 m body and this yard
+ * leave no room for a parking module, so it lays no car park and its
+ * residents park at the kerb.
+ */
+export const WALK_UP_REAR_YARD_M: Readonly<Record<'multiplex' | 'garden', number>> = {
+  multiplex: 0.45,
+  garden: 1.85,
+};
+
+/**
+ * The least a walk-up's body stands in from each side lot line, its eaves. A
+ * layout that would park the body on a side line, as a module beside a
+ * 27.2 m garden on a 2×2 lot does, is no car park for a walk-up: its lot
+ * stays lawn and its residents park at the kerb.
+ */
+export const WALK_UP_SIDE_YARD_M = 0.45;
+
+/** What a lot lays its car park for: the code's requirement for commerce and industry, a walk-up's homes, null for the rest. */
+export function lotSpacesFor(entry: BuildingCatalogEntry): ParkingRequirement | null {
+  return lotParkingRequirement(entry) ?? walkUpParkingRequirement(entry);
 }

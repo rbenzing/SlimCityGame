@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { archetypeFor, hasPart, isCleanIndustry, partsFor } from './archetypes';
+import {
+  archetypeFor,
+  hasPart,
+  isApartmentEntry,
+  isCleanIndustry,
+  isWalkUpEntry,
+  partsFor,
+} from './archetypes';
 import { ZoneType, type BuildingCatalogEntry, type BuildingKind } from '../shared/types';
 import catalogData from '../data/catalog.json';
 
@@ -304,5 +311,85 @@ describe('the shipped catalog', () => {
     for (const other of industrial.filter((e) => !sameBuilding(e))) {
       expect(campus.jobs ?? 0).toBeGreaterThan(other.jobs ?? 0);
     }
+  });
+});
+
+describe('the apartment kit', () => {
+  const res = (kind: BuildingKind, zone: ZoneType = ZoneType.ResMedium): BuildingCatalogEntry =>
+    entry({ category: 'res', zone, kind, level: 1 });
+
+  it('calls the four block kinds apartment blocks, and the multiplex and the garden walk-ups', () => {
+    for (const kind of ['multiplex', 'garden', 'midrise', 'tower'] as const) {
+      expect(isApartmentEntry(res(kind)), kind).toBe(true);
+      expect(archetypeFor(res(kind)), kind).toBe('apartment');
+    }
+    for (const kind of ['detached', 'duplex', 'fourplex', 'townhouse', 'mixed'] as const) {
+      expect(isApartmentEntry(res(kind)), kind).toBe(false);
+    }
+    expect(isWalkUpEntry(res('multiplex'))).toBe(true);
+    expect(isWalkUpEntry(res('garden'))).toBe(true);
+    expect(isWalkUpEntry(res('midrise'))).toBe(false);
+    expect(isWalkUpEntry(res('tower'))).toBe(false);
+  });
+
+  it('dresses each apartment kind with its own parts', () => {
+    expect(partsFor(res('multiplex'))).toEqual([
+      'hipRoofBlock',
+      'brickBase',
+      'mailKiosk',
+      'stoop',
+      'entryHood',
+      'signPole',
+    ]);
+    expect(partsFor(res('garden'))).toEqual([
+      'hipRoofBlock',
+      'brickBase',
+      'mailKiosk',
+      'breezeway',
+      'landing',
+      'landingGuard',
+      'stairFlight',
+      'balconySlab',
+      'balconyGuard',
+      'patio',
+    ]);
+    expect(partsFor(res('midrise', ZoneType.ResHigh))).toEqual([
+      'bulkhead',
+      'storefrontBand',
+      'brickPier',
+      'boxBay',
+      'balconySlab',
+      'balconyGuard',
+      'parapetBand',
+      'elevatorBulkhead',
+      'rooftopUnit',
+      'roofHatch',
+    ]);
+    expect(partsFor(res('tower', ZoneType.ResHigh))).toEqual([
+      'lobbyPortal',
+      'bulkhead',
+      'storefrontBand',
+      'brickPier',
+      'balconySlab',
+      'balconyGuard',
+      'parapetBand',
+      'penthouse',
+    ]);
+  });
+
+  it('gives the four kinds four different silhouettes, and a kindless block none', () => {
+    const sets = (['multiplex', 'garden', 'midrise', 'tower'] as const).map((k) =>
+      partsFor(res(k)).join(','),
+    );
+    expect(new Set(sets).size).toBe(4);
+    expect(partsFor(entry({ category: 'res', zone: ZoneType.ResHigh }))).toEqual([]);
+  });
+
+  it('dresses every apartment block in the shipped catalog', () => {
+    const blocks = (catalogData as { buildings: BuildingCatalogEntry[] }).buildings.filter((e) =>
+      isApartmentEntry(e),
+    );
+    expect(blocks).toHaveLength(12);
+    for (const e of blocks) expect(partsFor(e).length, e.id).toBeGreaterThan(0);
   });
 });

@@ -30,6 +30,27 @@ export function isHouseKind(kind: BuildingKind | undefined): kind is Residential
   return kind !== undefined && HOUSE_KINDS.has(kind);
 }
 
+/** The four apartment kinds, each one body at every level: the two walk-ups under a hip, the mid-rise and the tower on a podium. */
+const APARTMENT_KINDS: ReadonlySet<BuildingKind> = new Set<BuildingKind>([
+  'multiplex',
+  'garden',
+  'midrise',
+  'tower',
+]);
+
+/** The two walk-ups, which park a car park on their lot and carry a hip roof. */
+const WALK_UP_KINDS: ReadonlySet<BuildingKind> = new Set<BuildingKind>(['multiplex', 'garden']);
+
+/** An apartment block of one of the four kinds the apartment kit dresses. */
+export function isApartmentKind(kind: BuildingKind | undefined): kind is ResidentialKind {
+  return kind !== undefined && APARTMENT_KINDS.has(kind);
+}
+
+/** A multiplex or a garden walk-up: house-scale, a hip roof and a car park. */
+export function isWalkUpKind(kind: BuildingKind | undefined): kind is ResidentialKind {
+  return kind !== undefined && WALK_UP_KINDS.has(kind);
+}
+
 /** The homes in a townhouse row on its normal lot, about 6 m of frontage each. */
 const TOWNHOUSE_ROW_HOMES = 3;
 

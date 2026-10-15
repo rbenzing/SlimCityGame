@@ -39,6 +39,7 @@ buildings that ship.
 | --------- | ----------------------------------------- | ------------------------ | --------------------------------------- |
 | House     | detached, duplex, fourplex, townhouse row | 3,000                    | `src/render/geometrybudget.test.ts`     |
 | Block     | every other zoned kind but a farm         | 1,500                    | `src/render/geometrybudget.test.ts`     |
+| Tall      | mid-rise flats and a tower                | 4,000                    | `src/render/geometrybudget.test.ts`     |
 | Farm      | a crop, orchard or pasture farm           | 40,000                   | `src/render/geometrybudget.test.ts`     |
 | Ploppable | every kit                                 | 30,000                   | `src/render/geometrybudget.test.ts`     |
 | The city  | a Metropolis, about 10,000 buildings      | the frame                | `tools/frame-budget.mjs`, run per slice |
@@ -54,7 +55,10 @@ A tier is a ceiling per building, and what the frame pays is the tier
 **times the count**: a Metropolis holds six thousand houses and one
 hospital, so a hundred triangles on a house costs the frame what a hundred
 thousand on the hospital does. A kind that a city builds by the hundred —
-a house, a solar farm — is drawn to the low end of its tier.
+a house, a solar farm — is drawn to the low end of its tier. The tall tier
+exists for the opposite reason: a mid-rise and a tower are the rarest zoned
+kinds, 0.11% and 0.07% of what grows, and a balcony at every floor is what
+they are, so a Metropolis's dozen or so of them may spend 4,000 each.
 
 ### What the measurement read
 
