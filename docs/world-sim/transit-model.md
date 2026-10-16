@@ -79,6 +79,30 @@ the depots' own upkeep (`runningCost`). The pool is never stored: it is
 re-read from the standing buildings every tick, so a save from before depots
 loads with every line idle until one is built.
 
+**Dead runs.** A line's vehicles come from a particular depot, and drive to
+work. Per mode, the lines in id order take their served vehicles from the
+nearest connected depot with vehicles left — nearest by path cost over the
+mode's own graph from the depot's gate (the footprint tile nearest the
+network, by the node it snaps to) to the line's first stop, ties by depot
+id — and spill to the next nearest when it runs dry; the depot fielding most
+of a line is its depot (`depotId` in the snapshot), and a depot's "in
+service" is what left it. The dead-run path, `findPath(gate, stops[0])`, is
+cached per line and found again only when the line's route or the mode's
+depots change, or the graph is rebuilt under it. The service span is 05:00
+to 23:00 on the clock the sky keeps (`dayHourFromTick`, so a visual day): at
+the tick the clock crosses 05:00 every bus line's path takes its served
+vehicles of volume on each edge, the pull-out, and at 23:00 the same again,
+the pull-in — once each per day, decaying with the day as every trip does.
+Its buses are simulated (`src/sim/deadruns.ts`), in the shared vehicle
+buffer as `VehicleKind.Bus`: at pull-out they leave the gate along the path
+one per headway at the commercial speed and are dropped at the first stop;
+at pull-in the same number drive it back and are dropped at the gate; a new
+run takes over from whatever of the last is still out. The renderer hides a
+line's looping vehicles outside the span, so the street shows buses pulling
+out at dawn, the line running by day and the buses going home at night. A
+tram or a train dead-runs over its own graph, which carries no traffic, and
+no vehicle kind draws it: neither loads nor animates anything.
+
 **Congestion relief** feeds ridership back into the road network, but the
 formula differs by how a mode actually removes cars from the street:
 
@@ -141,7 +165,5 @@ highest id the save restored.
 Deferred, deliberately: no timetables, no per-vehicle capacity or bunching,
 no signal-block simulation, no freight, no level crossings that stop road
 traffic, no overhead wires or catenary poles, no tram priority at
-junctions, no dead runs between a depot and its line yet (the next slice of
-[transport depots](../engineering/features/transport-depots.md)), and no
-line that mixes tram and rail track. See [../DESIGN.md](../DESIGN.md) for
-the backlog.
+junctions, no animated tram or train dead runs, and no line that mixes tram
+and rail track. See [../DESIGN.md](../DESIGN.md) for the backlog.

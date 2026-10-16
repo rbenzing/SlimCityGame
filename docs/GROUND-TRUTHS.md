@@ -232,6 +232,21 @@ MUTCD citations below use 11th-edition section numbers.
   [transport-depots.md](engineering/features/transport-depots.md);
   `connectedDepots` in `src/sim/depots.ts`, `allocate` in
   `src/shared/transitfleet.ts`
+- A line's vehicles come from the nearest depot of its mode by path cost
+  from the depot's gate to the line's first stop, spilling to the next when
+  it runs dry, and a depot's "in service" is what left it. A bus line's dead
+  run loads the road graph exactly twice a clock day — its served vehicles on
+  every edge of that path when the clock crosses 05:00 (pull-out) and again
+  at 23:00 (pull-in), and never between — and its buses are sim-animated
+  along it, never drawn by the renderer; the renderer hides the loop outside
+  the 05:00–23:00 span. Tram and rail dead runs load nothing and animate
+  nothing. The dead-run path is cached per line and recomputed only when the
+  route, the depots or the graph under it change; a cached edge id is never
+  trusted across a graph rebuild. —
+  [transit-model.md](world-sim/transit-model.md),
+  [transport-depots.md](engineering/features/transport-depots.md);
+  `assign` and `crossings` in `src/sim/transit.ts`, `src/sim/deadruns.ts`,
+  `inServiceSpan` in `src/shared/transitfleet.ts`
 - Any grid edit invalidates the whole road graph and reassigns every node and
   edge id. Never persist an edge or node id across an edit. Tram-graph edge ids
   are a private numbering, and tram relief is recomputed over the road graph. —

@@ -1,6 +1,6 @@
 # Transport depots — design
 
-- **Status:** Specified 2026-10-16 (draft of 2026-09-18 revised on the player's choices and sourced figures); slice 1, the sim, built 2026-10-16; dead runs and the kits next
+- **Status:** Specified 2026-10-16 (draft of 2026-09-18 revised on the player's choices and sourced figures); slice 1, the sim, built 2026-10-16; slice 2, dead runs, built 2026-10-16; the kits next
 - **Date:** 2026-09-18, revised 2026-10-16
 
 Epic 7 of the programme in [municipal-services.md](municipal-services.md); the

@@ -74,7 +74,6 @@ import type {
   BuildingInstance,
   CityStats,
   Command,
-  TransitMode,
   CommandAck,
   DeathCareReport,
   District,
@@ -218,6 +217,7 @@ import {
 } from './transit';
 import { connectedDepots, fleetPools, inServiceAt, type ConnectedDepot } from './depots';
 import { DispatchSystem, MAX_SERVICE_VEHICLES } from './dispatch';
+import { DeadRunSystem, MAX_DEAD_RUN_BUSES } from './deadruns';
 import { PolicyStore, effectivePollution, trafficWeight } from './policy';
 import { paintDistrict } from '../world/districts';
 import {
@@ -275,6 +275,9 @@ export const ZONE_UNDER_BUILDINGS =
 
 /** Ticks between snapshots: 20 ticks/s over 10 snapshots/s = 2. */
 const SNAPSHOT_TICKS = Math.max(1, Math.round(TICK_RATE / SNAPSHOT_HZ));
+/** The first slot of the dead-running buses' slice of the vehicle buffer: just below the hearses'. */
+export const DEAD_RUN_SLOT_OFFSET =
+  MAX_VEHICLES - MAX_SERVICE_VEHICLES - MAX_GARBAGE_TRUCKS - MAX_HEARSES - MAX_DEAD_RUN_BUSES;
 /** Utility (power/water) recompute cadence. */
 const UTILITY_PERIOD = 10;
 /** Landfill units a tile held before the 0.25 kg trash unit; used to rescale older saves. */
@@ -531,6 +534,8 @@ class SimWorld implements WorkerSim {
   private readonly garbageTrucks = new GarbageTruckSystem();
   /** The cemeteries' hearses: a second fleet of the same system, runtime only. */
   private readonly hearses = new GarbageTruckSystem(MAX_HEARSES);
+  /** The bus lines' dead runs between depot and first stop, runtime only. */
+  private readonly deadRuns = new DeadRunSystem();
   /** Buildings a cemetery has taken a body from and no hearse has set out for yet, by tile index. */
   private hearseVisits: TruckTarget[] = [];
   private landfillDirty: DirtyRect | null = null;
@@ -742,7 +747,7 @@ class SimWorld implements WorkerSim {
     this.districtDefById.clear();
     this.registry = new BuildingRegistry(CATALOG);
     this.deathCare.reset();
-    this.resetHearses();
+    this.resetFleets();
     this.stats = initialStats();
     this.tickNo = 0;
     this.speed = 1;
@@ -874,7 +879,7 @@ class SimWorld implements WorkerSim {
         : savedGarbage,
     );
     this.garbageTrucks.reset();
-    this.resetHearses();
+    this.resetFleets();
     this.landfillAreasCache = null;
     this.landfillDirty = { minX: 0, minZ: 0, maxX: MAP_SIZE - 1, maxZ: MAP_SIZE - 1 };
     this.powerLineDirty = { minX: 0, minZ: 0, maxX: MAP_SIZE - 1, maxZ: MAP_SIZE - 1 };
@@ -1160,7 +1165,13 @@ class SimWorld implements WorkerSim {
     // cadence as traffic so cosmetic vehicles animate smoothly). Service
     // dispatch: spawn/route/resolve incidents from the coverage-gap fields.
     this.depots = connectedDepots(g, this.registry.all(), this.catalogById);
-    this.transitResult = this.transit.tick(this.populationJobsAccessor, fleetPools(this.depots));
+    this.transitResult = this.transit.tick(
+      this.populationJobsAccessor,
+      fleetPools(this.depots),
+      this.depots,
+      t,
+    );
+    this.deadRuns.tick(this.transitResult.deadRuns);
     this.latestIncidents = this.dispatch.tick({
       grid: g,
       buildings: this.registry.all(),
@@ -1228,9 +1239,11 @@ class SimWorld implements WorkerSim {
     return road === null ? null : { x: road % MAP_SIZE, z: Math.floor(road / MAP_SIZE) };
   }
 
-  private resetHearses(): void {
+  /** The hearses and the dead-running buses are runtime state: a new or loaded city starts with none out. */
+  private resetFleets(): void {
     this.hearses.reset();
     this.hearseVisits = [];
+    this.deadRuns.reset();
   }
 
   /** Every Active cemetery and crematorium, as the collection pass takes them. */
@@ -1449,6 +1462,8 @@ class SimWorld implements WorkerSim {
       this.hearses.vehicleBuffer,
       (MAX_VEHICLES - MAX_SERVICE_VEHICLES - MAX_GARBAGE_TRUCKS - MAX_HEARSES) * VEHICLE_STRIDE,
     );
+    // The bus lines' dead-running buses sit in the slice just below the hearses.
+    vehicles.set(this.deadRuns.vehicleBuffer, DEAD_RUN_SLOT_OFFSET * VEHICLE_STRIDE);
     const snap: SimSnapshot = {
       stats: cloneStats(this.stats),
       vehicles,
@@ -1481,6 +1496,10 @@ class SimWorld implements WorkerSim {
       headwayMin: lines.map((l) => figure(result.headwayMin, l.id)),
       runningCost: lines.map((l) => figure(result.runningCost, l.id)),
       pools: { ...result.pools },
+      depotId: lines.map((l) => {
+        const slot = slotOf.get(l.id);
+        return slot === undefined ? null : (result.depotId[slot] ?? null);
+      }),
     };
     // Active incidents (only when any are live — optional channel).
     if (this.latestIncidents.length > 0) {
@@ -1663,15 +1682,10 @@ class SimWorld implements WorkerSim {
   ): NonNullable<SelectionInfo['depot']> {
     const connected = this.depots.find((d) => d.id === id);
     if (!connected) return { holds: depot.fleet, fields: 0, inService: 0 };
-    const servedByMode: Record<TransitMode, number> = { bus: 0, rail: 0, tram: 0 };
-    const result = this.transitResult;
-    result.lines.forEach((line, i) => {
-      servedByMode[line.mode ?? 'bus'] += result.served[i] ?? 0;
-    });
     return {
       holds: connected.holds,
       fields: connected.fields,
-      inService: inServiceAt(this.depots, id, servedByMode),
+      inService: inServiceAt(this.depots, id, this.transitResult.inService),
     };
   }
 

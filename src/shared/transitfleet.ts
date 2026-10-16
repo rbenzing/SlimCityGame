@@ -42,6 +42,15 @@ export const RUNNING_COST_CENTS: Readonly<Record<TransitMode, number>> = {
   rail: 142,
 };
 
+/** The service span, clock hours: the lines pull out of their depots at 05:00 and pull in at 23:00. */
+export const SERVICE_START_HOUR = 5;
+export const SERVICE_END_HOUR = 23;
+
+/** True while the lines run: a clock hour inside the service span. */
+export function inServiceSpan(hour: number): boolean {
+  return hour >= SERVICE_START_HOUR && hour < SERVICE_END_HOUR;
+}
+
 /** The vehicles a depot holding `fleet` puts on the road: all but the spare fifth. */
 export function fieldsOf(fleet: number): number {
   if (!(fleet > 0)) return 0;

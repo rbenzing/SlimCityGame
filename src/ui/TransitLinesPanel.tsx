@@ -63,6 +63,7 @@ export function TransitLinesPanel(): JSX.Element | null {
               const requested = fleet.requested[i] ?? 0;
               const headway = fleet.headwayMin[i] ?? 0;
               const cost = fleet.runningCost[i] ?? 0;
+              const depot = fleet.depotId?.[i] ?? null;
               const noDepot = served === 0 && requested > 0;
               return (
                 <div
@@ -100,6 +101,7 @@ export function TransitLinesPanel(): JSX.Element | null {
                       data-testid={`line-${line.id}-service`}
                     >
                       {served} of {requested} vehicles · every {headway.toFixed(1)} min · ¢{cost}/mo
+                      {depot !== null && ` · from ${DEPOT_LABEL[mode]}`}
                     </div>
                   )}
                 </div>

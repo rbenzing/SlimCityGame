@@ -73,6 +73,24 @@ describe('TransitLinesPanel', () => {
     );
   });
 
+  it('names the depot a served line runs from, and none for a line the worker gave no depot', () => {
+    useCityStore.setState({
+      selectedTool: 'transit.line',
+      transitFleet: {
+        served: [0, 1, 2],
+        requested: [2, 1, 3],
+        headwayMin: [0, 12.5, 4.1],
+        runningCost: [0, 142, 140],
+        depotId: [null, 7, null],
+      },
+    });
+    render(<TransitLinesPanel />);
+    expect(screen.getByTestId('line-2-service')).toHaveTextContent(
+      '1 of 1 vehicles · every 12.5 min · ¢142/mo · from Rail Yard',
+    );
+    expect(screen.getByTestId('line-3-service')).not.toHaveTextContent('from');
+  });
+
   it('tells a line no depot fields which depot to build, by its mode', () => {
     useCityStore.setState({ selectedTool: 'transit.line' });
     render(<TransitLinesPanel />);
