@@ -7,6 +7,8 @@
 
 * **render:** the apartment kit's parts, each block drawn as the multi-family type it is ([47fd393](https://github.com/rbenzing/SlimCityGame/commit/47fd3935d56cfd913fce314ca6d0db5dfe715f8f))
 * **render:** the apartment kit's parts, each block drawn as the multi-family type it is ([af259b9](https://github.com/rbenzing/SlimCityGame/commit/af259b9dabda8d0f7bbb70b15aa5b5eb65a27e75))
+* **render:** the clinic, the rail station and the bus stop as civic kits ([d1c5ffe](https://github.com/rbenzing/SlimCityGame/commit/d1c5ffeacfcffe167796a5bdfaa817ae5c796cfc))
+* **render:** the clinic, the rail station and the bus stop as civic kits ([16d42de](https://github.com/rbenzing/SlimCityGame/commit/16d42de63d5a464e4d0b3b50646236feefc0f05c))
 
 ## [1.64.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.63.0...slimcity-v1.64.0) (2026-10-15)
 
