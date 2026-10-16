@@ -216,8 +216,13 @@ visible — a facility, not a data lens the player has to switch on.
 
 ## Street furniture and lamp kit
 
-- **Bus-stop shelter**: a roof canopy on 2 posts, a bench, and a stop
-  sign/pole — low-poly, instanced, deterministic per stop.
+- **Bus-stop shelter**: the transit-agency shelter the bus-stop ploppable
+  carries, 1.52 × 3.66 m with a glazed back and ends, a 6 ft bench, a
+  receptacle and a flag sign with its bottom 7 ft up, from one builder
+  shared with the kit, so a line's stop and a plopped stop read alike —
+  low-poly, instanced, deterministic per stop; the figures are in
+  [civic-massing.md](civic-massing.md#the-clinic-the-depot-and-the-bus-stop).
+  A line's stop on a plopped bus stop's tile draws no shelter of its own.
 - **Pedestrians**: cosmetic low-poly people, a few idling at each shelter and
   a sparse scatter walking the sidewalks near Active buildings — instanced,
   deterministic, with a slow walk-cycle offset. Idling people cluster around

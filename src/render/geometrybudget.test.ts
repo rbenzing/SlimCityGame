@@ -41,6 +41,8 @@ const COMMERCIAL_KIT_CEILING = 500;
 const NORMAL_LOT_HOME_CEILING = 1300;
 const ACRE_HOME_CEILING = 1800;
 const SOLAR_FARM_CEILING = 2000;
+/** A city builds bus stops by the dozen, so the stop stays well under the kit tier. */
+const BUS_STOP_CEILING = 500;
 
 const ORIGIN = { x: 10, z: 10 };
 const HOME_IDS = 16;
@@ -269,6 +271,12 @@ describe('geometry budget: triangles per building, every part', () => {
   it('holds a solar farm to its ceiling', () => {
     const farm = kitRows.find((r) => r.entry.id === 'solar-farm')!;
     expect(farm.triangles).toBeLessThanOrEqual(SOLAR_FARM_CEILING);
+  });
+
+  it('holds a bus stop to its ceiling', () => {
+    const stop = kitRows.find((r) => r.entry.id === 'bus-stop')!;
+    expect(stop.triangles).toBeGreaterThan(0);
+    expect(stop.triangles).toBeLessThanOrEqual(BUS_STOP_CEILING);
   });
 });
 

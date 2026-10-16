@@ -45,6 +45,7 @@ import {
   VEHICLE_STRIDE,
   ZoneType,
   flowDirection,
+  isRailTier,
   isStreetTier,
 } from './shared/types';
 import { footprintForRotation } from './shared/footprint';
@@ -117,7 +118,7 @@ import { PhotoModeController } from './render/photomode';
 import { StatsHistory } from './ui/statshistory';
 import { ADVISOR_REFRESH_SNAPSHOTS, cityIssues } from './ui/advisor';
 import { GhostRenderer, type GhostKind, type SetPreviewOptions } from './render/ghosts';
-import { UtilityKitRenderer } from './render/utilitykits';
+import { UtilityKitRenderer, busStopShelterAnchor } from './render/utilitykits';
 import { FarmRenderer } from './render/farms';
 import { ZoneGridRenderer } from './render/zonegrid';
 import { LampRenderer } from './render/lamps';
@@ -267,6 +268,8 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
     catalog,
     // A shore building turns to face the water beside it.
     (x, z) => inBounds(x, z) && clientGrid.water[z * clientGrid.size + x] === 1,
+    // A station lays its platform along the track beside it.
+    (x, z) => inBounds(x, z) && isRailTier(clientGrid.roadTier[z * clientGrid.size + x] ?? 0),
   );
   // A crossing tile holds two roads; the road passing over it has a surface of
   // its own, which the ordinary sampler — answering for the road beneath —
@@ -1933,7 +1936,14 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
     }
     // Bus transit: rebuild stops/ribbon/buses + publish the line list.
     if (snap.transit) {
-      transitRenderer.apply(snap.transit);
+      // A plopped bus stop's tile keeps that kit's shelter: the line draws
+      // none there, and the idlers wait at the kit's.
+      const stopBuildings = new Map<number, BuildingInstance>();
+      for (const b of knownBuildings.values()) {
+        if (b.catalogId === 'bus-stop') stopBuildings.set(b.x * 100_000 + b.z, b);
+      }
+      const hasStopBuilding = (x: number, z: number): boolean => stopBuildings.has(x * 100_000 + z);
+      transitRenderer.apply(snap.transit, hasStopBuilding);
       state.setTransit(snap.transit.lines, snap.transit.ridership);
       // Refresh the idler crowd from the current stop set (walkers keep
       // their incrementally-tracked building set; an empty delta leaves it be).
@@ -1944,6 +1954,11 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       latestStopPoints = snap.transit.lines.flatMap((l) => {
         const pts = toWorldPoints(l.stops);
         return l.stops.map((s, i) => {
+          const plopped = stopBuildings.get(s.x * 100_000 + s.z);
+          const entry = plopped ? catalogById.get(plopped.catalogId) : undefined;
+          if (plopped && entry) {
+            return { x: s.x, z: s.z, anchor: busStopShelterAnchor(plopped, entry) };
+          }
           const layout = computeShelterLayout(
             pts[i]!,
             computeStopHeading(pts, i),
