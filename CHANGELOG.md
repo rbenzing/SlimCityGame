@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.70.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.69.0...slimcity-v1.70.0) (2026-10-16)
+
+
+### Features
+
+* **render:** the street tramway drawn as a street, and every tram lane is track ([6951ad3](https://github.com/rbenzing/SlimCityGame/commit/6951ad3bf24f27fffd56d85a513c87416afc5cc3))
+* **render:** the street tramway drawn as a street, and every tram lane is track ([3a74d1c](https://github.com/rbenzing/SlimCityGame/commit/3a74d1c411f6487f74898230638fc526212f6bb8))
+
 ## [1.69.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.68.0...slimcity-v1.69.0) (2026-10-16)
 
 
