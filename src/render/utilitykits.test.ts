@@ -3,9 +3,12 @@ import * as THREE from 'three';
 import {
   COAL_SMOKESTACK_COUNT,
   DRAIN_OUTFALL_OVERHANG,
-  WORKS_CLARIFIER_RADIUS,
+  WORKS_CLARIFIER,
+  WORKS_CLARIFIER_COUNT,
   PARK_BENCH_COUNT,
   PUMP_INTAKE_OVERHANG,
+  RECYCLING_ROLL_OFF,
+  RECYCLING_ROLL_OFF_COUNT,
   RECYCLING_SHED_SIZE,
   RECYCLING_OFFICE_SIZE,
   RECYCLING_YARD_HEIGHT,
@@ -33,11 +36,9 @@ import {
   WATER_TANK_SEGMENTS,
   WATER_TANK_SHELL_HEIGHT,
   buildWaterTowerGeometry,
-  computeCoalHallLayout,
-  computeCoalHeapLocalPlacement,
+  computeCoalPlantLayout,
   computeCoalSmokestackLocalPlacements,
-  computeIncineratorBayLocalPlacement,
-  computeIncineratorHallLayout,
+  computeIncineratorLayout,
   computeIncineratorStackLocalPlacement,
   computeMrfLayout,
   computeTransferLayout,
@@ -50,6 +51,7 @@ import {
   TRANSFER_TRAILER_SIZE,
   TRANSFER_WEIGHBRIDGE_SIZE,
   MRF_BALE_SIZE,
+  MRF_BALE_STACK,
   MRF_HALL_SIZE,
   MRF_TRUCK_COUNT,
   computeParkBenchPlacements,
@@ -139,26 +141,32 @@ const ALL_KINDS: readonly UtilityKitPartKind[] = [
   'turbineBeacon',
   'waterSteel',
   'waterTank',
-  'pumpHouse',
+  'pumpGrounds',
+  'pumpStation',
   'pumpIntake',
+  'drainGrounds',
   'drainHeadwall',
   'drainOutfall',
-  'worksBody',
+  'worksGrounds',
+  'worksPlant',
+  'worksClarifier',
   'worksOutfall',
-  'coalHall',
+  'coalGrounds',
+  'coalPlant',
   'coalSmokestack',
   'coalHeap',
-  'incineratorHall',
+  'incineratorGrounds',
+  'incineratorPlant',
   'incineratorStack',
-  'incineratorBay',
   'recyclingYard',
-  'recyclingShed',
-  'recyclingOffice',
+  'recyclingDepot',
+  'recyclingRollOff',
   'recyclingTruck',
   'mrfYard',
   'mrfHall',
   'mrfBales',
   'mrfOffice',
+  'mrfScale',
   'mrfTruck',
   'transferYard',
   'transferHall',
@@ -630,114 +638,36 @@ describe('computeWaterLegPlacements (pure)', () => {
   });
 });
 
-describe('computeCoalHallLayout (pure)', () => {
-  it('covers ~3x4 of a 4x4 footprint (hall width = footprint.w - 1 tiles, full depth)', () => {
-    const layout = computeCoalHallLayout({ w: 4, d: 4 });
-    expect(layout.hallHalfW * 2).toBeCloseTo(3 * TILE_METERS, 9);
-    expect(layout.hallHalfD * 2).toBeCloseTo(4 * TILE_METERS, 9);
-  });
-
-  it('leaves a heap strip whose width plus the hall width fills the whole footprint', () => {
-    const layout = computeCoalHallLayout({ w: 4, d: 4 });
-    const { halfW } = footprintHalfExtents({ w: 4, d: 4 });
-    expect(layout.hallHalfW + layout.heapHalfW).toBeCloseTo(halfW, 9);
-  });
-
-  it('scales with footprint size', () => {
-    const small = computeCoalHallLayout({ w: 4, d: 4 });
-    const big = computeCoalHallLayout({ w: 6, d: 6 });
-    expect(big.hallHalfD).toBeGreaterThan(small.hallHalfD);
-  });
-
-  it('is deterministic and pure', () => {
-    expect(computeCoalHallLayout({ w: 4, d: 4 })).toEqual(computeCoalHallLayout({ w: 4, d: 4 }));
-  });
-});
-
 describe('computeCoalSmokestackLocalPlacements (pure)', () => {
-  it('returns COAL_SMOKESTACK_COUNT (2) placements, symmetric about local Z=0, sharing the same X', () => {
+  it('returns COAL_SMOKESTACK_COUNT (2) placements behind the precipitator, sharing the same Z', () => {
     const placements = computeCoalSmokestackLocalPlacements({ w: 4, d: 4 });
     expect(placements).toHaveLength(COAL_SMOKESTACK_COUNT);
     expect(COAL_SMOKESTACK_COUNT).toBe(2);
-    expect(placements[0]!.z).toBeCloseTo(-placements[1]!.z, 9);
-    expect(placements[0]!.x).toBeCloseTo(placements[1]!.x, 9);
-  });
-
-  it('sits within the hall footprint (over the boiler hall roof)', () => {
-    const layout = computeCoalHallLayout({ w: 4, d: 4 });
-    const placements = computeCoalSmokestackLocalPlacements({ w: 4, d: 4 });
-    for (const p of placements) {
-      expect(p.x).toBeCloseTo(layout.hallCenterX, 9);
-      expect(Math.abs(p.z)).toBeLessThan(layout.hallHalfD);
-    }
+    expect(placements[0]!.z).toBeCloseTo(placements[1]!.z, 9);
+    expect(placements[0]!.x).toBeLessThan(placements[1]!.x);
+    const { esp } = computeCoalPlantLayout({ w: 4, d: 4 });
+    for (const p of placements) expect(p.x).toBeGreaterThan(esp.x1);
   });
 
   it('is deterministic and pure', () => {
     expect(computeCoalSmokestackLocalPlacements({ w: 4, d: 4 })).toEqual(
       computeCoalSmokestackLocalPlacements({ w: 4, d: 4 }),
     );
-  });
-});
-
-describe('computeCoalHeapLocalPlacement (pure)', () => {
-  it('sits in the free strip beside the hall, not inside the hall footprint', () => {
-    const layout = computeCoalHallLayout({ w: 4, d: 4 });
-    const heap = computeCoalHeapLocalPlacement({ w: 4, d: 4 });
-    expect(heap.x).toBeGreaterThan(layout.hallCenterX + layout.hallHalfW - 1e-9);
-  });
-
-  it('is deterministic and pure', () => {
-    expect(computeCoalHeapLocalPlacement({ w: 4, d: 4 })).toEqual(
-      computeCoalHeapLocalPlacement({ w: 4, d: 4 }),
-    );
-  });
-});
-
-describe('computeIncineratorHallLayout (pure)', () => {
-  it('covers ~3x4 of a 4x4 footprint (hall width = footprint.w - 1 tiles, full depth)', () => {
-    const layout = computeIncineratorHallLayout({ w: 4, d: 4 });
-    expect(layout.hallHalfW * 2).toBeCloseTo(3 * TILE_METERS, 9);
-    expect(layout.hallHalfD * 2).toBeCloseTo(4 * TILE_METERS, 9);
-  });
-
-  it('leaves a bay strip whose width plus the hall width fills the whole footprint', () => {
-    const layout = computeIncineratorHallLayout({ w: 4, d: 4 });
-    const { halfW } = footprintHalfExtents({ w: 4, d: 4 });
-    expect(layout.hallHalfW + layout.bayHalfW).toBeCloseTo(halfW, 9);
-  });
-
-  it('is deterministic and pure', () => {
-    expect(computeIncineratorHallLayout({ w: 4, d: 4 })).toEqual(
-      computeIncineratorHallLayout({ w: 4, d: 4 }),
-    );
+    expect(computeCoalPlantLayout({ w: 4, d: 4 })).toEqual(computeCoalPlantLayout({ w: 4, d: 4 }));
   });
 });
 
 describe('computeIncineratorStackLocalPlacement (pure)', () => {
-  it('sits within the hall footprint (over the processing hall roof)', () => {
-    const layout = computeIncineratorHallLayout({ w: 4, d: 4 });
+  it('stands the stack beside the baghouse, behind the tipping hall', () => {
+    const layout = computeIncineratorLayout({ w: 4, d: 4 });
     const stack = computeIncineratorStackLocalPlacement({ w: 4, d: 4 });
-    expect(stack.x).toBeCloseTo(layout.hallCenterX, 9);
-    expect(Math.abs(stack.z)).toBeLessThan(layout.hallHalfD);
+    expect(stack.x).toBeGreaterThan(layout.baghouse.x1);
+    expect(stack.z).toBeLessThan(layout.tipping.z0);
   });
 
   it('is deterministic and pure', () => {
-    expect(computeIncineratorStackLocalPlacement({ w: 4, d: 4 })).toEqual(
-      computeIncineratorStackLocalPlacement({ w: 4, d: 4 }),
-    );
-  });
-});
-
-describe('computeIncineratorBayLocalPlacement (pure)', () => {
-  it('sits in the free strip beside the hall, not inside the hall footprint', () => {
-    const layout = computeIncineratorHallLayout({ w: 4, d: 4 });
-    const bay = computeIncineratorBayLocalPlacement({ w: 4, d: 4 });
-    expect(bay.x).toBeGreaterThan(layout.hallCenterX + layout.hallHalfW - 1e-9);
-  });
-
-  it('is deterministic and pure', () => {
-    expect(computeIncineratorBayLocalPlacement({ w: 4, d: 4 })).toEqual(
-      computeIncineratorBayLocalPlacement({ w: 4, d: 4 }),
+    expect(computeIncineratorLayout({ w: 4, d: 4 })).toEqual(
+      computeIncineratorLayout({ w: 4, d: 4 }),
     );
   });
 });
@@ -1126,12 +1056,13 @@ describe('water-tower kit', () => {
 // ---------------------------------------------------------------------------
 
 describe('coal-plant kit', () => {
-  it('places 1 coalHall, COAL_SMOKESTACK_COUNT (2) coalSmokestack, and 1 coalHeap slot per instance', () => {
+  it('places 1 coalGrounds, 1 coalPlant, COAL_SMOKESTACK_COUNT (2) coalSmokestack, and 1 coalHeap slot per instance', () => {
     const renderer = new UtilityKitRenderer(new THREE.Scene(), flatHeightAt, [
       makeCoalPlantEntry(),
     ]);
     renderer.apply(deltaAdd(makeInstance(1, 'coal-plant')));
-    expect(renderer.partSlotsFor(1, 'coalHall')).toHaveLength(1);
+    expect(renderer.partSlotsFor(1, 'coalGrounds')).toHaveLength(1);
+    expect(renderer.partSlotsFor(1, 'coalPlant')).toHaveLength(1);
     expect(renderer.partSlotsFor(1, 'coalSmokestack')).toHaveLength(2);
     expect(renderer.partSlotsFor(1, 'coalHeap')).toHaveLength(1);
   });
@@ -1174,14 +1105,14 @@ describe('coal-plant kit', () => {
 // ---------------------------------------------------------------------------
 
 describe('incinerator kit', () => {
-  it('places 1 incineratorHall, 1 incineratorStack, and 1 incineratorBay slot per instance', () => {
+  it('places 1 incineratorGrounds, 1 incineratorPlant and 1 incineratorStack slot per instance', () => {
     const renderer = new UtilityKitRenderer(new THREE.Scene(), flatHeightAt, [
       makeIncineratorEntry(),
     ]);
     renderer.apply(deltaAdd(makeInstance(1, 'incinerator')));
-    expect(renderer.partSlotsFor(1, 'incineratorHall')).toHaveLength(1);
+    expect(renderer.partSlotsFor(1, 'incineratorGrounds')).toHaveLength(1);
+    expect(renderer.partSlotsFor(1, 'incineratorPlant')).toHaveLength(1);
     expect(renderer.partSlotsFor(1, 'incineratorStack')).toHaveLength(1);
-    expect(renderer.partSlotsFor(1, 'incineratorBay')).toHaveLength(1);
   });
 
   it('places the single flue at the world position matching computeIncineratorStackLocalPlacement', () => {
@@ -1216,17 +1147,18 @@ describe('incinerator kit', () => {
 describe('recycling-depot kit', () => {
   const entry = makeRecyclingDepotEntry();
 
-  it('places 1 shed, 1 office and RECYCLING_TRUCK_COUNT (4) parked trucks per instance', () => {
+  it('places 1 yard, 1 depot, RECYCLING_ROLL_OFF_COUNT (6) roll-offs and RECYCLING_TRUCK_COUNT (4) parked trucks per instance', () => {
     const renderer = new UtilityKitRenderer(new THREE.Scene(), flatHeightAt, [entry]);
     renderer.apply(deltaAdd(makeInstance(1, 'recycling-depot')));
     expect(renderer.partSlotsFor(1, 'recyclingYard')).toHaveLength(1);
-    expect(renderer.partSlotsFor(1, 'recyclingShed')).toHaveLength(1);
-    expect(renderer.partSlotsFor(1, 'recyclingOffice')).toHaveLength(1);
+    expect(renderer.partSlotsFor(1, 'recyclingDepot')).toHaveLength(1);
+    expect(renderer.partSlotsFor(1, 'recyclingRollOff')).toHaveLength(RECYCLING_ROLL_OFF_COUNT);
     expect(renderer.partSlotsFor(1, 'recyclingTruck')).toHaveLength(RECYCLING_TRUCK_COUNT);
+    expect(RECYCLING_ROLL_OFF_COUNT).toBe(6);
     expect(RECYCLING_TRUCK_COUNT).toBe(4);
   });
 
-  it('paves the whole 2x3 lot and stands the trucks on that pavement', () => {
+  it('paves the whole 2x3 lot and stands the trucks and roll-offs on that pavement', () => {
     const { halfW, halfD } = footprintHalfExtents(entry.footprint);
     const renderer = new UtilityKitRenderer(new THREE.Scene(), flatHeightAt, [entry]);
     const yard = renderer.partGeometry('recycling-depot', 'recyclingYard')!;
@@ -1239,22 +1171,33 @@ describe('recycling-depot kit', () => {
 
     renderer.apply(deltaAdd(makeInstance(1, 'recycling-depot')));
     const m = new THREE.Matrix4();
-    for (const slot of renderer.partSlotsFor(1, 'recyclingTruck')) {
-      renderer.getPartMatrix('recycling-depot', 'recyclingTruck', slot, m);
-      expect(decomposePosition(m).y).toBeCloseTo(RECYCLING_YARD_HEIGHT, 5);
+    for (const kind of ['recyclingTruck', 'recyclingRollOff'] as const) {
+      for (const slot of renderer.partSlotsFor(1, kind)) {
+        renderer.getPartMatrix('recycling-depot', kind, slot, m);
+        expect(decomposePosition(m).y).toBeCloseTo(RECYCLING_YARD_HEIGHT, 5);
+      }
     }
   });
 
-  it('keeps the shed, office and every truck inside the 2x3 lot, clear of one another', () => {
+  it('keeps the shed, office, stalls, roll-offs and every truck inside the 2x3 lot, clear of one another', () => {
     const { halfW, halfD } = footprintHalfExtents(entry.footprint);
     const layout = computeRecyclingDepotLayout(entry.footprint);
     const [truckW, , truckL] = sizeForKind(VehicleKind.Recycling);
-
-    const shedHalf = { w: RECYCLING_SHED_SIZE.w / 2, d: RECYCLING_SHED_SIZE.d / 2 };
-    const officeHalf = { w: RECYCLING_OFFICE_SIZE.w / 2, d: RECYCLING_OFFICE_SIZE.d / 2 };
+    const ofRect = (r: Rect) => ({
+      x: (r.x0 + r.x1) / 2,
+      z: (r.z0 + r.z1) / 2,
+      hw: (r.x1 - r.x0) / 2,
+      hd: (r.z1 - r.z0) / 2,
+    });
     const boxes = [
-      { ...layout.shed, hw: shedHalf.w, hd: shedHalf.d },
-      { ...layout.office, hw: officeHalf.w, hd: officeHalf.d },
+      ofRect(layout.shed),
+      ofRect(layout.office),
+      ...layout.stalls.map(ofRect),
+      ...layout.rollOffs.map((r) => ({
+        ...r,
+        hw: RECYCLING_ROLL_OFF.w / 2,
+        hd: RECYCLING_ROLL_OFF.l / 2,
+      })),
       ...layout.trucks.map((t) => ({ ...t, hw: truckW / 2, hd: truckL / 2 })),
     ];
     for (const b of boxes) {
@@ -1267,22 +1210,21 @@ describe('recycling-depot kit', () => {
       for (let j = i + 1; j < boxes.length; j++) {
         const a = boxes[i]!;
         const b = boxes[j]!;
-        const overlap = Math.abs(a.x - b.x) < a.hw + b.hw && Math.abs(a.z - b.z) < a.hd + b.hd;
+        const overlap =
+          Math.abs(a.x - b.x) < a.hw + b.hw - 1e-9 && Math.abs(a.z - b.z) < a.hd + b.hd - 1e-9;
         expect(overlap).toBe(false);
       }
     }
   });
 
-  it('is a 30 x 20 m shed, 8 m to the eaves, with the trucks parked in front of its street-side wall', () => {
-    expect(RECYCLING_SHED_SIZE).toEqual({ w: 30, d: 20, h: 8 });
-    const layout = computeRecyclingDepotLayout(entry.footprint);
-    const shedFront = layout.shed.z + RECYCLING_SHED_SIZE.d / 2;
-    for (const truck of layout.trucks) expect(truck.z).toBeGreaterThan(shedFront);
-
+  it('is a 12 x 8 m shed, 6 m to the eaves, and nothing stands above the 8 m hook-lift height', () => {
+    expect(RECYCLING_SHED_SIZE).toEqual({ w: 12, d: 8, h: 6 });
+    expect(RECYCLING_OFFICE_SIZE).toEqual({ w: 4, d: 3, h: 3.2 });
     const renderer = new UtilityKitRenderer(new THREE.Scene(), flatHeightAt, [entry]);
-    const shed = renderer.partGeometry('recycling-depot', 'recyclingShed')!;
-    shed.computeBoundingBox();
-    expect(shed.boundingBox!.max.y).toBeCloseTo(8.5, 5); // 8 m eaves + the roof cap
+    const depot = renderer.partGeometry('recycling-depot', 'recyclingDepot')!;
+    depot.computeBoundingBox();
+    expect(depot.boundingBox!.max.y).toBeCloseTo(6.4, 5); // 6 m eaves + the roof cap
+    expect(depot.boundingBox!.max.y + RECYCLING_YARD_HEIGHT).toBeLessThanOrEqual(entry.height);
   });
 
   it('draws each truck at the recycling fleet body size', () => {
@@ -1428,8 +1370,8 @@ describe('night cycle (UI-SPEC §6.15 — "kits stay unlit except a small red tu
     ]);
     renderer.setNightFactor(1);
     expect(renderer.partEmissiveHex('water-tower', 'waterTank')).toBe(0);
-    expect(renderer.partEmissiveHex('coal-plant', 'coalHall')).toBe(0);
-    expect(renderer.partEmissiveHex('incinerator', 'incineratorHall')).toBe(0);
+    expect(renderer.partEmissiveHex('coal-plant', 'coalPlant')).toBe(0);
+    expect(renderer.partEmissiveHex('incinerator', 'incineratorPlant')).toBe(0);
     expect(renderer.partEmissiveHex('small-park', 'parkGround')).toBe(0);
   });
 });
@@ -1477,7 +1419,8 @@ describe('removal exactness', () => {
     renderer.apply(deltaRemove(1));
 
     expect(renderer.hasInstance(1)).toBe(false);
-    expect(renderer.partSlotsFor(1, 'coalHall')).toHaveLength(0);
+    expect(renderer.partSlotsFor(1, 'coalGrounds')).toHaveLength(0);
+    expect(renderer.partSlotsFor(1, 'coalPlant')).toHaveLength(0);
     expect(renderer.partSlotsFor(1, 'coalSmokestack')).toHaveLength(0);
     expect(renderer.partSlotsFor(1, 'coalHeap')).toHaveLength(0);
   });
@@ -1491,9 +1434,9 @@ describe('removal exactness', () => {
     renderer.apply(deltaRemove(1));
 
     expect(renderer.hasInstance(1)).toBe(false);
-    expect(renderer.partSlotsFor(1, 'incineratorHall')).toHaveLength(0);
+    expect(renderer.partSlotsFor(1, 'incineratorGrounds')).toHaveLength(0);
+    expect(renderer.partSlotsFor(1, 'incineratorPlant')).toHaveLength(0);
     expect(renderer.partSlotsFor(1, 'incineratorStack')).toHaveLength(0);
-    expect(renderer.partSlotsFor(1, 'incineratorBay')).toHaveLength(0);
   });
 
   it('removing one instance leaves another instance fully intact', () => {
@@ -1571,10 +1514,10 @@ describe('materials-recovery-facility kit', () => {
     return geometry.boundingBox!;
   };
 
-  it('places a yard, a hall, a bale yard, an office and four parked trucks per instance', () => {
+  it('places a yard, a hall, a bale yard, an office, a scale and four parked trucks per instance', () => {
     const renderer = new UtilityKitRenderer(new THREE.Scene(), flatHeightAt, [entry]);
     renderer.apply(deltaAdd(makeInstance(1, 'materials-recovery-facility')));
-    for (const kind of ['mrfYard', 'mrfHall', 'mrfBales', 'mrfOffice'] as const) {
+    for (const kind of ['mrfYard', 'mrfHall', 'mrfBales', 'mrfOffice', 'mrfScale'] as const) {
       expect(renderer.partSlotsFor(1, kind)).toHaveLength(1);
     }
     expect(renderer.partSlotsFor(1, 'mrfTruck')).toHaveLength(MRF_TRUCK_COUNT);
@@ -1585,31 +1528,35 @@ describe('materials-recovery-facility kit', () => {
     expect(MRF_HALL_SIZE.w * MRF_HALL_SIZE.d).toBeCloseTo(2_510, -1);
     expect(MRF_HALL_SIZE.h).toBe(11);
     const hall = boundsOf('mrfHall');
-    expect(hall.max.y).toBeCloseTo(11.6, 5); // 11 m eaves + the roof cap
+    // 11 m eaves + the roof cap, with the exhaust fans standing on that.
+    expect(hall.max.y).toBeGreaterThan(11.6);
+    expect(hall.max.y).toBeLessThan(13);
     const layout = computeMrfLayout(entry.footprint);
-    // The doors stand proud of the street-side (+Z) wall and nowhere else.
+    // The doors stand proud of the street-side (+Z) wall; the wainscot band is proud of every face.
     expect(hall.max.z).toBeGreaterThan(layout.hall.z + MRF_HALL_SIZE.d / 2);
-    expect(hall.min.z).toBeCloseTo(layout.hall.z - MRF_HALL_SIZE.d / 2, 5);
+    expect(hall.min.z).toBeCloseTo(layout.hall.z - MRF_HALL_SIZE.d / 2 - 0.06, 5);
     for (const truck of layout.trucks) {
       expect(truck.z).toBeGreaterThan(layout.hall.z + MRF_HALL_SIZE.d / 2);
     }
   });
 
-  it('stacks bales of 1.1 x 0.75 x 1.5 m on the yard slab, some three high', () => {
-    expect(MRF_BALE_SIZE).toEqual({ w: 1.1, h: 0.75, l: 1.5 });
+  it('stacks 60 x 48 x 30 in bales on the yard slab, three high and never above 6 m', () => {
+    expect(MRF_BALE_SIZE).toEqual({ w: 1.22, h: 0.76, l: 1.52 });
+    expect(MRF_BALE_STACK).toEqual({ high: 3, capM: 6 });
     const { bales } = computeMrfLayout(entry.footprint);
     expect(bales.length).toBeGreaterThan(100);
     expect(Math.min(...bales.map((b) => b.y))).toBeCloseTo(RECYCLING_YARD_HEIGHT, 5);
     expect(Math.max(...bales.map((b) => b.y))).toBeCloseTo(
-      RECYCLING_YARD_HEIGHT + 2 * MRF_BALE_SIZE.h,
+      RECYCLING_YARD_HEIGHT + (MRF_BALE_STACK.high - 1) * MRF_BALE_SIZE.h,
       5,
     );
     const geometry = boundsOf('mrfBales');
     expect(geometry.max.y).toBeCloseTo(RECYCLING_YARD_HEIGHT + 3 * MRF_BALE_SIZE.h, 5);
+    expect(geometry.max.y - RECYCLING_YARD_HEIGHT).toBeLessThanOrEqual(MRF_BALE_STACK.capM);
   });
 
-  it('keeps the yard, hall, bales, office and every truck inside the 5x6 lot, clear of one another', () => {
-    for (const kind of ['mrfYard', 'mrfHall', 'mrfBales', 'mrfOffice'] as const) {
+  it('keeps the yard, hall, bales, office, scale and every truck inside the 5x6 lot, clear of one another', () => {
+    for (const kind of ['mrfYard', 'mrfHall', 'mrfBales', 'mrfOffice', 'mrfScale'] as const) {
       const box = boundsOf(kind);
       expect(box.min.x).toBeGreaterThanOrEqual(-halfW - 1e-9);
       expect(box.max.x).toBeLessThanOrEqual(halfW + 1e-9);
@@ -1636,9 +1583,10 @@ describe('materials-recovery-facility kit', () => {
       flat(boundsOf('mrfHall')),
       flat(boundsOf('mrfBales')),
       flat(boundsOf('mrfOffice')),
+      flat(boundsOf('mrfScale')),
       ...layout.trucks.map((t) => ({ ...t, hw: truckW / 2, hd: truckL / 2 })),
     ];
-    for (const b of boxes.slice(3)) {
+    for (const b of boxes.slice(4)) {
       expect(b.x - b.hw).toBeGreaterThanOrEqual(-halfW);
       expect(b.x + b.hw).toBeLessThanOrEqual(halfW);
       expect(b.z - b.hd).toBeGreaterThanOrEqual(-halfD);
@@ -2156,8 +2104,10 @@ describe('multiple kits coexisting', () => {
     expect(renderer.partSlotsFor(5, 'parkBench')).toHaveLength(2);
     expect(renderer.partSlotsFor(6, 'pumpIntake')).toHaveLength(1);
     expect(renderer.partSlotsFor(7, 'drainOutfall')).toHaveLength(1);
-    expect(renderer.partSlotsFor(8, 'worksBody')).toHaveLength(1);
+    expect(renderer.partSlotsFor(8, 'worksPlant')).toHaveLength(1);
+    expect(renderer.partSlotsFor(8, 'worksClarifier')).toHaveLength(WORKS_CLARIFIER_COUNT);
     expect(renderer.partSlotsFor(8, 'worksOutfall')).toHaveLength(1);
+    expect(renderer.partSlotsFor(6, 'worksClarifier')).toHaveLength(0);
     expect(renderer.partSlotsFor(13, 'cemeteryGatehouse')).toHaveLength(1);
     expect(renderer.partSlotsFor(14, 'crematoriumFlue')).toHaveLength(1);
     expect(renderer.partSlotsFor(13, 'crematoriumFlue')).toHaveLength(0);
@@ -2254,19 +2204,33 @@ describe('a shore building faces the water it touches', () => {
     }
   });
 
-  it('keeps the works’ clarifiers and house inside its footprint, on the land side of the outfall', () => {
+  it('keeps the works’ plant and its three clarifiers inside its footprint, turned with the outfall', () => {
     const scene = new THREE.Scene();
-    const renderer = new UtilityKitRenderer(scene, flatHeightAt, [makeWorksEntry()]);
+    const waterEast = (x: number, z: number): boolean => x === 2 && z >= 0 && z < 2;
+    const renderer = new UtilityKitRenderer(scene, flatHeightAt, [makeWorksEntry()], waterEast);
     renderer.apply(deltaAdd(makeInstance(1, 'sewage-works', { x: 0, z: 0 })));
-    const body = renderer.partGeometry('sewage-works', 'worksBody')!;
+    const body = renderer.partGeometry('sewage-works', 'worksPlant')!;
     body.computeBoundingBox();
     const box = body.boundingBox!;
     expect(box.max.x).toBeLessThanOrEqual(TILE_METERS);
     expect(box.min.x).toBeGreaterThanOrEqual(-TILE_METERS);
     expect(box.max.z).toBeLessThanOrEqual(TILE_METERS);
     expect(box.min.z).toBeGreaterThanOrEqual(-TILE_METERS);
-    // The clarifiers are round tanks wide enough to read as tanks, not drums.
-    expect(WORKS_CLARIFIER_RADIUS).toBeGreaterThanOrEqual(5);
     expect(box.min.y).toBeGreaterThanOrEqual(0);
+    // The clarifiers are round tanks wide enough to read as tanks, not drums, and every one faces east with the outfall.
+    expect(WORKS_CLARIFIER.radius).toBeGreaterThanOrEqual(5);
+    const slots = renderer.partSlotsFor(1, 'worksClarifier');
+    expect(slots).toHaveLength(WORKS_CLARIFIER_COUNT);
+    const m = new THREE.Matrix4();
+    for (const slot of slots) {
+      renderer.getPartMatrix('sewage-works', 'worksClarifier', slot, m);
+      const pos = decomposePosition(m);
+      expect(pos.x + WORKS_CLARIFIER.radius).toBeLessThanOrEqual(2 * TILE_METERS + 1e-6);
+      expect(pos.x - WORKS_CLARIFIER.radius).toBeGreaterThanOrEqual(-1e-6);
+      expect(pos.z + WORKS_CLARIFIER.radius).toBeLessThanOrEqual(2 * TILE_METERS + 1e-6);
+      expect(pos.z - WORKS_CLARIFIER.radius).toBeGreaterThanOrEqual(-1e-6);
+      const forward = new THREE.Vector3(0, 0, 1).applyQuaternion(decomposeQuaternion(m));
+      expect(forward.x).toBeCloseTo(1, 6);
+    }
   });
 });

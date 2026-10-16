@@ -1,6 +1,6 @@
 # Building detail — technical design
 
-- **Status:** The measurement, the performance slice, the houses, the storefronts, industry and farms and the apartment blocks and towers built 2026-10-15; the kitless ploppables built 2026-10-16; the earliest kits redone next
+- **Status:** Complete. The measurement, the performance slice, the houses, the storefronts, industry and farms and the apartment blocks and towers built 2026-10-15; the kitless ploppables and the earliest kits redone built 2026-10-16
 - **Date:** 2026-10-14
 - **Author:** Claude Fable 5.1
 
@@ -439,6 +439,53 @@ spec in
   stop on it, each at the default pitch beside the 4 m car, and at night.
 - `tools/frame-budget.mjs` before and after; the apartments record kept
   as `result-2026-10-15-apartments.md`.
+
+### The earliest kits, redone
+
+The six kits in `src/render/utilitykits.ts` built before the water tower —
+coal-plant, incinerator, water-pump, water-drain, sewage-works,
+recycling-depot — are three to five boxes each; the MRF and the transfer
+station carry their garbage-epic detail. The slice redraws the six and
+adds to the two, from the spec in
+[../../art/civic-massing.md](../../art/civic-massing.md#the-earliest-kits-redone).
+
+- **Recipes, not patches.** Each of the six gets a layout function and
+  builders on the clinic/depot pattern, pure from the footprint (and the
+  water side for the three shore kits, which keep `waterSideOf`), its part
+  kinds replacing the old ones in the `UtilityKitPartKind` union; the old
+  builders go. The coal plant's striped stack and the drain's outfall pipe
+  are reused as parts, not redrawn.
+- **Merged geometries** for the stockpile (a faceted heap at the stated
+  angle of repose), the riprap apron (one rubble geometry), the conveyor
+  gallery and its bents, the clarifier bridges with their rails, the
+  digester dome; everything else is boxes, cylinders and the kit's existing
+  lathes. No animation: the conveyor and the fans stand still, as the
+  generators do.
+- **Reuse across kits.** The incinerator's and the MRF's truck scale and
+  scale house are the transfer station's builders; the coal plant's
+  switchyard is the combined-cycle kit's; the MRF's bale docks are the
+  industrial kit's dock-bank dimensions in the utility kit's own builders
+  (the two renderers do not share pools); the transfer station's open
+  doors are its roll-up builder drawn raised.
+- **Budget:** every kit stays under `KIT_TIER`; the measured figure for
+  each of the eight is reported, and the drain and the depot are expected
+  under 2,000.
+- Tests: each kit's part list; the stack heights, the heap's angle and
+  height, the gallery's pitch, the tower's cell count; the incinerator's
+  door height and stack; the pump house, screen house on the water edge
+  and wet well; the headwall's wingwalls and apron; the clarifier count and
+  diameter, the bridges from rim to centre, the basin and digester sizes;
+  the depot's six roll-offs with their pull clearance and eight stalls; the
+  MRF's wainscot, door size, docks and bale stack cap; the transfer
+  station's push walls, open doors and guard wall; every part inside its
+  lot at all four rotations and, for the shore kits, every water side;
+  nothing lit; determinism; the tiers with the figures reported.
+- Shots, `tools/earliest-kits-shots.mjs`: each of the eight at the default
+  pitch beside the 4 m car, the three shore kits on a shore, the coal
+  plant and incinerator from the street and from the yard, and the same at
+  night.
+- `tools/frame-budget.mjs` before and after; the ploppables record kept as
+  `result-2026-10-16-ploppables.md`.
 
 ### Each slice, the same shape
 
