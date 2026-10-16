@@ -25,7 +25,7 @@ current behavior only and carry no dates of their own._
 
 ## Status (2026-09-29)
 
-**Test suite:** 6,802 tests passing across 194 test files, run 2026-10-16.
+**Test suite:** 6,845 tests passing across 195 test files, run 2026-10-16.
 This is the only test count in the documentation set. When the suite changes
 again, update the figure here and nowhere else.
 
@@ -223,13 +223,13 @@ zoned building and ploppable drawn as the US type it is, to the water tower's
 standard, from a sourced reference library and inside a measured triangle
 budget; eight slices, the budget measured first, then the performance
 slice, houses, storefronts, industry and farms, blocks and towers, the
-kitless ploppables, and the earliest kits redone. **In progress, at the
-player's choice (2026-10-16): transport depots**
-([transport-depots.md](game-design/features/transport-depots.md)), the
-programme's seventh epic — a depot fields a line's vehicles over its own
-network, a mode with no depot runs nothing, and every vehicle in service is
-charged its operating cost; the sim and the dead runs built, the kits next.
-After it, the programme's last epic, parks and recreation
+kitless ploppables, and the earliest kits redone. So is transport depots,
+at the player's choice (complete 2026-10-16;
+[transport-depots.md](game-design/features/transport-depots.md)): a depot
+fields a line's vehicles over its own network, a mode with no depot runs
+nothing, every vehicle in service is charged its operating cost, buses
+pull out at dawn and home at night, and the fleet at home stands on the
+apron. **Next, the programme's last epic**, parks and recreation
 ([municipal-services.md](game-design/features/municipal-services.md)), the
 [DESIGN.md](DESIGN.md) deferred backlog (weather, deeper industry, more
 transit modes) and AI raster map packs, facade-atlas stage 2 and screen-space
@@ -373,6 +373,27 @@ roads, and pinning the Three.js version. See [adr/](engineering/adr/README.md).
 ---
 
 ## 10. History (newest first)
+
+### The depots drawn, the fleet at home on the apron (slice 3 of the transport-depots epic, built 2026-10-16; epic complete)
+
+The four depots join the civic kits, read by their bay doors and the fleet
+parked in them, which is what the depot holds less what is in service, read
+from the sim every snapshot as the cemetery reads its interments.
+
+- **Bus Depot and Central Bus Garage**, one kit at two sizes: a paved yard
+  behind a chain-link gate, 11.5 × 3.6 m stalls in facing rows about a
+  12.2 m aisle with a bus nose-in on each one at home, a shop with 4.1 m
+  clear framed bay doors, fuelling islands and a wash lane with its gantry,
+  and on the garage a two-storey office on the street end.
+- **Tram Depot:** a turnout lead off the tram street into eight stabling
+  roads at 3.5 m centres under catenary poles, a tram set on each road at
+  home, a shop over a maintenance road and a wash road.
+- **Rail Yard:** the lead off the railway into five stabling roads at 4.5 m
+  on ballast, a three-car set on each at home, a shop over two roads, a
+  fuelling stand and a fence.
+- The parked trams and trains are the cars the lines run. Every kit stays
+  inside the 30,000 kit tier with its whole fleet parked: the garage 9,696,
+  the rail yard 8,088, the tram depot 4,940, the depot 3,272.
 
 ### Transit vehicles drive to work (slice 2 of the transport-depots epic, built 2026-10-16)
 

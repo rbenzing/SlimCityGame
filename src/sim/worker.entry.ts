@@ -1500,6 +1500,11 @@ class SimWorld implements WorkerSim {
         const slot = slotOf.get(l.id);
         return slot === undefined ? null : (result.depotId[slot] ?? null);
       }),
+      depots: this.depots.map((d) => ({
+        id: d.id,
+        holds: d.holds,
+        inService: inServiceAt(this.depots, d.id, result.inService),
+      })),
     };
     // Active incidents (only when any are live — optional channel).
     if (this.latestIncidents.length > 0) {

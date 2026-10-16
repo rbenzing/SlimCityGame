@@ -1,6 +1,6 @@
 # Transport depots — technical design
 
-- **Status:** Specified 2026-10-16 (draft of 2026-09-18 revised on the player's choices); slice 1, the sim, built 2026-10-16; slice 2, dead runs, built 2026-10-16; the kits next
+- **Status:** Specified 2026-10-16 (draft of 2026-09-18 revised on the player's choices); slice 1, the sim, built 2026-10-16; slice 2, dead runs, built 2026-10-16; slice 3, the kits, built 2026-10-16; epic complete
 - **Date:** 2026-09-18, revised 2026-10-16
 - **Author:** Claude Opus 5, revised by Claude Fable 5.1
 
@@ -215,6 +215,49 @@ silhouette, the apron carries the garaged fleet — capacity minus vehicles in
 service, countable — and the body must **not** fill the lot; two thirds of a
 depot is open ground. The rail yard's and tram depot's stabled sets are the
 kit's own parked vehicles, on the vehicle kit's geometry.
+
+### The kits (slice 3)
+
+Three recipes in `src/render/utilitykits.ts` on the civic pattern, from
+[../../art/civic-massing.md](../../art/civic-massing.md#the-depots):
+
+- **Registry and names.** `bus-depot`, `bus-garage`, `tram-depot` and
+  `rail-yard` join `UTILITY_KIT_CATALOG_IDS` (34 ids). The rail station's
+  kit already owns the part names `depotBuilding`, `depotCar` and so on —
+  its combination depot — so the new parts are `busBase*`, `tramDepot*`
+  and `railYard*`, and the two bus sizes share the `busBase` recipe with
+  the stall rows, bays, fuelling islands and office keyed off the
+  footprint.
+- **The fleet at home.** The snapshot gains, additively,
+  `transit.depots?: { id; holds; inService }[]` for every connected depot,
+  built in `worker.entry.ts` beside `depotId` from the tick's in-service
+  map; `main.ts` passes it to `UtilityKitRenderer.setDepotFleets` every
+  snapshot, which — as `setInterments` does for the cemetery — skips
+  unchanged ids and refits the parked pool to `holds − inService`. A depot
+  absent from the list (unconnected, or an older worker) parks its whole
+  catalog fleet.
+- **Vehicle geometry.** The bus is `buildVehicleGeometry(VehicleKind.Bus)`
+  from `vehicles.ts`; `transit.ts` exports its tram-car and train-car
+  builders and sizes so the stabled sets are the same cars the lines run,
+  two 11 m cars a tram set and three 14 m cars a train set, at the pitch the
+  renderer spaces them.
+- **Track edge.** `main.ts` passes a `tramAt` beside `railAt`, on
+  `isTramTier`; the tram depot's and rail yard's lead goes to the edge
+  `railSideOf`'s counterpart picks, and with no track beside it the lead
+  takes the back of the lot as placed.
+- **Tracks and poles** are one merged geometry per yard (rails on sleepers
+  or ballast, the catenary poles' posts and crossarms); the stall paint is
+  the car parks' paint.
+- **Tests:** the three ids in the registry and the renderer; stalls, aisle
+  and bay counts by footprint; the bus fleet parked equals holds − in
+  service and refits when the snapshot changes; stabling road count and
+  pitch, sets parked; the lead on the track edge at all four rotations and
+  the fallback; lit panes on the lit material only; every part inside the
+  lot; determinism; the kit tier with the figures reported.
+- **Shots**, `tools/depot-shots.mjs`: the depot and the garage side by side
+  from the street with a line running so the apron shows holds less in
+  service; the tram depot on tram track; the rail yard along the railway;
+  each at the default pitch beside the 4 m car; at night.
 
 ## What could go wrong
 

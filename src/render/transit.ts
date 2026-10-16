@@ -125,18 +125,36 @@ const BUS_SIZE: readonly [number, number, number] = [2.5, 3.0, 10.0];
 // --- Trains -------------------------------------------------------------------
 
 /** A train car is longer and taller than a bus; several of them make a train. */
-const TRAIN_CAR_SIZE: readonly [number, number, number] = [3.2, 3.8, 14];
+export const TRAIN_CAR_SIZE: readonly [number, number, number] = [3.2, 3.8, 14];
 export const TRAIN_CARS_PER_SET = 3;
 /** Nose-to-nose spacing down the polyline: a car plus a coupling gap. */
-const TRAIN_CAR_PITCH = TRAIN_CAR_SIZE[2] + 1.2;
+export const TRAIN_CAR_PITCH = TRAIN_CAR_SIZE[2] + 1.2;
 
 // --- Trams --------------------------------------------------------------------
 
 /** A tram car is longer and taller than a bus, and narrower than a train car. */
-const TRAM_CAR_SIZE: readonly [number, number, number] = [2.6, 3.4, 11];
+export const TRAM_CAR_SIZE: readonly [number, number, number] = [2.6, 3.4, 11];
 /** Two cars, articulated — they sit closer together than a train's are coupled. */
 export const TRAM_CARS_PER_SET = 2;
-const TRAM_CAR_PITCH = TRAM_CAR_SIZE[2] + 0.4;
+export const TRAM_CAR_PITCH = TRAM_CAR_SIZE[2] + 0.4;
+
+/** One car at its real size, nose to +Z, standing on its own origin: the body the lines run, so a stabled set reads as the sets on the track. */
+function buildCarGeometry(size: readonly [number, number, number]): THREE.BufferGeometry {
+  const car = buildVehicleGeometry(VehicleKind.Bus);
+  car.scale(size[0], size[1], size[2]);
+  car.translate(0, size[1] / 2, 0);
+  return car;
+}
+
+/** A tram car as the lines draw it, for a depot's stabled sets. */
+export function buildTramCarGeometry(): THREE.BufferGeometry {
+  return buildCarGeometry(TRAM_CAR_SIZE);
+}
+
+/** A train car as the lines draw it, for a yard's stabled sets. */
+export function buildTrainCarGeometry(): THREE.BufferGeometry {
+  return buildCarGeometry(TRAIN_CAR_SIZE);
+}
 
 /**
  * Everything that differs between a bus, a train and a tram on screen. A mode is

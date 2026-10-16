@@ -76,6 +76,7 @@ describe('drawing a bus line while the city is paused', () => {
       runningCost: [],
       pools: { bus: 0, rail: 0, tram: 0 },
       depotId: [],
+      depots: [],
     });
   });
 });
@@ -161,6 +162,8 @@ describe('a bus line’s dead runs', () => {
     const t = h.lastSnapshot()!.transit!;
     expect(t.served).toEqual([1]);
     expect(t.depotId).toEqual([depotOf(h).id]);
+    // The renderer parks the rest: what the depot holds less what left it.
+    expect(t.depots).toEqual([{ id: depotOf(h).id, holds: 10, inService: 1 }]);
 
     h.sim.handleMessage({ type: 'select', buildingId: depotOf(h).id });
     const selections = h.messages.filter(

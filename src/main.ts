@@ -47,6 +47,7 @@ import {
   flowDirection,
   isRailTier,
   isStreetTier,
+  isTramTier,
 } from './shared/types';
 import { footprintForRotation } from './shared/footprint';
 import { PLATTED_ZONES } from './shared/lots';
@@ -270,6 +271,8 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
     (x, z) => inBounds(x, z) && clientGrid.water[z * clientGrid.size + x] === 1,
     // A station lays its platform along the track beside it.
     (x, z) => inBounds(x, z) && isRailTier(clientGrid.roadTier[z * clientGrid.size + x] ?? 0),
+    // A tram depot runs its lead to the tram track beside it.
+    (x, z) => inBounds(x, z) && isTramTier(clientGrid.roadTier[z * clientGrid.size + x] ?? 0),
   );
   // A crossing tile holds two roads; the road passing over it has a surface of
   // its own, which the ordinary sampler — answering for the road beneath —
@@ -648,6 +651,9 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       }),
       /** Ids the kit holds parts for, to reconcile against the known buildings. */
       readKitIds: (): number[] => buildingKit.trackedIds(),
+      // The vehicles each depot kit has parked on its apron, by building id:
+      // a shot counts them against the panel's holds less in service.
+      readDepotFleets: (): Record<number, number> => utilityKits.parkedFleets(),
       // How many barrier bays, panels and posts the sound walls drew: a wall
       // seen edge-on from above is a line a screenshot cannot count.
       readSoundWalls: (): ReturnType<SoundWallRenderer['counts']> => soundWalls.counts(),
@@ -1946,6 +1952,9 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       }
       const hasStopBuilding = (x: number, z: number): boolean => stopBuildings.has(x * 100_000 + z);
       transitRenderer.apply(snap.transit, hasStopBuilding);
+      // The depots park what is not out on the lines; an older worker lists
+      // none, and every depot parks its whole fleet.
+      utilityKits.setDepotFleets(snap.transit.depots ?? []);
       state.setTransit(snap.transit.lines, snap.transit.ridership, {
         served: snap.transit.served ?? [],
         requested: snap.transit.requested ?? [],

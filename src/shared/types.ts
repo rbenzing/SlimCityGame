@@ -1996,6 +1996,12 @@ export interface TransitFleetSnapshot {
   pools: Record<TransitMode, number>;
   /** The building id of the depot fielding most of each line, null where none does; absent from an older worker. */
   depotId?: (number | null)[];
+  /**
+   * Every connected depot's fleet: what it holds and what has left it for the
+   * lines, so the renderer parks the rest on its apron. A depot not listed
+   * (unconnected, or an older worker) parks its whole catalog fleet.
+   */
+  depots?: { id: number; holds: number; inService: number }[];
 }
 
 /**

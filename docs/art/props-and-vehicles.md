@@ -208,6 +208,16 @@ of the generic building facade box:
   under a porte-cochère, a platform and a combination depot on the track
   edge, an agency shelter on a lawn tile. See
   [civic-massing.md](civic-massing.md#the-clinic-the-depot-and-the-bus-stop).
+- **The three depots** are kits read by their bay doors and the fleet on the
+  apron: the bus depot and the central bus garage share one recipe (stall
+  rows about their aisles, a shop with framed drive-through bays, a wash
+  gantry, fuelling islands and an office, the buses nose-in on the stalls);
+  the tram depot and the rail yard run a turnout lead off the track edge
+  into a ladder of stabling roads with the sets stabled on them, under
+  catenary poles at the tram depot and over ballast at the yard, the shop
+  hall along the track side. The vehicles parked are what the depot holds
+  less what is out on the lines. See
+  [civic-massing.md](civic-massing.md#the-depots).
 - Every zoned-growth building keeps the standard facade system with its
   own kit's parts, because those genuinely are buildings; the airport
   stays a box until it has an epic of its own.
