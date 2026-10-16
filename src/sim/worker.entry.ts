@@ -106,6 +106,7 @@ import {
   FIRST_CUSTOM_PROFILE_ID,
   layRefusal,
   isPresetProfileId,
+  isTramTile,
   joinRefusal,
   presetProfileForTier,
   roadPriceOf,
@@ -135,6 +136,7 @@ import type { RoadNet, SelectionInfo } from '../shared/types';
 import {
   canPlaceFootprint,
   ARMS_PER_TILE,
+  hasAdjacentRoad,
   hasAdjacentTier,
   hasAdjacentWater,
   clearTiles,
@@ -1164,7 +1166,12 @@ class SimWorld implements WorkerSim {
     // follow, with its modest congestion relief on the road graph (same
     // cadence as traffic so cosmetic vehicles animate smoothly). Service
     // dispatch: spawn/route/resolve incidents from the coverage-gap fields.
-    this.depots = connectedDepots(g, this.registry.all(), this.catalogById);
+    this.depots = connectedDepots(
+      g,
+      this.registry.all(),
+      this.catalogById,
+      (id) => this.customRoadProfiles.get(id) ?? null,
+    );
     this.transitResult = this.transit.tick(
       this.populationJobsAccessor,
       fleetPools(this.depots),
@@ -3576,9 +3583,14 @@ class SimWorld implements WorkerSim {
     if (entry.requiresAdjacent === 'rail' && !hasAdjacentTier(this.grid, x, z, w, d, isRailTier)) {
       return { ok: false, cost: 0, inverse: [], reason: 'invalid' };
     }
-    // A tram depot stands on the tram track as the tram graph knows it: the
-    // tram tier, never a tram lane composed onto a street no tram can route.
-    if (entry.requiresAdjacent === 'tram' && !hasAdjacentTier(this.grid, x, z, w, d, isTramTier)) {
+    // A tram depot stands on the tram track as the tram graph knows it: any
+    // street whose profile carries a tram lane.
+    if (
+      entry.requiresAdjacent === 'tram' &&
+      !hasAdjacentRoad(this.grid, x, z, w, d, (i) =>
+        isTramTile(this.grid, i, (id) => this.customRoadProfiles.get(id) ?? null),
+      )
+    ) {
       return { ok: false, cost: 0, inverse: [], reason: 'invalid' };
     }
     // An intake or an outfall stands on a shore: its footprint on land, the

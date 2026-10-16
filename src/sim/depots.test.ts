@@ -10,7 +10,14 @@ import {
   type BuildingCatalogEntry,
   type BuildingInstance,
   type GridState,
+  type RoadProfile,
 } from '../shared/types';
+import {
+  composeProfile,
+  FIRST_CUSTOM_PROFILE_ID,
+  NO_EDITS,
+  presetProfileForTier,
+} from '../shared/roadprofile';
 
 const catalog = (catalogData as { buildings: BuildingCatalogEntry[] }).buildings;
 const byId = new Map(catalog.map((e) => [e.id, e]));
@@ -104,6 +111,21 @@ describe('which depots field', () => {
   it('a bus depot on the tram track fields, since tram track is a street', () => {
     const g = grid();
     expect(connectedDepots(g, [depot(1, 'bus-depot', 4, 21)], byId)).toHaveLength(1);
+  });
+
+  it('a tram depot touching a street with a tram lane composed onto it fields, as on the Tramway', () => {
+    const g = grid();
+    const mixed = composeProfile(presetProfileForTier(RoadTier.TwoLane), {
+      ...NO_EDITS,
+      tram: 'mixed',
+    });
+    for (let x = 0; x < 64; x++) g.roadProfile[tileIndex(x, 10)] = FIRST_CUSTOM_PROFILE_ID;
+    const custom = (id: number): RoadProfile | null =>
+      id === FIRST_CUSTOM_PROFILE_ID ? mixed : null;
+    const depots = connectedDepots(g, [depot(1, 'tram-depot', 4, 11)], byId, custom);
+    expect(fleetPools(depots)).toEqual({ bus: 0, tram: 6, rail: 0 });
+    // The same street, its tram lane not known to the table, is no track.
+    expect(connectedDepots(g, [depot(1, 'tram-depot', 4, 11)], byId)).toEqual([]);
   });
 
   it('fields nothing with no power on its lot, under construction or abandoned', () => {

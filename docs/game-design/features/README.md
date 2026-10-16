@@ -31,31 +31,32 @@ Copy [\_template.md](_template.md) to `<feature>.md`.
 The municipal services programme. [municipal-services.md](municipal-services.md)
 is the frame; the nine below are its epics, in the order they are built.
 
-| #   | Document                                                     | What it adds                                              |
-| --- | ------------------------------------------------------------ | --------------------------------------------------------- |
-| 0   | [service-capacity.md](service-capacity.md)                   | A facility serves people, not just an area (built)        |
-| 1   | [water-and-sewage.md](water-and-sewage.md)                   | The other half of the water loop (built)                  |
-| 2   | [healthcare-and-death-care.md](healthcare-and-death-care.md) | A hospital ladder, and the first population sink (the ladder built; death care not built) |
-| 3   | [education-ladder.md](education-ladder.md)                   | Elementary, middle, high, college and a library, each rung its own field |
-| 4   | [emergency-services.md](emergency-services.md)               | Station ladders sized on response time                    |
-| 5   | [garbage-recovery.md](garbage-recovery.md)                   | Recovery, so burying is the worst option and not the only (built) |
+| #   | Document                                                     | What it adds                                                                                                         |
+| --- | ------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------- |
+| 0   | [service-capacity.md](service-capacity.md)                   | A facility serves people, not just an area (built)                                                                   |
+| 1   | [water-and-sewage.md](water-and-sewage.md)                   | The other half of the water loop (built)                                                                             |
+| 2   | [healthcare-and-death-care.md](healthcare-and-death-care.md) | A hospital ladder, and the first population sink (the ladder built; death care not built)                            |
+| 3   | [education-ladder.md](education-ladder.md)                   | Elementary, middle, high, college and a library, each rung its own field                                             |
+| 4   | [emergency-services.md](emergency-services.md)               | Station ladders sized on response time                                                                               |
+| 5   | [garbage-recovery.md](garbage-recovery.md)                   | Recovery, so burying is the worst option and not the only (built)                                                    |
 | 6   | [power-generation.md](power-generation.md)                   | A thermal tier, and generation a city can outgrow (the two existing generators re-derived; the new plants not built) |
-| 7   | [transport-depots.md](transport-depots.md)                   | Somewhere a line's vehicles come from                     |
-| 8   | [parks-and-recreation.md](parks-and-recreation.md)           | Recreation as a service with a standard, not a sticker    |
+| 7   | [transport-depots.md](transport-depots.md)                   | Somewhere a line's vehicles come from                                                                                |
+| 8   | [parks-and-recreation.md](parks-and-recreation.md)           | Recreation as a service with a standard, not a sticker                                                               |
 
 Outside the programme:
 
-| Document             | What it adds                                              |
-| -------------------- | --------------------------------------------------------- |
-| [farms.md](farms.md) | Farmland off dirt roads, on soil the ground itself grades (built) |
-| [interchanges.md](interchanges.md) | A motorway interchange laid in one click: diamond, partial cloverleaf or cloverleaf (built) |
-| [roundabouts.md](roundabouts.md) | A compact roundabout 36 m across, laid on a street junction in one click (built) |
-| [sound-barriers.md](sound-barriers.md) | A noise wall along a motorway or a slip road, 3 to 6 m tall, that cuts the noise behind it (built) |
-| [building-types.md](building-types.md) | A zoned lot grows a kind of building, drawn by lot fit and real-world share; residential, commercial and industrial kinds, sourced (built) |
-| [lots-and-land.md](lots-and-land.md) | A zoned block platted into lots the land's standing sizes, from half lots to estates, on US zoning standards (built) |
-| [parking-to-code.md](parking-to-code.md) | Suburban commercial and industrial lots drawn with the parking their code asks of their floor; downtown parks at the kerb (lots built; kerb credit and larger lots not built) |
-| [underground-view.md](underground-view.md) | Pipes are buried: the city goes underground while the player works on the water, and shows the whole system beneath a glass surface (built) |
-| [building-detail.md](building-detail.md) | Every zoned building and ploppable drawn as the US type it is, from a sourced reference library, inside a measured triangle budget; seven slices, houses first (planned) |
+| Document                                   | What it adds                                                                                                                                                                  |
+| ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [farms.md](farms.md)                       | Farmland off dirt roads, on soil the ground itself grades (built)                                                                                                             |
+| [interchanges.md](interchanges.md)         | A motorway interchange laid in one click: diamond, partial cloverleaf or cloverleaf (built)                                                                                   |
+| [roundabouts.md](roundabouts.md)           | A compact roundabout 36 m across, laid on a street junction in one click (built)                                                                                              |
+| [sound-barriers.md](sound-barriers.md)     | A noise wall along a motorway or a slip road, 3 to 6 m tall, that cuts the noise behind it (built)                                                                            |
+| [building-types.md](building-types.md)     | A zoned lot grows a kind of building, drawn by lot fit and real-world share; residential, commercial and industrial kinds, sourced (built)                                    |
+| [lots-and-land.md](lots-and-land.md)       | A zoned block platted into lots the land's standing sizes, from half lots to estates, on US zoning standards (built)                                                          |
+| [parking-to-code.md](parking-to-code.md)   | Suburban commercial and industrial lots drawn with the parking their code asks of their floor; downtown parks at the kerb (lots built; kerb credit and larger lots not built) |
+| [underground-view.md](underground-view.md) | Pipes are buried: the city goes underground while the player works on the water, and shows the whole system beneath a glass surface (built)                                   |
+| [building-detail.md](building-detail.md)   | Every zoned building and ploppable drawn as the US type it is, from a sourced reference library, inside a measured triangle budget (built)                                    |
+| [tramways.md](tramways.md)                 | A street tramway drawn as a street cars share, and a tram reservation lifted onto an elevated guideway with raised stations; every tram lane routable (slice 1 built)         |
 
 The features built before this folder existed have no design document; their
 behaviour is described in the specs and their delivery in

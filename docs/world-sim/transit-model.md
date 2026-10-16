@@ -21,7 +21,13 @@ it. The tram network is different: tram track is also a street (cars drive
 over it exactly as over any other road), so a tram tile sits in both graphs
 at once, but a tram line itself only ever routes over the tram graph — a
 tram that could route down any street would make the embedded track
-decorative, which is the one thing this design exists to avoid.
+decorative, which is the one thing this design exists to avoid. Tram track
+is read from the profile each tile carries, never from its tier alone: any
+street whose cross-section carries a tram lane, mixed or reserved, is track
+(`isTramTrack` in `src/shared/roadprofile.ts`), the Tramway preset among
+them, so a tram lane composed onto any road joins the tram graph. The tram
+graph sees every cell of it as the tram tier, which is the one predicate it
+admits edges by.
 
 **Tram crossings.** A tramway crosses another street at grade the way a real
 one does, straight over the junction. A tramway drawn across a street leaves
@@ -55,9 +61,9 @@ nowhere. The bus depot and the central bus garage field buses, the tram depot
 tram sets and the rail yard train sets; each holds a stated fleet and fields
 all but a spare fifth of it (`fieldsOf` in `src/shared/transitfleet.ts`), and
 only while it stands built, with power on its lot and its footprint touching
-the network its mode runs on — a street for a bus, the tram tier for a tram,
-the railway for a train — by the same tier predicates the networks are built
-from (`connectedDepots` in `src/sim/depots.ts`). Each tick the fielded
+the network its mode runs on — a street for a bus, tram track for a tram, the
+railway for a train — by the same predicates the networks are built from
+(`connectedDepots` in `src/sim/depots.ts`; `isTramTile` for tram track). Each tick the fielded
 vehicles of a mode's depots sum into that mode's pool. Each line asks for a
 fleet: the player's own figure (`TransitLine.vehicles`) or, absent one, the
 larger of the fleet that holds a ten-minute headway and the fleet that
@@ -164,6 +170,6 @@ highest id the save restored.
 
 Deferred, deliberately: no timetables, no per-vehicle capacity or bunching,
 no signal-block simulation, no freight, no level crossings that stop road
-traffic, no overhead wires or catenary poles, no tram priority at
-junctions, no animated tram or train dead runs, and no line that mixes tram
-and rail track. See [../DESIGN.md](../DESIGN.md) for the backlog.
+traffic, no overhead wires (the contact poles are drawn, the wire is not),
+no tram priority at junctions, no animated tram or train dead runs, and no
+line that mixes tram and rail track. See [../DESIGN.md](../DESIGN.md) for the backlog.

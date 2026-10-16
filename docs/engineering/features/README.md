@@ -55,17 +55,17 @@ in. Each one is designed against its sibling in
 [../../game-design/features/](../../game-design/features/README.md), which comes
 first.
 
-| #   | Document                                                     | Save format           | Worker protocol |
-| --- | ------------------------------------------------------------ | --------------------- | --------------- |
-| 0   | [service-capacity.md](service-capacity.md)                   | no                    | additive        |
-| 1   | [water-and-sewage.md](water-and-sewage.md)                   | additive (v14, built) | additive        |
-| 2   | [healthcare-and-death-care.md](healthcare-and-death-care.md) | additive              | additive        |
-| 3   | [education-ladder.md](education-ladder.md)                   | additive              | additive        |
-| 4   | [emergency-services.md](emergency-services.md)               | no                    | additive        |
+| #   | Document                                                     | Save format                        | Worker protocol |
+| --- | ------------------------------------------------------------ | ---------------------------------- | --------------- |
+| 0   | [service-capacity.md](service-capacity.md)                   | no                                 | additive        |
+| 1   | [water-and-sewage.md](water-and-sewage.md)                   | additive (v14, built)              | additive        |
+| 2   | [healthcare-and-death-care.md](healthcare-and-death-care.md) | additive                           | additive        |
+| 3   | [education-ladder.md](education-ladder.md)                   | additive                           | additive        |
+| 4   | [emergency-services.md](emergency-services.md)               | no                                 | additive        |
 | 5   | [garbage-recovery.md](garbage-recovery.md)                   | additive, one rescale (v15, built) | additive        |
-| 6   | [power-generation.md](power-generation.md)                   | no                    | no              |
-| 7   | [transport-depots.md](transport-depots.md)                   | additive              | additive        |
-| 8   | [parks-and-recreation.md](parks-and-recreation.md)           | no                    | additive        |
+| 6   | [power-generation.md](power-generation.md)                   | no                                 | no              |
+| 7   | [transport-depots.md](transport-depots.md)                   | additive                           | additive        |
+| 8   | [parks-and-recreation.md](parks-and-recreation.md)           | no                                 | additive        |
 
 Only epic 5 needs a version bump, and only to rescale a unit it finds wrong —
 everything else is a field that may be absent. That is the programme's rule
@@ -74,16 +74,17 @@ missing rather than the file rejected.
 
 Outside the programme:
 
-| Document                             | Save format | Worker protocol |
-| ------------------------------------ | ----------- | --------------- |
-| [farms.md](farms.md)                 | no          | no              |
-| [interchanges.md](interchanges.md)   | no          | no              |
-| [roundabouts.md](roundabouts.md)     | no          | additive        |
-| [sound-barriers.md](sound-barriers.md) | no        | no              |
-| [building-types.md](building-types.md) | no        | no              |
-| [underground-view.md](underground-view.md) | no    | no              |
-| [parking-to-code.md](parking-to-code.md) | no          | no              |
-| [building-detail.md](building-detail.md) | no          | no              |
+| Document                                   | Save format | Worker protocol |
+| ------------------------------------------ | ----------- | --------------- |
+| [farms.md](farms.md)                       | no          | no              |
+| [interchanges.md](interchanges.md)         | no          | no              |
+| [roundabouts.md](roundabouts.md)           | no          | additive        |
+| [sound-barriers.md](sound-barriers.md)     | no          | no              |
+| [building-types.md](building-types.md)     | no          | no              |
+| [underground-view.md](underground-view.md) | no          | no              |
+| [parking-to-code.md](parking-to-code.md)   | no          | no              |
+| [building-detail.md](building-detail.md)   | no          | no              |
+| [tramways.md](tramways.md)                 | no          | no              |
 
 Farms add a zone and derive the soil it grows on, so neither contract moves.
 An interchange is a batch of the road commands that already exist. A compact

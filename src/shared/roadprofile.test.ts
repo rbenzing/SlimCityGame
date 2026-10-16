@@ -18,7 +18,10 @@ import {
   canJoin,
   CAPACITY_PER_VEH_PER_HOUR,
   carriagewayWidth,
+  carriesTram,
   hasFootway,
+  isTramTile,
+  isTramTrack,
   composeProfile,
   editsOf,
   FIRST_CUSTOM_PROFILE_ID,
@@ -2170,5 +2173,43 @@ describe('parking styles — a field on the parking piece the width budget reads
       parkingStyle: 'angled',
     });
     expect(motorway.pieces.some((q) => q.kind === 'parking')).toBe(false);
+  });
+});
+
+describe('tram track is any street whose profile carries a tram lane', () => {
+  const two = presetProfileForTier(RoadTier.TwoLane);
+  const mixed = composeProfile(two, { ...NO_EDITS, tram: 'mixed' });
+  const reserved = composeProfile(two, { ...NO_EDITS, tram: 'reserved' });
+
+  it('counts a composed mixed or reserved road as track, and a plain street not', () => {
+    expect(isTramTrack(RoadTier.TwoLane, mixed)).toBe(true);
+    expect(isTramTrack(RoadTier.TwoLane, reserved)).toBe(true);
+    expect(isTramTrack(RoadTier.TwoLane, two)).toBe(false);
+    expect(carriesTram(two)).toBe(false);
+  });
+
+  it('counts the Tramway preset as track through its own profile and by its tier', () => {
+    expect(carriesTram(presetProfileForTier(RoadTier.Tram))).toBe(true);
+    expect(isTramTrack(RoadTier.Tram, null)).toBe(true);
+  });
+
+  it('never counts a railway, or no road, as tram track', () => {
+    expect(isTramTrack(RoadTier.RailTrack, mixed)).toBe(false);
+    expect(isTramTrack(RoadTier.None, mixed)).toBe(false);
+  });
+
+  it('reads a tile through its stored profile id: a preset from the catalogue, a composition from the table', () => {
+    const roads = {
+      roadTier: [RoadTier.Tram, RoadTier.TwoLane, RoadTier.TwoLane, RoadTier.TwoLane],
+      roadProfile: [RoadTier.Tram, RoadTier.TwoLane, FIRST_CUSTOM_PROFILE_ID, 99],
+    };
+    const custom = (id: number): RoadProfile | null =>
+      id === FIRST_CUSTOM_PROFILE_ID ? mixed : null;
+    expect([0, 1, 2, 3].map((i) => isTramTile(roads, i, custom))).toEqual([
+      true,
+      false,
+      true,
+      false,
+    ]);
   });
 });

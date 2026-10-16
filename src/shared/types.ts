@@ -181,14 +181,25 @@ export function isRailTier(tier: number): boolean {
 }
 
 /**
- * True for the tram tier — the tiles a TRAM's network is built from. Unlike the
- * rail predicate this one is NOT disjoint from isStreetTier: tram track is a
- * street, so cars drive it and it carries utilities and frontage like any other
- * road. A tram tile is therefore in both graphs, and only the tram is confined
- * to the smaller one.
+ * True for the Tramway's tier, the preset whose lanes the trams share. Tram
+ * track is not only this tier: any street whose profile carries a tram lane is
+ * track too (`isTramTrack` in roadprofile.ts), and the tram network is built
+ * from that. Unlike the rail predicate it is NOT disjoint from isStreetTier:
+ * tram track is a street, so cars drive it and it carries utilities and
+ * frontage like any other road. A tram tile is therefore in both graphs, and
+ * only the tram is confined to the smaller one.
  */
 export function isTramTier(tier: number): boolean {
   return tier === RoadTier.Tram;
+}
+
+/** What a road is to a tramway: track, a street the track may cross, or neither. */
+export type TramCrossingRoad = 'track' | 'street' | 'none';
+
+/** A road for `tramCrossingAxes`, given whether it is tram track; a railway or no road is neither. */
+export function tramCrossingRoad(tier: number, track: boolean): TramCrossingRoad {
+  if (!isStreetTier(tier)) return 'none';
+  return track ? 'track' : 'street';
 }
 
 /**
@@ -200,22 +211,20 @@ export function isTramTier(tier: number): boolean {
  * tramway straight over. Two tiles is a road laid as two carriageways, whose
  * median opens where the tramway crosses it.
  *
- * `joined(dx, dz, steps)` is the tier of the road `steps` tiles away in that
- * direction along a chain of JOINED roads, None where the chain breaks first —
- * a tram arm that only lies alongside crosses nothing.
+ * `joined(dx, dz, steps)` is the road `steps` tiles away in that direction
+ * along a chain of JOINED roads, `none` where the chain breaks first — a tram
+ * arm that only lies alongside crosses nothing.
  */
 export function tramCrossingAxes(
-  own: RoadTier,
-  joined: (dx: number, dz: number, steps: 1 | 2) => RoadTier,
+  own: TramCrossingRoad,
+  joined: (dx: number, dz: number, steps: 1 | 2) => TramCrossingRoad,
 ): { alongX: boolean; alongZ: boolean } {
-  const crossable = (tier: RoadTier): boolean =>
-    tier !== RoadTier.None && !isTramTier(tier) && isStreetTier(tier);
-  if (!crossable(own)) return { alongX: false, alongZ: false };
+  if (own !== 'street') return { alongX: false, alongZ: false };
   // What lies that way: track at once, track beyond one more street tile, or neither.
   const reach = (dx: number, dz: number): 'track' | 'street' | null => {
     const next = joined(dx, dz, 1);
-    if (isTramTier(next)) return 'track';
-    return crossable(next) && isTramTier(joined(dx, dz, 2)) ? 'street' : null;
+    if (next === 'track') return 'track';
+    return next === 'street' && joined(dx, dz, 2) === 'track' ? 'street' : null;
   };
   // Track both ways, with at most one other street tile between: never three.
   const along = (dx: number, dz: number): boolean => {

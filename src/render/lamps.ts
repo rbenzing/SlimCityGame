@@ -22,7 +22,7 @@
  */
 import * as THREE from 'three';
 import { RoadTier } from '../shared/types';
-import { LAMP_SPACING_TILES, tileToWorld } from '../shared/constants';
+import { LAMP_SPACING_TILES, tileToWorld, worldToTile } from '../shared/constants';
 import { carriagewayHalfWidthMeters, curbWidthMeters, ROAD_Y_OFFSET } from './roadsmesh';
 import { carriagewayHalfWidthOf, kerbWidthOf } from '../shared/roadprofile';
 import type { RoadProfile } from '../shared/types';
@@ -34,7 +34,11 @@ import {
   lateralAxis,
   tileKey,
   type FurnitureRoadTile,
+  type TramPoleStand,
 } from './roadfurniture';
+
+/** How near a tram contact pole a street lamp may stand before the pole takes its place. */
+export const POLE_CLEARANCE_M = 2;
 
 const POLE_HEIGHT = 5.5;
 const POLE_RADIUS_TOP = 0.12;
@@ -238,8 +242,32 @@ export function computeLampPlacements(
    * has to stay clear — cars drive over it. Omitted, nothing is blocked.
    */
   drivewayTiles?: ReadonlySet<number>,
+  /**
+   * The tram contact poles standing along the roads. A lamp within
+   * POLE_CLEARANCE_M of one is not drawn: the pole stands in its place.
+   */
+  poles: readonly TramPoleStand[] = [],
 ): LampPlacement[] {
   const tileSet = buildTileSet(roadTiles);
+  const polesByTile = new Map<number, TramPoleStand[]>();
+  for (const pole of poles) {
+    const key = tileKey(worldToTile(pole.x), worldToTile(pole.z));
+    const here = polesByTile.get(key);
+    if (here) here.push(pole);
+    else polesByTile.set(key, [pole]);
+  }
+  const besidePole = (stand: LampStand): boolean => {
+    const tx = worldToTile(stand.x);
+    const tz = worldToTile(stand.z);
+    for (let dz = -1; dz <= 1; dz++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        for (const pole of polesByTile.get(tileKey(tx + dx, tz + dz)) ?? []) {
+          if (Math.hypot(pole.x - stand.x, pole.z - stand.z) < POLE_CLEARANCE_M) return true;
+        }
+      }
+    }
+    return false;
+  };
 
   const placements: LampPlacement[] = [];
   for (const tile of roadTiles) {
@@ -279,14 +307,16 @@ export function computeLampPlacements(
     const other: 1 | -1 = preferred === 1 ? -1 : 1;
     const side = free(preferred) ? preferred : free(other) ? other : null;
     if (side === null) continue;
-    placements.push({
+    const placement: LampPlacement = {
       x: tile.x,
       z: tile.z,
       axis,
       side,
       lateralOffset:
         lampLateralOffset(tile.tier, tile.profile) + flankShift(tileSet, tile, { axis, side }),
-    });
+    };
+    if (besidePole(standOf(placement))) continue;
+    placements.push(placement);
   }
   return placements;
 }
@@ -591,9 +621,13 @@ export class LampRenderer {
     roadTiles: readonly LampRoadTile[],
     drivewayTiles?: ReadonlySet<number>,
     freeStands: readonly LampStand[] = [],
+    poles: readonly TramPoleStand[] = [],
   ): void {
     this.disposeMeshes();
-    this.stands = [...computeLampPlacements(roadTiles, drivewayTiles).map(standOf), ...freeStands];
+    this.stands = [
+      ...computeLampPlacements(roadTiles, drivewayTiles, poles).map(standOf),
+      ...freeStands,
+    ];
 
     const count = this.stands.length;
     if (count === 0) return;

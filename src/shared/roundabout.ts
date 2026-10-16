@@ -15,8 +15,8 @@
 import { MAP_SIZE, TILE_METERS } from './constants';
 import { codeForControl } from './junction';
 import { atOneLevel } from './overpass';
-import { PRESET_LANE_WIDTH_M } from './roadprofile';
-import { isStreetTier, isTramTier, RoadFlow, RoadTier } from './types';
+import { isTramTrack, PRESET_LANE_WIDTH_M } from './roadprofile';
+import { isStreetTier, RoadFlow, RoadTier } from './types';
 import type { Command, RoadProfile, TilePoint } from './types';
 
 /** The ring's outer edge: an inscribed circle 36 m across, inside the block's 40 m. */
@@ -336,9 +336,7 @@ export const ROUNDABOUT_REFUSALS = {
 function roadRefusal(road: RoundaboutRoad, corner: boolean): string | null {
   if (road.tier === RoadTier.Highway) return ROUNDABOUT_REFUSALS.motorway;
   if (corner && road.tier === RoadTier.Ramp) return ROUNDABOUT_REFUSALS.slipRoad;
-  if (isTramTier(road.tier) || road.profile.pieces.some((p) => p.kind === 'tram' || p.tram)) {
-    return ROUNDABOUT_REFUSALS.tramway;
-  }
+  if (isTramTrack(road.tier, road.profile)) return ROUNDABOUT_REFUSALS.tramway;
   if (road.corridor || !oneLaneEachWay(road.profile)) return ROUNDABOUT_REFUSALS.wide;
   return null;
 }

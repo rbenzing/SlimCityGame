@@ -80,22 +80,42 @@ for the surface, the paint, the furniture and the zoning overlay.
   every coloured band on it bends with it, so nothing steps at a seam. A road
   never narrows toward a junction it meets; it keeps its full width to the
   junction's mouth, and the junction is drawn at each arm's own width.
-- **Rails**: a tramway embeds two steel rails at a 1.5 m gauge plus periodic
-  cross-tie sleepers, sleeper phase anchored at global world-metre zero so
-  ties line up across every seam. A track belongs to the LANE that carries it,
-  not to the road: mixed running lays one down each running lane it shares
-  with the traffic, and a reservation lays one down each of its two tram
-  lanes, so a twin-track reservation reads as two tracks rather than one wide
-  one. A dedicated Rail Track is not a street at all — a dark ballast bed with
-  no kerbs, markings or crosswalks, carrying the same rail-and-sleeper
-  geometry on a narrower, gravel-class corridor, and it has no lane pieces to
-  read, so its single track runs down the middle. It never crosses a street at
-  grade: laid through one in replace mode it runs straight through and the
-  street ends either side of it. There are no level crossings yet. A
-  tramway is different: where it crosses another street, the rails run
-  straight on across the junction box between the two tram arms, at the
-  offsets the tramway's own preset lanes give them, so the track reads as
-  unbroken over the crossing street's paving.
+- **Rails**: a street's track is a modern streetcar's. Every road whose
+  profile carries a tram lane — the Tramway preset, or a tram lane composed
+  onto any road — lays, per tram lane, a concrete track slab 2.7 m wide
+  centred on the lane, a shade lighter than the asphalt (the outer rails plus
+  0.56 m each side), and in it two grooved girder rails flush with the
+  surface: heads 0.056 m wide (59R2) at ±0.7175 m, half the 1,435 mm standard
+  gauge, 0.004 m proud of the slab in dark steel, each with its 0.042 m
+  groove drawn as a darker strip on the gauge side. No sleepers show:
+  sleepers across paving read as a railway. A track belongs to the LANE that
+  carries it, not to the road: mixed running lays one down each running lane
+  it shares with the traffic, and a reservation lays one down each of its two
+  tram lanes, so a twin-track reservation reads as two tracks rather than one
+  wide one; until the reservation is lifted onto its guideway it is drawn at
+  grade the same way. A dedicated Rail Track is not a street at all — a dark
+  ballast bed with no kerbs, markings or crosswalks, carrying two bright steel
+  rails at a 1.5 m gauge on periodic cross-tie sleepers, sleeper phase
+  anchored at global world-metre zero so ties line up across every seam, on a
+  narrower, gravel-class corridor; it has no lane pieces to read, so its
+  single track runs down the middle. It never crosses a street at grade: laid
+  through one in replace mode it runs straight through and the street ends
+  either side of it. There are no level crossings yet. A tramway is
+  different: where it crosses another street, its slab and rails run straight
+  on across the junction box between the two tram arms, at the offsets the
+  arm's own tram lanes give them, so the track reads as unbroken over the
+  crossing street's paving.
+- **Contact poles**: a street whose trams share its lanes is hung from
+  overhead contact poles at the kerb face — 10.7 m tall, 0.25 m across, with a
+  bracket arm reaching 1.9 m over the carriageway at 6.0 m — one every 22 m of
+  road, phase anchored at world-metre zero so the spacing holds across tiles.
+  A two-way street takes them on alternate kerbs; a one-way street on its
+  drivers' right. None stands in a junction box, on a turn, in a driveway's
+  mouth or on a kerb another road lies against, and the wire is not drawn. A
+  street lamp that would stand within 2 m of a pole is not drawn — the pole
+  stands in its place — and every other lamp stands as the lamp rule puts
+  it. The poles carry no light and do not wait for power. A reservation is
+  not hung from the street's kerbs.
 - **Intersections**: marking strips stop at any tile whose connections number
   three or more, so the junction box itself stays clean asphalt and reads as
   a real crossing — all but its edge lines. The edge line breaks only across

@@ -32,6 +32,9 @@ import {
   BUS_LANE_HALF_WIDTH_FRACTION,
   BIKE_LANE_HALF_WIDTH_FRACTION,
   TRAM_HALF_WIDTH_FRACTION,
+  TRAM_GROOVE_COLOR,
+  TRAM_RAIL_COLOR,
+  TRAM_SLAB_COLOR,
   RAIL_HALF_WIDTH_FRACTION,
   carriagewayHalfWidthMeters,
   curbWidthMeters,
@@ -340,19 +343,81 @@ describe('roadTileVertices — transit lane variants (Bus Lane / Bike Lane)', ()
 });
 
 describe('roadTileVertices — tram track (RoadTier.Tram)', () => {
-  const isRail = (t: readonly number[]): boolean => {
-    const [r, g, b] = t as [number, number, number];
-    return r > 0.66 && r < 0.78 && Math.abs(r - g) < 0.05 && Math.abs(g - b) < 0.05;
-  };
+  const isColour =
+    (want: readonly number[]) =>
+    (t: readonly number[]): boolean =>
+      t.every((c, i) => Math.abs(c - want[i]!) < 1e-6);
+  const isRail = isColour(TRAM_RAIL_COLOR);
+  const isGroove = isColour(TRAM_GROOVE_COLOR);
+  const isSlab = isColour(TRAM_SLAB_COLOR);
   const isSleeper = (t: readonly number[]): boolean => {
     const [r, g, b] = t as [number, number, number];
     return r > 0.2 && r < 0.34 && r > g && g >= b;
   };
+  /** The x extent of every quad of one colour on a north–south tile at (0,0), in metres from its centre. */
+  const spansOf = (
+    v: { positions: number[]; colors: number[] },
+    is: (t: readonly number[]) => boolean,
+  ): { lo: number; hi: number }[] => {
+    const centre = TILE_METERS / 2;
+    // Both triangles of a rectangle span its whole width, so one span per width.
+    const spans = new Map<string, { lo: number; hi: number }>();
+    for (let i = 0; i + 9 <= v.colors.length; i += 9) {
+      if (!is([v.colors[i]!, v.colors[i + 1]!, v.colors[i + 2]!])) continue;
+      const xs = [0, 1, 2].map((k) => v.positions[i + 3 * k]! - centre);
+      const span = { lo: Math.min(...xs), hi: Math.max(...xs) };
+      spans.set(`${span.lo.toFixed(4)}:${span.hi.toFixed(4)}`, span);
+    }
+    return [...spans.values()];
+  };
 
-  it('embeds two steel rails + cross-tie sleepers on a straight run', () => {
+  it('lays two grooved rails in a concrete slab and no sleepers on a straight run', () => {
     const { colors } = roadTileVertices(0, 0, RoadTier.Tram, N | S, flatHeightAt);
+    expect(countWhere(colors, isSlab)).toBeGreaterThan(0);
     expect(countWhere(colors, isRail)).toBeGreaterThan(0);
-    expect(countWhere(colors, isSleeper)).toBeGreaterThan(0);
+    expect(countWhere(colors, isGroove)).toBeGreaterThan(0);
+    expect(countWhere(colors, isSleeper)).toBe(0);
+  });
+
+  it('draws each track to the 59R2 girder rail at standard gauge in a 2.7 m slab', () => {
+    // The preset's tram lanes are 3.75 m, centred 1.875 m either side.
+    const v = roadTileVertices(0, 0, RoadTier.Tram, N | S, flatHeightAt);
+    const slabs = spansOf(v, isSlab);
+    expect(slabs.map((s) => s.hi - s.lo)).toEqual(slabs.map(() => expect.closeTo(2.7, 6)));
+    expect(slabs.map((s) => (s.lo + s.hi) / 2).sort((a, b) => a - b)).toEqual([
+      expect.closeTo(-1.875, 6),
+      expect.closeTo(1.875, 6),
+    ]);
+    const rails = spansOf(v, isRail);
+    expect(rails.map((r) => r.hi - r.lo)).toEqual(rails.map(() => expect.closeTo(0.056, 6)));
+    const centres = rails.map((r) => (r.lo + r.hi) / 2).sort((a, b) => a - b);
+    expect(centres).toEqual(
+      [-1.875 - 0.7175, -1.875 + 0.7175, 1.875 - 0.7175, 1.875 + 0.7175].map((c) =>
+        expect.closeTo(c, 6),
+      ),
+    );
+    // A groove beside every head, on the gauge side: between the head and its track's centre.
+    const grooves = spansOf(v, isGroove);
+    expect(grooves).toHaveLength(4);
+    for (const groove of grooves) {
+      expect(groove.hi - groove.lo).toBeCloseTo(0.042, 6);
+      const track = groove.lo < 0 ? -1.875 : 1.875;
+      const head = centres.find((c) => Math.abs(c - track) < 1 && Math.abs(c - groove.lo) < 0.1)!;
+      const inner = head < track ? head + 0.028 : head - 0.028;
+      expect(Math.min(Math.abs(groove.lo - inner), Math.abs(groove.hi - inner))).toBeCloseTo(0, 6);
+      expect(Math.abs((groove.lo + groove.hi) / 2 - track)).toBeLessThan(Math.abs(head - track));
+    }
+  });
+
+  it('lays the same street track on a road composed with a tram lane, mixed or reserved', () => {
+    for (const tram of ['mixed', 'reserved'] as const) {
+      const base = tram === 'mixed' ? RoadTier.TwoLane : RoadTier.Avenue;
+      const profile = composeProfile(presetProfileForTier(base), { ...NO_EDITS, tram });
+      const v = roadTileVertices(0, 0, base, N | S, flatHeightAt, undefined, profile);
+      expect(countWhere(v.colors, isSlab)).toBeGreaterThan(0);
+      expect(countWhere(v.colors, isRail)).toBeGreaterThan(0);
+      expect(countWhere(v.colors, isSleeper)).toBe(0);
+    }
   });
 
   it('has NO painted centerline on a straight run (the rails are the centre)', () => {
@@ -369,34 +434,17 @@ describe('roadTileVertices — tram track (RoadTier.Tram)', () => {
     // mixed running gets one in each lane it shares with the traffic. Drawing
     // one track down the tile centreline is right only by coincidence, on the
     // one road whose tram lanes happen to straddle it.
-    const railCentres = (profile: RoadProfile): number[] => {
-      const { positions, colors } = roadTileVertices(
-        0,
-        0,
-        RoadTier.Tram,
-        N | S,
-        flatHeightAt,
-        undefined,
-        profile,
-      );
-      // Positions are world metres; tile (0,0) is centred half a tile in.
-      const centre = TILE_METERS / 2;
-      const xs = new Set<number>();
-      for (let i = 0; i < colors.length; i += 3) {
-        if (!isRail([colors[i]!, colors[i + 1]!, colors[i + 2]!])) continue;
-        xs.add(Math.round((positions[i]! - centre) * 100) / 100);
-      }
-      // A rail is a ribbon, so its two edges straddle the rail's own line.
-      const sorted = [...xs].sort((a, b) => a - b);
-      const centres: number[] = [];
-      for (let i = 0; i + 1 < sorted.length; i += 2)
-        centres.push(Math.round(((sorted[i]! + sorted[i + 1]!) / 2) * 100) / 100);
-      return centres;
-    };
+    const railCentres = (profile: RoadProfile): number[] =>
+      spansOf(
+        roadTileVertices(0, 0, RoadTier.Tram, N | S, flatHeightAt, undefined, profile),
+        isRail,
+      )
+        .map((r) => Math.round(((r.lo + r.hi) / 2) * 10_000) / 10_000)
+        .sort((a, b) => a - b);
 
     // A reservation: two 3.5 m tram lanes either side of the centreline, so
-    // their centres sit at ±1.75 and each carries a 1.5 m-gauge track — four
-    // rails in all, at ±1.0 and ±2.5.
+    // their centres sit at ±1.75 and each carries a standard-gauge track —
+    // four rails in all, at ±1.0325 and ±2.4675.
     const reserved: RoadProfile = {
       class: 'arterial',
       kerbs: true,
@@ -407,7 +455,7 @@ describe('roadTileVertices — tram track (RoadTier.Tram)', () => {
         { kind: 'travel', width: 3.6, flow: 'fwd' },
       ],
     };
-    expect(railCentres(reserved)).toEqual([-2.5, -1, 1, 2.5]);
+    expect(railCentres(reserved)).toEqual([-2.4675, -1.0325, 1.0325, 2.4675]);
 
     // Mixed running on a two-lane street: a track in each 3.5 m lane, whose
     // centres are at ±1.75 — the same four rails, and nothing on the road's
@@ -420,7 +468,7 @@ describe('roadTileVertices — tram track (RoadTier.Tram)', () => {
         { kind: 'travel', width: 3.5, flow: 'fwd', tram: true },
       ],
     };
-    expect(railCentres(mixed)).toEqual([-2.5, -1, 1, 2.5]);
+    expect(railCentres(mixed)).toEqual([-2.4675, -1.0325, 1.0325, 2.4675]);
   });
 
   it('breaks the track at junctions (rails stop at crossings)', () => {
@@ -478,6 +526,25 @@ describe('roadTileVertices — tram track (RoadTier.Tram)', () => {
       // With no track beyond the far half the tramway crosses nothing.
       const shut: NeighborTiers = { ...crossed, e: RoadTier.Avenue };
       expect(countWhere(crossing(N | E | S | W, shut).colors, isRail)).toBe(0);
+    });
+
+    it('runs a street track composed onto any road across, in its slab, with no sleepers', () => {
+      // Two-lane streets with a tram lane composed on, east and west: track by
+      // their profile, though their tier is a plain street's.
+      const composed: NeighborTiers = {
+        n: RoadTier.Avenue,
+        e: RoadTier.TwoLane,
+        s: RoadTier.Avenue,
+        w: RoadTier.TwoLane,
+        track: { n: false, e: true, s: false, w: true },
+      };
+      const { colors } = crossing(N | E | S | W, composed);
+      expect(countWhere(colors, isRail)).toBeGreaterThan(0);
+      expect(countWhere(colors, isSlab)).toBeGreaterThan(0);
+      expect(countWhere(colors, isSleeper)).toBe(0);
+      // Told nothing of their profiles, two plain streets are not track.
+      const told = { ...composed, track: undefined };
+      expect(countWhere(crossing(N | E | S | W, told).colors, isRail)).toBe(0);
     });
   });
 

@@ -4,22 +4,24 @@
  * vehicles are out on the lines. A depot fields only while it stands built,
  * with power on its lot and its footprint touching the network its mode runs on — the
  * streets for a bus, the tram track for a tram, the railway for a train — by
- * the same tier predicates those networks are built from.
+ * the same predicates those networks are built from.
  */
 import { footprintForRotation } from '../shared/footprint';
+import { isTramTile } from '../shared/roadprofile';
 import { fieldsOf } from '../shared/transitfleet';
 import {
   BuildingState,
   isRailTier,
   isStreetTier,
-  isTramTier,
+  RoadTier,
   type BuildingCatalogEntry,
   type BuildingInstance,
   type GridState,
+  type RoadProfile,
   type TilePoint,
   type TransitMode,
 } from '../shared/types';
-import { hasAdjacentTier } from '../world/grid';
+import { hasAdjacentRoad } from '../world/grid';
 import { footprintServed } from './growth';
 
 export interface ConnectedDepot {
@@ -33,17 +35,30 @@ export interface ConnectedDepot {
   tiles: TilePoint[];
 }
 
-const NETWORK_OF: Readonly<Record<TransitMode, (tier: number) => boolean>> = {
-  bus: isStreetTier,
-  tram: isTramTier,
-  rail: isRailTier,
-};
+/**
+ * Whether the road on tile `i` is the network a mode runs on. Tram track is
+ * any street whose profile carries a tram lane, so it reads the profile;
+ * `custom` resolves a player-composed one.
+ */
+function onNetworkOf(
+  mode: TransitMode,
+  g: GridState,
+  i: number,
+  custom: (id: number) => RoadProfile | null,
+): boolean {
+  const tier = g.roadTier[i] ?? RoadTier.None;
+  if (mode === 'bus') return isStreetTier(tier);
+  if (mode === 'rail') return isRailTier(tier);
+  return isTramTile(g, i, custom);
+}
 
 /** Every depot fielding vehicles this tick, in ascending building id. */
 export function connectedDepots(
   g: GridState,
   buildings: readonly BuildingInstance[],
   catalog: ReadonlyMap<string, BuildingCatalogEntry>,
+  /** The save's own composed profiles; a preset resolves without it. */
+  custom: (id: number) => RoadProfile | null = () => null,
 ): ConnectedDepot[] {
   const depots: ConnectedDepot[] = [];
   for (const b of buildings) {
@@ -54,7 +69,7 @@ export function connectedDepots(
     const { w, d } = footprintForRotation(entry, b.rotation);
     // Powered as growth judges it: the power layer reaches a tile of the lot.
     if (!footprintServed(g.power, b.x, b.z, w, d)) continue;
-    if (!hasAdjacentTier(g, b.x, b.z, w, d, NETWORK_OF[depot.mode])) continue;
+    if (!hasAdjacentRoad(g, b.x, b.z, w, d, (i) => onNetworkOf(depot.mode, g, i, custom))) continue;
     const tiles: TilePoint[] = [];
     for (let dz = 0; dz < d; dz++) {
       for (let dx = 0; dx < w; dx++) tiles.push({ x: b.x + dx, z: b.z + dz });

@@ -14,6 +14,7 @@ import {
   corridorHalfOf,
   flowDirection,
   flowForStep,
+  isStreetTier,
   RoadFlow,
   RoadTier,
   stepForFlow,
@@ -45,6 +46,7 @@ import type { RampJoin } from '../shared/corridor';
 import { isSeparateRoad } from '../shared/approachzone';
 import type { SeparateRoadSurroundings } from '../shared/approachzone';
 import type { JunctionControl, RoadProfile } from '../shared/types';
+import { materialHex } from './palette';
 
 // --- Manhole -----------------------------------------------------------------
 const MANHOLE_RADIUS = 0.5;
@@ -187,6 +189,20 @@ const SIGN_FIELD = 0xf3e9b5; // pale warning-triangle field
 const SIGN_BLUE = 0x1f6fd0; // one-way blue
 const ONEWAY_SIGN_PERIOD = 6; // a one-way marker on every (x+z) multiple of 6
 const SPEED_SIGN_PERIOD = 10; // a speed marker on every (x+z) multiple of 10
+
+// --- Tram contact pole ------------------------------------------------------
+// A streetcar's overhead pole: 35 ft (10.7 m) with a bracket arm reaching
+// 1.9 m over the track, the arm at the contact wire's height (19 ft, rounded up
+// to clear the arm), one every 22 m — El Paso's 420 poles over 29,500 ft and
+// Oklahoma City's 243 over 18,000 ft. The wire itself is not drawn.
+export const TRAM_POLE_HEIGHT_M = 10.7;
+export const TRAM_POLE_RADIUS_M = 0.125;
+export const TRAM_POLE_ARM_LENGTH_M = 1.9;
+export const TRAM_POLE_ARM_HEIGHT_M = 6.0;
+export const TRAM_POLE_SPACING_M = 22;
+const TRAM_POLE_ARM_THICKNESS_M = 0.1;
+const TRAM_POLE_SEGMENTS = 8;
+const TRAM_POLE_COLOR = materialHex('metalPlates');
 
 // Distinct hash slots so each per-tile draw is decorrelated from the others.
 const HASH_MANHOLE_ROT = 4;
@@ -901,6 +917,81 @@ export function computeMeterPlacements(roadTiles: readonly FurnitureRoadTile[]):
       kerbFaceOffset(tile) + flankShift(tileSet, tile, { axis: curbAxis, side });
     for (const along of [METER_ALONG, -METER_ALONG]) {
       out.push({ x: tile.x, z: tile.z, curbAxis, side, lateralOffset, along });
+    }
+  }
+  return out;
+}
+
+/** Where a tram contact pole stands, in world metres, and the way its arm reaches: toward the road. */
+export interface TramPoleStand {
+  x: number;
+  z: number;
+  reachX: number;
+  reachZ: number;
+}
+
+/**
+ * Whether the trams on this road share its traffic lanes: the street tramway,
+ * whose wire hangs from poles at the kerb. A reservation is not one.
+ */
+function runsTramsInTraffic(tile: FurnitureRoadTile): boolean {
+  const tier = tile.tier ?? RoadTier.TwoLane;
+  return isStreetTier(tier) && profileOf(tile).pieces.some((p) => p.tram === true);
+}
+
+/**
+ * The kerb a one-way road's poles stand on: its drivers' right, where the
+ * stops are. Null where the road is two-way or its direction is not stored.
+ */
+function oneWayPoleSide(tile: FurnitureRoadTile): FurnitureSide | null {
+  if (!isOneWayProfile(profileOf(tile))) return null;
+  const flow = flowDirection(tile.flow ?? 0);
+  if (flow === RoadFlow.None) return null;
+  return flow === RoadFlow.North || flow === RoadFlow.East ? 1 : -1;
+}
+
+/**
+ * Overhead contact poles along every street tramway: one every TRAM_POLE_SPACING_M
+ * of road, phase anchored at world-metre zero so they keep their spacing across
+ * every tile, at the kerb face so the arm spends its length over the track. A
+ * two-way road takes them on alternate kerbs; a one-way road on its drivers'
+ * right. None stands where road crosses the tile (a junction box or a turn),
+ * on a roundabout, on a tile in `keepOff` (a driveway's mouth, or where a road
+ * off the grid meets), or on a kerb another road lies against.
+ */
+export function computeTramPolePlacements(
+  roadTiles: readonly FurnitureRoadTile[],
+  keepOff?: ReadonlySet<number>,
+): TramPoleStand[] {
+  const tileSet = buildTileSet(roadTiles);
+  const out: TramPoleStand[] = [];
+  for (const tile of roadTiles) {
+    if (tile.ring) continue;
+    if (!runsTramsInTraffic(tile)) continue;
+    if (keepOff?.has(tileKey(tile.x, tile.z))) continue;
+    if (hasCrossingRoad(tileSet, tile.x, tile.z)) continue;
+    const axis = lateralAxis(tileSet, tile.x, tile.z);
+    const runsAlongX = axis === 'z';
+    const start = (runsAlongX ? tile.x : tile.z) * TILE_METERS;
+    const free = (s: FurnitureSide): boolean =>
+      !tileSet.has(tileKey(tile.x + (axis === 'x' ? s : 0), tile.z + (axis === 'z' ? s : 0)));
+    const oneWay = oneWayPoleSide(tile);
+    for (
+      let k = Math.ceil(start / TRAM_POLE_SPACING_M);
+      k * TRAM_POLE_SPACING_M < start + TILE_METERS;
+      k++
+    ) {
+      const preferred: FurnitureSide = oneWay ?? (k % 2 === 0 ? 1 : -1);
+      const other: FurnitureSide = preferred === 1 ? -1 : 1;
+      const side = free(preferred) ? preferred : free(other) ? other : null;
+      if (side === null) continue;
+      const lateral = side * (mastKerbOffset(tile) + flankShift(tileSet, tile, { axis, side }));
+      const along = k * TRAM_POLE_SPACING_M;
+      out.push(
+        runsAlongX
+          ? { x: along, z: tileToWorld(tile.z) + lateral, reachX: 0, reachZ: -side }
+          : { x: tileToWorld(tile.x) + lateral, z: along, reachX: -side, reachZ: 0 },
+      );
     }
   }
   return out;
@@ -1919,6 +2010,23 @@ export class RoadFurnitureRenderer {
   private readonly lampMaterial = new THREE.MeshBasicMaterial({ vertexColors: true });
   private lampMesh: THREE.InstancedMesh | null = null;
 
+  /** The tram's contact poles: a mast and its bracket arm, each one instanced pool. */
+  private readonly tramPoleGeometry = new THREE.CylinderGeometry(
+    TRAM_POLE_RADIUS_M,
+    TRAM_POLE_RADIUS_M,
+    TRAM_POLE_HEIGHT_M,
+    TRAM_POLE_SEGMENTS,
+  ).translate(0, TRAM_POLE_HEIGHT_M / 2, 0);
+  private readonly tramArmGeometry = new THREE.BoxGeometry(
+    TRAM_POLE_ARM_LENGTH_M,
+    TRAM_POLE_ARM_THICKNESS_M,
+    TRAM_POLE_ARM_THICKNESS_M,
+  ).translate(TRAM_POLE_ARM_LENGTH_M / 2, TRAM_POLE_ARM_HEIGHT_M, 0);
+  private readonly tramPoleMaterial = new THREE.MeshLambertMaterial({ color: TRAM_POLE_COLOR });
+  private tramPoleMesh: THREE.InstancedMesh | null = null;
+  private tramArmMesh: THREE.InstancedMesh | null = null;
+  private tramPoles: readonly TramPoleStand[] = [];
+
   private manholes: ManholePlacement[] = [];
   private boxes: BoxPlacement[] = [];
   private meters: MeterPlacement[] = [];
@@ -2049,6 +2157,57 @@ export class RoadFurnitureRenderer {
       this.scene.add(mesh);
       this.writeSignalLamps();
     }
+  }
+
+  /**
+   * Stands the tram contact poles. They are placed apart from the rest of the
+   * furniture because they keep off the driveways, which change with the
+   * buildings rather than the roads, and the street lamps step aside for them.
+   */
+  setTramPoles(poles: readonly TramPoleStand[]): void {
+    this.disposeTramPoles();
+    this.tramPoles = poles;
+    if (poles.length === 0) return;
+    const pole = new THREE.InstancedMesh(
+      this.tramPoleGeometry,
+      this.tramPoleMaterial,
+      poles.length,
+    );
+    const arm = new THREE.InstancedMesh(this.tramArmGeometry, this.tramPoleMaterial, poles.length);
+    for (const [mesh, kind] of [
+      [pole, 'tramPole'],
+      [arm, 'tramArm'],
+    ] as const) {
+      mesh.count = poles.length;
+      mesh.castShadow = true;
+      mesh.userData.furnitureKind = kind;
+    }
+    poles.forEach((p, i) => {
+      _position.set(p.x, this.heightAt(p.x, p.z), p.z);
+      _matrix.compose(_position, _identityQuat, _scale);
+      pole.setMatrixAt(i, _matrix);
+      _quat.setFromAxisAngle(_yAxis, Math.atan2(-p.reachZ, p.reachX));
+      _matrix.compose(_position, _quat, _scale);
+      arm.setMatrixAt(i, _matrix);
+    });
+    pole.instanceMatrix.needsUpdate = true;
+    arm.instanceMatrix.needsUpdate = true;
+    this.tramPoleMesh = pole;
+    this.tramArmMesh = arm;
+    this.scene.add(pole, arm);
+  }
+
+  /** The tram poles standing, from the last setTramPoles(). */
+  tramPoleStands(): readonly TramPoleStand[] {
+    return this.tramPoles;
+  }
+
+  private disposeTramPoles(): void {
+    if (this.tramPoleMesh) this.scene.remove(this.tramPoleMesh);
+    if (this.tramArmMesh) this.scene.remove(this.tramArmMesh);
+    this.tramPoleMesh = null;
+    this.tramArmMesh = null;
+    this.tramPoles = [];
   }
 
   /**
@@ -2216,6 +2375,10 @@ export class RoadFurnitureRenderer {
   /** Removes every layer from the scene and frees the shared geometries/materials. */
   dispose(): void {
     this.disposeMeshes();
+    this.disposeTramPoles();
+    this.tramPoleGeometry.dispose();
+    this.tramArmGeometry.dispose();
+    this.tramPoleMaterial.dispose();
     this.manholeGeometry.dispose();
     this.boxGeometry.dispose();
     this.pedestalGeometry.dispose();

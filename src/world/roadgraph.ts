@@ -16,15 +16,17 @@ import {
   flowDirection,
   flowForStep,
   isStreetTier,
-  isTramTier,
   RoadFlow,
   RoadTier,
   tramCrossingAxes,
+  tramCrossingRoad,
+  type TramCrossingRoad,
 } from '../shared/types';
 import {
   canGainTurnPocket,
   corridorHalfProfile,
   isPresetProfileId,
+  isTramTrack,
   presetProfileForTier,
   worldOrderedProfile,
 } from '../shared/roadprofile';
@@ -56,12 +58,16 @@ const tierOf = (cells: RoadCells, id: number): RoadTier => cells.tier[id] as Roa
 /**
  * What one transport network is made of: the tier it sees each cell as (None
  * for a cell that is not part of it), and the cells each of its cells links
- * to. A graph built from one network never links into another.
+ * to. A graph built from one network never links into another. `profileFor`
+ * reads a cell's cross-section, for a network that is told by what a road
+ * carries rather than by its tier.
  */
 export interface NetworkShape {
-  tier(cells: RoadCells, id: number): RoadTier;
+  tier(cells: RoadCells, id: number, profileFor: ProfileResolver): RoadTier;
   /** The linked cells that belong to this network. Grid steps come first, north, east, south, west. */
-  links(cells: RoadCells, id: number): number[];
+  links(cells: RoadCells, id: number, profileFor: ProfileResolver): number[];
+  /** Whether the network only passes over this cell, which is another road's; absent, it passes over none. */
+  crosses?(cells: RoadCells, id: number, profileFor: ProfileResolver): boolean;
 }
 
 /** A network of whichever tiers `inNetwork` accepts, each cell seen as its own tier. */
@@ -77,24 +83,32 @@ export function tiersShape(inNetwork: NetworkTiers): NetworkShape {
   };
 }
 
+/** Whether a cell is tram track: a street whose cross-section carries a tram lane. */
+function isTrackCell(cells: RoadCells, id: number, profileFor: ProfileResolver): boolean {
+  return isTramTrack(tierOf(cells, id), profileFor(cells.profile[id] ?? 0));
+}
+
 /**
  * The two cells a tram crossing links along its crossing axes, or null when
  * `id` is not a crossing. Only a road on the ground is one: a road off the grid
  * or up on a deck has no four grid sides to be crossed from.
  */
-function crossingLinks(cells: RoadCells, id: number): number[] | null {
+function crossingLinks(cells: RoadCells, id: number, profileFor: ProfileResolver): number[] | null {
   const n = cells.size * cells.size;
-  const own = tierOf(cells, id);
-  if (isTramTier(own) || id >= n) return null;
+  if (id >= n) return null;
+  const road = (at: number): TramCrossingRoad =>
+    tramCrossingRoad(tierOf(cells, at), isTrackCell(cells, at, profileFor));
+  const own = road(id);
+  if (own !== 'street') return null;
   // The grid step each way, N, E, S, W, from a cell on the ground.
   const step = (from: number, s: number): number =>
     from < 0 || from >= n ? -1 : cells.next[from * 4 + s]!;
   const slot = (dx: number, dz: number): number => (dz < 0 ? 0 : dx > 0 ? 1 : dz > 0 ? 2 : 3);
-  const joined = (dx: number, dz: number, steps: 1 | 2): RoadTier => {
+  const joined = (dx: number, dz: number, steps: 1 | 2): TramCrossingRoad => {
     const s = slot(dx, dz);
     let at = step(id, s);
     if (steps === 2) at = step(at, s);
-    return at < 0 ? RoadTier.None : tierOf(cells, at);
+    return at < 0 ? 'none' : road(at);
   };
   const { alongX, alongZ } = tramCrossingAxes(own, joined);
   if (!alongX && !alongZ) return null;
@@ -105,26 +119,29 @@ function crossingLinks(cells: RoadCells, id: number): number[] | null {
 }
 
 /**
- * The tram network: tram track, and every street tile a tramway crosses, seen
- * as track so a run goes straight over the crossing and stays one tram edge.
- * A crossing links only to the track on its own axis, so a tram goes straight
- * on and never turns onto the street it crosses, which has no track to turn
- * onto.
+ * The tram network: tram track — every street whose profile carries a tram
+ * lane — and every street tile a tramway crosses. All of it is seen as the
+ * tram tier, so the network's one predicate admits every edge of it and a run
+ * goes straight over a crossing as one tram edge. A crossing links only to the
+ * track on its own axis, so a tram goes straight on and never turns onto the
+ * street it crosses, which has no track to turn onto.
  */
 export const tramShape: NetworkShape = {
-  tier: (cells, id) => {
-    const own = tierOf(cells, id);
-    if (isTramTier(own)) return own;
-    return crossingLinks(cells, id) ? RoadTier.Tram : RoadTier.None;
-  },
-  links: (cells, id) => {
-    const own = crossingLinks(cells, id);
+  tier: (cells, id, profileFor) =>
+    isTrackCell(cells, id, profileFor) || crossingLinks(cells, id, profileFor)
+      ? RoadTier.Tram
+      : RoadTier.None,
+  links: (cells, id, profileFor) => {
+    const own = crossingLinks(cells, id, profileFor);
     if (own) return own;
-    if (!isTramTier(tierOf(cells, id))) return [];
+    if (!isTrackCell(cells, id, profileFor)) return [];
     return neighbours(cells, id).filter(
-      (next) => isTramTier(tierOf(cells, next)) || !!crossingLinks(cells, next)?.includes(id),
+      (next) =>
+        isTrackCell(cells, next, profileFor) ||
+        !!crossingLinks(cells, next, profileFor)?.includes(id),
     );
   },
+  crosses: (cells, id, profileFor) => crossingLinks(cells, id, profileFor) !== null,
 };
 
 /**
@@ -147,11 +164,12 @@ function isNode(
   tier: RoadTier,
   links: readonly number[],
   network: NetworkShape,
+  profileFor: ProfileResolver,
 ): boolean {
   if (links.length !== 2) return true;
   for (const next of links) {
-    if (network.tier(cells, next) >= tier) continue;
-    if (network.links(cells, next).length >= 3) continue;
+    if (network.tier(cells, next, profileFor) >= tier) continue;
+    if (network.links(cells, next, profileFor).length >= 3) continue;
     return true;
   }
   return false;
@@ -308,9 +326,9 @@ export function buildGraph(
   // Roads on the ground come first, then the roads passing over them, then the
   // roads off the grid.
   for (let id = 0; id < cells.count; id++) {
-    const tier = network.tier(cells, id);
+    const tier = network.tier(cells, id, profileFor);
     if (tier === RoadTier.None) continue;
-    if (isNode(cells, tier, network.links(cells, id), network)) {
+    if (isNode(cells, tier, network.links(cells, id, profileFor), network, profileFor)) {
       nodeIdOf.set(id, nodeKeys.length);
       nodeKeys.push(id);
     }
@@ -329,18 +347,18 @@ export function buildGraph(
   for (const startKey of nodeKeys) {
     const startId = nodeIdOf.get(startKey)!;
 
-    for (const first of network.links(cells, startKey)) {
+    for (const first of network.links(cells, startKey, profileFor)) {
       if (consumedSteps.has(stepKey(startKey, first))) continue;
       consumedSteps.add(stepKey(startKey, first));
 
       const runKeys: number[] = [startKey];
       let prev = startKey;
       let cur = first;
-      const runTier = network.tier(cells, cur);
+      const runTier = network.tier(cells, cur, profileFor);
 
       while (!nodeIdOf.has(cur)) {
         runKeys.push(cur);
-        const onward = network.links(cells, cur).find((next) => next !== prev);
+        const onward = network.links(cells, cur, profileFor).find((next) => next !== prev);
         if (onward === undefined) break; // defensive: malformed run on inconsistent test data
         consumedSteps.add(stepKey(cur, onward));
         prev = cur;
@@ -382,7 +400,7 @@ export function buildGraph(
       if (stored !== null) edge.forwardAtoB = stored;
       // The run's cross-section is read off its own roads: a crossing the network
       // sees as its own road still carries the street it belongs to.
-      const ownKeys = runKeys.filter((key) => tierOf(cells, key) === network.tier(cells, key));
+      const ownKeys = runKeys.filter((key) => !network.crosses?.(cells, key, profileFor));
       const facts = runFacts(cells, ownKeys.length > 0 ? ownKeys : runKeys, stored, profileFor);
       if (facts) {
         edge.classId = facts.classId;
