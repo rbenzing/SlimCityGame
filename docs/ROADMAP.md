@@ -25,7 +25,7 @@ current behavior only and carry no dates of their own._
 
 ## Status (2026-09-29)
 
-**Test suite:** 6,714 tests passing across 191 test files, run 2026-10-16.
+**Test suite:** 6,764 tests passing across 193 test files, run 2026-10-16.
 This is the only test count in the documentation set. When the suite changes
 again, update the figure here and nowhere else.
 
@@ -217,8 +217,13 @@ zoned building and ploppable drawn as the US type it is, to the water tower's
 standard, from a sourced reference library and inside a measured triangle
 budget; eight slices, the budget measured first, then the performance
 slice, houses, storefronts, industry and farms, blocks and towers, the
-kitless ploppables, and the earliest kits redone. **Next, the programme's
-last two epics**, transport depots and parks and recreation
+kitless ploppables, and the earliest kits redone. **In progress, at the
+player's choice (2026-10-16): transport depots**
+([transport-depots.md](game-design/features/transport-depots.md)), the
+programme's seventh epic — a depot fields a line's vehicles over its own
+network, a mode with no depot runs nothing, and every vehicle in service is
+charged its operating cost; the sim built, the dead runs and the kits next.
+After it, the programme's last epic, parks and recreation
 ([municipal-services.md](game-design/features/municipal-services.md)), the
 [DESIGN.md](DESIGN.md) deferred backlog (weather, deeper industry, more
 transit modes) and AI raster map packs, facade-atlas stage 2 and screen-space
@@ -362,6 +367,39 @@ roads, and pinning the Three.js version. See [adr/](engineering/adr/README.md).
 ---
 
 ## 10. History (newest first)
+
+### Transport depots: a line's vehicles come from somewhere (slice 1 of the transport-depots epic, built 2026-10-16)
+
+A transit line's vehicles came from nowhere and cost nothing. Now a depot
+fields them, and the player chose the strict rule: **a mode with no depot
+runs nothing**, and **every vehicle in service is charged its operating
+cost**.
+
+- **Four depots:** a Bus Depot (2×2, 10 buses, ¢3,000), a Central Bus
+  Garage (3×4, 36, ¢10,700, Big Town), a Tram Depot (2×3, 8 sets, ¢4,050,
+  on tram track) and a Rail Yard (3×4, 5 train sets, ¢11,800, on the
+  railway), each sized from the vehicles inside it on the 20 m tile, priced
+  by the fire-station anchor against Minneapolis, Oklahoma City and
+  Caltrain facilities, and keeping the FTA's fifth as spares.
+- **The fleet rule.** A line asks for the larger of the fleet that buys a
+  10-minute headway and the fleet that carries its peak hour; the mode's
+  connected depots pool what they field; lines are cut back in proportion
+  when the pool is short, remainders by line id; a line served short
+  carries and relieves in proportion, and a line with no depot carries
+  nobody. Ridership is declared daily boardings. The sim decides the
+  count and the renderer draws it, at 20 km/h for a bus or tram and 48 for
+  a train, not the old 144.
+- **The bill.** ¢40 a bus, ¢70 a tram set, ¢142 a train set a month, from
+  the NTD cost per revenue hour, summed into a transit running expense the
+  transit panel shows per line and in total; the depot's own upkeep is
+  premises only.
+- **The panel** shows served of requested, the headway and the month's cost
+  per line, and "No depot — build a Bus Depot" when a line stands idle; a
+  depot's info shows holds, fields and in service.
+- **Every line in a save from before this slice stands idle on load** until
+  a depot is built; the bus depot unlocks at the first milestone.
+- A player-set fleet per line rides on the line itself, additively; the
+  save version is unchanged. The dead runs and the three kits follow.
 
 ### The earliest kits, redone as the plants they are (last slice of building detail, built 2026-10-16; programme complete)
 

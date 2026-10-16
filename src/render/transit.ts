@@ -1,13 +1,15 @@
 /**
  * Transit rendering: instanced
  * bus-stop SHELTERS at every line's stops, a colored route ribbon per line,
- * and cosmetic buses animated along that ribbon whose count derives from the
- * line's statistical ridership. Reuses render/vehicles.ts's shared bus
- * geometry builder + the "drive on the right" lane offset so cosmetic
+ * and cosmetic vehicles animated along that ribbon, as many as the sim says
+ * the line's depots field (`served`), spaced evenly round the route so the
+ * gap between them on screen is the headway the panel reports, and moving at
+ * the commercial speed the headway arithmetic uses. Reuses render/vehicles.ts's
+ * shared bus geometry builder + the "drive on the right" lane offset so cosmetic
  * transit buses read exactly like the regular traffic vehicle kit. A line's mode
  * picks the vehicle out of MODE_VEHICLE and nothing else about this module
- * changes: a train and a tram are the same animated slots at a different size,
- * count and spacing, several cars to a set.
+ * changes: a train and a tram are the same animated slots at a different size
+ * and spacing, several cars to a set.
  *
  * Contract note: `SimSnapshot.transit` (shared/types.ts) carries each line's
  * ordered `stops` + a per-line ridership figure -- it does NOT carry the
@@ -39,13 +41,23 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { buildVehicleGeometry, laneOffset } from './vehicles';
 import { BUS_SHELTER, buildBusShelterGeometry } from './busshelter';
-import { VehicleKind, type TilePoint, type TransitLine, type TransitMode } from '../shared/types';
+import catalogData from '../data/catalog.json';
+import {
+  VehicleKind,
+  type BuildingCatalogEntry,
+  type TilePoint,
+  type TransitLine,
+  type TransitMode,
+} from '../shared/types';
 import { TILE_METERS, tileToWorld } from '../shared/constants';
+import { COMMERCIAL_SPEED_MPS } from '../shared/transitfleet';
 
 /** Matches SimSnapshot.transit's shape (shared/types.ts) without importing the whole SimSnapshot type. */
 export interface TransitSnapshot {
   lines: TransitLine[];
   ridership: number[];
+  /** Vehicles each line runs, index-aligned with `lines`; absent (an older worker) draws none. */
+  served?: number[];
 }
 
 // ---------------------------------------------------------------------------
@@ -110,28 +122,6 @@ const RIBBON_WIDTH_METERS = TILE_METERS * 0.3;
  */
 const BUS_SIZE: readonly [number, number, number] = [2.5, 3.0, 10.0];
 
-/** Cruise speed for cosmetic transit buses along their route polyline. */
-const BUS_SPEED_MPS = TILE_METERS * 2; // 40 m/s, slower than traffic.ts's cosmetic cars (3 tiles/s and up)
-
-/** Riders "absorbed" per visible cosmetic bus -- purely a density knob, not a capacity model. */
-export const RIDERSHIP_PER_BUS = 40;
-export const MAX_BUSES_PER_LINE = 6;
-
-/** Fixed-capacity pool sizing: MAX_TRANSIT_LINES * MAX_BUSES_PER_LINE upper bound. */
-const MAX_TRANSIT_LINES = 32;
-const MAX_BUSES = MAX_TRANSIT_LINES * MAX_BUSES_PER_LINE;
-
-/**
- * Deterministic cosmetic bus count for a line from its ridership figure:
- * one bus per RIDERSHIP_PER_BUS riders, rounded, clamped to
- * [0, MAX_BUSES_PER_LINE]. Monotonic non-decreasing in ridership.
- */
-export function ridershipToBusCount(ridership: number): number {
-  if (!(ridership > 0)) return 0;
-  const raw = Math.round(ridership / RIDERSHIP_PER_BUS);
-  return Math.min(MAX_BUSES_PER_LINE, Math.max(0, raw));
-}
-
 // --- Trains -------------------------------------------------------------------
 
 /** A train car is longer and taller than a bus; several of them make a train. */
@@ -139,22 +129,6 @@ const TRAIN_CAR_SIZE: readonly [number, number, number] = [3.2, 3.8, 14];
 export const TRAIN_CARS_PER_SET = 3;
 /** Nose-to-nose spacing down the polyline: a car plus a coupling gap. */
 const TRAIN_CAR_PITCH = TRAIN_CAR_SIZE[2] + 1.2;
-const TRAIN_SPEED_MPS = TILE_METERS * 3; // a train outruns the traffic beside it
-
-/** A train carries far more than a bus, so a line needs far fewer of them. */
-export const RIDERSHIP_PER_TRAIN = 220;
-export const MAX_TRAINS_PER_LINE = 3;
-
-/**
- * Deterministic train count for a line, same shape as the bus rule but at
- * rail's scale — and at least one train wherever a rail line carries anyone at
- * all, since an empty track reads as broken rather than as quiet.
- */
-export function ridershipToTrainCount(ridership: number): number {
-  if (!(ridership > 0)) return 0;
-  const raw = Math.round(ridership / RIDERSHIP_PER_TRAIN);
-  return Math.min(MAX_TRAINS_PER_LINE, Math.max(1, raw));
-}
 
 // --- Trams --------------------------------------------------------------------
 
@@ -163,25 +137,13 @@ const TRAM_CAR_SIZE: readonly [number, number, number] = [2.6, 3.4, 11];
 /** Two cars, articulated — they sit closer together than a train's are coupled. */
 export const TRAM_CARS_PER_SET = 2;
 const TRAM_CAR_PITCH = TRAM_CAR_SIZE[2] + 0.4;
-/** A tram runs in traffic, so it moves at traffic's pace, not a train's. */
-const TRAM_SPEED_MPS = TILE_METERS * 2.2;
-
-/** Between a bus and a train, like everything else about a tram. */
-export const RIDERSHIP_PER_TRAM = 90;
-export const MAX_TRAMS_PER_LINE = 4;
-
-/** Same rule again at the tram's scale — see ridershipToTrainCount. */
-export function ridershipToTramCount(ridership: number): number {
-  if (!(ridership > 0)) return 0;
-  const raw = Math.round(ridership / RIDERSHIP_PER_TRAM);
-  return Math.min(MAX_TRAMS_PER_LINE, Math.max(1, raw));
-}
 
 /**
  * Everything that differs between a bus, a train and a tram on screen. A mode is
  * data here, not a branch: a bus is a single box that keeps right, a train is
  * three cars down the middle of its own track, a tram is two that hold their
- * lane because they are sharing a street.
+ * lane because they are sharing a street. Each moves at the commercial speed
+ * its headway is worked out from, so a bus never outruns the cars beside it.
  */
 interface ModeVehicle {
   readonly size: readonly [number, number, number];
@@ -190,7 +152,6 @@ interface ModeVehicle {
   readonly pitch: number;
   readonly speed: number;
   readonly keepsRight: boolean;
-  readonly countFor: (ridership: number) => number;
 }
 
 const MODE_VEHICLE: Record<TransitMode, ModeVehicle> = {
@@ -198,27 +159,36 @@ const MODE_VEHICLE: Record<TransitMode, ModeVehicle> = {
     size: BUS_SIZE,
     carsPerSet: 1,
     pitch: 0,
-    speed: BUS_SPEED_MPS,
+    speed: COMMERCIAL_SPEED_MPS.bus,
     keepsRight: true,
-    countFor: ridershipToBusCount,
   },
   rail: {
     size: TRAIN_CAR_SIZE,
     carsPerSet: TRAIN_CARS_PER_SET,
     pitch: TRAIN_CAR_PITCH,
-    speed: TRAIN_SPEED_MPS,
+    speed: COMMERCIAL_SPEED_MPS.rail,
     keepsRight: false,
-    countFor: ridershipToTrainCount,
   },
   tram: {
     size: TRAM_CAR_SIZE,
     carsPerSet: TRAM_CARS_PER_SET,
     pitch: TRAM_CAR_PITCH,
-    speed: TRAM_SPEED_MPS,
+    speed: COMMERCIAL_SPEED_MPS.tram,
     keepsRight: true,
-    countFor: ridershipToTramCount,
   },
 };
+
+/** Fixed-capacity pool sizing: the largest fleet one depot holds, on every line, every car drawn. */
+const MAX_TRANSIT_LINES = 32;
+const LARGEST_DEPOT_FLEET = Math.max(
+  1,
+  ...(catalogData as { buildings: BuildingCatalogEntry[] }).buildings.map(
+    (e) => e.depot?.fleet ?? 0,
+  ),
+);
+const MOST_CARS_PER_SET = Math.max(...Object.values(MODE_VEHICLE).map((v) => v.carsPerSet));
+export const MAX_TRANSIT_VEHICLE_SLOTS =
+  MAX_TRANSIT_LINES * LARGEST_DEPOT_FLEET * MOST_CARS_PER_SET;
 
 /** A line with no mode is a bus line, matching sim/transit.ts's modeOf. */
 function modeOf(line: TransitLine): TransitMode {
@@ -475,7 +445,7 @@ export class TransitRenderer {
     this.lineTotal = snapshot.lines.length;
     this.buildShelters(snapshot.lines, hasStopBuilding);
     this.buildRibbon(snapshot.lines);
-    this.buildBuses(snapshot.lines, snapshot.ridership);
+    this.buildBuses(snapshot.lines, snapshot.served ?? []);
 
     this.applyVisibility();
   }
@@ -717,15 +687,15 @@ export class TransitRenderer {
     return new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide });
   }
 
-  private buildBuses(lines: readonly TransitLine[], ridership: readonly number[]): void {
+  /** One set per vehicle the sim says the line runs, spaced at 1/served of the route. */
+  private buildBuses(lines: readonly TransitLine[], served: readonly number[]): void {
     const buses: (ActiveVehicle | null)[] = [];
     const colors: number[] = [];
 
     for (let i = 0; i < lines.length; i += 1) {
       const line = lines[i]!;
-      const riders = ridership[i] ?? 0;
       const vehicle = MODE_VEHICLE[modeOf(line)];
-      const count = vehicle.countFor(riders);
+      const count = Math.max(0, Math.floor(served[i] ?? 0));
       if (count === 0) continue;
 
       const worldPoints = toWorldPoints(line.stops);
@@ -743,7 +713,7 @@ export class TransitRenderer {
       for (let b = 0; b < count; b += 1) {
         const lead = setLength + (runway * b) / count; // sets evenly spaced along the runway
         for (let car = 0; car < vehicle.carsPerSet; car += 1) {
-          if (buses.length >= MAX_BUSES) break;
+          if (buses.length >= MAX_TRANSIT_VEHICLE_SLOTS) break;
           buses.push({
             points: worldPoints,
             totalLength,

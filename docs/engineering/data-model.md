@@ -336,14 +336,18 @@ every policy toggle they had enabled.
 
 ### Transit lines
 
-`TransitLine` (`id`, `stops: TilePoint[]`, `color`, optional `mode`, all in
-`src/shared/types.ts`) — **does** persist, in `SaveMeta.transitLines`,
-restored by `TransitSystem.restore()`. An id is assigned by an
-auto-incrementing counter starting at 1; on `restore`, the counter resumes
-past the highest id in the restored lines rather than being itself
-serialized, so a line created after loading can never collide with one that
-came out of the save. Per-line ridership statistics do **not** persist —
-they reset to empty and are recomputed by the transit tick.
+`TransitLine` (`id`, `stops: TilePoint[]`, `color`, optional `mode`, optional
+`vehicles`, all in `src/shared/types.ts`) — **does** persist, in
+`SaveMeta.transitLines`, restored by `TransitSystem.restore()`. An id is
+assigned by an auto-incrementing counter starting at 1; on `restore`, the
+counter resumes past the highest id in the restored lines rather than being
+itself serialized, so a line created after loading can never collide with one
+that came out of the save. `vehicles` is the fleet the player asked the line
+to run; absent, the line asks for its derived default, which is how every
+line saved before depots existed reads. Per-line ridership statistics, the
+vehicles a line is served and the depot pools do **not** persist — the pools
+are re-read from the standing depots and the rest recomputed by the transit
+tick.
 
 ### Road profiles
 

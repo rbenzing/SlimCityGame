@@ -297,4 +297,24 @@ describe('transit line tools', () => {
     const tram = cards.find((c) => c.id === 'transit.tram');
     expect(tram).toEqual({ id: 'transit.tram', name: 'Tram Line', cost: 0, unlockMilestone: 3 });
   });
+
+  it('offers the four depots: the bus depot with the bus stop, the tram depot and rail yard with their lines, the garage at Small City', () => {
+    const cards = subTabsFor('transit').flatMap((t) => t.cards);
+    const card = (
+      id: string,
+    ): { name: string; cost: number; unlockMilestone: number } | undefined =>
+      cards.find((c) => c.id === `plop.${id}`);
+    expect(card('bus-depot')).toMatchObject({ name: 'Bus Depot', cost: 3000, unlockMilestone: 1 });
+    expect(card('bus-garage')).toMatchObject({
+      name: 'Central Bus Garage',
+      cost: 10700,
+      unlockMilestone: 4,
+    });
+    expect(card('tram-depot')).toMatchObject({
+      name: 'Tram Depot',
+      cost: 4050,
+      unlockMilestone: 3,
+    });
+    expect(card('rail-yard')).toMatchObject({ name: 'Rail Yard', cost: 11800, unlockMilestone: 3 });
+  });
 });

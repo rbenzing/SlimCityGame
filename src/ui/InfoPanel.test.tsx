@@ -293,6 +293,33 @@ describe('InfoPanel', () => {
     expect(screen.queryByTestId('intake-yield-row')).not.toBeInTheDocument();
   });
 
+  it('shows a depot what it holds, fields and has in service', () => {
+    const depot = {
+      id: 12,
+      catalogId: 'bus-depot',
+      x: 0,
+      z: 0,
+      rotation: 0 as const,
+      level: 1,
+      state: BuildingState.Active,
+      problems: 0,
+    };
+    useCityStore.getState().setSelectedBuilding(depot);
+    useCityStore.getState().setSelectionInfo({
+      building: depot,
+      happiness: 50,
+      monthlyTax: 0,
+      monthlyUpkeep: 200,
+      occupancy: {},
+      depot: { holds: 10, fields: 8, inService: 5 },
+    });
+    render(<InfoPanel />);
+    expect(screen.getByTestId('depot-holds-row')).toHaveTextContent('10 vehicles');
+    expect(screen.getByTestId('depot-fields-row')).toHaveTextContent('8');
+    expect(screen.getByTestId('depot-in-service-row')).toHaveTextContent('5');
+    expect(screen.getByText('¢200/mo')).toBeInTheDocument();
+  });
+
   it('shows what a drain takes, and names the sewer problems', () => {
     useCityStore.getState().setSelectedBuilding({
       id: 2,

@@ -73,6 +73,12 @@ export interface EconomyTickInput {
    * as an expense. Called once, at the month boundary only. Omitted, nothing is billed.
    */
   takeRegionalBodies?: () => number;
+  /**
+   * The month's running charge for every transit vehicle in service, ¢, as
+   * the transit tick last summed it over the lines. Charged at the month
+   * boundary beside building upkeep. Omitted, nothing runs and nothing is billed.
+   */
+  transitRunning?: number;
 }
 
 export interface EconomyTickResult {
@@ -316,6 +322,9 @@ export class EconomySystem {
 
       const loanInterest = stats.loanBalance * LOAN_MONTHLY_INTEREST;
       const funeralFees = (input.takeRegionalBodies?.() ?? 0) * REGIONAL_FUNERAL_FEE;
+      // The fleet's own bill, apart from its depots' upkeep above: capacity
+      // costs the building line, service the vehicle line.
+      const transitRunning = input.transitRunning ?? 0;
       const expenses =
         buildingUpkeep +
         roadUpkeep +
@@ -323,11 +332,13 @@ export class EconomySystem {
         powerLineUpkeep +
         waterPipeUpkeep +
         funeralFees +
+        transitRunning +
         loanInterest;
 
       funds += income - expenses;
       statsPatch.monthlyIncome = income;
       statsPatch.monthlyExpenses = expenses;
+      statsPatch.transitRunning = transitRunning;
 
       if (funds < 0) {
         notifications.push({

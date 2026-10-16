@@ -74,6 +74,7 @@ import type {
   BuildingInstance,
   CityStats,
   Command,
+  TransitMode,
   CommandAck,
   DeathCareReport,
   District,
@@ -209,7 +210,13 @@ import { DeathCareSystem, type DeathCareFacility } from './deathcare';
 import { occupiedResidents } from '../shared/occupancy';
 import { bordersUtilityNetwork, recomputeUtilities, sewageOf } from './network';
 import { TrafficSystem } from './traffic';
-import { TransitSystem, type PopulationJobsAccessor, type TransitTickResult } from './transit';
+import {
+  TransitSystem,
+  emptyTransitResult,
+  type PopulationJobsAccessor,
+  type TransitTickResult,
+} from './transit';
+import { connectedDepots, fleetPools, inServiceAt, type ConnectedDepot } from './depots';
 import { DispatchSystem, MAX_SERVICE_VEHICLES } from './dispatch';
 import { PolicyStore, effectivePollution, trafficWeight } from './policy';
 import { paintDistrict } from '../world/districts';
@@ -503,7 +510,9 @@ class SimWorld implements WorkerSim {
   private dispatch: DispatchSystem;
   private policyStore = new PolicyStore();
   /** Latest transit tick result, attached to each snapshot. */
-  private transitResult: TransitTickResult = { lines: [], ridership: [] };
+  private transitResult: TransitTickResult = emptyTransitResult();
+  /** The depots fielding vehicles as of the last transit tick, in ascending id. */
+  private depots: ConnectedDepot[] = [];
   /** Latest active-incident list from dispatch, attached to each snapshot. */
   private latestIncidents: Incident[] = [];
   /**
@@ -725,7 +734,8 @@ class SimWorld implements WorkerSim {
     this.transit = new TransitSystem(this.network, this.railNetwork, this.tramNetwork);
     this.dispatch = new DispatchSystem(CATALOG, rng.fork(3));
     this.policyStore = new PolicyStore();
-    this.transitResult = { lines: [], ridership: [] };
+    this.transitResult = emptyTransitResult();
+    this.depots = [];
     this.latestIncidents = [];
     this.serviceLoad = null;
     this.districtDefs = [];
@@ -830,7 +840,8 @@ class SimWorld implements WorkerSim {
     this.transit.restore(payload.meta.transitLines ?? []);
     this.dispatch = new DispatchSystem(CATALOG, createRng(this.seed).fork(3));
     this.policyStore = new PolicyStore();
-    this.transitResult = { lines: [], ridership: [] };
+    this.transitResult = emptyTransitResult();
+    this.depots = [];
     this.latestIncidents = [];
     this.serviceLoad = null;
     this.districtDefs = [];
@@ -1143,11 +1154,13 @@ class SimWorld implements WorkerSim {
 
     this.traffic.tick({ origins, destinations, tickNo: t, population: this.stats.population });
 
-    // Bus transit: recompute every line's route + statistical ridership
-    // and apply its modest congestion relief to the road graph (same cadence
-    // as traffic so cosmetic buses animate smoothly). Service dispatch:
-    // spawn/route/resolve incidents from the coverage-gap fields.
-    this.transitResult = this.transit.tick(this.populationJobsAccessor);
+    // Transit: the depots standing, built, powered and on their network field
+    // each mode's pool; every line's route, ridership and share of that pool
+    // follow, with its modest congestion relief on the road graph (same
+    // cadence as traffic so cosmetic vehicles animate smoothly). Service
+    // dispatch: spawn/route/resolve incidents from the coverage-gap fields.
+    this.depots = connectedDepots(g, this.registry.all(), this.catalogById);
+    this.transitResult = this.transit.tick(this.populationJobsAccessor, fleetPools(this.depots));
     this.latestIncidents = this.dispatch.tick({
       grid: g,
       buildings: this.registry.all(),
@@ -1186,6 +1199,7 @@ class SimWorld implements WorkerSim {
       profileOf: (id: number) => this.profileForId(id),
       takeRecoveredUnits: () => this.garbage.takeRecoveredThisMonth(),
       takeRegionalBodies: () => this.deathCare.takeRegionalThisMonth(),
+      transitRunning: this.transitResult.runningCost.reduce((sum, c) => sum + c, 0),
     });
     Object.assign(this.stats, econ.statsPatch);
     this.occupancy = econ.occupancy;
@@ -1444,9 +1458,12 @@ class SimWorld implements WorkerSim {
     // can add/remove bus-stop posts, the route ribbon, and cosmetic buses).
     // The lines are the ones standing now, so a line drawn while paused shows
     // at once; ridership is the sim's, and waits for the next tick.
-    const riders = new Map(
-      this.transitResult.lines.map((l, i) => [l.id, this.transitResult.ridership[i] ?? 0]),
-    );
+    const result = this.transitResult;
+    const slotOf = new Map(result.lines.map((l, i) => [l.id, i]));
+    const figure = (values: readonly number[], id: number): number => {
+      const slot = slotOf.get(id);
+      return slot === undefined ? 0 : (values[slot] ?? 0);
+    };
     const lines = this.transit.getLines();
     snap.transit = {
       lines: lines.map((l) => ({
@@ -1456,8 +1473,14 @@ class SimWorld implements WorkerSim {
         // Without this the render thread sees every line as a bus line, and a
         // rail line draws bus shelters at its stations and buses on its track.
         mode: l.mode,
+        ...(l.vehicles !== undefined ? { vehicles: l.vehicles } : {}),
       })),
-      ridership: lines.map((l) => riders.get(l.id) ?? 0),
+      ridership: lines.map((l) => figure(result.ridership, l.id)),
+      served: lines.map((l) => figure(result.served, l.id)),
+      requested: lines.map((l) => figure(result.requested, l.id)),
+      headwayMin: lines.map((l) => figure(result.headwayMin, l.id)),
+      runningCost: lines.map((l) => figure(result.runningCost, l.id)),
+      pools: { ...result.pools },
     };
     // Active incidents (only when any are live — optional channel).
     if (this.latestIncidents.length > 0) {
@@ -1625,11 +1648,31 @@ class SimWorld implements WorkerSim {
           ? { deathCare: { cremated: this.deathCare.crematedBy(inst.id) } }
           : {}),
       ...(intakeYield !== undefined ? { intakeYield } : {}),
+      ...(entry.depot !== undefined ? { depot: this.depotInfo(inst.id, entry.depot) } : {}),
       ...(inst.problems & Problem.NeedsSchool && entry.zone !== undefined
         ? { missingSchools: schoolsMissingAt(this.grid, idx, entry.zone).map((rung) => rung.kind) }
         : {}),
     };
     this.post({ type: 'selection', info });
+  }
+
+  /** A depot's panel figures: a depot not fielding this tick holds its fleet and runs nothing. */
+  private depotInfo(
+    id: number,
+    depot: NonNullable<BuildingCatalogEntry['depot']>,
+  ): NonNullable<SelectionInfo['depot']> {
+    const connected = this.depots.find((d) => d.id === id);
+    if (!connected) return { holds: depot.fleet, fields: 0, inService: 0 };
+    const servedByMode: Record<TransitMode, number> = { bus: 0, rail: 0, tram: 0 };
+    const result = this.transitResult;
+    result.lines.forEach((line, i) => {
+      servedByMode[line.mode ?? 'bus'] += result.served[i] ?? 0;
+    });
+    return {
+      holds: connected.holds,
+      fields: connected.fields,
+      inService: inServiceAt(this.depots, id, servedByMode),
+    };
   }
 
   private zonePatchFor(rect: DirtyRect): ZonePatch {
@@ -2529,6 +2572,7 @@ class SimWorld implements WorkerSim {
           command.line.stops,
           command.line.color,
           command.line.mode,
+          command.line.vehicles,
         );
         return { ok: true, cost: 0, inverse: [{ kind: 'deleteTransitLine', id: line.id }] };
       }
@@ -2539,6 +2583,7 @@ class SimWorld implements WorkerSim {
           command.line.stops,
           command.line.color,
           command.line.mode,
+          command.line.vehicles,
         );
         if (!updated) return { ok: false, cost: 0, inverse: [], reason: 'invalid' };
         return {
@@ -3510,6 +3555,11 @@ class SimWorld implements WorkerSim {
     // A station has to touch the track it serves; everything else goes anywhere
     // buildable, exactly as before.
     if (entry.requiresAdjacent === 'rail' && !hasAdjacentTier(this.grid, x, z, w, d, isRailTier)) {
+      return { ok: false, cost: 0, inverse: [], reason: 'invalid' };
+    }
+    // A tram depot stands on the tram track as the tram graph knows it: the
+    // tram tier, never a tram lane composed onto a street no tram can route.
+    if (entry.requiresAdjacent === 'tram' && !hasAdjacentTier(this.grid, x, z, w, d, isTramTier)) {
       return { ok: false, cost: 0, inverse: [], reason: 'invalid' };
     }
     // An intake or an outfall stands on a shore: its footprint on land, the

@@ -351,6 +351,11 @@ describe('the civic ploppables (honest both sides): every draw from floor area a
     // The district rungs' exemplars: Indianapolis Fire Station 20, 15,733 sf; Concord NH's police station, 38,000 sf.
     'fire-station-district': 15_733,
     'police-station-district': 38_000,
+    // transport-depots.md's covered floors: bays, wash, fuelling and office, the apron left out.
+    'bus-depot': 4_250,
+    'bus-garage': 9_140,
+    'tram-depot': 4_040,
+    'rail-yard': 7_930,
   };
   /** One regional terminal's floor per yearly enplanement, passengers at twice that, 4.2 gallons each. */
   const TERMINAL_SF_PER_ENPLANEMENT = 125_000 / 600_000;
@@ -391,6 +396,11 @@ describe('the civic ploppables (honest both sides): every draw from floor area a
       ['hospital', CBECS_KWH_PER_SF.inpatient, WATERSENSE_GAL_PER_SF.hospital, 3, 0],
       ['school', CBECS_KWH_PER_SF.education, WATERSENSE_GAL_PER_SF.school, 4, 1],
       ['rail-station', TERMINAL_KWH_PER_SF, WATERSENSE_GAL_PER_SF.office, 4, 0],
+      ['bus-depot', TERMINAL_KWH_PER_SF, WATERSENSE_GAL_PER_SF.office, 4, 1],
+      // Derived at the terminal figure rounded to 8.4 kWh/sf, which lands a hair over the fourth place.
+      ['bus-garage', TERMINAL_KWH_PER_SF, WATERSENSE_GAL_PER_SF.office, 3, 1],
+      ['tram-depot', TERMINAL_KWH_PER_SF, WATERSENSE_GAL_PER_SF.office, 4, 1],
+      ['rail-yard', TERMINAL_KWH_PER_SF, WATERSENSE_GAL_PER_SF.office, 4, 1],
     ] as const) {
       const entry = byId(id);
       const sqft = floorSqft(entry);

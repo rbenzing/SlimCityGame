@@ -2,11 +2,7 @@ import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
 import {
   TransitRenderer,
-  ridershipToBusCount,
-  ridershipToTrainCount,
-  ridershipToTramCount,
-  MAX_TRAINS_PER_LINE,
-  MAX_TRAMS_PER_LINE,
+  MAX_TRANSIT_VEHICLE_SLOTS,
   TRAIN_CARS_PER_SET,
   TRAM_CARS_PER_SET,
   toWorldPoints,
@@ -15,39 +11,78 @@ import {
   computeStopHeading,
   computeShelterLayout,
   shelterSide,
-  RIDERSHIP_PER_BUS,
-  MAX_BUSES_PER_LINE,
   type TransitSnapshot,
 } from './transit';
 import { BUS_SHELTER } from './busshelter';
 import type { TransitLine } from '../shared/types';
 import { TILE_METERS, tileToWorld } from '../shared/constants';
+import { COMMERCIAL_SPEED_MPS } from '../shared/transitfleet';
 
 const flatHeightAt = (): number => 0;
 
-describe('ridershipToBusCount (pure)', () => {
-  it('returns 0 for zero or negative ridership', () => {
-    expect(ridershipToBusCount(0)).toBe(0);
-    expect(ridershipToBusCount(-5)).toBe(0);
+describe('the vehicles a line draws', () => {
+  const route = [
+    { x: 0, z: 0 },
+    { x: 40, z: 0 },
+  ];
+
+  it('draws exactly the vehicles the sim says the line runs, whatever its ridership', () => {
+    const scene = new THREE.Scene();
+    const renderer = new TransitRenderer(scene, flatHeightAt);
+    renderer.apply({ lines: [line(1, route, 1)], ridership: [10_000], served: [3] });
+    expect(renderer.busCount()).toBe(3);
+
+    renderer.apply({ lines: [line(1, route, 1)], ridership: [10_000], served: [0] });
+    expect(renderer.busCount()).toBe(0);
   });
 
-  it('is monotonic non-decreasing in ridership', () => {
-    const values = [0, 10, 39, 40, 80, 500, 10_000];
-    let prev = -Infinity;
-    for (const v of values) {
-      const count = ridershipToBusCount(v);
-      expect(count).toBeGreaterThanOrEqual(prev);
-      prev = count;
+  it('draws nothing for a snapshot with no served figures, as an older worker sends', () => {
+    const scene = new THREE.Scene();
+    const renderer = new TransitRenderer(scene, flatHeightAt);
+    renderer.apply({ lines: [line(1, route, 1)], ridership: [500] });
+    expect(renderer.busCount()).toBe(0);
+  });
+
+  it('spaces the vehicles at one served-th of the route', () => {
+    const scene = new THREE.Scene();
+    const renderer = new TransitRenderer(scene, flatHeightAt);
+    renderer.apply({ lines: [line(1, route, 1)], ridership: [0], served: [4] });
+    const mesh = scene.children.find(
+      (c): c is THREE.InstancedMesh => c instanceof THREE.InstancedMesh && c.count === 4,
+    )!;
+    const m = new THREE.Matrix4();
+    const p = new THREE.Vector3();
+    const xs: number[] = [];
+    for (let i = 0; i < 4; i += 1) {
+      mesh.getMatrixAt(i, m);
+      p.setFromMatrixPosition(m);
+      xs.push(p.x);
     }
+    const gaps = xs.slice(1).map((x, i) => x - xs[i]!);
+    for (const gap of gaps) expect(gap).toBeCloseTo(polylineLength(toWorldPoints(route)) / 4, 6);
   });
 
-  it('rounds to one bus per RIDERSHIP_PER_BUS riders', () => {
-    expect(ridershipToBusCount(RIDERSHIP_PER_BUS)).toBe(1);
-    expect(ridershipToBusCount(RIDERSHIP_PER_BUS * 2)).toBe(2);
+  it('moves a bus at its commercial speed, not a cosmetic one', () => {
+    const scene = new THREE.Scene();
+    const renderer = new TransitRenderer(scene, flatHeightAt);
+    renderer.apply({ lines: [line(1, route, 1)], ridership: [0], served: [1] });
+    const mesh = scene.children.find(
+      (c): c is THREE.InstancedMesh => c instanceof THREE.InstancedMesh && c.count === 1,
+    )!;
+    const m = new THREE.Matrix4();
+    const before = new THREE.Vector3();
+    mesh.getMatrixAt(0, m);
+    before.setFromMatrixPosition(m);
+    renderer.update(1);
+    const after = new THREE.Vector3();
+    mesh.getMatrixAt(0, m);
+    after.setFromMatrixPosition(m);
+    expect(after.x - before.x).toBeCloseTo(COMMERCIAL_SPEED_MPS.bus, 6);
+    expect(COMMERCIAL_SPEED_MPS.bus).toBeCloseTo(5.56, 6);
   });
 
-  it('caps at MAX_BUSES_PER_LINE regardless of how large ridership gets', () => {
-    expect(ridershipToBusCount(RIDERSHIP_PER_BUS * 1000)).toBe(MAX_BUSES_PER_LINE);
+  it('holds slots for the largest depot fleet on every line', () => {
+    expect(MAX_TRANSIT_VEHICLE_SLOTS).toBe(32 * 36 * TRAIN_CARS_PER_SET);
   });
 });
 
@@ -447,7 +482,7 @@ describe('TransitRenderer.apply', () => {
     expect(renderer2.stopCount()).toBe(1);
   });
 
-  it('spawns cosmetic buses whose count matches ridershipToBusCount(ridership) per line', () => {
+  it('spawns cosmetic buses per line as the snapshot serves them', () => {
     const scene = new THREE.Scene();
     const renderer = new TransitRenderer(scene, flatHeightAt);
     const busyLine = line(
@@ -466,9 +501,9 @@ describe('TransitRenderer.apply', () => {
       ],
       0x00ff00,
     );
-    renderer.apply({ lines: [busyLine, quietLine], ridership: [RIDERSHIP_PER_BUS * 3, 0] });
+    renderer.apply({ lines: [busyLine, quietLine], ridership: [120, 0], served: [3, 0] });
 
-    expect(renderer.busCount()).toBe(ridershipToBusCount(RIDERSHIP_PER_BUS * 3));
+    expect(renderer.busCount()).toBe(3);
 
     const busMesh = scene.children.find(
       (c) => c instanceof THREE.InstancedMesh && c.count === renderer.busCount() && c.count > 0,
@@ -490,7 +525,8 @@ describe('TransitRenderer.apply', () => {
           1,
         ),
       ],
-      ridership: [RIDERSHIP_PER_BUS],
+      ridership: [40],
+      served: [1],
     });
     const firstChildren = [...scene.children];
 
@@ -505,7 +541,8 @@ describe('TransitRenderer.apply', () => {
           1,
         ),
       ],
-      ridership: [RIDERSHIP_PER_BUS],
+      ridership: [40],
+      served: [1],
     });
     for (const child of firstChildren) expect(scene.children).not.toContain(child);
   });
@@ -524,7 +561,8 @@ describe('TransitRenderer.apply', () => {
           1,
         ),
       ],
-      ridership: [RIDERSHIP_PER_BUS],
+      ridership: [40],
+      served: [1],
     });
     renderer.apply({ lines: [], ridership: [] });
 
@@ -550,7 +588,8 @@ describe('TransitRenderer.setVisible', () => {
           1,
         ),
       ],
-      ridership: [RIDERSHIP_PER_BUS],
+      ridership: [40],
+      served: [1],
     });
 
     renderer.setVisible(false);
@@ -577,7 +616,8 @@ describe('TransitRenderer.update', () => {
           1,
         ),
       ],
-      ridership: [RIDERSHIP_PER_BUS],
+      ridership: [40],
+      served: [1],
     });
 
     const busMesh = scene.children.find(
@@ -615,7 +655,8 @@ describe('TransitRenderer.dispose', () => {
           1,
         ),
       ],
-      ridership: [RIDERSHIP_PER_BUS],
+      ridership: [40],
+      served: [1],
     });
     expect(scene.children.length).toBeGreaterThan(0);
 
@@ -637,41 +678,36 @@ describe('rail lines (SPEC 26)', () => {
     { x: 40, z: 0 },
   ];
 
-  it('counts trains at rail scale, not bus scale', () => {
-    expect(ridershipToTrainCount(0)).toBe(0);
-    // Any ridership at all puts a train on the line: an empty track reads as
-    // broken rather than as quiet.
-    expect(ridershipToTrainCount(1)).toBe(1);
-    expect(ridershipToTrainCount(100_000)).toBe(MAX_TRAINS_PER_LINE);
-    // Far fewer vehicles than a bus line off the same riders.
-    expect(ridershipToTrainCount(400)).toBeLessThan(ridershipToBusCount(400));
-  });
-
   it('draws a train as several cars, not one long box', () => {
     const scene = new THREE.Scene();
     const renderer = new TransitRenderer(scene, flatHeightAt);
-    renderer.apply({ lines: [railLine(1, longRoute)], ridership: [220] });
+    renderer.apply({ lines: [railLine(1, longRoute)], ridership: [220], served: [1] });
 
     expect(renderer.busCount()).toBe(TRAIN_CARS_PER_SET);
+  });
+
+  it('runs a train at its own commercial speed, faster than a bus', () => {
+    expect(COMMERCIAL_SPEED_MPS.rail).toBeCloseTo(13.3, 6);
+    expect(COMMERCIAL_SPEED_MPS.rail).toBeGreaterThan(COMMERCIAL_SPEED_MPS.bus);
   });
 
   it('stands no bus shelter at a rail stop — the station is already there', () => {
     const scene = new THREE.Scene();
     const renderer = new TransitRenderer(scene, flatHeightAt);
-    renderer.apply({ lines: [railLine(1, longRoute)], ridership: [220] });
+    renderer.apply({ lines: [railLine(1, longRoute)], ridership: [220], served: [1] });
     expect(renderer.stopCount()).toBe(0);
 
     // The same geometry as a bus line does get shelters.
     const busScene = new THREE.Scene();
     const busRenderer = new TransitRenderer(busScene, flatHeightAt);
-    busRenderer.apply({ lines: [line(1, longRoute, 0xff0000)], ridership: [220] });
+    busRenderer.apply({ lines: [line(1, longRoute, 0xff0000)], ridership: [220], served: [1] });
     expect(busRenderer.stopCount()).toBe(2);
   });
 
   it('keeps a train coupled: its cars stay a fixed distance apart as it runs', () => {
     const scene = new THREE.Scene();
     const renderer = new TransitRenderer(scene, flatHeightAt);
-    renderer.apply({ lines: [railLine(1, longRoute)], ridership: [220] });
+    renderer.apply({ lines: [railLine(1, longRoute)], ridership: [220], served: [1] });
 
     const mesh = scene.children.find(
       (c): c is THREE.InstancedMesh =>
@@ -712,25 +748,21 @@ describe('tram lines (SPEC 27)', () => {
     { x: 40, z: 0 },
   ];
 
-  it('counts trams between the bus and the train scale', () => {
-    expect(ridershipToTramCount(0)).toBe(0);
-    expect(ridershipToTramCount(1)).toBe(1);
-    expect(ridershipToTramCount(100_000)).toBe(MAX_TRAMS_PER_LINE);
-    expect(ridershipToTramCount(400)).toBeLessThan(ridershipToBusCount(400));
-    expect(ridershipToTramCount(400)).toBeGreaterThan(ridershipToTrainCount(400));
-  });
-
   it('draws a tram as two cars', () => {
     const scene = new THREE.Scene();
     const renderer = new TransitRenderer(scene, flatHeightAt);
-    renderer.apply({ lines: [modeLine(1, straightRoute, 'tram')], ridership: [90] });
+    renderer.apply({ lines: [modeLine(1, straightRoute, 'tram')], ridership: [90], served: [1] });
     expect(renderer.busCount()).toBe(TRAM_CARS_PER_SET);
+  });
+
+  it('runs a tram at a bus’s pace, since it shares the street', () => {
+    expect(COMMERCIAL_SPEED_MPS.tram).toBe(COMMERCIAL_SPEED_MPS.bus);
   });
 
   it('stands a shelter at a tram stop — a tram takes no land for a station', () => {
     const scene = new THREE.Scene();
     const renderer = new TransitRenderer(scene, flatHeightAt);
-    renderer.apply({ lines: [modeLine(1, straightRoute, 'tram')], ridership: [90] });
+    renderer.apply({ lines: [modeLine(1, straightRoute, 'tram')], ridership: [90], served: [1] });
     expect(renderer.stopCount()).toBe(straightRoute.length);
   });
 
@@ -738,7 +770,11 @@ describe('tram lines (SPEC 27)', () => {
     const carZ = (mode: TransitLine['mode'], cars: number): number => {
       const scene = new THREE.Scene();
       const renderer = new TransitRenderer(scene, flatHeightAt);
-      renderer.apply({ lines: [modeLine(1, straightRoute, mode)], ridership: [220] });
+      renderer.apply({
+        lines: [modeLine(1, straightRoute, mode)],
+        ridership: [220],
+        served: [1],
+      });
       const mesh = scene.children.find(
         (c): c is THREE.InstancedMesh => c instanceof THREE.InstancedMesh && c.count === cars,
       );
@@ -762,7 +798,7 @@ describe('a vehicle set stays together across the end of its route', () => {
    * Three stops keep every shelter mesh's instance count clear of the vehicle
    * mesh's, so the mesh picked below is unambiguously the cars.
    */
-  const widestSpan = (mode: TransitLine['mode'], riders: number, cars: number): number => {
+  const widestSpan = (mode: TransitLine['mode'], cars: number): number => {
     const scene = new THREE.Scene();
     const renderer = new TransitRenderer(scene, flatHeightAt);
     renderer.apply({
@@ -778,7 +814,8 @@ describe('a vehicle set stays together across the end of its route', () => {
           mode,
         },
       ],
-      ridership: [riders],
+      ridership: [200],
+      served: [1],
     });
     expect(renderer.busCount()).toBe(cars);
     const mesh = scene.children.find(
@@ -789,8 +826,9 @@ describe('a vehicle set stays together across the end of its route', () => {
     const m = new THREE.Matrix4();
     const p = new THREE.Vector3();
     let worst = 0;
-    // A 640 m route at these speeds laps in well under 30 s of sim time.
-    for (let step = 0; step < 120; step += 1) {
+    // A 800 m route laps in 60 s at the train's speed and 144 s at the
+    // tram's; 200 s of travel takes either set round the end at least once.
+    for (let step = 0; step < 800; step += 1) {
       renderer.update(0.25);
       const xs: number[] = [];
       for (let i = 0; i < cars; i += 1) {
@@ -810,10 +848,10 @@ describe('a vehicle set stays together across the end of its route', () => {
   // ~31m, 2 tram cars at a ~11m pitch span ~11m — not merely "less than the
   // route", so a set that drifts a few tiles apart fails just as a torn one does.
   it('never strands a train car at the far end of the line', () => {
-    expect(widestSpan('rail', 220, TRAIN_CARS_PER_SET)).toBeLessThan(35);
+    expect(widestSpan('rail', TRAIN_CARS_PER_SET)).toBeLessThan(35);
   });
 
   it('never strands a tram car at the far end of the line', () => {
-    expect(widestSpan('tram', 90, TRAM_CARS_PER_SET)).toBeLessThan(15);
+    expect(widestSpan('tram', TRAM_CARS_PER_SET)).toBeLessThan(15);
   });
 });

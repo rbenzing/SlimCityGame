@@ -753,6 +753,8 @@ export interface CityStats {
   funds: number;
   monthlyIncome: number;
   monthlyExpenses: number;
+  /** The month's transit running charge inside `monthlyExpenses`, ¢; absent before the first month settles. */
+  transitRunning?: number;
   population: number;
   jobs: number;
   employed: number;
@@ -933,8 +935,9 @@ export interface SimSnapshot {
    * per-line statistical ridership figure. `ridership[i]` corresponds to
    * `lines[i]`. Cosmetic buses ride the existing `vehicles` buffer
    * (VehicleKind.Bus); this channel drives the transit overlay + line list.
+   * The fleet figures are optional so an older mirror ignores them.
    */
-  transit?: { lines: TransitLine[]; ridership: number[] };
+  transit?: { lines: TransitLine[]; ridership: number[] } & Partial<TransitFleetSnapshot>;
   /**
    * Service dispatch: currently-active incidents (cosmetic —
    * coverage/economy unchanged). Service vehicles responding to them ride the
@@ -1325,9 +1328,17 @@ export interface BuildingCatalogEntry {
    * road carries its power, not as a placement gate. `'rail'` is the first real
    * one: a station off the track is not a station, it is a shed. `'water'` is
    * the second: an intake or an outfall stands on a shore, touching the water
-   * it draws from or empties into.
+   * it draws from or empties into. `'tram'` is the third: a tram depot stands
+   * on the tram track, judged by the tier the tram graph is built from.
    */
-  requiresAdjacent?: 'rail' | 'water';
+  requiresAdjacent?: 'rail' | 'water' | 'tram';
+  /**
+   * A transit depot: the vehicles it holds, in buses or in tram or train sets,
+   * for the one mode it serves. A fifth are spares, so it fields the rest onto
+   * that mode's lines, and only while it is built, powered and touching the
+   * network the mode runs on.
+   */
+  depot?: { mode: TransitMode; fleet: number };
   /**
    * The clear tiles this entry keeps between its footprint and the footprint
    * of another building of the same entry, every direction. A wind turbine
@@ -1838,6 +1849,12 @@ export interface SelectionInfo {
    * `Problem.NeedsSchool`.
    */
   missingSchools?: ServiceKind[];
+  /**
+   * A depot's fleet: the vehicles it holds, the ones it fields (its holding
+   * less the spare fifth), and how many of those are out on a line this tick.
+   * Absent for anything that is not a depot.
+   */
+  depot?: { holds: number; fields: number; inService: number };
 }
 
 /**
@@ -1956,6 +1973,27 @@ export interface TransitLine {
    * which vehicle draws it; stops, colour and id are shared.
    */
   mode?: TransitMode;
+  /**
+   * The vehicles the player asked the line to run. Absent means the derived
+   * default: the larger of the fleet that holds a ten-minute headway and the
+   * fleet that carries the peak hour. What the line actually runs is the
+   * depots' allocation, never this figure.
+   */
+  vehicles?: number;
+}
+
+/** What the fleet pools and the lines' service add to the transit snapshot. */
+export interface TransitFleetSnapshot {
+  /** Vehicles each line runs this tick, index-aligned with `lines`; 0 where no depot fields it. */
+  served: number[];
+  /** Vehicles each line asked for, player-set or derived. */
+  requested: number[];
+  /** Minutes between vehicles on each line; 0 where none runs. */
+  headwayMin: number[];
+  /** Each line's running charge for the month, ¢, over the vehicles it runs. */
+  runningCost: number[];
+  /** Vehicles fielded per mode by the connected depots, before allocation. */
+  pools: Record<TransitMode, number>;
 }
 
 /**

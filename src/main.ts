@@ -598,9 +598,10 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       // Lines and their ridership as the worker last reported them: lets a
       // screenshot check confirm a line actually routed and carries anyone
       // before reading anything into a picture of a train.
-      readTransit: (): { lines: unknown[]; ridership: number[] } => ({
+      readTransit: (): { lines: unknown[]; ridership: number[]; served: number[] } => ({
         lines: useCityStore.getState().transitLines,
         ridership: useCityStore.getState().transitRidership,
+        served: useCityStore.getState().transitFleet.served,
       }),
       // Where every live vehicle is, world metres, as the worker last sent
       // them: lets a check count traffic on a road instead of reading it off
@@ -1944,7 +1945,12 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       }
       const hasStopBuilding = (x: number, z: number): boolean => stopBuildings.has(x * 100_000 + z);
       transitRenderer.apply(snap.transit, hasStopBuilding);
-      state.setTransit(snap.transit.lines, snap.transit.ridership);
+      state.setTransit(snap.transit.lines, snap.transit.ridership, {
+        served: snap.transit.served ?? [],
+        requested: snap.transit.requested ?? [],
+        headwayMin: snap.transit.headwayMin ?? [],
+        runningCost: snap.transit.runningCost ?? [],
+      });
       // Refresh the idler crowd from the current stop set (walkers keep
       // their incrementally-tracked building set; an empty delta leaves it be).
       // Enrich each stop with its shelter's ground anchor (the same

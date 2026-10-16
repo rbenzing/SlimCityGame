@@ -271,7 +271,13 @@ function writeStamp(g: GridState, x: number, z: number, w: number, d: number, id
  * footprint into the road, and the row that fits was out of reach. A lot is
  * connected as soon as one of its tiles is.
  */
-function footprintServed(layer: Uint8Array, x: number, z: number, w: number, d: number): boolean {
+export function footprintServed(
+  layer: Uint8Array,
+  x: number,
+  z: number,
+  w: number,
+  d: number,
+): boolean {
   for (let dz = 0; dz < d; dz++) {
     for (let dx = 0; dx < w; dx++) {
       const tx = x + dx;
