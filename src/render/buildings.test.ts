@@ -1231,10 +1231,11 @@ describe('frontage parking setback — additive-only 5th constructor arg, defaul
 });
 
 describe('BuildingInstancer draws a grown building as its stacked tiers', () => {
+  // A mixed-use block still steps; an apartment block of any kind is one body.
   const STEPPED: BuildingCatalogEntry = {
     ...TOWER,
     id: 'stepped',
-    kind: 'garden',
+    kind: 'mixed',
     level: 3,
     height: 30,
   };

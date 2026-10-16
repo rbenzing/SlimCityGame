@@ -18,9 +18,77 @@ import {
   STALL_LENGTH_M,
   STALL_WIDTH_M,
   treesFor,
+  WALK_UP_SIDE_YARD_M,
+  WALK_UP_SPACES_PER_HOME,
+  walkUpParkingRequirement,
+  lotSpacesFor,
 } from './parkingcode';
+import { holdsLotParkingAt, lotParkingAt } from './lotparking';
 
 const catalog = (catalogData as { buildings: BuildingCatalogEntry[] }).buildings;
+
+describe('a walk-up’s car park', () => {
+  const walkUps = catalog.filter((e) => e.kind === 'multiplex' || e.kind === 'garden');
+  const roadSouth = (x: number, z: number): boolean => z === 12 && x >= 8 && x < 14;
+
+  it('lays 1.4 spaces a home, rounded up, and no berths, for every walk-up in the catalog', () => {
+    expect(walkUps).toHaveLength(6);
+    expect(WALK_UP_SPACES_PER_HOME).toBe(1.4);
+    for (const e of walkUps) {
+      const req = walkUpParkingRequirement(e)!;
+      expect(req.spaces, e.id).toBe(Math.ceil(1.4 * e.units!));
+      expect(req.berths, e.id).toBe(0);
+      expect(lotSpacesFor(e), e.id).toEqual(req);
+    }
+    expect(walkUpParkingRequirement(catalog.find((e) => e.id === 'res-multiplex-1')!)!.spaces).toBe(
+      12,
+    );
+    expect(walkUpParkingRequirement(catalog.find((e) => e.id === 'res-medium-3')!)!.spaces).toBe(
+      34,
+    );
+  });
+
+  it('is drawn for no other home and no downtown block, which keep the kerb', () => {
+    for (const e of catalog.filter((c) => c.category === 'res' && !walkUps.includes(c))) {
+      expect(walkUpParkingRequirement(e), e.id).toBeNull();
+      expect(lotSpacesFor(e), e.id).toBeNull();
+    }
+  });
+
+  it('never gates growth: a walk-up is not parked to code, and holds its code wherever it stands', () => {
+    for (const e of walkUps) {
+      expect(drawsLotParking(e), e.id).toBe(false);
+      expect(lotParkingRequirement(e), e.id).toBeNull();
+      for (const rotation of [0, 1, 2, 3] as const) {
+        expect(holdsLotParkingAt(e, 10, 10, rotation, roadSouth, null), e.id).toBe(true);
+      }
+    }
+  });
+
+  it('lays a multiplex what fits on its lot, the stalls counted from the homes, with its body clear of the side lines', () => {
+    for (const e of walkUps.filter((w) => w.kind === 'multiplex')) {
+      const parking = lotParkingAt(e, 10, 10, 0, roadSouth, null)!;
+      expect(parking, e.id).not.toBeNull();
+      expect(parking.layout.required).toBe(walkUpParkingRequirement(e)!.spaces);
+      expect(parking.layout.provided).toBeGreaterThan(0);
+      expect(parking.layout.provided + parking.layout.shortfall).toBe(parking.layout.required);
+      expect(parking.layout.body.u0).toBeGreaterThanOrEqual(WALK_UP_SIDE_YARD_M);
+      expect(parking.layout.body.u1).toBeLessThanOrEqual(
+        parking.layout.lot.u1 - WALK_UP_SIDE_YARD_M,
+      );
+      expect(parking.layout.rearYard).not.toBeNull();
+    }
+  });
+
+  it('lays a garden on its 2×2 lot no car park: its 27.2 m body and a 12.8 m module fill the lot, so a module would park the body on a side line', () => {
+    for (const e of walkUps.filter((w) => w.kind === 'garden')) {
+      expect(e.footprint).toEqual({ w: 2, d: 2 });
+      for (const rotation of [0, 1, 2, 3] as const) {
+        expect(lotParkingAt(e, 10, 10, rotation, roadSouth, null), e.id).toBeNull();
+      }
+    }
+  });
+});
 
 describe('the parking code', () => {
   it('measures stalls, aisles and modules in the codes’ feet', () => {

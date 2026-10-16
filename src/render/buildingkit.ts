@@ -31,8 +31,11 @@ import { footprintForRotation } from '../shared/footprint';
 import { maxHeightUnderBody } from './footprint';
 import { findRoadFacingEdge, localSideOf, NO_STREETS, type Side } from './frontage';
 import { materialHex } from './palette';
-import { partsFor, type BuildingPart } from './archetypes';
+import { isApartmentEntry, isWalkUpEntry, partsFor, type BuildingPart } from './archetypes';
 import { computeCornerOffset, hasSmokestack, smokestackCorner } from './props';
+import { deriveFacadeParams, FLOOR_HEIGHT_METERS, windowGrid, type RGB } from './facade';
+import { hipRoofGeometry } from './hiproof';
+import { buildGableRoofGeometry, roofColorHex, trimColor } from './houses';
 import {
   FUEL_CANOPY_DEPTH_M,
   FUEL_CANOPY_GAP_M,
@@ -121,7 +124,31 @@ const PART_COLOR: Readonly<Record<BuildingPart, number>> = {
   duct: materialHex('metalPlates'),
   chipPile: materialHex('brightWood'),
   stacker: materialHex('metalPlates'),
+  // The apartment kit: the hip and the hood take the building's own roof colour, the box bay its wall's.
+  hipRoofBlock: KIT_DARK,
+  mailKiosk: materialHex('metalPlates'),
+  stoop: materialHex('stainedConcrete'),
+  entryHood: KIT_DARK,
+  breezeway: KIT_DARK,
+  // Slabs, landings and the flight are the walks' concrete; a guard takes the house kit's trim colour, so it reads against the wall.
+  landing: materialHex('cleanConcrete'),
+  landingGuard: KIT_DARK,
+  stairFlight: materialHex('cleanConcrete'),
+  balconySlab: materialHex('cleanConcrete'),
+  balconyGuard: KIT_DARK,
+  patio: materialHex('cleanConcrete'),
+  storefrontBand: materialHex('whiteBrick'),
+  brickPier: materialHex('redBrick'),
+  boxBay: materialHex('whitePlaster'),
+  elevatorBulkhead: materialHex('cleanConcrete'),
+  penthouse: materialHex('metalPlates'),
 };
+
+/** The tower's glass guard: the kit's glazing blue, a solid slab on the kit's own material. */
+const GLAZING_BLUE: RGB = (() => {
+  const c = new THREE.Color(materialHex('bluePlaster'));
+  return [c.r, c.g, c.b];
+})();
 
 /**
  * The parts that glow: sign bands, the pylon and price-sign faces, the
@@ -137,6 +164,7 @@ export const LIT_PARTS: ReadonlySet<BuildingPart> = new Set<BuildingPart>([
   'lobbyPortal',
   'officeCorner',
   'clerestory',
+  'storefrontBand',
 ]);
 
 /** A lit cabinet is white by day on whichever side the sun is: its glow never falls below this share. */
@@ -201,7 +229,28 @@ const PART_GEOMETRY: Partial<Record<BuildingPart, () => THREE.BufferGeometry>> =
   stove: () => new THREE.CylinderGeometry(0.5, 0.5, 1, 14),
   bullet: bulletGeometry,
   chipPile: () => new THREE.ConeGeometry(0.5, 1, 16),
+  hipRoofBlock: hipRoofBlockGeometry,
+  entryHood: entryHoodGeometry,
 };
+
+/**
+ * A walk-up's hip, centred like every other part. Every walk-up body in the
+ * catalog is square, so its four pitches meet at a point: the one pool draws
+ * that, and a longer body would want a ridge of its own.
+ */
+function hipRoofBlockGeometry(): THREE.BufferGeometry {
+  const geometry = hipRoofGeometry(0);
+  geometry.translate(0, -0.5, 0);
+  return geometry;
+}
+
+/** The gabled hood over a multiplex's stoop: the house kit's gable with its ridge running out from the wall, +z. */
+function entryHoodGeometry(): THREE.BufferGeometry {
+  const geometry = buildGableRoofGeometry();
+  geometry.rotateY(Math.PI / 2);
+  geometry.translate(0, -0.5, 0);
+  return geometry;
+}
 
 // --- part dimensions, world meters -----------------------------------------
 
@@ -438,6 +487,71 @@ const STACK_DUCT_HEIGHT_M = 9;
 /** The gap a yard plant keeps off the body and off its neighbours. */
 const PLANT_GAP_M = 1;
 
+// --- the apartment kit, world metres ----------------------------------------
+
+/** A walk-up's hip: 5:12 over 0.45 m eaves, its rise capped as the house kit's is. */
+export const HIP_PITCH = 5 / 12;
+export const HIP_EAVE_M = 0.45;
+export const HIP_RISE_CAP_M = 4.5;
+/** A walk-up's brick base, round every face. */
+export const WALK_UP_BRICK_BASE_HEIGHT_M = 0.9;
+export const WALK_UP_BRICK_BASE_PROUD_M = 0.05;
+/** A USPS cluster box unit on its pedestal: wide, tall, deep. */
+export const MAIL_KIOSK_SIZE_M: readonly [number, number, number] = [0.77, 1.93, 0.45];
+/** The kiosk stands this far off the walk, this far in from the lot's street edge, or this far off the wall beside the door. */
+const MAIL_KIOSK_GAP_M = 0.5;
+const MAIL_KIOSK_IN_M = 1;
+const MAIL_KIOSK_OFF_WALL_M = 0.5;
+/** A multiplex's shared stoop: a landing up two risers, under a gabled hood on two posts. */
+export const STOOP_WIDTH_M = 2.4;
+export const STOOP_DEPTH_M = 1.5;
+export const STOOP_RISE_M = 0.45;
+export const STOOP_RISERS = 2;
+const STOOP_TREAD_M = 0.3;
+export const ENTRY_HOOD_SIZE_M: readonly [number, number] = [2.4, 1.2];
+export const ENTRY_HOOD_POST_M = 0.15;
+/** The hood's underside is the house kit's portico height, its gable the colonial's 8:12. */
+export const ENTRY_HOOD_UNDERSIDE_M = 2.45;
+const ENTRY_HOOD_PITCH = 8 / 12;
+const ENTRY_HOOD_POST_INSET_M = 0.05;
+/** A garden walk-up's breezeway: the open slot, a landing per upper floor and the flight to the first. */
+export const BREEZEWAY_WIDTH_M = 1.8;
+export const BREEZEWAY_PROUD_M = 0.05;
+export const LANDING_DEPTH_M = 1.2;
+export const LANDING_THICKNESS_M = 0.15;
+/** A guard is 42 in, drawn as one thin slab. */
+export const GUARD_HEIGHT_M = 1.07;
+export const GUARD_THICKNESS_M = 0.05;
+export const STAIR_WIDTH_M = 1;
+/** The flight's slab, stringers and treads together, so it reads as a stair and not a line. */
+export const STAIR_SLAB_M = 0.3;
+/** The 7 in rise over 11 in run of a stair: about 32°. */
+export const STAIR_PITCH = Math.atan2(7, 11);
+/** A balcony is 6 ft deep and the bay less 1 m wide; a walk-up's slab is 0.15 m, a block's 0.2 m. */
+export const BALCONY_DEPTH_M = 1.8;
+export const BALCONY_BAY_INSET_M = 1;
+export const WALK_UP_BALCONY_SLAB_M = 0.15;
+export const BLOCK_BALCONY_SLAB_M = 0.2;
+/** A tower's continuous balcony stops this short of each end of the face. */
+export const TOWER_BALCONY_END_M = 1;
+/** A podium's storefront band: glazing over the shop's bulkhead between brick piers. */
+export const STOREFRONT_GLAZING_M = 3;
+export const STOREFRONT_PROUD_M = 0.05;
+export const BRICK_PIER_M = 0.6;
+const BRICK_PIER_PROUD_M = 0.1;
+/** A band piece narrower than this, left beside the lobby portal, is not drawn. */
+const MIN_BAND_PIECE_M = 0.6;
+/** A box bay, 2 ft proud, in the wall's own colour darkened. */
+export const BOX_BAY_PROUD_M = 0.6;
+export const BOX_BAY_DARKEN = 0.78;
+/** An apartment block's parapet band, 30 in. */
+export const BLOCK_PARAPET_M = 0.76;
+/** The elevator bulkhead (along the street, tall, deep) and the mechanical penthouse, each this far back from the street face. */
+export const ELEVATOR_BULKHEAD_SIZE_M: readonly [number, number, number] = [3, 4.1, 4];
+export const PENTHOUSE_HEIGHT_M = 4.1;
+export const PENTHOUSE_PLATE_SHARE = 0.3;
+export const ROOF_SETBACK_FROM_STREET_M = 3;
+
 export interface PartPlacement {
   readonly part: BuildingPart;
   /** Box size in world meters (w along X, h along Y, d along Z), unrotated, before any yaw. */
@@ -448,6 +562,8 @@ export interface PartPlacement {
   readonly yaw?: number;
   /** Elevation of the part's +Z end above its -Z end, radians, for a bridge or a duct that runs on the slant. */
   readonly pitch?: number;
+  /** The instance colour, 0..1 a channel, for a part in its building's own colour; the part's chart colour otherwise. */
+  readonly color?: RGB;
 }
 
 /** A rectangle in the building's unrotated frame, metres from its footprint centre. */
@@ -483,6 +599,10 @@ export interface KitLot {
   lot: LocalRect;
   /** The drive's mouth at the street edge. */
   curbCut: LocalRect;
+  /** The walk from the street to the body's entrance, where the layout has one. */
+  walk: LocalRect | null;
+  /** The walk along the body's street face, which a kiosk may stand on; the same rectangle as in `taken`. */
+  frontWalk: LocalRect | null;
   /** Planted islands nearest the entrance first, none holding a tree. */
   islands: LocalRect[];
   /** Where the loading berths are, when there are any. */
@@ -1502,13 +1622,576 @@ function chipYard(r: Rear): PartPlacement[] {
   return best?.at ?? [];
 }
 
+// --- the apartment kit --------------------------------------------------------
+
+/** What the apartment kit lays its parts from: the body, the podium under it where there is one, the frontage, the lot and the seed. */
+interface Block {
+  entry: BuildingCatalogEntry;
+  baseBox: SetbackBox;
+  topBox: SetbackBox;
+  side: Side | null;
+  lot: KitLot | null;
+  buildingId: number;
+  podium: SetbackBox | null;
+}
+
+/** The storeys the facade cuts a body into and each one's height: 3.2 m, but for a body that does not divide by it. */
+export function storeysOf(
+  entry: BuildingCatalogEntry,
+  baseBox: SetbackBox,
+): { rows: number; pitch: number } {
+  const { rows } = windowGrid(entry, baseBox.h);
+  return { rows, pitch: baseBox.h / rows };
+}
+
+/** The window bays across a face of `span`: the facade's columns, each this wide. */
+export function windowBays(
+  entry: BuildingCatalogEntry,
+  span: number,
+): { count: number; width: number } {
+  const { cols } = windowGrid(entry, FLOOR_HEIGHT_METERS);
+  return { count: cols, width: span / cols };
+}
+
+/** A hex colour as the 0..1 channels an instance takes. */
+function rgbOf(hex: number): RGB {
+  const c = new THREE.Color(hex);
+  return [c.r, c.g, c.b];
+}
+
+/** The two faces a tower's balconies run along: the longer pair, or the street's and its back on a square plan. */
+function longFaces(box: SetbackBox, side: Side): readonly Side[] {
+  if (box.w > box.d + 1e-9) return ['N', 'S'];
+  if (box.d > box.w + 1e-9) return ['E', 'W'];
+  return [side, oppositeSide(side)];
+}
+
+/**
+ * A balcony on `face`: a slab `width` wide at `along` with its floor at `y`,
+ * a guard across its front and, for a bay's balcony, along its sides, every
+ * guard in `guardColor`: the trim colour of a painted rail, or the glazing
+ * blue of a tower's glass.
+ */
+function balcony(
+  box: SetbackBox,
+  face: Side,
+  along: number,
+  width: number,
+  y: number,
+  slab: number,
+  sides: boolean,
+  guardColor: RGB,
+): PartPlacement[] {
+  const half = halfDepthTo(box, face);
+  const top = y + slab;
+  const out: PartPlacement[] = [
+    onSide(
+      'balconySlab',
+      face,
+      along,
+      half + BALCONY_DEPTH_M / 2,
+      width,
+      BALCONY_DEPTH_M,
+      slab,
+      y + slab / 2,
+    ),
+    {
+      ...onSide(
+        'balconyGuard',
+        face,
+        along,
+        half + BALCONY_DEPTH_M - GUARD_THICKNESS_M / 2,
+        width,
+        GUARD_THICKNESS_M,
+        GUARD_HEIGHT_M,
+        top + GUARD_HEIGHT_M / 2,
+      ),
+      color: guardColor,
+    },
+  ];
+  if (!sides) return out;
+  for (const s of [-1, 1]) {
+    out.push({
+      ...onSide(
+        'balconyGuard',
+        face,
+        along + (s * (width - GUARD_THICKNESS_M)) / 2,
+        half + BALCONY_DEPTH_M / 2,
+        GUARD_THICKNESS_M,
+        BALCONY_DEPTH_M,
+        GUARD_HEIGHT_M,
+        top + GUARD_HEIGHT_M / 2,
+      ),
+      color: guardColor,
+    });
+  }
+  return out;
+}
+
+/**
+ * The mail kiosk beside the walk, as near the street as the car park leaves
+ * ground for it, on whichever side of the walk is free; or beside the door
+ * where the lot has no walk. `prefer` says which side to try first and
+ * `doorHalf` how wide the door's own parts are.
+ */
+function mailKiosk(b: Block, doorHalf: number, prefer: 1 | -1): PartPlacement[] {
+  const { baseBox, side, lot } = b;
+  if (!side) return [];
+  const [w, h, d] = MAIL_KIOSK_SIZE_M;
+  const alongX = isAlongX(side);
+  const walk = lot?.walk ?? null;
+  const half = halfDepthTo(baseBox, side);
+  const candidates: PartPlacement[] = [];
+  if (lot && walk) {
+    const { nx, nz } = sideNormal(side);
+    const edge = alongX ? (nz > 0 ? lot.lot.z1 : -lot.lot.z0) : nx > 0 ? lot.lot.x1 : -lot.lot.x0;
+    const [lo, hi] = alongX ? [walk.x0, walk.x1] : [walk.z0, walk.z1];
+    for (let out = edge - MAIL_KIOSK_IN_M - d / 2; out > half + d / 2; out -= MAIL_KIOSK_IN_M) {
+      for (const k of [prefer, -prefer]) {
+        const along = (k > 0 ? hi : lo) + k * (MAIL_KIOSK_GAP_M + w / 2);
+        candidates.push(onSide('mailKiosk', side, along, out, w, d, h, h / 2, true));
+      }
+    }
+  }
+  const out = half + MAIL_KIOSK_OFF_WALL_M + d / 2;
+  for (const k of [prefer, -prefer]) {
+    const along = k * (doorHalf + MAIL_KIOSK_GAP_M + w / 2);
+    candidates.push(onSide('mailKiosk', side, along, out, w, d, h, h / 2, true));
+  }
+  // The kiosk is reached from the front walk, so it may stand on it, and on nothing else that is laid.
+  const blocked = (lot?.taken ?? []).filter((t) => t !== lot?.frontWalk);
+  const free = candidates.find(
+    (p) => standsFree(p, lot) && !blocked.some((t) => rectsOverlap(t, placementBounds(p))),
+  );
+  return free ? [free] : [];
+}
+
+/**
+ * The storefront band across a podium's street face: a brick pier at each end
+ * and every bay, the shop's bulkhead and lit glazing between them, and the
+ * middle left clear for a lobby portal `portal` wide.
+ */
+function podiumBand(
+  entry: BuildingCatalogEntry,
+  podium: SetbackBox,
+  side: Side,
+  portal: number,
+): PartPlacement[] {
+  const span = facadeSpan(podium, side);
+  const { count, width } = windowBays(entry, span);
+  const piers: number[] = [];
+  for (let i = 0; i <= count; i += 1) {
+    if (i === 0) piers.push(-span / 2 + BRICK_PIER_M / 2);
+    else if (i === count) piers.push(span / 2 - BRICK_PIER_M / 2);
+    else piers.push(-span / 2 + i * width);
+  }
+  const blocked: readonly [number, number] | null = portal > 0 ? [-portal / 2, portal / 2] : null;
+  const clear = (a: number, b: number): boolean => !blocked || b <= blocked[0] || a >= blocked[1];
+  const out: PartPlacement[] = [];
+  for (const at of piers) {
+    if (!clear(at - BRICK_PIER_M / 2, at + BRICK_PIER_M / 2)) continue;
+    out.push(
+      againstFacade(
+        'brickPier',
+        podium,
+        side,
+        BRICK_PIER_M,
+        BRICK_PIER_PROUD_M,
+        podium.h,
+        podium.h / 2,
+        at,
+      ),
+    );
+  }
+  for (let i = 0; i < count; i += 1) {
+    const a = piers[i]! + BRICK_PIER_M / 2;
+    const b = piers[i + 1]! - BRICK_PIER_M / 2;
+    const pieces: (readonly [number, number])[] =
+      blocked && !clear(a, b)
+        ? [
+            [a, Math.min(b, blocked[0])],
+            [Math.max(a, blocked[1]), b],
+          ]
+        : [[a, b]];
+    for (const [p0, p1] of pieces) {
+      if (p1 - p0 < MIN_BAND_PIECE_M) continue;
+      const w = p1 - p0;
+      const c = (p0 + p1) / 2;
+      out.push(
+        againstFacade(
+          'bulkhead',
+          podium,
+          side,
+          w,
+          BULKHEAD_PROUD_M,
+          BULKHEAD_HEIGHT_M,
+          BULKHEAD_HEIGHT_M / 2,
+          c,
+        ),
+        againstFacade(
+          'storefrontBand',
+          podium,
+          side,
+          w,
+          STOREFRONT_PROUD_M,
+          STOREFRONT_GLAZING_M,
+          BULKHEAD_HEIGHT_M + STOREFRONT_GLAZING_M / 2,
+          c,
+        ),
+      );
+    }
+  }
+  return out;
+}
+
+/** A walk-up's hip over its eaves, the ridge along the frontage, its rise capped. */
+function hipRoofOf(
+  baseBox: SetbackBox,
+  side: Side | null,
+  baseTop: number,
+  color: RGB,
+): PartPlacement {
+  const w = baseBox.w + 2 * HIP_EAVE_M;
+  const d = baseBox.d + 2 * HIP_EAVE_M;
+  const rise = Math.min(HIP_RISE_CAP_M, (HIP_PITCH * Math.min(w, d)) / 2);
+  const turned = side !== null && !isAlongX(side);
+  return {
+    part: 'hipRoofBlock',
+    size: turned ? [d, rise, w] : [w, rise, d],
+    offset: [0, baseTop + rise / 2, 0],
+    ...(turned ? { yaw: Math.PI / 2 } : {}),
+    color,
+  };
+}
+
+/** A band round every face of `box`, `height` tall with its top at `top`, `proud` of the wall, the end walls over the corners. */
+function wrapFaces(
+  part: BuildingPart,
+  box: SetbackBox,
+  proud: number,
+  height: number,
+  top: number,
+): PartPlacement[] {
+  return facesOf(box).map((face) =>
+    againstFacade(
+      part,
+      box,
+      face.side,
+      face.span + (isAlongX(face.side) ? 2 * proud : 0),
+      proud,
+      height,
+      top - height / 2,
+    ),
+  );
+}
+
+/**
+ * The apartment kit, placed: a walk-up's hip, base and kiosk with the
+ * multiplex's stoop and hood or the garden's breezeways, stairs, balconies
+ * and patios; a mid-rise's storefront podium, box bays, balconies, parapet,
+ * bulkhead and units; a tower's lobby, storefront podium, continuous
+ * balconies, parapet and penthouse. Everything on the street face is skipped
+ * where the block fronts no street. Pure.
+ */
+function apartmentParts(b: Block): PartPlacement[] {
+  const { entry, baseBox, topBox, side, lot, buildingId } = b;
+  const out: PartPlacement[] = [];
+  const baseTop = baseBox.yOffset + baseBox.h;
+  const roofY = topBox.yOffset + topBox.h;
+  const { rows, pitch } = storeysOf(entry, baseBox);
+  const roofRgb = rgbOf(roofColorHex(buildingId));
+  const { wallColor } = deriveFacadeParams(entry, buildingId);
+  // A rail is painted as a house's trim is: white on a dark wall, dark only on a light one.
+  const railRgb = rgbOf(trimColor(buildingId, wallColor));
+
+  if (isWalkUpEntry(entry)) {
+    out.push(hipRoofOf(baseBox, side, baseTop, roofRgb));
+    out.push(
+      ...wrapFaces(
+        'brickBase',
+        baseBox,
+        WALK_UP_BRICK_BASE_PROUD_M,
+        WALK_UP_BRICK_BASE_HEIGHT_M,
+        WALK_UP_BRICK_BASE_HEIGHT_M,
+      ),
+    );
+  }
+  if (!side) return out;
+  const half = halfDepthTo(baseBox, side);
+
+  if (entry.kind === 'multiplex') {
+    out.push(
+      againstFacade(
+        'stoop',
+        baseBox,
+        side,
+        STOOP_WIDTH_M,
+        STOOP_DEPTH_M,
+        STOOP_RISE_M,
+        STOOP_RISE_M / 2,
+      ),
+    );
+    const riser = STOOP_RISE_M / STOOP_RISERS;
+    out.push(
+      onSide(
+        'stoop',
+        side,
+        0,
+        half + STOOP_DEPTH_M + STOOP_TREAD_M / 2,
+        STOOP_WIDTH_M,
+        STOOP_TREAD_M,
+        riser,
+        riser / 2,
+      ),
+    );
+    const [hw, hd] = ENTRY_HOOD_SIZE_M;
+    const rise = (hw / 2) * ENTRY_HOOD_PITCH;
+    out.push({
+      ...onSide(
+        'entryHood',
+        side,
+        0,
+        half + hd / 2,
+        hw,
+        hd,
+        rise,
+        ENTRY_HOOD_UNDERSIDE_M + rise / 2,
+        true,
+      ),
+      color: roofRgb,
+    });
+    const postH = ENTRY_HOOD_UNDERSIDE_M - STOOP_RISE_M;
+    const inset = ENTRY_HOOD_POST_M / 2 + ENTRY_HOOD_POST_INSET_M;
+    for (const k of [-1, 1]) {
+      out.push(
+        onSide(
+          'signPole',
+          side,
+          k * (hw / 2 - inset),
+          half + hd - inset,
+          ENTRY_HOOD_POST_M,
+          ENTRY_HOOD_POST_M,
+          postH,
+          STOOP_RISE_M + postH / 2,
+        ),
+      );
+    }
+    out.push(...mailKiosk(b, STOOP_WIDTH_M / 2, 1));
+  }
+
+  if (entry.kind === 'garden') {
+    // The flight stands on one side of the street slot by seed, and on the other side of the rear one.
+    const seedSide: 1 | -1 = buildingId % 2 === 0 ? 1 : -1;
+    const faces: { face: Side; flight: 1 | -1 }[] = [
+      { face: side, flight: seedSide },
+      { face: oppositeSide(side), flight: seedSide === 1 ? -1 : 1 },
+    ];
+    for (const { face, flight } of faces) {
+      const h = halfDepthTo(baseBox, face);
+      const span = facadeSpan(baseBox, face);
+      const alongX = isAlongX(face);
+      const { nx, nz } = sideNormal(face);
+      out.push(
+        againstFacade(
+          'breezeway',
+          baseBox,
+          face,
+          BREEZEWAY_WIDTH_M,
+          BREEZEWAY_PROUD_M,
+          baseTop,
+          baseTop / 2,
+        ),
+      );
+      for (let f = 1; f < rows; f += 1) {
+        const y = f * pitch;
+        out.push(
+          onSide(
+            'landing',
+            face,
+            0,
+            h + BREEZEWAY_PROUD_M + LANDING_DEPTH_M / 2,
+            BREEZEWAY_WIDTH_M,
+            LANDING_DEPTH_M,
+            LANDING_THICKNESS_M,
+            y + LANDING_THICKNESS_M / 2,
+          ),
+          {
+            ...onSide(
+              'landingGuard',
+              face,
+              0,
+              h + BREEZEWAY_PROUD_M + LANDING_DEPTH_M - GUARD_THICKNESS_M / 2,
+              BREEZEWAY_WIDTH_M,
+              GUARD_THICKNESS_M,
+              GUARD_HEIGHT_M,
+              y + LANDING_THICKNESS_M + GUARD_HEIGHT_M / 2,
+            ),
+            color: railRgb,
+          },
+        );
+      }
+      // The flight from the ground to the first landing runs along the wall beside the slot, its top at the slot's edge.
+      let stair: PartPlacement | null = null;
+      if (rows > 1) {
+        const run = pitch / Math.tan(STAIR_PITCH);
+        const length = pitch / Math.sin(STAIR_PITCH);
+        const along = flight * (BREEZEWAY_WIDTH_M / 2 + run / 2);
+        const outFromWall = h + BREEZEWAY_PROUD_M + STAIR_WIDTH_M / 2;
+        const toward = alongX ? { x: -flight, z: 0 } : { x: 0, z: -flight };
+        stair = {
+          part: 'stairFlight',
+          size: [STAIR_WIDTH_M, STAIR_SLAB_M, length],
+          offset: alongX
+            ? [along, pitch / 2, nz * outFromWall]
+            : [nx * outFromWall, pitch / 2, along],
+          yaw: Math.atan2(toward.x, toward.z),
+          pitch: STAIR_PITCH,
+        };
+        out.push(stair);
+      }
+      // A patio and a balcony per upper floor in every bay clear of the slot and the flight.
+      const { count, width } = windowBays(entry, span);
+      const stairBounds = stair ? placementBounds(stair) : null;
+      for (let i = 0; i < count; i += 1) {
+        const c = bayCentre(span, count, i);
+        if (Math.abs(c) - width / 2 < BREEZEWAY_WIDTH_M / 2) continue;
+        const bay = width - BALCONY_BAY_INSET_M;
+        const patio = onSide(
+          'patio',
+          face,
+          c,
+          h + BALCONY_DEPTH_M / 2,
+          bay,
+          BALCONY_DEPTH_M,
+          WALK_UP_BALCONY_SLAB_M,
+          WALK_UP_BALCONY_SLAB_M / 2,
+        );
+        if (stairBounds && rectsOverlap(placementBounds(patio), stairBounds)) continue;
+        if (!(lot?.taken ?? []).some((t) => rectsOverlap(t, placementBounds(patio))))
+          out.push(patio);
+        for (let f = 1; f < rows; f += 1) {
+          out.push(
+            ...balcony(baseBox, face, c, bay, f * pitch, WALK_UP_BALCONY_SLAB_M, true, railRgb),
+          );
+        }
+      }
+    }
+    out.push(...mailKiosk(b, BREEZEWAY_WIDTH_M / 2, seedSide === 1 ? -1 : 1));
+  }
+
+  if (entry.kind !== 'midrise' && entry.kind !== 'tower') return out;
+  const podiumBox = b.podium ?? baseBox;
+  const podiumTop = b.podium ? b.podium.yOffset + b.podium.h : 0;
+  out.push(...podiumBand(entry, podiumBox, side, entry.kind === 'tower' ? LOBBY_WIDTH_M : 0));
+  out.push(...wrapFaces('parapetBand', baseBox, PARAPET_BAND_PROUD_M, BLOCK_PARAPET_M, baseTop));
+  /** The floors above the podium: the row whose floor is the podium's top is the first. */
+  const upperFloors = (): number[] => {
+    const ys: number[] = [];
+    for (let f = 1; f < rows; f += 1) if (f * pitch >= podiumTop - 1e-9) ys.push(f * pitch);
+    return ys;
+  };
+
+  if (entry.kind === 'midrise') {
+    const dark: RGB = [
+      wallColor[0] * BOX_BAY_DARKEN,
+      wallColor[1] * BOX_BAY_DARKEN,
+      wallColor[2] * BOX_BAY_DARKEN,
+    ];
+    const bayTop = baseTop - BLOCK_PARAPET_M;
+    for (const face of [side, oppositeSide(side)]) {
+      const span = facadeSpan(baseBox, face);
+      const { count, width } = windowBays(entry, span);
+      const bay = width - BALCONY_BAY_INSET_M;
+      for (let i = 0; i < count; i += 1) {
+        const c = bayCentre(span, count, i);
+        if (i % 2 === 0) {
+          out.push({
+            ...againstFacade(
+              'boxBay',
+              baseBox,
+              face,
+              bay,
+              BOX_BAY_PROUD_M,
+              bayTop - podiumTop,
+              (podiumTop + bayTop) / 2,
+              c,
+            ),
+            color: dark,
+          });
+        } else {
+          for (const y of upperFloors()) {
+            out.push(...balcony(baseBox, face, c, bay, y, BLOCK_BALCONY_SLAB_M, true, railRgb));
+          }
+        }
+      }
+    }
+    const [bw, bh, bd] = ELEVATOR_BULKHEAD_SIZE_M;
+    const bulkhead = onSide(
+      'elevatorBulkhead',
+      side,
+      0,
+      halfDepthTo(topBox, side) - ROOF_SETBACK_FROM_STREET_M - bd / 2,
+      bw,
+      bd,
+      bh,
+      roofY + bh / 2,
+    );
+    out.push(bulkhead);
+    const bulk = placementBounds(bulkhead);
+    out.push(
+      ...roofEquipment(topBox, roofY, side, null, true).filter(
+        (p) => !rectsOverlap(placementBounds(p), bulk),
+      ),
+    );
+  }
+
+  if (entry.kind === 'tower') {
+    out.push(
+      againstFacade(
+        'lobbyPortal',
+        podiumBox,
+        side,
+        LOBBY_WIDTH_M,
+        LOBBY_PROJECT_M,
+        LOBBY_HEIGHT_M,
+        LOBBY_HEIGHT_M / 2,
+      ),
+    );
+    for (const face of longFaces(baseBox, side)) {
+      const span = facadeSpan(baseBox, face) - 2 * TOWER_BALCONY_END_M;
+      for (const y of upperFloors()) {
+        out.push(...balcony(baseBox, face, 0, span, y, BLOCK_BALCONY_SLAB_M, false, GLAZING_BLUE));
+      }
+    }
+    const share = Math.sqrt(PENTHOUSE_PLATE_SHARE);
+    const pw = topBox.w * share;
+    const pd = topBox.d * share;
+    const across = isAlongX(side) ? pd : pw;
+    out.push(
+      onSide(
+        'penthouse',
+        side,
+        0,
+        halfDepthTo(topBox, side) - ROOF_SETBACK_FROM_STREET_M - across / 2,
+        isAlongX(side) ? pw : pd,
+        across,
+        PENTHOUSE_HEIGHT_M,
+        roofY + PENTHOUSE_HEIGHT_M / 2,
+      ),
+    );
+  }
+  return out;
+}
+
 /**
  * Every part this building's archetype calls for, placed. `topBox` carries the
  * roof parts, `baseBox` the facade ones; `side` is the frontage, without which
  * a dock or a canopy would face nothing and is skipped. `lot` is the building's
  * car park where it parks one to code: the parts that stand on the lot (a
  * pylon at the drive, cart corrals, a drive-through) need it, and stand
- * nowhere without it. `buildingId` finds the stack a steelworks' duct runs to.
+ * nowhere without it. `buildingId` finds the stack a steelworks' duct runs to
+ * and seeds the apartment kit; `podium` is the tier under a block's slab,
+ * which its storefront band and lobby stand against.
  */
 export function computePartPlacements(
   entry: BuildingCatalogEntry,
@@ -1517,11 +2200,27 @@ export function computePartPlacements(
   side: Side | null,
   lot: KitLot | null = null,
   buildingId: number | null = null,
+  podium: SetbackBox | null = null,
 ): PartPlacement[] {
   const out: PartPlacement[] = [];
   const roofY = topBox.yOffset + topBox.h;
   const baseTop = baseBox.yOffset + baseBox.h;
   const parts = partsFor(entry);
+  let block: PartPlacement[] | null = null;
+  const blockOf = (part: BuildingPart): PartPlacement[] => {
+    if (!block) {
+      block = isApartmentEntry(entry)
+        ? apartmentParts({ entry, baseBox, topBox, side, lot, buildingId: buildingId ?? 0, podium })
+        : [];
+    }
+    return block.filter((p) => p.part === part);
+  };
+  if (isApartmentEntry(entry)) {
+    for (const part of parts) out.push(...blockOf(part));
+    return lot
+      ? out.filter((p) => !LOT_BOUND_PARTS.has(p.part) || rectInside(placementBounds(p), lot.lot))
+      : out;
+  }
   // Doors stand on the dock where there is one, and on the ground where not.
   const doorSill = parts.includes('loadingDock') ? DOCK_HEIGHT_M : 0;
   const span = side ? facadeSpan(baseBox, side) : 0;
@@ -2427,6 +3126,29 @@ const WALL_WRAP_PARTS: ReadonlySet<BuildingPart> = new Set<BuildingPart>([
   'parapetBand',
 ]);
 
+/**
+ * The apartment kit's parts that hang off a wall or stand on the ground, which
+ * a body on its lot line leaves off that side rather than reach over it. The
+ * hip and its eaves, the roof parts and the podium's band stay: they are the
+ * building's silhouette.
+ */
+const LOT_BOUND_PARTS: ReadonlySet<BuildingPart> = new Set<BuildingPart>([
+  'breezeway',
+  'landing',
+  'landingGuard',
+  'stairFlight',
+  'balconySlab',
+  'balconyGuard',
+  'patio',
+  'boxBay',
+  'stoop',
+  'entryHood',
+  'signPole',
+  'mailKiosk',
+  'brickBase',
+  'parapetBand',
+]);
+
 /** The two stretches of a supermarket's frontage either side of its entry tower. */
 function towerWings(span: number): { along: number; width: number }[] {
   const width = (span - TOWER_WIDTH_M) / 2;
@@ -2551,9 +3273,15 @@ function rotateLocal(x: number, z: number, rotation: 0 | 1 | 2 | 3): { x: number
 /**
  * The lot plan carried into the building's own frame: every rectangle and
  * point on the plan as metres from `centre`, the body's middle, in the
- * building's unrotated footprint frame.
+ * building's unrotated footprint frame. `rearYardFree` leaves the rear yard
+ * out of the taken ground: a walk-up's is the lawn its patios stand on.
  */
-export function kitLotOf(plan: LotPlan, centre: LocalPoint, rotation: 0 | 1 | 2 | 3): KitLot {
+export function kitLotOf(
+  plan: LotPlan,
+  centre: LocalPoint,
+  rotation: 0 | 1 | 2 | 3,
+  rearYardFree = false,
+): KitLot {
   const back = ((4 - rotation) % 4) as 0 | 1 | 2 | 3;
   const toLocal = (u: number, v: number): LocalPoint => {
     const world = lotPointToWorld(plan.frame, u, v);
@@ -2621,9 +3349,12 @@ export function kitLotOf(plan: LotPlan, centre: LocalPoint, rotation: 0 | 1 | 2 
     };
   }
 
+  const frontWalk = layout.frontWalk ? rect(layout.frontWalk) : null;
   return {
     lot: rect(layout.lot),
     curbCut: rect({ u0: layout.curbCut.u0, u1: layout.curbCut.u1, v0: 0, v1: 1 }),
+    walk: layout.entranceWalk ? rect(layout.entranceWalk) : null,
+    frontWalk,
     islands,
     dock,
     loadingFacing,
@@ -2646,8 +3377,8 @@ export function kitLotOf(plan: LotPlan, centre: LocalPoint, rotation: 0 | 1 | 2 
       ...berths,
       ...trailers,
       ...(layout.forecourt ? [rect(layout.forecourt)] : []),
-      ...(layout.rearYard ? [rect(layout.rearYard)] : []),
-      ...(layout.frontWalk ? [rect(layout.frontWalk)] : []),
+      ...(layout.rearYard && !rearYardFree ? [rect(layout.rearYard)] : []),
+      ...(frontWalk ? [frontWalk] : []),
       ...(layout.entranceWalk ? [rect(layout.entranceWalk)] : []),
       ...laneRects,
     ],
@@ -2688,7 +3419,7 @@ export function kitPlanFor(
     building.rotation,
     kerb,
   );
-  const { boxes } = computeSetbacks(entry, building.id, frontage);
+  const { boxes, podium } = computeSetbacks(entry, building.id, frontage);
   const baseBox = boxes[0];
   const topBox = boxes[boxes.length - 1];
   if (!baseBox || !topBox) return null;
@@ -2704,8 +3435,16 @@ export function kitPlanFor(
     x: (building.x + lot.w / 2) * TILE_METERS + frontage.centerXM,
     z: (building.z + lot.d / 2) * TILE_METERS + frontage.centerZM,
   };
-  const kitLot = plan ? kitLotOf(plan, centre, building.rotation) : null;
-  const placements = computePartPlacements(entry, baseBox, topBox, localSide, kitLot, building.id);
+  const kitLot = plan ? kitLotOf(plan, centre, building.rotation, isWalkUpEntry(entry)) : null;
+  const placements = computePartPlacements(
+    entry,
+    baseBox,
+    topBox,
+    localSide,
+    kitLot,
+    building.id,
+    podium ?? null,
+  );
 
   const back = ((4 - building.rotation) % 4) as 0 | 1 | 2 | 3;
   const corner = (tx: number, tz: number): LocalPoint =>
@@ -2894,7 +3633,8 @@ export class BuildingKitRenderer {
       _matrix.compose(_position, _quaternion, _scale);
       pool.setMatrixAt(slot, _matrix);
 
-      _color.setHex(PART_COLOR[p.part]);
+      if (p.color) _color.setRGB(p.color[0], p.color[1], p.color[2]);
+      else _color.setHex(PART_COLOR[p.part]);
       pool.setColorAt(slot, _color);
 
       held.push({ part: p.part, slot });

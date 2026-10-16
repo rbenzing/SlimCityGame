@@ -48,7 +48,7 @@ import { deriveFacadeParams, FLOOR_HEIGHT_METERS } from './facade';
 import { maxHeightUnderBody } from './footprint';
 import { findStreetFacingEdge, NO_STREETS, type StreetLookup } from './frontage';
 import { lotPlanFor, lotPointToWorld } from './lotplan';
-import { isFarmEntry, isHouseEntry } from './archetypes';
+import { isApartmentEntry, isFarmEntry, isHouseEntry } from './archetypes';
 import type { KerbSurroundings } from '../shared/kerblayout';
 
 // ---------------------------------------------------------------------------
@@ -113,15 +113,25 @@ export function bodyFillFor(entry: BuildingCatalogEntry): { x: number; z: number
 
 /** A tower stands on a podium this many storeys tall that fills its lot. */
 export const PODIUM_STOREYS = 2;
+/** A mid-rise stands on a one-storey podium of the 15 ft a retail ground floor is zoned to. */
+export const MIDRISE_PODIUM_M = 4.6;
+
+/** How tall a podium a block stands on, in metres; null for a block that stands on the ground. */
+export function podiumHeightOf(entry: BuildingCatalogEntry): number | null {
+  if (entry.kind === 'tower') return PODIUM_STOREYS * FLOOR_HEIGHT_METERS;
+  if (entry.kind === 'midrise') return MIDRISE_PODIUM_M;
+  return null;
+}
 
 /**
  * How many stacked tiers a building's body is drawn as: its level, 1 to 3,
  * for a flat-roofed grown building; one for a ploppable, which has no level,
- * for a house, whose pitched roof has nowhere to step, and for a farm, whose
- * buildings are its own kit.
+ * for a house, whose pitched roof has nowhere to step, for an apartment
+ * block, which is one walk-up, one plate or one slab at every level, and for
+ * a farm, whose buildings are its own kit.
  */
 export function tierCountOf(entry: BuildingCatalogEntry): number {
-  if (isHouseEntry(entry) || isFarmEntry(entry)) return 1;
+  if (isHouseEntry(entry) || isFarmEntry(entry) || isApartmentEntry(entry)) return 1;
   return Math.min(3, Math.max(1, Math.round(entry.level ?? 1)));
 }
 
@@ -308,13 +318,14 @@ export function computeSetbacks(
     yOffset += h;
   }
 
-  if (entry.kind !== 'tower') return { boxes };
+  const podiumH = podiumHeightOf(entry);
+  if (podiumH === null) return { boxes };
   // The podium fills the lot to the ceiling every body keeps, less the same
   // frontage span the slab gives up.
   const podium: SetbackBox = {
     w: entry.footprint.w * TILE_METERS * MAX_FOOTPRINT_FILL - (frontage?.spanXM ?? 0),
     d: entry.footprint.d * TILE_METERS * MAX_FOOTPRINT_FILL - (frontage?.spanZM ?? 0),
-    h: Math.min(totalHeight, PODIUM_STOREYS * FLOOR_HEIGHT_METERS),
+    h: Math.min(totalHeight, podiumH),
     yOffset: 0,
   };
   return { boxes, podium };

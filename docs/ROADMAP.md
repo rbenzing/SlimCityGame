@@ -25,7 +25,7 @@ current behavior only and carry no dates of their own._
 
 ## Status (2026-09-29)
 
-**Test suite:** 6,565 tests passing across 189 test files, run 2026-10-15.
+**Test suite:** 6,599 tests passing across 189 test files, run 2026-10-15.
 This is the only test count in the documentation set. When the suite changes
 again, update the figure here and nowhere else.
 
@@ -147,6 +147,14 @@ not a test to fix.
   `tools/frame-budget.mjs` logs about 27 "road network (command): tile(s)
   derived differently … roadMask" errors at the junctions; the city stands,
   but the conversion disagrees with itself there.
+- A multiplex's stoop step stands 0.6 m into its car park's aisle and its
+  mail kiosk on the front walk the aisle overlaps by 1.2 m; the lot layout
+  should hold the aisle off the entrance walk. The courtyard apartments have
+  no walk from the sidewalk to their street breezeway. The mid-rise and the
+  tower now draw one body at the catalog height, which holds more floor than
+  their `units` were counted on when they stepped; the unit counts were left
+  as they were. `window.__slimcity.readKit()` reports only the kit's first
+  six part kinds.
 - The placement ghost does not read `requiresAdjacent`: a reactor, pumping
   station, drain or treatment works shows as placeable over dry land, and only
   the commit is refused, with a toast. The ghost should refuse it as it refuses
@@ -354,6 +362,35 @@ roads, and pinning the Three.js version. See [adr/](engineering/adr/README.md).
 ---
 
 ## 10. History (newest first)
+
+### Apartment blocks and towers, drawn as the four US multi-family types (apartments slice of building detail, built 2026-10-15)
+
+The four block kinds — multiplex, courtyard apartments, mid-rise flats and
+the tower — had no kit parts and stepped into setback tiers at levels 2 and 3. They now carry the apartment kit, at sourced sizes, and each draws one
+body at every level as a house does. Nothing in the simulation changes.
+
+- **The walk-ups.** A 5:12 hip roof with 0.45 m eaves, a 0.9 m brick base
+  and a USPS cluster mailbox. The multiplex gets a stoop under a gabled hood
+  as its one shared entry and a car park laid to code at 1.4 spaces a home,
+  its residents' cars in it. The courtyard apartments get a breezeway on the
+  street and rear faces, an open slot with a concrete landing and 42 in rail
+  at every upper floor and a stair to the first, a 6 ft balcony for every
+  upper home and a patio for every ground one; their 27.2 m body leaves no
+  room for a car park on the 2×2 lot, so they park at the kerb.
+- **The 5-over-1.** A one-storey 15 ft podium at the lot's fill with a lit
+  storefront band between brick piers, box bays 2 ft proud on alternate bays
+  in the alternate panel colour, balconies in the bays between, a 30 in
+  parapet, an elevator bulkhead and rooftop units.
+- **The tower.** A lit lobby portal and storefront band on its two-storey
+  podium, a continuous balcony with a glass rail at every floor on both long
+  faces, a parapet and a mechanical penthouse over 30% of the plate, 10 ft
+  back from the street.
+- Rails on the walk-ups and the mid-rise follow the house kit's trim rule,
+  white on a dark wall, after black ones read as blocks.
+- A **tall tier of 4,000 triangles** for the mid-rise and the tower, the two
+  rarest zoned kinds; the heaviest is 2,796. The walk-ups stay in the block
+  tier at 654 or under. The Metropolis gains about 40 draw calls and 0.3 M
+  triangles, and its frame does not move.
 
 ### Industry and farms, drawn as the plants and farmsteads they are (industry slice of building detail, built 2026-10-15)
 

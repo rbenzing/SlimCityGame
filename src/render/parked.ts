@@ -37,7 +37,7 @@ import { lotPlanFor, lotPointToWorld, type LotPlan } from './lotplan';
 import { InstancedSlotPool } from './massing';
 import { buildBroadleafGeometry } from './trees';
 import { parkingLaneOffset } from '../shared/roadprofile';
-import { isFarmEntry, isHouseEntry } from './archetypes';
+import { isFarmEntry, isHouseEntry, isWalkUpEntry } from './archetypes';
 import {
   edgeFrameFor,
   findRoadFacingEdge,
@@ -57,8 +57,8 @@ import { pushConformingQuad } from './groundquad';
 // Tunables
 // ---------------------------------------------------------------------------
 
-/** Lot category: commercial rows park customer cars, industrial rows mix in trucks. */
-export type LotCategory = 'com' | 'ind';
+/** Lot category: commercial and residential rows park cars, industrial rows mix in trucks. */
+export type LotCategory = 'com' | 'ind' | 'res';
 
 // ---------------------------------------------------------------------------
 // Where a car is allowed to stand: the road's rule, then the building's.
@@ -123,6 +123,11 @@ export function curbCutTileFor(
   return roadAt(tile.x, tile.z) ? tile : { x: edge.roadTileX, z: edge.roadTileZ };
 }
 
+/** The buildings that lay a car park on their lot: suburban commerce and industry, and the two walk-ups. */
+function laysCarPark(entry: BuildingCatalogEntry): boolean {
+  return entry.category === 'com' || entry.category === 'ind' || isWalkUpEntry(entry);
+}
+
 /**
  * A building's lot plan when it parks on its own lot: suburban, fronting a
  * road, with a space to draw once its kerb credit is counted. A lot the kerb
@@ -136,7 +141,7 @@ function parkingPlanFor(
   rotation: 0 | 1 | 2 | 3,
   kerb: KerbSurroundings | null,
 ): LotPlan | null {
-  if (entry.category !== 'com' && entry.category !== 'ind') return null;
+  if (!laysCarPark(entry)) return null;
   const plan = lotPlanFor(entry, x, z, roadAt, rotation, kerb);
   return plan && plan.layout.provided > 0 ? plan : null;
 }
@@ -165,9 +170,7 @@ export function hasOwnLotParking(
   kerb: KerbSurroundings | null = null,
 ): boolean {
   if (isFarmEntry(entry)) return false;
-  if (entry.category === 'com' || entry.category === 'ind') {
-    return parkingPlanFor(entry, x, z, roadAt, rotation, kerb) !== null;
-  }
+  if (laysCarPark(entry)) return parkingPlanFor(entry, x, z, roadAt, rotation, kerb) !== null;
   return isHouseEntry(entry);
 }
 
@@ -284,7 +287,7 @@ export function stallYawJitter(buildingId: number, stallIndex: number): number {
  * industrial lots mix box-trucks/pickups with workers' cars (~40% cars).
  */
 export function stallKind(category: LotCategory, buildingId: number, stallIndex: number): number {
-  if (category === 'com') return VehicleKind.Car;
+  if (category !== 'ind') return VehicleKind.Car;
   return hash2(buildingId, stallIndex * 3 + 2) % 5 < 2 ? VehicleKind.Car : VehicleKind.Truck;
 }
 
@@ -331,7 +334,8 @@ export const SHORT_STAY_OCCUPANCY = 0.5;
  */
 export function lotOccupancy(category: OccupancyRhythm, dayFraction: number): number {
   const hour = (((dayFraction % 1) + 1) % 1) * 24;
-  if (category === 'residents') {
+  // A walk-up's car park keeps its residents' hours, as their kerb does.
+  if (category === 'residents' || category === 'res') {
     if (hour < 7 || hour >= 19) return RESIDENT_NIGHT_OCCUPANCY;
     const spread = RESIDENT_NIGHT_OCCUPANCY - RESIDENT_DAY_OCCUPANCY;
     if (hour < 9) return RESIDENT_NIGHT_OCCUPANCY - spread * ramp(hour, 7, 9);
@@ -993,18 +997,18 @@ export class ParkedCarRenderer {
     // A farm's truck stands in its own yard, never in a painted bay or at a kerb.
     if (!entry || isFarmEntry(entry)) return;
     // Parked-car bays + frontage apron are for COMMERCIAL and INDUSTRIAL lots
-    // only. Homes park off-street (garage/driveway, render/houses.ts); utilities
-    // (water tower, wind turbine, power, etc.), parks and civic plinths get no
-    // parking apron — a water tower next to a road must not sprout a grey
-    // parking rectangle bleeding into the street.
+    // and the two walk-ups. Homes park off-street (garage/driveway,
+    // render/houses.ts); utilities (water tower, wind turbine, power, etc.),
+    // parks and civic plinths get no parking apron — a water tower next to a
+    // road must not sprout a grey parking rectangle bleeding into the street.
     //
     // Everything else falls through to the kerb, which is where a building with
     // nowhere of its own puts its cars — and only there.
-    if (entry.category !== 'com' && entry.category !== 'ind') {
+    if (!laysCarPark(entry)) {
       this.applyRoadside(building, entry);
       return;
     }
-    const category: LotCategory = entry.category;
+    const category = entry.category as LotCategory;
 
     // A downtown building, one that fronts no road, or one its kerb credit or
     // the small-use exemption leaves nothing to hold, parks at the kerb if

@@ -1,6 +1,6 @@
 # Building detail — design
 
-- **Status:** The measurement, the performance slice, the houses, the storefronts and industry and farms built 2026-10-15; apartment blocks and towers next
+- **Status:** The measurement, the performance slice, the houses, the storefronts, industry and farms and the apartment blocks and towers built 2026-10-15; the kitless ploppables next
 - **Date:** 2026-10-14
 
 ## What the player gets
@@ -150,8 +150,15 @@ one; the slice's document says which it used.
    farmhouse, the equipment shed and the cattle fence. The spec is
    [the industrial kit's parts](../../art/buildings.md#the-industrial-kits-parts)
    and [the farmstead's parts](../../art/buildings.md#the-farmsteads-parts).
-6. **Apartment blocks and towers.** The garden apartment's breezeways, the
-   5-over-1's panel bays and podium, the tower's balconies and base.
+6. **Apartment blocks and towers** (built 2026-10-15). One body at every
+   level in place of stepped tiers; the walk-ups' hip roof, brick base and
+   mailbox, the multiplex's stoop and hood and car park, the courtyard
+   apartments' breezeways with their landings, rails and stair, balconies
+   and patios; the 5-over-1's retail podium with its lit storefront band,
+   box bays in the alternate panel colour, balconies, parapet and bulkhead;
+   the tower's lobby and storefront podium, continuous glass-railed
+   balconies and penthouse. The spec is
+   [the apartment kit's parts](../../art/buildings.md#the-apartment-kits-parts).
 7. **The kitless ploppables.** Clinic, rail station and bus stop. The airport
    stays a box until it has an epic of its own.
 8. **The earliest kits, redone.** Coal plant, incinerator, water pump, drain,

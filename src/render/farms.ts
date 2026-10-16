@@ -33,6 +33,7 @@ import { massingLifecycleTint, InstancedSlotPool } from './massing';
 import { materialUnit, type MaterialName } from './palette';
 import { maxHeightOverRect } from './footprint';
 import { TRIM_WHITE, trimColor } from './houses';
+import { faceted, hipRoofGeometry } from './hiproof';
 import { VEHICLE_PALETTE_HEX, VehicleKitPool } from './vehicles';
 import {
   BARN_EAVE_SHARE,
@@ -235,14 +236,6 @@ function hash1(n: number): number {
 // every axis the instance scales, so an instance's scale is its size in metres.
 // ---------------------------------------------------------------------------
 
-/** Flat-shaded triangles from a list of [x, y, z] corners, three per face. */
-function faceted(corners: ReadonlyArray<readonly [number, number, number]>): THREE.BufferGeometry {
-  const geometry = new THREE.BufferGeometry();
-  geometry.setAttribute('position', new THREE.Float32BufferAttribute(corners.flat(), 3));
-  geometry.computeVertexNormals();
-  return geometry;
-}
-
 /** The barn's gambrel: a steep lower pitch to 60% of the rise, a shallow upper one to the ridge. */
 const GAMBREL: ReadonlyArray<readonly [number, number]> = [
   [0.5, 0],
@@ -321,35 +314,6 @@ function cowShape(): THREE.BufferGeometry {
 }
 
 /**
- * A hipped roof with its ridge along X, spanning x and z over [-0.5, 0.5] and
- * rising to 1: four pitches, the two ends hipped back to a ridge `ridge` of
- * the length long (a 9 × 8 m plan over a 1 m ridge is 1/9).
- */
-function hipRoof(ridge: number): THREE.BufferGeometry {
-  const r = ridge / 2;
-  return faceted([
-    [-0.5, 0, 0.5],
-    [0.5, 0, 0.5],
-    [r, 1, 0],
-    [-0.5, 0, 0.5],
-    [r, 1, 0],
-    [-r, 1, 0],
-    [-r, 1, 0],
-    [r, 1, 0],
-    [0.5, 0, -0.5],
-    [-r, 1, 0],
-    [0.5, 0, -0.5],
-    [-0.5, 0, -0.5],
-    [0.5, 0, 0.5],
-    [0.5, 0, -0.5],
-    [r, 1, 0],
-    [-0.5, 0, -0.5],
-    [-0.5, 0, 0.5],
-    [-r, 1, 0],
-  ]);
-}
-
-/**
  * A cylinder of unit width and a height of `height` metres, banded in vertex
  * colour: a hoop `BAND_THICKNESS_M` thick at the top of every `spacing`
  * metres, darker than the stave between, so the bands cost no instance.
@@ -409,7 +373,7 @@ const SHAPES: Readonly<Record<Part, () => THREE.BufferGeometry>> = {
   barnRoof: () => roofSlopes(GAMBREL),
   barnGable: () => roofGables(GAMBREL),
   houseBody: baseBox,
-  houseRoof: () => hipRoof((HOUSE_W_M - HOUSE_D_M) / (HOUSE_W_M + 2 * ROOF_OVERHANG_M)),
+  houseRoof: () => hipRoofGeometry((HOUSE_W_M - HOUSE_D_M) / (HOUSE_W_M + 2 * ROOF_OVERHANG_M)),
   silo: () => bandedCylinder(SILO_HEIGHT_M, SILO_HOOP_M),
   siloDome: () =>
     new THREE.SphereGeometry(0.5, 14, 6, 0, Math.PI * 2, 0, Math.PI / 2).scale(1, 2, 1),

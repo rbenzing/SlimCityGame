@@ -15,7 +15,7 @@ import { RoofPropRenderer } from './props';
 import { FarmRenderer } from './farms';
 import { LotRenderer } from './lots';
 import { UTILITY_KIT_CATALOG_IDS, UtilityKitRenderer, cemeteryPlots } from './utilitykits';
-import { isHouseEntry } from './archetypes';
+import { isHouseEntry, isWalkUpEntry } from './archetypes';
 import { streetLookupOf } from './frontage';
 import {
   BuildingState,
@@ -32,6 +32,8 @@ const CATALOG = (catalogData as { buildings: BuildingCatalogEntry[] }).buildings
 const KIT_TIER = 30000;
 const BLOCK_TIER = 1500;
 const HOUSE_TIER = 3000;
+/** A mid-rise or a tower: a balcony at every floor is the type's read, and the two are the rarest kinds. */
+const TALL_TIER = 4000;
 /** A farm counts everything on its lot: an orchard of about 370 trees at 92 triangles each is the heaviest. */
 const FARM_TIER = 40000;
 /** The triangles a commercial block's own parts add: awnings, canopy, pylon, units, lane furniture. */
@@ -126,6 +128,20 @@ function kitTriangles(entry: BuildingCatalogEntry): number {
 }
 
 const zoned = CATALOG.filter((e) => (e.zone ?? 0) > 0 && e.zone !== ZoneType.Agriculture);
+
+type ZonedTier = 'house' | 'block' | 'tall';
+const ZONED_TIERS: Readonly<Record<ZonedTier, number>> = {
+  house: HOUSE_TIER,
+  block: BLOCK_TIER,
+  tall: TALL_TIER,
+};
+
+/** The tier a zoned building is held to: the homes, the mid-rise and the tower, and every other block. */
+function tierNameOf(entry: BuildingCatalogEntry): ZonedTier {
+  if (isHouseEntry(entry)) return 'house';
+  if (entry.kind === 'midrise' || entry.kind === 'tower') return 'tall';
+  return 'block';
+}
 const farms = CATALOG.filter((e) => e.zone === ZoneType.Agriculture);
 const kits = UTILITY_KIT_CATALOG_IDS.map((id) => CATALOG.find((e) => e.id === id)!);
 
@@ -176,7 +192,7 @@ describe('geometry budget: triangles per building, every part', () => {
     const table: Record<string, Record<string, number | string>> = {};
     for (const { entry, triangles } of kitRows) table[entry.id] = { tier: 'kit', total: triangles };
     for (const { entry, parts } of zonedRows) {
-      table[entry.id] = { tier: isHouseEntry(entry) ? 'house' : 'block', ...parts };
+      table[entry.id] = { tier: tierNameOf(entry), ...parts };
     }
     for (const { entry, parts } of farmRows) table[entry.id] = { tier: 'farm', ...parts };
     // eslint-disable-next-line no-console
@@ -210,13 +226,19 @@ describe('geometry budget: triangles per building, every part', () => {
     },
   );
 
-  it.each(zonedRows.map((r) => [r.entry.id, r.triangles, isHouseEntry(r.entry)] as const))(
+  it.each(zonedRows.map((r) => [r.entry.id, r.triangles, tierNameOf(r.entry)] as const))(
     'zoned %s stays within its tier',
-    (_id, triangles, house) => {
+    (_id, triangles, tier) => {
       expect(triangles).toBeGreaterThan(0);
-      expect(triangles).toBeLessThanOrEqual(house ? HOUSE_TIER : BLOCK_TIER);
+      expect(triangles).toBeLessThanOrEqual(ZONED_TIERS[tier]);
     },
   );
+
+  it('holds the two walk-ups, car park and cars included, in the block tier', () => {
+    const walkUps = zonedRows.filter((r) => isWalkUpEntry(r.entry));
+    expect(walkUps).toHaveLength(6);
+    for (const r of walkUps) expect(r.triangles, r.entry.id).toBeLessThanOrEqual(BLOCK_TIER);
+  });
 
   it.each(
     zonedRows

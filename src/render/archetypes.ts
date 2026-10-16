@@ -11,7 +11,7 @@
  * choice is testable without a scene and identical on every machine.
  */
 import { ZoneType, type BuildingCatalogEntry } from '../shared/types';
-import { isHouseKind } from '../shared/buildingkind';
+import { isApartmentKind, isHouseKind, isWalkUpKind } from '../shared/buildingkind';
 
 export type BuildingArchetype =
   /** Small industrial units: a low shed with roller doors at grade and no dock. */
@@ -42,7 +42,7 @@ export type BuildingArchetype =
   | 'hotel'
   /** Detached and row housing, which already carries a pitched roof. */
   | 'house'
-  /** Denser housing: flat-roofed, no shopfront. */
+  /** Denser housing: the walk-ups under a hip roof, the mid-rise and the tower on a podium, dressed by kind. */
   | 'apartment'
   /** A farmstead: its own kit of barn, silos, fields and stock (farms.ts), no industrial parts. */
   | 'farm'
@@ -110,7 +110,23 @@ export type BuildingPart =
   | 'skipBridge'
   | 'duct'
   | 'chipPile'
-  | 'stacker';
+  | 'stacker'
+  | 'hipRoofBlock'
+  | 'mailKiosk'
+  | 'stoop'
+  | 'entryHood'
+  | 'breezeway'
+  | 'landing'
+  | 'landingGuard'
+  | 'stairFlight'
+  | 'balconySlab'
+  | 'balconyGuard'
+  | 'patio'
+  | 'storefrontBand'
+  | 'brickPier'
+  | 'boxBay'
+  | 'elevatorBulkhead'
+  | 'penthouse';
 
 /**
  * Whether an industrial building is the CLEAN kind, taken from whether it
@@ -143,6 +159,20 @@ export function isHeavyIndustryEntry(entry: BuildingCatalogEntry): boolean {
  */
 export function isHouseEntry(entry: BuildingCatalogEntry): boolean {
   return isHouseKind(entry.kind);
+}
+
+/**
+ * An apartment block of one of the four kinds the apartment kit dresses:
+ * one body at every level, a hip roof on the walk-ups, a podium under the
+ * mid-rise and the tower. No roof clutter: each carries its own roof parts.
+ */
+export function isApartmentEntry(entry: BuildingCatalogEntry): boolean {
+  return isApartmentKind(entry.kind);
+}
+
+/** A multiplex or a garden walk-up: it parks a car park on its lot and lawns the rest. */
+export function isWalkUpEntry(entry: BuildingCatalogEntry): boolean {
+  return isWalkUpKind(entry.kind);
 }
 
 export function archetypeFor(entry: BuildingCatalogEntry): BuildingArchetype {
@@ -292,6 +322,45 @@ const INDUSTRY_PARTS: Readonly<Record<string, readonly BuildingPart[]>> = {
   paper: ['monitorRoof', 'tanks', 'chipPile', 'stacker'],
 };
 
+/** The walk-ups' shared parts: a hip roof, a brick base and the mail kiosk by the walk. */
+const WALK_UP_PARTS: readonly BuildingPart[] = ['hipRoofBlock', 'brickBase', 'mailKiosk'];
+
+/** The storefront band of a podium: lit glazing over a bulkhead between brick piers. */
+const PODIUM_BAND_PARTS: readonly BuildingPart[] = ['bulkhead', 'storefrontBand', 'brickPier'];
+
+/** An apartment block of a known kind is dressed by its kind; one of no kind keeps the plain body. */
+const APARTMENT_PARTS: Readonly<Record<string, readonly BuildingPart[]>> = {
+  multiplex: [...WALK_UP_PARTS, 'stoop', 'entryHood', 'signPole'],
+  garden: [
+    ...WALK_UP_PARTS,
+    'breezeway',
+    'landing',
+    'landingGuard',
+    'stairFlight',
+    'balconySlab',
+    'balconyGuard',
+    'patio',
+  ],
+  midrise: [
+    ...PODIUM_BAND_PARTS,
+    'boxBay',
+    'balconySlab',
+    'balconyGuard',
+    'parapetBand',
+    'elevatorBulkhead',
+    'rooftopUnit',
+    'roofHatch',
+  ],
+  tower: [
+    'lobbyPortal',
+    ...PODIUM_BAND_PARTS,
+    'balconySlab',
+    'balconyGuard',
+    'parapetBand',
+    'penthouse',
+  ],
+};
+
 /** An office tower, the third level, stands a screened cooling tower on its roof in place of rooftop units. */
 const OFFICE_TOWER_PARTS: readonly BuildingPart[] = [
   'lobbyPortal',
@@ -307,6 +376,7 @@ export function partsFor(entry: BuildingCatalogEntry): readonly BuildingPart[] {
     return INDUSTRY_PARTS[entry.kind ?? ''] ?? PARTS[archetype];
   }
   if (archetype === 'office' && isOfficeTower(entry)) return OFFICE_TOWER_PARTS;
+  if (archetype === 'apartment') return APARTMENT_PARTS[entry.kind ?? ''] ?? PARTS.apartment;
   return PARTS[archetype];
 }
 

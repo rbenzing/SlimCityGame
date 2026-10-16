@@ -10,7 +10,14 @@ import { footprintForRotation } from './footprint';
 import { bodyMetresFor } from './floorarea';
 import { kerbCreditFor, type KerbSurroundings } from './kerblayout';
 import { layoutLot, type LotLayout } from './lotlayout';
-import { lotParkingRequirement, onSiteSpaces } from './parkingcode';
+import { isWalkUpKind } from './buildingkind';
+import {
+  drawsLotParking,
+  lotSpacesFor,
+  onSiteSpaces,
+  WALK_UP_REAR_YARD_M,
+  WALK_UP_SIDE_YARD_M,
+} from './parkingcode';
 import { findRoadFacingEdge, type RoadFacingEdge } from './roadedge';
 import type { BuildingCatalogEntry, BuildingKind } from './types';
 
@@ -27,7 +34,7 @@ const TANK_FARM_KINDS: ReadonlySet<BuildingKind> = new Set(['chemical', 'paper']
 /** The kinds that dock trailers at a bank of doors and keep a truck court before it. */
 const TRUCK_COURT_KINDS: ReadonlySet<BuildingKind> = new Set(['warehouse', 'foodplant']);
 
-/** The ground a kind keeps clear of its car park: a forecourt in front, a tank farm behind. */
+/** The ground a kind keeps clear of its car park: a forecourt in front, a tank farm or a walk-up's rear lawn behind. */
 export function lotYardsFor(entry: BuildingCatalogEntry): {
   forecourtDepth?: number;
   rearYard?: number;
@@ -38,6 +45,7 @@ export function lotYardsFor(entry: BuildingCatalogEntry): {
       ? { forecourtDepth: FUEL_CANOPY_GAP_M + FUEL_CANOPY_DEPTH_M }
       : {}),
     ...(kind && TANK_FARM_KINDS.has(kind) ? { rearYard: TANK_GAP_M + TANK_DIAMETER_M } : {}),
+    ...(kind === 'multiplex' || kind === 'garden' ? { rearYard: WALK_UP_REAR_YARD_M[kind] } : {}),
   };
 }
 
@@ -51,7 +59,7 @@ export function lotLayoutFor(
   alongX: boolean,
   kerbCredit = 0,
 ): LotLayout | null {
-  const requirement = lotParkingRequirement(entry);
+  const requirement = lotSpacesFor(entry);
   if (!requirement) return null;
   const lot = footprintForRotation(entry, rotation);
   const body = bodyMetresFor(entry);
@@ -90,20 +98,29 @@ export function lotParkingAt(
   roadAt: (tileX: number, tileZ: number) => boolean,
   kerb: KerbSurroundings | null,
 ): LotParking | null {
-  if (!lotParkingRequirement(entry)) return null;
+  if (!lotSpacesFor(entry)) return null;
   const lot = footprintForRotation(entry, rotation);
   const edge = findRoadFacingEdge(x, z, lot.w, lot.d, roadAt);
   if (!edge) return null;
   const kerbCredit = kerb ? kerbCreditFor(kerb, { x, z, w: lot.w, d: lot.d }, edge.side) : 0;
   const alongX = edge.side === 'N' || edge.side === 'S';
   const layout = lotLayoutFor(entry, rotation, alongX, kerbCredit)!;
+  if (isWalkUpKind(entry.kind) && !clearOfSideLines(layout, WALK_UP_SIDE_YARD_M)) return null;
   return { edge, kerbCredit, layout };
+}
+
+/** Whether the layout keeps its body at least `yard` in from both side lot lines. */
+function clearOfSideLines(layout: LotLayout, yard: number): boolean {
+  const { body, lot } = layout;
+  return body.u0 >= lot.u0 + yard - 1e-9 && body.u1 <= lot.u1 - yard + 1e-9;
 }
 
 /**
  * Whether `entry` meets its parking code standing there: its lot holds the
  * spaces its kerb credit leaves, with their accessible spaces, and its berths.
- * A building that parks no lot to code, or fronts no road, always does.
+ * A building that parks no lot to code, or fronts no road, always does; a
+ * walk-up's car park is drawn, never required, so a home is never held back
+ * by it.
  */
 export function holdsLotParkingAt(
   entry: BuildingCatalogEntry,
@@ -113,5 +130,6 @@ export function holdsLotParkingAt(
   roadAt: (tileX: number, tileZ: number) => boolean,
   kerb: KerbSurroundings | null,
 ): boolean {
+  if (!drawsLotParking(entry)) return true;
   return lotParkingAt(entry, x, z, rotation, roadAt, kerb)?.layout.fits ?? true;
 }
