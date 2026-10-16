@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.67.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.66.0...slimcity-v1.67.0) (2026-10-16)
+
+
+### Features
+
+* **sim:** transport depots field a line's vehicles and charge what they run ([59335e7](https://github.com/rbenzing/SlimCityGame/commit/59335e7b1d3626c7136574bebba681db963be676))
+* **sim:** transport depots field a line's vehicles and charge what they run ([057ce54](https://github.com/rbenzing/SlimCityGame/commit/057ce54e54c98c3d681a9e0a5c7048b0ede03311))
+
 ## [1.66.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.65.0...slimcity-v1.66.0) (2026-10-16)
 
 
