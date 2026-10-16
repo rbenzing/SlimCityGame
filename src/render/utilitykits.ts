@@ -126,6 +126,25 @@
  *  - bus-stop: a lawn plate with the walk and boarding pad ("busStopGrounds"),
  *    the shared shelter busshelter.ts builds ("busStopShelter") and the flag
  *    sign and receptacle ("busStopProps").
+ *  - bus-depot, bus-garage: one recipe at two sizes. The paved yard with the
+ *    drive, the stall paint and the fuel pads ("busBaseYard"), the shop hall
+ *    with its framed bay doors, the wash lane's gantry, the office, the fuel
+ *    canopies and the fence ("busBaseShop"), the door and office panes on the
+ *    lit material ("busBaseLit") and a bus on every stall the fleet has at
+ *    home ("busBaseBus": one InstancedMesh for every bus base's buses, whose
+ *    count follows setDepotFleets, not the building delta).
+ *  - tram-depot: the lot in its track frame, the lead off the long edge or
+ *    off the end, with the concrete apron and fence ("tramDepotYard" or
+ *    "tramDepotYardEnd"), the lead, ladder and stabling roads as one merged
+ *    pair of rails ("tramDepotTrack" or "tramDepotTrackEnd"), the catenary
+ *    poles and crossarms ("tramDepotPoles"), the shop hall and office
+ *    ("tramDepotShop"), their panes ("tramDepotLit") and the stabled sets'
+ *    cars ("tramDepotCar", refit by setDepotFleets).
+ *  - rail-yard: the same in the railway's frame with ballast under every
+ *    road and the drive and fuelling stand ("railYardYard" or
+ *    "railYardYardEnd", "railYardTrack" or "railYardTrackEnd"), the shop and
+ *    office ("railYardShop"), their panes ("railYardLit") and the train sets'
+ *    cars ("railYardCar").
  *
  * Every placement is a PURE function of (catalog footprint[, buildingId]) —
  * no THREE/DOM dependency, no Math.random/Date.now anywhere — mirroring
@@ -165,6 +184,16 @@ import {
 } from './roadsmesh';
 import { UNIT_HEIGHT_M, UNIT_LENGTH_M, UNIT_WIDTH_M } from './buildingkit';
 import { BUS_SHELTER, buildBusShelterGeometry } from './busshelter';
+import {
+  buildTrainCarGeometry,
+  buildTramCarGeometry,
+  TRAIN_CAR_PITCH,
+  TRAIN_CAR_SIZE,
+  TRAIN_CARS_PER_SET,
+  TRAM_CAR_PITCH,
+  TRAM_CAR_SIZE,
+  TRAM_CARS_PER_SET,
+} from './transit';
 
 // ---------------------------------------------------------------------------
 // Registry: acts ONLY on catalog ids in its registry —
@@ -202,6 +231,10 @@ export const UTILITY_KIT_CATALOG_IDS: readonly string[] = [
   'clinic',
   'rail-station',
   'bus-stop',
+  'bus-depot',
+  'bus-garage',
+  'tram-depot',
+  'rail-yard',
 ];
 
 export type UtilityKitPartKind =
@@ -297,7 +330,26 @@ export type UtilityKitPartKind =
   | 'depotCar'
   | 'busStopGrounds'
   | 'busStopShelter'
-  | 'busStopProps';
+  | 'busStopProps'
+  | 'busBaseYard'
+  | 'busBaseShop'
+  | 'busBaseLit'
+  | 'busBaseBus'
+  | 'tramDepotYard'
+  | 'tramDepotYardEnd'
+  | 'tramDepotTrack'
+  | 'tramDepotTrackEnd'
+  | 'tramDepotPoles'
+  | 'tramDepotShop'
+  | 'tramDepotLit'
+  | 'tramDepotCar'
+  | 'railYardYard'
+  | 'railYardYardEnd'
+  | 'railYardTrack'
+  | 'railYardTrackEnd'
+  | 'railYardShop'
+  | 'railYardLit'
+  | 'railYardCar';
 
 // ---------------------------------------------------------------------------
 // Shared pure helpers (each render/*.ts file keeps its own local copy of
@@ -7299,6 +7351,978 @@ export function busStopShelterAnchor(
 }
 
 // ---------------------------------------------------------------------------
+// the depots: a bus base at two sizes, a tram depot and a rail yard, each
+// read by its bay doors and the fleet on its apron. The bus base takes local
+// +Z as the street side. The tram depot and the rail yard are laid out in a
+// yard frame: the lot's long side along X, the track along the frame's -Z
+// edge, or off its -X end where the track runs along a short edge of the
+// lot. The vehicles parked are what the depot holds less what is out on the
+// lines, refit by setDepotFleets. Only the shops' door panes light, on the
+// stations' material.
+// ---------------------------------------------------------------------------
+
+/** A bus stall for a 10 m bus, and the aisle it swings out through. */
+export const BUS_BASE_STALL = { w: 3.6, l: 11.5 };
+export const BUS_BASE_AISLE_M = 12.2;
+/** The drive from the street, through a gate in the 2.1 m fence. */
+export const BUS_BASE_DRIVE_M = 7.2;
+/** A drive-through bay: 4.9 m wide under a 4.1 m clear door, 60 ft long where the lot has the room. */
+export const BUS_BASE_BAY = { w: 4.9, l: 18.3, clear: 4.1 };
+/** The roof over the bays' clear height, up to the depot's 5.5 m. */
+export const BUS_BASE_ROOF_M = 1.4;
+/** A fuelling island: a 1.2 × 4 m canopy on two posts over a dispenser, clear of a 3 m bus. */
+export const BUS_BASE_FUEL = { w: 1.2, l: 4, clear: 4.27, post: 0.2, slab: 0.25 };
+/** The office floor at the shop's street end; the garage stacks two. */
+export const BUS_BASE_OFFICE_M2 = 125;
+const BUS_BASE_STOREY_M = 3.2;
+const BUS_BASE_WALL_M = 0.3;
+const BUS_BASE_DOOR_PIER_M = 0.3;
+const BUS_BASE_OFFICE_DEPTH_M = 9.8;
+const BUS_BASE_FUEL_PITCH_M = 12;
+const BUS_BASE_GANTRY = { t: 0.35, out: 1.2 };
+const BUS_BASE_WINDOW = { w: 2, h: 1.4, pitch: 4.2 };
+
+const BUS_BASE_HALL_RGB: RGB = [0.6, 0.62, 0.62];
+const BUS_BASE_OFFICE_RGB: RGB = [0.72, 0.7, 0.65];
+const BUS_BASE_DOOR_RGB: RGB = [0.86, 0.87, 0.84];
+const BUS_BASE_MOUTH_RGB: RGB = [0.14, 0.15, 0.16];
+const BUS_BASE_CANOPY_RGB: RGB = [0.82, 0.82, 0.8];
+const BUS_BASE_DISPENSER_RGB: RGB = [0.5, 0.18, 0.14];
+/** The fleets' liveries: vehicle paint, outside the surface channel cap. */
+const BUS_LIVERY_HEX = 0xe8e4da;
+const TRAM_LIVERY_HEX = 0xd6dde4;
+const TRAIN_LIVERY_HEX = 0xc6ccd2;
+
+/** A bus stall: its centre and which way the bus in it noses (0 to +Z, 2 to -Z). */
+export interface BusBaseStall extends Vec2 {
+  turn: 0 | 2;
+}
+
+/** A door in a wall: where its centre stands on the plan, the wall's outward normal, its width along the wall and its clear height. */
+export interface YardDoor extends Vec2 {
+  nx: -1 | 0 | 1;
+  nz: -1 | 0 | 1;
+  w: number;
+  h: number;
+}
+
+interface BusBasePlan {
+  perRow: number;
+  modules: number;
+  bays: number;
+  fuel: number;
+  officeStoreys: number;
+}
+
+/** Two rows of five about one aisle for the depot; four rows of nine about two for the garage. */
+function busBasePlan(footprint: FootprintSize): BusBasePlan {
+  return footprint.w * footprint.d >= 12
+    ? { perRow: 9, modules: 2, bays: 4, fuel: 2, officeStoreys: 2 }
+    : { perRow: 5, modules: 1, bays: 1, fuel: 1, officeStoreys: 1 };
+}
+
+export interface BusBaseLayout {
+  rows: Rect[];
+  aisles: Rect[];
+  /** In fill order: the first stalls hold the first buses at home. */
+  stalls: BusBaseStall[];
+  drive: Rect;
+  gate: Gap;
+  fence: Rect;
+  hall: Rect;
+  office: Rect;
+  hallHeight: number;
+  officeHeight: number;
+  officeStoreys: number;
+  /** The maintenance bays' doors on the hall's yard face, nearest the office first. */
+  bayDoors: YardDoor[];
+  /** The wash lane's open mouth at the hall's far end, and the gantry posts before it. */
+  washMouth: YardDoor;
+  gantry: Vec2[];
+  officeDoor: YardDoor;
+  panes: DepotPane[];
+  /** Each fuelling island's centre, its canopy's long axis along Z. */
+  fuel: Vec2[];
+}
+
+/**
+ * Where everything stands on a bus base, in the footprint frame with +Z to
+ * the street. The stall rows along the lot's left side about their aisles,
+ * each entered from the drive that runs down their right from the gate; the
+ * shop to the right of the drive at the street end, its bays stacked behind
+ * the office and opening onto the drive; the fuelling islands in the strip
+ * behind the shop. Pure; fixed per footprint.
+ */
+export function computeBusBaseLayout(footprint: FootprintSize): BusBaseLayout {
+  const plan = busBasePlan(footprint);
+  const { halfW, halfD } = footprintHalfExtents(footprint);
+  const inset = GEN_FENCE_INSET_M;
+  const x0 = -halfW + inset;
+  const rowW = plan.perRow * BUS_BASE_STALL.w;
+  const moduleD = 2 * BUS_BASE_STALL.l + BUS_BASE_AISLE_M;
+  const rows: Rect[] = [];
+  const aisles: Rect[] = [];
+  const stalls: BusBaseStall[] = [];
+  for (let m = 0; m < plan.modules; m++) {
+    const base = -halfD + inset + m * moduleD;
+    const a: Rect = { x0, x1: x0 + rowW, z0: base, z1: base + BUS_BASE_STALL.l };
+    const aisle: Rect = { x0, x1: x0 + rowW, z0: a.z1, z1: a.z1 + BUS_BASE_AISLE_M };
+    const b: Rect = { x0, x1: x0 + rowW, z0: aisle.z1, z1: aisle.z1 + BUS_BASE_STALL.l };
+    rows.push(a, b);
+    aisles.push(aisle);
+    for (const [row, turn] of [
+      [a, 2],
+      [b, 0],
+    ] as const) {
+      for (let i = 0; i < plan.perRow; i++) {
+        stalls.push({ x: x0 + (i + 0.5) * BUS_BASE_STALL.w, z: (row.z0 + row.z1) / 2, turn });
+      }
+    }
+  }
+  const drive: Rect = {
+    x0: x0 + rowW,
+    x1: x0 + rowW + BUS_BASE_DRIVE_M,
+    z0: aisles[0]!.z0,
+    z1: halfD,
+  };
+  const hallX0 = drive.x1 + 0.6;
+  const hallX1 = halfW - inset - BUS_BASE_WALL_M;
+  const officeD = Math.min(BUS_BASE_OFFICE_DEPTH_M, BUS_BASE_OFFICE_M2 / (hallX1 - hallX0));
+  const office: Rect = {
+    x0: hallX0,
+    x1: hallX1,
+    z0: halfD - inset - BUS_BASE_WALL_M - officeD,
+    z1: halfD - inset - BUS_BASE_WALL_M,
+  };
+  const hallD = (plan.bays + 1) * BUS_BASE_BAY.w + 2 * BUS_BASE_WALL_M;
+  const hall: Rect = { x0: hallX0, x1: hallX1, z0: office.z0 - hallD, z1: office.z0 };
+  const hallHeight = BUS_BASE_BAY.clear + BUS_BASE_ROOF_M;
+  const officeHeight =
+    plan.officeStoreys === 1 ? hallHeight : plan.officeStoreys * BUS_BASE_STOREY_M;
+  const doorW = BUS_BASE_BAY.w - 2 * BUS_BASE_DOOR_PIER_M;
+  const bayDoors: YardDoor[] = [];
+  for (let k = 0; k < plan.bays; k++) {
+    bayDoors.push({
+      x: hall.x0,
+      z: hall.z1 - BUS_BASE_WALL_M - (k + 0.5) * BUS_BASE_BAY.w,
+      nx: -1,
+      nz: 0,
+      w: doorW,
+      h: BUS_BASE_BAY.clear,
+    });
+  }
+  const washMouth: YardDoor = {
+    x: hall.x0,
+    z: hall.z0 + BUS_BASE_WALL_M + BUS_BASE_BAY.w / 2,
+    nx: -1,
+    nz: 0,
+    w: doorW,
+    h: BUS_BASE_BAY.clear,
+  };
+  const gantry: Vec2[] = [-1, 1].map((s) => ({
+    x: hall.x0 - BUS_BASE_GANTRY.out,
+    z: washMouth.z + s * (doorW / 2 + 0.3),
+  }));
+  const officeDoor: YardDoor = {
+    x: (office.x0 + office.x1) / 2,
+    z: office.z1,
+    nx: 0,
+    nz: 1,
+    ...STATION_ENTRANCE,
+  };
+
+  const panes: DepotPane[] = [];
+  for (const door of bayDoors) {
+    for (let k = 0; k < 4; k++) {
+      panes.push({
+        x: door.x,
+        z: door.z + (k - 1.5) * 1.1,
+        nx: -1,
+        nz: 0,
+        w: 0.95,
+        y: door.h - 1,
+        h: 0.55,
+      });
+    }
+  }
+  for (const dx of [-0.6, 0.6]) {
+    panes.push({ x: officeDoor.x + dx, z: office.z1, nx: 0, nz: 1, w: 1, y: 0.4, h: 1.7 });
+  }
+  const clearOfDoor = (x: number): boolean =>
+    Math.abs(x - officeDoor.x) > officeDoor.w / 2 + 1.5 + BUS_BASE_WINDOW.w / 2;
+  for (let f = 0; f < plan.officeStoreys; f++) {
+    const y = f * BUS_BASE_STOREY_M + 1.2;
+    for (
+      let x = office.x0 + 1.6;
+      x + BUS_BASE_WINDOW.w / 2 <= office.x1 - 1;
+      x += BUS_BASE_WINDOW.pitch
+    ) {
+      if (f === 0 && !clearOfDoor(x)) continue;
+      panes.push({ x, z: office.z1, nx: 0, nz: 1, w: BUS_BASE_WINDOW.w, y, h: BUS_BASE_WINDOW.h });
+    }
+    for (
+      let z = office.z0 + 1.6;
+      z + BUS_BASE_WINDOW.w / 2 <= office.z1 - 1;
+      z += BUS_BASE_WINDOW.pitch
+    ) {
+      panes.push({ x: office.x0, z, nx: -1, nz: 0, w: BUS_BASE_WINDOW.w, y, h: BUS_BASE_WINDOW.h });
+    }
+  }
+
+  const fuel: Vec2[] = [];
+  for (let i = 0; i < plan.fuel; i++) {
+    fuel.push({
+      x: (hall.x0 + hall.x1) / 2,
+      z: hall.z0 - BUS_BASE_FUEL.l - 2 - i * BUS_BASE_FUEL_PITCH_M,
+    });
+  }
+
+  return {
+    rows,
+    aisles,
+    stalls,
+    drive,
+    gate: { x0: drive.x0, x1: drive.x1 },
+    fence: lotRect(footprint, inset),
+    hall,
+    office,
+    hallHeight,
+    officeHeight,
+    officeStoreys: plan.officeStoreys,
+    bayDoors,
+    washMouth,
+    gantry,
+    officeDoor,
+    panes,
+    fuel,
+  };
+}
+
+/** A bus stall's plan. */
+export function busBaseStallRect(s: BusBaseStall): Rect {
+  return {
+    x0: s.x - BUS_BASE_STALL.w / 2,
+    x1: s.x + BUS_BASE_STALL.w / 2,
+    z0: s.z - BUS_BASE_STALL.l / 2,
+    z1: s.z + BUS_BASE_STALL.l / 2,
+  };
+}
+
+/** A box in a wall: `w` along the wall, `h` tall, `t` thick, its wall face at (x, z) and standing `proud` of it along the normal. */
+function wallBox(
+  w: number,
+  h: number,
+  t: number,
+  x: number,
+  y0: number,
+  z: number,
+  nx: number,
+  nz: number,
+  proud: number,
+  rgb: RGB,
+): THREE.BufferGeometry {
+  const out = proud + t / 2;
+  return nz !== 0
+    ? standingBox(w, h, t, x, y0, z + nz * out, rgb)
+    : standingBox(t, h, w, x + nx * out, y0, z, rgb);
+}
+
+/** A vehicle door framed as the fire station's: a dark frame round a lighter leaf proud of it, with the panel seams across the leaf. */
+function yardDoorParts(door: YardDoor, y0: number, leafRgb: RGB): THREE.BufferGeometry[] {
+  const { x, z, nx, nz } = door;
+  const parts = [
+    wallBox(
+      door.w + 2 * STATION_FRAME_M,
+      door.h + STATION_FRAME_M,
+      0.2,
+      x,
+      y0,
+      z,
+      nx,
+      nz,
+      STATION_FRAME_PROUD_M - 0.1,
+      STATION_FRAME_RGB,
+    ),
+    wallBox(door.w, door.h, 0.12, x, y0, z, nx, nz, STATION_LEAF_PROUD_M - 0.06, leafRgb),
+  ];
+  for (let k = 1; k <= 5; k++) {
+    parts.push(
+      wallBox(
+        door.w,
+        0.06,
+        0.04,
+        x,
+        y0 + (door.h * k) / 6,
+        z,
+        nx,
+        nz,
+        STATION_LEAF_PROUD_M + 0.05,
+        STATION_GROOVE_RGB,
+      ),
+    );
+  }
+  return parts;
+}
+
+/** The lit panes of a depot, standing just proud of their walls, one geometry for the one emissive material. */
+function paneParts(panes: readonly DepotPane[], y0: number): THREE.BufferGeometry[] {
+  return panes.map((p) =>
+    wallBox(p.w, p.h, 0.06, p.x, y0 + p.y, p.z, p.nx, p.nz, 0, STATION_POLE_RGB),
+  );
+}
+
+/** A fuelling island: the canopy slab on its two posts over the dispenser; local Y=0 is the ground it stands on. */
+function fuelIslandParts(at: Vec2): THREE.BufferGeometry[] {
+  const { w, l, clear, post, slab } = BUS_BASE_FUEL;
+  const parts = [
+    standingBox(w + 0.6, slab, l, at.x, clear, at.z, BUS_BASE_CANOPY_RGB),
+    standingBox(0.6, 1.6, 0.5, at.x, 0, at.z, BUS_BASE_DISPENSER_RGB),
+    standingBox(0.9, 0.15, l - 0.4, at.x, 0, at.z, GEN_CONCRETE_RGB),
+  ];
+  for (const s of [-1, 1]) {
+    parts.push(standingBox(post, clear, post, at.x, 0, at.z + s * (l / 2 - 0.5), GEN_STEEL_RGB));
+  }
+  return parts;
+}
+
+/** The paved yard with the drive's concrete, the stall lines and the fuel pads; local Y=0 is the highest ground under the lot. */
+function buildBusBaseYardGeometry(footprint: FootprintSize): THREE.BufferGeometry {
+  const layout = computeBusBaseLayout(footprint);
+  const top = RECYCLING_YARD_HEIGHT;
+  const parts: THREE.BufferGeometry[] = [buildRecyclingYardGeometry(footprint)];
+  parts.push(groundPatch(layout.drive, 0, EDU_CONCRETE_M, STATION_PAVING_RGB));
+  const paint = top + EDU_ASPHALT_M;
+  const seen = new Set<string>();
+  for (const s of layout.stalls) {
+    const r = busBaseStallRect(s);
+    for (const at of [r.x0, r.x1]) {
+      const key = `${at.toFixed(3)}:${s.z.toFixed(3)}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      parts.push(stallLine(r, false, at, paint));
+    }
+  }
+  return mergeParts(parts);
+}
+
+/** The shop hall under its roof with the framed bay doors, the wash lane's mouth and gantry, the office with its belt courses and door, the fuelling islands and the fence; local Y=0 is the yard slab's top. */
+function buildBusBaseShopGeometry(footprint: FootprintSize): THREE.BufferGeometry {
+  const layout = computeBusBaseLayout(footprint);
+  const { hall, office, hallHeight, officeHeight } = layout;
+  const parts: THREE.BufferGeometry[] = [
+    ...cappedBox(hall, hallHeight, BUS_BASE_HALL_RGB, STATION_CAP_M, STATION_CAP_RGB),
+    ...cappedBox(office, officeHeight, BUS_BASE_OFFICE_RGB, STATION_CAP_M, STATION_CAP_RGB),
+  ];
+  for (let f = 1; f < layout.officeStoreys; f++) {
+    parts.push(
+      standingBox(
+        office.x1 - office.x0 + 0.1,
+        0.2,
+        office.z1 - office.z0 + 0.1,
+        (office.x0 + office.x1) / 2,
+        f * BUS_BASE_STOREY_M - 0.1,
+        (office.z0 + office.z1) / 2,
+        STATION_BELT_RGB,
+      ),
+    );
+  }
+  for (const door of layout.bayDoors) parts.push(...yardDoorParts(door, 0, BUS_BASE_DOOR_RGB));
+  const mouth = layout.washMouth;
+  parts.push(
+    wallBox(mouth.w, mouth.h, 0.12, mouth.x, 0, mouth.z, mouth.nx, mouth.nz, 0, BUS_BASE_MOUTH_RGB),
+  );
+  const { t } = BUS_BASE_GANTRY;
+  for (const post of layout.gantry)
+    parts.push(standingBox(t, mouth.h + t, t, post.x, 0, post.z, GEN_STEEL_RGB));
+  parts.push(
+    standingBox(
+      t,
+      t,
+      Math.abs(layout.gantry[1]!.z - layout.gantry[0]!.z) + t,
+      layout.gantry[0]!.x,
+      mouth.h,
+      mouth.z,
+      GEN_STEEL_RGB,
+    ),
+  );
+  const entrance = layout.officeDoor;
+  parts.push(
+    wallBox(entrance.w, entrance.h, 0.12, entrance.x, 0, entrance.z, 0, 1, 0, STATION_ENTRANCE_RGB),
+  );
+  for (const island of layout.fuel) parts.push(...fuelIslandParts(island));
+  fenceLoop(parts, layout.fence, GEN_FENCE_HEIGHT_M, layout.gate);
+  return mergeParts(parts);
+}
+
+/** Every lit pane of a bus base, one geometry for the one emissive material; local Y=0 is the yard slab's top. */
+function buildBusBaseLitGeometry(footprint: FootprintSize): THREE.BufferGeometry {
+  return mergeParts(paneParts(computeBusBaseLayout(footprint).panes, 0));
+}
+
+/** One parked bus at its real size, nose to local +Z, standing on its own origin. */
+function buildParkedBusGeometry(): THREE.BufferGeometry {
+  const [sx, sy, sz] = sizeForKind(VehicleKind.Bus);
+  const bus = buildVehicleGeometry(VehicleKind.Bus);
+  bus.scale(sx, sy, sz);
+  bus.translate(0, sy / 2, 0);
+  return bus;
+}
+
+// --- the tram depot and the rail yard --------------------------------------------
+
+/** A segment of track centreline in the yard frame, from its start to its end. */
+export interface TrackSeg {
+  x0: number;
+  z0: number;
+  x1: number;
+  z1: number;
+}
+
+export interface YardSpec {
+  roads: number;
+  /** The stabling roads' centres apart. */
+  pitch: number;
+  roadLength: number;
+  /** The shop: two roads of this width, this long, with doors at this clear height. */
+  hallRoadW: number;
+  hallLength: number;
+  doorClear: number;
+  officeM2: number;
+  /** The turnout lead from the track edge to the first road. */
+  lead: number;
+  /** Catenary poles over the roads: a tram takes its current from the wire. */
+  poles: boolean;
+  /** Ballast under the rails, as the railway lays them; a tram's rails lie in a concrete apron. */
+  ballast: boolean;
+  /** A diesel fuelling stand at the lead, and a drive from the street: the rail yard's. */
+  fuelStand: boolean;
+  drive: boolean;
+}
+
+/** Eight roads at 3.5 m centres, 22.4 m long: two 11 m cars and a coupling; the hall over a maintenance and a wash road. */
+export const TRAM_DEPOT_SPEC: YardSpec = {
+  roads: 8,
+  pitch: 3.5,
+  roadLength: 22.4,
+  hallRoadW: 4.9,
+  hallLength: 28.4,
+  doorClear: 4.6,
+  officeM2: 97,
+  lead: 20,
+  poles: true,
+  ballast: false,
+  fuelStand: false,
+  drive: false,
+};
+/** Five roads at 4.5 m centres, 45.6 m long: three 14 m cars at a 15.2 m pitch; the hall over a maintenance and a wash road. */
+export const RAIL_YARD_SPEC: YardSpec = {
+  roads: 5,
+  pitch: 4.5,
+  roadLength: 45.6,
+  hallRoadW: 6,
+  hallLength: 51.6,
+  doorClear: 4.6,
+  officeM2: 125,
+  lead: 20,
+  poles: false,
+  ballast: true,
+  fuelStand: true,
+  drive: true,
+};
+/** Catenary poles 6 m tall every 10 m along a pair of roads, each with a crossarm over both. */
+export const CATENARY_POLE = { h: 6, pitch: 10, size: 0.2, arm: 5.5, armT: 0.12 };
+/** The track as the road mesh lays it: rails at the gauge on sleepers, over ballast on the railway. */
+const YARD_GAUGE_HALF_M = 0.75;
+const YARD_RAIL = { w: 0.14, h: 0.12 };
+const YARD_SLEEPER = { l: 2.3, w: 0.32, h: 0.1, pitch: 1.6 };
+const YARD_BALLAST = { halfW: 1.7, h: 0.08 };
+/** The darker trackbed a tram road's rails lie in on the apron. */
+const YARD_TRACKBED_HALF_M = 1.3;
+/** A road's far end keeps this far inside the lot; a road's rails keep this clear of the fence. */
+const YARD_TRACK_EDGE_M = 0.3;
+const YARD_ROAD_CLEAR_M = 1.5;
+const YARD_WALL_M = 0.3;
+const YARD_OFFICE_H = 3.6;
+const YARD_OFFICE_W = { tram: 10, rail: 13.3 };
+const YARD_FENCE_GAP_M = 3.5;
+const YARD_DRIVE_M = 7.2;
+const YARD_FUEL_STAND = { tankR: 0.8, tankL: 5, cabinetW: 0.8, cabinetH: 1.2, cabinetD: 0.6 };
+const YARD_WINDOW = { w: 1.6, h: 1.3, sill: 1.1, pitch: 3.2 };
+
+const YARD_RAIL_RGB: RGB = [0.7, 0.71, 0.74];
+const YARD_SLEEPER_RGB: RGB = [0.26, 0.22, 0.19];
+const YARD_BALLAST_RGB: RGB = [0.34, 0.33, 0.31];
+const YARD_APRON_RGB: RGB = [0.52, 0.52, 0.5];
+const YARD_TRACKBED_RGB: RGB = [0.4, 0.4, 0.39];
+const YARD_HALL_RGB: RGB = [0.58, 0.6, 0.62];
+const YARD_OFFICE_RGB: RGB = [0.72, 0.7, 0.65];
+const YARD_DOOR_RGB: RGB = [0.84, 0.85, 0.83];
+const YARD_TANK_RGB: RGB = [0.62, 0.62, 0.6];
+
+export interface YardLayout {
+  fromEnd: boolean;
+  /** The turnout lead from the track edge to the ladder, one or two straight segments. */
+  lead: TrackSeg[];
+  ladder: TrackSeg;
+  /** The stabling roads in fill order, each from its turnout to its buffer. */
+  roads: TrackSeg[];
+  /** The maintenance road and the wash road, from the lead to the hall's far end. */
+  hallRoads: TrackSeg[];
+  hall: Rect;
+  office: Rect;
+  hallDoors: YardDoor[];
+  officeDoor: YardDoor;
+  panes: DepotPane[];
+  poles: Vec2[];
+  /** The concrete apron the tram's rails lie in; the whole yard but the strip beyond the last road. */
+  apron: Rect;
+  fence: Rect;
+  fenceGaps: FenceGap[];
+  drive: Rect | null;
+  /** The fuelling stand's centre, its tank along Z. */
+  fuel: Vec2 | null;
+  /** The cars of each stabled set in fill order: centre and the turn that points a nose along the road. */
+  sets: { x: number; z: number; turn: 0 | 1 | 2 | 3 }[][];
+}
+
+/** A gap in the fence along one side of the lot: 0 the +Z side, 1 +X, 2 -Z, 3 -X; `a`..`b` along that side. */
+export interface FenceGap {
+  side: 0 | 1 | 2 | 3;
+  a: number;
+  b: number;
+}
+
+/** The lot with its long side along X, as a yard is laid out. */
+export function yardFootprint(entry: BuildingCatalogEntry): FootprintSize {
+  const { w, d } = entry.footprint;
+  return w >= d ? { w, d } : { w: d, d: w };
+}
+
+/**
+ * A yard's frame: the lot with its long side along X and the track on its -Z
+ * edge, or, where the track runs along a short edge of the lot, off its -X
+ * end; and the turn that lays that frame on the placed lot.
+ */
+export function yardFrame(
+  entry: BuildingCatalogEntry,
+  rotation: 0 | 1 | 2 | 3,
+  facing: 0 | 1 | 2 | 3,
+): { footprint: FootprintSize; turn: 0 | 1 | 2 | 3; fromEnd: boolean } {
+  const lot = footprintForRotation(entry, rotation);
+  const longAlongX = lot.w >= lot.d;
+  const trackAlongX = facing % 2 === 0;
+  const fromEnd = trackAlongX !== longAlongX;
+  return {
+    footprint: longAlongX ? { w: lot.w, d: lot.d } : { w: lot.d, d: lot.w },
+    turn: ((facing + (fromEnd ? 1 : 2)) % 4) as 0 | 1 | 2 | 3,
+    fromEnd,
+  };
+}
+
+/** Which edge of a footprint the tram track runs along, as the station reads the railway. */
+export const tramSideOf = railSideOf;
+
+/**
+ * Where everything stands in a yard, in its frame. The lead climbs at 45°
+ * from the track edge to the ladder, which steps across the stabling roads
+ * at their pitch; the roads run along +X to their buffers at the far end of
+ * the lot. The shop lies along the track side under the roads, its two
+ * roads off the lead, its doors at its near end; the tram's office stands
+ * at the shop's far end, the rail yard's by its gate at the street. Pure;
+ * fixed per frame footprint and spec.
+ */
+export function computeYardLayout(
+  footprint: FootprintSize,
+  spec: YardSpec,
+  fromEnd: boolean,
+  cars: { perSet: number; length: number; pitch: number },
+): YardLayout {
+  const { halfW, halfD } = footprintHalfExtents(footprint);
+  const inset = GEN_FENCE_INSET_M;
+  const m = YARD_TRACK_EDGE_M;
+  const { pitch, roads: n, roadLength } = spec;
+  const span = pitch * (n - 1);
+  const xL0 = halfW - m - roadLength - span;
+  const bed = spec.ballast ? YARD_BALLAST.halfW : YARD_TRACKBED_HALF_M;
+
+  const hall: Rect = {
+    x0: halfW - inset - spec.hallLength,
+    x1: halfW - inset,
+    z0: -halfD + inset,
+    z1: -halfD + inset + 2 * spec.hallRoadW,
+  };
+  // The lead starts at the track edge, in by its own bed so its rails stay
+  // inside the lot. The first road's line: a lead of the stated length climbs
+  // to it, the roads above it clear the fence, the lead starts inside the
+  // lot, and the road's bed clears the shop.
+  const edge = -halfD + bed + 0.2;
+  const climb = spec.lead / Math.SQRT2;
+  const roomZ = halfD - inset - YARD_ROAD_CLEAR_M - span;
+  // The climb's outer rail reaches a bed's corner past its start.
+  const reach = xL0 + halfW - bed * Math.SQRT1_2 - 0.1 + edge;
+  const z0 = Math.max(hall.z1 + bed + 0.3, Math.min(edge + climb, roomZ, reach));
+  const lead: TrackSeg[] = [];
+  if (!fromEnd) {
+    lead.push({ x0: xL0 - (z0 - edge), z0: edge, x1: xL0, z1: z0 });
+  } else {
+    // Off the end: straight in from the -X edge, then the climb.
+    const xB = xL0 - (z0 - edge);
+    lead.push(
+      { x0: -halfW + m, z0: edge, x1: xB, z1: edge },
+      { x0: xB, z0: edge, x1: xL0, z1: z0 },
+    );
+  }
+  const ladder: TrackSeg = { x0: xL0, z0, x1: xL0 + span, z1: z0 + span };
+  const roads: TrackSeg[] = [];
+  for (let k = 0; k < n; k++) {
+    const x = xL0 + pitch * k;
+    const z = z0 + pitch * k;
+    roads.push({ x0: x, z0: z, x1: x + roadLength, z1: z });
+  }
+  const climbSeg = lead[lead.length - 1]!;
+  const leadXAt = (z: number): number => climbSeg.x0 + (z - climbSeg.z0);
+  const hallRoads: TrackSeg[] = [0, 1].map((i) => {
+    const z = hall.z0 + (i + 0.5) * spec.hallRoadW;
+    return { x0: leadXAt(z), z0: z, x1: hall.x1 - 0.5, z1: z };
+  });
+  const hallDoors: YardDoor[] = hallRoads.map((r) => ({
+    x: hall.x0,
+    z: r.z0,
+    nx: -1,
+    nz: 0,
+    w: spec.hallRoadW - 0.9,
+    h: spec.doorClear,
+  }));
+
+  const drive: Rect | null = spec.drive
+    ? {
+        x0: halfW - inset - 1 - YARD_DRIVE_M,
+        x1: halfW - inset - 1,
+        z0: roads[n - 1]!.z0 + bed + 1,
+        z1: halfD,
+      }
+    : null;
+  const officeW = spec.drive ? YARD_OFFICE_W.rail : YARD_OFFICE_W.tram;
+  const officeD = spec.officeM2 / officeW;
+  const office: Rect = drive
+    ? {
+        x0: drive.x0 - 1 - officeW,
+        x1: drive.x0 - 1,
+        z0: halfD - inset - YARD_WALL_M - officeD,
+        z1: halfD - inset - YARD_WALL_M,
+      }
+    : { x0: hall.x1 - officeW, x1: hall.x1, z0: hall.z1, z1: hall.z1 + officeD };
+  const officeDoor: YardDoor = {
+    x: (office.x0 + office.x1) / 2,
+    z: office.z1,
+    nx: 0,
+    nz: 1,
+    ...STATION_ENTRANCE,
+  };
+  const panes: DepotPane[] = [];
+  for (const door of hallDoors) {
+    for (let k = 0; k < 4; k++) {
+      panes.push({
+        x: door.x,
+        z: door.z + (k - 1.5) * 1.1,
+        nx: -1,
+        nz: 0,
+        w: 0.95,
+        y: door.h - 1,
+        h: 0.55,
+      });
+    }
+  }
+  for (const dx of [-0.6, 0.6]) {
+    panes.push({ x: officeDoor.x + dx, z: office.z1, nx: 0, nz: 1, w: 1, y: 0.4, h: 1.7 });
+  }
+  const clearOfDoor = (x: number): boolean =>
+    Math.abs(x - officeDoor.x) > officeDoor.w / 2 + 1 + YARD_WINDOW.w / 2;
+  for (let x = office.x0 + 1.4; x + YARD_WINDOW.w / 2 <= office.x1 - 1; x += YARD_WINDOW.pitch) {
+    if (!clearOfDoor(x)) continue;
+    panes.push({
+      x,
+      z: office.z1,
+      nx: 0,
+      nz: 1,
+      w: YARD_WINDOW.w,
+      y: YARD_WINDOW.sill,
+      h: YARD_WINDOW.h,
+    });
+  }
+  for (let z = office.z0 + 1.4; z + YARD_WINDOW.w / 2 <= office.z1 - 1; z += YARD_WINDOW.pitch) {
+    panes.push({
+      x: office.x0,
+      z,
+      nx: -1,
+      nz: 0,
+      w: YARD_WINDOW.w,
+      y: YARD_WINDOW.sill,
+      h: YARD_WINDOW.h,
+    });
+  }
+
+  const poles: Vec2[] = [];
+  if (spec.poles) {
+    for (let k = 0; k + 1 < n; k += 2) {
+      const a = roads[k]!;
+      const b = roads[k + 1]!;
+      const z = (a.z0 + b.z0) / 2;
+      for (
+        let x = Math.max(a.x0, b.x0) + 1.5;
+        x <= Math.min(a.x1, b.x1) - 1;
+        x += CATENARY_POLE.pitch
+      ) {
+        poles.push({ x, z });
+      }
+    }
+  }
+
+  const fence = lotRect(footprint, inset);
+  const fenceGaps: FenceGap[] = [];
+  const first = lead[0]!;
+  if (!fromEnd) {
+    const at = first.x0 + (fence.z0 - first.z0);
+    fenceGaps.push({
+      side: 2,
+      a: Math.max(fence.x0, at - YARD_FENCE_GAP_M),
+      b: at + YARD_FENCE_GAP_M,
+    });
+  } else {
+    fenceGaps.push({
+      side: 3,
+      a: Math.max(fence.z0, first.z0 - YARD_FENCE_GAP_M),
+      b: first.z0 + YARD_FENCE_GAP_M,
+    });
+  }
+  // The gate opens across the office's frontage and the drive beside it.
+  if (drive) fenceGaps.push({ side: 0, a: office.x0 - 1, b: drive.x1 });
+
+  // A set stands centred on its road: two tram cars and a coupling fill it exactly.
+  const setLength = cars.length + (cars.perSet - 1) * cars.pitch;
+  const sets = roads.map((road) =>
+    Array.from({ length: cars.perSet }, (_, j) => ({
+      x: road.x0 + (roadLength - setLength) / 2 + cars.length / 2 + j * cars.pitch,
+      z: road.z0,
+      turn: 1 as const,
+    })),
+  );
+
+  return {
+    fromEnd,
+    lead,
+    ladder,
+    roads,
+    hallRoads,
+    hall,
+    office,
+    hallDoors,
+    officeDoor,
+    panes,
+    poles,
+    apron: {
+      x0: -halfW + 0.05,
+      x1: halfW - 0.05,
+      z0: -halfD + 0.05,
+      z1: Math.min(halfD - 0.05, roads[n - 1]!.z0 + bed + 1),
+    },
+    fence,
+    fenceGaps,
+    drive,
+    fuel: spec.fuelStand ? { x: -halfW + 1.8, z: -halfD + 8 } : null,
+    sets,
+  };
+}
+
+/** A fence round `r` with a gap on each side listed. */
+function fenceLoopWithGaps(
+  parts: THREE.BufferGeometry[],
+  r: Rect,
+  height: number,
+  gaps: readonly FenceGap[],
+): void {
+  const sides: { side: 0 | 1 | 2 | 3; a: number; b: number; fixed: number; alongX: boolean }[] = [
+    { side: 0, a: r.x0, b: r.x1, fixed: r.z1, alongX: true },
+    { side: 1, a: r.z0, b: r.z1, fixed: r.x1, alongX: false },
+    { side: 2, a: r.x0, b: r.x1, fixed: r.z0, alongX: true },
+    { side: 3, a: r.z0, b: r.z1, fixed: r.x0, alongX: false },
+  ];
+  for (const s of sides) {
+    let from = s.a;
+    for (const gap of gaps.filter((g) => g.side === s.side).sort((p, q) => p.a - q.a)) {
+      fenceRun(parts, from, gap.a, s.fixed, s.alongX, height, GEN_FENCE_POST_SPACING_M);
+      for (const at of [gap.a, gap.b]) {
+        parts.push(
+          s.alongX
+            ? standingBox(0.25, height + 0.15, 0.25, at, 0, s.fixed, GEN_FENCE_RGB)
+            : standingBox(0.25, height + 0.15, 0.25, s.fixed, 0, at, GEN_FENCE_RGB),
+        );
+      }
+      from = gap.b;
+    }
+    fenceRun(parts, from, s.b, s.fixed, s.alongX, height, GEN_FENCE_POST_SPACING_M);
+  }
+}
+
+/** A box laid along a track segment: `w` across it, `h` tall, standing on `y0`, shifted `across` metres to the segment's right. */
+function alongSegment(
+  seg: TrackSeg,
+  w: number,
+  h: number,
+  y0: number,
+  across: number,
+  rgb: RGB,
+): THREE.BufferGeometry {
+  const dx = seg.x1 - seg.x0;
+  const dz = seg.z1 - seg.z0;
+  const yaw = Math.atan2(dx, dz);
+  const box = new THREE.BoxGeometry(w, h, Math.hypot(dx, dz));
+  box.rotateY(yaw);
+  box.translate(
+    (seg.x0 + seg.x1) / 2 + across * Math.cos(yaw),
+    y0 + h / 2,
+    (seg.z0 + seg.z1) / 2 - across * Math.sin(yaw),
+  );
+  return paintVertexColor(box, hexFromRgb(rgb));
+}
+
+/** One segment of track: the pair of rails at the gauge, over sleepers on a ballast bed where the spec lays one. */
+function trackParts(
+  parts: THREE.BufferGeometry[],
+  seg: TrackSeg,
+  y0: number,
+  ballast: boolean,
+): void {
+  let railY = y0;
+  // A tram road lies in the apron: a darker trackbed strip between and about
+  // its rails, so the road reads from the air as the street's rails do.
+  if (!ballast) {
+    parts.push(alongSegment(seg, 2 * YARD_TRACKBED_HALF_M, 0.01, y0, 0, YARD_TRACKBED_RGB));
+    railY = y0 + 0.01;
+  }
+  if (ballast) {
+    parts.push(alongSegment(seg, 2 * YARD_BALLAST.halfW, YARD_BALLAST.h, y0, 0, YARD_BALLAST_RGB));
+    const dx = seg.x1 - seg.x0;
+    const dz = seg.z1 - seg.z0;
+    const length = Math.hypot(dx, dz);
+    const yaw = Math.atan2(dx, dz);
+    for (let t = YARD_SLEEPER.pitch / 2; t < length; t += YARD_SLEEPER.pitch) {
+      const sleeper = new THREE.BoxGeometry(YARD_SLEEPER.l, YARD_SLEEPER.h, YARD_SLEEPER.w);
+      sleeper.rotateY(yaw);
+      sleeper.translate(
+        seg.x0 + (dx * t) / length,
+        y0 + YARD_BALLAST.h + YARD_SLEEPER.h / 2,
+        seg.z0 + (dz * t) / length,
+      );
+      parts.push(paintVertexColor(sleeper, hexFromRgb(YARD_SLEEPER_RGB)));
+    }
+    railY = y0 + YARD_BALLAST.h + YARD_SLEEPER.h;
+  }
+  for (const s of [-1, 1]) {
+    parts.push(
+      alongSegment(seg, YARD_RAIL.w, YARD_RAIL.h, railY, s * YARD_GAUGE_HALF_M, YARD_RAIL_RGB),
+    );
+  }
+}
+
+/** Every segment of a yard's track in the order it is reached: the lead, the ladder, the stabling roads and the shop's roads. */
+export function yardSegments(layout: YardLayout): TrackSeg[] {
+  return [...layout.lead, layout.ladder, ...layout.roads, ...layout.hallRoads];
+}
+
+/** The yard slab with the tram's concrete apron, the rail yard's drive and fuelling stand, and the fence open for the lead and the drive; local Y=0 is the highest ground under the lot. */
+function buildYardYardGeometry(
+  footprint: FootprintSize,
+  layout: YardLayout,
+  spec: YardSpec,
+): THREE.BufferGeometry {
+  const top = RECYCLING_YARD_HEIGHT;
+  const parts: THREE.BufferGeometry[] = [buildRecyclingYardGeometry(footprint)];
+  if (!spec.ballast) parts.push(groundPatch(layout.apron, 0, EDU_ASPHALT_M, YARD_APRON_RGB));
+  if (layout.drive) parts.push(groundPatch(layout.drive, 0, EDU_CONCRETE_M, STATION_PAVING_RGB));
+  if (layout.fuel) {
+    const { tankR, tankL, cabinetW, cabinetH, cabinetD } = YARD_FUEL_STAND;
+    const tank = new THREE.CylinderGeometry(tankR, tankR, tankL, 12);
+    tank.rotateX(Math.PI / 2);
+    tank.translate(layout.fuel.x, top + 0.5 + tankR, layout.fuel.z);
+    parts.push(paintVertexColor(tank, hexFromRgb(YARD_TANK_RGB)));
+    for (const s of [-1, 1]) {
+      parts.push(
+        standingBox(
+          1.8,
+          0.5,
+          0.3,
+          layout.fuel.x,
+          top,
+          layout.fuel.z + s * (tankL / 2 - 0.8),
+          GEN_CONCRETE_RGB,
+        ),
+      );
+    }
+    parts.push(
+      standingBox(
+        cabinetW,
+        cabinetH,
+        cabinetD,
+        layout.fuel.x + tankR + 0.8,
+        top,
+        layout.fuel.z,
+        BUS_BASE_DISPENSER_RGB,
+      ),
+    );
+  }
+  const fence: THREE.BufferGeometry[] = [];
+  fenceLoopWithGaps(fence, layout.fence, GEN_FENCE_HEIGHT_M, layout.fenceGaps);
+  for (const part of fence) part.translate(0, top, 0);
+  parts.push(...fence);
+  return mergeParts(parts);
+}
+
+/** Every rail of the yard as one geometry; local Y=0 is the highest ground under the lot. */
+function buildYardTrackGeometry(layout: YardLayout, spec: YardSpec): THREE.BufferGeometry {
+  const parts: THREE.BufferGeometry[] = [];
+  const y0 = RECYCLING_YARD_HEIGHT + (spec.ballast ? 0 : EDU_ASPHALT_M);
+  for (const seg of yardSegments(layout)) trackParts(parts, seg, y0, spec.ballast);
+  return mergeParts(parts);
+}
+
+/** The catenary poles and their crossarms as one geometry; local Y=0 is the yard slab's top. */
+function buildYardPolesGeometry(layout: YardLayout): THREE.BufferGeometry {
+  const { h, size, arm, armT } = CATENARY_POLE;
+  const parts: THREE.BufferGeometry[] = [];
+  for (const p of layout.poles) {
+    parts.push(standingBox(size, h, size, p.x, 0, p.z, GEN_STEEL_RGB));
+    parts.push(standingBox(armT, armT, arm, p.x, h - 0.4, p.z, GEN_STEEL_RGB));
+  }
+  return mergeParts(parts);
+}
+
+/** The shop hall under its roof with the framed doors at its near end, and the office with its door; local Y=0 is the yard slab's top. */
+function buildYardShopGeometry(layout: YardLayout, height: number): THREE.BufferGeometry {
+  const parts: THREE.BufferGeometry[] = [
+    ...cappedBox(layout.hall, height, YARD_HALL_RGB, STATION_CAP_M, STATION_CAP_RGB),
+    ...cappedBox(layout.office, YARD_OFFICE_H, YARD_OFFICE_RGB, STATION_CAP_M, STATION_CAP_RGB),
+  ];
+  for (const door of layout.hallDoors) parts.push(...yardDoorParts(door, 0, YARD_DOOR_RGB));
+  const entrance = layout.officeDoor;
+  parts.push(
+    wallBox(entrance.w, entrance.h, 0.12, entrance.x, 0, entrance.z, 0, 1, 0, STATION_ENTRANCE_RGB),
+  );
+  return mergeParts(parts);
+}
+
+/** Every lit pane of a yard's shop and office, one geometry for the one emissive material; local Y=0 is the yard slab's top. */
+function buildYardLitGeometry(layout: YardLayout): THREE.BufferGeometry {
+  return mergeParts(paneParts(layout.panes, 0));
+}
+
+/** The cars a yard stables on each road, as the lines draw them. */
+export const YARD_CARS = {
+  tram: { perSet: TRAM_CARS_PER_SET, length: TRAM_CAR_SIZE[2], pitch: TRAM_CAR_PITCH },
+  rail: { perSet: TRAIN_CARS_PER_SET, length: TRAIN_CAR_SIZE[2], pitch: TRAIN_CAR_PITCH },
+} as const;
+
+// ---------------------------------------------------------------------------
 // UtilityKitRenderer
 // ---------------------------------------------------------------------------
 
@@ -7326,6 +8350,20 @@ interface CemeteryPlacement {
   centerZ: number;
   rotation: 0 | 1 | 2 | 3;
   graves: GraveSpace[];
+}
+
+interface DepotPlacement {
+  centerX: number;
+  /** The yard slab's top, where the vehicles stand. */
+  floorY: number;
+  centerZ: number;
+  turn: 0 | 1 | 2 | 3;
+  kind: 'busBaseBus' | 'tramDepotCar' | 'railYardCar';
+  /** Each berth in fill order: the cars of the set that stands in it, centre and nose turn in the kit frame. */
+  berths: { x: number; z: number; turn: 0 | 1 | 2 | 3 }[][];
+  /** The catalog's holding, parked whole when the sim lists no fleet for the depot. */
+  fleet: number;
+  liveryHex: number;
 }
 
 interface TurbineAnim {
@@ -7357,6 +8395,8 @@ export class UtilityKitRenderer {
   private readonly waterAt: (x: number, z: number) => boolean;
   /** Whether a tile carries rail, so a station lays its platform along the track; the default sees none. */
   private readonly railAt: (x: number, z: number) => boolean;
+  /** Whether a tile carries tram track, so a tram depot runs its lead to it; the default sees none. */
+  private readonly tramAt: (x: number, z: number) => boolean;
   private readonly registryIds = new Set(UTILITY_KIT_CATALOG_IDS);
   private readonly kits = new Map<string, KitDefinition>();
   private readonly instances = new Map<number, InstanceRecord>();
@@ -7365,6 +8405,10 @@ export class UtilityKitRenderer {
   private readonly interments = new Map<number, number>();
   /** Where each placed cemetery stands, so its headstones can be added or taken away without a building delta. */
   private readonly cemeteries = new Map<number, CemeteryPlacement>();
+  /** Vehicles each depot has at home, by building id: kept for a depot whose building arrives after its count. */
+  private readonly fleets = new Map<number, number>();
+  /** Where each placed depot stands, so its parked fleet can be refit without a building delta. */
+  private readonly depots = new Map<number, DepotPlacement>();
   private readonly beaconMaterial = new THREE.MeshLambertMaterial({
     color: TURBINE_BEACON_COLOR,
     emissive: TURBINE_BEACON_COLOR,
@@ -7387,11 +8431,13 @@ export class UtilityKitRenderer {
     catalog: BuildingCatalogEntry[],
     waterAt?: (x: number, z: number) => boolean,
     railAt?: (x: number, z: number) => boolean,
+    tramAt?: (x: number, z: number) => boolean,
   ) {
     this.scene = scene;
     this.heightAt = heightAt;
     this.waterAt = waterAt ?? ((): boolean => false);
     this.railAt = railAt ?? ((): boolean => false);
+    this.tramAt = tramAt ?? ((): boolean => false);
     for (const entry of catalog) {
       if (this.registryIds.has(entry.id)) this.kits.set(entry.id, this.buildKit(entry));
     }
@@ -7426,6 +8472,43 @@ export class UtilityKitRenderer {
   /** How many headstones a cemetery stands now. */
   headstoneCount(buildingId: number): number {
     return this.instances.get(buildingId)?.slots.cemeteryStone?.length ?? 0;
+  }
+
+  /**
+   * Sets what each connected depot holds and has out on the lines: the rest
+   * is parked on its apron, the first berths in fill order. Only a depot
+   * whose count changed is touched; a depot the list leaves out parks its
+   * whole catalog fleet, so an older worker's depots stand full.
+   */
+  setDepotFleets(depots: readonly { id: number; holds: number; inService: number }[]): void {
+    const listed = new Set<number>();
+    for (const { id, holds, inService } of depots) {
+      listed.add(id);
+      const home = Math.max(0, holds - inService);
+      if (this.fleets.get(id) === home) continue;
+      this.fleets.set(id, home);
+      this.fitFleet(id);
+    }
+    for (const [id, placement] of this.depots) {
+      if (listed.has(id) || this.fleets.get(id) === placement.fleet) continue;
+      this.fleets.set(id, placement.fleet);
+      this.fitFleet(id);
+    }
+    for (const kit of this.kits.values()) {
+      kit.pools.busBaseBus?.commit();
+      kit.pools.tramDepotCar?.commit();
+      kit.pools.railYardCar?.commit();
+    }
+  }
+
+  /** How many vehicles (buses, or tram and train sets) each depot has parked now, by building id. */
+  parkedFleets(): Record<number, number> {
+    const out: Record<number, number> = {};
+    for (const [id, placement] of this.depots) {
+      const cars = placement.berths[0]?.length ?? 1;
+      out[id] = (this.instances.get(id)?.slots[placement.kind]?.length ?? 0) / cars;
+    }
+    return out;
   }
 
   /** 0 (day) .. 1 (night): the turbine beacon and the lit panes of the stations, schools and library react; every other kit stays unlit. */
@@ -7558,12 +8641,88 @@ export class UtilityKitRenderer {
         return this.buildDepotKit(entry);
       case 'bus-stop':
         return this.buildBusStopKit(entry);
+      case 'bus-depot':
+      case 'bus-garage':
+        return this.buildBusBaseKit(entry);
+      case 'tram-depot':
+        return this.buildYardKit(entry, 'tram');
+      case 'rail-yard':
+        return this.buildYardKit(entry, 'rail');
       default:
         // Unreachable: the constructor only calls buildKit() for ids already
         // filtered through this.registryIds, which is exactly this switch's
         // case list.
         throw new RangeError(`utilitykits: unknown registry id "${entry.id}"`);
     }
+  }
+
+  /** The two bus sizes share one recipe, the stall rows, bays, islands and office keyed off the footprint. */
+  private buildBusBaseKit(entry: BuildingCatalogEntry): KitDefinition {
+    const lambert = (): THREE.MeshLambertMaterial =>
+      new THREE.MeshLambertMaterial({ vertexColors: true });
+    const pool = (
+      geometry: THREE.BufferGeometry,
+      material: THREE.Material = lambert(),
+      capacity = INITIAL_KIT_CAPACITY,
+    ) => new InstancedSlotPool(this.scene, geometry, material, capacity);
+    const { footprint } = entry;
+    return {
+      entry,
+      pavesLot: true,
+      pools: {
+        busBaseYard: pool(buildBusBaseYardGeometry(footprint)),
+        busBaseShop: pool(buildBusBaseShopGeometry(footprint)),
+        busBaseLit: pool(buildBusBaseLitGeometry(footprint), this.stationLightMaterial),
+        busBaseBus: pool(
+          buildParkedBusGeometry(),
+          lambert(),
+          INITIAL_KIT_CAPACITY * computeBusBaseLayout(footprint).stalls.length,
+        ),
+      },
+    };
+  }
+
+  /** A yard's track and grounds come in the two frames its lot can take, the lead off the long edge or off the end; the rest is one geometry. */
+  private buildYardKit(entry: BuildingCatalogEntry, mode: 'tram' | 'rail'): KitDefinition {
+    const lambert = (): THREE.MeshLambertMaterial =>
+      new THREE.MeshLambertMaterial({ vertexColors: true });
+    const pool = (
+      geometry: THREE.BufferGeometry,
+      material: THREE.Material = lambert(),
+      capacity = INITIAL_KIT_CAPACITY,
+    ) => new InstancedSlotPool(this.scene, geometry, material, capacity);
+    const spec = mode === 'tram' ? TRAM_DEPOT_SPEC : RAIL_YARD_SPEC;
+    const footprint = yardFootprint(entry);
+    const side = computeYardLayout(footprint, spec, false, YARD_CARS[mode]);
+    const end = computeYardLayout(footprint, spec, true, YARD_CARS[mode]);
+    const cars = YARD_CARS[mode];
+    const carPool = pool(
+      mode === 'tram' ? buildTramCarGeometry() : buildTrainCarGeometry(),
+      lambert(),
+      INITIAL_KIT_CAPACITY * spec.roads * cars.perSet,
+    );
+    const pools: KitDefinition['pools'] =
+      mode === 'tram'
+        ? {
+            tramDepotYard: pool(buildYardYardGeometry(footprint, side, spec)),
+            tramDepotYardEnd: pool(buildYardYardGeometry(footprint, end, spec)),
+            tramDepotTrack: pool(buildYardTrackGeometry(side, spec)),
+            tramDepotTrackEnd: pool(buildYardTrackGeometry(end, spec)),
+            tramDepotPoles: pool(buildYardPolesGeometry(side)),
+            tramDepotShop: pool(buildYardShopGeometry(side, entry.height)),
+            tramDepotLit: pool(buildYardLitGeometry(side), this.stationLightMaterial),
+            tramDepotCar: carPool,
+          }
+        : {
+            railYardYard: pool(buildYardYardGeometry(footprint, side, spec)),
+            railYardYardEnd: pool(buildYardYardGeometry(footprint, end, spec)),
+            railYardTrack: pool(buildYardTrackGeometry(side, spec)),
+            railYardTrackEnd: pool(buildYardTrackGeometry(end, spec)),
+            railYardShop: pool(buildYardShopGeometry(side, entry.height)),
+            railYardLit: pool(buildYardLitGeometry(side), this.stationLightMaterial),
+            railYardCar: carPool,
+          };
+    return { entry, pavesLot: true, pools };
   }
 
   private buildClinicKit(entry: BuildingCatalogEntry): KitDefinition {
@@ -8155,9 +9314,154 @@ export class UtilityKitRenderer {
       case 'bus-stop':
         this.applyBusStop(kit, building, centerX, groundY, centerZ, rotation);
         return;
+      case 'bus-depot':
+      case 'bus-garage':
+        this.applyBusBase(kit, building, entry, centerX, groundY, centerZ, rotation);
+        return;
+      case 'tram-depot':
+        this.applyYard(kit, building, entry, 'tram', centerX, groundY, centerZ, rotation);
+        return;
+      case 'rail-yard':
+        this.applyYard(kit, building, entry, 'rail', centerX, groundY, centerZ, rotation);
+        return;
       default:
         // Unreachable: kit is only non-null for entry.ids covered above (see buildKit's switch).
         throw new RangeError(`utilitykits: unknown registry id "${entry.id}"`);
+    }
+  }
+
+  private applyBusBase(
+    kit: KitDefinition,
+    building: BuildingInstance,
+    entry: BuildingCatalogEntry,
+    centerX: number,
+    groundY: number,
+    centerZ: number,
+    rotation: 0 | 1 | 2 | 3,
+  ): void {
+    const { busBaseYard, busBaseShop, busBaseLit, busBaseBus } = kit.pools;
+    if (!busBaseYard || !busBaseShop || !busBaseLit || !busBaseBus) return;
+    const layout = computeBusBaseLayout(entry.footprint);
+    const yardTop = groundY + RECYCLING_YARD_HEIGHT;
+    this.depots.set(building.id, {
+      centerX,
+      floorY: yardTop + EDU_ASPHALT_M,
+      centerZ,
+      turn: rotation,
+      kind: 'busBaseBus',
+      berths: layout.stalls.map((s) => [{ x: s.x, z: s.z, turn: s.turn }]),
+      fleet: entry.depot?.fleet ?? layout.stalls.length,
+      liveryHex: BUS_LIVERY_HEX,
+    });
+    this.instances.set(building.id, {
+      catalogId: building.catalogId,
+      slots: {
+        busBaseYard: [this.placeAt(busBaseYard, centerX, groundY, centerZ, rotation)],
+        busBaseShop: [this.placeAt(busBaseShop, centerX, yardTop, centerZ, rotation)],
+        busBaseLit: [this.placeAt(busBaseLit, centerX, yardTop, centerZ, rotation)],
+        busBaseBus: [],
+      },
+    });
+    this.fitFleet(building.id);
+  }
+
+  /**
+   * A yard is laid out in its frame: the track and grounds of whichever frame
+   * the lot takes, turned so the lead meets the edge the track runs by — never
+   * the rotation the player placed it at. With no track beside it the lead
+   * takes the back of the lot as placed.
+   */
+  private applyYard(
+    kit: KitDefinition,
+    building: BuildingInstance,
+    entry: BuildingCatalogEntry,
+    mode: 'tram' | 'rail',
+    centerX: number,
+    groundY: number,
+    centerZ: number,
+    rotation: 0 | 1 | 2 | 3,
+  ): void {
+    const lot = footprintForRotation(entry, rotation);
+    const trackAt = mode === 'tram' ? this.tramAt : this.railAt;
+    const facing =
+      railSideOf(building.x, building.z, lot, trackAt) ?? (((rotation + 2) % 4) as 0 | 1 | 2 | 3);
+    const frame = yardFrame(entry, rotation, facing);
+    const spec = mode === 'tram' ? TRAM_DEPOT_SPEC : RAIL_YARD_SPEC;
+    const layout = computeYardLayout(frame.footprint, spec, frame.fromEnd, YARD_CARS[mode]);
+    const prefix = mode === 'tram' ? 'tramDepot' : 'railYard';
+    const yardKind = `${prefix}Yard${frame.fromEnd ? 'End' : ''}` as UtilityKitPartKind;
+    const trackKind = `${prefix}Track${frame.fromEnd ? 'End' : ''}` as UtilityKitPartKind;
+    const shopKind = `${prefix}Shop` as UtilityKitPartKind;
+    const litKind = `${prefix}Lit` as UtilityKitPartKind;
+    const carKind = mode === 'tram' ? 'tramDepotCar' : 'railYardCar';
+    const yard = kit.pools[yardKind];
+    const track = kit.pools[trackKind];
+    const shop = kit.pools[shopKind];
+    const lit = kit.pools[litKind];
+    const poles = kit.pools.tramDepotPoles;
+    if (!yard || !track || !shop || !lit || !kit.pools[carKind]) return;
+    const { turn } = frame;
+    const yardTop = groundY + RECYCLING_YARD_HEIGHT;
+    const railTop =
+      yardTop +
+      (spec.ballast ? YARD_BALLAST.h + YARD_SLEEPER.h : EDU_ASPHALT_M + 0.01) +
+      YARD_RAIL.h;
+    this.depots.set(building.id, {
+      centerX,
+      floorY: railTop,
+      centerZ,
+      turn,
+      kind: carKind,
+      berths: layout.sets,
+      fleet: entry.depot?.fleet ?? layout.sets.length,
+      liveryHex: mode === 'tram' ? TRAM_LIVERY_HEX : TRAIN_LIVERY_HEX,
+    });
+    const slots: Partial<Record<UtilityKitPartKind, number[]>> = {
+      [yardKind]: [this.placeAt(yard, centerX, groundY, centerZ, turn)],
+      [trackKind]: [this.placeAt(track, centerX, groundY, centerZ, turn)],
+      [shopKind]: [this.placeAt(shop, centerX, yardTop, centerZ, turn)],
+      [litKind]: [this.placeAt(lit, centerX, yardTop, centerZ, turn)],
+      [carKind]: [],
+    };
+    if (poles && mode === 'tram') {
+      slots.tramDepotPoles = [this.placeAt(poles, centerX, yardTop, centerZ, turn)];
+    }
+    this.instances.set(building.id, { catalogId: building.catalogId, slots });
+    this.fitFleet(building.id);
+  }
+
+  /**
+   * Parks exactly as many vehicles as the depot has at home, the first berths
+   * in fill order: adds at the tail or takes the tail away, so a vehicle
+   * already standing is never rewritten.
+   */
+  private fitFleet(buildingId: number): void {
+    const record = this.instances.get(buildingId);
+    const placement = this.depots.get(buildingId);
+    const pool = record
+      ? this.kits.get(record.catalogId)?.pools[placement?.kind ?? 'busBaseBus']
+      : undefined;
+    const slots = placement ? record?.slots[placement.kind] : undefined;
+    if (!record || !placement || !pool || !slots) return;
+
+    const cars = placement.berths[0]?.length ?? 0;
+    const home = Math.min(this.fleets.get(buildingId) ?? placement.fleet, placement.berths.length);
+    const want = home * cars;
+    while (slots.length > want) pool.free(slots.pop()!);
+    while (slots.length < want) {
+      const i = slots.length;
+      const car = placement.berths[Math.floor(i / cars)]![i % cars]!;
+      const rotated = rotateLocalXZ(car.x, car.z, placement.turn);
+      const slot = this.placeAt(
+        pool,
+        placement.centerX + rotated.x,
+        placement.floorY,
+        placement.centerZ + rotated.z,
+        ((placement.turn + car.turn) % 4) as 0 | 1 | 2 | 3,
+      );
+      _carColor.setHex(placement.liveryHex);
+      pool.setColorAt(slot, _carColor);
+      slots.push(slot);
     }
   }
 
@@ -8948,5 +10252,6 @@ export class UtilityKitRenderer {
     }
     this.turbineAnims.delete(buildingId);
     this.cemeteries.delete(buildingId);
+    this.depots.delete(buildingId);
   }
 }

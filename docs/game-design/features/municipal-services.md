@@ -66,16 +66,16 @@ turns red.
 
 ### The services, and what each adds
 
-| Service            | Today                 | After                                                                                                                               |
-| ------------------ | --------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| **Power**          | Two generators        | A solar farm, a gas turbine, a combined-cycle station and a reactor, each a real small unit                                         |
-| **Water & sewage** | Water only            | The other half of the loop: pipes, a shore intake and an outfall are built (2026-10-02); treatment and a river you can spoil follow |
-| **Healthcare**     | One clinic            | Clinic → hospital, plus care for the old and the dead                                                                               |
-| **Education**      | Elementary            | Elementary → middle → high → college, each its own field, plus a library, each drawn as a campus                                    |
-| **Emergency**      | One police, one fire  | A station ladder for each, sized on response time                                                                                   |
-| **Garbage**        | Landfill, incinerator | Recovery, so burying is the worst option rather than the only one                                                                   |
-| **Transport**      | Stops                 | Depots, so a line has somewhere its vehicles come from — built 2026-10-16 (slice 1: the fleet, the headway and the running cost)   |
-| **Parks**          | A pocket park         | A recreation ladder, and leisure the city can be short of                                                                           |
+| Service            | Today                 | After                                                                                                                                        |
+| ------------------ | --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Power**          | Two generators        | A solar farm, a gas turbine, a combined-cycle station and a reactor, each a real small unit                                                  |
+| **Water & sewage** | Water only            | The other half of the loop: pipes, a shore intake and an outfall are built (2026-10-02); treatment and a river you can spoil follow          |
+| **Healthcare**     | One clinic            | Clinic → hospital, plus care for the old and the dead                                                                                        |
+| **Education**      | Elementary            | Elementary → middle → high → college, each its own field, plus a library, each drawn as a campus                                             |
+| **Emergency**      | One police, one fire  | A station ladder for each, sized on response time                                                                                            |
+| **Garbage**        | Landfill, incinerator | Recovery, so burying is the worst option rather than the only one                                                                            |
+| **Transport**      | Stops                 | Depots, so a line has somewhere its vehicles come from — built 2026-10-16 (the fleet, the headway and the running cost; dead runs; the kits) |
+| **Parks**          | A pocket park         | A recreation ladder, and leisure the city can be short of                                                                                    |
 
 Each is its own epic with its own document; this one is the frame they share.
 

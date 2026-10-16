@@ -134,6 +134,9 @@ const GENERATORS = (catalogData as { buildings: BuildingCatalogEntry[] }).buildi
 const PLOPPABLES = (catalogData as { buildings: BuildingCatalogEntry[] }).buildings.filter((e) =>
   ['clinic', 'rail-station', 'bus-stop'].includes(e.id),
 );
+const DEPOTS = (catalogData as { buildings: BuildingCatalogEntry[] }).buildings.filter((e) =>
+  ['bus-depot', 'bus-garage', 'tram-depot', 'rail-yard'].includes(e.id),
+);
 
 const ALL_KINDS: readonly UtilityKitPartKind[] = [
   'turbineTower',
@@ -495,7 +498,7 @@ function decomposeQuaternion(m: THREE.Matrix4): THREE.Quaternion {
 // ---------------------------------------------------------------------------
 
 describe('UTILITY_KIT_CATALOG_IDS', () => {
-  it('is exactly the 30 silhouette-kit ids', () => {
+  it('is exactly the 34 silhouette-kit ids', () => {
     expect(UTILITY_KIT_CATALOG_IDS).toEqual([
       'wind-turbine',
       'water-tower',
@@ -527,6 +530,10 @@ describe('UTILITY_KIT_CATALOG_IDS', () => {
       'clinic',
       'rail-station',
       'bus-stop',
+      'bus-depot',
+      'bus-garage',
+      'tram-depot',
+      'rail-yard',
     ]);
   });
 });
@@ -2040,7 +2047,7 @@ describe('a paved kit on sloped ground', () => {
 // ---------------------------------------------------------------------------
 
 describe('multiple kits coexisting', () => {
-  it('builds and applies all 30 kits from one catalog + one delta without cross-talk', () => {
+  it('builds and applies all 34 kits from one catalog + one delta without cross-talk', () => {
     const renderer = new UtilityKitRenderer(new THREE.Scene(), flatHeightAt, [
       makeTurbineEntry(),
       makeWaterTowerEntry(),
@@ -2059,10 +2066,15 @@ describe('multiple kits coexisting', () => {
       ...EDUCATION,
       ...GENERATORS,
       ...PLOPPABLES,
+      ...DEPOTS,
       makeSmallParkEntry(),
     ]);
     renderer.apply(
       deltaAdd(
+        makeInstance(31, 'bus-depot', { x: 0, z: 20 }),
+        makeInstance(32, 'bus-garage', { x: 10, z: 20 }),
+        makeInstance(33, 'tram-depot', { x: 20, z: 20 }),
+        makeInstance(34, 'rail-yard', { x: 30, z: 20 }),
         makeInstance(28, 'clinic', { x: 240, z: 0 }),
         makeInstance(29, 'rail-station', { x: 245, z: 0 }),
         makeInstance(30, 'bus-stop', { x: 250, z: 0 }),
@@ -2136,6 +2148,11 @@ describe('multiple kits coexisting', () => {
     expect(renderer.partSlotsFor(29, 'depotGroundsLong')).toHaveLength(0);
     expect(renderer.partSlotsFor(30, 'busStopShelter')).toHaveLength(1);
     expect(renderer.partSlotsFor(28, 'busStopShelter')).toHaveLength(0);
+    expect(renderer.partSlotsFor(31, 'busBaseBus')).toHaveLength(10);
+    expect(renderer.partSlotsFor(32, 'busBaseBus')).toHaveLength(36);
+    expect(renderer.partSlotsFor(33, 'tramDepotCar')).toHaveLength(16);
+    expect(renderer.partSlotsFor(34, 'railYardCar')).toHaveLength(15);
+    expect(renderer.partSlotsFor(33, 'railYardCar')).toHaveLength(0);
   });
 });
 
