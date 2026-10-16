@@ -50,7 +50,7 @@ import {
   type TransitMode,
 } from '../shared/types';
 import { TILE_METERS, tileToWorld } from '../shared/constants';
-import { COMMERCIAL_SPEED_MPS } from '../shared/transitfleet';
+import { COMMERCIAL_SPEED_MPS, inServiceSpan } from '../shared/transitfleet';
 
 /** Matches SimSnapshot.transit's shape (shared/types.ts) without importing the whole SimSnapshot type. */
 export interface TransitSnapshot {
@@ -421,6 +421,8 @@ export class TransitRenderer {
   private buses: (ActiveVehicle | null)[] = [];
   private busColors: number[] = [];
   private visible = true;
+  /** The clock hour the lines are drawn at; they run only inside the service span. */
+  private dayHour = 12;
   private stopTotal = 0;
   private lineTotal = 0;
   private busTotal = 0;
@@ -450,13 +452,27 @@ export class TransitRenderer {
     this.applyVisibility();
   }
 
+  /**
+   * The clock hour, [0, 24). Outside the service span a line's vehicles are in
+   * the depot, so its loop is hidden and stands still; its ribbon and shelters stay.
+   */
+  setDayHour(hour: number): void {
+    this.dayHour = hour;
+  }
+
+  /** True while the lines' vehicles are drawn running: the clock is inside the service span. */
+  isRunning(): boolean {
+    return inServiceSpan(this.dayHour);
+  }
+
   /** Advances every cosmetic bus along its line's polyline by `deltaSeconds` worth of travel. */
   update(deltaSeconds: number): void {
     if (!this.busMesh) return;
+    const running = this.isRunning();
 
     for (let slot = 0; slot < this.buses.length; slot += 1) {
       const bus = this.buses[slot];
-      if (!bus) {
+      if (!bus || !running) {
         this.busMesh.setMatrixAt(slot, HIDDEN_MATRIX);
         continue;
       }

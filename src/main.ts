@@ -1765,6 +1765,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
     buildingKit.setNightFactor(nightFactor);
     farms.setNightFactor(nightFactor);
     farms.setDayFraction(dayT); // the farm truck works sunrise to sunset
+    transitRenderer.setDayHour(dayT * 24); // the lines run 05:00 to 23:00; their buses are in the depot otherwise
 
     // Seasonal foliage tint: only touch materials when the
     // calendar month actually changes.
@@ -1950,6 +1951,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
         requested: snap.transit.requested ?? [],
         headwayMin: snap.transit.headwayMin ?? [],
         runningCost: snap.transit.runningCost ?? [],
+        depotId: snap.transit.depotId ?? [],
       });
       // Refresh the idler crowd from the current stop set (walkers keep
       // their incrementally-tracked building set; an empty delta leaves it be).

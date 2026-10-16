@@ -1994,6 +1994,8 @@ export interface TransitFleetSnapshot {
   runningCost: number[];
   /** Vehicles fielded per mode by the connected depots, before allocation. */
   pools: Record<TransitMode, number>;
+  /** The building id of the depot fielding most of each line, null where none does; absent from an older worker. */
+  depotId?: (number | null)[];
 }
 
 /**

@@ -16,14 +16,27 @@
  * BuildingInstance.id convention in src/world/buildings.ts), and every
  * numeric formula below is a pure function of its inputs.
  */
-import type {
-  RoadNetworkApi,
-  TilePoint,
-  TransitFleetSnapshot,
-  TransitLine,
-  TransitMode,
+import {
+  pathRoute,
+  type GraphEdge,
+  type PathResult,
+  type RoadNetworkApi,
+  type TilePoint,
+  type TransitFleetSnapshot,
+  type TransitLine,
+  type TransitMode,
 } from '../shared/types';
-import { allocate, defaultFleet, headwayMin, runningCost } from '../shared/transitfleet';
+import { TICK_RATE } from '../shared/constants';
+import {
+  allocate,
+  defaultFleet,
+  headwayMin,
+  runningCost,
+  SERVICE_END_HOUR,
+  SERVICE_START_HOUR,
+} from '../shared/transitfleet';
+import type { DeadRunStart } from './deadruns';
+import { dayHourFromTick } from './traffic';
 
 // ---------------------------------------------------------------------------
 // Registry access (injected — this module never touches GridState/BuildingInstance
@@ -95,6 +108,63 @@ export const MODE_RATES: Record<TransitMode, { stopRadiusTiles: number; perDeman
 /** A line with no mode is a bus line — see TransitLine.mode. */
 export function modeOf(line: TransitLine): TransitMode {
   return line.mode ?? 'bus';
+}
+
+const MODES: readonly TransitMode[] = ['bus', 'rail', 'tram'];
+
+/** A depot fielding vehicles this tick, as the assignment needs it (a ConnectedDepot fits). */
+export interface FleetDepot {
+  id: number;
+  mode: TransitMode;
+  /** The vehicles it fields. */
+  fields: number;
+  /** The tiles of its footprint; its gate is the one nearest the network. */
+  tiles: readonly TilePoint[];
+}
+
+/**
+ * A depot's gate: the footprint tile nearest the network, measured to the node
+ * the network snaps the tile to. The first tile stands in where nothing snaps.
+ */
+export function gateOf(depot: FleetDepot, network: RoadNetworkApi): TilePoint {
+  const nodesById = new Map(network.getNodes().map((n) => [n.id, n] as const));
+  let best = depot.tiles[0] ?? { x: 0, z: 0 };
+  let bestDist = Infinity;
+  for (const tile of depot.tiles) {
+    const id = network.nearestNode(tile.x, tile.z);
+    if (id === null) continue;
+    const node = nodesById.get(id);
+    if (!node) continue;
+    const d = Math.abs(node.x - tile.x) + Math.abs(node.z - tile.z);
+    if (d < bestDist) {
+      bestDist = d;
+      best = tile;
+    }
+  }
+  return best;
+}
+
+/** Ticks between the buses a line releases on a dead run: its headway, never under a tick. */
+export function deadRunHeadwayTicks(headway: number): number {
+  return Math.max(1, Math.round(headway * 60 * TICK_RATE));
+}
+
+/** True when the clock passed `hour` between the last tick and this one. */
+function crossed(prevHour: number, hour: number, at: number): boolean {
+  return prevHour < at && hour >= at;
+}
+
+/**
+ * A line's dead-run paths, one per connected depot of its mode from the
+ * depot's gate to the line's first stop, with what they were found against:
+ * the route and the depots as they stood, and the graph's own edge objects,
+ * since a rebuilt graph hands out new ones under the same ids.
+ */
+interface DeadRunPaths {
+  routeKey: string;
+  depotKey: string;
+  byDepot: Map<number, PathResult | null>;
+  edgeRefs: Map<number, GraphEdge>;
 }
 
 // ---------------------------------------------------------------------------
@@ -250,6 +320,12 @@ export interface TransitTickResult extends TransitFleetSnapshot {
   lines: TransitLine[];
   /** Daily boardings each line carries, index-aligned with `lines`: the estimate scaled by served over requested. */
   ridership: number[];
+  /** The depot fielding most of each line, by building id; null where none does. */
+  depotId: (number | null)[];
+  /** The vehicles each depot has out on the lines, by building id. */
+  inService: Map<number, number>;
+  /** The dead runs starting this tick: the bus lines' pull-out at 05:00 and pull-in at 23:00. */
+  deadRuns: DeadRunStart[];
 }
 
 /** The vehicles each mode's connected depots field this tick. */
@@ -267,6 +343,9 @@ export function emptyTransitResult(): TransitTickResult {
     headwayMin: [],
     runningCost: [],
     pools: { ...EMPTY_POOLS },
+    depotId: [],
+    inService: new Map(),
+    deadRuns: [],
   };
 }
 
@@ -307,6 +386,10 @@ export class TransitSystem {
   private readonly lines = new Map<number, TransitLine>();
   /** Each line's settled default fleet, by id — see settleDefault. */
   private readonly defaults = new Map<number, number>();
+  /** Each line's dead-run paths, by id — see DeadRunPaths. */
+  private readonly deadRunPaths = new Map<number, DeadRunPaths>();
+  /** The last tick ticked, for telling when the clock crosses the service span's ends. */
+  private lastTick: number | null = null;
   private nextId = 1;
 
   constructor(
@@ -321,7 +404,10 @@ export class TransitSystem {
 
   /** The network that carries a line: the streets, the track, or the tram track. */
   private networkFor(line: TransitLine): RoadNetworkApi | null {
-    const mode = modeOf(line);
+    return this.networkOf(modeOf(line));
+  }
+
+  private networkOf(mode: TransitMode): RoadNetworkApi | null {
     if (mode === 'rail') return this.railNetwork;
     if (mode === 'tram') return this.tramNetwork;
     return this.network;
@@ -366,6 +452,7 @@ export class TransitSystem {
   /** Removes the line with `id`. Returns whether a line was actually removed. */
   deleteLine(id: number): boolean {
     this.defaults.delete(id);
+    this.deadRunPaths.delete(id);
     return this.lines.delete(id);
   }
 
@@ -382,6 +469,8 @@ export class TransitSystem {
   restore(lines: readonly TransitLine[]): void {
     this.lines.clear();
     this.defaults.clear();
+    this.deadRunPaths.clear();
+    this.lastTick = null;
     let maxId = 0;
     for (const line of lines) {
       this.lines.set(line.id, { ...line, stops: [...line.stops] });
@@ -417,10 +506,19 @@ export class TransitSystem {
    * result (lines[i] <-> ridership[i] <-> served[i]). A mode whose pool is
    * zero serves nothing on every line of it, which is the plain case of the
    * allocation and not a rule beside it.
+   *
+   * With `depots`, each line's served vehicles are taken from the nearest
+   * depot of its mode with vehicles left, nearest by path cost from the depot's
+   * gate to the line's first stop, spilling to the next; and with `tickNo`,
+   * the tick the clock crosses 05:00 sends every bus line's vehicles out along
+   * that path (its volume on the road graph, its buses in `deadRuns`) and the
+   * tick it crosses 23:00 sends them back, once each per day.
    */
   tick(
     accessor: PopulationJobsAccessor,
     pools: Readonly<TransitPools> = EMPTY_POOLS,
+    depots: readonly FleetDepot[] = [],
+    tickNo?: number,
   ): TransitTickResult {
     const lines = Array.from(this.lines.values()).sort((a, b) => a.id - b.id);
     const routes: (TransitRoute | null)[] = [];
@@ -469,6 +567,9 @@ export class TransitSystem {
       cost.push(runningCost(mode, got));
     }
 
+    const { depotId, inService, paths } = this.assign(lines, routes, served, depots);
+    const deadRuns = this.crossings(lines, paths, served, headway, tickNo);
+
     return {
       lines,
       ridership,
@@ -477,7 +578,154 @@ export class TransitSystem {
       headwayMin: headway,
       runningCost: cost,
       pools: { ...pools },
+      depotId,
+      inService,
+      deadRuns,
     };
+  }
+
+  /**
+   * Which depot each line's vehicles come from. Per mode, the lines in id
+   * order take their served vehicles from the nearest connected depot with
+   * vehicles left — nearest by path cost from the depot's gate to the line's
+   * first stop, ties by depot id — and spill to the next nearest when it runs
+   * dry. A line's depot is the one fielding most of it, the nearer on a tie,
+   * and its dead-run path is that depot's. A depot no path reaches fields
+   * nothing for the line.
+   */
+  private assign(
+    lines: readonly TransitLine[],
+    routes: readonly (TransitRoute | null)[],
+    served: readonly number[],
+    depots: readonly FleetDepot[],
+  ): {
+    depotId: (number | null)[];
+    inService: Map<number, number>;
+    paths: (PathResult | null)[];
+  } {
+    const depotId: (number | null)[] = new Array<number | null>(lines.length).fill(null);
+    const paths: (PathResult | null)[] = new Array<PathResult | null>(lines.length).fill(null);
+    const inService = new Map<number, number>();
+
+    for (const mode of MODES) {
+      const fleet = depots.filter((d) => d.mode === mode).sort((a, b) => a.id - b.id);
+      const network = this.networkOf(mode);
+      const left = new Map(fleet.map((d) => [d.id, d.fields] as const));
+      for (let i = 0; i < lines.length; i += 1) {
+        const line = lines[i]!;
+        if (modeOf(line) !== mode) continue;
+        const route = routes[i];
+        if (!route || !network || fleet.length === 0) {
+          this.deadRunPaths.delete(line.id);
+          continue;
+        }
+        const byDepot = this.deadRunPathsFor(line, route, fleet, network);
+        if (served[i]! <= 0) continue;
+
+        const reachable = fleet
+          .filter((d) => byDepot.get(d.id))
+          .sort((a, b) => byDepot.get(a.id)!.cost - byDepot.get(b.id)!.cost || a.id - b.id);
+        let need = served[i]!;
+        let best: { id: number; took: number } | null = null;
+        for (const depot of reachable) {
+          const take = Math.min(need, left.get(depot.id) ?? 0);
+          if (take <= 0) continue;
+          left.set(depot.id, (left.get(depot.id) ?? 0) - take);
+          inService.set(depot.id, (inService.get(depot.id) ?? 0) + take);
+          need -= take;
+          if (!best || take > best.took) best = { id: depot.id, took: take };
+          if (need === 0) break;
+        }
+        if (best) {
+          depotId[i] = best.id;
+          paths[i] = byDepot.get(best.id) ?? null;
+        }
+      }
+    }
+    return { depotId, inService, paths };
+  }
+
+  /**
+   * A line's dead-run paths, cached and found again only when its route or
+   * the mode's depots changed since, or the graph was rebuilt under them.
+   */
+  private deadRunPathsFor(
+    line: TransitLine,
+    route: TransitRoute,
+    fleet: readonly FleetDepot[],
+    network: RoadNetworkApi,
+  ): Map<number, PathResult | null> {
+    const first = line.stops[0]!;
+    const routeKey = `${first.x},${first.z}:${route.edges.join(',')}`;
+    const depotKey = fleet.map((d) => d.id).join(',');
+    const edgesById = new Map(network.getEdges().map((e) => [e.id, e] as const));
+    const cached = this.deadRunPaths.get(line.id);
+    if (cached && cached.routeKey === routeKey && cached.depotKey === depotKey) {
+      let fresh = true;
+      for (const [id, edge] of cached.edgeRefs) {
+        if (edgesById.get(id) !== edge) {
+          fresh = false;
+          break;
+        }
+      }
+      if (fresh) return cached.byDepot;
+    }
+
+    const byDepot = new Map<number, PathResult | null>();
+    const edgeRefs = new Map<number, GraphEdge>();
+    for (const depot of fleet) {
+      const path = network.findPath(gateOf(depot, network), first);
+      byDepot.set(depot.id, path);
+      for (const id of path?.edges ?? []) {
+        const edge = edgesById.get(id);
+        if (edge) edgeRefs.set(id, edge);
+      }
+    }
+    this.deadRunPaths.set(line.id, { routeKey, depotKey, byDepot, edgeRefs });
+    return byDepot;
+  }
+
+  /**
+   * The dead runs the clock starts this tick. When it crosses 05:00 every bus
+   * line with a path loads its served vehicles onto each edge of it, the
+   * pull-out, and its buses leave the gate for the first stop; when it crosses
+   * 23:00 the same again the other way, the pull-in. A tram or a train
+   * dead-runs over its own graph, which carries no traffic, and no vehicle
+   * kind draws it, so neither loads or animates anything here.
+   */
+  private crossings(
+    lines: readonly TransitLine[],
+    paths: readonly (PathResult | null)[],
+    served: readonly number[],
+    headway: readonly number[],
+    tickNo: number | undefined,
+  ): DeadRunStart[] {
+    if (tickNo === undefined) return [];
+    const prevHour = dayHourFromTick(this.lastTick ?? tickNo - 1);
+    const hour = dayHourFromTick(tickNo);
+    this.lastTick = tickNo;
+    const pullOut = crossed(prevHour, hour, SERVICE_START_HOUR);
+    const pullIn = crossed(prevHour, hour, SERVICE_END_HOUR);
+    if (!pullOut && !pullIn) return [];
+
+    const runs: DeadRunStart[] = [];
+    for (let i = 0; i < lines.length; i += 1) {
+      const line = lines[i]!;
+      const path = paths[i];
+      const count = served[i]!;
+      if (modeOf(line) !== 'bus' || !path || count <= 0) continue;
+      this.network.addVolume(path.edges, count);
+      // A copy: the path's own route is cached, and the pull-in drives it backwards.
+      const route = [...pathRoute(path)];
+      if (pullIn) route.reverse();
+      runs.push({
+        lineId: line.id,
+        route,
+        count,
+        headwayTicks: deadRunHeadwayTicks(headway[i]!),
+      });
+    }
+    return runs;
   }
 
   /**

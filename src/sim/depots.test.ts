@@ -145,17 +145,32 @@ describe('which depots field', () => {
 });
 
 describe('what a depot has in service', () => {
-  it('fills depots in ascending id with the mode’s served total', () => {
+  it('reads what the assignment says left each depot, and nothing for one not fielding', () => {
     const g = grid();
     const depots = connectedDepots(
       g,
       [depot(1, 'bus-depot', 4, 11), depot(2, 'bus-garage', 20, 11), depot(3, 'tram-depot', 4, 21)],
       byId,
     );
-    const served = { bus: 11, rail: 0, tram: 2 };
-    expect(inServiceAt(depots, 1, served)).toBe(8);
-    expect(inServiceAt(depots, 2, served)).toBe(3);
-    expect(inServiceAt(depots, 3, served)).toBe(2);
-    expect(inServiceAt(depots, 9, served)).toBe(0);
+    const leftFrom = new Map([
+      [1, 3],
+      [2, 8],
+      [3, 2],
+      [9, 4],
+    ]);
+    expect(inServiceAt(depots, 1, leftFrom)).toBe(3);
+    expect(inServiceAt(depots, 2, leftFrom)).toBe(8);
+    expect(inServiceAt(depots, 3, leftFrom)).toBe(2);
+    // Depot 9 is not fielding this tick, whatever the assignment remembers of it.
+    expect(inServiceAt(depots, 9, leftFrom)).toBe(0);
+    expect(inServiceAt(depots, 1, new Map())).toBe(0);
+  });
+
+  it('lists each depot’s footprint tiles, turned as it stands', () => {
+    const g = grid();
+    const [yard] = connectedDepots(g, [depot(1, 'rail-yard', 4, 27, { rotation: 1 })], byId);
+    expect(yard!.tiles).toHaveLength(12);
+    expect(yard!.tiles[0]).toEqual({ x: 4, z: 27 });
+    expect(yard!.tiles[11]).toEqual({ x: 7, z: 29 });
   });
 });

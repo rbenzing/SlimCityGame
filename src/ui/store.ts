@@ -132,12 +132,12 @@ export function createInitialToolFlags(): ToolFlags {
 /** The per-line fleet figures the transit snapshot carries, as the panel reads them. */
 export type TransitFleetFigures = Pick<
   TransitFleetSnapshot,
-  'served' | 'requested' | 'headwayMin' | 'runningCost'
+  'served' | 'requested' | 'headwayMin' | 'runningCost' | 'depotId'
 >;
 
 /** No fleet figures yet: every line reads as running nothing. */
 export function emptyTransitFleet(): TransitFleetFigures {
-  return { served: [], requested: [], headwayMin: [], runningCost: [] };
+  return { served: [], requested: [], headwayMin: [], runningCost: [], depotId: [] };
 }
 
 /** A sane, zeroed CityStats for the moment before the first worker snapshot arrives. */

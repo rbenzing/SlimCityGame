@@ -25,7 +25,7 @@ current behavior only and carry no dates of their own._
 
 ## Status (2026-09-29)
 
-**Test suite:** 6,764 tests passing across 193 test files, run 2026-10-16.
+**Test suite:** 6,802 tests passing across 194 test files, run 2026-10-16.
 This is the only test count in the documentation set. When the suite changes
 again, update the figure here and nowhere else.
 
@@ -155,6 +155,12 @@ not a test to fix.
   their `units` were counted on when they stepped; the unit counts were left
   as they were. `window.__slimcity.readKit()` reports only the kit's first
   six part kinds.
+- A ground truth says `VISUAL_DAY_TICKS` never drives a sim rule, but the
+  traffic system's rush hour reads the visual clock and the transit dead
+  runs now follow it for their 05:00 and 23:00 crossings, since the
+  renderer's hiding of the loop has to match the sim to the hour. Either the
+  truth gains the exception or both systems move to the calendar day; the
+  player decides.
 - The placement ghost does not read `requiresAdjacent`: a reactor, pumping
   station, drain or treatment works shows as placeable over dry land, and only
   the commit is refused, with a toast. The ghost should refuse it as it refuses
@@ -222,7 +228,7 @@ player's choice (2026-10-16): transport depots**
 ([transport-depots.md](game-design/features/transport-depots.md)), the
 programme's seventh epic — a depot fields a line's vehicles over its own
 network, a mode with no depot runs nothing, and every vehicle in service is
-charged its operating cost; the sim built, the dead runs and the kits next.
+charged its operating cost; the sim and the dead runs built, the kits next.
 After it, the programme's last epic, parks and recreation
 ([municipal-services.md](game-design/features/municipal-services.md)), the
 [DESIGN.md](DESIGN.md) deferred backlog (weather, deeper industry, more
@@ -367,6 +373,32 @@ roads, and pinning the Three.js version. See [adr/](engineering/adr/README.md).
 ---
 
 ## 10. History (newest first)
+
+### Transit vehicles drive to work (slice 2 of the transport-depots epic, built 2026-10-16)
+
+A line's vehicles now come from a particular depot and make the trip. Nothing
+in ridership or routing changes.
+
+- **Nearest depot first.** Each line takes its vehicles from the nearest
+  connected depot of its mode with vehicles left, nearest by path cost over
+  the mode's own network from the depot's gate to the line's first stop,
+  spilling to the next when one runs dry; a depot's "in service" is what
+  left it, and the panel names each line's depot.
+- **The service span is 05:00 to 23:00.** At pull-out every bus line's path
+  from gate to first stop takes its served vehicles of volume on each edge,
+  and again at pull-in, so a garage across town loads the streets between
+  twice a day; tram and rail paths load nothing, since their graphs carry
+  no traffic. The path is cached per line and never trusted across a graph
+  rebuild.
+- **Buses are simulated leaving and returning**, one per headway, in the
+  vehicle buffer the trucks and responders ride in, and the renderer hides a
+  line's looping vehicles outside the span: buses pull out at dawn, run the
+  line by day and go home at night. Tram and train dead runs are not
+  animated yet.
+- The clock races the street: a visual hour is five seconds and a bus keeps
+  its commercial speed, so a pull-out is still on the road an hour later.
+  The crossings read the visual clock as the rush hour does, which a ground
+  truth forbids; logged in the open items for the player.
 
 ### Transport depots: a line's vehicles come from somewhere (slice 1 of the transport-depots epic, built 2026-10-16)
 

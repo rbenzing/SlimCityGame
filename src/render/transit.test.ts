@@ -36,6 +36,46 @@ describe('the vehicles a line draws', () => {
     expect(renderer.busCount()).toBe(0);
   });
 
+  it('hides the loop outside the service span and keeps the ribbon and shelters, then shows it again', () => {
+    const scene = new THREE.Scene();
+    const renderer = new TransitRenderer(scene, flatHeightAt);
+    // Three buses on a two-stop line: the only instanced mesh with three instances is the buses'.
+    renderer.apply({ lines: [line(1, route, 1)], ridership: [0], served: [3] });
+    const mesh = scene.children.find(
+      (c): c is THREE.InstancedMesh => c instanceof THREE.InstancedMesh && c.count === 3,
+    )!;
+    const m = new THREE.Matrix4();
+    const s = new THREE.Vector3();
+    const drawn = (): boolean[] => {
+      const out: boolean[] = [];
+      for (let i = 0; i < 3; i += 1) {
+        mesh.getMatrixAt(i, m);
+        s.setFromMatrixScale(m);
+        out.push(s.x > 0);
+      }
+      return out;
+    };
+
+    renderer.setDayHour(3);
+    renderer.update(0.1);
+    expect(renderer.isRunning()).toBe(false);
+    expect(drawn()).toEqual([false, false, false]);
+    expect(renderer.busCount()).toBe(3);
+    expect(renderer.stopCount()).toBe(2);
+    expect(renderer.lineCount()).toBe(1);
+
+    renderer.setDayHour(12);
+    renderer.update(0.1);
+    expect(renderer.isRunning()).toBe(true);
+    expect(drawn()).toEqual([true, true, true]);
+
+    // The span is [05:00, 23:00): the first minute of service runs, the last minute of the day does not.
+    renderer.setDayHour(5);
+    expect(renderer.isRunning()).toBe(true);
+    renderer.setDayHour(23);
+    expect(renderer.isRunning()).toBe(false);
+  });
+
   it('draws nothing for a snapshot with no served figures, as an older worker sends', () => {
     const scene = new THREE.Scene();
     const renderer = new TransitRenderer(scene, flatHeightAt);

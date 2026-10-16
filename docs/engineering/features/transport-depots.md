@@ -1,6 +1,6 @@
 # Transport depots — technical design
 
-- **Status:** Specified 2026-10-16 (draft of 2026-09-18 revised on the player's choices); slice 1, the sim, built 2026-10-16; dead runs and the kits next
+- **Status:** Specified 2026-10-16 (draft of 2026-09-18 revised on the player's choices); slice 1, the sim, built 2026-10-16; slice 2, dead runs, built 2026-10-16; the kits next
 - **Date:** 2026-09-18, revised 2026-10-16
 - **Author:** Claude Opus 5, revised by Claude Fable 5.1
 
@@ -34,20 +34,20 @@ road with are all on the network.
 
 ## What it touches
 
-| Module                              | Change                                                                                                                                                                     |
-| ----------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `src/shared/types.ts`               | `BuildingCatalogEntry.depot?: { mode; fleet }`; `requiresAdjacent` widens to `'rail' \| 'water' \| 'tram'`; `TransitLine.vehicles?`; `SimSnapshot.transit` grows           |
-| `src/data/catalog.json`             | Four `transit` entries: `bus-depot`, `bus-garage`, `tram-depot`, `rail-yard`. No existing entry changes                                                                    |
-| `src/shared/transitfleet.ts`        | New, pure: the constants, `cycleSeconds`, `defaultFleet`, `allocate` (the proportional cut-back), `runningCost`; one source for sim and renderer                           |
-| `src/sim/transit.ts`                | Fleet pool per mode, allocation, cycle time, headway, ridership scaled by served over requested before relief; slice 2 adds dead-run paths                                 |
-| `src/sim/traffic.ts`                | Slice 2: dead-run volume on the road graph                                                                                                                                 |
-| `src/sim/worker.entry.ts`           | Depot registry scan each tick; the `'tram'` placement gate on `isTramTier`; the snapshot fields                                                                            |
-| `src/sim/economy.ts`                | A `transitRunning` monthly expense: `served` summed over lines × the mode's charge, beside building upkeep                                                                 |
-| `src/render/transit.ts`             | Vehicle count from the snapshot, spaced at `1 / served` of the route; commercial speed; the three count functions go                                                       |
-| `src/ui/`                           | Headway, served over requested, depot and running cost in the line panel; "no depot" when served is 0; capacity in the depot panel; the four cards in the Transit category |
-| `tests/interaction/transit.test.ts` | The fixtures gain a depot, because a line without one now carries nobody; a new test holds that. `firsttown.test.ts` is not touched                                        |
-| `docs/world-sim/transit-model.md`   | "no depots" leaves the deferred list; a Depots paragraph; ridership declared daily boardings                                                                               |
-| `docs/GROUND-TRUTHS.md`             | One bullet: a line's vehicles are fielded by a depot of its mode, never from nowhere; a mode with no depot runs nothing; the renderer draws the sim's count                |
+| Module                              | Change                                                                                                                                                                                                                                                           |
+| ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/shared/types.ts`               | `BuildingCatalogEntry.depot?: { mode; fleet }`; `requiresAdjacent` widens to `'rail' \| 'water' \| 'tram'`; `TransitLine.vehicles?`; `SimSnapshot.transit` grows                                                                                                 |
+| `src/data/catalog.json`             | Four `transit` entries: `bus-depot`, `bus-garage`, `tram-depot`, `rail-yard`. No existing entry changes                                                                                                                                                          |
+| `src/shared/transitfleet.ts`        | New, pure: the constants, `cycleSeconds`, `defaultFleet`, `allocate` (the proportional cut-back), `runningCost`; one source for sim and renderer                                                                                                                 |
+| `src/sim/transit.ts`                | Fleet pool per mode, allocation, cycle time, headway, ridership scaled by served over requested before relief; slice 2: the depot assignment, the cached dead-run paths, the two crossings' volume on the road graph (`network.addVolume`) and the runs to start |
+| `src/sim/deadruns.ts`               | Slice 2: the dead-running buses, sim-animated in their own slice of the vehicle buffer                                                                                                                                                                           |
+| `src/sim/worker.entry.ts`           | Depot registry scan each tick; the `'tram'` placement gate on `isTramTier`; the snapshot fields                                                                                                                                                                  |
+| `src/sim/economy.ts`                | A `transitRunning` monthly expense: `served` summed over lines × the mode's charge, beside building upkeep                                                                                                                                                       |
+| `src/render/transit.ts`             | Vehicle count from the snapshot, spaced at `1 / served` of the route; commercial speed; the three count functions go                                                                                                                                             |
+| `src/ui/`                           | Headway, served over requested, depot and running cost in the line panel; "no depot" when served is 0; capacity in the depot panel; the four cards in the Transit category                                                                                       |
+| `tests/interaction/transit.test.ts` | The fixtures gain a depot, because a line without one now carries nobody; a new test holds that. `firsttown.test.ts` is not touched                                                                                                                              |
+| `docs/world-sim/transit-model.md`   | "no depots" leaves the deferred list; a Depots paragraph; ridership declared daily boardings                                                                                                                                                                     |
+| `docs/GROUND-TRUTHS.md`             | One bullet: a line's vehicles are fielded by a depot of its mode, never from nowhere; a mode with no depot runs nothing; the renderer draws the sim's count                                                                                                      |
 
 **Save format: yes, additively, and minimally.** No new `SaveMeta` block — the
 pool is derived every tick from the building registry, which already persists.
@@ -151,6 +151,47 @@ depot two tiles closer bought nothing. If it wants more weight the lever is the
 service span, not a fudge on the availability term. A tram dead-runs over the
 tram graph and a train over the railway; neither loads the road graph.
 
+**How it is built**, on the pattern the garbage trucks and the dispatch
+vehicles already use:
+
+- **Assignment.** The mode's pool stays one number and the proportional cut
+  stands; what slice 2 adds is which depot each line's vehicles come from.
+  Lines in id order take their served vehicles from the nearest connected
+  depot of the mode with vehicles left — nearest by `findPath` cost over the
+  mode's graph from the depot's gate tile (its footprint's tile nearest the
+  network) to the line's first stop — and spill to the next nearest when it
+  runs dry. A depot's "in service" is then what left it, replacing the
+  ascending-id fill, and the snapshot carries a `depotId` per line, optional
+  and additive, for the panel.
+- **The path** is `findPath(gate, line.stops[0])` on the mode's graph for the
+  depot that fields most of the line, cached per line and recomputed only
+  when the line's route changed (its edge list differs from the last tick's)
+  or its depot did; the graph is rebuilt on every edit, and a path whose
+  edge ids are stale is recomputed the next tick.
+- **The service span** is 05:00 to 23:00 of the sim's day — eighteen hours,
+  the span the availability arithmetic above uses — read from
+  `dayHourFromTick`. At the tick the day crosses 05:00 every bus line's
+  path takes `served` vehicles of volume on each edge through
+  `network.addVolume`, the pull-out; at 23:00 the same again, the pull-in.
+  Volume is trips, as the traffic system counts them, and decays with the
+  day as every trip does. Tram and rail paths take no volume: their graphs
+  carry no traffic.
+- **The vehicles** are simulated, not drawn by the renderer: at pull-out the
+  line's served buses leave the gate along the path, one per headway, in
+  the sim's vehicle buffer as `VehicleKind.Bus`, and are dropped when they
+  reach the first stop; at pull-in the same number drive the path back from
+  the first stop to the gate. The transit renderer hides a line's looping
+  vehicles outside the service span, so the street shows buses pulling out
+  at dawn, running the line by day and going home at night, and never a bus
+  at three in the morning. Tram and train dead runs are not animated in this
+  slice; they move on their own graphs and the vehicle buffer has no kind
+  for them.
+- **Tests:** nearest-depot assignment and spill, by cost not distance; the
+  path per line and its cache; volume on exactly the path's edges at the two
+  crossings and nowhere else, once each per day; tram and rail paths add no
+  volume; the pull-out vehicles' count, spacing and kind; the renderer's
+  loop hidden outside the span; determinism.
+
 ### Economy and render
 
 Two charges, deliberately separated: the depot building's `upkeep`, the
@@ -177,6 +218,22 @@ kit's own parked vehicles, on the vehicle kit's geometry.
 
 ## What could go wrong
 
+- **The clock runs faster than the street.** A visual hour is a hundred
+  ticks, five seconds at normal speed, and a bus drives at its commercial
+  5.56 m/s in real seconds, so a 15-tile pull-out that leaves the gate at
+  05:00 is still on the road at 06:00 and a 23:00 pull-in can still be
+  driving at 03:00. That is the cosmetic cars' existing relation to the
+  clock, and the alternative — a bus that covers the run inside one visual
+  hour — is the 144 km/h bus this epic removed. A bus is never faster than a
+  bus; the clock is what races. The night shot therefore shows the loop
+  hidden, not necessarily an empty street.
+- **The visual clock drives the crossings.** The service span is read from
+  `dayHourFromTick`, the visual clock, because the renderer's hiding of the
+  loop must match the sim's pull-out to the hour. A ground truth says the
+  visual day never drives a sim rule; the traffic system's rush hour already
+  reads the same clock, so the dead runs follow that precedent rather than
+  the truth, and the disagreement is flagged in the ROADMAP's open items
+  for the player to settle.
 - **Every existing city's transit stops on upgrade.** That is the chosen rule,
   not an accident, and the panel has to say "no depot" the moment the save
   opens or the player sees a dead transit map with no reason. The test holds

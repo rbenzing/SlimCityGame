@@ -1,6 +1,19 @@
 import { describe, expect, it } from 'vitest';
-import { tileIndex } from '../../src/shared/constants';
-import { RoadTier, ZoneType, type SimSnapshot } from '../../src/shared/types';
+import { tileIndex, tileToWorld, VISUAL_DAY_TICKS } from '../../src/shared/constants';
+import {
+  INACTIVE_VEHICLE_X,
+  RoadTier,
+  VEHICLE_STRIDE,
+  VehicleKind,
+  ZoneType,
+  type BuildingInstance,
+  type SimSnapshot,
+  type WorkerToMain,
+} from '../../src/shared/types';
+import { SERVICE_END_HOUR, SERVICE_START_HOUR } from '../../src/shared/transitfleet';
+import { dayHourFromTick } from '../../src/sim/traffic';
+import { MAX_DEAD_RUN_BUSES } from '../../src/sim/deadruns';
+import { DEAD_RUN_SLOT_OFFSET } from '../../src/sim/worker.entry';
 import {
   composeProfile,
   FIRST_CUSTOM_PROFILE_ID,
@@ -19,6 +32,7 @@ import {
   run,
   send,
   sixLaneCommands,
+  standingBuildings,
 } from '../support/sim';
 import { guardRoadNetwork } from '../support/guard';
 
@@ -61,8 +75,138 @@ describe('drawing a bus line while the city is paused', () => {
       headwayMin: [],
       runningCost: [],
       pools: { bus: 0, rail: 0, tram: 0 },
+      depotId: [],
     });
   });
+});
+
+describe('a bus line’s dead runs', () => {
+  /**
+   * A street along z = 80 with a side street off it at x = 67 and at x = 72,
+   * so the graph has a node at each. The depot stands beside the x = 72 side
+   * street, which is its gate node; the first stop snaps to the x = 67 node,
+   * five tiles west, and the last to the street's east end. One bus, so the
+   * run is one bus each way.
+   */
+  const STREET_Z = 80;
+  const stops = [
+    { x: 66, z: STREET_Z - 1 },
+    { x: 76, z: STREET_Z - 1 },
+  ];
+  const DEPOT = { x: 70, z: STREET_Z + 1 };
+  const GATE_NODE = { x: 72, z: STREET_Z };
+  const FIRST_STOP_NODE = { x: 67, z: STREET_Z };
+
+  function lineWithDepot(): Harness {
+    const h = initialized();
+    const built = run(h, 1, [
+      { kind: 'setSandbox', on: true },
+      { kind: 'setUnlimitedMoney', on: true },
+      { kind: 'buildRoad', tier: RoadTier.TwoLane, tiles: roadRow(60, STREET_Z, 20) },
+      { kind: 'buildRoad', tier: RoadTier.TwoLane, tiles: column(67, STREET_Z + 1, 4) },
+      { kind: 'buildRoad', tier: RoadTier.TwoLane, tiles: column(72, STREET_Z + 1, 4) },
+      { kind: 'placeBuilding', catalogId: 'wind-turbine', x: 60, z: STREET_Z - 1, rotation: 0 },
+      { kind: 'placeBuilding', catalogId: 'bus-stop', ...stops[0]!, rotation: 0 },
+      { kind: 'placeBuilding', catalogId: 'bus-stop', ...stops[1]!, rotation: 0 },
+      { kind: 'placeBuilding', catalogId: 'bus-depot', ...DEPOT, rotation: 0 },
+      {
+        kind: 'createTransitLine',
+        line: { id: 0, stops, color: 0xd23c3c, mode: 'bus', vehicles: 1 },
+      },
+    ]);
+    expect(built.ok).toBe(true);
+    return h;
+  }
+
+  /** The first tick whose clock hour is at or past `hour`, with the tick before it short of it. */
+  function crossingTick(hour: number): number {
+    for (let t = 1; t <= VISUAL_DAY_TICKS; t++) {
+      if (dayHourFromTick(t - 1) < hour && dayHourFromTick(t) >= hour) return t;
+    }
+    throw new Error('no crossing');
+  }
+  const PULL_OUT = crossingTick(SERVICE_START_HOUR);
+  const PULL_IN = crossingTick(SERVICE_END_HOUR);
+
+  /** Runs the sim up to and including `tick`, and returns the snapshot taken at or just after it. */
+  function advanceTo(h: Harness, tick: number): SimSnapshot {
+    const now = h.lastSnapshot()!.stats.tick;
+    if (tick > now) h.ticks(tick - now);
+    while (h.lastSnapshot()!.stats.tick < tick) h.ticks(1);
+    return h.lastSnapshot()!;
+  }
+
+  /** The buses on the dead-run slice of the vehicle buffer, as world positions. */
+  function deadRunBuses(snap: SimSnapshot): { x: number; z: number; kind: number }[] {
+    const out: { x: number; z: number; kind: number }[] = [];
+    const vehicles = snap.vehicles!;
+    for (
+      let slot = DEAD_RUN_SLOT_OFFSET;
+      slot < DEAD_RUN_SLOT_OFFSET + MAX_DEAD_RUN_BUSES;
+      slot++
+    ) {
+      const base = slot * VEHICLE_STRIDE;
+      if (vehicles[base] === INACTIVE_VEHICLE_X) continue;
+      out.push({ x: vehicles[base]!, z: vehicles[base + 1]!, kind: vehicles[base + 4]! });
+    }
+    return out;
+  }
+
+  const depotOf = (h: Harness): BuildingInstance =>
+    Array.from(standingBuildings(h).values()).find((b) => b.catalogId === 'bus-depot')!;
+
+  it('names the depot that fields the line, and the depot counts the bus as in service', () => {
+    const h = lineWithDepot();
+    h.ticks(10);
+    const t = h.lastSnapshot()!.transit!;
+    expect(t.served).toEqual([1]);
+    expect(t.depotId).toEqual([depotOf(h).id]);
+
+    h.sim.handleMessage({ type: 'select', buildingId: depotOf(h).id });
+    const selections = h.messages.filter(
+      (m): m is Extract<WorkerToMain, { type: 'selection' }> => m.type === 'selection',
+    );
+    expect(selections[selections.length - 1]!.info!.depot).toEqual({
+      holds: 10,
+      fields: 8,
+      inService: 1,
+    });
+  });
+
+  it(
+    'sends the bus home from the first stop at 23:00, shows an empty street at 03:00, and a bus leaving the gate at 05:00',
+    () => {
+      const h = lineWithDepot();
+      // Nothing dead-runs before the first crossing.
+      expect(deadRunBuses(advanceTo(h, PULL_IN - 2))).toEqual([]);
+
+      const dusk = deadRunBuses(advanceTo(h, PULL_IN));
+      expect(dusk).toHaveLength(1);
+      expect(dusk[0]!.kind).toBe(VehicleKind.Bus);
+      expect(dusk[0]!.x).toBeCloseTo(tileToWorld(FIRST_STOP_NODE.x), 0);
+      expect(dusk[0]!.z).toBeCloseTo(tileToWorld(FIRST_STOP_NODE.z), 0);
+      // An hour on it has driven east toward the gate.
+      const night = deadRunBuses(advanceTo(h, PULL_IN + 100));
+      expect(night).toHaveLength(1);
+      expect(night[0]!.x).toBeGreaterThan(dusk[0]!.x);
+      expect(night[0]!.x).toBeLessThan(tileToWorld(GATE_NODE.x));
+      // Home by three in the morning: the street is empty.
+      expect(deadRunBuses(advanceTo(h, crossingTick(3)))).toEqual([]);
+
+      const dawn = deadRunBuses(advanceTo(h, PULL_OUT));
+      expect(dawn).toHaveLength(1);
+      expect(dawn[0]!.kind).toBe(VehicleKind.Bus);
+      expect(dawn[0]!.x).toBeCloseTo(tileToWorld(GATE_NODE.x), 0);
+      expect(dawn[0]!.z).toBeCloseTo(tileToWorld(GATE_NODE.z), 0);
+      // An hour on it has driven west toward the first stop, and not past it.
+      const morning = deadRunBuses(advanceTo(h, PULL_OUT + 100));
+      expect(morning).toHaveLength(1);
+      expect(morning[0]!.x).toBeLessThan(dawn[0]!.x);
+      expect(morning[0]!.x).toBeGreaterThan(tileToWorld(FIRST_STOP_NODE.x));
+      expect(morning[0]!.z).toBeCloseTo(tileToWorld(STREET_Z), 0);
+    },
+    GROWTH_TIMEOUT_MS,
+  );
 });
 
 describe('a bus line and the depot that fields it', () => {

@@ -16,6 +16,7 @@ import {
   type BuildingCatalogEntry,
   type BuildingInstance,
   type GridState,
+  type TilePoint,
   type TransitMode,
 } from '../shared/types';
 import { hasAdjacentTier } from '../world/grid';
@@ -28,6 +29,8 @@ export interface ConnectedDepot {
   holds: number;
   /** The vehicles it fields: its holding less the spare fifth. */
   fields: number;
+  /** The tiles of its turned footprint, row by row; its gate is whichever lies nearest the network. */
+  tiles: TilePoint[];
 }
 
 const NETWORK_OF: Readonly<Record<TransitMode, (tier: number) => boolean>> = {
@@ -52,7 +55,17 @@ export function connectedDepots(
     // Powered as growth judges it: the power layer reaches a tile of the lot.
     if (!footprintServed(g.power, b.x, b.z, w, d)) continue;
     if (!hasAdjacentTier(g, b.x, b.z, w, d, NETWORK_OF[depot.mode])) continue;
-    depots.push({ id: b.id, mode: depot.mode, holds: depot.fleet, fields: fieldsOf(depot.fleet) });
+    const tiles: TilePoint[] = [];
+    for (let dz = 0; dz < d; dz++) {
+      for (let dx = 0; dx < w; dx++) tiles.push({ x: b.x + dx, z: b.z + dz });
+    }
+    depots.push({
+      id: b.id,
+      mode: depot.mode,
+      holds: depot.fleet,
+      fields: fieldsOf(depot.fleet),
+      tiles,
+    });
   }
   return depots.sort((a, b) => a.id - b.id);
 }
@@ -65,23 +78,15 @@ export function fleetPools(depots: readonly ConnectedDepot[]): Record<TransitMod
 }
 
 /**
- * How many of one depot's vehicles are out on its mode's lines: the mode's
- * served total fills the depots in ascending id, so the figure is the same on
- * every run and the sum over a mode's depots is exactly what its lines run.
+ * How many of one depot's vehicles are out on its mode's lines: what the
+ * transit tick's assignment says left it, and nothing for a depot that is not
+ * fielding this tick, whatever the assignment remembers of it.
  */
 export function inServiceAt(
   depots: readonly ConnectedDepot[],
   id: number,
-  servedByMode: Readonly<Record<TransitMode, number>>,
+  leftFrom: ReadonlyMap<number, number>,
 ): number {
-  const mode = depots.find((d) => d.id === id)?.mode;
-  if (mode === undefined) return 0;
-  let left = servedByMode[mode];
-  for (const depot of depots) {
-    if (depot.mode !== mode) continue;
-    const out = Math.min(left, depot.fields);
-    if (depot.id === id) return out;
-    left -= out;
-  }
-  return 0;
+  if (!depots.some((d) => d.id === id)) return 0;
+  return leftFrom.get(id) ?? 0;
 }

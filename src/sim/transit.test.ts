@@ -7,13 +7,23 @@ import {
   applyRidershipRelief,
   applyStationRelief,
   settleDefault,
+  gateOf,
+  deadRunHeadwayTicks,
   RIDERSHIP_STOP_RADIUS_TILES,
   CONGESTION_RELIEF_PER_RIDER,
+  type FleetDepot,
   type PopulationJobsAccessor,
   type TransitPools,
   type TransitRoute,
 } from './transit';
-import { defaultFleet, RUNNING_COST_CENTS } from '../shared/transitfleet';
+import { dayHourFromTick } from './traffic';
+import {
+  defaultFleet,
+  RUNNING_COST_CENTS,
+  SERVICE_END_HOUR,
+  SERVICE_START_HOUR,
+} from '../shared/transitfleet';
+import { TICK_RATE, tileToWorld, VISUAL_DAY_TICKS } from '../shared/constants';
 import {
   isRailTier,
   isTramTier,
@@ -1099,5 +1109,343 @@ describe('TransitSystem.restore', () => {
     sys.createLine([{ x: 0, z: 0 }], 0);
     sys.restore([]);
     expect(sys.getLines()).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Dead runs: which depot fields a line, the path between them, and the day's
+// two crossings.
+// ---------------------------------------------------------------------------
+
+describe('dead runs', () => {
+  /** The first tick whose clock hour is at or past `hour`, with the tick before it short of it. */
+  function crossingTick(hour: number): number {
+    for (let t = 1; t <= VISUAL_DAY_TICKS; t++) {
+      if (dayHourFromTick(t - 1) < hour && dayHourFromTick(t) >= hour) return t;
+    }
+    throw new Error('no crossing');
+  }
+  const PULL_OUT = crossingTick(SERVICE_START_HOUR);
+  const PULL_IN = crossingTick(SERVICE_END_HOUR);
+
+  const STOPS: TilePoint[] = [
+    { x: 40, z: 0 },
+    { x: 59, z: 0 },
+  ];
+  /** Depot 1 stands five tiles from the first stop, depot 2 fifty: distance says 1, the costs below may not. */
+  const DEPOT_A: FleetDepot = { id: 1, mode: 'bus', fields: 8, tiles: [{ x: 45, z: 5 }] };
+  const DEPOT_B: FleetDepot = { id: 2, mode: 'bus', fields: 8, tiles: [{ x: 90, z: 5 }] };
+  const BOTH = [DEPOT_A, DEPOT_B];
+  const POOL: TransitPools = { bus: 16, rail: 0, tram: 0 };
+
+  /** A dead-run path's edge id names its depot; the route's names its last stop. */
+  const deadRunEdge = (depotId: number): number => 10 + depotId;
+  const routeEdge = (to: TilePoint): number => 1000 + to.x;
+
+  function fixture(costs: Record<number, number | null>, depots: readonly FleetDepot[] = BOTH) {
+    const edges = [makeEdge(routeEdge(STOPS[1]!), 0), makeEdge(11, 0), makeEdge(12, 0)];
+    const gateCalls: TilePoint[] = [];
+    const network = createFakeNetwork((from, to) => {
+      const depot = depots.find((d) => d.tiles[0]!.x === from.x && d.tiles[0]!.z === from.z);
+      if (depot) {
+        gateCalls.push(from);
+        const cost = costs[depot.id];
+        if (cost === null || cost === undefined) return null;
+        return { ...makePath([from, to], [deadRunEdge(depot.id)]), cost };
+      }
+      return makePath([from, to], [routeEdge(to)]);
+    }, edges);
+    const sys = new TransitSystem(network);
+    return { sys, network, edges, gateCalls };
+  }
+
+  /** Volume added, never taken away: relief is negative and the dead runs are the only positive loads. */
+  const loads = (network: ReturnType<typeof createFakeNetwork>) =>
+    network.addVolumeCalls.filter((c) => c.amount > 0);
+
+  describe('which depot fields a line', () => {
+    it('takes the vehicles from the nearest depot by path cost, not by distance', () => {
+      const { sys } = fixture({ 1: 100, 2: 10 });
+      sys.createLine(STOPS, 1, 'bus', 6);
+      const result = sys.tick(fixedAccessor(0), POOL, BOTH);
+      expect(result.served).toEqual([6]);
+      expect(result.depotId).toEqual([2]);
+      expect(result.inService).toEqual(new Map([[2, 6]]));
+    });
+
+    it('spills to the next nearest when the nearest runs dry, and names the depot fielding most', () => {
+      const { sys } = fixture({ 1: 100, 2: 10 });
+      sys.createLine(STOPS, 1, 'bus', 12);
+      const result = sys.tick(fixedAccessor(0), POOL, BOTH);
+      expect(result.served).toEqual([12]);
+      expect(result.depotId).toEqual([2]);
+      expect(result.inService).toEqual(
+        new Map([
+          [2, 8],
+          [1, 4],
+        ]),
+      );
+    });
+
+    it('breaks an equal cost by depot id', () => {
+      const { sys } = fixture({ 1: 10, 2: 10 });
+      sys.createLine(STOPS, 1, 'bus', 3);
+      const result = sys.tick(fixedAccessor(0), POOL, BOTH);
+      expect(result.depotId).toEqual([1]);
+    });
+
+    it('serves the lines in id order, so a later line takes what the earlier left', () => {
+      const { sys } = fixture({ 1: 100, 2: 10 });
+      sys.createLine(STOPS, 1, 'bus', 8);
+      sys.createLine(STOPS, 2, 'bus', 8);
+      const result = sys.tick(fixedAccessor(0), POOL, BOTH);
+      expect(result.served).toEqual([8, 8]);
+      expect(result.depotId).toEqual([2, 1]);
+      expect(result.inService).toEqual(
+        new Map([
+          [2, 8],
+          [1, 8],
+        ]),
+      );
+    });
+
+    it('a depot no path reaches fields nothing for the line', () => {
+      const near = fixture({ 1: null, 2: 10 });
+      near.sys.createLine(STOPS, 1, 'bus', 6);
+      expect(near.sys.tick(fixedAccessor(0), POOL, BOTH).depotId).toEqual([2]);
+
+      const none = fixture({ 1: null, 2: null });
+      none.sys.createLine(STOPS, 1, 'bus', 6);
+      const result = none.sys.tick(fixedAccessor(0), POOL, BOTH);
+      expect(result.served).toEqual([6]);
+      expect(result.depotId).toEqual([null]);
+      expect(result.inService).toEqual(new Map());
+    });
+
+    it('a line served nothing comes from no depot', () => {
+      const { sys } = fixture({ 1: 10, 2: 10 });
+      sys.createLine(STOPS, 1, 'bus', 6);
+      const result = sys.tick(fixedAccessor(0), { bus: 0, rail: 0, tram: 0 }, BOTH);
+      expect(result.depotId).toEqual([null]);
+      expect(result.inService).toEqual(new Map());
+    });
+
+    it('with no depots given, every line comes from none and the result still shapes up', () => {
+      const { sys } = fixture({ 1: 10, 2: 10 });
+      sys.createLine(STOPS, 1, 'bus', 6);
+      const result = sys.tick(fixedAccessor(0), POOL);
+      expect(result.served).toEqual([6]);
+      expect(result.depotId).toEqual([null]);
+      expect(result.deadRuns).toEqual([]);
+    });
+  });
+
+  describe('the gate', () => {
+    it('is the footprint tile nearest the node the network snaps it to', () => {
+      const network: RoadNetworkApi = {
+        ...createFakeNetwork(() => null),
+        nearestNode: () => 7,
+        getNodes: () => [{ id: 7, x: 10, z: 10, edges: [] }],
+      };
+      const depot: FleetDepot = {
+        id: 1,
+        mode: 'bus',
+        fields: 8,
+        tiles: [
+          { x: 3, z: 3 },
+          { x: 4, z: 3 },
+          { x: 3, z: 4 },
+          { x: 4, z: 4 },
+        ],
+      };
+      expect(gateOf(depot, network)).toEqual({ x: 4, z: 4 });
+    });
+
+    it('is the first tile where nothing snaps', () => {
+      const depot: FleetDepot = {
+        id: 1,
+        mode: 'bus',
+        fields: 8,
+        tiles: [
+          { x: 3, z: 3 },
+          { x: 4, z: 3 },
+        ],
+      };
+      expect(
+        gateOf(
+          depot,
+          createFakeNetwork(() => null),
+        ),
+      ).toEqual({ x: 3, z: 3 });
+    });
+  });
+
+  describe('the path and its cache', () => {
+    it('is found once per depot and kept while nothing changes', () => {
+      const { sys, gateCalls } = fixture({ 1: 100, 2: 10 });
+      sys.createLine(STOPS, 1, 'bus', 6);
+      sys.tick(fixedAccessor(0), POOL, BOTH);
+      expect(gateCalls).toEqual([DEPOT_A.tiles[0], DEPOT_B.tiles[0]]);
+      sys.tick(fixedAccessor(0), POOL, BOTH);
+      sys.tick(fixedAccessor(0), POOL, BOTH);
+      expect(gateCalls).toHaveLength(2);
+    });
+
+    it('is found again when the line’s route changes', () => {
+      const { sys, gateCalls } = fixture({ 1: 100, 2: 10 });
+      const line = sys.createLine(STOPS, 1, 'bus', 6);
+      sys.tick(fixedAccessor(0), POOL, BOTH);
+      sys.updateLine(line.id, [STOPS[0]!, { x: 58, z: 0 }], 1, 'bus', 6);
+      sys.tick(fixedAccessor(0), POOL, BOTH);
+      expect(gateCalls).toHaveLength(4);
+      sys.tick(fixedAccessor(0), POOL, BOTH);
+      expect(gateCalls).toHaveLength(4);
+    });
+
+    it('is found again when the mode’s depots change', () => {
+      const { sys, gateCalls } = fixture({ 1: 100, 2: 10 });
+      sys.createLine(STOPS, 1, 'bus', 6);
+      sys.tick(fixedAccessor(0), POOL, BOTH);
+      const result = sys.tick(fixedAccessor(0), { bus: 8, rail: 0, tram: 0 }, [DEPOT_A]);
+      expect(gateCalls).toHaveLength(3);
+      expect(result.depotId).toEqual([1]);
+      sys.tick(fixedAccessor(0), { bus: 8, rail: 0, tram: 0 }, [DEPOT_A]);
+      expect(gateCalls).toHaveLength(3);
+    });
+
+    it('is found again the tick after the graph is rebuilt under it', () => {
+      const { sys, edges, gateCalls } = fixture({ 1: 100, 2: 10 });
+      sys.createLine(STOPS, 1, 'bus', 6);
+      sys.tick(fixedAccessor(0), POOL, BOTH);
+      // A rebuilt graph hands out new edge objects under the same ids.
+      edges[2] = makeEdge(12, 0);
+      sys.tick(fixedAccessor(0), POOL, BOTH);
+      expect(gateCalls).toHaveLength(4);
+      sys.tick(fixedAccessor(0), POOL, BOTH);
+      expect(gateCalls).toHaveLength(4);
+    });
+
+    it('is forgotten with the line', () => {
+      const { sys, gateCalls } = fixture({ 1: 100, 2: 10 });
+      const line = sys.createLine(STOPS, 1, 'bus', 6);
+      sys.tick(fixedAccessor(0), POOL, BOTH);
+      sys.deleteLine(line.id);
+      sys.createLine(STOPS, 1, 'bus', 6);
+      sys.tick(fixedAccessor(0), POOL, BOTH);
+      expect(gateCalls).toHaveLength(4);
+    });
+  });
+
+  describe('the two crossings', () => {
+    it('loads the path’s edges with the served vehicles at 05:00 and at 23:00, once each, and nowhere else', () => {
+      const { sys, network } = fixture({ 1: 100, 2: 10 });
+      sys.createLine(STOPS, 1, 'bus', 6);
+      for (let t = 0; t < VISUAL_DAY_TICKS; t++) sys.tick(fixedAccessor(0), POOL, BOTH, t);
+      expect(loads(network)).toEqual([
+        { edgeIds: [deadRunEdge(2)], amount: 6 },
+        { edgeIds: [deadRunEdge(2)], amount: 6 },
+      ]);
+      // The road the line itself drives takes no dead-run load.
+      expect(network.addVolumeCalls.some((c) => c.edgeIds.includes(routeEdge(STOPS[1]!)))).toBe(
+        false,
+      );
+    });
+
+    it('fires at the tick the clock crosses the hour, and not at the ticks beside it', () => {
+      const { sys, network } = fixture({ 1: 100, 2: 10 });
+      sys.createLine(STOPS, 1, 'bus', 6);
+      sys.tick(fixedAccessor(0), POOL, BOTH, PULL_OUT - 1);
+      expect(loads(network)).toHaveLength(0);
+      const out = sys.tick(fixedAccessor(0), POOL, BOTH, PULL_OUT);
+      expect(loads(network)).toHaveLength(1);
+      expect(out.deadRuns).toHaveLength(1);
+      expect(sys.tick(fixedAccessor(0), POOL, BOTH, PULL_OUT + 1).deadRuns).toEqual([]);
+      expect(loads(network)).toHaveLength(1);
+    });
+
+    it('sends the served buses out from the gate one per headway, and back the other way at night', () => {
+      const { sys } = fixture({ 1: 100, 2: 10 });
+      sys.createLine(STOPS, 1, 'bus', 6);
+      sys.tick(fixedAccessor(0), POOL, BOTH, PULL_OUT - 1);
+      const out = sys.tick(fixedAccessor(0), POOL, BOTH, PULL_OUT);
+      const gate = { x: tileToWorld(DEPOT_B.tiles[0]!.x), z: tileToWorld(DEPOT_B.tiles[0]!.z) };
+      const stop = { x: tileToWorld(STOPS[0]!.x), z: tileToWorld(STOPS[0]!.z) };
+      expect(out.deadRuns).toEqual([
+        {
+          lineId: 1,
+          route: [gate, stop],
+          count: 6,
+          headwayTicks: deadRunHeadwayTicks(out.headwayMin[0]!),
+        },
+      ]);
+      expect(out.deadRuns[0]!.headwayTicks).toBe(Math.round(out.headwayMin[0]! * 60 * TICK_RATE));
+
+      const back = sys.tick(fixedAccessor(0), POOL, BOTH, PULL_IN);
+      expect(back.deadRuns[0]!.route).toEqual([stop, gate]);
+      expect(back.deadRuns[0]!.count).toBe(6);
+    });
+
+    it('a headway is never under a tick', () => {
+      expect(deadRunHeadwayTicks(0)).toBe(1);
+      expect(deadRunHeadwayTicks(1 / (60 * TICK_RATE) / 10)).toBe(1);
+      expect(deadRunHeadwayTicks(2)).toBe(2 * 60 * TICK_RATE);
+    });
+
+    it('a line with no depot path, or none served, runs nothing and loads nothing', () => {
+      const unreachable = fixture({ 1: null, 2: null });
+      unreachable.sys.createLine(STOPS, 1, 'bus', 6);
+      unreachable.sys.tick(fixedAccessor(0), POOL, BOTH, PULL_OUT - 1);
+      expect(unreachable.sys.tick(fixedAccessor(0), POOL, BOTH, PULL_OUT).deadRuns).toEqual([]);
+      expect(loads(unreachable.network)).toHaveLength(0);
+
+      const idle = fixture({ 1: 10, 2: 10 });
+      idle.sys.createLine(STOPS, 1, 'bus', 6);
+      idle.sys.tick(fixedAccessor(0), { bus: 0, rail: 0, tram: 0 }, BOTH, PULL_OUT - 1);
+      const result = idle.sys.tick(fixedAccessor(0), { bus: 0, rail: 0, tram: 0 }, BOTH, PULL_OUT);
+      expect(result.deadRuns).toEqual([]);
+      expect(loads(idle.network)).toHaveLength(0);
+    });
+
+    it('a tram and a train dead-run on their own graphs: no volume anywhere, no bus to animate', () => {
+      const path = (from: TilePoint, to: TilePoint): PathResult => ({
+        ...makePath([from, to], [1]),
+        cost: 5,
+      });
+      const roads = createFakeNetwork(path, [makeEdge(1, 0)]);
+      const rail = createFakeNetwork(path, [makeEdge(1, 0)]);
+      const tram = createFakeNetwork(path, [makeEdge(1, 0)]);
+      const sys = new TransitSystem(roads, rail, tram);
+      sys.createLine(STOPS, 1, 'tram', 2);
+      sys.createLine(STOPS, 2, 'rail', 2);
+      const depots: FleetDepot[] = [
+        { id: 1, mode: 'tram', fields: 6, tiles: [{ x: 45, z: 5 }] },
+        { id: 2, mode: 'rail', fields: 4, tiles: [{ x: 45, z: 9 }] },
+      ];
+      const pools: TransitPools = { bus: 0, rail: 4, tram: 6 };
+      sys.tick(fixedAccessor(0), pools, depots, PULL_OUT - 1);
+      const result = sys.tick(fixedAccessor(0), pools, depots, PULL_OUT);
+      expect(result.served).toEqual([2, 2]);
+      expect(result.depotId).toEqual([1, 2]);
+      expect(result.deadRuns).toEqual([]);
+      expect(loads(roads)).toHaveLength(0);
+      expect(loads(rail)).toHaveLength(0);
+      expect(loads(tram)).toHaveLength(0);
+    });
+
+    it('is the same on every run: two systems ticked alike agree tick for tick', () => {
+      const a = fixture({ 1: 100, 2: 10 });
+      const b = fixture({ 1: 100, 2: 10 });
+      for (const { sys } of [a, b]) {
+        sys.createLine(STOPS, 1, 'bus', 9);
+        sys.createLine(STOPS, 2, 'bus', 5);
+      }
+      for (let t = PULL_IN - 2; t < PULL_OUT + 2; t++) {
+        expect(a.sys.tick(fixedAccessor(300), POOL, BOTH, t)).toEqual(
+          b.sys.tick(fixedAccessor(300), POOL, BOTH, t),
+        );
+      }
+      expect(a.network.addVolumeCalls).toEqual(b.network.addVolumeCalls);
+      expect(loads(a.network)).toHaveLength(4);
+    });
   });
 });
