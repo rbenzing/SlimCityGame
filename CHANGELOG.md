@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.65.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.64.0...slimcity-v1.65.0) (2026-10-16)
+
+
+### Features
+
+* **render:** the apartment kit's parts, each block drawn as the multi-family type it is ([47fd393](https://github.com/rbenzing/SlimCityGame/commit/47fd3935d56cfd913fce314ca6d0db5dfe715f8f))
+* **render:** the apartment kit's parts, each block drawn as the multi-family type it is ([af259b9](https://github.com/rbenzing/SlimCityGame/commit/af259b9dabda8d0f7bbb70b15aa5b5eb65a27e75))
+
 ## [1.64.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.63.0...slimcity-v1.64.0) (2026-10-15)
 
 
