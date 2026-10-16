@@ -284,6 +284,14 @@ widths; every other variant rearranges the core, and rearranging re-sizes the
 lanes to the class default, which is how a median or a reservation finds the
 room it needs.
 
+**A tram lane is track, whatever road it is composed onto.** The tram graph is
+built from the profile each tile carries, not from its tier: any street whose
+cross-section carries a tram lane — a lane flagged for mixed running or a
+reservation's `tram` piece — is tram track (`isTramTrack` in
+`src/shared/roadprofile.ts`), so a tram line can be drawn on it and a tram
+depot touching it fields it, exactly as on the Tramway preset
+([transit-model.md](transit-model.md)).
+
 **A reserved lane counts against the class's lane range**, which is the second
 gate and the one that decides what a SMALL street may carry. A local street is
 built for two or three lanes, so it takes a bus lane on one side and is refused

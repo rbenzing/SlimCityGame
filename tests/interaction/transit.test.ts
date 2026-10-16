@@ -360,7 +360,7 @@ describe('where a tram depot and a rail yard may stand', () => {
     expect(onTrack.ok).toBe(true);
   });
 
-  it('a tram depot refuses a street with a tram lane composed onto it, which no tram can route', () => {
+  it('a tram depot stands on a street with a tram lane composed onto it, which is track', () => {
     const h = yards();
     const COMPOSED_Z = 100;
     const mixed = composeProfile(presetProfileForTier(RoadTier.TwoLane), {
@@ -384,8 +384,28 @@ describe('where a tram depot and a rail yard may stand', () => {
     const beside = run(h, 4, [
       { kind: 'placeBuilding', catalogId: 'tram-depot', x: 65, z: COMPOSED_Z + 1, rotation: 0 },
     ]);
-    expect(beside.ok).toBe(false);
-    expect(beside.reason).toBe('invalid');
+    expect(beside.ok).toBe(true);
+    // Powered, it fields a tram line drawn down the composed street.
+    const line = run(h, 5, [
+      { kind: 'placeBuilding', catalogId: 'wind-turbine', x: 60, z: COMPOSED_Z - 1, rotation: 0 },
+      {
+        kind: 'createTransitLine',
+        line: {
+          id: 0,
+          stops: [
+            { x: 61, z: COMPOSED_Z },
+            { x: 78, z: COMPOSED_Z },
+          ],
+          color: 0x3cb45a,
+          mode: 'tram',
+        },
+      },
+    ]);
+    expect(line.ok).toBe(true);
+    h.ticks(10);
+    const transit = h.lastSnapshot()!.transit!;
+    expect(transit.pools!.tram).toBe(6);
+    expect(transit.served![0]).toBeGreaterThan(0);
   });
 
   it('a rail yard stands beside the railway and nowhere else', () => {

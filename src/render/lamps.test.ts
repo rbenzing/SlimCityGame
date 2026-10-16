@@ -6,9 +6,11 @@ import {
   lampGlowFactor,
   LampRenderer,
   POOL_VERTICES_PER_LAMP,
+  standOf,
   tierGetsLamp,
   type LampRoadTile,
 } from './lamps';
+import { computeTramPolePlacements, type TramPoleStand } from './roadfurniture';
 import { RoadFlow, RoadTier, storedFlow, TilePoint } from '../shared/types';
 import type { RoadProfile } from '../shared/types';
 import {
@@ -680,6 +682,37 @@ describe('lamps keep out of a lot entrance', () => {
   it('changes nothing when no driveway is in the way', () => {
     const tiles = row(8, 0, 20);
     expect(computeLampPlacements(tiles, new Set())).toEqual(computeLampPlacements(tiles));
+  });
+});
+
+describe('a tram contact pole stands in place of a lamp beside it', () => {
+  const row: LampRoadTile[] = Array.from({ length: 21 }, (_, x) => ({
+    x,
+    z: 8,
+    tier: RoadTier.Tram,
+  }));
+
+  it('drops a lamp within 2 m of a pole and keeps every other', () => {
+    const all = computeLampPlacements(row);
+    const victim = standOf(all[1]!);
+    // A pole on the same kerb, 1.9 m along: the lamp gives way to it.
+    const near: TramPoleStand = { x: victim.x + 1.9, z: victim.z, reachX: 0, reachZ: 0 };
+    const kept = computeLampPlacements(row, undefined, [near]);
+    expect(kept).toEqual(all.filter((_, i) => i !== 1));
+    // 2.1 m along, it stands its ground.
+    const far: TramPoleStand = { ...near, x: victim.x + 2.1 };
+    expect(computeLampPlacements(row, undefined, [far])).toEqual(all);
+  });
+
+  it('keeps the lamps of a tramway where no pole stands near one', () => {
+    const poles = computeTramPolePlacements(row);
+    const lamps = computeLampPlacements(row, undefined, poles).map(standOf);
+    for (const lamp of lamps) {
+      for (const pole of poles) {
+        expect(Math.hypot(pole.x - lamp.x, pole.z - lamp.z)).toBeGreaterThanOrEqual(2);
+      }
+    }
+    expect(lamps.length).toBeGreaterThan(0);
   });
 });
 

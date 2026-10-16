@@ -639,6 +639,20 @@ export function hasAdjacentTier(
   d: number,
   inNetwork: (tier: RoadTier) => boolean,
 ): boolean {
+  return hasAdjacentRoad(g, x, z, w, d, (i) =>
+    inNetwork((g.roadTier[i] ?? RoadTier.None) as RoadTier),
+  );
+}
+
+/** `hasAdjacentTier` for a network told by more than a tier: `accepts` is asked of each ring tile's index. */
+export function hasAdjacentRoad(
+  g: GridState,
+  x: number,
+  z: number,
+  w: number,
+  d: number,
+  accepts: (i: number) => boolean,
+): boolean {
   for (let dz = -1; dz <= d; dz++) {
     for (let dx = -1; dx <= w; dx++) {
       const insideX = dx >= 0 && dx < w;
@@ -648,8 +662,7 @@ export function hasAdjacentTier(
       const tx = x + dx;
       const tz = z + dz;
       if (!inBoundsOf(g.size, tx, tz)) continue;
-      if (inNetwork((g.roadTier[indexOf(g.size, tx, tz)] ?? RoadTier.None) as RoadTier))
-        return true;
+      if (accepts(indexOf(g.size, tx, tz))) return true;
     }
   }
   return false;

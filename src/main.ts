@@ -129,6 +129,7 @@ import { UndergroundView } from './render/underground';
 import {
   buildTileSet,
   computeSignPlacements,
+  computeTramPolePlacements,
   hasCrossingRoad,
   RoadFurnitureRenderer,
   type RoadTileIndex,
@@ -981,6 +982,8 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       // wrong zoom says nothing about whether a manhole cover exists.
       readFurnitureCounts: (): Record<string, number> => ({
         ...roadFurniture.furnitureCounts(),
+        tramPoles: roadFurniture.tramPoleStands().length,
+        lamps: lamps.lampCount(),
       }),
       // What the transit renderer actually built. A transit vehicle and a
       // traffic-spawned one look alike in a screenshot, so a shot cannot tell
@@ -1102,7 +1105,11 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       freeJunctionTiles.size > 0
         ? new Set([...drivewayTiles, ...freeJunctionTiles])
         : drivewayTiles;
-    lamps.rebuild(latestRoadTiles, keepOff, free);
+    // The tram's contact poles keep off the same kerbs, and a lamp beside one
+    // gives way to it, so both are placed from the one answer.
+    const poles = computeTramPolePlacements(latestRoadTiles, keepOff);
+    roadFurniture.setTramPoles(poles);
+    lamps.rebuild(latestRoadTiles, keepOff, free, poles);
   };
   /**
    * Grid tiles where a road off the grid meets, keyed as the lamps key tiles.

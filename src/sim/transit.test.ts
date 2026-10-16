@@ -33,9 +33,16 @@ import {
   type GridState,
   type PathResult,
   type RoadNetworkApi,
+  type RoadProfile,
   type TilePoint,
   type TransitLine,
 } from '../shared/types';
+import {
+  composeProfile,
+  FIRST_CUSTOM_PROFILE_ID,
+  NO_EDITS,
+  presetProfileForTier,
+} from '../shared/roadprofile';
 import { RoadNetwork, tramShape } from '../world/roadgraph';
 import { createGrid } from '../world/grid';
 
@@ -781,6 +788,81 @@ describe('tram lines', () => {
     const { road, tram } = networks(tramGrid());
     expect(edgesOnRow(road, TRAM_Z).length).toBeGreaterThan(0); // cars may drive it
     expect(tram.getEdges().length).toBeGreaterThan(0); // and a tram may run it
+  });
+
+  describe('on a road composed with a tram lane', () => {
+    const COMPOSED = FIRST_CUSTOM_PROFILE_ID;
+    const ends = [
+      { x: 2, z: TRAM_Z },
+      { x: 12, z: TRAM_Z },
+    ];
+    /** The tram row laid as `base` carrying the composed profile, which the networks resolve. */
+    function composedNetworks(
+      base: RoadTier,
+      profile: RoadProfile,
+    ): { road: RoadNetwork; tram: RoadNetwork } {
+      const g = tramGrid();
+      for (let x = 2; x <= 12; x++) {
+        g.roadTier[TRAM_Z * SIZE + x] = base;
+        g.roadProfile[TRAM_Z * SIZE + x] = COMPOSED;
+      }
+      const resolve = (id: number): RoadProfile | null => (id === COMPOSED ? profile : null);
+      const road = new RoadNetwork();
+      road.setProfileResolver(resolve);
+      road.rebuild(g);
+      const tram = new RoadNetwork(isTramTier, tramShape);
+      tram.setProfileResolver(resolve);
+      tram.rebuild(g);
+      return { road, tram };
+    }
+
+    for (const [choice, base] of [
+      ['mixed', RoadTier.TwoLane],
+      ['reserved', RoadTier.Avenue],
+    ] as const) {
+      it(`routes a tram line down a ${choice} tram lane, and cars down the road`, () => {
+        const profile = composeProfile(presetProfileForTier(base), { ...NO_EDITS, tram: choice });
+        const { road, tram } = composedNetworks(base, profile);
+        expect(edgesOnRow(road, TRAM_Z).length).toBeGreaterThan(0);
+        const sys = new TransitSystem(road, null, tram);
+        const line = sys.createLine(ends, 0, 'tram');
+        const points = sys.route(line.id)?.points ?? [];
+        expect(points.length).toBeGreaterThan(0);
+        for (const p of points) expect(p.z).toBe(TRAM_Z);
+        expect(sys.ridership(line.id, fixedAccessor(100))).toBeGreaterThan(0);
+      });
+    }
+
+    it('crosses a street straight over the junction, as the Tramway does', () => {
+      const profile = composeProfile(presetProfileForTier(RoadTier.TwoLane), {
+        ...NO_EDITS,
+        tram: 'mixed',
+      });
+      const g = tramGrid();
+      for (let x = 2; x <= 12; x++) {
+        g.roadTier[TRAM_Z * SIZE + x] = RoadTier.TwoLane;
+        g.roadProfile[TRAM_Z * SIZE + x] = COMPOSED;
+      }
+      for (let z = TRAM_Z - 5; z <= TRAM_Z + 5; z++) {
+        g.roadTier[z * SIZE + 7] = RoadTier.Avenue;
+        g.roadProfile[z * SIZE + 7] = 0;
+      }
+      const tram = new RoadNetwork(isTramTier, tramShape);
+      tram.setProfileResolver((id) => (id === COMPOSED ? profile : null));
+      tram.rebuild(g);
+      expect(tram.getEdges().map((e) => e.tier)).toEqual([RoadTier.Tram]);
+      const sys = new TransitSystem(new RoadNetwork(), null, tram);
+      const points = sys.route(sys.createLine(ends, 0, 'tram').id)?.points ?? [];
+      expect(points.some((p) => p.x === 7 && p.z === TRAM_Z)).toBe(true);
+    });
+
+    it('is no track where the lane carries no tram', () => {
+      const plain = presetProfileForTier(RoadTier.TwoLane);
+      const { road, tram } = composedNetworks(RoadTier.TwoLane, plain);
+      expect(tram.getEdges()).toEqual([]);
+      const sys = new TransitSystem(road, null, tram);
+      expect(sys.route(sys.createLine(ends, 0, 'tram').id)).toBeNull();
+    });
   });
 
   it('confines a tram to the track, where a bus would detour around a gap', () => {

@@ -62,14 +62,30 @@ MUTCD citations below use 11th-edition section numbers.
   `isRailTier` in `src/shared/types.ts`, `src/world/roads.ts`
 - The rail and street graphs never share an edge. Every `RoadNetwork` is built
   from one tier predicate (`isStreetTier`, `isRailTier`, `isTramTier`) and
-  `edgeTraversable` refuses any edge outside the network being searched. Rail
+  `edgeTraversable` refuses any edge outside the network being searched; the
+  tram network sees every cell of tram track as the tram tier. Rail
   conducts no utility and grants no frontage. —
   [transit-model.md](world-sim/transit-model.md),
-  [pathfinding.md](world-sim/pathfinding.md); `src/world/pathfind.ts`
-- Tram track is a street: cars drive it, it carries utilities and frontage, and
+  [pathfinding.md](world-sim/pathfinding.md); `src/world/pathfind.ts`,
+  `tramShape` in `src/world/roadgraph.ts`
+- Tram track is any street whose profile carries a tram lane — a lane the
+  trams share (mixed running) or a reservation of their own — read from the
+  tile's profile, never from its tier alone; the Tramway preset is one such
+  street. A tram lane composed onto any road is track a tram line can run on.
+  Tram track is a street: cars drive it, it carries utilities and frontage, and
   it sits in both graphs. A tram line only ever routes over the tram graph, and
   no line mixes tram and rail track. —
-  [transit-model.md](world-sim/transit-model.md); `isTramTier`
+  [transit-model.md](world-sim/transit-model.md); `isTramTrack` and
+  `isTramTile` in `src/shared/roadprofile.ts`
+- A street's track is drawn as a street tramway's is: per tram lane, two
+  grooved rails at standard gauge flush in a 2.7 m concrete slab, and no
+  sleepers. Only the railway, on its ballast, has sleepers. Contact poles
+  stand at the kerb of a street whose trams share its lanes, one every 22 m
+  phased from world-metre zero, never in a junction box or a driveway's
+  mouth, and a street lamp within 2 m of one is not drawn. —
+  [streets.md](art/streets.md); `emitStreetTrack` in
+  `src/render/roadsmesh.ts`, `computeTramPolePlacements` in
+  `src/render/roadfurniture.ts`
 - A tramway crosses a street straight over the junction. A straight run of one
   or two joined street tiles that are not tram track, with tram track joined at
   both ends, is a tram crossing: each tile keeps its own road, the tram graph
@@ -221,8 +237,8 @@ MUTCD citations below use 11th-edition section numbers.
   `src/world/roadgraph.ts`
 - A line's vehicles are fielded by a depot of its mode over the mode's own
   network, never from nowhere: a bus depot touching a street, a tram depot
-  touching the tram tier (`isTramTier`, never a tram lane composed onto a
-  street the tram graph lacks), a rail yard touching the railway, each built
+  touching tram track (`isTramTile`, the tram graph's own test), a rail yard
+  touching the railway, each built
   and powered, fielding all but a spare fifth of what it holds. A mode with no
   depot runs nothing: its lines carry nobody, relieve nothing and say so, and a
   city saved before depots loads that way. Every vehicle in service is charged

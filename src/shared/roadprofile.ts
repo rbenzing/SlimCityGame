@@ -21,7 +21,7 @@ import type {
   RoadSpec,
 } from './types';
 import { TILE_METERS } from './constants';
-import { flowDirection, RoadFlow, RoadTier } from './types';
+import { flowDirection, isStreetTier, isTramTier, RoadFlow, RoadTier } from './types';
 import {
   DEFAULT_SOUND_WALL_HEIGHT_M,
   SOUND_WALL_BASE_WIDTH_M,
@@ -236,6 +236,35 @@ export function presetProfileForTier(tier: RoadTier): RoadProfile {
   const spec = ROAD_PRESETS.find((s) => s.tier === tier);
   if (!spec?.profile) throw new RangeError(`roadprofile: no preset profile for tier ${tier}`);
   return spec.profile;
+}
+
+/** Whether a cross-section carries a tram: a lane the trams share, or a reservation of their own. */
+export function carriesTram(profile: RoadProfile): boolean {
+  return profile.pieces.some((p) => p.kind === 'tram' || p.tram === true);
+}
+
+/**
+ * Whether a road is tram track: a street whose cross-section carries a tram
+ * lane. The Tramway's tier always is, since its preset runs the trams in both
+ * lanes; a railway never is, whatever it is handed.
+ */
+export function isTramTrack(tier: number, profile: RoadProfile | null): boolean {
+  if (isTramTier(tier)) return true;
+  return isStreetTier(tier) && profile !== null && carriesTram(profile);
+}
+
+/**
+ * `isTramTrack` for the road on the ground at tile index `i`. A preset id
+ * resolves from the catalogue; `custom` resolves a player-composed one.
+ */
+export function isTramTile(
+  roads: { readonly roadTier: ArrayLike<number>; readonly roadProfile: ArrayLike<number> },
+  i: number,
+  custom: (id: number) => RoadProfile | null,
+): boolean {
+  const id = roads.roadProfile[i] ?? 0;
+  const profile = isPresetProfileId(id) ? presetProfileForTier(id as RoadTier) : custom(id);
+  return isTramTrack(roads.roadTier[i] ?? RoadTier.None, profile);
 }
 
 export function roadClass(id: RoadClassId): RoadClassSpec {

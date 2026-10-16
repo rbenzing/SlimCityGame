@@ -6,6 +6,7 @@ import {
   computeManholePlacements,
   computeMeterPlacements,
   computeSignPlacements,
+  computeTramPolePlacements,
   FurnitureRoadTile,
   kerbFacingYaw,
   MANHOLE_LIFT,
@@ -1474,5 +1475,106 @@ describe('a ramp that runs alongside the motorway before it joins', () => {
       xs.map((s) => s.x).filter((x) => x >= 22 && x < 26);
     expect(nearRamp(alone).length, 'there is a gantry to keep').toBeGreaterThan(0);
     expect(nearRamp(withRamp)).toEqual(nearRamp(alone));
+  });
+});
+
+describe('a street tramway is hung from contact poles at the kerb', () => {
+  const Z = 10;
+  /** An east–west run of `length` tiles from x = 0 on row Z. */
+  const run = (
+    tier: RoadTier,
+    length = 20,
+    extra: Partial<FurnitureRoadTile> = {},
+  ): FurnitureRoadTile[] => Array.from({ length }, (_, x) => ({ x, z: Z, tier, ...extra }));
+  const mixed = composeProfile(presetProfileForTier(RoadTier.TwoLane), {
+    ...NO_EDITS,
+    tram: 'mixed',
+  });
+
+  it('stands one every 22 m of road, phase anchored at world-metre zero, on alternate kerbs', () => {
+    const poles = computeTramPolePlacements(run(RoadTier.Tram));
+    // 20 tiles are 400 m of road: a pole at every multiple of 22 m below it.
+    expect(poles.map((p) => p.x)).toEqual(Array.from({ length: 19 }, (_, k) => k * 22));
+    const centre = tileToWorld(Z);
+    // At the kerb face, half a metre behind the 3.75 m carriageway edge.
+    for (const p of poles) expect(Math.abs(p.z - centre)).toBeCloseTo(3.75 + 0.5, 6);
+    const sides = poles.map((p) => Math.sign(p.z - centre));
+    for (let k = 1; k < sides.length; k++) expect(sides[k]).toBe(-sides[k - 1]!);
+    // Every arm reaches back over the road it stands beside.
+    for (const p of poles) {
+      expect(p.reachX).toBe(0);
+      expect(p.reachZ).toBe(-Math.sign(p.z - centre));
+    }
+  });
+
+  it('stands along a street composed with mixed running, and along no other street', () => {
+    expect(computeTramPolePlacements(run(RoadTier.TwoLane, 20, { profile: mixed }))).toHaveLength(
+      19,
+    );
+    expect(computeTramPolePlacements(run(RoadTier.TwoLane))).toEqual([]);
+    // A reservation is the trams' own: it is not hung from the street's kerbs.
+    const reserved = composeProfile(presetProfileForTier(RoadTier.Avenue), {
+      ...NO_EDITS,
+      tram: 'reserved',
+    });
+    expect(computeTramPolePlacements(run(RoadTier.Avenue, 20, { profile: reserved }))).toEqual([]);
+  });
+
+  it('never stands in a junction box or across a driveway', () => {
+    // A street crossing the tramway at x = 11, whose tile a pole would take at 220 m.
+    const crossing: FurnitureRoadTile[] = [
+      ...run(RoadTier.Tram),
+      ...[Z - 2, Z - 1, Z + 1, Z + 2].map((z) => ({ x: 11, z, tier: RoadTier.TwoLane })),
+    ];
+    const inTile = (tx: number) => (p: { x: number }) =>
+      p.x >= tx * TILE_METERS && p.x < (tx + 1) * TILE_METERS;
+    const open = computeTramPolePlacements(run(RoadTier.Tram));
+    expect(open.filter(inTile(11)).length, 'a pole the junction would take').toBeGreaterThan(0);
+    expect(computeTramPolePlacements(crossing).filter(inTile(11))).toEqual([]);
+    // A driveway's mouth at x = 3.
+    expect(open.filter(inTile(3)).length).toBeGreaterThan(0);
+    expect(
+      computeTramPolePlacements(run(RoadTier.Tram), new Set([3 * 100_000 + Z])).filter(inTile(3)),
+    ).toEqual([]);
+  });
+
+  it('stands on the drivers’ right of a one-way tramway', () => {
+    const preset = presetProfileForTier(RoadTier.OneWay);
+    const oneWay: RoadProfile = {
+      ...preset,
+      pieces: preset.pieces.map((p) => (p.kind === 'travel' ? { ...p, tram: true } : p)),
+    };
+    const poles = computeTramPolePlacements(
+      run(RoadTier.OneWay, 20, { profile: oneWay, flow: RoadFlow.East }),
+    );
+    expect(poles.length).toBeGreaterThan(0);
+    // Heading east, the right-hand kerb is the south one: greater z.
+    for (const p of poles) expect(p.z).toBeGreaterThan(tileToWorld(Z));
+  });
+
+  it('draws one instanced pole and one instanced arm per pole, the arm 6 m up', () => {
+    const scene = new THREE.Scene();
+    const renderer = new RoadFurnitureRenderer(scene, flatHeightAt);
+    const poles = computeTramPolePlacements(run(RoadTier.Tram));
+    renderer.setTramPoles(poles);
+    const meshes = scene.children.filter(
+      (o): o is THREE.InstancedMesh =>
+        o instanceof THREE.InstancedMesh &&
+        (o.userData.furnitureKind === 'tramPole' || o.userData.furnitureKind === 'tramArm'),
+    );
+    expect(meshes).toHaveLength(2);
+    for (const mesh of meshes) expect(mesh.count).toBe(poles.length);
+    const arm = meshes.find((m) => m.userData.furnitureKind === 'tramArm')!;
+    arm.geometry.computeBoundingBox();
+    const box = arm.geometry.boundingBox!;
+    expect(box.max.x - box.min.x).toBeCloseTo(1.9, 6);
+    expect((box.max.y + box.min.y) / 2).toBeCloseTo(6, 6);
+    const pole = meshes.find((m) => m.userData.furnitureKind === 'tramPole')!;
+    pole.geometry.computeBoundingBox();
+    expect(pole.geometry.boundingBox!.max.y).toBeCloseTo(10.7, 6);
+    expect(pole.geometry.boundingBox!.max.x * 2).toBeCloseTo(0.25, 6);
+    // Standing them again replaces them rather than adding a second set.
+    renderer.setTramPoles([]);
+    expect(scene.children.filter((o) => o.userData.furnitureKind === 'tramPole')).toEqual([]);
   });
 });

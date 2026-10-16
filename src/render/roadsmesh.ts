@@ -51,14 +51,15 @@
  *   white centerline, plus a green edge strip each side and a periodic white
  *   bicycle pictogram (`emitColoredLaneBands`). Both transit variants paint
  *   their colored band on straight runs only; junctions/turns break it.
- * - **Tram** (tier 10): two-lane-width shared street with two embedded steel
- *   rails + periodic cross-tie sleepers down the centre (`emitTramTrack`), and
- *   NO painted centerline (the rails are the centre). Track paints on straight
- *   runs only; junctions/turns break it, same as the colored bands.
+ * - **Tram** (tier 10), and every road whose profile carries a tram lane: a
+ *   street track down each tram lane — two grooved rails flush in a concrete
+ *   slab, no sleepers (`emitStreetTrack`) — and NO painted centerline between
+ *   two tram lanes (the rails are the centre). Track paints on straight runs
+ *   only; junctions/turns break it, same as the colored bands.
  * - **Rail Track** (tier 11): a dedicated heavy-rail line — a dark ballast bed
- *   (`paved: false`, no curbs/markings/crosswalks) carrying the same embedded
- *   `emitTramTrack` rails + sleepers. Not a street: excluded from the drivable
- *   traffic graph so cosmetic cars never route onto it.
+ *   (`paved: false`, no curbs/markings/crosswalks) carrying two rails on
+ *   cross-tie sleepers (`emitRailwayTrack`). Not a street: excluded from the
+ *   drivable traffic graph so cosmetic cars never route onto it.
  *
  * Corner rounding: the turn-corner fillet
  * (`emitCornerFillet`) is
@@ -85,7 +86,9 @@ import {
   RoadTier,
   stepForFlow,
   tramCrossingAxes,
+  tramCrossingRoad,
 } from '../shared/types';
+import { materialUnit } from './palette';
 import type { JunctionControl, TilePoint } from '../shared/types';
 import type { RoadProfile } from '../shared/types';
 import {
@@ -111,6 +114,7 @@ import {
   medianOffsetOf,
   PRESET_LANE_WIDTH_M,
   isServiceClass,
+  isTramTrack,
   presetProfileForTier,
   rankForTier,
   roadClass,
@@ -356,20 +360,41 @@ const GRAVEL_BASE_COLOR: readonly [number, number, number] = [0.62, 0.55, 0.42];
  * median or divider, so plain carriageway never looks like a raised band.
  */
 const ASPHALT_COLOR: readonly [number, number, number] = [0.42, 0.42, 0.43];
-/** Tram rail: bright steel, distinctly lighter/metallic against asphalt (but below marking white). */
-const TRAM_RAIL_COLOR: readonly [number, number, number] = [0.7, 0.71, 0.74];
-/** Tram sleeper (cross-tie): dark creosote timber. */
-const TRAM_SLEEPER_COLOR: readonly [number, number, number] = [0.26, 0.22, 0.19];
+/** Railway rail: bright steel, distinctly lighter/metallic against the ballast (but below marking white). */
+const RAILWAY_RAIL_COLOR: readonly [number, number, number] = [0.7, 0.71, 0.74];
+/** Railway sleeper (cross-tie): dark creosote timber. */
+const RAILWAY_SLEEPER_COLOR: readonly [number, number, number] = [0.26, 0.22, 0.19];
 /** Track gauge (rail-to-rail); rails sit at ±half this from the centreline. */
-const TRAM_GAUGE_HALF_M = 0.75;
+const RAILWAY_GAUGE_HALF_M = 0.75;
 /** Rail ribbon half-width + sleeper metrics. */
-const TRAM_RAIL_HALF_W_M = 0.07;
-const TRAM_SLEEPER_HALF_LEN_M = 1.15;
-const TRAM_SLEEPER_HALF_W_M = 0.16;
-const TRAM_SLEEPER_PERIOD_M = 1.6;
-/** Sleepers sit on the road; rails ride a hair above the sleepers, both below the marking layer. */
-const TRAM_SLEEPER_Y_OFFSET = ROAD_Y_OFFSET + 0.004;
-const TRAM_RAIL_Y_OFFSET = ROAD_Y_OFFSET + 0.012;
+const RAILWAY_RAIL_HALF_W_M = 0.07;
+const RAILWAY_SLEEPER_HALF_LEN_M = 1.15;
+const RAILWAY_SLEEPER_HALF_W_M = 0.16;
+const RAILWAY_SLEEPER_PERIOD_M = 1.6;
+/** Sleepers sit on the bed; rails ride a hair above the sleepers, both below the marking layer. */
+const RAILWAY_SLEEPER_Y_OFFSET = ROAD_Y_OFFSET + 0.004;
+const RAILWAY_RAIL_Y_OFFSET = ROAD_Y_OFFSET + 0.012;
+/**
+ * Street track's concrete slab: the clean-concrete swatch's warm neutral a
+ * shade over the asphalt, and well under the raised median's concrete, so it
+ * reads as paving flush with the road rather than a kerbed island.
+ */
+export const TRAM_SLAB_COLOR: readonly [number, number, number] = [0.48, 0.48, 0.47];
+/** The slab is as wide as the outer rails plus 0.56 m either side, rounded. */
+const TRAM_SLAB_HALF_W_M = 1.35;
+/** Street rail: the dark steel of a girder rail's head, flush in the slab. */
+export const TRAM_RAIL_COLOR = materialUnit('metalPlates');
+/** The rail's groove, dark with the dirt that fills it. */
+export const TRAM_GROOVE_COLOR = materialUnit('darkBitumen');
+/** Standard gauge, 1,435 mm: each rail's centre sits at half of it from the track's. */
+const TRAM_GAUGE_HALF_M = 0.7175;
+/** A 59R2 girder rail's head, 56 mm across, and the 42 mm groove on its gauge side. */
+const TRAM_RAIL_HALF_W_M = 0.028;
+const TRAM_GROOVE_W_M = 0.042;
+/** Slab on the road, groove on the slab, rail head 4 mm proud of it; all under the paint. */
+const TRAM_SLAB_Y_OFFSET = ROAD_Y_OFFSET + 0.004;
+const TRAM_GROOVE_Y_OFFSET = TRAM_SLAB_Y_OFFSET + 0.002;
+const TRAM_RAIL_Y_OFFSET = TRAM_SLAB_Y_OFFSET + 0.004;
 /** Rail Track ballast bed: dark crushed-stone grey, distinct from asphalt tiers and gravel's tan. */
 const RAIL_BALLAST_COLOR: readonly [number, number, number] = [0.34, 0.33, 0.31];
 /** Painted bus-lane surface (terracotta red — the universal transit-lane tint). */
@@ -2054,15 +2079,33 @@ function emitColoredLaneBands(
   });
 }
 
+/** A rectangle in a run's own (along, across) frame, laid in world space. */
+function trackRect(
+  positions: number[],
+  colors: number[],
+  centerX: number,
+  centerZ: number,
+  vertical: boolean,
+  hAt: (x: number, z: number) => number,
+  a0: number,
+  a1: number,
+  c0: number,
+  c1: number,
+  yOff: number,
+  color: readonly [number, number, number],
+): void {
+  if (vertical)
+    pushLocalRect(positions, colors, centerX, centerZ, c0, c1, a0, a1, yOff, color, hAt);
+  else pushLocalRect(positions, colors, centerX, centerZ, a0, a1, c0, c1, yOff, color, hAt);
+}
+
 /**
- * Embedded tram track for a straight Tram run along one travel axis: two steel
- * rails at ±TRAM_GAUGE_HALF_M down the tile centreline plus periodic cross-tie
- * sleepers under them. Sleeper phase is anchored at GLOBAL world-meter 0 (like
- * the dash pattern) so ties line up continuously across tile/chunk seams. Drawn
- * on straight runs only (junctions/turns break the track, matching R2's colored
- * bands); the Tram tier has no painted centerline — the rails ARE the centre.
+ * Street track down one tram lane, centred `across` the road: a concrete slab
+ * flush with the asphalt, and in it two grooved rails at standard gauge, each
+ * head with its groove on the gauge side. No sleepers: a street track's ties
+ * are buried in the slab, and sleepers across paving read as a railway.
  */
-function emitTramTrack(
+function emitStreetTrack(
   positions: number[],
   colors: number[],
   centerX: number,
@@ -2071,9 +2114,42 @@ function emitTramTrack(
   lo: number,
   hi: number,
   hAt: (x: number, z: number) => number,
-  across = 0,
+  across: number,
 ): void {
-  // rect in (along, across) space -> world, mapping the perpendicular axis.
+  const rect = (c0: number, c1: number, yOff: number, color: readonly [number, number, number]) =>
+    trackRect(positions, colors, centerX, centerZ, vertical, hAt, lo, hi, c0, c1, yOff, color);
+  rect(
+    across - TRAM_SLAB_HALF_W_M,
+    across + TRAM_SLAB_HALF_W_M,
+    TRAM_SLAB_Y_OFFSET,
+    TRAM_SLAB_COLOR,
+  );
+  for (const side of [1, -1] as const) {
+    const rail = across + side * TRAM_GAUGE_HALF_M;
+    rect(rail - TRAM_RAIL_HALF_W_M, rail + TRAM_RAIL_HALF_W_M, TRAM_RAIL_Y_OFFSET, TRAM_RAIL_COLOR);
+    const gauge = rail - side * TRAM_RAIL_HALF_W_M;
+    const groove = gauge - side * TRAM_GROOVE_W_M;
+    rect(Math.min(gauge, groove), Math.max(gauge, groove), TRAM_GROOVE_Y_OFFSET, TRAM_GROOVE_COLOR);
+  }
+}
+
+/**
+ * A railway's track down a straight Rail Track run: two steel rails at
+ * ±RAILWAY_GAUGE_HALF_M down the tile centreline plus periodic cross-tie
+ * sleepers under them. Sleeper phase is anchored at GLOBAL world-meter 0 (like
+ * the dash pattern) so ties line up continuously across tile/chunk seams. Drawn
+ * on straight runs only; junctions and turns break the track.
+ */
+function emitRailwayTrack(
+  positions: number[],
+  colors: number[],
+  centerX: number,
+  centerZ: number,
+  vertical: boolean,
+  lo: number,
+  hi: number,
+  hAt: (x: number, z: number) => number,
+): void {
   const rect = (
     a0: number,
     a1: number,
@@ -2081,41 +2157,38 @@ function emitTramTrack(
     c1: number,
     yOff: number,
     color: readonly [number, number, number],
-  ): void => {
-    if (vertical)
-      pushLocalRect(positions, colors, centerX, centerZ, c0, c1, a0, a1, yOff, color, hAt);
-    else pushLocalRect(positions, colors, centerX, centerZ, a0, a1, c0, c1, yOff, color, hAt);
-  };
+  ): void =>
+    trackRect(positions, colors, centerX, centerZ, vertical, hAt, a0, a1, c0, c1, yOff, color);
 
   // Sleepers first (below), spanning across both rails, at global-anchored phase.
   const originGlobal = vertical ? centerZ : centerX;
   const gLo = originGlobal + lo;
   const gHi = originGlobal + hi;
   for (
-    let k = Math.ceil(gLo / TRAM_SLEEPER_PERIOD_M);
-    k <= Math.floor(gHi / TRAM_SLEEPER_PERIOD_M);
+    let k = Math.ceil(gLo / RAILWAY_SLEEPER_PERIOD_M);
+    k <= Math.floor(gHi / RAILWAY_SLEEPER_PERIOD_M);
     k++
   ) {
-    const a = k * TRAM_SLEEPER_PERIOD_M - originGlobal;
+    const a = k * RAILWAY_SLEEPER_PERIOD_M - originGlobal;
     rect(
-      a - TRAM_SLEEPER_HALF_W_M,
-      a + TRAM_SLEEPER_HALF_W_M,
-      across - TRAM_SLEEPER_HALF_LEN_M,
-      across + TRAM_SLEEPER_HALF_LEN_M,
-      TRAM_SLEEPER_Y_OFFSET,
-      TRAM_SLEEPER_COLOR,
+      a - RAILWAY_SLEEPER_HALF_W_M,
+      a + RAILWAY_SLEEPER_HALF_W_M,
+      -RAILWAY_SLEEPER_HALF_LEN_M,
+      RAILWAY_SLEEPER_HALF_LEN_M,
+      RAILWAY_SLEEPER_Y_OFFSET,
+      RAILWAY_SLEEPER_COLOR,
     );
   }
 
   // Two continuous rails on top.
-  for (const off of [across + TRAM_GAUGE_HALF_M, across - TRAM_GAUGE_HALF_M]) {
+  for (const off of [RAILWAY_GAUGE_HALF_M, -RAILWAY_GAUGE_HALF_M]) {
     rect(
       lo,
       hi,
-      off - TRAM_RAIL_HALF_W_M,
-      off + TRAM_RAIL_HALF_W_M,
-      TRAM_RAIL_Y_OFFSET,
-      TRAM_RAIL_COLOR,
+      off - RAILWAY_RAIL_HALF_W_M,
+      off + RAILWAY_RAIL_HALF_W_M,
+      RAILWAY_RAIL_Y_OFFSET,
+      RAILWAY_RAIL_COLOR,
     );
   }
 }
@@ -4420,6 +4493,18 @@ export interface NeighborTiers {
    * long, over a road laid as two carriageways, needs to see that far.
    */
   beyond?: { n: RoadTier; e: RoadTier; s: RoadTier; w: RoadTier };
+  /**
+   * Whether each neighbour, and the road beyond it, is tram track: a street
+   * whose cross-section carries a tram lane. Omitted, only the Tramway's tier
+   * is, which is all a caller that cannot see profiles can tell.
+   */
+  track?: {
+    n: boolean;
+    e: boolean;
+    s: boolean;
+    w: boolean;
+    beyond?: { n: boolean; e: boolean; s: boolean; w: boolean };
+  };
 }
 
 const NO_NEIGHBORS: NeighborTiers = {
@@ -5433,74 +5518,85 @@ export function roadTileVertices(
   // / one-way arrows / junction arm markings — gravel junctions stay
   // unpainted. Every other tier (including Alley/One-Way/Four-Lane) is a paved
   // tier and gets the full marking behavior below.
-  // Embedded steel track: Tram (rails in a paved shared street) and RailTrack
-  // (rails on a dedicated unpaved ballast bed) both lay two rails + cross-tie
-  // sleepers down the centre of a straight run. Emitted OUTSIDE the `spec.paved`
-  // gate below so it also fires for RailTrack (paved: false); junctions/turns
-  // break the track, matching the R2 colored bands.
-  // A tramway's rails follow the lanes that carry them: the plan's tram bands
-  // say where those are, so a twin-track reservation gets two tracks at its
-  // own offsets and mixed running gets one in each shared lane. A railway has
-  // no lane pieces to read — it is a track, not a street — so it keeps its
-  // single track down the tile centreline.
-  const tramAt =
-    tier === RoadTier.RailTrack
-      ? [0]
-      : plan.bands.filter((b) => b.kind === 'tram').map((b) => (b.from + b.to) / 2);
+  // Track is emitted OUTSIDE the `spec.paved` gate below so it also fires for
+  // RailTrack (paved: false); junctions and turns break it, as they break the
+  // coloured bands. A street's track follows the lanes that carry it: the
+  // plan's tram bands say where those are, so a twin-track reservation gets
+  // two tracks at its own offsets and mixed running gets one in each shared
+  // lane, each in its slab. A railway has no lane pieces to read — it is a
+  // track, not a street — so it keeps its single sleepered track down the
+  // tile centreline.
+  const railway = tier === RoadTier.RailTrack;
+  const tramAt = railway
+    ? [0]
+    : plan.bands.filter((b) => b.kind === 'tram').map((b) => (b.from + b.to) / 2);
   if (tramAt.length > 0 && !isJunction && !isTurn) {
+    const emit = (vertical: boolean, lo: number, hi: number, across: number): void => {
+      if (railway) emitRailwayTrack(positions, colors, centerX, centerZ, vertical, lo, hi, hAt);
+      else emitStreetTrack(positions, colors, centerX, centerZ, vertical, lo, hi, hAt, across);
+    };
     for (const across of tramAt) {
-      if (hasVertical) {
-        const zLo = hasN ? -TILE_HALF : -coreHalf;
-        const zHi = hasS ? TILE_HALF : coreHalf;
-        emitTramTrack(positions, colors, centerX, centerZ, true, zLo, zHi, hAt, across);
-      }
-      if (hasHorizontal) {
-        const xLo = hasW ? -TILE_HALF : -coreHalf;
-        const xHi = hasE ? TILE_HALF : coreHalf;
-        emitTramTrack(positions, colors, centerX, centerZ, false, xLo, xHi, hAt, across);
-      }
+      if (hasVertical)
+        emit(true, hasN ? -TILE_HALF : -coreHalf, hasS ? TILE_HALF : coreHalf, across);
+      if (hasHorizontal)
+        emit(false, hasW ? -TILE_HALF : -coreHalf, hasE ? TILE_HALF : coreHalf, across);
     }
   }
   // A tramway crossing this street goes straight over the junction box, so its
-  // rails run on across the whole tile between the two tram arms, at the
-  // offsets the tramway's own preset lanes give them.
-  const tramCrossing = tramCrossingAxes(tier, (dx, dz, steps) => {
-    const side = dz < 0 ? 'n' : dx > 0 ? 'e' : dz > 0 ? 's' : 'w';
-    const joined = { n: hasN, e: hasE, s: hasS, w: hasW }[side];
-    if (!joined) return RoadTier.None;
-    return steps === 1 ? neighbors[side] : (neighbors.beyond?.[side] ?? RoadTier.None);
-  });
-  if (tramCrossing.alongX || tramCrossing.alongZ) {
-    const railsAt = markingPlan(presetProfileForTier(RoadTier.Tram))
-      .bands.filter((b) => b.kind === 'tram')
-      .map((b) => (b.from + b.to) / 2);
-    for (const across of railsAt) {
-      if (tramCrossing.alongZ) {
-        emitTramTrack(
-          positions,
-          colors,
-          centerX,
-          centerZ,
-          true,
-          -TILE_HALF,
-          TILE_HALF,
-          hAt,
-          across,
-        );
-      }
-      if (tramCrossing.alongX) {
-        emitTramTrack(
-          positions,
-          colors,
-          centerX,
-          centerZ,
-          false,
-          -TILE_HALF,
-          TILE_HALF,
-          hAt,
-          across,
-        );
-      }
+  // slab and rails run on across the whole tile between the two tram arms, at
+  // the offsets the arm's own tram lanes give them.
+  const trackOf = (side: 'n' | 'e' | 's' | 'w', steps: 1 | 2): boolean => {
+    const known = steps === 1 ? neighbors.track?.[side] : neighbors.track?.beyond?.[side];
+    if (known !== undefined) return known;
+    return isTramTrack(steps === 1 ? neighbors[side] : (neighbors.beyond?.[side] ?? 0), null);
+  };
+  const tramCrossing = tramCrossingAxes(
+    tramCrossingRoad(tier, isTramTrack(tier, own)),
+    (dx, dz, steps) => {
+      const side = dz < 0 ? 'n' : dx > 0 ? 'e' : dz > 0 ? 's' : 'w';
+      const joined = { n: hasN, e: hasE, s: hasS, w: hasW }[side];
+      if (!joined) return 'none';
+      const at = steps === 1 ? neighbors[side] : (neighbors.beyond?.[side] ?? RoadTier.None);
+      return tramCrossingRoad(at, trackOf(side, steps));
+    },
+  );
+  const armRails = (a: 'n' | 'e' | 's' | 'w', b: 'n' | 'e' | 's' | 'w'): number[] => {
+    for (const side of [a, b]) {
+      const bands = neighborHalves.plans?.[side]?.bands.filter((band) => band.kind === 'tram');
+      if (bands && bands.length > 0) return bands.map((band) => (band.from + band.to) / 2);
+    }
+    return markingPlan(presetProfileForTier(RoadTier.Tram))
+      .bands.filter((band) => band.kind === 'tram')
+      .map((band) => (band.from + band.to) / 2);
+  };
+  if (tramCrossing.alongZ) {
+    for (const across of armRails('n', 's')) {
+      emitStreetTrack(
+        positions,
+        colors,
+        centerX,
+        centerZ,
+        true,
+        -TILE_HALF,
+        TILE_HALF,
+        hAt,
+        across,
+      );
+    }
+  }
+  if (tramCrossing.alongX) {
+    for (const across of armRails('w', 'e')) {
+      emitStreetTrack(
+        positions,
+        colors,
+        centerX,
+        centerZ,
+        false,
+        -TILE_HALF,
+        TILE_HALF,
+        hAt,
+        across,
+      );
     }
   }
 
@@ -6664,6 +6760,12 @@ export class RoadMeshRenderer {
     return tierAlong(x, z, axis, this.surroundings);
   }
 
+  /** Whether the road met along `axis` at (x, z) is tram track. */
+  private trackAlong(x: number, z: number, axis: 'x' | 'z'): boolean {
+    const road = this.roadAlong(x, z, axis);
+    return road !== undefined && isTramTrack(road.tier, this.profileFor(road.profile));
+  }
+
   /**
    * `halfAt`, but for the road met along `axis`. A corner of a roundabout
    * reports none: a road into the ring keeps its own width to the ring, rather
@@ -7228,6 +7330,8 @@ export class RoadMeshRenderer {
           ? this.tierAlong(tile.x + 2 * dx, tile.z + 2 * dz, axis)
           : RoadTier.None;
       };
+      const trackAt = (dx: number, dz: number, axis: 'x' | 'z'): boolean =>
+        this.trackAlong(tile.x + dx, tile.z + dz, axis);
       const neighbors: NeighborTiers = {
         n: this.tierAlong(tile.x, tile.z - 1, 'z'),
         e: this.tierAlong(tile.x + 1, tile.z, 'x'),
@@ -7238,6 +7342,18 @@ export class RoadMeshRenderer {
           e: beyond(1, 0, EAST, 'x'),
           s: beyond(0, 1, SOUTH, 'z'),
           w: beyond(-1, 0, WEST, 'x'),
+        },
+        track: {
+          n: trackAt(0, -1, 'z'),
+          e: trackAt(1, 0, 'x'),
+          s: trackAt(0, 1, 'z'),
+          w: trackAt(-1, 0, 'x'),
+          beyond: {
+            n: trackAt(0, -2, 'z'),
+            e: trackAt(2, 0, 'x'),
+            s: trackAt(0, 2, 'z'),
+            w: trackAt(-2, 0, 'x'),
+          },
         },
       };
       const vertices = roadTileVertices(

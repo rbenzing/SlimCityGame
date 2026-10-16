@@ -25,7 +25,7 @@ current behavior only and carry no dates of their own._
 
 ## Status (2026-09-29)
 
-**Test suite:** 6,845 tests passing across 195 test files, run 2026-10-16.
+**Test suite:** 6,864 tests passing across 195 test files, run 2026-10-16.
 This is the only test count in the documentation set. When the suite changes
 again, update the figure here and nowhere else.
 
@@ -229,7 +229,12 @@ at the player's choice (complete 2026-10-16;
 fields a line's vehicles over its own network, a mode with no depot runs
 nothing, every vehicle in service is charged its operating cost, buses
 pull out at dawn and home at night, and the fleet at home stands on the
-apron. **Next, the programme's last epic**, parks and recreation
+apron. **In progress, at the player's request (2026-10-16): tramways**
+([tramways.md](game-design/features/tramways.md)) — a street tramway drawn
+as a street cars share, a tram reservation lifted onto an elevated guideway
+in the Disney World monorail's form with raised stations, and every tram
+lane routable; the street tramway built, the guideway and its stations
+next. **After it, the programme's last epic**, parks and recreation
 ([municipal-services.md](game-design/features/municipal-services.md)), the
 [DESIGN.md](DESIGN.md) deferred backlog (weather, deeper industry, more
 transit modes) and AI raster map packs, facade-atlas stage 2 and screen-space
@@ -373,6 +378,27 @@ roads, and pinning the Three.js version. See [adr/](engineering/adr/README.md).
 ---
 
 ## 10. History (newest first)
+
+### The street tramway drawn as a street, and every tram lane is track (slice 1 of tramways, built 2026-10-16)
+
+The player saw a railway with sidewalks and street lamps: it was the
+tramway, a street cars share, drawn with railway sleepers across its whole
+paving. The dedicated railway was already separate from roads.
+
+- **Street-running track.** Each tram lane carries two grooved rails at the
+  1,435 mm gauge, their heads flush with a 2.7 m concrete slab down the lane,
+  with no sleepers: the 59R2 rail of a modern American streetcar, set as
+  Portland and Toronto set it. The railway keeps its sleepers and ballast.
+- **Contact poles**, 10.7 m with a 1.9 m bracket arm over the carriageway,
+  stand every 22 m along the kerbs of a mixed-running tram road, alternating
+  sides, never in a junction box or across a driveway; a street lamp within
+  2 m of one gives way to it. The wire is not drawn.
+- **Every tram lane is track.** The tram graph, the tram crossings and the
+  tram depot's placement gate read the tile's profile, so a tram lane
+  composed onto any road, mixed or reserved, carries tram lines and is
+  fielded by a depot touching it. Before this only the Tramway preset's tier
+  counted, and a composed reservation drew rails no tram could use.
+- The elevated guideway for a reservation, and its raised stations, follow.
 
 ### The depots drawn, the fleet at home on the apron (slice 3 of the transport-depots epic, built 2026-10-16; epic complete)
 
