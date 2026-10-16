@@ -19,8 +19,9 @@ import {
   MAX_BUSES_PER_LINE,
   type TransitSnapshot,
 } from './transit';
+import { BUS_SHELTER } from './busshelter';
 import type { TransitLine } from '../shared/types';
-import { tileToWorld } from '../shared/constants';
+import { TILE_METERS, tileToWorld } from '../shared/constants';
 
 const flatHeightAt = (): number => 0;
 
@@ -254,17 +255,91 @@ describe('TransitRenderer.apply', () => {
     expect(renderer.stopCount()).toBe(5);
     expect(renderer.lineCount()).toBe(2);
 
-    // shelter roof-posts (2x) + roof + bench + sign pole + sign (no buses since ridership is 0 for both lines)
-    expect(renderer.shelterPostInstanceCount()).toBe(10);
-    expect(renderer.shelterRoofInstanceCount()).toBe(5);
-    expect(renderer.shelterBenchInstanceCount()).toBe(5);
+    // the shared shelter + sign pole + sign (no buses since ridership is 0 for both lines)
+    expect(renderer.shelterInstanceCount()).toBe(5);
     expect(renderer.signPoleInstanceCount()).toBe(5);
     expect(renderer.signInstanceCount()).toBe(5);
 
     const instancedMeshes = scene.children.filter(
       (c) => c instanceof THREE.InstancedMesh,
     ) as THREE.InstancedMesh[];
-    expect(instancedMeshes).toHaveLength(5);
+    expect(instancedMeshes).toHaveLength(3);
+  });
+
+  it('draws the shared bus shelter, its long axis along the route and its open front toward the stop', () => {
+    const scene = new THREE.Scene();
+    const renderer = new TransitRenderer(scene, flatHeightAt);
+    renderer.apply({
+      lines: [
+        line(
+          1,
+          [
+            { x: 0, z: 0 },
+            { x: 5, z: 0 },
+          ],
+          0xff0000,
+        ),
+      ],
+      ridership: [0],
+    });
+    const shelter = scene.children.find(
+      (c) => c instanceof THREE.InstancedMesh,
+    ) as THREE.InstancedMesh;
+    const geometry = shelter.geometry;
+    geometry.computeBoundingBox();
+    const box = geometry.boundingBox!;
+    expect(box.max.x - box.min.x).toBeCloseTo(BUS_SHELTER.w + 2 * BUS_SHELTER.overhang, 6);
+    expect(box.max.z - box.min.z).toBeCloseTo(BUS_SHELTER.d + 2 * BUS_SHELTER.overhang, 6);
+    expect(box.max.y).toBeCloseTo(BUS_SHELTER.clear + BUS_SHELTER.roof, 6);
+
+    // The first stop heads +X (toward the second), so the shelter's long
+    // axis lies along X and its front faces back across its side offset.
+    const m = new THREE.Matrix4();
+    renderer.getShelterMatrix(0, m);
+    const q = new THREE.Quaternion();
+    const p = new THREE.Vector3();
+    m.decompose(p, q, new THREE.Vector3());
+    const along = new THREE.Vector3(1, 0, 0).applyQuaternion(q);
+    expect(Math.abs(along.x)).toBeCloseTo(1, 6);
+    const front = new THREE.Vector3(0, 0, 1).applyQuaternion(q);
+    const toStop = new THREE.Vector3(tileToWorld(0) - p.x, 0, tileToWorld(0) - p.z).normalize();
+    expect(front.dot(toStop)).toBeCloseTo(1, 6);
+  });
+
+  it('draws no shelter and no sign where a plopped bus stop stands on the stop tile, and keeps the others', () => {
+    const scene = new THREE.Scene();
+    const renderer = new TransitRenderer(scene, flatHeightAt);
+    const snapshot: TransitSnapshot = {
+      lines: [
+        line(
+          1,
+          [
+            { x: 0, z: 0 },
+            { x: 5, z: 0 },
+            { x: 9, z: 0 },
+          ],
+          0xff0000,
+        ),
+      ],
+      ridership: [0],
+    };
+    renderer.apply(snapshot, (x, z) => x === 5 && z === 0);
+    expect(renderer.stopCount()).toBe(2);
+    expect(renderer.shelterInstanceCount()).toBe(2);
+    expect(renderer.signPoleInstanceCount()).toBe(2);
+    expect(renderer.signInstanceCount()).toBe(2);
+
+    const m = new THREE.Matrix4();
+    const p = new THREE.Vector3();
+    for (const slot of [0, 1]) {
+      renderer.getShelterMatrix(slot, m);
+      m.decompose(p, new THREE.Quaternion(), new THREE.Vector3());
+      expect(Math.abs(p.x - tileToWorld(5))).toBeGreaterThan(TILE_METERS / 2);
+    }
+
+    renderer.apply(snapshot);
+    expect(renderer.stopCount()).toBe(3);
+    expect(renderer.shelterInstanceCount()).toBe(3);
   });
 
   it('casts and receives shadows on every shelter mesh (UI-SPEC §15 #3)', () => {
@@ -300,9 +375,7 @@ describe('TransitRenderer.apply', () => {
     renderer.apply({ lines: [line(1, [{ x: 3, z: 3 }], 0xff0000)], ridership: [0] });
 
     expect(renderer.stopCount()).toBe(1);
-    expect(renderer.shelterPostInstanceCount()).toBe(2);
-    expect(renderer.shelterRoofInstanceCount()).toBe(1);
-    expect(renderer.shelterBenchInstanceCount()).toBe(1);
+    expect(renderer.shelterInstanceCount()).toBe(1);
     expect(renderer.signPoleInstanceCount()).toBe(1);
     expect(renderer.signInstanceCount()).toBe(1);
   });
@@ -326,7 +399,7 @@ describe('TransitRenderer.apply', () => {
     const sceneA = new THREE.Scene();
     const rendererA = new TransitRenderer(sceneA, flatHeightAt);
     rendererA.apply(snapshot);
-    // buildShelters() always adds shelterPostMesh first (scene.add(shelterPostMesh, roof, bench, signPole, sign)).
+    // buildShelters() always adds the shelter mesh first (scene.add(shelter, signPole, sign)).
     const meshA = sceneA.children[0] as THREE.InstancedMesh;
     const matrixA = new THREE.Matrix4();
     meshA.getMatrixAt(0, matrixA);

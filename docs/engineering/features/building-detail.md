@@ -1,6 +1,6 @@
 # Building detail — technical design
 
-- **Status:** The measurement, the performance slice, the houses, the storefronts, industry and farms and the apartment blocks and towers built 2026-10-15; the kitless ploppables next
+- **Status:** The measurement, the performance slice, the houses, the storefronts, industry and farms and the apartment blocks and towers built 2026-10-15; the kitless ploppables built 2026-10-16; the earliest kits redone next
 - **Date:** 2026-10-14
 - **Author:** Claude Fable 5.1
 
@@ -386,6 +386,59 @@ and one body each.
   night.
 - `tools/frame-budget.mjs` before and after; the industry record is kept
   beside it as `result-2026-10-15-industry.md`.
+
+### The kitless ploppables
+
+The clinic, the rail station and the bus stop are not in
+`UTILITY_KIT_CATALOG_IDS` and draw as facade boxes. The slice adds the
+three kits in `src/render/utilitykits.ts` on the civic pattern, from the
+spec in
+[../../art/civic-massing.md](../../art/civic-massing.md#the-clinic-the-depot-and-the-bus-stop).
+
+- **Registry.** The three ids join `UTILITY_KIT_CATALOG_IDS` (30 ids), so
+  `buildings.ts` draws their pad in place of the box and
+  `geometrybudget.test.ts` counts them against `KIT_TIER` without a change;
+  the registry test's verbatim list grows by three. The bus stop's pad is a
+  lawn plate as the cemetery's is, not a plinth.
+- **The clinic** is one recipe: a body box, a parapet band, a brick base,
+  the entry glazing and the sign face on the stations' emissive material,
+  the porte-cochère, the loop and stalls as the stations' paved lot and
+  paint, two rooftop units from the storefront kit's geometry, a monument
+  sign. Pure from the footprint.
+- **The station reads its track edge.** The kit's layout takes the side its
+  rail runs along, as the sewage works takes its water edge; the renderer
+  finds it from the grid (the edge with the most rail tiles, ties broken
+  north, east, south, west) and passes it with the footprint. The platform,
+  tactile strip (lot paint in the road's yellow), canopy and operator's bay
+  go to that edge; the car park and drop-off to the edge opposite the
+  track, whichever way the lot was turned, and with no rail beside it the
+  platform takes the back of the lot as placed. The depot's
+  battens are one merged geometry per depot, not a pool of slats. Windows
+  on the stations' lit material.
+- **One shelter builder.** `buildBusShelterGeometry()` moves to
+  `src/render/busshelter.ts` with the new dimensions; `transit.ts` and the
+  bus-stop kit both draw it. `TransitRenderer.apply` takes a
+  `hasStopBuilding(x, z)` predicate that `main.ts` builds from the
+  snapshot's buildings (the bus-stop catalog id at that tile) and draws no
+  shelter where it is true; the pedestrians' idlers keep their anchor from
+  the shelter that is drawn. The sign pole, bench and pad are the kit's.
+- **Budget:** the bus stop gets a `BUS_STOP_CEILING = 500` row in
+  `geometrybudget.test.ts` beside the solar farm's; the clinic and station
+  take `KIT_TIER`.
+- Tests: the three ids in the registry and the renderer; the clinic's
+  canopy clearance, loop width, stall count and the van space; the
+  station's platform on the track edge at all four rotations and both
+  orientations of the lot, the canopy length, the depot's plate and ridge,
+  the bay on the track face; the bus-stop shelter's size, the sign bottom,
+  the pad; a line's stop on a bus-stop tile draws no transit shelter and
+  one elsewhere; lit parts on the lit material only; determinism; the
+  tiers and the bus-stop ceiling with the measured figures reported.
+- Shots, `tools/ploppable-shots.mjs`: the clinic from the street and from
+  its drop-off, the station from the track side and the street side with a
+  rail line beside it, a bus stop beside a street and one with a bus line's
+  stop on it, each at the default pitch beside the 4 m car, and at night.
+- `tools/frame-budget.mjs` before and after; the apartments record kept
+  as `result-2026-10-15-apartments.md`.
 
 ### Each slice, the same shape
 

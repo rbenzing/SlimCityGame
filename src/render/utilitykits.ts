@@ -99,6 +99,19 @@
  *  - small-park: a flat lawn plate + path cross ("parkGround"), 2-3
  *    self-contained trees ("parkTree" — trunk+canopy built locally; this file
  *    deliberately does NOT import trees.ts), and 2 benches ("parkBench").
+ *  - clinic: a lawn plate with the drop-off loop, the stalls and their paint
+ *    ("clinicGrounds"), the block under its parapet with the porte-cochère,
+ *    rooftop units and monument sign ("clinicBuilding"), the entry glazing,
+ *    windows and sign panels on the stations' lit material ("clinicLit") and
+ *    cars in the stalls ("clinicCar").
+ *  - rail-station: the lot in its track frame, one of two per lot orientation,
+ *    with the platform, tactile strip and car park ("depotGrounds" or
+ *    "depotGroundsLong"), the platform canopy on its posts ("depotCanopy" or
+ *    "depotCanopyLong"), the combination depot ("depotBuilding"), its doors and
+ *    windows on the lit material ("depotLit") and cars ("depotCar").
+ *  - bus-stop: a lawn plate with the walk and boarding pad ("busStopGrounds"),
+ *    the shared shelter busshelter.ts builds ("busStopShelter") and the flag
+ *    sign and receptacle ("busStopProps").
  *
  * Every placement is a PURE function of (catalog footprint[, buildingId]) —
  * no THREE/DOM dependency, no Math.random/Date.now anywhere — mirroring
@@ -134,7 +147,10 @@ import {
   accessibilitySymbolPaint,
   MARKING_COLOR,
   ROAD_Y_OFFSET,
+  YELLOW_MARKING_COLOR,
 } from './roadsmesh';
+import { UNIT_HEIGHT_M, UNIT_LENGTH_M, UNIT_WIDTH_M } from './buildingkit';
+import { BUS_SHELTER, buildBusShelterGeometry } from './busshelter';
 
 // ---------------------------------------------------------------------------
 // Registry: acts ONLY on catalog ids in its registry —
@@ -169,6 +185,9 @@ export const UTILITY_KIT_CATALOG_IDS: readonly string[] = [
   'combined-cycle',
   'nuclear-plant',
   'small-park',
+  'clinic',
+  'rail-station',
+  'bus-stop',
 ];
 
 export type UtilityKitPartKind =
@@ -244,7 +263,21 @@ export type UtilityKitPartKind =
   | 'nuclearIntake'
   | 'parkGround'
   | 'parkTree'
-  | 'parkBench';
+  | 'parkBench'
+  | 'clinicGrounds'
+  | 'clinicBuilding'
+  | 'clinicLit'
+  | 'clinicCar'
+  | 'depotGrounds'
+  | 'depotGroundsLong'
+  | 'depotCanopy'
+  | 'depotCanopyLong'
+  | 'depotBuilding'
+  | 'depotLit'
+  | 'depotCar'
+  | 'busStopGrounds'
+  | 'busStopShelter'
+  | 'busStopProps';
 
 // ---------------------------------------------------------------------------
 // Shared pure helpers (each render/*.ts file keeps its own local copy of
@@ -5246,6 +5279,1095 @@ function buildParkBenchGeometry(): THREE.BufferGeometry {
 }
 
 // ---------------------------------------------------------------------------
+// the clinic, the rail station and the bus stop: the last ploppables without
+// a kit. The clinic is read by its covered drop-off, the station by its
+// platform, the bus stop by its shelter. Each stands on a lawn plate on the
+// highest ground under its lot; the clinic's glazing and sign face and the
+// depot's doors and windows are the lit parts, on the stations' material.
+// ---------------------------------------------------------------------------
+
+/** The clinic's block: one storey, 17 × 20 m, its wall to the top of a 42 in parapet over a 1.0 m brick base. */
+export const CLINIC_BODY = { w: 17, d: 20, wall: 5.5, parapet: 1.07, base: 1.0 };
+/** The entry's storefront glazing: 6 m wide, 3.0 m to its head. */
+export const CLINIC_ENTRY = { w: 6, h: 3.0 };
+/** The porte-cochère over the drop-off: 4.0 m along the facade, 6.1 m out over the lane, 2.9 m clear on two 0.3 m columns. */
+export const CLINIC_CANOPY = { w: 4.0, d: 6.1, clear: 2.9, slab: 0.3, column: 0.3 };
+/** The one-way drop-off lane, the 20 ft fire lane. */
+export const CLINIC_LANE_M = 6.1;
+/** A stall of the clinic's car park, 9 × 18 ft. */
+export const CLINIC_STALL = { w: 2.74, l: 5.5 };
+/** The monument sign at the street: a 2.4 × 0.4 m masonry block 1.83 m tall with a lit panel on each face. */
+export const CLINIC_SIGN = { w: 2.4, t: 0.4, h: 1.83, panel: { w: 1.9, h: 0.7, y: 0.85 } };
+/** A rooftop unit on its curb, the storefront kit's size. */
+const CLINIC_UNIT = { w: UNIT_WIDTH_M, l: UNIT_LENGTH_M, h: UNIT_HEIGHT_M, curb: 0.3 };
+const CLINIC_WINDOW = { w: 1.5, h: 1.4, sill: 1.2, pitch: 3 };
+/** The roof cap stands this far proud of the wall all round. */
+const CLINIC_CAP_OVERHANG_M = 0.15;
+
+const CLINIC_WALL_RGB: RGB = [0.78, 0.76, 0.7];
+const CLINIC_BRICK_RGB: RGB = [0.5, 0.3, 0.24];
+const CLINIC_PARAPET_RGB: RGB = [0.6, 0.58, 0.54];
+const CLINIC_CAP_RGB: RGB = [0.42, 0.4, 0.38];
+const CLINIC_CANOPY_RGB: RGB = [0.84, 0.84, 0.82];
+const CLINIC_COLUMN_RGB: RGB = [0.5, 0.52, 0.54];
+const CLINIC_MULLION_RGB: RGB = [0.2, 0.2, 0.22];
+const CLINIC_UNIT_RGB: RGB = [0.82, 0.81, 0.78];
+const CLINIC_SIGN_RGB: RGB = [0.56, 0.5, 0.42];
+const CLINIC_SIGN_CAP_RGB: RGB = [0.4, 0.36, 0.32];
+
+/** One stall of the clinic's car park: its centre, which way a car in it turns, its width across and whether it is the van space. */
+export interface ClinicStall extends Vec2 {
+  turn: 0 | 1 | 2 | 3;
+  across: number;
+  van: boolean;
+}
+
+export interface ClinicLayout {
+  body: Rect;
+  /** The entry glazing's centre on the street face. */
+  entrance: Vec2;
+  canopy: Rect;
+  columns: Vec2[];
+  /** The loop: a leg in from the street, the lane under the canopy, a leg back out. */
+  lane: Rect[];
+  stalls: ClinicStall[];
+  /** The van space's hatched access aisle. */
+  aisle: Rect;
+  /** The monument sign's plan, its long axis along Z beside the way out. */
+  sign: Rect;
+  /** The rooftop units' plans. */
+  units: Rect[];
+  /** Punched windows on the street and side faces: centre on the plan, the wall's outward normal, width. */
+  windows: { x: number; z: number; nx: -1 | 0 | 1; nz: -1 | 0 | 1; w: number }[];
+}
+
+/**
+ * The block on the back half of the lot, the entry centred on its street face
+ * under the porte-cochère; the one-way loop down the lot's left side, across
+ * the facade under the canopy and back up the right; the stalls on the island
+ * the loop encloses, the van space and its aisle at the head nearest the
+ * entrance; the sign at the way out. Pure; fixed per footprint.
+ */
+export function computeClinicLayout(footprint: FootprintSize): ClinicLayout {
+  const { halfW, halfD } = footprintHalfExtents(footprint);
+  // The block keeps just its roof cap's overhang off the back lot line: every
+  // metre of the front half is the loop, the stalls and the sign.
+  const body: Rect = {
+    x0: -CLINIC_BODY.w / 2,
+    x1: CLINIC_BODY.w / 2,
+    z0: -halfD + CLINIC_CAP_OVERHANG_M,
+    z1: -halfD + CLINIC_CAP_OVERHANG_M + CLINIC_BODY.d,
+  };
+  const front = body.z1;
+  const entrance: Vec2 = { x: 0, z: front };
+  const canopy: Rect = {
+    x0: -CLINIC_CANOPY.w / 2,
+    x1: CLINIC_CANOPY.w / 2,
+    z0: front,
+    z1: front + CLINIC_CANOPY.d,
+  };
+  const columnIn = CLINIC_CANOPY.column / 2 + 0.1;
+  const columns: Vec2[] = [-1, 1].map((s) => ({
+    x: s * (canopy.x1 - columnIn),
+    z: canopy.z1 - columnIn,
+  }));
+  const cross: Rect = { x0: -halfW, x1: halfW, z0: front, z1: front + CLINIC_LANE_M };
+  const left: Rect = { x0: -halfW, x1: -halfW + CLINIC_LANE_M, z0: cross.z1, z1: halfD };
+  const right: Rect = { x0: halfW - CLINIC_LANE_M, x1: halfW, z0: cross.z1, z1: halfD };
+
+  // The head row faces the lane under the canopy: the van space first, its
+  // aisle on its passenger side, then a car. The rest stand nose to the way in.
+  const stalls: ClinicStall[] = [];
+  const headZ = cross.z1 + CLINIC_STALL.l / 2;
+  let x = left.x1;
+  stalls.push({
+    x: x + ACCESSIBLE_VAN_WIDTH_M / 2,
+    z: headZ,
+    turn: 2,
+    across: ACCESSIBLE_VAN_WIDTH_M,
+    van: true,
+  });
+  x += ACCESSIBLE_VAN_WIDTH_M;
+  const aisle: Rect = {
+    x0: x,
+    x1: x + ACCESSIBLE_AISLE_M,
+    z0: cross.z1,
+    z1: cross.z1 + CLINIC_STALL.l,
+  };
+  x = aisle.x1;
+  stalls.push({ x: x + CLINIC_STALL.w / 2, z: headZ, turn: 2, across: CLINIC_STALL.w, van: false });
+  const alongX = left.x1 + CLINIC_STALL.l / 2;
+  for (let z = cross.z1 + CLINIC_STALL.l; z + CLINIC_STALL.w <= halfD + 1e-9; z += CLINIC_STALL.w) {
+    stalls.push({
+      x: alongX,
+      z: z + CLINIC_STALL.w / 2,
+      turn: 3,
+      across: CLINIC_STALL.w,
+      van: false,
+    });
+  }
+
+  const signX = (left.x1 + CLINIC_STALL.l + right.x0) / 2;
+  const sign: Rect = {
+    x0: signX - CLINIC_SIGN.t / 2,
+    x1: signX + CLINIC_SIGN.t / 2,
+    z0: halfD - 0.6 - CLINIC_SIGN.w,
+    z1: halfD - 0.6,
+  };
+
+  const units: Rect[] = [-1, 1].map((s) => ({
+    x0: s * 4 - CLINIC_UNIT.l / 2,
+    x1: s * 4 + CLINIC_UNIT.l / 2,
+    z0: body.z0 + 6 - CLINIC_UNIT.w / 2,
+    z1: body.z0 + 6 + CLINIC_UNIT.w / 2,
+  }));
+
+  const windows: ClinicLayout['windows'] = [];
+  for (const s of [-1, 1]) {
+    for (let k = 0; k < 2; k++) {
+      windows.push({
+        x: s * (CLINIC_ENTRY.w / 2 + 1.5 + k * CLINIC_WINDOW.pitch),
+        z: front,
+        nx: 0,
+        nz: 1,
+        w: CLINIC_WINDOW.w,
+      });
+    }
+    for (let z = body.z0 + 2.5; z + CLINIC_WINDOW.w / 2 <= front - 1; z += CLINIC_WINDOW.pitch) {
+      windows.push({ x: s * body.x1, z, nx: s as -1 | 1, nz: 0, w: CLINIC_WINDOW.w });
+    }
+  }
+
+  return {
+    body,
+    entrance,
+    canopy,
+    columns,
+    lane: [left, cross, right],
+    stalls,
+    aisle,
+    sign,
+    units,
+    windows,
+  };
+}
+
+/** A clinic stall's plan. */
+export function clinicStallRect(s: ClinicStall): Rect {
+  const alongX = s.turn % 2 === 1;
+  const hx = (alongX ? CLINIC_STALL.l : s.across) / 2;
+  const hz = (alongX ? s.across : CLINIC_STALL.l) / 2;
+  return { x0: s.x - hx, x1: s.x + hx, z0: s.z - hz, z1: s.z + hz };
+}
+
+/** The lawn plate with its footing, and the paving laid on it; local Y=0 is the highest ground under the lot. */
+function lawnPlate(footprint: FootprintSize): THREE.BufferGeometry {
+  const { halfW, halfD } = footprintHalfExtents(footprint);
+  const top = RECYCLING_YARD_HEIGHT;
+  const depth = top + YARD_FOOTING_DEPTH;
+  const lawn = new THREE.BoxGeometry(halfW * 2, depth, halfD * 2);
+  lawn.translate(0, top - depth / 2, 0);
+  return paintVertexColor(lawn, hexFromRgb(CEMETERY_LAWN_RGB));
+}
+
+/** The accessibility symbol painted on a space, upright to a driver pulling in with their nose along `turn`. */
+function accessibilitySymbol(
+  x: number,
+  z: number,
+  top: number,
+  turn: 0 | 1 | 2 | 3,
+): THREE.BufferGeometry {
+  const { positions, colors } = accessibilitySymbolPaint(ACCESSIBLE_SYMBOL_M);
+  const symbol = new THREE.BufferGeometry();
+  symbol.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  symbol.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+  symbol.computeVertexNormals();
+  symbol.rotateY((turn * Math.PI) / 2);
+  symbol.translate(x, top - ROAD_Y_OFFSET + 0.01, z);
+  return symbol;
+}
+
+/** White hatching across an access aisle, bars at 45° every 0.6 m. */
+function hatchedAisle(aisle: Rect, top: number): THREE.BufferGeometry[] {
+  const parts: THREE.BufferGeometry[] = [];
+  const w = aisle.x1 - aisle.x0;
+  const bar = w * Math.SQRT2 - PAINT_LINE_M;
+  const cx = (aisle.x0 + aisle.x1) / 2;
+  for (let z = aisle.z0 + w / 2; z <= aisle.z1 - w / 2 + 1e-9; z += PAINT_HATCH_SPACING_M) {
+    const hatch = new THREE.BoxGeometry(PAINT_LINE_M, 0.01, bar);
+    hatch.rotateY(Math.PI / 4);
+    hatch.translate(cx, top + 0.005, z);
+    parts.push(paintVertexColor(hatch, hexFromRgb(MARKING_COLOR)));
+  }
+  return parts;
+}
+
+/** The white line between two stalls of a row, or at a row's end. */
+function stallLine(r: Rect, alongX: boolean, at: number, top: number): THREE.BufferGeometry {
+  return alongX
+    ? standingBox(r.x1 - r.x0, 0.01, PAINT_LINE_M, (r.x0 + r.x1) / 2, top, at, EDU_LINE_RGB)
+    : standingBox(PAINT_LINE_M, 0.01, r.z1 - r.z0, at, top, (r.z0 + r.z1) / 2, EDU_LINE_RGB);
+}
+
+/** The clinic's lawn, the loop and stalls in asphalt, the stall lines, the van aisle's hatching and symbol. */
+function buildClinicGroundsGeometry(footprint: FootprintSize): THREE.BufferGeometry {
+  const layout = computeClinicLayout(footprint);
+  const parts: THREE.BufferGeometry[] = [lawnPlate(footprint)];
+  for (const r of layout.lane) parts.push(groundPatch(r, 0, EDU_ASPHALT_M, EDU_ASPHALT_RGB));
+  const paved = layout.stalls.map(clinicStallRect);
+  paved.push(layout.aisle);
+  for (const r of paved) parts.push(groundPatch(r, 0, EDU_ASPHALT_M, EDU_ASPHALT_RGB));
+  const top = RECYCLING_YARD_HEIGHT + EDU_ASPHALT_M;
+  const { halfD } = footprintHalfExtents(footprint);
+  const seen = new Set<string>();
+  for (const s of layout.stalls) {
+    const r = clinicStallRect(s);
+    const alongX = s.turn % 2 === 1;
+    for (const at of alongX ? [r.z0, r.z1] : [r.x0, r.x1]) {
+      const key = `${alongX}:${at.toFixed(3)}:${(alongX ? s.x : s.z).toFixed(3)}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      // The last stall's line at the street edge stays inside the lot.
+      const kept = alongX ? Math.min(at, halfD - PAINT_LINE_M / 2) : at;
+      parts.push(stallLine(r, alongX, kept, top));
+    }
+  }
+  parts.push(...hatchedAisle(layout.aisle, top));
+  const van = layout.stalls.find((s) => s.van)!;
+  parts.push(accessibilitySymbol(van.x, van.z, top, van.turn));
+  return mergeParts(parts);
+}
+
+/** The block under its parapet over its brick base, the entry's mullions, the porte-cochère on its columns, the rooftop units and the monument sign; local Y=0 is the lawn plate's top. */
+function buildClinicBuildingGeometry(footprint: FootprintSize): THREE.BufferGeometry {
+  const { body, canopy, columns, units, sign } = computeClinicLayout(footprint);
+  const y0 = RECYCLING_YARD_HEIGHT;
+  const c = rectCentre(body);
+  const w = body.x1 - body.x0;
+  const d = body.z1 - body.z0;
+  const { wall, parapet, base } = CLINIC_BODY;
+  const roof = wall - parapet;
+  const parts: THREE.BufferGeometry[] = [
+    standingBox(w, roof - base, d, c.x, y0 + base, c.z, CLINIC_WALL_RGB),
+    standingBox(w + 0.06, base, d + 0.06, c.x, y0, c.z, CLINIC_BRICK_RGB),
+    standingBox(w + 0.1, parapet, d + 0.1, c.x, y0 + roof, c.z, CLINIC_PARAPET_RGB),
+    standingBox(
+      w + 2 * CLINIC_CAP_OVERHANG_M,
+      0.12,
+      d + 2 * CLINIC_CAP_OVERHANG_M,
+      c.x,
+      y0 + wall - 0.12,
+      c.z,
+      CLINIC_CAP_RGB,
+    ),
+  ];
+  const front = body.z1;
+  for (const sx of [-1, 1]) {
+    parts.push(
+      standingBox(0.12, CLINIC_ENTRY.h, 0.1, sx * 1.0, y0, front + 0.1, CLINIC_MULLION_RGB),
+    );
+    parts.push(
+      standingBox(
+        0.12,
+        CLINIC_ENTRY.h,
+        0.1,
+        sx * (CLINIC_ENTRY.w / 2 + 0.06),
+        y0,
+        front + 0.1,
+        CLINIC_MULLION_RGB,
+      ),
+    );
+  }
+  parts.push(
+    standingBox(
+      CLINIC_ENTRY.w + 0.24,
+      0.12,
+      0.1,
+      0,
+      y0 + CLINIC_ENTRY.h,
+      front + 0.1,
+      CLINIC_MULLION_RGB,
+    ),
+  );
+  const cc = rectCentre(canopy);
+  parts.push(
+    standingBox(
+      canopy.x1 - canopy.x0,
+      CLINIC_CANOPY.slab,
+      canopy.z1 - canopy.z0,
+      cc.x,
+      y0 + CLINIC_CANOPY.clear,
+      cc.z,
+      CLINIC_CANOPY_RGB,
+    ),
+  );
+  for (const col of columns) {
+    parts.push(
+      standingBox(
+        CLINIC_CANOPY.column,
+        CLINIC_CANOPY.clear,
+        CLINIC_CANOPY.column,
+        col.x,
+        y0,
+        col.z,
+        CLINIC_COLUMN_RGB,
+      ),
+    );
+  }
+  for (const u of units) {
+    const uc = rectCentre(u);
+    parts.push(
+      standingBox(
+        u.x1 - u.x0 + 0.1,
+        CLINIC_UNIT.curb,
+        u.z1 - u.z0 + 0.1,
+        uc.x,
+        y0 + roof,
+        uc.z,
+        CLINIC_CAP_RGB,
+      ),
+    );
+    parts.push(
+      standingBox(
+        u.x1 - u.x0,
+        CLINIC_UNIT.h,
+        u.z1 - u.z0,
+        uc.x,
+        y0 + roof + CLINIC_UNIT.curb,
+        uc.z,
+        CLINIC_UNIT_RGB,
+      ),
+    );
+  }
+  const sc = rectCentre(sign);
+  parts.push(
+    standingBox(
+      sign.x1 - sign.x0,
+      CLINIC_SIGN.h - 0.1,
+      sign.z1 - sign.z0,
+      sc.x,
+      y0,
+      sc.z,
+      CLINIC_SIGN_RGB,
+    ),
+  );
+  parts.push(
+    standingBox(
+      sign.x1 - sign.x0 + 0.1,
+      0.1,
+      sign.z1 - sign.z0 + 0.1,
+      sc.x,
+      y0 + CLINIC_SIGN.h - 0.1,
+      sc.z,
+      CLINIC_SIGN_CAP_RGB,
+    ),
+  );
+  return mergeParts(parts);
+}
+
+/** The entry glazing, the windows and the sign's two panels, one geometry for the one emissive material. */
+function buildClinicLitGeometry(footprint: FootprintSize): THREE.BufferGeometry {
+  const { body, entrance, windows, sign } = computeClinicLayout(footprint);
+  const y0 = RECYCLING_YARD_HEIGHT;
+  const parts: THREE.BufferGeometry[] = [
+    standingBox(
+      CLINIC_ENTRY.w,
+      CLINIC_ENTRY.h,
+      0.06,
+      entrance.x,
+      y0,
+      body.z1 + 0.03,
+      STATION_POLE_RGB,
+    ),
+  ];
+  for (const win of windows) {
+    const proud = 0.06;
+    parts.push(
+      win.nz !== 0
+        ? standingBox(
+            win.w,
+            CLINIC_WINDOW.h,
+            proud,
+            win.x,
+            y0 + CLINIC_WINDOW.sill,
+            win.z + (win.nz * proud) / 2,
+            STATION_POLE_RGB,
+          )
+        : standingBox(
+            proud,
+            CLINIC_WINDOW.h,
+            win.w,
+            win.x + (win.nx * proud) / 2,
+            y0 + CLINIC_WINDOW.sill,
+            win.z,
+            STATION_POLE_RGB,
+          ),
+    );
+  }
+  const sc = rectCentre(sign);
+  const { panel } = CLINIC_SIGN;
+  for (const sx of [-1, 1]) {
+    parts.push(
+      standingBox(
+        0.04,
+        panel.h,
+        panel.w,
+        sx === -1 ? sign.x0 - 0.02 : sign.x1 + 0.02,
+        y0 + panel.y,
+        sc.z,
+        STATION_POLE_RGB,
+      ),
+    );
+  }
+  return mergeParts(parts);
+}
+
+// --- the rail station ---------------------------------------------------------
+
+/** The Great Northern standard combination depot: 30 × 64 ft, a 12 ft wall plate under a 9:12 gable, eaves on knee braces, board-and-batten over a plank wainscot. */
+export const DEPOT_BODY = {
+  w: 19.5,
+  d: 9.1,
+  plate: 3.66,
+  pitch: 9 / 12,
+  eave: 1.2,
+  wainscot: 1.0,
+  batten: 0.05,
+  battenPitch: 0.3,
+  bracePitch: 2.4,
+};
+/** The three-sided operator's bay on the track face: 12 ft wide, 3 ft proud, under its own shallow hip. */
+export const DEPOT_BAY = { w: 3.66, proud: 1.0, h: 2.7, hip: 0.3 };
+/** The low-level platform: 8 in above the rail, 12 ft wide, 2 m short of the lot at each end, with a 24 in tactile strip along its edge. */
+export const DEPOT_PLATFORM = { w: 3.66, h: 0.2, end: 2, tactile: 0.61 };
+/** The platform canopy: 12 ft wide at 10 ft clear on posts every 4.6 m, the depot's length and 45 ft beyond it each way. */
+export const DEPOT_CANOPY = {
+  w: 3.66,
+  clear: 3.05,
+  slab: 0.15,
+  postPitch: 4.6,
+  beyond: 13.7,
+  post: 0.15,
+};
+/** The depot stands this far back from the platform, so the canopy passes clear under its eaves; the apron between is at platform height. */
+export const DEPOT_SETBACK_M = 2.3;
+/** The drop-off lane at the depot's street door, the 20 ft fire lane, and the walk between. */
+const DEPOT_DROP_OFF = { lane: 6.1, walk: 2 };
+export const DEPOT_STALLS = 20;
+const DEPOT_DOOR = { w: 1.0, h: 2.2 };
+const DEPOT_FREIGHT_DOOR = { w: 2.4, h: 2.4 };
+const DEPOT_WINDOW = { w: 1.0, h: 1.4, sill: 1.1, pitch: 2.4 };
+const DEPOT_CHIMNEY = { size: 0.6, above: 0.6 };
+
+const DEPOT_WALL_RGB: RGB = [0.72, 0.58, 0.36];
+const DEPOT_TRIM_RGB: RGB = [0.5, 0.26, 0.18];
+const DEPOT_ROOF_RGB: RGB = [0.3, 0.32, 0.35];
+const DEPOT_BRICK_RGB: RGB = [0.46, 0.27, 0.22];
+const DEPOT_PLATFORM_RGB: RGB = [0.66, 0.65, 0.62];
+const DEPOT_CANOPY_RGB: RGB = [0.36, 0.38, 0.4];
+const DEPOT_POST_RGB: RGB = [0.3, 0.3, 0.32];
+const DEPOT_FREIGHT_RGB: RGB = [0.4, 0.22, 0.16];
+
+/** A depot stall: its centre and which way a car in it turns. */
+export interface DepotStall extends Vec2 {
+  turn: 0 | 1 | 2 | 3;
+}
+
+/** A lit pane on the depot: its centre on the plan, the wall's outward normal, its width along the wall, its sill and its height. */
+export interface DepotPane extends Vec2 {
+  nx: -1 | 0 | 1;
+  nz: -1 | 0 | 1;
+  w: number;
+  y: number;
+  h: number;
+}
+
+/**
+ * The station's lot in its track frame: the track along the lot's -Z edge
+ * and the street beyond +Z, whichever world edges those are. The depot's own
+ * parts are in the depot frame, centred on the depot's plan.
+ */
+export interface DepotLayout {
+  platform: Rect;
+  tactile: Rect;
+  /** The concrete between the platform and the depot, at platform height. */
+  apron: Rect;
+  canopy: Rect;
+  posts: Vec2[];
+  depot: Rect;
+  bay: Rect;
+  walk: Rect;
+  dropOff: Rect;
+  /** The car park's asphalt: each module from the drop-off to the street. */
+  asphalt: Rect[];
+  aisles: Rect[];
+  stalls: DepotStall[];
+  /** Doors and windows in the depot frame. */
+  panes: DepotPane[];
+  /** The freight door on each face, in the depot frame. */
+  freight: DepotPane[];
+  chimney: Vec2;
+}
+
+/**
+ * Where everything stands on the station's lot, in the track frame. The
+ * platform along the track edge under its canopy; the depot a setback behind
+ * it, its long axis along the track; the walk, the drop-off lane and the car
+ * park between the depot and the street, each module of head-in stalls on an
+ * aisle open to the street. Pure; fixed per track-frame footprint.
+ */
+export function computeDepotLayout(footprint: FootprintSize): DepotLayout {
+  const { halfW, halfD } = footprintHalfExtents(footprint);
+  const platform: Rect = {
+    x0: -halfW + DEPOT_PLATFORM.end,
+    x1: halfW - DEPOT_PLATFORM.end,
+    z0: -halfD,
+    z1: -halfD + DEPOT_PLATFORM.w,
+  };
+  const tactile: Rect = { ...platform, z1: platform.z0 + DEPOT_PLATFORM.tactile };
+  const depot: Rect = {
+    x0: -DEPOT_BODY.w / 2,
+    x1: DEPOT_BODY.w / 2,
+    z0: platform.z1 + DEPOT_SETBACK_M,
+    z1: platform.z1 + DEPOT_SETBACK_M + DEPOT_BODY.d,
+  };
+  const apron: Rect = { x0: depot.x0 - 2, x1: depot.x1 + 2, z0: platform.z1, z1: depot.z1 };
+  const bay: Rect = {
+    x0: -DEPOT_BAY.w / 2,
+    x1: DEPOT_BAY.w / 2,
+    z0: depot.z0 - DEPOT_BAY.proud,
+    z1: depot.z0,
+  };
+  const canopyHalf = Math.min(DEPOT_BODY.w / 2 + DEPOT_CANOPY.beyond, platform.x1);
+  const canopy: Rect = { x0: -canopyHalf, x1: canopyHalf, z0: platform.z0, z1: platform.z1 };
+  const posts: Vec2[] = [];
+  for (
+    let x = DEPOT_CANOPY.postPitch / 2;
+    x + DEPOT_CANOPY.post / 2 <= canopyHalf;
+    x += DEPOT_CANOPY.postPitch
+  ) {
+    for (const s of [-1, 1]) posts.push({ x: s * x, z: platform.z1 - DEPOT_CANOPY.post / 2 - 0.3 });
+  }
+
+  const walk: Rect = {
+    x0: depot.x0 - 1,
+    x1: depot.x1 + 1,
+    z0: depot.z1,
+    z1: depot.z1 + DEPOT_DROP_OFF.walk,
+  };
+  const dropOff: Rect = {
+    x0: Math.max(-halfW + 2, depot.x0 - 6),
+    x1: Math.min(halfW - 2, depot.x1 + 6),
+    z0: walk.z1,
+    z1: walk.z1 + DEPOT_DROP_OFF.lane,
+  };
+
+  // Head-in stalls either side of an aisle running from the drop-off to the
+  // street: one module of ten a side on a deep lot, two of five on a shallow one.
+  const moduleW = 2 * DECK_STALL.l + DECK_AISLE_M;
+  const perSide = Math.floor((halfD - dropOff.z1) / DECK_STALL.w);
+  const modules = Math.max(1, Math.ceil(DEPOT_STALLS / 2 / perSide));
+  const gap = 2;
+  const centres = Array.from(
+    { length: modules },
+    (_, i) => (i - (modules - 1) / 2) * (moduleW + gap),
+  );
+  const asphalt: Rect[] = [];
+  const aisles: Rect[] = [];
+  const stalls: DepotStall[] = [];
+  let left = DEPOT_STALLS;
+  for (const cx of centres) {
+    asphalt.push({ x0: cx - moduleW / 2, x1: cx + moduleW / 2, z0: dropOff.z1, z1: halfD });
+    aisles.push({
+      x0: cx - DECK_AISLE_M / 2,
+      x1: cx + DECK_AISLE_M / 2,
+      z0: dropOff.z1,
+      z1: halfD,
+    });
+    const rowOf = Math.min(perSide, Math.ceil(left / 2));
+    for (const s of [-1, 1] as const) {
+      for (let i = 0; i < rowOf && left > 0; i++) {
+        stalls.push({
+          x: cx + s * (DECK_AISLE_M / 2 + DECK_STALL.l / 2),
+          z: dropOff.z1 + (i + 0.5) * DECK_STALL.w,
+          turn: s === 1 ? 1 : 3,
+        });
+        left--;
+      }
+    }
+  }
+
+  // Doors and windows in the depot frame: the passenger door on each long
+  // face, a window band round every face clear of the doors, the bay and the
+  // freight door.
+  const hw = DEPOT_BODY.w / 2;
+  const hd = DEPOT_BODY.d / 2;
+  const panes: DepotPane[] = [
+    { x: 4, z: -hd, nx: 0, nz: -1, w: DEPOT_DOOR.w, y: 0, h: DEPOT_DOOR.h },
+    { x: 0, z: hd, nx: 0, nz: 1, w: DEPOT_DOOR.w, y: 0, h: DEPOT_DOOR.h },
+  ];
+  const freight: DepotPane[] = [-1, 1].map((s) => ({
+    x: -6,
+    z: s * hd,
+    nx: 0,
+    nz: s as -1 | 1,
+    w: DEPOT_FREIGHT_DOOR.w,
+    y: 0,
+    h: DEPOT_FREIGHT_DOOR.h,
+  }));
+  const clearOf = (x: number, at: number, w: number): boolean =>
+    Math.abs(x - at) > (w + DEPOT_WINDOW.w) / 2 + 0.4;
+  for (const s of [-1, 1] as const) {
+    for (let x = -hw + 1.6; x + DEPOT_WINDOW.w / 2 <= hw - 1; x += DEPOT_WINDOW.pitch) {
+      const door = panes.find((p) => p.nz === s)!;
+      if (!clearOf(x, door.x, door.w) || !clearOf(x, -6, DEPOT_FREIGHT_DOOR.w)) continue;
+      if (s === -1 && !clearOf(x, 0, DEPOT_BAY.w)) continue;
+      panes.push({
+        x,
+        z: s * hd,
+        nx: 0,
+        nz: s,
+        w: DEPOT_WINDOW.w,
+        y: DEPOT_WINDOW.sill,
+        h: DEPOT_WINDOW.h,
+      });
+    }
+    for (const z of [-2, 2]) {
+      panes.push({
+        x: s * hw,
+        z,
+        nx: s,
+        nz: 0,
+        w: DEPOT_WINDOW.w,
+        y: DEPOT_WINDOW.sill,
+        h: DEPOT_WINDOW.h,
+      });
+    }
+  }
+  // The bay's three sides, in the depot frame.
+  const bayZ0 = -hd - DEPOT_BAY.proud;
+  panes.push({ x: 0, z: bayZ0, nx: 0, nz: -1, w: 2.4, y: 1.0, h: 1.3 });
+  for (const s of [-1, 1] as const) {
+    panes.push({
+      x: s * (DEPOT_BAY.w / 2),
+      z: bayZ0 + DEPOT_BAY.proud / 2,
+      nx: s,
+      nz: 0,
+      w: 0.7,
+      y: 1.0,
+      h: 1.3,
+    });
+  }
+
+  return {
+    platform,
+    tactile,
+    apron,
+    canopy,
+    posts,
+    depot,
+    bay,
+    walk,
+    dropOff,
+    asphalt,
+    aisles,
+    stalls,
+    panes,
+    freight,
+    chimney: { x: 5, z: 1.6 },
+  };
+}
+
+/** A depot stall's plan. */
+export function depotStallRect(s: DepotStall): Rect {
+  const alongX = s.turn % 2 === 1;
+  const hx = (alongX ? DECK_STALL.l : DECK_STALL.w) / 2;
+  const hz = (alongX ? DECK_STALL.w : DECK_STALL.l) / 2;
+  return { x0: s.x - hx, x1: s.x + hx, z0: s.z - hz, z1: s.z + hz };
+}
+
+/** The station's lawn with the car park's asphalt, the walk, the drop-off, the platform, its apron and tactile strip, and every stall's lines. */
+function buildDepotGroundsGeometry(footprint: FootprintSize): THREE.BufferGeometry {
+  const layout = computeDepotLayout(footprint);
+  const top = RECYCLING_YARD_HEIGHT;
+  const parts: THREE.BufferGeometry[] = [lawnPlate(footprint)];
+  for (const r of layout.asphalt) parts.push(groundPatch(r, 0, EDU_ASPHALT_M, EDU_ASPHALT_RGB));
+  parts.push(groundPatch(layout.dropOff, 0, EDU_ASPHALT_M, EDU_ASPHALT_RGB));
+  parts.push(groundPatch(layout.walk, 0, EDU_CONCRETE_M, EDU_CONCRETE_RGB));
+  parts.push(groundPatch(layout.platform, 0, DEPOT_PLATFORM.h, DEPOT_PLATFORM_RGB));
+  parts.push(groundPatch(layout.apron, 0, DEPOT_PLATFORM.h, DEPOT_PLATFORM_RGB));
+  const t = layout.tactile;
+  parts.push(
+    flatQuad(
+      t.x1 - t.x0,
+      t.z1 - t.z0,
+      (t.x0 + t.x1) / 2,
+      top + DEPOT_PLATFORM.h + 0.005,
+      (t.z0 + t.z1) / 2,
+      YELLOW_MARKING_COLOR,
+    ),
+  );
+  const paint = top + EDU_ASPHALT_M;
+  const seen = new Set<string>();
+  for (const s of layout.stalls) {
+    const r = depotStallRect(s);
+    for (const at of [r.z0, r.z1]) {
+      const key = `${at.toFixed(3)}:${s.x.toFixed(3)}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      parts.push(stallLine(r, true, at, paint));
+    }
+  }
+  // The kerb line of the drop-off, along the walk.
+  parts.push(stallLine(layout.dropOff, true, layout.dropOff.z0 + PAINT_LINE_M, paint));
+  return mergeParts(parts);
+}
+
+/** The canopy over the platform: its slab at the clear height above the platform, on its posts. */
+function buildDepotCanopyGeometry(footprint: FootprintSize): THREE.BufferGeometry {
+  const { canopy, posts } = computeDepotLayout(footprint);
+  const floor = RECYCLING_YARD_HEIGHT + DEPOT_PLATFORM.h;
+  const c = rectCentre(canopy);
+  const parts: THREE.BufferGeometry[] = [
+    standingBox(
+      canopy.x1 - canopy.x0,
+      DEPOT_CANOPY.slab,
+      canopy.z1 - canopy.z0,
+      c.x,
+      floor + DEPOT_CANOPY.clear,
+      c.z,
+      DEPOT_CANOPY_RGB,
+    ),
+    standingBox(
+      canopy.x1 - canopy.x0,
+      0.2,
+      0.08,
+      c.x,
+      floor + DEPOT_CANOPY.clear - 0.2,
+      canopy.z0 + 0.04,
+      DEPOT_CANOPY_RGB,
+    ),
+  ];
+  for (const p of posts) {
+    parts.push(
+      standingBox(
+        DEPOT_CANOPY.post,
+        DEPOT_CANOPY.clear,
+        DEPOT_CANOPY.post,
+        p.x,
+        floor,
+        p.z,
+        DEPOT_POST_RGB,
+      ),
+    );
+  }
+  return mergeParts(parts);
+}
+
+/** A sloped roof plane: a slab `w` along X whose far edge is `rise` above its near edge over `run` along Z, on the side `s` of the ridge. */
+function roofPlane(
+  w: number,
+  run: number,
+  rise: number,
+  t: number,
+  x: number,
+  ridgeY: number,
+  z: number,
+  s: -1 | 1,
+  rgb: RGB,
+): THREE.BufferGeometry {
+  const length = Math.hypot(run, rise);
+  const slab = new THREE.BoxGeometry(w, t, length);
+  slab.rotateX(s * Math.atan2(rise, run));
+  slab.translate(x, ridgeY - rise / 2, z + (s * run) / 2);
+  return paintVertexColor(slab, hexFromRgb(rgb));
+}
+
+/** A knee brace under an eave: a strut from the wall down and out to the eave's edge. */
+function kneeBrace(
+  x: number,
+  z: number,
+  y: number,
+  nx: number,
+  nz: number,
+  reach: number,
+): THREE.BufferGeometry {
+  const drop = reach;
+  const strut = new THREE.BoxGeometry(0.1, 0.1, Math.hypot(reach, drop));
+  strut.rotateX(-Math.PI / 4);
+  strut.rotateY(Math.atan2(nx, nz));
+  strut.translate(x + (nx * reach) / 2, y - drop / 2, z + (nz * reach) / 2);
+  return paintVertexColor(strut, hexFromRgb(DEPOT_TRIM_RGB));
+}
+
+/** The depot in its own frame: walls, wainscot, battens as one merged run, the gable roof on its knee braces, the operator's bay, the freight doors and the chimney; local Y=0 is the plate's top. */
+function buildDepotBuildingGeometry(): THREE.BufferGeometry {
+  const { w, d, plate, pitch, eave, wainscot, batten, battenPitch, bracePitch } = DEPOT_BODY;
+  const { freight } = computeDepotLayout({ w: 2, d: 3 });
+  const hw = w / 2;
+  const hd = d / 2;
+  const rise = pitch * hd;
+  const y0 = 0;
+  const parts: THREE.BufferGeometry[] = [
+    standingBox(w, plate, d, 0, y0, 0, DEPOT_WALL_RGB),
+    standingBox(w + 0.06, wainscot, d + 0.06, 0, y0, 0, DEPOT_TRIM_RGB),
+    gableRoof(w, rise, d, 0, y0 + plate, 0, DEPOT_WALL_RGB),
+  ];
+  // Battens on every face from the wainscot to the plate, and up the gables.
+  for (let x = -hw + battenPitch / 2; x < hw; x += battenPitch) {
+    for (const s of [-1, 1]) {
+      parts.push(
+        standingBox(
+          batten,
+          plate - wainscot,
+          0.04,
+          x,
+          y0 + wainscot,
+          s * (hd + 0.02),
+          DEPOT_TRIM_RGB,
+        ),
+      );
+    }
+  }
+  for (let z = -hd + battenPitch / 2; z < hd; z += battenPitch) {
+    const h = plate - wainscot + pitch * (hd - Math.abs(z));
+    for (const s of [-1, 1]) {
+      parts.push(standingBox(0.04, h, batten, s * (hw + 0.02), y0 + wainscot, z, DEPOT_TRIM_RGB));
+    }
+  }
+  const ridgeY = y0 + plate + rise + 0.05;
+  for (const s of [-1, 1] as const) {
+    parts.push(
+      roofPlane(
+        w + 2 * eave,
+        hd + eave,
+        pitch * (hd + eave),
+        0.12,
+        0,
+        ridgeY,
+        0,
+        s,
+        DEPOT_ROOF_RGB,
+      ),
+    );
+  }
+  parts.push(standingBox(w + 2 * eave, 0.12, 0.3, 0, ridgeY - 0.02, 0, DEPOT_ROOF_RGB));
+  // Each brace reaches up and out to the roof's underside at the eave's edge.
+  const reach = eave - 0.1;
+  for (const s of [-1, 1]) {
+    for (let x = -hw + bracePitch / 2; x < hw; x += bracePitch) {
+      parts.push(kneeBrace(x, s * hd, y0 + plate - pitch * reach - 0.08, 0, s, reach));
+    }
+    for (const z of [-hd + 1.2, hd - 1.2]) {
+      parts.push(kneeBrace(s * hw, z, y0 + plate + pitch * (hd - Math.abs(z)) - 0.08, s, 0, reach));
+    }
+  }
+  // The operator's bay: three walls proud of the track face under a shallow hip.
+  const bayZ = -hd - DEPOT_BAY.proud / 2;
+  parts.push(standingBox(DEPOT_BAY.w, DEPOT_BAY.h, DEPOT_BAY.proud, 0, y0, bayZ, DEPOT_WALL_RGB));
+  parts.push(
+    standingBox(
+      DEPOT_BAY.w + 0.06,
+      wainscot,
+      DEPOT_BAY.proud + 0.03,
+      0,
+      y0,
+      bayZ - 0.015,
+      DEPOT_TRIM_RGB,
+    ),
+  );
+  const hip = new THREE.BoxGeometry(DEPOT_BAY.w + 0.4, 0.1, DEPOT_BAY.proud + 0.3);
+  hip.rotateX(-Math.atan2(DEPOT_BAY.hip, DEPOT_BAY.proud));
+  hip.translate(0, y0 + DEPOT_BAY.h + DEPOT_BAY.hip / 2, bayZ - 0.1);
+  parts.push(paintVertexColor(hip, hexFromRgb(DEPOT_ROOF_RGB)));
+  for (const f of freight) {
+    parts.push(standingBox(f.w, f.h, 0.1, f.x, y0, f.z + f.nz * 0.05, DEPOT_FREIGHT_RGB));
+  }
+  const { chimney } = computeDepotLayout({ w: 2, d: 3 });
+  const chimneyTop = ridgeY + DEPOT_CHIMNEY.above;
+  parts.push(
+    standingBox(
+      DEPOT_CHIMNEY.size,
+      chimneyTop - plate,
+      DEPOT_CHIMNEY.size,
+      chimney.x,
+      y0 + plate,
+      chimney.z,
+      DEPOT_BRICK_RGB,
+    ),
+  );
+  return mergeParts(parts);
+}
+
+/** The depot's doors and windows and the bay's panes, in the depot frame, one geometry for the one emissive material. */
+function buildDepotLitGeometry(): THREE.BufferGeometry {
+  const { panes } = computeDepotLayout({ w: 2, d: 3 });
+  const proud = 0.06;
+  return mergeParts(
+    panes.map((p) =>
+      p.nz !== 0
+        ? standingBox(p.w, p.h, proud, p.x, p.y, p.z + (p.nz * proud) / 2, STATION_POLE_RGB)
+        : standingBox(proud, p.h, p.w, p.x + (p.nx * proud) / 2, p.y, p.z, STATION_POLE_RGB),
+    ),
+  );
+}
+
+/**
+ * Which edge of a footprint the rail runs along, as the side its track-frame
+ * -Z faces: 0 south (+Z), 1 east (+X), 2 north (-Z), 3 west (-X). The edge
+ * with the most rail tiles, ties north, east, south, west; null when no rail
+ * touches the lot.
+ */
+export function railSideOf(
+  x: number,
+  z: number,
+  lot: FootprintSize,
+  railAt: (tx: number, tz: number) => boolean,
+): 0 | 1 | 2 | 3 | null {
+  const { w, d } = lot;
+  const count = (tiles: [number, number][]): number =>
+    tiles.filter(([tx, tz]) => railAt(tx, tz)).length;
+  const row = (tz: number): [number, number][] => Array.from({ length: w }, (_, i) => [x + i, tz]);
+  const col = (tx: number): [number, number][] => Array.from({ length: d }, (_, i) => [tx, z + i]);
+  const sides: [0 | 1 | 2 | 3, number][] = [
+    [2, count(row(z - 1))],
+    [1, count(col(x + w))],
+    [0, count(row(z + d))],
+    [3, count(col(x - 1))],
+  ];
+  let best: 0 | 1 | 2 | 3 | null = null;
+  let most = 0;
+  for (const [side, n] of sides) {
+    if (n > most) {
+      most = n;
+      best = side;
+    }
+  }
+  return best;
+}
+
+/**
+ * The station's track frame for a lot: the footprint with its width along
+ * the track, and the turn that lays that frame's -Z edge on the track's side.
+ * `long` says the track runs along the lot's longer edge.
+ */
+export function depotFrame(
+  entry: BuildingCatalogEntry,
+  rotation: 0 | 1 | 2 | 3,
+  facing: 0 | 1 | 2 | 3,
+): { footprint: FootprintSize; turn: 0 | 1 | 2 | 3; long: boolean } {
+  const lot = footprintForRotation(entry, rotation);
+  const alongX = facing % 2 === 0;
+  const footprint = alongX ? { w: lot.w, d: lot.d } : { w: lot.d, d: lot.w };
+  return { footprint, turn: ((facing + 2) % 4) as 0 | 1 | 2 | 3, long: footprint.w > footprint.d };
+}
+
+/** The two track frames a station's lot can take: the track along its catalog width, or along its depth. */
+export function depotFrames(entry: BuildingCatalogEntry): {
+  short: FootprintSize;
+  long: FootprintSize;
+} {
+  const { w, d } = entry.footprint;
+  return w <= d
+    ? { short: { w, d }, long: { w: d, d: w } }
+    : { short: { w: d, d: w }, long: { w, d } };
+}
+
+// --- the bus stop ---------------------------------------------------------------
+
+/** The boarding pad: 96 in out from the kerb, 60 in along it. */
+export const BUS_STOP_PAD = { out: 2.44, along: 1.52 };
+/** The flag sign: 18 × 24 in with its bottom 7 ft up, on a slim pole. */
+export const BUS_STOP_SIGN = { w: 0.46, h: 0.61, bottom: 2.13, pole: 0.04 };
+/** The receptacle: a 32 gal can, 24 in across and 40 in tall. */
+export const BUS_STOP_BIN = { r: 0.305, h: 1.0 };
+/** The shelter stands this far in from the lot's street edge, roof overhang included. */
+const BUS_STOP_SHELTER_IN_M = 0.1;
+
+const BUS_STOP_CONCRETE_RGB: RGB = [0.66, 0.64, 0.6];
+const BUS_STOP_PAD_RGB: RGB = [0.74, 0.72, 0.68];
+const BUS_STOP_SIGN_RGB: RGB = [0.16, 0.3, 0.52];
+const BUS_STOP_POLE_RGB: RGB = [0.45, 0.47, 0.5];
+const BUS_STOP_BIN_RGB: RGB = [0.22, 0.3, 0.26];
+
+export interface BusStopLayout {
+  /** The shelter's ground centre; its long axis along X, its open front to +Z. */
+  shelter: Vec2;
+  pad: Rect;
+  /** The concrete under the shelter and between it and the pad. */
+  walk: Rect;
+  sign: Vec2;
+  bin: Vec2;
+}
+
+/** The shelter at the lot's street edge, the boarding pad beside it at the kerb, the sign pole beyond the pad and the receptacle at the shelter's other end. Pure; fixed per footprint. */
+export function computeBusStopLayout(footprint: FootprintSize): BusStopLayout {
+  const { halfD } = footprintHalfExtents(footprint);
+  const edge = halfD;
+  const shelterZ = edge - BUS_STOP_SHELTER_IN_M - BUS_SHELTER.overhang - BUS_SHELTER.d / 2;
+  const padX1 = BUS_STOP_PAD.along / 2;
+  const shelterX = padX1 + BUS_SHELTER.overhang + 0.4 + BUS_SHELTER.w / 2;
+  const binX = shelterX + BUS_SHELTER.w / 2 + BUS_SHELTER.overhang + BUS_STOP_BIN.r + 0.2;
+  const sign: Vec2 = { x: -padX1 - 0.35, z: edge - 0.5 };
+  const pad: Rect = { x0: -padX1, x1: padX1, z0: edge - BUS_STOP_PAD.out, z1: edge };
+  return {
+    shelter: { x: shelterX, z: shelterZ },
+    pad,
+    walk: {
+      x0: sign.x - 0.3,
+      x1: binX + BUS_STOP_BIN.r + 0.3,
+      z0: Math.min(pad.z0, shelterZ - BUS_SHELTER.d / 2 - BUS_SHELTER.overhang - 0.1),
+      z1: edge,
+    },
+    sign,
+    bin: { x: binX, z: shelterZ },
+  };
+}
+
+/** The lawn plate with the walk and the boarding pad on it. */
+function buildBusStopGroundsGeometry(footprint: FootprintSize): THREE.BufferGeometry {
+  const { pad, walk } = computeBusStopLayout(footprint);
+  return mergeParts([
+    lawnPlate(footprint),
+    groundPatch(walk, 0, EDU_CONCRETE_M, BUS_STOP_CONCRETE_RGB),
+    groundPatch(pad, EDU_CONCRETE_M, 0.01, BUS_STOP_PAD_RGB),
+  ]);
+}
+
+/** The flag sign on its pole and the receptacle; local Y=0 is the walk's top. */
+function buildBusStopPropsGeometry(footprint: FootprintSize): THREE.BufferGeometry {
+  const { sign, bin } = computeBusStopLayout(footprint);
+  const { w, h, bottom, pole } = BUS_STOP_SIGN;
+  const post = new THREE.CylinderGeometry(pole, pole, bottom + h, 6);
+  post.translate(sign.x, (bottom + h) / 2, sign.z);
+  const flag = standingBox(0.03, h, w, sign.x, bottom, sign.z, BUS_STOP_SIGN_RGB);
+  const can = new THREE.CylinderGeometry(BUS_STOP_BIN.r, BUS_STOP_BIN.r * 0.92, BUS_STOP_BIN.h, 8);
+  can.translate(bin.x, BUS_STOP_BIN.h / 2, bin.z);
+  const lid = new THREE.CylinderGeometry(BUS_STOP_BIN.r + 0.02, BUS_STOP_BIN.r + 0.02, 0.06, 8);
+  lid.translate(bin.x, BUS_STOP_BIN.h + 0.03, bin.z);
+  return mergeParts([
+    paintVertexColor(post, hexFromRgb(BUS_STOP_POLE_RGB)),
+    flag,
+    paintVertexColor(can, hexFromRgb(BUS_STOP_BIN_RGB)),
+    paintVertexColor(lid, hexFromRgb(BUS_STOP_POLE_RGB)),
+  ]);
+}
+
+/** Where a plopped bus stop's shelter stands, in world metres: the idlers at a line's stop on that tile wait there. */
+export function busStopShelterAnchor(
+  building: Pick<BuildingInstance, 'x' | 'z' | 'rotation'>,
+  entry: BuildingCatalogEntry,
+): Vec2 {
+  const lot = footprintForRotation(entry, building.rotation);
+  const { shelter } = computeBusStopLayout(entry.footprint);
+  const turned = rotateLocalXZ(shelter.x, shelter.z, building.rotation);
+  return {
+    x: (building.x + lot.w / 2) * TILE_METERS + turned.x,
+    z: (building.z + lot.d / 2) * TILE_METERS + turned.z,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // UtilityKitRenderer
 // ---------------------------------------------------------------------------
 
@@ -5302,6 +6424,8 @@ export class UtilityKitRenderer {
   private readonly heightAt: (x: number, z: number) => number;
   /** Whether a tile is water, so a shore building turns to face it; the default sees none. */
   private readonly waterAt: (x: number, z: number) => boolean;
+  /** Whether a tile carries rail, so a station lays its platform along the track; the default sees none. */
+  private readonly railAt: (x: number, z: number) => boolean;
   private readonly registryIds = new Set(UTILITY_KIT_CATALOG_IDS);
   private readonly kits = new Map<string, KitDefinition>();
   private readonly instances = new Map<number, InstanceRecord>();
@@ -5316,7 +6440,7 @@ export class UtilityKitRenderer {
     emissiveIntensity: 0,
   });
 
-  /** The panes of every station, school and library: dark glass by day, a warm light that follows the night factor. */
+  /** The panes of every station, school, library, clinic and depot: dark glass by day, a warm light that follows the night factor. */
   private readonly stationLightMaterial = new THREE.MeshLambertMaterial({
     color: STATION_GLASS_COLOR,
     emissive: STATION_LIGHT_COLOR,
@@ -5331,10 +6455,12 @@ export class UtilityKitRenderer {
     heightAt: (x: number, z: number) => number,
     catalog: BuildingCatalogEntry[],
     waterAt?: (x: number, z: number) => boolean,
+    railAt?: (x: number, z: number) => boolean,
   ) {
     this.scene = scene;
     this.heightAt = heightAt;
     this.waterAt = waterAt ?? ((): boolean => false);
+    this.railAt = railAt ?? ((): boolean => false);
     for (const entry of catalog) {
       if (this.registryIds.has(entry.id)) this.kits.set(entry.id, this.buildKit(entry));
     }
@@ -5495,12 +6621,84 @@ export class UtilityKitRenderer {
         return this.buildGeneratorKit(entry);
       case 'small-park':
         return this.buildSmallParkKit(entry);
+      case 'clinic':
+        return this.buildClinicKit(entry);
+      case 'rail-station':
+        return this.buildDepotKit(entry);
+      case 'bus-stop':
+        return this.buildBusStopKit(entry);
       default:
         // Unreachable: the constructor only calls buildKit() for ids already
         // filtered through this.registryIds, which is exactly this switch's
         // case list.
         throw new RangeError(`utilitykits: unknown registry id "${entry.id}"`);
     }
+  }
+
+  private buildClinicKit(entry: BuildingCatalogEntry): KitDefinition {
+    const lambert = (): THREE.MeshLambertMaterial =>
+      new THREE.MeshLambertMaterial({ vertexColors: true });
+    const pool = (
+      geometry: THREE.BufferGeometry,
+      material: THREE.Material = lambert(),
+      capacity = INITIAL_KIT_CAPACITY,
+    ) => new InstancedSlotPool(this.scene, geometry, material, capacity);
+    const { footprint } = entry;
+    return {
+      entry,
+      pavesLot: true,
+      pools: {
+        clinicGrounds: pool(buildClinicGroundsGeometry(footprint)),
+        clinicBuilding: pool(buildClinicBuildingGeometry(footprint)),
+        clinicLit: pool(buildClinicLitGeometry(footprint), this.stationLightMaterial),
+        clinicCar: pool(
+          buildParkedCarGeometry(),
+          lambert(),
+          INITIAL_KIT_CAPACITY * computeClinicLayout(footprint).stalls.length,
+        ),
+      },
+    };
+  }
+
+  /** The station's grounds and canopy come in the two track frames its lot can take; the depot and its panes are one geometry in the depot frame. */
+  private buildDepotKit(entry: BuildingCatalogEntry): KitDefinition {
+    const lambert = (): THREE.MeshLambertMaterial =>
+      new THREE.MeshLambertMaterial({ vertexColors: true });
+    const pool = (
+      geometry: THREE.BufferGeometry,
+      material: THREE.Material = lambert(),
+      capacity = INITIAL_KIT_CAPACITY,
+    ) => new InstancedSlotPool(this.scene, geometry, material, capacity);
+    const frames = depotFrames(entry);
+    return {
+      entry,
+      pavesLot: true,
+      pools: {
+        depotGrounds: pool(buildDepotGroundsGeometry(frames.short)),
+        depotGroundsLong: pool(buildDepotGroundsGeometry(frames.long)),
+        depotCanopy: pool(buildDepotCanopyGeometry(frames.short)),
+        depotCanopyLong: pool(buildDepotCanopyGeometry(frames.long)),
+        depotBuilding: pool(buildDepotBuildingGeometry()),
+        depotLit: pool(buildDepotLitGeometry(), this.stationLightMaterial),
+        depotCar: pool(buildParkedCarGeometry(), lambert(), INITIAL_KIT_CAPACITY * DEPOT_STALLS),
+      },
+    };
+  }
+
+  private buildBusStopKit(entry: BuildingCatalogEntry): KitDefinition {
+    const lambert = (): THREE.MeshLambertMaterial =>
+      new THREE.MeshLambertMaterial({ vertexColors: true });
+    const pool = (geometry: THREE.BufferGeometry) =>
+      new InstancedSlotPool(this.scene, geometry, lambert(), INITIAL_MULTI_PART_CAPACITY);
+    return {
+      entry,
+      pavesLot: true,
+      pools: {
+        busStopGrounds: pool(buildBusStopGroundsGeometry(entry.footprint)),
+        busStopShelter: pool(buildBusShelterGeometry()),
+        busStopProps: pool(buildBusStopPropsGeometry(entry.footprint)),
+      },
+    };
   }
 
   private buildTurbineKit(entry: BuildingCatalogEntry): KitDefinition {
@@ -6069,10 +7267,154 @@ export class UtilityKitRenderer {
       case 'small-park':
         this.applySmallPark(kit, building, entry, centerX, groundY, centerZ, rotation);
         return;
+      case 'clinic':
+        this.applyClinic(kit, building, entry, centerX, groundY, centerZ, rotation);
+        return;
+      case 'rail-station':
+        this.applyDepot(kit, building, entry, centerX, groundY, centerZ, rotation);
+        return;
+      case 'bus-stop':
+        this.applyBusStop(kit, building, centerX, groundY, centerZ, rotation);
+        return;
       default:
         // Unreachable: kit is only non-null for entry.ids covered above (see buildKit's switch).
         throw new RangeError(`utilitykits: unknown registry id "${entry.id}"`);
     }
+  }
+
+  private applyClinic(
+    kit: KitDefinition,
+    building: BuildingInstance,
+    entry: BuildingCatalogEntry,
+    centerX: number,
+    groundY: number,
+    centerZ: number,
+    rotation: 0 | 1 | 2 | 3,
+  ): void {
+    const { clinicGrounds, clinicBuilding, clinicLit, clinicCar } = kit.pools;
+    if (!clinicGrounds || !clinicBuilding || !clinicLit || !clinicCar) return;
+    const layout = computeClinicLayout(entry.footprint);
+    const paved = groundY + RECYCLING_YARD_HEIGHT + EDU_ASPHALT_M;
+    const cars: number[] = [];
+    layout.stalls.forEach((stall, i) => {
+      if (!deckStallTaken(building.id, i)) return;
+      const turned = rotateLocalXZ(stall.x, stall.z, rotation);
+      const slot = this.placeAt(
+        clinicCar,
+        centerX + turned.x,
+        paved,
+        centerZ + turned.z,
+        ((rotation + stall.turn) % 4) as 0 | 1 | 2 | 3,
+      );
+      _carColor.setHex(
+        VEHICLE_PALETTE_HEX[Math.floor(hash1(building.id * 31 + i) * VEHICLE_PALETTE_HEX.length)]!,
+      );
+      clinicCar.setColorAt(slot, _carColor);
+      cars.push(slot);
+    });
+    const whole = (pool: InstancedSlotPool): number[] => [
+      this.placeAt(pool, centerX, groundY, centerZ, rotation),
+    ];
+    this.instances.set(building.id, {
+      catalogId: building.catalogId,
+      slots: {
+        clinicGrounds: whole(clinicGrounds),
+        clinicBuilding: whole(clinicBuilding),
+        clinicLit: whole(clinicLit),
+        clinicCar: cars,
+      },
+    });
+  }
+
+  /**
+   * The station is laid out in its track frame: the grounds and canopy of
+   * whichever frame the lot takes, turned so the platform lies along the edge
+   * the rail runs by — never the rotation the player placed it at, since a
+   * platform away from the track serves nothing. With no rail beside it the
+   * platform takes the back of the lot as placed.
+   */
+  private applyDepot(
+    kit: KitDefinition,
+    building: BuildingInstance,
+    entry: BuildingCatalogEntry,
+    centerX: number,
+    groundY: number,
+    centerZ: number,
+    rotation: 0 | 1 | 2 | 3,
+  ): void {
+    const { depotBuilding, depotLit, depotCar } = kit.pools;
+    if (!depotBuilding || !depotLit || !depotCar) return;
+    const lot = footprintForRotation(entry, rotation);
+    const facing =
+      railSideOf(building.x, building.z, lot, this.railAt) ??
+      (((rotation + 2) % 4) as 0 | 1 | 2 | 3);
+    const frame = depotFrame(entry, rotation, facing);
+    const grounds = frame.long ? kit.pools.depotGroundsLong : kit.pools.depotGrounds;
+    const canopy = frame.long ? kit.pools.depotCanopyLong : kit.pools.depotCanopy;
+    if (!grounds || !canopy) return;
+    const layout = computeDepotLayout(frame.footprint);
+    const { turn } = frame;
+    const placeLocal = (
+      pool: InstancedSlotPool,
+      local: Vec2,
+      y: number,
+      at: 0 | 1 | 2 | 3,
+    ): number => {
+      const turned = rotateLocalXZ(local.x, local.z, turn);
+      return this.placeAt(pool, centerX + turned.x, y, centerZ + turned.z, at);
+    };
+    const floor = groundY + RECYCLING_YARD_HEIGHT + DEPOT_PLATFORM.h;
+    const paved = groundY + RECYCLING_YARD_HEIGHT + EDU_ASPHALT_M;
+    const depotAt = rectCentre(layout.depot);
+    const cars: number[] = [];
+    layout.stalls.forEach((stall, i) => {
+      if (!deckStallTaken(building.id, i)) return;
+      const slot = placeLocal(depotCar, stall, paved, ((turn + stall.turn) % 4) as 0 | 1 | 2 | 3);
+      _carColor.setHex(
+        VEHICLE_PALETTE_HEX[Math.floor(hash1(building.id * 31 + i) * VEHICLE_PALETTE_HEX.length)]!,
+      );
+      depotCar.setColorAt(slot, _carColor);
+      cars.push(slot);
+    });
+    this.instances.set(building.id, {
+      catalogId: building.catalogId,
+      slots: {
+        [frame.long ? 'depotGroundsLong' : 'depotGrounds']: [
+          this.placeAt(grounds, centerX, groundY, centerZ, turn),
+        ],
+        [frame.long ? 'depotCanopyLong' : 'depotCanopy']: [
+          this.placeAt(canopy, centerX, groundY, centerZ, turn),
+        ],
+        depotBuilding: [placeLocal(depotBuilding, depotAt, floor, turn)],
+        depotLit: [placeLocal(depotLit, depotAt, floor, turn)],
+        depotCar: cars,
+      },
+    });
+  }
+
+  private applyBusStop(
+    kit: KitDefinition,
+    building: BuildingInstance,
+    centerX: number,
+    groundY: number,
+    centerZ: number,
+    rotation: 0 | 1 | 2 | 3,
+  ): void {
+    const { busStopGrounds, busStopShelter, busStopProps } = kit.pools;
+    if (!busStopGrounds || !busStopShelter || !busStopProps) return;
+    const { shelter } = computeBusStopLayout(kit.entry.footprint);
+    const turned = rotateLocalXZ(shelter.x, shelter.z, rotation);
+    const walk = groundY + RECYCLING_YARD_HEIGHT + EDU_CONCRETE_M;
+    this.instances.set(building.id, {
+      catalogId: building.catalogId,
+      slots: {
+        busStopGrounds: [this.placeAt(busStopGrounds, centerX, groundY, centerZ, rotation)],
+        busStopShelter: [
+          this.placeAt(busStopShelter, centerX + turned.x, walk, centerZ + turned.z, rotation),
+        ],
+        busStopProps: [this.placeAt(busStopProps, centerX, walk, centerZ, rotation)],
+      },
+    });
   }
 
   private applyTurbine(

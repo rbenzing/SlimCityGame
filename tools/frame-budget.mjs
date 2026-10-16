@@ -256,16 +256,18 @@ function occupancy(water, N, taken) {
   };
 }
 
-/** Sites every kit before the districts claim the ground: shore kits on the first shore that fits, the rest in a band along the south edge, biggest first. */
+/** Sites every kit before the districts claim the ground: shore kits on the first shore that fits, the rest in a band along the south edge, biggest first. A kit that stands only beside rail gets a run of track along its south edge, claimed with it. */
 function planKits(water, N, ids) {
   const occ = occupancy(water, N);
   const area = (id) => byId.get(id).footprint.w * byId.get(id).footprint.d;
   const wetKit = (id) => byId.get(id).requiresAdjacent === 'water';
+  const railKit = (id) => byId.get(id).requiresAdjacent === 'rail';
   const sorted = [...ids].sort(
     (a, b) => Number(wetKit(b)) - Number(wetKit(a)) || area(b) - area(a),
   );
   const placements = [];
   const misses = [];
+  const rails = [];
   for (const id of sorted) {
     const { w, d } = byId.get(id).footprint;
     const shore = wetKit(id);
@@ -274,11 +276,27 @@ function planKits(water, N, ids) {
       misses.push(id);
       continue;
     }
+    if (railKit(id)) {
+      const track = [site.z + d, site.z - 1].find((z) => {
+        for (let dx = -1; dx <= w; dx++) if (!occ.free(site.x + dx, z)) return false;
+        return true;
+      });
+      if (track === undefined) {
+        misses.push(id);
+        continue;
+      }
+      const tiles = [];
+      for (let dx = -1; dx <= w; dx++) {
+        occ.claim(site.x + dx, track);
+        tiles.push({ x: site.x + dx, z: track });
+      }
+      rails.push(tiles);
+    }
     for (let dz = 0; dz < d; dz++)
       for (let dx = 0; dx < w; dx++) occ.claim(site.x + dx, site.z + dz);
     placements.push({ catalogId: id, x: site.x, z: site.z, rotation: 0, district: 'kit' });
   }
-  return { placements, misses, used: occ.used };
+  return { placements, misses, rails, used: occ.used };
 }
 
 /** Lays out all three districts side by side, each as narrow as it can be and still hold its share. */
@@ -482,6 +500,9 @@ try {
   const water = Uint8Array.from(grid.water);
   const tier = await page.evaluate(
     async () => (await import('/src/shared/types.ts')).RoadTier.TwoLane,
+  );
+  const railTier = await page.evaluate(
+    async () => (await import('/src/shared/types.ts')).RoadTier.RailTrack,
   );
   const kitIds = await page.evaluate(
     async () => (await import('/src/render/utilitykits.ts')).UTILITY_KIT_CATALOG_IDS,
@@ -692,9 +713,14 @@ try {
     'Street',
     runs.map((tiles) => ({ kind: 'buildRoad', tier, tiles })),
   );
+  // The track a rail station stands beside, laid with the streets so it is there when the station is placed.
+  await send(
+    'Rail',
+    kits.rails.map((tiles) => ({ kind: 'buildRoad', tier: railTier, tiles })),
+  );
   const roadCount = await settle('roads', roadTiles);
   const wanted = new Set();
-  for (const run of runs) for (const t of run) wanted.add(`${t.x},${t.z}`);
+  for (const run of [...runs, ...kits.rails]) for (const t of run) wanted.add(`${t.x},${t.z}`);
   result.roads = { tilesPlanned: wanted.size, tilesBuilt: roadCount };
 
   const all = [...plan.placements, ...kitPlacements];

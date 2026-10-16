@@ -21,22 +21,24 @@
  * per-line world-space path to the snapshot, `apply()` is the only place
  * that would need updating.
  *
- * Bus-stop shelter: a
- * low-poly shelter -- a flat roof canopy on 2 posts, a bench slab, and a
- * stop sign on its own pole just beyond one end. The stop's own position/data
- * (`TilePoint`) is untouched; only the visual model at that position grows.
- * Since the transit snapshot carries no road-tangent data, the shelter's
- * "long" axis (the 2 roof posts + bench) instead follows the LINE's own
+ * Bus-stop shelter: the shelter busshelter.ts builds (the one the bus-stop
+ * ploppable's kit stands too), and a stop sign on its own pole just beyond one
+ * end. The stop's own position/data (`TilePoint`) is untouched; only the
+ * visual model at that position grows. Since the transit snapshot carries no
+ * road-tangent data, the shelter's long axis instead follows the LINE's own
  * local direction of travel through that stop (heading to the next stop, or
  * from the previous one for a line's last stop, or 0 for a lone-stop line --
  * the same "best available approximation" spirit as the ribbon/bus path
  * above), and it sits laterally offset from the stop's exact tile point, to
  * a side alternated deterministically by hash(tile) -- reading as "beside
- * the route" rather than dead-center on top of the existing stop position.
+ * the route" rather than dead-center on top of the existing stop position,
+ * its open front toward the stop. A stop standing on a plopped bus stop's
+ * tile draws nothing here: that kit's shelter is the stop's.
  */
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { buildVehicleGeometry, laneOffset } from './vehicles';
+import { BUS_SHELTER, buildBusShelterGeometry } from './busshelter';
 import { VehicleKind, type TilePoint, type TransitLine, type TransitMode } from '../shared/types';
 import { TILE_METERS, tileToWorld } from '../shared/constants';
 
@@ -56,23 +58,10 @@ const STOP_POST_RADIUS = 0.1;
 const STOP_SIGN_SIZE: readonly [number, number, number] = [0.6, 0.5, 0.06];
 const STOP_SIGN_Y_OFFSET = STOP_POST_HEIGHT * 0.42;
 
-const SHELTER_POST_HEIGHT = 2.6;
-const SHELTER_POST_RADIUS = 0.06;
-/** Distance between the shelter's 2 roof posts, along its local "long" axis (the line's local direction of travel). */
-const SHELTER_WIDTH = 2.4;
-/** Roof/bench extent across the shelter's "short" axis (perpendicular to travel). */
-const SHELTER_DEPTH = 1.2;
-const SHELTER_ROOF_OVERHANG = 0.3;
-const SHELTER_ROOF_THICKNESS = 0.08;
-const SHELTER_BENCH_HEIGHT = 0.45;
-const SHELTER_BENCH_THICKNESS = 0.08;
-const SHELTER_BENCH_DEPTH_FRACTION = 0.6;
-const SHELTER_BENCH_WIDTH_FRACTION = 0.8;
+/** The shelter's length along its local "long" axis (the line's local direction of travel). */
+const SHELTER_WIDTH = BUS_SHELTER.w;
 /** How far the shelter sits from the stop's own tile point, off to one side of the route (its lateral offset). */
 const SHELTER_LATERAL_OFFSET_METERS = TILE_METERS * 0.3;
-const SHELTER_POST_COLOR = 0x53585d;
-const SHELTER_ROOF_COLOR = 0x8a8f94;
-const SHELTER_BENCH_COLOR = 0x8a6a4a;
 
 /** The sign pole sits just beyond one end of the shelter, along its long axis. */
 const SIGN_POLE_GAP_METERS = 0.5;
@@ -268,13 +257,15 @@ export function computeStopHeading(points: readonly WorldPoint[], index: number)
 }
 
 export interface ShelterLayout {
-  /** The 2 roof posts, on either end of the shelter's long axis. */
+  /** The two ends of the shelter's long axis, where its corner posts stand. */
   postA: WorldPoint;
   postB: WorldPoint;
   roofCenter: WorldPoint;
   benchCenter: WorldPoint;
   /** The stop sign's own pole, just beyond one end of the shelter. */
   signPole: WorldPoint;
+  /** Y yaw that lays the shelter's long axis along the heading with its open front toward the stop. */
+  yaw: number;
 }
 
 /**
@@ -307,6 +298,10 @@ export function computeShelterLayout(
       x: centerX + alongX * (halfWidth + SIGN_POLE_GAP_METERS),
       z: centerZ + alongZ * (halfWidth + SIGN_POLE_GAP_METERS),
     },
+    // A yaw of `heading` points the shelter's local +Z down the route; a
+    // quarter turn against `side` lays its long axis along the route with its
+    // open front facing back across the offset, toward the stop.
+    yaw: heading - (side * Math.PI) / 2,
   };
 }
 
@@ -396,8 +391,9 @@ const _matrix = new THREE.Matrix4();
 const _position = new THREE.Vector3();
 const _quaternion = new THREE.Quaternion();
 const _identityQuat = new THREE.Quaternion();
-/** Scratch quaternion for the shelter roof/bench/sign's heading-aligned yaw (reused per-instance, never retained). */
+/** Scratch quaternions for the sign's heading-aligned yaw and the shelter's (reused per-instance, never retained). */
 const _headingQuat = new THREE.Quaternion();
+const _shelterQuat = new THREE.Quaternion();
 const _unitScale = new THREE.Vector3(1, 1, 1);
 /** Per-instance scale: a bus and a train car are different sizes in one mesh. */
 const _vehicleScale = new THREE.Vector3(...BUS_SIZE);
@@ -419,33 +415,10 @@ export class TransitRenderer {
   private readonly scene: THREE.Scene;
   private readonly heightAt: (x: number, z: number) => number;
 
-  // -- Shelter: 2 roof posts, a flat roof canopy, a bench
-  // slab -- structural, fixed material colors (not route-tinted). ----------
-  private readonly shelterPostGeometry = new THREE.CylinderGeometry(
-    SHELTER_POST_RADIUS,
-    SHELTER_POST_RADIUS * 1.3,
-    SHELTER_POST_HEIGHT,
-    6,
-  );
-  private readonly shelterPostMaterial = new THREE.MeshLambertMaterial({
-    color: SHELTER_POST_COLOR,
-  });
-  private readonly shelterRoofGeometry = new THREE.BoxGeometry(
-    SHELTER_DEPTH + SHELTER_ROOF_OVERHANG,
-    SHELTER_ROOF_THICKNESS,
-    SHELTER_WIDTH + SHELTER_ROOF_OVERHANG,
-  );
-  private readonly shelterRoofMaterial = new THREE.MeshLambertMaterial({
-    color: SHELTER_ROOF_COLOR,
-  });
-  private readonly shelterBenchGeometry = new THREE.BoxGeometry(
-    SHELTER_DEPTH * SHELTER_BENCH_DEPTH_FRACTION,
-    SHELTER_BENCH_THICKNESS,
-    SHELTER_WIDTH * SHELTER_BENCH_WIDTH_FRACTION,
-  );
-  private readonly shelterBenchMaterial = new THREE.MeshLambertMaterial({
-    color: SHELTER_BENCH_COLOR,
-  });
+  // -- Shelter: the shared shelter, structural fixed colours baked as vertex
+  // colours (not route-tinted). ---------------------------------------------
+  private readonly shelterGeometry = buildBusShelterGeometry();
+  private readonly shelterMaterial = new THREE.MeshLambertMaterial({ vertexColors: true });
 
   // -- Stop sign on its own pole (route-tinted, vertex colors) -- the direct
   // descendant of the pre-shelter bare post + sign. --------------------------
@@ -469,9 +442,7 @@ export class TransitRenderer {
   private readonly busGeometry = buildVehicleGeometry(VehicleKind.Bus);
   private readonly busMaterial = new THREE.MeshLambertMaterial({ vertexColors: true });
 
-  private shelterPostMesh: THREE.InstancedMesh | null = null;
-  private shelterRoofMesh: THREE.InstancedMesh | null = null;
-  private shelterBenchMesh: THREE.InstancedMesh | null = null;
+  private shelterMesh: THREE.InstancedMesh | null = null;
   private signPoleMesh: THREE.InstancedMesh | null = null;
   private signMesh: THREE.InstancedMesh | null = null;
   private ribbonMesh: THREE.Mesh | null = null;
@@ -489,12 +460,20 @@ export class TransitRenderer {
     this.heightAt = heightAt;
   }
 
-  /** Full rebuild from the worker's transit snapshot (lines change relatively rarely). */
-  apply(snapshot: TransitSnapshot): void {
+  /**
+   * Full rebuild from the worker's transit snapshot (lines change relatively
+   * rarely). `hasStopBuilding` says whether a plopped bus stop stands on a
+   * tile: a line's stop there draws no shelter and no sign of its own, since
+   * the kit's shelter is the stop's.
+   */
+  apply(
+    snapshot: TransitSnapshot,
+    hasStopBuilding: (x: number, z: number) => boolean = () => false,
+  ): void {
     this.disposeMeshes();
 
     this.lineTotal = snapshot.lines.length;
-    this.buildShelters(snapshot.lines);
+    this.buildShelters(snapshot.lines, hasStopBuilding);
     this.buildRibbon(snapshot.lines);
     this.buildBuses(snapshot.lines, snapshot.ridership);
 
@@ -564,17 +543,14 @@ export class TransitRenderer {
     return this.busTotal;
   }
 
-  /** Instance count of the shelter's 2 roof posts layer (2x stopCount() once built). */
-  shelterPostInstanceCount(): number {
-    return this.shelterPostMesh?.count ?? 0;
+  /** Instance count of the shelter layer: one per stop drawn, once built. */
+  shelterInstanceCount(): number {
+    return this.shelterMesh?.count ?? 0;
   }
 
-  shelterRoofInstanceCount(): number {
-    return this.shelterRoofMesh?.count ?? 0;
-  }
-
-  shelterBenchInstanceCount(): number {
-    return this.shelterBenchMesh?.count ?? 0;
+  /** The shelter's instance transform at `slot`, for a test reading where a stop's shelter stands. */
+  getShelterMatrix(slot: number, out: THREE.Matrix4): void {
+    this.shelterMesh?.getMatrixAt(slot, out);
   }
 
   signPoleInstanceCount(): number {
@@ -592,25 +568,28 @@ export class TransitRenderer {
   // -- internals -------------------------------------------------------------
 
   private applyVisibility(): void {
-    if (this.shelterPostMesh) this.shelterPostMesh.visible = this.visible;
-    if (this.shelterRoofMesh) this.shelterRoofMesh.visible = this.visible;
-    if (this.shelterBenchMesh) this.shelterBenchMesh.visible = this.visible;
+    if (this.shelterMesh) this.shelterMesh.visible = this.visible;
     if (this.signPoleMesh) this.signPoleMesh.visible = this.visible;
     if (this.signMesh) this.signMesh.visible = this.visible;
     if (this.ribbonMesh) this.ribbonMesh.visible = this.visible;
     if (this.busMesh) this.busMesh.visible = this.visible;
   }
 
-  private buildShelters(lines: readonly TransitLine[]): void {
+  private buildShelters(
+    lines: readonly TransitLine[],
+    hasStopBuilding: (x: number, z: number) => boolean,
+  ): void {
     const placements: { x: number; z: number; color: number; heading: number }[] = [];
     for (const line of lines) {
       // A rail stop is a station: a ploppable building the player placed, which
       // already stands there. Dropping a bus shelter on top of it would be a
-      // second, smaller shelter inside the first.
+      // second, smaller shelter inside the first. A stop on a plopped bus
+      // stop's tile is the same case at the bus's scale.
       if (modeOf(line) === 'rail') continue;
       const worldPoints = toWorldPoints(line.stops);
       for (let i = 0; i < line.stops.length; i += 1) {
         const stop = line.stops[i]!;
+        if (hasStopBuilding(stop.x, stop.z)) continue;
         const heading = computeStopHeading(worldPoints, i);
         placements.push({ x: stop.x, z: stop.z, color: line.color, heading });
       }
@@ -619,19 +598,9 @@ export class TransitRenderer {
     this.stopTotal = placements.length;
     if (placements.length === 0) return;
 
-    const shelterPostMesh = new THREE.InstancedMesh(
-      this.shelterPostGeometry,
-      this.shelterPostMaterial,
-      placements.length * 2,
-    );
-    const shelterRoofMesh = new THREE.InstancedMesh(
-      this.shelterRoofGeometry,
-      this.shelterRoofMaterial,
-      placements.length,
-    );
-    const shelterBenchMesh = new THREE.InstancedMesh(
-      this.shelterBenchGeometry,
-      this.shelterBenchMaterial,
+    const shelterMesh = new THREE.InstancedMesh(
+      this.shelterGeometry,
+      this.shelterMaterial,
       placements.length,
     );
     const signPoleMesh = new THREE.InstancedMesh(
@@ -644,9 +613,7 @@ export class TransitRenderer {
       this.signMaterial,
       placements.length,
     );
-    shelterPostMesh.count = placements.length * 2;
-    shelterRoofMesh.count = placements.length;
-    shelterBenchMesh.count = placements.length;
+    shelterMesh.count = placements.length;
     signPoleMesh.count = placements.length;
     signMesh.count = placements.length;
 
@@ -660,33 +627,11 @@ export class TransitRenderer {
       _color.setRGB(r, g, b);
       _headingQuat.setFromAxisAngle(_yAxis, p.heading);
 
-      const groundYPostA = this.heightAt(layout.postA.x, layout.postA.z);
-      _position.set(layout.postA.x, groundYPostA + SHELTER_POST_HEIGHT / 2, layout.postA.z);
-      _matrix.compose(_position, _identityQuat, _unitScale);
-      shelterPostMesh.setMatrixAt(i * 2, _matrix);
-
-      const groundYPostB = this.heightAt(layout.postB.x, layout.postB.z);
-      _position.set(layout.postB.x, groundYPostB + SHELTER_POST_HEIGHT / 2, layout.postB.z);
-      _matrix.compose(_position, _identityQuat, _unitScale);
-      shelterPostMesh.setMatrixAt(i * 2 + 1, _matrix);
-
-      const groundYRoof = this.heightAt(layout.roofCenter.x, layout.roofCenter.z);
-      _position.set(
-        layout.roofCenter.x,
-        groundYRoof + SHELTER_POST_HEIGHT + SHELTER_ROOF_THICKNESS / 2,
-        layout.roofCenter.z,
-      );
-      _matrix.compose(_position, _headingQuat, _unitScale);
-      shelterRoofMesh.setMatrixAt(i, _matrix);
-
-      const groundYBench = this.heightAt(layout.benchCenter.x, layout.benchCenter.z);
-      _position.set(
-        layout.benchCenter.x,
-        groundYBench + SHELTER_BENCH_HEIGHT,
-        layout.benchCenter.z,
-      );
-      _matrix.compose(_position, _headingQuat, _unitScale);
-      shelterBenchMesh.setMatrixAt(i, _matrix);
+      const groundYShelter = this.heightAt(layout.roofCenter.x, layout.roofCenter.z);
+      _position.set(layout.roofCenter.x, groundYShelter, layout.roofCenter.z);
+      _shelterQuat.setFromAxisAngle(_yAxis, layout.yaw);
+      _matrix.compose(_position, _shelterQuat, _unitScale);
+      shelterMesh.setMatrixAt(i, _matrix);
 
       const groundYSignPole = this.heightAt(layout.signPole.x, layout.signPole.z);
       _position.set(layout.signPole.x, groundYSignPole + STOP_POST_HEIGHT / 2, layout.signPole.z);
@@ -700,32 +645,24 @@ export class TransitRenderer {
       signMesh.setColorAt(i, _color);
     }
 
-    shelterPostMesh.instanceMatrix.needsUpdate = true;
-    shelterRoofMesh.instanceMatrix.needsUpdate = true;
-    shelterBenchMesh.instanceMatrix.needsUpdate = true;
+    shelterMesh.instanceMatrix.needsUpdate = true;
     signPoleMesh.instanceMatrix.needsUpdate = true;
     signMesh.instanceMatrix.needsUpdate = true;
     if (signPoleMesh.instanceColor) signPoleMesh.instanceColor.needsUpdate = true;
     if (signMesh.instanceColor) signMesh.instanceColor.needsUpdate = true;
 
     // Shelter parts read as grounded: cast + receive shadows.
-    shelterPostMesh.castShadow = true;
-    shelterPostMesh.receiveShadow = true;
-    shelterRoofMesh.castShadow = true;
-    shelterRoofMesh.receiveShadow = true;
-    shelterBenchMesh.castShadow = true;
-    shelterBenchMesh.receiveShadow = true;
+    shelterMesh.castShadow = true;
+    shelterMesh.receiveShadow = true;
     signPoleMesh.castShadow = true;
     signPoleMesh.receiveShadow = true;
     signMesh.castShadow = true;
     signMesh.receiveShadow = true;
 
-    this.shelterPostMesh = shelterPostMesh;
-    this.shelterRoofMesh = shelterRoofMesh;
-    this.shelterBenchMesh = shelterBenchMesh;
+    this.shelterMesh = shelterMesh;
     this.signPoleMesh = signPoleMesh;
     this.signMesh = signMesh;
-    this.scene.add(shelterPostMesh, shelterRoofMesh, shelterBenchMesh, signPoleMesh, signMesh);
+    this.scene.add(shelterMesh, signPoleMesh, signMesh);
   }
 
   private buildRibbon(lines: readonly TransitLine[]): void {
@@ -839,9 +776,7 @@ export class TransitRenderer {
   }
 
   private disposeMeshes(): void {
-    if (this.shelterPostMesh) this.scene.remove(this.shelterPostMesh);
-    if (this.shelterRoofMesh) this.scene.remove(this.shelterRoofMesh);
-    if (this.shelterBenchMesh) this.scene.remove(this.shelterBenchMesh);
+    if (this.shelterMesh) this.scene.remove(this.shelterMesh);
     if (this.signPoleMesh) this.scene.remove(this.signPoleMesh);
     if (this.signMesh) this.scene.remove(this.signMesh);
     if (this.ribbonMesh) {
@@ -851,9 +786,7 @@ export class TransitRenderer {
     }
     if (this.busMesh) this.scene.remove(this.busMesh);
 
-    this.shelterPostMesh = null;
-    this.shelterRoofMesh = null;
-    this.shelterBenchMesh = null;
+    this.shelterMesh = null;
     this.signPoleMesh = null;
     this.signMesh = null;
     this.ribbonMesh = null;

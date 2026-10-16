@@ -25,7 +25,7 @@ current behavior only and carry no dates of their own._
 
 ## Status (2026-09-29)
 
-**Test suite:** 6,599 tests passing across 189 test files, run 2026-10-15.
+**Test suite:** 6,659 tests passing across 190 test files, run 2026-10-16.
 This is the only test count in the documentation set. When the suite changes
 again, update the figure here and nowhere else.
 
@@ -362,6 +362,34 @@ roads, and pinning the Three.js version. See [adr/](engineering/adr/README.md).
 ---
 
 ## 10. History (newest first)
+
+### The clinic, the depot and the bus stop, the last ploppables without a kit (ploppables slice of building detail, built 2026-10-16)
+
+The three ploppables that still drew as facade boxes join the civic kits,
+each read by the part that does its work. Nothing in the simulation
+changes.
+
+- **The clinic** is a one-storey block with an 18 ft parapet that screens
+  its two rooftop units, a brick base, lit storefront glazing at the entry
+  under a porte-cochère at the ADA drop-off clearance, a 20 ft loop lane in
+  along one lot line and out along the other with five stalls including a
+  van space, and a 6 ft monument sign on the island.
+- **The rail station** reads which lot edge its track runs along, as the
+  shore kits read their water edge, and lays an 8 in platform with a 24 in
+  tactile strip and a 10 ft canopy there; behind it the Great Northern
+  combination depot at 30 × 64 ft, a 12 ft plate under a 9:12 gable, deep
+  knee-braced eaves, board-and-batten walls and the trackside operator's
+  bay, its windows lit at night; the car park on the edge opposite the
+  track.
+- **The bus stop** is a 5 × 12 ft agency shelter with a glazed back and
+  ends, a 6 ft bench, a receptacle, a flag sign 7 ft up and the ADA boarding
+  pad, on a lawn tile rather than a plinth. The transit line's stop draws
+  the same shelter from one builder, and a line's stop on a plopped bus
+  stop's tile draws no second one; the idlers sit in the one that stands.
+- The bus stop stays under a 500-triangle ceiling at 328; the clinic is
+  1,820 and the station 6,750 against the 30,000 kit tier. The frame tool
+  now lays a track beside a kit that needs one, so the station is sited in
+  the measured Metropolis; the frame did not move.
 
 ### Apartment blocks and towers, drawn as the four US multi-family types (apartments slice of building detail, built 2026-10-15)
 

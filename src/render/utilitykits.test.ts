@@ -129,6 +129,10 @@ const GENERATORS = (catalogData as { buildings: BuildingCatalogEntry[] }).buildi
   ['solar-farm', 'gas-turbine', 'combined-cycle', 'nuclear-plant'].includes(e.id),
 );
 
+const PLOPPABLES = (catalogData as { buildings: BuildingCatalogEntry[] }).buildings.filter((e) =>
+  ['clinic', 'rail-station', 'bus-stop'].includes(e.id),
+);
+
 const ALL_KINDS: readonly UtilityKitPartKind[] = [
   'turbineTower',
   'turbineRotor',
@@ -178,6 +182,20 @@ const ALL_KINDS: readonly UtilityKitPartKind[] = [
   'parkGround',
   'parkTree',
   'parkBench',
+  'clinicGrounds',
+  'clinicBuilding',
+  'clinicLit',
+  'clinicCar',
+  'depotGrounds',
+  'depotGroundsLong',
+  'depotCanopy',
+  'depotCanopyLong',
+  'depotBuilding',
+  'depotLit',
+  'depotCar',
+  'busStopGrounds',
+  'busStopShelter',
+  'busStopProps',
 ];
 
 function makeTurbineEntry(overrides: Partial<BuildingCatalogEntry> = {}): BuildingCatalogEntry {
@@ -469,7 +487,7 @@ function decomposeQuaternion(m: THREE.Matrix4): THREE.Quaternion {
 // ---------------------------------------------------------------------------
 
 describe('UTILITY_KIT_CATALOG_IDS', () => {
-  it('is exactly the 27 silhouette-kit ids', () => {
+  it('is exactly the 30 silhouette-kit ids', () => {
     expect(UTILITY_KIT_CATALOG_IDS).toEqual([
       'wind-turbine',
       'water-tower',
@@ -498,6 +516,9 @@ describe('UTILITY_KIT_CATALOG_IDS', () => {
       'combined-cycle',
       'nuclear-plant',
       'small-park',
+      'clinic',
+      'rail-station',
+      'bus-stop',
     ]);
   });
 });
@@ -2071,7 +2092,7 @@ describe('a paved kit on sloped ground', () => {
 // ---------------------------------------------------------------------------
 
 describe('multiple kits coexisting', () => {
-  it('builds and applies all 27 kits from one catalog + one delta without cross-talk', () => {
+  it('builds and applies all 30 kits from one catalog + one delta without cross-talk', () => {
     const renderer = new UtilityKitRenderer(new THREE.Scene(), flatHeightAt, [
       makeTurbineEntry(),
       makeWaterTowerEntry(),
@@ -2089,10 +2110,14 @@ describe('multiple kits coexisting', () => {
       ...STATIONS,
       ...EDUCATION,
       ...GENERATORS,
+      ...PLOPPABLES,
       makeSmallParkEntry(),
     ]);
     renderer.apply(
       deltaAdd(
+        makeInstance(28, 'clinic', { x: 240, z: 0 }),
+        makeInstance(29, 'rail-station', { x: 245, z: 0 }),
+        makeInstance(30, 'bus-stop', { x: 250, z: 0 }),
         makeInstance(24, 'solar-farm', { x: 200, z: 0 }),
         makeInstance(25, 'gas-turbine', { x: 210, z: 0 }),
         makeInstance(26, 'combined-cycle', { x: 220, z: 0 }),
@@ -2155,6 +2180,12 @@ describe('multiple kits coexisting', () => {
     expect(renderer.partSlotsFor(26, 'combinedStack')).toHaveLength(1);
     expect(renderer.partSlotsFor(27, 'nuclearIntake')).toHaveLength(1);
     expect(renderer.partSlotsFor(25, 'combinedStack')).toHaveLength(0);
+    expect(renderer.partSlotsFor(28, 'clinicLit')).toHaveLength(1);
+    expect(renderer.partSlotsFor(29, 'depotBuilding')).toHaveLength(1);
+    expect(renderer.partSlotsFor(29, 'depotGrounds')).toHaveLength(1);
+    expect(renderer.partSlotsFor(29, 'depotGroundsLong')).toHaveLength(0);
+    expect(renderer.partSlotsFor(30, 'busStopShelter')).toHaveLength(1);
+    expect(renderer.partSlotsFor(28, 'busStopShelter')).toHaveLength(0);
   });
 });
 
