@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.68.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.67.0...slimcity-v1.68.0) (2026-10-16)
+
+
+### Features
+
+* **sim:** transit dead runs, each line's vehicles from its nearest depot ([49b6c1e](https://github.com/rbenzing/SlimCityGame/commit/49b6c1e7e438a996bb5457a15a3ce66427036b20))
+* **sim:** transit dead runs, each line's vehicles from its nearest depot ([c11d987](https://github.com/rbenzing/SlimCityGame/commit/c11d9871f89bac2cb16bd6ee6d02c9bd6c33d980))
+
 ## [1.67.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.66.0...slimcity-v1.67.0) (2026-10-16)
 
 
