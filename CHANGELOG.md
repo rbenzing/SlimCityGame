@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.69.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.68.0...slimcity-v1.69.0) (2026-10-16)
+
+
+### Features
+
+* **render:** the depot kits, the fleet at home parked on the apron ([14080b3](https://github.com/rbenzing/SlimCityGame/commit/14080b3d5e2d4e49f3e79a04319379cf5113ff28))
+* **render:** the depot kits, the fleet at home parked on the apron ([4e71d85](https://github.com/rbenzing/SlimCityGame/commit/4e71d85de3ec5e4c86c854c8b8a608f60cf709af))
+
 ## [1.68.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.67.0...slimcity-v1.68.0) (2026-10-16)
 
 
