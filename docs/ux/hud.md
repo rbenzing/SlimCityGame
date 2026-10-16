@@ -197,9 +197,15 @@ its own.
   the line's own color, its mode (`Bus`, `Rail`, or `Tram` — a line with
   no recorded mode reads as `Bus`) and id, its live ridership rounded to
   the nearest rider, and a delete button that removes it at once, with no
-  confirmation step.
+  confirmation step. Under each line, its service: the vehicles it runs over
+  the vehicles it asked for, its headway in minutes and the month's running
+  cost ("2 of 3 vehicles · every 4.1 min · ¢80/mo"); or, where no depot of
+  its mode fields it, "No depot — build a Bus Depot" (Tram Depot, Rail Yard
+  by mode) in the warning colour.
 - With no lines committed yet, the list reads "No lines yet" instead,
   regardless of whether a line tool is currently in hand.
+- A footer, "Transit running", sums the lines' running cost: the figure the
+  month's expenses are charged for the fleet, apart from the depots' upkeep.
 
 ## Services panel
 

@@ -16,7 +16,14 @@
  * BuildingInstance.id convention in src/world/buildings.ts), and every
  * numeric formula below is a pure function of its inputs.
  */
-import type { RoadNetworkApi, TilePoint, TransitLine, TransitMode } from '../shared/types';
+import type {
+  RoadNetworkApi,
+  TilePoint,
+  TransitFleetSnapshot,
+  TransitLine,
+  TransitMode,
+} from '../shared/types';
+import { allocate, defaultFleet, headwayMin, runningCost } from '../shared/transitfleet';
 
 // ---------------------------------------------------------------------------
 // Registry access (injected — this module never touches GridState/BuildingInstance
@@ -239,9 +246,48 @@ export function applyStationRelief(
 // ---------------------------------------------------------------------------
 
 /** Snapshot payload shape matching SimSnapshot.transit (shared/types.ts). */
-export interface TransitTickResult {
+export interface TransitTickResult extends TransitFleetSnapshot {
   lines: TransitLine[];
+  /** Daily boardings each line carries, index-aligned with `lines`: the estimate scaled by served over requested. */
   ridership: number[];
+}
+
+/** The vehicles each mode's connected depots field this tick. */
+export type TransitPools = Record<TransitMode, number>;
+
+export const EMPTY_POOLS: Readonly<TransitPools> = { bus: 0, rail: 0, tram: 0 };
+
+/** A tick with no lines, and no pools: what every system starts from. */
+export function emptyTransitResult(): TransitTickResult {
+  return {
+    lines: [],
+    ridership: [],
+    served: [],
+    requested: [],
+    headwayMin: [],
+    runningCost: [],
+    pools: { ...EMPTY_POOLS },
+  };
+}
+
+/**
+ * The fleet a line runs by default, held steady across small moves in its
+ * ridership. A fresh derivation one vehicle under the standing figure keeps
+ * the standing figure; any larger fall, and any rise, takes the fresh one. So a
+ * line whose ridership sits on the edge between n and n + 1 buses settles on
+ * n + 1 rather than adding and shedding a bus every tick.
+ */
+export function settleDefault(previous: number | undefined, fresh: number): number {
+  if (previous === undefined) return fresh;
+  if (fresh > previous) return fresh;
+  if (fresh === previous - 1) return previous;
+  return fresh;
+}
+
+/** The vehicles a line asks for: the player's figure, or the settled default. */
+function requestedOf(line: TransitLine, settled: number): number {
+  if (line.vehicles !== undefined) return Math.max(0, Math.floor(line.vehicles));
+  return settled;
 }
 
 export class TransitSystem {
@@ -259,6 +305,8 @@ export class TransitSystem {
    */
   private readonly tramNetwork: RoadNetworkApi | null;
   private readonly lines = new Map<number, TransitLine>();
+  /** Each line's settled default fleet, by id — see settleDefault. */
+  private readonly defaults = new Map<number, number>();
   private nextId = 1;
 
   constructor(
@@ -280,31 +328,44 @@ export class TransitSystem {
   }
 
   /** Creates a new line; the worker always assigns the id (ignores any caller-supplied id). */
-  createLine(stops: TilePoint[], color: number, mode: TransitMode = 'bus'): TransitLine {
+  createLine(
+    stops: TilePoint[],
+    color: number,
+    mode: TransitMode = 'bus',
+    vehicles?: number,
+  ): TransitLine {
     const line: TransitLine = { id: this.nextId, stops: [...stops], color, mode };
+    if (vehicles !== undefined) line.vehicles = vehicles;
     this.lines.set(line.id, line);
     this.nextId += 1;
     return line;
   }
 
-  /** Replaces an existing line's stops/color. Returns null if `id` doesn't exist. */
+  /**
+   * Replaces an existing line's stops, colour and requested fleet. Returns
+   * null if `id` doesn't exist. A `vehicles` left out puts the line back on
+   * its derived default.
+   */
   updateLine(
     id: number,
     stops: TilePoint[],
     color: number,
     mode?: TransitMode,
+    vehicles?: number,
   ): TransitLine | null {
     const prev = this.lines.get(id);
     if (!prev) return null;
     // A line does not change what carries it on an edit: an update that omits
     // the mode keeps the one the line was created with.
     const line: TransitLine = { id, stops: [...stops], color, mode: mode ?? modeOf(prev) };
+    if (vehicles !== undefined) line.vehicles = vehicles;
     this.lines.set(id, line);
     return line;
   }
 
   /** Removes the line with `id`. Returns whether a line was actually removed. */
   deleteLine(id: number): boolean {
+    this.defaults.delete(id);
     return this.lines.delete(id);
   }
 
@@ -320,6 +381,7 @@ export class TransitSystem {
    */
   restore(lines: readonly TransitLine[]): void {
     this.lines.clear();
+    this.defaults.clear();
     let maxId = 0;
     for (const line of lines) {
       this.lines.set(line.id, { ...line, stops: [...line.stops] });
@@ -348,24 +410,74 @@ export class TransitSystem {
   }
 
   /**
-   * One sim-tick's worth of work for every line: recompute its route +
-   * ridership, apply the congestion-relief hook, and return the
-   * SimSnapshot.transit-shaped result (lines[i] <-> ridership[i]).
+   * One sim-tick's worth of work for every line, in ascending id: recompute
+   * its route and ridership, ask the vehicles it needs, share each mode's
+   * pool out over its lines, scale what each line carries by the share it got,
+   * apply the congestion-relief hook, and return the SimSnapshot.transit-shaped
+   * result (lines[i] <-> ridership[i] <-> served[i]). A mode whose pool is
+   * zero serves nothing on every line of it, which is the plain case of the
+   * allocation and not a rule beside it.
    */
-  tick(accessor: PopulationJobsAccessor): TransitTickResult {
-    const lines: TransitLine[] = [];
-    const ridership: number[] = [];
+  tick(
+    accessor: PopulationJobsAccessor,
+    pools: Readonly<TransitPools> = EMPTY_POOLS,
+  ): TransitTickResult {
+    const lines = Array.from(this.lines.values()).sort((a, b) => a.id - b.id);
+    const routes: (TransitRoute | null)[] = [];
+    const demand: number[] = [];
+    const requested: number[] = [];
 
-    for (const line of this.lines.values()) {
+    for (const line of lines) {
       const network = this.networkFor(line);
       const route = network ? routeLine(network, line) : null;
       const riders = estimateRidership(line, route, accessor);
-      this.relieve(line, route, riders);
-      lines.push(line);
-      ridership.push(riders);
+      const lengthTiles = route?.lengthTiles ?? 0;
+      const settled = settleDefault(
+        this.defaults.get(line.id),
+        defaultFleet(modeOf(line), riders, lengthTiles),
+      );
+      this.defaults.set(line.id, settled);
+      routes.push(route);
+      demand.push(riders);
+      requested.push(requestedOf(line, settled));
     }
 
-    return { lines, ridership };
+    const served = new Array<number>(lines.length).fill(0);
+    for (const mode of ['bus', 'rail', 'tram'] as const) {
+      const members = lines.flatMap((line, i) => (modeOf(line) === mode ? [i] : []));
+      const share = allocate(
+        members.map((i) => requested[i]!),
+        pools[mode],
+      );
+      members.forEach((i, k) => {
+        served[i] = share[k]!;
+      });
+    }
+
+    const ridership: number[] = [];
+    const headway: number[] = [];
+    const cost: number[] = [];
+    for (let i = 0; i < lines.length; i += 1) {
+      const line = lines[i]!;
+      const mode = modeOf(line);
+      const want = requested[i]!;
+      const got = served[i]!;
+      const riders = want > 0 ? (demand[i]! * got) / want : 0;
+      this.relieve(line, routes[i]!, riders);
+      ridership.push(riders);
+      headway.push(headwayMin(mode, routes[i]?.lengthTiles ?? 0, got));
+      cost.push(runningCost(mode, got));
+    }
+
+    return {
+      lines,
+      ridership,
+      served,
+      requested,
+      headwayMin: headway,
+      runningCost: cost,
+      pools: { ...pools },
+    };
   }
 
   /**

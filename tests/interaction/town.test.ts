@@ -260,13 +260,20 @@ describe('a small town, built and grown, as the regression for everything togeth
     for (const b of beyondBoth) expect(trashOn(b)).toBeGreaterThan(0);
   });
 
-  it('carries riders on the bus, the train and the tram', () => {
+  it('carries riders on the bus, the train and the tram, each fielded by its depot', () => {
     const transit = town.h.lastSnapshot()!.transit!;
     const riders = new Map<TransitMode, number>();
-    transit.lines.forEach((line, i) => riders.set(line.mode ?? 'bus', transit.ridership[i]!));
-    expect(riders.get('bus')).toBeGreaterThan(0);
-    expect(riders.get('rail')).toBeGreaterThan(0);
-    expect(riders.get('tram')).toBeGreaterThan(0);
+    const served = new Map<TransitMode, number>();
+    transit.lines.forEach((line, i) => {
+      riders.set(line.mode ?? 'bus', transit.ridership[i]!);
+      served.set(line.mode ?? 'bus', transit.served![i]!);
+    });
+    // The depot's eight and the garage's twenty-eight; six tram sets; four train sets.
+    expect(transit.pools).toEqual({ bus: 36, tram: 6, rail: 4 });
+    for (const mode of ['bus', 'rail', 'tram'] as const) {
+      expect(riders.get(mode)).toBeGreaterThan(0);
+      expect(served.get(mode)).toBeGreaterThan(0);
+    }
   });
 
   it('keeps the main thread mirror in step with the worker, soil and all', () => {

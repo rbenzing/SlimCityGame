@@ -34,6 +34,7 @@ import type {
   SimSpeed,
   ToolFlags,
   ToolId,
+  TransitFleetSnapshot,
   TransitLine,
 } from '../shared/types';
 import { DEFAULT_BRUSH_SETTINGS, type InterchangeOptions } from '../tools/tools';
@@ -128,6 +129,17 @@ export function createInitialToolFlags(): ToolFlags {
   };
 }
 
+/** The per-line fleet figures the transit snapshot carries, as the panel reads them. */
+export type TransitFleetFigures = Pick<
+  TransitFleetSnapshot,
+  'served' | 'requested' | 'headwayMin' | 'runningCost'
+>;
+
+/** No fleet figures yet: every line reads as running nothing. */
+export function emptyTransitFleet(): TransitFleetFigures {
+  return { served: [], requested: [], headwayMin: [], runningCost: [] };
+}
+
 /** A sane, zeroed CityStats for the moment before the first worker snapshot arrives. */
 export function createInitialStats(): CityStats {
   return {
@@ -211,6 +223,8 @@ export interface CityStoreState {
   transitLines: TransitLine[];
   /** Per-line ridership, aligned index-for-index with transitLines. */
   transitRidership: number[];
+  /** Per-line fleet figures (served, requested, headway, running cost), aligned with transitLines. */
+  transitFleet: TransitFleetFigures;
   // --- Districts & policies ------------------------------------------------
   /** Worker's authoritative district defs (from SimSnapshot.districts.defs). */
   districts: District[];
@@ -277,8 +291,8 @@ export interface CityStoreState {
   setSelectionInfo: (info: SelectionInfo | null) => void;
   /** Merges a partial patch into brushSettings (the Brush radius / Strength sliders). */
   setBrushSettings: (settings: Partial<BrushSettings>) => void;
-  /** Replaces the transit line list + ridership from a snapshot. */
-  setTransit: (lines: TransitLine[], ridership: number[]) => void;
+  /** Replaces the transit line list, ridership and fleet figures from a snapshot. */
+  setTransit: (lines: TransitLine[], ridership: number[], fleet?: TransitFleetFigures) => void;
   /** Deletes a bus line (emits deleteTransitLine via the bound bridge). */
   deleteTransitLine: (id: number) => void;
   /** Replaces the district def list from a snapshot (never shrinks selectedDistrict). */
@@ -337,6 +351,7 @@ export const useCityStore = create<CityStoreState>((set, get) => ({
   brushSettings: DEFAULT_BRUSH_SETTINGS,
   transitLines: [],
   transitRidership: [],
+  transitFleet: emptyTransitFleet(),
   districts: [],
   selectedDistrict: 1,
   districtPolicies: {},
@@ -417,7 +432,12 @@ export const useCityStore = create<CityStoreState>((set, get) => ({
   setSelectionInfo: (info) => set({ selectionInfo: info }),
   setBrushSettings: (settings) =>
     set((state) => ({ brushSettings: { ...state.brushSettings, ...settings } })),
-  setTransit: (lines, ridership) => set({ transitLines: lines, transitRidership: ridership }),
+  setTransit: (lines, ridership, fleet) =>
+    set({
+      transitLines: lines,
+      transitRidership: ridership,
+      transitFleet: fleet ?? emptyTransitFleet(),
+    }),
   deleteTransitLine: (id) =>
     get().bound?.sendCommands('Delete bus line', [{ kind: 'deleteTransitLine', id }]),
   setDistricts: (districts) => set({ districts }),

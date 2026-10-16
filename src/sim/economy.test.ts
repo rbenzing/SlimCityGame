@@ -178,7 +178,22 @@ const mixedBlock: BuildingCatalogEntry = {
   unlockMilestone: 3,
 };
 
-const catalog = [resHouse, comShop, indYard, police];
+const busDepot: BuildingCatalogEntry = {
+  id: 'bus-depot',
+  name: 'Bus Depot',
+  category: 'transit',
+  footprint: { w: 2, d: 2 },
+  height: 5.5,
+  color: 0,
+  powerUse: 0,
+  waterUse: 0,
+  depot: { mode: 'bus', fleet: 10 },
+  cost: 3000,
+  upkeep: 200,
+  unlockMilestone: 1,
+};
+
+const catalog = [resHouse, comShop, indYard, police, busDepot];
 
 const roadSpecs: RoadSpec[] = [
   {
@@ -459,6 +474,35 @@ describe('EconomySystem: monthly income/expenses', () => {
       takeRegionalBodies,
     });
     expect(next.statsPatch.monthlyExpenses).toBeCloseTo(0, 9);
+  });
+
+  it("charges the transit fleet's running cost with the month's upkeep, and reports it apart", () => {
+    const g = makeGrid();
+    const sys = new EconomySystem(catalog, roadSpecs);
+    const stats = makeStats({ funds: 10000 });
+    const buildings: BuildingInstance[] = [];
+    place(g, buildings, 1, 'bus-depot', 10, 10);
+    const depotUpkeep = busDepot.upkeep;
+
+    const idle = sys.tick({
+      g,
+      buildings,
+      stats,
+      tickNo: TICKS_PER_MONTH - 1,
+      transitRunning: 320,
+    });
+    expect(idle.statsPatch.monthlyExpenses).toBeUndefined();
+    expect(idle.statsPatch.transitRunning).toBeUndefined();
+
+    const month = sys.tick({ g, buildings, stats, tickNo: TICKS_PER_MONTH, transitRunning: 320 });
+    expect(month.statsPatch.transitRunning).toBe(320);
+    expect(month.statsPatch.monthlyExpenses).toBeCloseTo(depotUpkeep + 320, 9);
+    expect(month.statsPatch.funds).toBeCloseTo(10000 - depotUpkeep - 320, 9);
+
+    // The depot's own upkeep stands whatever the fleet runs.
+    const empty = sys.tick({ g, buildings, stats, tickNo: 2 * TICKS_PER_MONTH, transitRunning: 0 });
+    expect(empty.statsPatch.transitRunning).toBe(0);
+    expect(empty.statsPatch.monthlyExpenses).toBeCloseTo(depotUpkeep, 9);
   });
 
   it('skips the monthly cycle on tick 0 and on non-boundary ticks', () => {

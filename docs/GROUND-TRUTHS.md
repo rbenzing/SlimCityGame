@@ -219,6 +219,19 @@ MUTCD citations below use 11th-edition section numbers.
   was so. A point two or more tiles from any road is off the network. —
   [transit-model.md](world-sim/transit-model.md); `nearestNode` in
   `src/world/roadgraph.ts`
+- A line's vehicles are fielded by a depot of its mode over the mode's own
+  network, never from nowhere: a bus depot touching a street, a tram depot
+  touching the tram tier (`isTramTier`, never a tram lane composed onto a
+  street the tram graph lacks), a rail yard touching the railway, each built
+  and powered, fielding all but a spare fifth of what it holds. A mode with no
+  depot runs nothing: its lines carry nobody, relieve nothing and say so, and a
+  city saved before depots loads that way. Every vehicle in service is charged
+  its running cost beside the depot's upkeep. The renderer draws the sim's
+  served count at the commercial speed, never a count of its own. —
+  [transit-model.md](world-sim/transit-model.md),
+  [transport-depots.md](engineering/features/transport-depots.md);
+  `connectedDepots` in `src/sim/depots.ts`, `allocate` in
+  `src/shared/transitfleet.ts`
 - Any grid edit invalidates the whole road graph and reassigns every node and
   edge id. Never persist an edge or node id across an edit. Tram-graph edge ids
   are a private numbering, and tram relief is recomputed over the road graph. —

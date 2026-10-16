@@ -1,15 +1,19 @@
 import { describe, it, expect } from 'vitest';
 import {
   TransitSystem,
+  emptyTransitResult,
   routeLine,
   estimateRidership,
   applyRidershipRelief,
   applyStationRelief,
+  settleDefault,
   RIDERSHIP_STOP_RADIUS_TILES,
   CONGESTION_RELIEF_PER_RIDER,
   type PopulationJobsAccessor,
+  type TransitPools,
   type TransitRoute,
 } from './transit';
+import { defaultFleet, RUNNING_COST_CENTS } from '../shared/transitfleet';
 import {
   isRailTier,
   isTramTier,
@@ -79,6 +83,9 @@ function isCardinallyAdjacent(a: TilePoint, b: TilePoint): boolean {
 function fixedAccessor(value: number): PopulationJobsAccessor {
   return { nearbyPopulationJobs: () => value };
 }
+
+/** One bus depot's worth of fielded buses, and no other mode. */
+const BUS_POOL: TransitPools = { bus: 8, rail: 0, tram: 0 };
 
 // ---------------------------------------------------------------------------
 // TransitSystem line list
@@ -451,7 +458,7 @@ describe('TransitSystem.tick', () => {
       2,
     );
 
-    const result = sys.tick(fixedAccessor(100));
+    const result = sys.tick(fixedAccessor(100), BUS_POOL);
     expect(result.lines.map((l) => l.id)).toEqual([a.id, b.id]);
     expect(result.ridership).toHaveLength(2);
     expect(result.ridership[0]).toBeGreaterThan(0);
@@ -477,13 +484,13 @@ describe('TransitSystem.tick', () => {
       1,
     );
 
-    sys.tick(fixedAccessor(1000));
+    sys.tick(fixedAccessor(1000), BUS_POOL);
     expect(edges[0]!.volume).toBeLessThan(1000);
   });
 
   it('produces an empty snapshot when there are no lines', () => {
     const sys = new TransitSystem(createFakeNetwork(() => null));
-    expect(sys.tick(fixedAccessor(100))).toEqual({ lines: [], ridership: [] });
+    expect(sys.tick(fixedAccessor(100))).toEqual(emptyTransitResult());
   });
 
   it('route()/ridership() convenience accessors match tick() for a single line', () => {
@@ -850,7 +857,7 @@ describe('tram lines', () => {
     const collisions = road.getEdges().filter((e) => tramEdgeIds.has(e.id));
     expect(collisions.some((e) => e.tiles.every((t) => t.z === STREET_Z))).toBe(true);
 
-    sys.tick(fixedAccessor(200));
+    sys.tick(fixedAccessor(200), { bus: 0, rail: 0, tram: 6 });
 
     for (const edge of edgesOnRow(road, TRAM_Z)) expect(edge.volume).toBeLessThan(START_VOLUME);
     for (const edge of edgesOnRow(road, STREET_Z)) expect(edge.volume).toBe(START_VOLUME);
@@ -919,6 +926,132 @@ describe('applyStationRelief', () => {
     const net = stationNetwork();
     applyStationRelief(net, railLine([{ x: 5, z: 5 }]), 0);
     expect(net.addVolumeCalls).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The fleet: pools, allocation, and what a line fielded short carries
+// ---------------------------------------------------------------------------
+
+describe('the fleet a line runs', () => {
+  /** A straight route of `tiles` points down one edge, with a fixed demand at every stop. */
+  function straightSystem(
+    tiles: number,
+    volume = 1000,
+  ): { sys: TransitSystem; edges: GraphEdge[] } {
+    const points: TilePoint[] = Array.from({ length: tiles }, (_, i) => ({ x: i, z: 0 }));
+    const edges = [makeEdge(1, volume)];
+    const sys = new TransitSystem(createFakeNetwork(() => makePath(points, [1]), edges));
+    return { sys, edges };
+  }
+  const STOPS: TilePoint[] = [
+    { x: 0, z: 0 },
+    { x: 59, z: 0 },
+  ];
+
+  it('serves nothing, carries nobody and relieves nothing with no depot of its mode', () => {
+    const { sys, edges } = straightSystem(60);
+    sys.createLine(STOPS, 1);
+    const result = sys.tick(fixedAccessor(1000));
+    expect(result.pools).toEqual({ bus: 0, rail: 0, tram: 0 });
+    expect(result.requested[0]).toBeGreaterThan(0);
+    expect(result.served).toEqual([0]);
+    expect(result.ridership).toEqual([0]);
+    expect(result.headwayMin).toEqual([0]);
+    expect(result.runningCost).toEqual([0]);
+    expect(edges[0]!.volume).toBe(1000);
+  });
+
+  it('a depot of another mode adds nothing to a bus line', () => {
+    const { sys } = straightSystem(60);
+    sys.createLine(STOPS, 1);
+    expect(sys.tick(fixedAccessor(1000), { bus: 0, rail: 4, tram: 6 }).served).toEqual([0]);
+  });
+
+  it('gives a line its whole request when the pool covers it, and reports headway and cost', () => {
+    const { sys } = straightSystem(60);
+    sys.createLine(STOPS, 1, 'bus', 2);
+    const result = sys.tick(fixedAccessor(1000), BUS_POOL);
+    expect(result.requested).toEqual([2]);
+    expect(result.served).toEqual([2]);
+    expect(result.headwayMin[0]).toBeCloseTo(4.14, 2);
+    expect(result.runningCost).toEqual([2 * RUNNING_COST_CENTS.bus]);
+    expect(result.pools).toEqual(BUS_POOL);
+  });
+
+  it('cuts lines back in proportion when they ask for more than the pool, summing to exactly the pool', () => {
+    const { sys } = straightSystem(60);
+    sys.createLine(STOPS, 1, 'bus', 4);
+    sys.createLine(STOPS, 2, 'bus', 4);
+    sys.createLine(STOPS, 3, 'bus', 2);
+    const result = sys.tick(fixedAccessor(1000), { bus: 5, rail: 0, tram: 0 });
+    expect(result.served).toEqual([2, 2, 1]);
+    expect(result.served.reduce((a, b) => a + b, 0)).toBe(5);
+  });
+
+  it('hands remainders down by ascending line id, whatever order the lines were restored in', () => {
+    const { sys } = straightSystem(60);
+    sys.restore([
+      { id: 9, stops: STOPS, color: 0, vehicles: 3 },
+      { id: 4, stops: STOPS, color: 0, vehicles: 3 },
+      { id: 7, stops: STOPS, color: 0, vehicles: 3 },
+    ]);
+    const result = sys.tick(fixedAccessor(1000), { bus: 5, rail: 0, tram: 0 });
+    expect(result.lines.map((l) => l.id)).toEqual([4, 7, 9]);
+    expect(result.served).toEqual([2, 2, 1]);
+  });
+
+  it('carries and relieves in proportion to the share it got', () => {
+    const full = straightSystem(60);
+    full.sys.createLine(STOPS, 1, 'bus', 4);
+    const whole = full.sys.tick(fixedAccessor(1000), BUS_POOL);
+
+    const short = straightSystem(60);
+    short.sys.createLine(STOPS, 1, 'bus', 4);
+    const half = short.sys.tick(fixedAccessor(1000), { bus: 2, rail: 0, tram: 0 });
+
+    expect(half.served).toEqual([2]);
+    expect(half.ridership[0]).toBeCloseTo(whole.ridership[0]! / 2, 9);
+    expect(1000 - short.edges[0]!.volume).toBeCloseTo((1000 - full.edges[0]!.volume) / 2, 9);
+  });
+
+  it('is deterministic across runs', () => {
+    const a = straightSystem(60);
+    const b = straightSystem(60);
+    for (const { sys } of [a, b]) {
+      sys.createLine(STOPS, 1, 'bus', 7);
+      sys.createLine(STOPS, 2, 'bus', 5);
+      sys.createLine(STOPS, 3, 'bus', 3);
+    }
+    const pool = { bus: 9, rail: 0, tram: 0 };
+    expect(a.sys.tick(fixedAccessor(500), pool)).toEqual(b.sys.tick(fixedAccessor(500), pool));
+  });
+
+  it('asks for the derived default when the player set no fleet, and the player’s figure when they did', () => {
+    const { sys } = straightSystem(60);
+    const derived = sys.createLine(STOPS, 1);
+    const set = sys.createLine(STOPS, 2, 'bus', 6);
+    const result = sys.tick(fixedAccessor(1000), { bus: 40, rail: 0, tram: 0 });
+    const riders = result.ridership[0]!;
+    expect(result.requested[0]).toBe(defaultFleet('bus', riders, 60));
+    expect(result.requested[1]).toBe(6);
+    expect(sys.getLine(derived.id)!.vehicles).toBeUndefined();
+    expect(sys.getLine(set.id)!.vehicles).toBe(6);
+  });
+
+  it('holds a default steady across a one-vehicle dip', () => {
+    expect(settleDefault(undefined, 3)).toBe(3);
+    expect(settleDefault(3, 4)).toBe(4);
+    expect(settleDefault(4, 3)).toBe(4);
+    expect(settleDefault(4, 2)).toBe(2);
+    expect(settleDefault(4, 4)).toBe(4);
+  });
+
+  it('carries a line’s requested fleet through an update, and drops it when the update leaves it out', () => {
+    const { sys } = straightSystem(60);
+    const line = sys.createLine(STOPS, 1, 'bus', 3);
+    expect(sys.updateLine(line.id, STOPS, 2, undefined, 5)!.vehicles).toBe(5);
+    expect(sys.updateLine(line.id, STOPS, 2)!.vehicles).toBeUndefined();
   });
 });
 

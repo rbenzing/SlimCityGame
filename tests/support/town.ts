@@ -36,15 +36,19 @@ export const WALLED_MOTORWAY = composeProfile(presetProfileForTier(RoadTier.High
  * North to south (z grows southward):
  *
  *   z  40      rail track, x 58–124, with a station at each end
- *   z  41–43   a landfill between the track and the station road
+ *   z  41–43   a landfill between the track and the station road, and a
+ *              rail yard along the track at x 100–103
  *   z  44      station road, homes and shops along its south side
  *   z  57      the road out to the motorway ramp, x 130–151
  *   z  68–69   a pumping station on the north bank at x 95–96, piped to the
  *              avenue along z 68, and a drain pipe at x 89 beside the avenue
  *   z  70–74   a river, which the avenue and the ramp road bridge
- *   z  85      tramway, x 50–129, drawn after the avenue and crossing it
+ *   z  85      tramway, x 50–129, drawn after the avenue and crossing it,
+ *              with a tram depot at its west end at x 50–51, z 86–88
  *   z 100      main street (two-lane), x 50–130, the town centre, carried on
- *              east to x 140 across a six-lane road at x 134–135, z 88–111
+ *              east to x 140 across a six-lane road at x 134–135, z 88–111,
+ *              with the central bus garage on its south side at x 136–138,
+ *              z 101–104
  *   z 101–129  one-way street (x 60), alley (x 70), bus lane (x 120), and a
  *              hospital on main street's south side at x 110–114, z 101–103 and
  *              a cemetery beside it at x 93–95, z 101–103 and a crematorium
@@ -52,8 +56,9 @@ export const WALLED_MOTORWAY = composeProfile(presetProfileForTier(RoadTier.High
  *              district police station at x 100–102, z 97–99 and the district
  *              fire station at x 105–107, z 98–99 stand on its north side;
  *              the middle school at x 61–64, z 103–106, the high school at
- *              x 65–69, z 101–104, the college at x 61–66, z 107–111 and the
- *              library at x 116–118, z 101–102
+ *              x 65–69, z 101–104, the college at x 61–66, z 107–111, the
+ *              library at x 116–118, z 101–102 and the bus depot at
+ *              x 122–123, z 101–102
  *   z 115      bike lane, x 91–119
  *   z 126–129  heavy industry, x 96–119, north of the four-lane road
  *   z 130      four-lane road, x 50–130, industry, power, the incinerator and,
@@ -107,6 +112,10 @@ export const TOWN = {
   worksPipe: { z: 68, x0: 88, x1: 89 },
   busStopWest: { x: 52, z: 101 },
   busStopEast: { x: 129, z: 131 },
+  busDepot: { x: 122, z: 101 },
+  busGarage: { x: 136, z: 101 },
+  tramDepot: { x: 50, z: 86 },
+  railYard: { x: 100, z: 41 },
   landfill: { x0: 64, z0: 41, w: 24, d: 3 },
   incinerator: { x: 91, z: 126 },
   recyclingDepot: { x: 59, z: 45 },
@@ -499,6 +508,18 @@ export function townSteps(): TownStep[] {
     {
       label: 'rail stations on the track',
       commands: [place('rail-station', t.stationWest), place('rail-station', t.stationEast)],
+    },
+    {
+      // A bus depot on main street and the garage on its eastern stretch, a
+      // tram depot on the tramway's west end, and a rail yard turned to lie
+      // along the track between it and the station road, which powers it.
+      label: 'the depots that field the lines',
+      commands: [
+        place('bus-depot', t.busDepot),
+        place('bus-garage', t.busGarage),
+        place('tram-depot', t.tramDepot),
+        { kind: 'placeBuilding', catalogId: 'rail-yard', ...t.railYard, rotation: 1 },
+      ],
     },
     {
       label: 'a bus line, stop to stop',

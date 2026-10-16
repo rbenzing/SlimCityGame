@@ -1,13 +1,13 @@
 # Transport depots — technical design
 
-- **Status:** Draft
-- **Date:** 2026-09-18
-- **Author:** Claude Opus 5
+- **Status:** Specified 2026-10-16 (draft of 2026-09-18 revised on the player's choices); slice 1, the sim, built 2026-10-16; dead runs and the kits next
+- **Date:** 2026-09-18, revised 2026-10-16
+- **Author:** Claude Opus 5, revised by Claude Fable 5.1
 
 Epic 7 of [municipal-services.md](municipal-services.md), after
 [service-capacity.md](service-capacity.md), written against
 [../../game-design/features/transport-depots.md](../../game-design/features/transport-depots.md),
-which carries the derivations.
+which carries the derivations and every source.
 
 ## What we are building, and why now
 
@@ -15,40 +15,55 @@ A transit line's vehicles come from nowhere. `src/sim/transit.ts` models no
 vehicle at all — a line is stops, a route and a statistical ridership number —
 and the buses on screen are `ridershipToBusCount` in `src/render/transit.ts`,
 `round(ridership / 40)` clamped to six. This epic gives the fleet an origin: a
-depot whose capacity is the ceiling on vehicles in service, and a derived
-headway connecting that building to something the player watches happen. Now,
-because it interacts with traffic more than anything else in the programme, so
-it wants the programme's other service vehicles already on the network.
+depot whose capacity is the ceiling on vehicles in service, a derived headway
+connecting that building to something the player watches happen, and a monthly
+charge for every vehicle that runs. Now, because it is the last service in the
+programme with no building and no bill, and the service vehicles it shares the
+road with are all on the network.
+
+**Three slices.**
+
+1. **The sim.** The four catalog entries, the pool and the allocation, cycle
+   time and headway, the running charge, the snapshot, the panel, and the
+   renderer drawing the sim's count at the commercial speed. Depots draw as
+   the catalog box at their true size.
+2. **Dead runs.** The pull-out and pull-in paths on the traffic graph and the
+   vehicles drawn making the trip.
+3. **The kits.** Three on the civic pattern (the two bus depots share one), to
+   the building-detail standard, with the screenshots that judge them.
 
 ## What it touches
 
-| Module                    | Change                                                                          |
-| ------------------------- | ------------------------------------------------------------------------------- |
-| `src/shared/types.ts`     | `TransitLine.vehicles?`; `requiresAdjacent` widens; `SimSnapshot.transit` grows |
-| `src/data/catalog.json`   | Three entries: `bus-depot`, `bus-garage`, `tram-depot`                          |
-| `src/sim/transit.ts`      | Fleet pool, allocation, cycle time, headway, dead-run paths                     |
-| `src/sim/traffic.ts`      | Dead-run volume on the road graph                                               |
-| `src/sim/worker.entry.ts` | Depot registry scan; the tram predicate for the placement gate                  |
-| `src/sim/economy.ts`      | Per-vehicle-in-service charge alongside per-building upkeep                     |
-| `src/render/transit.ts`   | Vehicle count from the snapshot, not from ridership; commercial speed           |
-| `src/ui/`                 | Headway and fleet in the line panel; capacity in the depot panel                |
+| Module                              | Change                                                                                                                                                                     |
+| ----------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/shared/types.ts`               | `BuildingCatalogEntry.depot?: { mode; fleet }`; `requiresAdjacent` widens to `'rail' \| 'water' \| 'tram'`; `TransitLine.vehicles?`; `SimSnapshot.transit` grows           |
+| `src/data/catalog.json`             | Four `transit` entries: `bus-depot`, `bus-garage`, `tram-depot`, `rail-yard`. No existing entry changes                                                                    |
+| `src/shared/transitfleet.ts`        | New, pure: the constants, `cycleSeconds`, `defaultFleet`, `allocate` (the proportional cut-back), `runningCost`; one source for sim and renderer                           |
+| `src/sim/transit.ts`                | Fleet pool per mode, allocation, cycle time, headway, ridership scaled by served over requested before relief; slice 2 adds dead-run paths                                 |
+| `src/sim/traffic.ts`                | Slice 2: dead-run volume on the road graph                                                                                                                                 |
+| `src/sim/worker.entry.ts`           | Depot registry scan each tick; the `'tram'` placement gate on `isTramTier`; the snapshot fields                                                                            |
+| `src/sim/economy.ts`                | A `transitRunning` monthly expense: `served` summed over lines × the mode's charge, beside building upkeep                                                                 |
+| `src/render/transit.ts`             | Vehicle count from the snapshot, spaced at `1 / served` of the route; commercial speed; the three count functions go                                                       |
+| `src/ui/`                           | Headway, served over requested, depot and running cost in the line panel; "no depot" when served is 0; capacity in the depot panel; the four cards in the Transit category |
+| `tests/interaction/transit.test.ts` | The fixtures gain a depot, because a line without one now carries nobody; a new test holds that. `firsttown.test.ts` is not touched                                        |
+| `docs/world-sim/transit-model.md`   | "no depots" leaves the deferred list; a Depots paragraph; ridership declared daily boardings                                                                               |
+| `docs/GROUND-TRUTHS.md`             | One bullet: a line's vehicles are fielded by a depot of its mode, never from nowhere; a mode with no depot runs nothing; the renderer draws the sim's count                |
 
-**Save format: yes, additively, and minimally.** No new `SaveMeta` block — depot
-capacity is derived every tick from the building registry, which already
-persists, so the pool is not state. The one persisted addition is
-`TransitLine.vehicles?: number`, the player's requested fleet, inside the
-existing `SaveMeta.transitLines` array in [../data-model.md](../data-model.md).
-**A save written before this epic loads after it**: its lines carry no
-`vehicles` field, which means "as many as the pool allows" — what those lines
-already did. No save is rejected for a missing field, and **existing transit
-lines keep running** by the rule below.
+**Save format: yes, additively, and minimally.** No new `SaveMeta` block — the
+pool is derived every tick from the building registry, which already persists.
+The one persisted addition is `TransitLine.vehicles?: number`, the player's
+requested fleet, inside the existing `SaveMeta.transitLines` array in
+[../data-model.md](../data-model.md). A save written before this epic loads
+after it: its lines carry no `vehicles` field, which means "the derived
+default", and **its lines stand idle until a depot is built**, which is the
+rule the player chose. No save is rejected for a missing field.
 
 **Worker protocol: yes, additively, with no new command.**
 `SimSnapshot.transit` grows from `{ lines, ridership }` to
-`{ lines, ridership, fleet, headway, pools }`, the new members optional so an
-older mirror ignores them. Depots use the existing ploppable path, and a line's
-requested fleet rides on `updateTransitLine`, which already carries a whole
-line. See [../interfaces.md](../interfaces.md).
+`{ lines, ridership, served, requested, headwayMin, runningCost, pools }`, the
+new members optional so an older mirror ignores them. Depots use the existing
+ploppable path, and a line's requested fleet rides on `updateTransitLine`,
+which already carries a whole line. See [../interfaces.md](../interfaces.md).
 
 ## The design
 
@@ -57,21 +72,23 @@ line. See [../interfaces.md](../interfaces.md).
 Stored: `TransitLine.vehicles?: number`, and the depots as ordinary registry
 instances. Everything else is derived each tick. `BuildingCatalogEntry` gains
 one optional `depot: { mode: TransitMode; fleet: number }`, and
-`requiresAdjacent` widens from `'rail'` to `'rail' | 'road' | 'tram'`.
+`requiresAdjacent` widens from `'rail' | 'water'` to include `'tram'`.
 
 A depot with `requiresAdjacent: 'tram'` must test the **same predicate the tram
 graph is built from** — `isTramTier`, tier 10 — not "the profile carries a tram
 lane piece". Those differ today: `tierForProfile` maps a composed profile back
 to its class's tier, so a player-composed tram reservation on an arterial is not
 tier 10 and not in `tramNetwork`. Gating on the lane piece would let the player
-build a depot no tram can reach.
+build a depot no tram can reach. The rail yard uses the station's `'rail'` gate
+as it stands.
 
-Each tick, per `TransitMode`, sum `depot.fleet` over every depot that is built,
-powered, and whose footprint touches the network its mode runs on.
+Each tick, per `TransitMode`, sum `floor(depot.fleet × (1 − SPARE_RATIO))` over
+every depot that is built, powered, and whose footprint touches the network its
+mode runs on; `SPARE_RATIO = 0.2`.
 
 ```
 requested_i = line i's TransitLine.vehicles, or the derived default below
-pool        = Σ fleet over connected depots of that mode
+pool        = Σ fields(depot) over connected depots of that mode
 served_i    = requested_i                               if Σ requested ≤ pool
             = floor(pool × requested_i / Σ requested)   otherwise
 ```
@@ -79,42 +96,45 @@ served_i    = requested_i                               if Σ requested ≤ pool
 Remainders go one at a time in ascending line id, so allocation is
 deterministic, and proportional cut-back degrades a network evenly.
 
-**A mode with no depot at all is uncapped**, and `served_i` is the pre-depot
-`ridershipTo*Count` value. This is the rule epic 0 sets for a facility with no
-capacity figure, and it is what makes an old save behave identically. The
-demolition exploit it opens — knock the garage down, keep the buses — is closed
-in the economy rather than with a persisted flag. Demolishing a depot while
-others remain shrinks the pool and re-runs the allocation. **A line is never
-deleted, re-routed or stripped of stops** because of a depot; it runs fewer
-vehicles, or none, and says so.
+**A mode with no depot has a pool of zero and every line of it serves zero.**
+This is the player's rule, and it is the plain case of the allocation function,
+not a branch round it. A line with `served = 0` carries nobody:
+`ridership'_i = ridership_i × served_i / requested_i` is applied before relief,
+so an unserved line relieves nothing. Demolishing a depot while others remain
+shrinks the pool and re-runs the allocation. **A line is never deleted,
+re-routed or stripped of stops** because of a depot; it runs fewer vehicles, or
+none, and says so.
 
 ### Cycle time and headway
 
 ```
-COMMERCIAL_SPEED_MPS = 5.56  // 20 km/h — published urban bus average
-LAYOVER_FRACTION     = 0.15  // terminal recovery, mid of the published 10–20%
-PEAK_HOUR_SHARE      = 0.10  // peak-hour share of daily boardings
-TARGET_HEADWAY_MIN   = 10    // the turn-up-and-go threshold
-RIDERS_PER_VEHICLE   = { bus: 48, tram: 150 }  // as TRANSIT_PIECE_CAPACITY derives them
+COMMERCIAL_SPEED_MPS = { bus: 5.56, tram: 5.56, rail: 13.3 }  // 20 km/h; 48 km/h
+LAYOVER_FRACTION     = 0.15   // terminal recovery, mid of the published 10–20%
+PEAK_HOUR_SHARE      = 0.10   // peak-hour share of daily boardings
+TARGET_HEADWAY_MIN   = 10     // the turn-up-and-go threshold
+RIDERS_PER_VEHICLE   = { bus: 48, tram: 150, rail: 450 }
+SPARE_RATIO          = 0.2
+RUNNING_COST_CENTS   = { bus: 40, tram: 70, rail: 142 }  // per vehicle (set) per month
 
-cycleSeconds = 2 × route.lengthTiles × TILE_METERS / COMMERCIAL_SPEED_MPS
+cycleSeconds = 2 × route.lengthTiles × TILE_METERS / COMMERCIAL_SPEED_MPS[mode]
              × (1 + LAYOVER_FRACTION)
 headwayMin   = cycleSeconds / 60 / served
 defaultFleet = max( ceil(cycleMin / TARGET_HEADWAY_MIN),
-                    ceil(ridership × PEAK_HOUR_SHARE × cycleHours / RIDERS_PER_VEHICLE) )
+                    ceil(ridership × PEAK_HOUR_SHARE × cycleHours / RIDERS_PER_VEHICLE[mode]) )
 ```
 
 `route.lengthTiles` is already computed by `routeLine` every tick, so cycle time
-costs a multiply, and `RIDERS_PER_VEHICLE` is not new — it is the 48 and 150
-`TRANSIT_PIECE_CAPACITY` in `src/shared/roadprofile.ts` already derives its
-bus-lane and tram-track throughputs from. One declaration this epic has to make,
-because nothing does today: `estimateRidership` returns a figure with no unit.
-We declare it **daily boardings**, the reading under which the existing
+costs a multiply, and the bus and tram capacities are not new — they are the 48
+and 150 `TRANSIT_PIECE_CAPACITY` in `src/shared/roadprofile.ts` already derives
+its bus-lane and tram-track throughputs from. One declaration this epic has to
+make, because nothing does today: `estimateRidership` returns a figure with no
+unit. We declare it **daily boardings**, the reading under which the existing
 constants are coherent and under no other. `defaultFleet` is recomputed only
-outside a hysteresis band — ridership moves continuously, and re-deriving every
-tick makes the readout jitter.
+outside a hysteresis band of one vehicle — ridership moves continuously, and
+re-deriving every tick makes the readout jitter. The train is a set; the rail
+yard's `fleet` is in sets, five, fielding four.
 
-### Dead runs: simulated
+### Dead runs: simulated (slice 2)
 
 A depot vehicle drives to its line's first stop and back. **We simulate it.**
 The path is one `network.findPath(depot, line.stops[0])` per line, cached and
@@ -125,47 +145,49 @@ and the vehicles are drawn making the trip, which is what makes siting matter
 and what the player sees. Against the fleet, a dead run of `d` minutes each way
 over an 18-hour service span costs `2d / (60 × 18)` of a vehicle's availability;
 across our 5.12 km map at 20 km/h the worst case is 15 minutes each way, or
-**2.8% of a fleet — one vehicle in thirty-six.** That figure is the honest part:
-we say up front that the _fleet_ effect at this map size is small, so nobody is
-surprised that moving a depot two tiles closer bought nothing. If it wants more
-weight the lever is the service span, not a fudge on the availability term.
+**2.8% of a fleet — one vehicle in thirty-six.** We say up front that the
+_fleet_ effect at this map size is small, so nobody is surprised that moving a
+depot two tiles closer bought nothing. If it wants more weight the lever is the
+service span, not a fudge on the availability term. A tram dead-runs over the
+tram graph and a train over the railway; neither loads the road graph.
 
 ### Economy and render
 
-Two charges, deliberately separated: the depot building's `upkeep`, held at the
-catalog's established 6–8% of build cost; and a **per-vehicle-in-service**
-charge — 65 per bus, 130 per tram set, per month — applied to `served_i` summed
-across lines, never to pool capacity. A vehicle in service with **no depot** in
-its pool is charged 93: the in-service rate plus 28, the small depot's own
-upkeep per bay. That 28 is the demolition exploit's own arithmetic written down,
-and it makes escaping the cap break even at best. Capacity costs the building
-line, service the fleet line, and a half-empty depot shows as a large one
-against a small one.
+Two charges, deliberately separated: the depot building's `upkeep`, the
+catalog's established 6–8% of build cost, premises only; and the
+**per-vehicle-in-service** charge from the NTD figures — ¢40 a bus, ¢70 a tram
+set, ¢142 a train set, a month — applied to `served_i` summed across lines,
+never to pool capacity. `economy.ts` sums it into a `transitRunning` expense on
+the month boundary, the way building upkeep is summed, and the budget panel
+shows the line. Capacity costs the building line, service the fleet line, and a
+half-empty depot shows as a large one against a small one.
 
 On the render side, `MODE_VEHICLE.countFor` is replaced by the snapshot's
-`fleet[i]`, and vehicles are spaced around the route polyline at `1 / served` of
-its length rather than bunched by a density knob — which is what makes the
+`served[i]`, and vehicles are spaced around the route polyline at `1 / served`
+of its length rather than bunched by a density knob — which is what makes the
 headway on screen agree with the panel. `MAX_BUSES_PER_LINE = 6` and the
-192-slot pool become functions of the largest pool the catalog permits, and
-`BUS_SPEED_MPS` comes down to the commercial speed. Geometry follows the
-vehicle-services rule in
+192-slot pool become functions of the largest pool the catalog permits, and the
+vehicle speeds come down to the commercial speeds. The kits (slice 3) follow
+the vehicle-services rule in
 [../../art/civic-massing.md](../../art/civic-massing.md): bay doors are the
-silhouette, the apron carries the garaged fleet, and the body must **not** fill
-the lot — two thirds of a depot is open ground.
+silhouette, the apron carries the garaged fleet — capacity minus vehicles in
+service, countable — and the body must **not** fill the lot; two thirds of a
+depot is open ground. The rail yard's and tram depot's stabled sets are the
+kit's own parked vehicles, on the vehicle kit's geometry.
 
 ## What could go wrong
 
-- **The uncapped rule is the whole save story, and easy to get backwards.** If a
-  pool of zero ever means zero vehicles rather than "no depot, no ceiling",
-  every existing city's transit stops on upgrade. It has to be the default
-  inside the allocation function, not a branch wrapped around it.
+- **Every existing city's transit stops on upgrade.** That is the chosen rule,
+  not an accident, and the panel has to say "no depot" the moment the save
+  opens or the player sees a dead transit map with no reason. The test holds
+  the message and that the bus depot is buildable at the first milestone.
 - **The tram placement gate.** Gating on a tram lane piece rather than on
   `isTramTier` allows a depot on a road the tram graph lacks, and the symptom —
   builds fine, supplies nothing — is hard to read off the panel.
 - **The bus speed is a visual regression risk, not a functional one.** It is
   `TILE_METERS * 2` — 40 m/s, 144 km/h, seven and a fifth times the 5.56 m/s
-  the arithmetic uses. Bringing it down is correct, and still the
-  change most likely to be reported as a bug.
+  the arithmetic uses. Bringing it down is correct, and still the change most
+  likely to be reported as a bug.
 - **Allocation churn, and dead-run pathing cost.** Without the hysteresis band
   `defaultFleet` flickers between two integers and the render adds and removes a
   vehicle every few frames; and the dead run is one extra A\* per line per
@@ -176,21 +198,24 @@ the lot — two thirds of a depot is open ground.
   temptation will be to slow the commercial speed until it does — picking a
   number to feel right, which the programme forbids. The levers are line lengths
   and depot capacities.
+- **The charge surprises.** A city with lines pays ¢40 a bus from the month a
+  depot fields them; the budget panel's new line and the per-line figure are
+  the explanation.
 
 ## Alternatives
 
+- **A contracted single vehicle for a line without a depot**, and **a mode
+  with no depot uncapped** (the draft's rule, which kept old saves running):
+  both offered; the player chose the strict rule on 2026-10-16.
 - **A fleet slider with no building.** Rejected: the current design with a price
   attached, and a slider has no site, no dead run and no traffic.
-- **One combined depot serving both modes.** Rejected on geometry and placement.
-  A bus stall needs a 12.2 m swing aisle; a tram set is 22.4 m on rails that
-  cannot be crossed without a turnout — one gate over two incompatible yards. It
-  would also carry both adjacency gates, so it could stand only where a street
-  and tram track both run.
-- **Persisting the pool, or a "has had a depot" flag.** Rejected: the pool sums
-  buildings that already persist, so storing it creates a second source of truth
-  that can disagree with the registry after a demolition, and the flag is
-  answered by the economy. A hard cap with no uncapped case falls on the ground
-  epic 0 rejected capacity-zero defaults: it breaks every existing save.
+- **One combined depot serving every mode.** Rejected on geometry and placement:
+  a bus stall needs a 12.2 m swing aisle; a tram set is 22.4 m and a train set
+  45.6 m on rails that cannot be crossed without a turnout — one gate over
+  three incompatible yards, carrying every adjacency gate at once.
+- **Persisting the pool.** Rejected: the pool sums buildings that already
+  persist, so storing it creates a second source of truth that can disagree
+  with the registry after a demolition.
 - **Dead runs hand-waved as a flat availability percentage.** Rejected after
   serious consideration — cheaper, and its fleet effect indistinguishable. It
   loses the only thing that makes _where_ a depot goes matter: the vehicles on
@@ -198,33 +223,37 @@ the lot — two thirds of a depot is open ground.
 
 ## How we will know it works
 
-- A save written before this epic loads, and every line in it runs the same
-  number of vehicles it ran before. **This test is written first.**
-- A city with no bus depot runs its bus lines uncapped; one bus depot caps them
-  at that depot's fleet; demolishing it returns them to uncapped. Two depots of
-  the same mode sum into one pool; a depot of the other mode adds nothing to it.
+- A save written before this epic loads with every line idle, the panel saying
+  "no depot", and a bus depot placeable at once; placing it fields the lines.
+  **This test is written first.** `firsttown.test.ts` is unchanged.
+- A city with no bus depot serves zero on every bus line; one bus depot fields
+  eight (ten less the spare fifth); demolishing it returns the lines to zero.
+  Two depots of the same mode sum into one pool; a depot of another mode adds
+  nothing to it.
 - When requests exceed the pool, lines are cut in proportion and the served
   counts sum to exactly the pool — no vehicle lost or invented to rounding — and
-  allocation is deterministic across runs, remainders by ascending id.
+  allocation is deterministic across runs, remainders by ascending id. A line
+  served short carries ridership in proportion, and relieves in proportion.
 - A 60-tile bus line reports an 8.3-minute cycle; with two vehicles it reports a
-  4.2-minute headway; doubling the route length doubles both. A line's default
+  4.1-minute headway; doubling the route length doubles both. A line's default
   fleet is the larger of its frequency and capacity figures.
 - A tram depot can be placed on a tram-tier tile and nowhere else — including a
-  composed tile, if and only if that tile is in the tram graph — and its
-  dead-run path adds volume only to the edges between it and its first stop.
-- Halving a line's allocation halves its fleet charge while the depot's own
-  upkeep does not move; and running vehicles with no depot costs more per
-  vehicle than the smallest depot that would have held them, so demolishing to
-  escape the cap never saves money.
+  composed tile, if and only if that tile is in the tram graph; a rail yard
+  beside the railway only.
+- The month's running cost is ¢40 × buses served + ¢70 × tram sets + ¢142 ×
+  train sets, and the depot's own upkeep does not move with it.
+- Render: vehicle count equals the snapshot's `served` for every line, and a
+  bus moves at 5.56 m/s.
 
-**Looked at in a browser**, because this epic renders:
+**Looked at in a browser**, because this epic renders (slices 2 and 3):
 
 1. A 2×2 bus depot from the street at the default pitch: the bay doors must
    identify it, and a bus at a door be visibly shorter than the door.
 2. The same depot part-allocated — the buses on the apron must equal capacity
    minus vehicles in service, countable on screen — and the 3×4 garage beside
    it, so the ladder reads as two buildings rather than one scaled twice.
-3. A tram depot on tram track, sets stabled on parallel roads, one pulling out.
+3. A tram depot on tram track, sets stabled on parallel roads, one pulling out;
+   a rail yard along the railway with its sets on the ladder.
 4. Dead-running buses between a depot and a line's first stop: they must drive
    there, not appear at it.
 5. **A before/after pair of the same line at the same camera**, old cosmetic
@@ -235,16 +264,16 @@ the lot — two thirds of a depot is open ground.
 ## Out of scope
 
 - **Timetables, departures and bunching.** Headway is derived and reported; no
-  vehicle has a schedule. **Rail depots** are out too: trains keep coming from
-  nowhere, and the pool is keyed by `TransitMode`, so adding one later is a
-  catalog entry and a table row.
-- **Per-vehicle rider capacity, and driver or shift simulation.** A full bus
-  does not leave anyone behind, and staffing appears once as floor-area input.
+  vehicle has a schedule.
+- **Fares, per-vehicle rider capacity, and driver or shift simulation.** A full
+  bus does not leave anyone behind, and staffing appears once as floor-area
+  input.
 - **Changes to ridership or routing**, beyond declaring `estimateRidership`'s
   unit; and **road maintenance depots**, because roads do not decay — see
   [municipal-services.md](municipal-services.md) and [../../DESIGN.md](../../DESIGN.md).
 
-When this ships,
+When slice 1 ships,
 [../../world-sim/transit-model.md](../../world-sim/transit-model.md) (which
 lists depots as deferred) and [../data-model.md](../data-model.md) (which
-describes `TransitLine`) need updating; the map is [../../README.md](../../README.md).
+describes `TransitLine`) are updated in the same change; the map is
+[../../README.md](../../README.md).

@@ -38,15 +38,46 @@ and the tiles are an ordinary junction again. A tram may only go straight over
 a crossing, never turn onto the street it is crossing, because the street has
 no track to turn onto. (`tramCrossingAxes` in `src/shared/types.ts`.)
 
-**Ridership** is one statistical estimate for every mode: the population
-and jobs within a search radius of every stop, summed across the line,
-times a per-demand rate, times a length bonus capped at 3× the base
-(`1 + min(2, 0.01 × route length in tiles)`). What differs by mode is the
-radius and the rate, because people walk further to a fixed, visible route
-than to a corner stop, and further still to a train: a bus stop draws on an
-8-tile radius at 0.15 riders per demand unit; a tram stop on 10 tiles at
-0.20; a rail station on 14 tiles at 0.28. No per-agent simulation backs any
-of this.
+**Ridership** is one statistical estimate for every mode, and its unit is
+**daily boardings**: the population and jobs within a search radius of every
+stop, summed across the line, times a per-demand rate, times a length bonus
+capped at 3× the base (`1 + min(2, 0.01 × route length in tiles)`). What
+differs by mode is the radius and the rate, because people walk further to a
+fixed, visible route than to a corner stop, and further still to a train: a
+bus stop draws on an 8-tile radius at 0.15 riders per demand unit; a tram
+stop on 10 tiles at 0.20; a rail station on 14 tiles at 0.28. No per-agent
+simulation backs any of this. That estimate is the line's demand; what the
+line carries is that demand scaled by the share of its fleet the depots
+fielded (below), so a line with no vehicle carries nobody.
+
+**Depots.** A line's vehicles come from a depot of its mode, never from
+nowhere. The bus depot and the central bus garage field buses, the tram depot
+tram sets and the rail yard train sets; each holds a stated fleet and fields
+all but a spare fifth of it (`fieldsOf` in `src/shared/transitfleet.ts`), and
+only while it stands built, with power on its lot and its footprint touching
+the network its mode runs on — a street for a bus, the tram tier for a tram,
+the railway for a train — by the same tier predicates the networks are built
+from (`connectedDepots` in `src/sim/depots.ts`). Each tick the fielded
+vehicles of a mode's depots sum into that mode's pool. Each line asks for a
+fleet: the player's own figure (`TransitLine.vehicles`) or, absent one, the
+larger of the fleet that holds a ten-minute headway and the fleet that
+carries the peak hour, a tenth of its daily boardings at 48 a bus, 150 a tram
+set and 450 a train set (`defaultFleet`), the derived figure held steady
+across a one-vehicle dip so it never flickers. The pool is shared out in
+ascending line id: every line gets its request when the pool covers the lot,
+and otherwise each gets its proportional floor with the remainders handed
+down the list one at a time, so the served counts sum to exactly the pool
+(`allocate`). **A mode with no depot has a pool of zero and every line of it
+runs nothing**, carries nobody and relieves nothing; the line panel says so
+and names the depot to build. A line's round trip is twice its route length
+at the mode's commercial speed — 20 km/h for a bus or a tram in traffic,
+48 km/h for a train — plus 15% terminal layover (`cycleSeconds`), and its
+headway is that cycle over the vehicles it runs (`headwayMin`). Every vehicle
+in service is charged a month's running cost, ¢40 a bus, ¢70 a tram set and
+¢142 a train set, summed into the budget's `transitRunning` expense beside
+the depots' own upkeep (`runningCost`). The pool is never stored: it is
+re-read from the standing buildings every tick, so a save from before depots
+loads with every line idle until one is built.
 
 **Congestion relief** feeds ridership back into the road network, but the
 formula differs by how a mode actually removes cars from the street:
@@ -86,11 +117,11 @@ single vehicle; a train is three cars and a tram two, one shared lead
 distance per set with each following car holding a fixed distance behind
 it, clamped rather than wrapped at the ends of an open route so a set
 queues briefly at its terminus instead of tearing apart across it. How
-many vehicles a line shows is deterministic and monotonic in its
-ridership: one bus per 40 riders (up to 6 per line), one tram per 90 riders
-(up to 4, with at least one running the moment ridership is positive at
-all, so a line that carries anyone never reads as abandoned track), one
-train per 220 riders (up to 3, same floor of one).
+many vehicles a line shows is the sim's own count — the `served` figure the
+snapshot carries, never a number derived from ridership on the render
+thread — spaced evenly round the route at one served-th of its length, so
+the gap between them on screen is the headway the panel reports, and moving
+at the commercial speed that headway is worked out from.
 
 **A stop standing mid-run, not just at the ends of a line, still finds the
 network**: a stop resolves to a graph node by proximity (within 8 tiles), and
@@ -103,11 +134,14 @@ bus stop partway down a long block, still route correctly rather than
 carrying nobody. A point two or more tiles from any road is off the network
 and routes to nothing.
 
-Lines are saved and restored with the world; a line created after loading
-resumes id assignment past the highest id the save restored.
+Lines are saved and restored with the world, each with the fleet its player
+asked for; a line created after loading resumes id assignment past the
+highest id the save restored.
 
 Deferred, deliberately: no timetables, no per-vehicle capacity or bunching,
 no signal-block simulation, no freight, no level crossings that stop road
 traffic, no overhead wires or catenary poles, no tram priority at
-junctions, no depots, and no line that mixes tram and rail track. See
-[../DESIGN.md](../DESIGN.md) for the backlog.
+junctions, no dead runs between a depot and its line yet (the next slice of
+[transport depots](../engineering/features/transport-depots.md)), and no
+line that mixes tram and rail track. See [../DESIGN.md](../DESIGN.md) for
+the backlog.

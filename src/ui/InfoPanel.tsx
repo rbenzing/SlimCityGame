@@ -232,6 +232,19 @@ export function InfoPanel(): JSX.Element | null {
               testId="cremations-row"
             />
           )}
+          {info?.depot && (
+            <Row label="Holds" value={`${info.depot.holds} vehicles`} testId="depot-holds-row" />
+          )}
+          {info?.depot && (
+            <Row label="Fields" value={`${info.depot.fields}`} testId="depot-fields-row" />
+          )}
+          {info?.depot && (
+            <Row
+              label="In service"
+              value={`${info.depot.inService}`}
+              testId="depot-in-service-row"
+            />
+          )}
           {entry?.utility?.powerMW !== undefined && (
             <Row label="Nameplate" value={`${entry.utility.powerMW} MW`} />
           )}
