@@ -157,17 +157,27 @@ of the generic building facade box:
   the overall height, the leg circle, the leg and riser sizes and the balcony
   are dials, since no maker publishes them. The tank and roof are white, the
   legs, bracing, riser and balcony silver-grey.
-- **Water pumping station**: a pale pump house with a plant room on its roof,
-  and a steel intake pipe running out of its water-facing wall and 6 m past
-  the footprint's edge over the water. The kit turns to face whichever side
-  of its footprint the water lies on, never the rotation it was placed at.
-- **Water drain pipe**: a low concrete headwall at the water's edge with the
-  outfall pipe through it, 4 m out over the water, turned the same way.
-- **Sewage treatment works**: two round clarifier tanks beside a low control
-  house, in the pumping station's pale concrete, with the drain's outfall
-  pipe out of the water-facing edge, turned the same way.
-- **Coal plant**: a dark boiler hall, 2 striped smokestacks in the industrial
-  chimney language from [buildings.md](buildings.md), and a coal-heap wedge.
+- **Water pumping station**: a masonry pump house under a gable, a screen
+  house at the water line with its travelling screens and the steel intake
+  pipe 6 m out over the water, a wet well, a surge tank and the discharge
+  main. The kit turns to face whichever side of its footprint the water
+  lies on, never the rotation it was placed at.
+- **Water drain pipe**: a concrete headwall with flared wingwalls at the
+  water's edge, the outfall pipe through it 4 m out over the water on a
+  riprap apron, turned the same way.
+- **Sewage treatment works**: a screen house, three clarifiers with their
+  bridges, an aeration basin, a digester under its dome, a contact tank and
+  a control house, in pale concrete, with the drain's outfall pipe out of
+  the water-facing edge, turned the same way.
+- **Coal plant**: a boiler house and turbine hall, a precipitator and two
+  striped smokestacks in the industrial chimney language from
+  [buildings.md](buildings.md), the coal stockpile with its conveyor
+  gallery, a cooling tower, an ash silo and a switchyard.
+- **Incinerator, recycling depot, MRF and transfer station**: a tipping
+  hall, boiler hall and stack; a roll-off drop-off; a baling hall with its
+  docks; a tipping floor with push walls over a load-out bay. See
+  [civic-massing.md](civic-massing.md#the-earliest-kits-redone) for all
+  eight.
 - **Solar farm, gas turbine, combined-cycle station, nuclear station**: rows of
   tilted panels facing the sun at every rotation; a turbine package and one slim
   stack; a heat-recovery boiler, a taller stack and a cooling tower; a domeless
@@ -194,16 +204,21 @@ of the generic building facade box:
   floor, a gym, and grounds — playground, bus pull-in with a parked school bus,
   tennis courts, a college quad, a library's raised reading room. See
   [civic-massing.md](civic-massing.md#the-schools-the-college-and-the-library).
-- Everything else — the clinic and every zoned-growth building — keeps the
-  standard facade system, because those genuinely are buildings.
+- **The clinic, the rail station and the bus stop** are kits: a drop-off
+  under a porte-cochère, a platform and a combination depot on the track
+  edge, an agency shelter on a lawn tile. See
+  [civic-massing.md](civic-massing.md#the-clinic-the-depot-and-the-bus-stop).
+- Every zoned-growth building keeps the standard facade system with its
+  own kit's parts, because those genuinely are buildings; the airport
+  stays a box until it has an epic of its own.
 
 For a kit-owned catalog entry, the building instancer draws a low plinth
 (about 8% of the catalog height, a plain desaturated slab with no window
 shader) beneath the kit instead of a full facade box, so the kit carries the
 visual identity while selection and outline still land on the right
 footprint. Kit parts stay unlit at night, except a small red beacon on the
-wind turbine's nacelle and the stations', schools' and library's windows and
-door panes.
+wind turbine's nacelle and the windows and door panes of the stations, the
+schools, the library, the clinic and the depot.
 
 **The landfill** renders as an operated facility rather than a tint. Its
 office tile — the area's street-adjacent entrance — carries a gatehouse kit:

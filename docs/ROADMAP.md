@@ -25,7 +25,7 @@ current behavior only and carry no dates of their own._
 
 ## Status (2026-09-29)
 
-**Test suite:** 6,659 tests passing across 190 test files, run 2026-10-16.
+**Test suite:** 6,714 tests passing across 191 test files, run 2026-10-16.
 This is the only test count in the documentation set. When the suite changes
 again, update the figure here and nowhere else.
 
@@ -210,15 +210,15 @@ middle and high schools, a college and a library, each gating level 3 for the
 zones that need it and drawn as a campus. So is power generation
 ([power-generation.md](game-design/features/power-generation.md)): a solar
 farm, a gas turbine, a combined-cycle station and a reactor, each a real small
-unit sized to the game's cities. **Planned next, at the player's request
-(2026-10-14): building detail**
-([building-detail.md](game-design/features/building-detail.md)) — every
+unit sized to the game's cities. So is building detail, at the player's
+request (2026-10-14, complete 2026-10-16;
+[building-detail.md](game-design/features/building-detail.md)): every
 zoned building and ploppable drawn as the US type it is, to the water tower's
 standard, from a sourced reference library and inside a measured triangle
-budget; seven slices, the budget measured first, then houses, storefronts,
-industry, blocks and towers, the kitless ploppables, and the earliest kits
-redone. After it, the programme's last two epics, transport depots and parks
-and recreation
+budget; eight slices, the budget measured first, then the performance
+slice, houses, storefronts, industry and farms, blocks and towers, the
+kitless ploppables, and the earliest kits redone. **Next, the programme's
+last two epics**, transport depots and parks and recreation
 ([municipal-services.md](game-design/features/municipal-services.md)), the
 [DESIGN.md](DESIGN.md) deferred backlog (weather, deeper industry, more
 transit modes) and AI raster map packs, facade-atlas stage 2 and screen-space
@@ -362,6 +362,42 @@ roads, and pinning the Three.js version. See [adr/](engineering/adr/README.md).
 ---
 
 ## 10. History (newest first)
+
+### The earliest kits, redone as the plants they are (last slice of building detail, built 2026-10-16; programme complete)
+
+The six civic kits built before the water tower set the standard are drawn
+again from sourced US plants, and the two garbage kits gain what their
+references said they lacked. Nothing in the simulation changes. With this
+the building-detail programme is complete: every zoned building and
+ploppable but the airport is drawn as the type it is.
+
+- **Coal plant:** a boiler house and turbine hall, a precipitator feeding
+  two 250 ft striped stacks, a 40 m stockpile 12 m high at coal's angle of
+  repose with an enclosed conveyor gallery climbing at 18°, a four-cell
+  mechanical-draft cooling tower from a built plant's dimensions, an ash
+  silo, a switchyard and a fence.
+- **Incinerator:** an enclosed tipping hall with three 7 m doors, a 40 m
+  boiler hall, a baghouse, one 240 ft stack at the Covanta permit minimum,
+  a turbine hall, a truck scale and a queue lane.
+- **Pumping station:** a masonry pump house under a gable, a screen house
+  at the water line with two travelling screens and the intake on its crib,
+  a 35 ft wet well, a surge tank, the discharge main and a fence.
+- **Drain:** a headwall with flared wingwalls, a 60 in pipe over a riprap
+  apron and a guard rail.
+- **Sewage works:** a screen house and grit chamber, two 45 ft primary
+  clarifiers and a secondary, each with a bridge walkway to its centre, an
+  aeration basin, a digester under its dome, a chlorine contact tank and a
+  blower building.
+- **Recycling depot:** the six 30 yd roll-offs with their hook-lift
+  clearance and eight drop-off stalls its size was derived from, with its
+  shed, office, side-loaders and fence.
+- **The MRF** gains a 10 ft wainscot, 18 × 26 ft doors, two bale docks,
+  bales stacked three high under the fire-code cap, a truck scale and roof
+  fans; **the transfer station** its doors drawn open at 24 ft with 14 ft
+  push walls behind them and a 42 in guard wall at its bay.
+- Every kit stays well inside the 30,000 kit tier, the MRF heaviest at
+  7,440 and the drain lightest at 640. The one-off kits stand outside the
+  frame tool's measured views, so the frame is unchanged by construction.
 
 ### The clinic, the depot and the bus stop, the last ploppables without a kit (ploppables slice of building detail, built 2026-10-16)
 

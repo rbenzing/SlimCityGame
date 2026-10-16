@@ -24,30 +24,44 @@
  *    part in this file that reacts to night.
  *  - water-tower: braced legs, balcony and riser ("waterSteel") + a white
  *    ellipsoid-ended tank ("waterTank").
- *  - coal-plant: a dark boiler hall ("coalHall") covering ~3x4 of its 4x4
- *    footprint, 2 striped smokestacks ("coalSmokestack", chimney
- *    language), and a low coal-heap wedge ("coalHeap") in the strip beside
- *    the hall.
- *  - incinerator: a low concrete processing hall ("incineratorHall")
- *    covering ~3x4 of its 4x4 footprint, ONE thick tall flue
- *    ("incineratorStack" — single/unstriped, unlike the coal plant's 2
- *    striped stacks), and a low tipping-bay box ("incineratorBay") in the
- *    strip beside the hall.
+ *  - water-pump, water-drain, sewage-works: the shore kits, each built in a
+ *    frame whose +Z is the water and turned to the water tile beside it. A
+ *    plate over the lot ("pumpGrounds", "drainGrounds", "worksGrounds"); the
+ *    pump house, screen house, wet well, surge tank, main, transformer and
+ *    fence ("pumpStation") with the intake pipe on its crib ("pumpIntake");
+ *    the headwall, wingwalls, guard rail and riprap apron ("drainHeadwall")
+ *    with the outfall pipe ("drainOutfall"); the works' inlet, basin, blower
+ *    house, digester, contact tank and control house ("worksPlant"), one
+ *    clarifier instanced three times ("worksClarifier") and its outfall
+ *    ("worksOutfall").
+ *  - coal-plant: a gravel plate with the apron, coal yard and drive
+ *    ("coalGrounds"), the boiler house, turbine hall, precipitator, flue,
+ *    crusher house, conveyor gallery on its bents, cooling tower, ash silo,
+ *    switchyard and fence merged ("coalPlant"), 2 striped smokestacks
+ *    ("coalSmokestack", chimney language) and the stockpile as one faceted
+ *    heap ("coalHeap").
+ *  - incinerator: the plate with the apron and queue lane
+ *    ("incineratorGrounds"), the tipping hall with its doors, boiler hall,
+ *    baghouse, flue, turbine hall, truck scale and fence merged
+ *    ("incineratorPlant"), and the one stack ("incineratorStack").
  *  - recycling-depot: a paved yard slab over the whole lot ("recyclingYard"),
- *    a maintenance shed with two tall bay doors
- *    ("recyclingShed"), a small office block ("recyclingOffice"), and a row of
- *    four parked side-loaders ("recyclingTruck", the service fleet's recycling
- *    body at its real size) in the yard, all facing local +Z — the street side
- *    once the player turns the lot to face the road.
+ *    the sorting shed open to the yard, the office, the stall paint and the
+ *    fence ("recyclingDepot"), six roll-offs along the back
+ *    ("recyclingRollOff") and four parked side-loaders ("recyclingTruck", the
+ *    service fleet's recycling body at its real size), all facing local +Z —
+ *    the street side once the player turns the lot to face the road.
  *  - materials-recovery-facility: the same yard slab ("mrfYard"), a long
- *    clear-span sorting hall with three tipping-floor bay doors on the street
- *    side ("mrfHall"), a bale yard of stacked cubes ("mrfBales", one merged
- *    geometry), an office at the street corner ("mrfOffice") and four parked
- *    recycling trucks on the apron ("mrfTruck").
- *  - transfer-station: the same yard slab ("transferYard"), an enclosed
- *    tipping hall under a low-pitched roof with three roll-up doors on the
- *    street side and a sunken load-out bay along its flank ("transferHall"),
- *    a scale house beside the weighbridge at the entry ("transferScale"), two
+ *    clear-span sorting hall under its wainscot with three tipping-floor bay
+ *    doors on the street side, two bale docks on the yard side and its roof
+ *    fans ("mrfHall"), a bale yard of stacked bales ("mrfBales", one merged
+ *    geometry), an office at the street corner ("mrfOffice"), the truck scale
+ *    on the way in ("mrfScale") and four parked recycling trucks on the apron
+ *    ("mrfTruck").
+ *  - transfer-station: the same yard slab ("transferYard"), a hollow tipping
+ *    hall under a low-pitched roof, its three roll-up doors on the street
+ *    side drawn open over the push walls inside, and a sunken load-out bay
+ *    along its flank behind a guard wall ("transferHall"), a scale house
+ *    beside the weighbridge at the entry ("transferScale"), two
  *    tractor-and-trailer transfer rigs, one sunk in the bay and one waiting
  *    ("transferRig"), and two refuse packers on the apron ("transferPacker").
  *  - hospital: the same yard slab ("hospitalYard"), a six-storey block with
@@ -196,26 +210,32 @@ export type UtilityKitPartKind =
   | 'turbineBeacon'
   | 'waterSteel'
   | 'waterTank'
-  | 'pumpHouse'
+  | 'pumpGrounds'
+  | 'pumpStation'
   | 'pumpIntake'
+  | 'drainGrounds'
   | 'drainHeadwall'
   | 'drainOutfall'
-  | 'worksBody'
+  | 'worksGrounds'
+  | 'worksPlant'
+  | 'worksClarifier'
   | 'worksOutfall'
-  | 'coalHall'
+  | 'coalGrounds'
+  | 'coalPlant'
   | 'coalSmokestack'
   | 'coalHeap'
-  | 'incineratorHall'
+  | 'incineratorGrounds'
+  | 'incineratorPlant'
   | 'incineratorStack'
-  | 'incineratorBay'
   | 'recyclingYard'
-  | 'recyclingShed'
-  | 'recyclingOffice'
+  | 'recyclingDepot'
+  | 'recyclingRollOff'
   | 'recyclingTruck'
   | 'mrfYard'
   | 'mrfHall'
   | 'mrfBales'
   | 'mrfOffice'
+  | 'mrfScale'
   | 'mrfTruck'
   | 'transferYard'
   | 'transferHall'
@@ -766,36 +786,69 @@ export function buildWaterTowerGeometry(): {
 }
 
 // ---------------------------------------------------------------------------
-// water-pump and water-drain: the two buildings that stand on a shore. Each
-// kit is built in a local frame whose +Z points at the water, and the
-// instance is turned so that +Z faces the water tile its footprint touches.
+// water-pump, water-drain and sewage-works: the three buildings that stand on
+// a shore. Each kit is built in a local frame whose +Z points at the water,
+// and the instance is turned so that +Z faces the water tile its footprint
+// touches; the land side (-Z) is where the street is taken to be.
 // ---------------------------------------------------------------------------
 
-/** A pump house with a plant room on its roof, and the intake pipe running out of its water-facing wall. */
-const PUMP_HOUSE_SIZE = { w: 18, h: 7, d: 12 };
-const PUMP_PLANT_ROOM_SIZE = { w: 7, h: 2.2, d: 6 };
-export const PUMP_INTAKE_RADIUS = 0.9;
-/** The intake runs from the house wall to this far past the footprint's water-side edge. */
+/** The pump house: 13 × 12 m of masonry under a gable, 6 m to the eave and the catalog's 8 m at the ridge. */
+export const PUMP_HOUSE = { w: 13, d: 12, eave: 6, ridge: 8 };
+/** The screen house at the water line, with two travelling-screen frames on its water face. */
+export const PUMP_SCREEN_HOUSE = { w: 6, d: 6, h: 5, setback: 1 };
+export const PUMP_SCREEN = { w: 1.8, h: 4.2, depth: 0.5, count: 2 };
+/** A 1.2 m intake pipe, resting on the ground and on its crib over the water. */
+export const PUMP_INTAKE_RADIUS = 0.6;
+/** The intake runs from the screen house to this far past the footprint's water-side edge. */
 export const PUMP_INTAKE_OVERHANG = 6;
-/** A drain's headwall at the water's edge, and the outfall pipe through it. */
-const DRAIN_HEADWALL_SIZE = { w: 6, h: 2.4, d: 1.6 };
-export const DRAIN_OUTFALL_RADIUS = 0.8;
+const PUMP_CRIB = { w: 2.4, d: 2.4, depth: 3 };
+/** A 35 ft wet well as a concrete ring 1 m above grade, with a hatch on its lid. */
+export const PUMP_WET_WELL = { radius: 5.35, rim: 1.0, hatch: 1.2 };
+export const PUMP_SURGE_TANK = { radius: 1.5, h: 8 };
+/** The 0.9 m discharge main, out of the land face to a valve vault. */
+export const PUMP_MAIN = { radius: 0.45, vault: { w: 2.4, d: 2.4, h: 0.6 } };
+const PUMP_TRACK_W = 4;
+
+/** A drain's headwall 4 m wide and 2.4 m tall, with 2 m wingwalls flared at 45°, over a 6 × 4 m riprap apron. */
+export const DRAIN_HEADWALL = { w: 4, h: 2.4, t: 0.5 };
+export const DRAIN_WINGWALL = { length: 2, h: 2.0, t: 0.4, angle: Math.PI / 4 };
+export const DRAIN_APRON = { w: 6, d: 4 };
+export const DRAIN_GUARD_RAIL_M = 1.07;
+/** A 60 in outfall pipe, through the headwall and out over the water. */
+export const DRAIN_OUTFALL_RADIUS = 0.75;
 export const DRAIN_OUTFALL_OVERHANG = 4;
-const DRAIN_OUTFALL_BACK = 3;
-/** A works' two round clarifiers, side by side on the land side, and its control house by the outfall. */
-export const WORKS_CLARIFIER_RADIUS = 6;
-const WORKS_CLARIFIER_HEIGHT = 3;
-const WORKS_CLARIFIER_SPACING = 18;
-const WORKS_CLARIFIER_SETBACK = -7;
-const WORKS_HOUSE_SIZE = { w: 10, h: 5, d: 7 };
-const WORKS_HOUSE_OFFSET = { x: 11, z: 9 };
+/** How far behind the footprint's water edge the drain's pipe begins: just behind its headwall, the rest buried. */
+const DRAIN_OUTFALL_BACK = 5;
+/** The works' outfall begins at its contact tank, nearer the edge. */
+const WORKS_OUTFALL_BACK = 3;
+
+/** The works: an activated-sludge plant in the open on a 40 m square. */
+export const WORKS_SCREEN_HOUSE = { w: 8, d: 6, h: 5 };
+export const WORKS_GRIT_CHAMBER = { w: 6, d: 3, wall: 1.0 };
+/** A 45 ft clarifier, its wall 1.2 m above grade, a 1 m bridge from rim to centre under a 1.07 m handrail. */
+export const WORKS_CLARIFIER = { radius: 6.85, wall: 1.2, bridgeW: 1, rail: 1.07 };
+export const WORKS_CLARIFIER_COUNT = 3;
+export const WORKS_BASIN = { w: 20, d: 8, wall: 1.5, walkW: 1 };
+export const WORKS_BLOWER_HOUSE = { w: 10, d: 6, h: 5 };
+export const WORKS_DIGESTER = { radius: 6, h: 8, dome: 2.4 };
+export const WORKS_CONTACT_TANK = { w: 6, d: 3.7, wall: 1.0, baffles: 2 };
+export const WORKS_HOUSE = { w: 10, d: 5, h: 5 };
 
 const PUMP_HOUSE_RGB: RGB = [0.78, 0.78, 0.76];
+const MASONRY_RGB: RGB = [0.6, 0.5, 0.42];
+const MASONRY_ROOF_RGB: RGB = [0.3, 0.31, 0.33];
 const CLARIFIER_RGB: RGB = [0.7, 0.71, 0.7];
 const CLARIFIER_WATER_RGB: RGB = [0.3, 0.42, 0.45];
-const PUMP_PLANT_ROOM_RGB: RGB = [0.5, 0.52, 0.55];
+const SLUDGE_RGB: RGB = [0.36, 0.33, 0.28];
 const PIPE_STEEL_RGB: RGB = [0.33, 0.36, 0.4];
 const HEADWALL_RGB: RGB = [0.6, 0.6, 0.58];
+const RIPRAP_RGBS: readonly RGB[] = [
+  [0.5, 0.49, 0.46],
+  [0.42, 0.42, 0.4],
+  [0.56, 0.54, 0.5],
+];
+const SCREEN_RGB: RGB = [0.22, 0.25, 0.27];
+const TIMBER_RGB: RGB = [0.4, 0.3, 0.2];
 
 /**
  * Which way a shore building faces: the rotation (as rotateLocalXZ counts it,
@@ -826,105 +879,474 @@ function buildPipeAlongZ(radius: number, z0: number, z1: number, y: number): THR
   return pipe;
 }
 
-function buildPumpHouseGeometry(): THREE.BufferGeometry {
-  const { w, h, d } = PUMP_HOUSE_SIZE;
-  const house = new THREE.BoxGeometry(w, h, d);
-  house.translate(0, h / 2, 0);
-  paintVertexColor(house, hexFromRgb(PUMP_HOUSE_RGB));
-  const room = new THREE.BoxGeometry(
-    PUMP_PLANT_ROOM_SIZE.w,
-    PUMP_PLANT_ROOM_SIZE.h,
-    PUMP_PLANT_ROOM_SIZE.d,
-  );
-  room.translate(-w / 4, h + PUMP_PLANT_ROOM_SIZE.h / 2, 0);
-  paintVertexColor(room, hexFromRgb(PUMP_PLANT_ROOM_RGB));
-  return mergeParts([house, room]);
+/** An open concrete tank: four walls `wall` tall round `r`, and the liquid's surface just under the rim. */
+function openTank(r: Rect, wall: number, liquid: RGB, t = 0.3): THREE.BufferGeometry[] {
+  const c = rectCentre(r);
+  const w = r.x1 - r.x0;
+  const d = r.z1 - r.z0;
+  return [
+    standingBox(w, wall, t, c.x, 0, r.z0 + t / 2, CLARIFIER_RGB),
+    standingBox(w, wall, t, c.x, 0, r.z1 - t / 2, CLARIFIER_RGB),
+    standingBox(t, wall, d - 2 * t, r.x0 + t / 2, 0, c.z, CLARIFIER_RGB),
+    standingBox(t, wall, d - 2 * t, r.x1 - t / 2, 0, c.z, CLARIFIER_RGB),
+    standingBox(w - 2 * t, 0.1, d - 2 * t, c.x, wall - 0.3, c.z, liquid),
+  ];
 }
 
-/** The intake: from the house's water-facing wall to the overhang past the footprint's edge. */
-function buildPumpIntakeGeometry(footprint: FootprintSize): THREE.BufferGeometry {
-  const { halfD } = footprintHalfExtents(footprint);
-  return buildPipeAlongZ(
-    PUMP_INTAKE_RADIUS,
-    PUMP_HOUSE_SIZE.d / 2,
-    halfD + PUMP_INTAKE_OVERHANG,
-    PUMP_INTAKE_RADIUS,
-  );
-}
-
-function buildDrainHeadwallGeometry(footprint: FootprintSize): THREE.BufferGeometry {
-  const { halfD } = footprintHalfExtents(footprint);
-  const { w, h, d } = DRAIN_HEADWALL_SIZE;
-  const wall = new THREE.BoxGeometry(w, h, d);
-  wall.translate(0, h / 2, halfD - d / 2);
-  paintVertexColor(wall, hexFromRgb(HEADWALL_RGB));
-  return wall;
-}
-
-/** The outfall: through the headwall and out over the water. */
-function buildDrainOutfallGeometry(footprint: FootprintSize): THREE.BufferGeometry {
-  const { halfD } = footprintHalfExtents(footprint);
-  return buildPipeAlongZ(
-    DRAIN_OUTFALL_RADIUS,
-    halfD - DRAIN_OUTFALL_BACK,
-    halfD + DRAIN_OUTFALL_OVERHANG,
-    DRAIN_OUTFALL_RADIUS,
-  );
-}
-
-/**
- * The works: two round clarifier tanks side by side toward the land, each a
- * concrete ring with a disc of settled water inside, and a control house by
- * the water, in the pumping station's pale concrete.
- */
-function buildWorksBodyGeometry(): THREE.BufferGeometry {
-  const parts: THREE.BufferGeometry[] = [];
-  for (const sx of [-1, 1]) {
-    const x = (sx * WORKS_CLARIFIER_SPACING) / 2;
-    const ring = new THREE.CylinderGeometry(
-      WORKS_CLARIFIER_RADIUS,
-      WORKS_CLARIFIER_RADIUS,
-      WORKS_CLARIFIER_HEIGHT,
-      20,
+/** A handrail along X or Z: two rails and a post every `pitch`, on a walkway whose top is `y0`. */
+function handrail(
+  parts: THREE.BufferGeometry[],
+  a: number,
+  b: number,
+  fixed: number,
+  alongX: boolean,
+  y0: number,
+  height: number,
+  pitch = 1.8,
+): void {
+  const length = b - a;
+  const mid = (a + b) / 2;
+  const at = (along: number, w: number, h: number, y: number): void => {
+    parts.push(
+      alongX
+        ? standingBox(w, h, 0.05, along, y, fixed, GEN_STEEL_RGB)
+        : standingBox(0.05, h, w, fixed, y, along, GEN_STEEL_RGB),
     );
-    ring.translate(x, WORKS_CLARIFIER_HEIGHT / 2, WORKS_CLARIFIER_SETBACK);
-    paintVertexColor(ring, hexFromRgb(CLARIFIER_RGB));
-    parts.push(ring);
-    const pool = new THREE.CylinderGeometry(
-      WORKS_CLARIFIER_RADIUS - 0.6,
-      WORKS_CLARIFIER_RADIUS - 0.6,
-      0.2,
-      20,
-    );
-    pool.translate(x, WORKS_CLARIFIER_HEIGHT + 0.1, WORKS_CLARIFIER_SETBACK);
-    paintVertexColor(pool, hexFromRgb(CLARIFIER_WATER_RGB));
-    parts.push(pool);
+  };
+  at(mid, length, 0.05, y0 + height - 0.05);
+  at(mid, length, 0.04, y0 + height / 2);
+  const posts = Math.max(1, Math.round(length / pitch));
+  for (let i = 0; i <= posts; i++) at(a + (i * length) / posts, 0.06, height, y0);
+}
+
+/** A chain-link fence round `r` open to the water (+Z), with a gate on the land side (-Z) where `gate` is given. */
+function shoreFence(parts: THREE.BufferGeometry[], r: Rect, gate: Gap | null): void {
+  const h = GEN_FENCE_HEIGHT_M;
+  const pitch = GEN_FENCE_POST_SPACING_M;
+  fenceRun(parts, r.z0, r.z1, r.x0, false, h, pitch);
+  fenceRun(parts, r.z0, r.z1, r.x1, false, h, pitch);
+  if (!gate) {
+    fenceRun(parts, r.x0, r.x1, r.z0, true, h, pitch);
+    return;
   }
-  const { w, h, d } = WORKS_HOUSE_SIZE;
-  const house = new THREE.BoxGeometry(w, h, d);
-  house.translate(WORKS_HOUSE_OFFSET.x, h / 2, WORKS_HOUSE_OFFSET.z);
-  paintVertexColor(house, hexFromRgb(PUMP_HOUSE_RGB));
-  parts.push(house);
+  fenceRun(parts, r.x0, gate.x0, r.z0, true, h, pitch);
+  fenceRun(parts, gate.x1, r.x1, r.z0, true, h, pitch);
+  for (const x of [gate.x0, gate.x1]) {
+    parts.push(standingBox(0.25, h + 0.15, 0.25, x, 0, r.z0, GEN_FENCE_RGB));
+  }
+}
+
+export interface PumpLayout {
+  house: Rect;
+  screenHouse: Rect;
+  /** The travelling-screen frames, centred on the screen house's water face. */
+  screens: Vec2[];
+  wetWell: Vec2;
+  surgeTank: Vec2;
+  /** The discharge main runs along Z at `x`, from the vault to the house's land face. */
+  main: { x: number; z0: number; z1: number };
+  vault: Rect;
+  transformer: Rect;
+  pad: Rect;
+  track: Rect;
+  apron: Rect;
+  fence: Rect;
+  gate: Gap;
+}
+
+/** The pumping station in its 2×2, in the frame whose +Z is the water: the screen house at the water line, the pump house behind it, the wet well and tanks beside, the track in from the land side. Pure. */
+export function computePumpLayout(footprint: FootprintSize): PumpLayout {
+  const { halfD } = footprintHalfExtents(footprint);
+  const house: Rect = {
+    x0: -PUMP_HOUSE.w / 2,
+    x1: PUMP_HOUSE.w / 2,
+    z0: -2,
+    z1: -2 + PUMP_HOUSE.d,
+  };
+  const sh = PUMP_SCREEN_HOUSE;
+  const screenHouse: Rect = {
+    x0: -sh.w / 2,
+    x1: sh.w / 2,
+    z0: halfD - sh.setback - sh.d,
+    z1: halfD - sh.setback,
+  };
+  const vaultZ1 = -12;
+  const main = { x: -3, z0: vaultZ1, z1: house.z0 };
+  const transformer: Rect = {
+    x0: 9,
+    x1: 9 + GAS_TRANSFORMER.w,
+    z0: -12,
+    z1: -12 + GAS_TRANSFORMER.d,
+  };
+  const track: Rect = { x0: 2, x1: 2 + PUMP_TRACK_W, z0: -halfD, z1: house.z0 };
+  return {
+    house,
+    screenHouse,
+    screens: [-1, 1].map((s) => ({ x: s * 1.5, z: screenHouse.z1 })),
+    wetWell: { x: -13, z: 8 },
+    surgeTank: { x: 12, z: 6 },
+    main,
+    vault: {
+      x0: main.x - PUMP_MAIN.vault.w / 2,
+      x1: main.x + PUMP_MAIN.vault.w / 2,
+      z0: vaultZ1 - PUMP_MAIN.vault.d,
+      z1: vaultZ1,
+    },
+    transformer,
+    pad: {
+      x0: transformer.x0 - 1,
+      x1: transformer.x1 + 1,
+      z0: transformer.z0 - 1,
+      z1: transformer.z1 + 1,
+    },
+    track,
+    apron: { x0: house.x0 - 1.5, x1: house.x1 + 1.5, z0: house.z0 - 1.5, z1: screenHouse.z1 },
+    fence: lotRect(footprint, GEN_FENCE_INSET_M),
+    gate: { x0: track.x0 - 0.5, x1: track.x1 + 0.5 },
+  };
+}
+
+function buildPumpGroundsGeometry(footprint: FootprintSize): THREE.BufferGeometry {
+  const { track, apron, pad } = computePumpLayout(footprint);
+  return buildGeneratorGroundsGeometry(footprint, GEN_SCRUB_RGB, [
+    { rect: apron, rgb: GEN_CONCRETE_RGB },
+    { rect: pad, rgb: GEN_CONCRETE_RGB },
+    { rect: track, rgb: GEN_DRIVE_RGB },
+  ]);
+}
+
+/** The pump house under its gable, the screen house with its screens, the wet well, the surge tank, the main and its vault, the transformer and the fence; local Y=0 is the plate's top. */
+function buildPumpStationGeometry(footprint: FootprintSize): THREE.BufferGeometry {
+  const layout = computePumpLayout(footprint);
+  const { house, screenHouse } = layout;
+  const hc = rectCentre(house);
+  const sc = rectCentre(screenHouse);
+  const parts: THREE.BufferGeometry[] = [
+    rectBox(house, 0, PUMP_HOUSE.eave, MASONRY_RGB),
+    gableRoof(
+      PUMP_HOUSE.w + 0.6,
+      PUMP_HOUSE.ridge - PUMP_HOUSE.eave,
+      PUMP_HOUSE.d + 0.6,
+      hc.x,
+      PUMP_HOUSE.eave,
+      hc.z,
+      MASONRY_ROOF_RGB,
+    ),
+    // The door on the land face, and a louvre on each gable end.
+    standingBox(2.4, 3, 0.1, hc.x + 3, 0, house.z0 - 0.05, GEN_LOUVRE_RGB),
+    standingBox(0.1, 1.2, 2, house.x0 - 0.05, 4, hc.z, GEN_LOUVRE_RGB),
+    standingBox(0.1, 1.2, 2, house.x1 + 0.05, 4, hc.z, GEN_LOUVRE_RGB),
+    ...cappedBox(screenHouse, PUMP_SCREEN_HOUSE.h, PUMP_HOUSE_RGB),
+    standingBox(
+      PUMP_WET_WELL.hatch,
+      0.15,
+      PUMP_WET_WELL.hatch,
+      layout.wetWell.x,
+      PUMP_WET_WELL.rim,
+      layout.wetWell.z + 2,
+      GEN_STEEL_RGB,
+    ),
+    rectBox(layout.vault, 0, PUMP_MAIN.vault.h, GEN_CONCRETE_RGB),
+    ...transformerParts(layout.transformer, GAS_TRANSFORMER.h),
+  ];
+  for (const s of layout.screens) {
+    parts.push(
+      standingBox(
+        PUMP_SCREEN.w,
+        PUMP_SCREEN.h,
+        PUMP_SCREEN.depth,
+        s.x,
+        0.4,
+        sc.z + PUMP_SCREEN_HOUSE.d / 2 + PUMP_SCREEN.depth / 2,
+        SCREEN_RGB,
+      ),
+      standingBox(
+        PUMP_SCREEN.w + 0.3,
+        0.3,
+        PUMP_SCREEN.depth + 0.1,
+        s.x,
+        0.4 + PUMP_SCREEN.h,
+        s.z + PUMP_SCREEN.depth / 2,
+        GEN_STEEL_RGB,
+      ),
+    );
+  }
+  const well = new THREE.CylinderGeometry(
+    PUMP_WET_WELL.radius,
+    PUMP_WET_WELL.radius,
+    PUMP_WET_WELL.rim,
+    24,
+  );
+  well.translate(layout.wetWell.x, PUMP_WET_WELL.rim / 2, layout.wetWell.z);
+  parts.push(paintVertexColor(well, hexFromRgb(CLARIFIER_RGB)));
+  const tank = new THREE.CylinderGeometry(
+    PUMP_SURGE_TANK.radius,
+    PUMP_SURGE_TANK.radius,
+    PUMP_SURGE_TANK.h,
+    16,
+  );
+  tank.translate(layout.surgeTank.x, PUMP_SURGE_TANK.h / 2, layout.surgeTank.z);
+  parts.push(paintVertexColor(tank, hexFromRgb(PUMP_HOUSE_RGB)));
+  const main = buildPipeAlongZ(PUMP_MAIN.radius, layout.main.z0, layout.main.z1, PUMP_MAIN.radius);
+  main.translate(layout.main.x, 0, 0);
+  parts.push(main);
+  shoreFence(parts, layout.fence, layout.gate);
   return mergeParts(parts);
 }
 
+/** The intake: from the screen house out past the footprint's edge, resting on its timber crib over the water. */
+function buildPumpIntakeGeometry(footprint: FootprintSize): THREE.BufferGeometry {
+  const { halfD } = footprintHalfExtents(footprint);
+  const { screenHouse } = computePumpLayout(footprint);
+  const end = halfD + PUMP_INTAKE_OVERHANG;
+  const crib = new THREE.BoxGeometry(PUMP_CRIB.w, PUMP_CRIB.depth, PUMP_CRIB.d);
+  crib.translate(0, -PUMP_CRIB.depth / 2, end - PUMP_CRIB.d / 2);
+  return mergeParts([
+    buildPipeAlongZ(PUMP_INTAKE_RADIUS, screenHouse.z0, end, PUMP_INTAKE_RADIUS),
+    paintVertexColor(crib, hexFromRgb(TIMBER_RGB)),
+  ]);
+}
+
+export interface DrainLayout {
+  headwall: Rect;
+  /** Each wingwall's centre and its yaw off the headwall's line. */
+  wingwalls: { x: number; z: number; yaw: number }[];
+  apron: Rect;
+}
+
+/** The outfall in its 1×1, in the frame whose +Z is the water: the apron at the water's edge, the headwall behind it, the wingwalls flared toward the water. Pure. */
+export function computeDrainLayout(footprint: FootprintSize): DrainLayout {
+  const { halfD } = footprintHalfExtents(footprint);
+  const apron: Rect = {
+    x0: -DRAIN_APRON.w / 2,
+    x1: DRAIN_APRON.w / 2,
+    z0: halfD - DRAIN_APRON.d,
+    z1: halfD,
+  };
+  const headwall: Rect = {
+    x0: -DRAIN_HEADWALL.w / 2,
+    x1: DRAIN_HEADWALL.w / 2,
+    z0: apron.z0 - DRAIN_HEADWALL.t,
+    z1: apron.z0,
+  };
+  const reach = (DRAIN_WINGWALL.length / 2) * Math.cos(DRAIN_WINGWALL.angle);
+  return {
+    headwall,
+    wingwalls: [-1, 1].map((s) => ({
+      x: s * (DRAIN_HEADWALL.w / 2 + reach),
+      z: headwall.z1 + reach,
+      yaw: -s * DRAIN_WINGWALL.angle,
+    })),
+    apron,
+  };
+}
+
+/** The headwall with its wingwalls and guard rail, over the riprap apron as one rubble geometry; local Y=0 is the plate's top. */
+function buildDrainHeadwallGeometry(footprint: FootprintSize): THREE.BufferGeometry {
+  const { headwall, wingwalls, apron } = computeDrainLayout(footprint);
+  const hc = rectCentre(headwall);
+  const parts: THREE.BufferGeometry[] = [rectBox(headwall, 0, DRAIN_HEADWALL.h, HEADWALL_RGB)];
+  for (const w of wingwalls) {
+    const wall = new THREE.BoxGeometry(DRAIN_WINGWALL.length, DRAIN_WINGWALL.h, DRAIN_WINGWALL.t);
+    wall.translate(0, DRAIN_WINGWALL.h / 2, 0);
+    wall.rotateY(w.yaw);
+    wall.translate(w.x, 0, w.z);
+    parts.push(paintVertexColor(wall, hexFromRgb(HEADWALL_RGB)));
+  }
+  handrail(parts, headwall.x0, headwall.x1, hc.z, true, DRAIN_HEADWALL.h, DRAIN_GUARD_RAIL_M);
+  // The apron: a bed of stones on a grid, each turned and sized by its place.
+  const cell = 0.75;
+  const across = Math.floor((apron.x1 - apron.x0) / cell);
+  const deep = Math.floor((apron.z1 - apron.z0) / cell);
+  for (let i = 0; i < across; i++) {
+    for (let k = 0; k < deep; k++) {
+      const n = i * 7 + k * 13;
+      const size = 0.5 + hash1(n) * 0.3;
+      const height = 0.2 + hash1(n + 1) * 0.25;
+      const stone = new THREE.BoxGeometry(size, height, size * (0.7 + hash1(n + 2) * 0.5));
+      stone.translate(0, height / 2, 0);
+      stone.rotateY(hash1(n + 3) * Math.PI);
+      stone.translate(apron.x0 + (i + 0.5) * cell, 0, apron.z0 + (k + 0.5) * cell);
+      parts.push(paintVertexColor(stone, hexFromRgb(RIPRAP_RGBS[n % RIPRAP_RGBS.length]!)));
+    }
+  }
+  return mergeParts(parts);
+}
+
+/** An outfall pipe: from `back` behind the footprint's water edge out over the water, its centre `y` up. */
+function buildOutfallGeometry(
+  footprint: FootprintSize,
+  back: number,
+  y: number,
+): THREE.BufferGeometry {
+  const { halfD } = footprintHalfExtents(footprint);
+  return buildPipeAlongZ(DRAIN_OUTFALL_RADIUS, halfD - back, halfD + DRAIN_OUTFALL_OVERHANG, y);
+}
+
+/** The drain's outfall: through the headwall, over the apron's stones and out over the water. */
+function buildDrainOutfallGeometry(footprint: FootprintSize): THREE.BufferGeometry {
+  return buildOutfallGeometry(footprint, DRAIN_OUTFALL_BACK, DRAIN_OUTFALL_RADIUS + 0.45);
+}
+
+export interface WorksLayout {
+  screenHouse: Rect;
+  grit: Rect;
+  /** The two primary clarifiers, then the secondary. */
+  clarifiers: Vec2[];
+  basin: Rect;
+  walkway: Rect;
+  blower: Rect;
+  digester: Vec2;
+  contact: Rect;
+  house: Rect;
+  apron: Rect;
+}
+
+/** The works in its 2×2, in the frame whose +Z is the water: the inlet works on the land side, the primaries beside them, the basin and secondary across the middle, the digester, contact tank and control house by the outfall. Pure. */
+export function computeWorksLayout(footprint: FootprintSize): WorksLayout {
+  const { halfW, halfD } = footprintHalfExtents(footprint);
+  const sh = WORKS_SCREEN_HOUSE;
+  const grit = WORKS_GRIT_CHAMBER;
+  const basin: Rect = { x0: -19, x1: -19 + WORKS_BASIN.w, z0: -3, z1: -3 + WORKS_BASIN.d };
+  const house: Rect = { x0: 9, x1: 9 + WORKS_HOUSE.w, z0: 14, z1: 14 + WORKS_HOUSE.d };
+  return {
+    screenHouse: { x0: 11, x1: 11 + sh.w, z0: -19, z1: -19 + sh.d },
+    grit: { x0: 11, x1: 11 + grit.w, z0: -12.5, z1: -12.5 + grit.d },
+    clarifiers: [
+      { x: -12.5, z: -11.5 },
+      { x: 1.5, z: -11.5 },
+      { x: 12, z: 7 },
+    ],
+    basin,
+    walkway: { x0: basin.x0, x1: basin.x1, z0: basin.z1, z1: basin.z1 + WORKS_BASIN.walkW },
+    blower: { x0: 9, x1: 9 + WORKS_BLOWER_HOUSE.w, z0: -7, z1: -7 + WORKS_BLOWER_HOUSE.d },
+    digester: { x: -13, z: 13 },
+    contact: { x0: 2, x1: 2 + WORKS_CONTACT_TANK.w, z0: 14, z1: 14 + WORKS_CONTACT_TANK.d },
+    house,
+    apron: { x0: -halfW + 1, x1: halfW - 1, z0: -halfD + 1, z1: halfD - 1 },
+  };
+}
+
+function buildWorksGroundsGeometry(footprint: FootprintSize): THREE.BufferGeometry {
+  const { apron } = computeWorksLayout(footprint);
+  return buildGeneratorGroundsGeometry(footprint, GEN_SCRUB_RGB, [
+    { rect: apron, rgb: GEN_CONCRETE_RGB },
+  ]);
+}
+
+/** One clarifier at its own origin: the concrete ring, the settled water, the centre mechanism and the radial bridge with its handrail from the rim (-Z) to the centre. */
+function buildWorksClarifierGeometry(): THREE.BufferGeometry {
+  const { radius, wall, bridgeW, rail } = WORKS_CLARIFIER;
+  const ring = new THREE.CylinderGeometry(radius, radius, wall, 28);
+  ring.translate(0, wall / 2, 0);
+  // The water lies just over the ring's cap, so the rim reads 0.4 m wide round it.
+  const water = new THREE.CylinderGeometry(radius - 0.4, radius - 0.4, 0.1, 28);
+  water.translate(0, wall + 0.05, 0);
+  const drive = new THREE.CylinderGeometry(0.9, 0.9, 1.6, 12);
+  drive.translate(0, wall + 0.8, 0);
+  const parts: THREE.BufferGeometry[] = [
+    paintVertexColor(ring, hexFromRgb(CLARIFIER_RGB)),
+    paintVertexColor(water, hexFromRgb(CLARIFIER_WATER_RGB)),
+    paintVertexColor(drive, hexFromRgb(GEN_STEEL_RGB)),
+    standingBox(bridgeW, 0.15, radius, 0, wall, -radius / 2, GEN_STEEL_RGB),
+  ];
+  for (const s of [-1, 1]) {
+    handrail(parts, -radius, -0.9, (s * bridgeW) / 2, false, wall + 0.15, rail);
+  }
+  return mergeParts(parts);
+}
+
+/** Everything of the works but the clarifiers and the outfall: the inlet works, the basin and its walkway, the blower house, the digester under its dome, the contact tank with its baffles and the control house; local Y=0 is the plate's top. */
+function buildWorksPlantGeometry(footprint: FootprintSize): THREE.BufferGeometry {
+  const layout = computeWorksLayout(footprint);
+  const { basin, contact, walkway } = layout;
+  const parts: THREE.BufferGeometry[] = [
+    ...cappedBox(layout.screenHouse, WORKS_SCREEN_HOUSE.h, PUMP_HOUSE_RGB),
+    ...openTank(layout.grit, WORKS_GRIT_CHAMBER.wall, CLARIFIER_WATER_RGB),
+    ...openTank(basin, WORKS_BASIN.wall, SLUDGE_RGB),
+    rectBox(walkway, WORKS_BASIN.wall - 0.15, 0.15, GEN_STEEL_RGB),
+    ...cappedBox(layout.blower, WORKS_BLOWER_HOUSE.h, GEN_ENCLOSURE_RGB),
+    ...openTank(contact, WORKS_CONTACT_TANK.wall, CLARIFIER_WATER_RGB, 0.2),
+    ...cappedBox(layout.house, WORKS_HOUSE.h, PUMP_HOUSE_RGB),
+    // The contact tank's outlet into the outfall.
+    standingBox(
+      contact.x0 + 0.2,
+      0.4,
+      0.4,
+      contact.x0 / 2,
+      0.3,
+      (contact.z0 + contact.z1) / 2,
+      PIPE_STEEL_RGB,
+    ),
+  ];
+  handrail(
+    parts,
+    walkway.x0,
+    walkway.x1,
+    walkway.z1 - 0.03,
+    true,
+    WORKS_BASIN.wall,
+    WORKS_CLARIFIER.rail,
+  );
+  for (let i = 1; i <= WORKS_CONTACT_TANK.baffles; i++) {
+    const x = contact.x0 + ((contact.x1 - contact.x0) * i) / (WORKS_CONTACT_TANK.baffles + 1);
+    const span = contact.z1 - contact.z0 - 0.2;
+    parts.push(
+      standingBox(
+        0.15,
+        WORKS_CONTACT_TANK.wall,
+        span - 0.6,
+        x,
+        0,
+        (contact.z0 + contact.z1) / 2 + (i % 2 ? 0.3 : -0.3),
+        CLARIFIER_RGB,
+      ),
+    );
+  }
+  const { radius, h, dome } = WORKS_DIGESTER;
+  const tank = new THREE.CylinderGeometry(radius, radius, h, 24);
+  tank.translate(layout.digester.x, h / 2, layout.digester.z);
+  parts.push(paintVertexColor(tank, hexFromRgb(CLARIFIER_RGB)));
+  const cover = new THREE.SphereGeometry(radius, 24, 6, 0, Math.PI * 2, 0, Math.PI / 2);
+  cover.scale(1, dome / radius, 1);
+  cover.translate(layout.digester.x, h, layout.digester.z);
+  parts.push(paintVertexColor(cover, hexFromRgb(GEN_STEEL_RGB)));
+  return mergeParts(parts);
+}
+
+/** The works' outfall: out of the contact tank and over the water. */
+function buildWorksOutfallGeometry(footprint: FootprintSize): THREE.BufferGeometry {
+  return buildOutfallGeometry(footprint, WORKS_OUTFALL_BACK, DRAIN_OUTFALL_RADIUS);
+}
+
 // ---------------------------------------------------------------------------
-// coal-plant: dark boiler hall (~3x4 of its 4x4 footprint),
-// 2 striped smokestacks (chimney language), low coal-heap wedge.
+// coal-plant: a two-unit plant on its 80 m square, local +Z the street side.
+// The boiler house and turbine hall on the left, the precipitator and the two
+// striped stacks behind them, the stockpile and its crusher house across the
+// back, the conveyor gallery climbing from the crusher to the boiler house,
+// the cooling tower along the right side, the switchyard on the street, and
+// a chain-link fence round it all with a gate on the drive.
 // ---------------------------------------------------------------------------
 
-const COAL_HALL_INSET_TILES = 1; // hall width = footprint.w - this, in tiles ("3x4 of its 4x4")
-const COAL_HALL_HEIGHT = 14;
-const COAL_ROOF_CAP_HEIGHT = 1.0;
+export const COAL_BOILER_HOUSE = { w: 24, d: 18, h: 32 };
+export const COAL_TURBINE_HALL = { w: 36, d: 16, h: 15 };
+/** The electrostatic precipitator: a box on 2 m legs. */
+export const COAL_ESP = { w: 12, d: 10, h: 14, legs: 2 };
 export const COAL_SMOKESTACK_COUNT = 2;
-const COAL_STACK_HEIGHT = 26; // "~26m"
-const COAL_STACK_RADIUS_BOTTOM = 1.8;
-const COAL_STACK_RADIUS_TOP = 1.3;
-const COAL_STACK_BAND_COUNT = 6;
-const COAL_STACK_SEPARATION_FRACTION = 0.22; // of hallHalfD, from hall center to each stack
-const COAL_HEAP_HEIGHT = 4.5;
-const COAL_HEAP_RADIUS = 4.5;
-const COAL_HEAP_Z_FRACTION = 0.3; // of hallHalfD
+/** 250 ft stacks, 4.5 m across at the base, in the striped chimney language. */
+export const COAL_STACK = { h: 76, radiusBottom: 2.25, radiusTop: 1.9, bands: 8 };
+const COAL_FLUE = { size: 2.4, y: 9 };
+/** The stockpile: 40 m long and 12 m high at a 37° angle of repose, which sets its width. */
+export const COAL_HEAP = { length: 40, height: 12, repose: (37 * Math.PI) / 180 };
+export const COAL_HEAP_WIDTH = (2 * COAL_HEAP.height) / Math.tan(COAL_HEAP.repose);
+export const COAL_CRUSHER_HOUSE = { w: 6, d: 6, h: 8 };
+/** The enclosed conveyor gallery: a 2.4 m box at 18° on a bent every 12 m. */
+export const COAL_GALLERY = { size: 2.4, pitch: (18 * Math.PI) / 180, bentSpacing: 12 };
+/** A four-cell mechanical-draft cooling tower, 36.8 × 13.7 × 9.4 m, laid along Z. */
+export const COAL_TOWER = { long: 36.8, wide: 13.7, h: 9.4, cells: 4 };
+/** The ash silo: 8 m across and 15 m to its top, on legs under its cone. */
+export const COAL_ASH_SILO = { radius: 4, h: 15, legs: 3, cone: 3 };
+const COAL_GANTRY = { span: 8, h: 12 };
 
 const COAL_HALL_RGB: RGB = [0.13, 0.13, 0.14];
 const COAL_ROOF_CAP_RGB: RGB = [0.09, 0.09, 0.1];
@@ -932,76 +1354,271 @@ const COAL_ROOF_CAP_RGB: RGB = [0.09, 0.09, 0.1];
 const COAL_STACK_LIGHT_RGB: RGB = [0.85, 0.83, 0.79];
 const COAL_STACK_ACCENT_RGB: RGB = [0.72, 0.2, 0.18];
 const COAL_HEAP_RGB: RGB = [0.12, 0.1, 0.09];
+const COAL_YARD_RGB: RGB = [0.22, 0.2, 0.19];
+const COAL_GALLERY_RGB: RGB = [0.46, 0.48, 0.5];
 
-export interface CoalHallLayout {
-  hallHalfW: number;
-  hallHalfD: number;
-  hallCenterX: number;
-  heapCenterX: number;
-  heapHalfW: number;
+export interface CoalPlantLayout {
+  boiler: Rect;
+  hall: Rect;
+  esp: Rect;
+  stacks: Vec2[];
+  flue: Rect;
+  heap: Rect;
+  crusher: Rect;
+  /** The gallery's lower end on the crusher house's roof and its upper end at the boiler house's wall. */
+  gallery: { from: Vec3; to: Vec3 };
+  /** Where each bent stands under the gallery, and the gallery's underside there. */
+  bents: Vec3[];
+  tower: Rect;
+  fans: Vec2[];
+  silo: Vec2;
+  transformers: Rect[];
+  gantries: Vec2[];
+  apron: Rect;
+  yard: Rect;
+  drive: Rect;
+  fence: Rect;
+  gate: Gap;
 }
 
-/**
- * Dark boiler hall covering ~3x4 of its 4x4 footprint: the
- * hall spans the full depth but only footprint.w - COAL_HALL_INSET_TILES
- * tiles of width, flush against the local -X edge, leaving a strip along +X
- * for the coal heap. Pure; deterministic per footprint (no buildingId
- * needed — nothing about this layout is meant to vary per instance).
- */
-export function computeCoalHallLayout(footprint: FootprintSize): CoalHallLayout {
+/** The plant in its 4×4, in the footprint frame. Pure; fixed per footprint. */
+export function computeCoalPlantLayout(footprint: FootprintSize): CoalPlantLayout {
   const { halfW, halfD } = footprintHalfExtents(footprint);
-  const hallWidthTiles = Math.max(1, footprint.w - COAL_HALL_INSET_TILES);
-  const hallHalfW = (hallWidthTiles * TILE_METERS) / 2;
-  const hallCenterX = -halfW + hallHalfW;
-  const heapHalfW = halfW - hallHalfW;
-  // Algebra: heapCenterX = ((-halfW + 2*hallHalfW) + halfW) / 2 = hallHalfW.
-  const heapCenterX = hallHalfW;
-  return { hallHalfW, hallHalfD: halfD, hallCenterX, heapCenterX, heapHalfW };
+  const boiler: Rect = {
+    x0: -38,
+    x1: -38 + COAL_BOILER_HOUSE.w,
+    z0: -14,
+    z1: -14 + COAL_BOILER_HOUSE.d,
+  };
+  const hall: Rect = {
+    x0: -38,
+    x1: -38 + COAL_TURBINE_HALL.w,
+    z0: boiler.z1,
+    z1: boiler.z1 + COAL_TURBINE_HALL.d,
+  };
+  const esp: Rect = { x0: -38, x1: -38 + COAL_ESP.w, z0: -26, z1: -26 + COAL_ESP.d };
+  const stackZ = (esp.z0 + esp.z1) / 2;
+  const stacks = [-16, -6].map((x) => ({ x, z: stackZ }));
+  const heap: Rect = {
+    x0: -1,
+    x1: -1 + COAL_HEAP.length,
+    z0: -halfD + 1,
+    z1: -halfD + 1 + COAL_HEAP_WIDTH,
+  };
+  const crusher: Rect = { x0: 33, x1: 33 + COAL_CRUSHER_HOUSE.w, z0: -6, z1: 0 };
+  const cc = rectCentre(crusher);
+  const from: Vec3 = { x: cc.x, y: COAL_CRUSHER_HOUSE.h, z: cc.z };
+  const toX = boiler.x1;
+  const toZ = (boiler.z0 + boiler.z1) / 2;
+  const run = Math.hypot(toX - from.x, toZ - from.z);
+  const to: Vec3 = { x: toX, y: from.y + run * Math.tan(COAL_GALLERY.pitch), z: toZ };
+  const bents: Vec3[] = [];
+  for (let s = COAL_GALLERY.bentSpacing; s < run - 2; s += COAL_GALLERY.bentSpacing) {
+    const t = s / run;
+    bents.push({
+      x: from.x + (to.x - from.x) * t,
+      y: from.y + (to.y - from.y) * t - COAL_GALLERY.size / 2,
+      z: from.z + (to.z - from.z) * t,
+    });
+  }
+  const tower: Rect = { x0: 24, x1: 24 + COAL_TOWER.wide, z0: 2, z1: 2 + COAL_TOWER.long };
+  const cell = COAL_TOWER.long / COAL_TOWER.cells;
+  const transformerZ0 = 26;
+  const gantryZ = 34;
+  const gateX0 = 1;
+  return {
+    boiler,
+    hall,
+    esp,
+    stacks,
+    flue: {
+      x0: esp.x1,
+      x1: stacks[stacks.length - 1]!.x,
+      z0: stackZ - COAL_FLUE.size / 2,
+      z1: stackZ + COAL_FLUE.size / 2,
+    },
+    heap,
+    crusher,
+    gallery: { from, to },
+    bents,
+    tower,
+    fans: Array.from({ length: COAL_TOWER.cells }, (_, i) => ({
+      x: (tower.x0 + tower.x1) / 2,
+      z: tower.z0 + cell / 2 + i * cell,
+    })),
+    silo: { x: -32, z: -33 },
+    transformers: [-30, -18, -6].map((x) => ({
+      x0: x - CC_TRANSFORMER.w / 2,
+      x1: x + CC_TRANSFORMER.w / 2,
+      z0: transformerZ0,
+      z1: transformerZ0 + CC_TRANSFORMER.d,
+    })),
+    gantries: [-30, -18, -6].map((x) => ({ x, z: gantryZ })),
+    apron: { x0: -halfW + 1, x1: 22, z0: -15, z1: 22 },
+    yard: { x0: -2, x1: halfW - GEN_FENCE_INSET_M, z0: -halfD + GEN_FENCE_INSET_M, z1: -6 },
+    drive: { x0: gateX0 + 0.5, x1: gateX0 + GEN_GATE_M + 1 - 0.5, z0: 22, z1: halfD },
+    fence: lotRect(footprint, GEN_FENCE_INSET_M),
+    gate: { x0: gateX0, x1: gateX0 + GEN_GATE_M + 1 },
+  };
 }
 
-/** 2 smokestacks centered over the hall in X, spread along Z. Pure; fixed (no per-instance variation is called for). */
+/** The 2 smokestacks' footprint-frame centres. Pure. */
 export function computeCoalSmokestackLocalPlacements(footprint: FootprintSize): Vec2[] {
-  const { hallCenterX, hallHalfD } = computeCoalHallLayout(footprint);
-  const zOffset = hallHalfD * COAL_STACK_SEPARATION_FRACTION;
+  return computeCoalPlantLayout(footprint).stacks;
+}
+
+/** A transmission gantry: two posts and a crossbar, centred on `g`. */
+function gantryParts(g: Vec2, span: number, h: number): THREE.BufferGeometry[] {
   return [
-    { x: hallCenterX, z: -zOffset },
-    { x: hallCenterX, z: zOffset },
+    standingBox(0.6, h, 0.6, g.x - span / 2, 0, g.z, GEN_STEEL_RGB),
+    standingBox(0.6, h, 0.6, g.x + span / 2, 0, g.z, GEN_STEEL_RGB),
+    standingBox(span + 0.6, 0.6, 0.6, g.x, h - 0.6, g.z, GEN_STEEL_RGB),
   ];
 }
 
-/** The coal heap sits in the free strip beside the hall. Pure; fixed. */
-export function computeCoalHeapLocalPlacement(footprint: FootprintSize): Vec2 {
-  const { heapCenterX, hallHalfD } = computeCoalHallLayout(footprint);
-  return { x: heapCenterX, z: hallHalfD * COAL_HEAP_Z_FRACTION };
+/** A box `size` square and `length` long, lying along +Z from its origin, tilted up by `pitch` and turned to `yaw`. */
+function tiltedBox(
+  size: number,
+  length: number,
+  pitch: number,
+  yaw: number,
+  rgb: RGB,
+): THREE.BufferGeometry {
+  const box = new THREE.BoxGeometry(size, size, length);
+  box.translate(0, 0, length / 2);
+  box.rotateX(-pitch);
+  box.rotateY(yaw);
+  return paintVertexColor(box, hexFromRgb(rgb));
 }
 
-/** Hall body + a darker roof-cap band ("bevel illusion" language), merged; local Y=0 is the GROUND plane. */
-function buildCoalHallGeometry(footprint: FootprintSize): THREE.BufferGeometry {
-  const { hallHalfW, hallHalfD, hallCenterX } = computeCoalHallLayout(footprint);
-  const width = hallHalfW * 2;
-  const depth = hallHalfD * 2;
-
-  const body = new THREE.BoxGeometry(width, COAL_HALL_HEIGHT, depth);
-  body.translate(hallCenterX, COAL_HALL_HEIGHT / 2, 0);
-  paintVertexColor(body, hexFromRgb(COAL_HALL_RGB));
-
-  const cap = new THREE.BoxGeometry(width * 1.02, COAL_ROOF_CAP_HEIGHT, depth * 1.02);
-  cap.translate(hallCenterX, COAL_HALL_HEIGHT + COAL_ROOF_CAP_HEIGHT / 2, 0);
-  paintVertexColor(cap, hexFromRgb(COAL_ROOF_CAP_RGB));
-
-  return mergeParts([body, cap]);
+function buildCoalGroundsGeometry(footprint: FootprintSize): THREE.BufferGeometry {
+  const { apron, yard, drive } = computeCoalPlantLayout(footprint);
+  return buildGeneratorGroundsGeometry(footprint, GEN_GRAVEL_RGB, [
+    { rect: apron, rgb: GEN_CONCRETE_RGB },
+    { rect: yard, rgb: COAL_YARD_RGB },
+    { rect: drive, rgb: GEN_DRIVE_RGB },
+  ]);
 }
 
-/** One shared smokestack geometry (alternating striped bands, tapered), instanced at both stack positions; local Y=0 is the GROUND plane. */
+/** Everything of the plant but the stacks and the stockpile, merged; local Y=0 is the plate's top. */
+function buildCoalPlantGeometry(footprint: FootprintSize): THREE.BufferGeometry {
+  const layout = computeCoalPlantLayout(footprint);
+  const { boiler, hall, esp, crusher, tower, gallery } = layout;
+  const hc = rectCentre(hall);
+  const ec = rectCentre(esp);
+  const parts: THREE.BufferGeometry[] = [
+    ...cappedBox(boiler, COAL_BOILER_HOUSE.h, COAL_HALL_RGB, 0.6, COAL_ROOF_CAP_RGB),
+    ...cappedBox(hall, COAL_TURBINE_HALL.h, GEN_ENCLOSURE_RGB, 0.5),
+    // The darker band round the hall's cladding, proud of every face.
+    standingBox(
+      COAL_TURBINE_HALL.w + 0.2,
+      1.5,
+      COAL_TURBINE_HALL.d + 0.2,
+      hc.x,
+      8,
+      hc.z,
+      NUCLEAR_CLADDING_BAND_RGB,
+    ),
+    rectBox(esp, COAL_ESP.legs, COAL_ESP.h, GEN_STEEL_RGB),
+    rectBox(layout.flue, COAL_FLUE.y - COAL_FLUE.size / 2, COAL_FLUE.size, GEN_STEEL_RGB),
+    // The duct from the boiler house into the precipitator.
+    standingBox(
+      COAL_FLUE.size,
+      COAL_FLUE.size,
+      boiler.z0 - esp.z1 + 0.4,
+      ec.x,
+      COAL_FLUE.y - COAL_FLUE.size / 2,
+      (boiler.z0 + esp.z1) / 2,
+      GEN_STEEL_RGB,
+    ),
+    ...cappedBox(crusher, COAL_CRUSHER_HOUSE.h, GEN_ENCLOSURE_RGB),
+    rectBox(tower, 0, COAL_TOWER.h, GEN_ENCLOSURE_RGB),
+  ];
+  for (const x of [esp.x0 + 1, esp.x1 - 1]) {
+    for (const z of [esp.z0 + 1, esp.z1 - 1]) {
+      parts.push(standingBox(0.6, COAL_ESP.legs, 0.6, x, 0, z, GEN_STEEL_RGB));
+    }
+  }
+  // The gallery from the crusher house up to the boiler house, and a bent under it every 12 m.
+  const dx = gallery.to.x - gallery.from.x;
+  const dz = gallery.to.z - gallery.from.z;
+  const run = Math.hypot(dx, dz);
+  const length = Math.hypot(run, gallery.to.y - gallery.from.y);
+  const yaw = Math.atan2(dx, dz);
+  const box = tiltedBox(COAL_GALLERY.size, length, COAL_GALLERY.pitch, yaw, COAL_GALLERY_RGB);
+  box.translate(gallery.from.x, gallery.from.y, gallery.from.z);
+  parts.push(box);
+  const across = { x: Math.cos(yaw), z: -Math.sin(yaw) };
+  for (const b of layout.bents) {
+    for (const s of [-1, 1]) {
+      parts.push(
+        standingBox(
+          0.4,
+          b.y,
+          0.4,
+          b.x + s * across.x * 1.4,
+          0,
+          b.z + s * across.z * 1.4,
+          GEN_STEEL_RGB,
+        ),
+      );
+    }
+    const bar = new THREE.BoxGeometry(3.2, 0.4, 0.4);
+    bar.rotateY(yaw);
+    bar.translate(b.x, b.y - 0.2, b.z);
+    parts.push(paintVertexColor(bar, hexFromRgb(GEN_STEEL_RGB)));
+  }
+  // The tower's louvres on both long faces, and a fan stack on each cell.
+  const tc = rectCentre(tower);
+  for (const x of [tower.x0 - 0.06, tower.x1 + 0.06]) {
+    parts.push(standingBox(0.12, 5, COAL_TOWER.long - 2, x, 1.5, tc.z, GEN_LOUVRE_RGB));
+  }
+  for (const fan of layout.fans) {
+    const ring = new THREE.CylinderGeometry(CC_FAN.radius, CC_FAN.radius, CC_FAN.h, 16);
+    ring.translate(fan.x, COAL_TOWER.h + CC_FAN.h / 2, fan.z);
+    parts.push(paintVertexColor(ring, hexFromRgb(GEN_STEEL_RGB)));
+    const mouth = new THREE.CylinderGeometry(CC_FAN.radius - 0.4, CC_FAN.radius - 0.4, 0.1, 16);
+    mouth.translate(fan.x, COAL_TOWER.h + CC_FAN.h + 0.02, fan.z);
+    parts.push(paintVertexColor(mouth, hexFromRgb(GEN_STACK_RIM_RGB)));
+  }
+  // The ash silo: a cone under a drum, on legs.
+  const { radius, h, legs, cone } = COAL_ASH_SILO;
+  const drum = new THREE.CylinderGeometry(radius, radius, h - legs - cone, 16);
+  drum.translate(layout.silo.x, legs + cone + (h - legs - cone) / 2, layout.silo.z);
+  parts.push(paintVertexColor(drum, hexFromRgb(GEN_FILTER_RGB)));
+  const hopper = new THREE.CylinderGeometry(radius, 0.6, cone, 16);
+  hopper.translate(layout.silo.x, legs + cone / 2, layout.silo.z);
+  parts.push(paintVertexColor(hopper, hexFromRgb(GEN_STEEL_RGB)));
+  for (const a of [0, 1, 2, 3]) {
+    const angle = (a * Math.PI) / 2 + Math.PI / 4;
+    parts.push(
+      standingBox(
+        0.5,
+        legs + cone,
+        0.5,
+        layout.silo.x + Math.cos(angle) * (radius - 0.5),
+        0,
+        layout.silo.z + Math.sin(angle) * (radius - 0.5),
+        GEN_STEEL_RGB,
+      ),
+    );
+  }
+  for (const t of layout.transformers) parts.push(...transformerParts(t, CC_TRANSFORMER.h));
+  for (const g of layout.gantries) parts.push(...gantryParts(g, COAL_GANTRY.span, COAL_GANTRY.h));
+  fenceLoop(parts, layout.fence, GEN_FENCE_HEIGHT_M, layout.gate);
+  return mergeParts(parts);
+}
+
+/** One shared smokestack geometry (alternating striped bands, tapered), instanced at both stack positions; local Y=0 is the plate's top. */
 function buildCoalSmokestackGeometry(): THREE.BufferGeometry {
-  const segmentHeight = COAL_STACK_HEIGHT / COAL_STACK_BAND_COUNT;
+  const segmentHeight = COAL_STACK.h / COAL_STACK.bands;
   const parts: THREE.BufferGeometry[] = [];
-  for (let i = 0; i < COAL_STACK_BAND_COUNT; i++) {
-    const t0 = i / COAL_STACK_BAND_COUNT;
-    const t1 = (i + 1) / COAL_STACK_BAND_COUNT;
-    const rBottom = lerpNum(COAL_STACK_RADIUS_BOTTOM, COAL_STACK_RADIUS_TOP, t0);
-    const rTop = lerpNum(COAL_STACK_RADIUS_BOTTOM, COAL_STACK_RADIUS_TOP, t1);
-    const segment = new THREE.CylinderGeometry(rTop, rBottom, segmentHeight, 10);
+  for (let i = 0; i < COAL_STACK.bands; i++) {
+    const t0 = i / COAL_STACK.bands;
+    const t1 = (i + 1) / COAL_STACK.bands;
+    const rBottom = lerpNum(COAL_STACK.radiusBottom, COAL_STACK.radiusTop, t0);
+    const rTop = lerpNum(COAL_STACK.radiusBottom, COAL_STACK.radiusTop, t1);
+    const segment = new THREE.CylinderGeometry(rTop, rBottom, segmentHeight, 12);
     segment.translate(0, i * segmentHeight + segmentHeight / 2, 0);
     paintVertexColor(
       segment,
@@ -1012,134 +1629,206 @@ function buildCoalSmokestackGeometry(): THREE.BufferGeometry {
   return mergeParts(parts);
 }
 
-/** A low heap silhouette (a squat, few-sided pyramid reads as "a pile" at RTS distance). */
-function buildCoalHeapGeometry(): THREE.BufferGeometry {
-  const heap = new THREE.ConeGeometry(COAL_HEAP_RADIUS, COAL_HEAP_HEIGHT, 5);
-  heap.translate(0, COAL_HEAP_HEIGHT / 2, 0);
-  paintVertexColor(heap, hexFromRgb(COAL_HEAP_RGB));
-  return heap;
+/** The stockpile as one faceted heap: a box whose top is drawn in to a crest along X at the angle of repose on every side; local Y=0 is the plate's top. */
+function buildCoalHeapGeometry(footprint: FootprintSize): THREE.BufferGeometry {
+  const { heap } = computeCoalPlantLayout(footprint);
+  const c = rectCentre(heap);
+  const length = heap.x1 - heap.x0;
+  const width = heap.z1 - heap.z0;
+  const inset = width / 2;
+  const pile = new THREE.BoxGeometry(length, COAL_HEAP.height, width);
+  const position = pile.getAttribute('position');
+  for (let i = 0; i < position.count; i++) {
+    if (position.getY(i) > 0) {
+      position.setX(i, Math.sign(position.getX(i)) * (length / 2 - inset));
+      position.setZ(i, 0);
+    }
+  }
+  pile.computeVertexNormals();
+  pile.translate(c.x, COAL_HEAP.height / 2, c.z);
+  return paintVertexColor(pile, hexFromRgb(COAL_HEAP_RGB));
 }
 
 // ---------------------------------------------------------------------------
-// incinerator: low concrete processing hall (~3x4 of its 4x4 footprint),
-// ONE thick tall flue (single/unstriped, unlike the coal plant's 2 striped
-// stacks), a low tipping-bay box in the strip beside the hall.
+// incinerator: a mass-burn waste-to-energy plant on its 80 m square, local +Z
+// the street side. The tipping hall with its three doors on the street, the
+// boiler hall behind it, the baghouse and the one stack beside that, the
+// turbine hall at the back, the truck scale at the gate with a queue lane to
+// the doors, and the fence.
 // ---------------------------------------------------------------------------
 
-const INCINERATOR_HALL_INSET_TILES = 1; // hall width = footprint.w - this, in tiles ("3x4 of its 4x4")
-const INCINERATOR_HALL_HEIGHT = 11; // lower & boxier than the coal hall
-const INCINERATOR_ROOF_CAP_HEIGHT = 1.0;
-const INCINERATOR_STACK_HEIGHT = 30; // taller than the coal stacks
-const INCINERATOR_STACK_RADIUS_BOTTOM = 2.9; // one thick flue vs. the coal plant's thinner pair
-const INCINERATOR_STACK_RADIUS_TOP = 2.4;
-const INCINERATOR_STACK_RIM_HEIGHT = 1.6;
-const INCINERATOR_STACK_RIM_RADIUS_BONUS = 0.25;
-const INCINERATOR_STACK_Z_FRACTION = -0.25; // of hallHalfD, from hall center
-const INCINERATOR_BAY_WIDTH = 6;
-const INCINERATOR_BAY_HEIGHT = 6;
-const INCINERATOR_BAY_DEPTH = 10;
-const INCINERATOR_BAY_CAP_HEIGHT = 0.8;
-const INCINERATOR_BAY_Z_FRACTION = 0.15; // of hallHalfD
+export const INCINERATOR_TIPPING_HALL = { w: 50, d: 25, h: 15 };
+export const INCINERATOR_DOOR = { w: 6, h: 7, count: 3 };
+export const INCINERATOR_BOILER_HALL = { w: 30, d: 25, h: 40 };
+export const INCINERATOR_BAGHOUSE = { w: 15, d: 10, h: 18 };
+/** The 240 ft stack, 3 m across. */
+export const INCINERATOR_STACK = { h: 73, radius: 1.5 };
+export const INCINERATOR_TURBINE_HALL = { w: 25, d: 12, h: 12 };
+const INCINERATOR_FLUE = { size: 2.4, y: 12 };
+const INCINERATOR_LANE_W = 6;
 
-const INCINERATOR_HALL_RGB: RGB = [0.42, 0.435, 0.447]; // industrial concrete grey (catalog 0x6b6f72)
+const INCINERATOR_HALL_RGB: RGB = [0.42, 0.435, 0.447];
 const INCINERATOR_ROOF_CAP_RGB: RGB = [0.3, 0.31, 0.32];
-const INCINERATOR_STACK_RGB: RGB = [0.52, 0.53, 0.55];
-const INCINERATOR_STACK_RIM_RGB: RGB = [0.32, 0.33, 0.34];
-const INCINERATOR_BAY_RGB: RGB = [0.5, 0.515, 0.525];
-const INCINERATOR_BAY_CAP_RGB: RGB = [0.33, 0.34, 0.35];
+const INCINERATOR_BOILER_RGB: RGB = [0.62, 0.64, 0.64];
+const INCINERATOR_DOOR_RGB: RGB = [0.22, 0.28, 0.31];
 
-export interface IncineratorHallLayout {
-  hallHalfW: number;
-  hallHalfD: number;
-  hallCenterX: number;
-  bayCenterX: number;
-  bayHalfW: number;
+export interface IncineratorLayout {
+  tipping: Rect;
+  /** The doors' centres along the tipping hall's street face. */
+  doors: Vec2[];
+  boiler: Rect;
+  baghouse: Rect;
+  stack: Vec2;
+  turbine: Rect;
+  weighbridge: Vec2;
+  scaleHouse: Vec2;
+  lane: Rect;
+  apron: Rect;
+  fence: Rect;
+  gate: Gap;
 }
 
-/**
- * Low concrete processing hall covering ~3x4 of its 4x4 footprint: the hall
- * spans the full depth but only footprint.w - INCINERATOR_HALL_INSET_TILES
- * tiles of width, flush against the local -X edge, leaving a strip along +X
- * for the tipping bay. Pure; deterministic per footprint.
- */
-export function computeIncineratorHallLayout(footprint: FootprintSize): IncineratorHallLayout {
-  const { halfW, halfD } = footprintHalfExtents(footprint);
-  const hallWidthTiles = Math.max(1, footprint.w - INCINERATOR_HALL_INSET_TILES);
-  const hallHalfW = (hallWidthTiles * TILE_METERS) / 2;
-  const hallCenterX = -halfW + hallHalfW;
-  const bayHalfW = halfW - hallHalfW;
-  // Algebra (see computeCoalHallLayout): bayCenterX = hallHalfW.
-  const bayCenterX = hallHalfW;
-  return { hallHalfW, hallHalfD: halfD, hallCenterX, bayCenterX, bayHalfW };
+/** The plant in its 4×4, in the footprint frame. Pure; fixed per footprint. */
+export function computeIncineratorLayout(footprint: FootprintSize): IncineratorLayout {
+  const { halfD } = footprintHalfExtents(footprint);
+  const tipping: Rect = {
+    x0: -38,
+    x1: -38 + INCINERATOR_TIPPING_HALL.w,
+    z0: 0,
+    z1: INCINERATOR_TIPPING_HALL.d,
+  };
+  const tc = rectCentre(tipping);
+  const boiler: Rect = {
+    x0: -30,
+    x1: -30 + INCINERATOR_BOILER_HALL.w,
+    z0: -INCINERATOR_BOILER_HALL.d,
+    z1: 0,
+  };
+  const baghouse: Rect = {
+    x0: 2,
+    x1: 2 + INCINERATOR_BAGHOUSE.w,
+    z0: -25,
+    z1: -25 + INCINERATOR_BAGHOUSE.d,
+  };
+  const gateX0 = 26;
+  // The queue lane runs from the gate past the tipping hall's front, the scale on it just inside the gate.
+  const lane: Rect = { x0: gateX0, x1: gateX0 + INCINERATOR_LANE_W, z0: 12, z1: halfD };
+  const bridge = TRANSFER_WEIGHBRIDGE_SIZE;
+  const weighbridge: Vec2 = { x: (lane.x0 + lane.x1) / 2, z: halfD - 2 - bridge.l / 2 };
+  return {
+    tipping,
+    doors: Array.from({ length: INCINERATOR_DOOR.count }, (_, i) => ({
+      x:
+        tc.x +
+        (i - (INCINERATOR_DOOR.count - 1) / 2) *
+          (INCINERATOR_TIPPING_HALL.w / (INCINERATOR_DOOR.count + 0.5)),
+      z: tipping.z1,
+    })),
+    boiler,
+    baghouse,
+    stack: { x: 24, z: (baghouse.z0 + baghouse.z1) / 2 },
+    turbine: {
+      x0: -30,
+      x1: -30 + INCINERATOR_TURBINE_HALL.w,
+      z0: -38,
+      z1: -38 + INCINERATOR_TURBINE_HALL.d,
+    },
+    weighbridge,
+    scaleHouse: {
+      x: lane.x1 + TRANSFER_SCALE_GAP + TRANSFER_SCALE_HOUSE_SIZE.w / 2,
+      z: weighbridge.z,
+    },
+    lane,
+    apron: { x0: tipping.x0, x1: lane.x1, z0: tipping.z1, z1: tipping.z1 + 9 },
+    fence: lotRect(footprint, GEN_FENCE_INSET_M),
+    gate: { x0: gateX0, x1: gateX0 + INCINERATOR_LANE_W },
+  };
 }
 
-/** The single flue rises over the hall roof, offset toward the -Z end. Pure; fixed (no per-instance variation is called for). */
+/** The stack's footprint-frame centre. Pure. */
 export function computeIncineratorStackLocalPlacement(footprint: FootprintSize): Vec2 {
-  const { hallCenterX, hallHalfD } = computeIncineratorHallLayout(footprint);
-  return { x: hallCenterX, z: hallHalfD * INCINERATOR_STACK_Z_FRACTION };
+  return computeIncineratorLayout(footprint).stack;
 }
 
-/** The tipping bay sits in the free strip beside the hall. Pure; fixed. */
-export function computeIncineratorBayLocalPlacement(footprint: FootprintSize): Vec2 {
-  const { bayCenterX, hallHalfD } = computeIncineratorHallLayout(footprint);
-  return { x: bayCenterX, z: hallHalfD * INCINERATOR_BAY_Z_FRACTION };
+function buildIncineratorGroundsGeometry(footprint: FootprintSize): THREE.BufferGeometry {
+  const { apron, lane } = computeIncineratorLayout(footprint);
+  return buildGeneratorGroundsGeometry(footprint, GEN_GRAVEL_RGB, [
+    { rect: apron, rgb: GEN_CONCRETE_RGB },
+    { rect: lane, rgb: GEN_DRIVE_RGB },
+  ]);
 }
 
-/** Hall body + a darker roof-cap band, merged; local Y=0 is the GROUND plane. */
-function buildIncineratorHallGeometry(footprint: FootprintSize): THREE.BufferGeometry {
-  const { hallHalfW, hallHalfD, hallCenterX } = computeIncineratorHallLayout(footprint);
-  const width = hallHalfW * 2;
-  const depth = hallHalfD * 2;
-
-  const body = new THREE.BoxGeometry(width, INCINERATOR_HALL_HEIGHT, depth);
-  body.translate(hallCenterX, INCINERATOR_HALL_HEIGHT / 2, 0);
-  paintVertexColor(body, hexFromRgb(INCINERATOR_HALL_RGB));
-
-  const cap = new THREE.BoxGeometry(width * 1.02, INCINERATOR_ROOF_CAP_HEIGHT, depth * 1.02);
-  cap.translate(hallCenterX, INCINERATOR_HALL_HEIGHT + INCINERATOR_ROOF_CAP_HEIGHT / 2, 0);
-  paintVertexColor(cap, hexFromRgb(INCINERATOR_ROOF_CAP_RGB));
-
-  return mergeParts([body, cap]);
+/** Everything of the plant but the stack, merged; local Y=0 is the plate's top. */
+function buildIncineratorPlantGeometry(footprint: FootprintSize): THREE.BufferGeometry {
+  const layout = computeIncineratorLayout(footprint);
+  const { tipping, boiler, baghouse } = layout;
+  const flueY = INCINERATOR_FLUE.y - INCINERATOR_FLUE.size / 2;
+  const bc = rectCentre(baghouse);
+  const parts: THREE.BufferGeometry[] = [
+    ...cappedBox(
+      tipping,
+      INCINERATOR_TIPPING_HALL.h,
+      INCINERATOR_HALL_RGB,
+      0.6,
+      INCINERATOR_ROOF_CAP_RGB,
+    ),
+    ...cappedBox(
+      boiler,
+      INCINERATOR_BOILER_HALL.h,
+      INCINERATOR_BOILER_RGB,
+      0.6,
+      INCINERATOR_ROOF_CAP_RGB,
+    ),
+    ...cappedBox(baghouse, INCINERATOR_BAGHOUSE.h, GEN_FILTER_RGB, 0.4),
+    ...cappedBox(layout.turbine, INCINERATOR_TURBINE_HALL.h, GEN_ENCLOSURE_RGB, 0.4),
+    // The flue from the boiler hall through the baghouse to the stack.
+    standingBox(
+      baghouse.x0 - boiler.x1 + 0.4,
+      INCINERATOR_FLUE.size,
+      INCINERATOR_FLUE.size,
+      (boiler.x1 + baghouse.x0) / 2,
+      flueY,
+      bc.z,
+      GEN_STEEL_RGB,
+    ),
+    standingBox(
+      layout.stack.x - baghouse.x1 + 0.4,
+      INCINERATOR_FLUE.size,
+      INCINERATOR_FLUE.size,
+      (baghouse.x1 + layout.stack.x) / 2,
+      flueY,
+      bc.z,
+      GEN_STEEL_RGB,
+    ),
+    ...scaleParts(layout.weighbridge, layout.scaleHouse),
+  ];
+  for (const door of layout.doors) {
+    parts.push(
+      standingBox(
+        INCINERATOR_DOOR.w,
+        INCINERATOR_DOOR.h,
+        0.3,
+        door.x,
+        0,
+        door.z + 0.15,
+        INCINERATOR_DOOR_RGB,
+      ),
+    );
+  }
+  fenceLoop(parts, layout.fence, GEN_FENCE_HEIGHT_M, layout.gate);
+  return mergeParts(parts);
 }
 
-/** One thick tapered flue + a dark rim at the mouth, merged; local Y=0 is the GROUND plane. */
+/** The one stack at its own origin, with a dark rim at its mouth; local Y=0 is the plate's top. */
 function buildIncineratorStackGeometry(): THREE.BufferGeometry {
-  const flue = new THREE.CylinderGeometry(
-    INCINERATOR_STACK_RADIUS_TOP,
-    INCINERATOR_STACK_RADIUS_BOTTOM,
-    INCINERATOR_STACK_HEIGHT,
-    12,
+  return buildStackGeometry(
+    0,
+    0,
+    0,
+    INCINERATOR_STACK.h,
+    INCINERATOR_STACK.radius + 0.15,
+    INCINERATOR_STACK.radius,
   );
-  flue.translate(0, INCINERATOR_STACK_HEIGHT / 2, 0);
-  paintVertexColor(flue, hexFromRgb(INCINERATOR_STACK_RGB));
-
-  const rimRadius = INCINERATOR_STACK_RADIUS_TOP + INCINERATOR_STACK_RIM_RADIUS_BONUS;
-  const rim = new THREE.CylinderGeometry(rimRadius, rimRadius, INCINERATOR_STACK_RIM_HEIGHT, 12);
-  rim.translate(0, INCINERATOR_STACK_HEIGHT - INCINERATOR_STACK_RIM_HEIGHT / 2, 0);
-  paintVertexColor(rim, hexFromRgb(INCINERATOR_STACK_RIM_RGB));
-
-  return mergeParts([flue, rim]);
-}
-
-/** Low tipping-bay box + a flat overhanging roof cap, merged; local Y=0 is the GROUND plane. */
-function buildIncineratorBayGeometry(): THREE.BufferGeometry {
-  const body = new THREE.BoxGeometry(
-    INCINERATOR_BAY_WIDTH,
-    INCINERATOR_BAY_HEIGHT,
-    INCINERATOR_BAY_DEPTH,
-  );
-  body.translate(0, INCINERATOR_BAY_HEIGHT / 2, 0);
-  paintVertexColor(body, hexFromRgb(INCINERATOR_BAY_RGB));
-
-  const cap = new THREE.BoxGeometry(
-    INCINERATOR_BAY_WIDTH * 1.08,
-    INCINERATOR_BAY_CAP_HEIGHT,
-    INCINERATOR_BAY_DEPTH * 1.08,
-  );
-  cap.translate(0, INCINERATOR_BAY_HEIGHT + INCINERATOR_BAY_CAP_HEIGHT / 2, 0);
-  paintVertexColor(cap, hexFromRgb(INCINERATOR_BAY_CAP_RGB));
-
-  return mergeParts([body, cap]);
 }
 
 // ---------------------------------------------------------------------------
@@ -1149,16 +1838,21 @@ function buildIncineratorBayGeometry(): THREE.BufferGeometry {
 // ---------------------------------------------------------------------------
 
 export const RECYCLING_TRUCK_COUNT = 4;
-export const RECYCLING_SHED_SIZE = { w: 30, d: 20, h: 8 };
-export const RECYCLING_OFFICE_SIZE = { w: 6, d: 10, h: 3.8 };
-const RECYCLING_EDGE_MARGIN = 3;
-const RECYCLING_ROOF_CAP_HEIGHT = 0.5;
-const RECYCLING_DOOR_SIZE = { w: 5, h: 5.5 };
-const RECYCLING_DOOR_THICKNESS = 0.3;
-const RECYCLING_DOOR_COUNT = 2;
+/** A 30 yd³ roll-off: 22 × 8 ft in plan and 5 ft tall. */
+export const RECYCLING_ROLL_OFF = { w: 2.4, l: 6.7, h: 1.5 };
+export const RECYCLING_ROLL_OFF_COUNT = 6;
+const RECYCLING_ROLL_OFF_PITCH = 3;
+/** The aisle before the roll-offs, and the pull clearance a hook-lift needs in front of one. */
+export const RECYCLING_AISLE_M = 7.3;
+export const RECYCLING_PULL_M = 12;
+/** The drop-off stalls along the aisle. */
+export const RECYCLING_STALL = { w: 2.7, l: 5.5 };
+export const RECYCLING_STALL_COUNT = 8;
+/** The sorting shed, 6 m to the eave and open on the yard side. */
+export const RECYCLING_SHED_SIZE = { w: 12, d: 8, h: 6 };
+export const RECYCLING_OFFICE_SIZE = { w: 4, d: 3, h: 3.2 };
+const RECYCLING_ROOF_CAP_HEIGHT = 0.4;
 const RECYCLING_TRUCK_SPACING = 6.5;
-/** Clear yard between the bay doors and the row of parked trucks, so a truck can pull in. */
-const RECYCLING_DOOR_APRON = 6;
 
 /** The paved yard is a slab over the whole lot, standing just proud of the ground plinth so the two never z-fight. */
 export const RECYCLING_YARD_HEIGHT = 0.3;
@@ -1168,39 +1862,67 @@ export const YARD_FOOTING_DEPTH = 8;
 const RECYCLING_YARD_RGB: RGB = [0.3, 0.32, 0.33];
 const RECYCLING_SHED_RGB: RGB = [0.62, 0.64, 0.64];
 const RECYCLING_ROOF_RGB: RGB = [0.36, 0.4, 0.42];
-const RECYCLING_DOOR_RGB: RGB = [0.2, 0.46, 0.55];
 const RECYCLING_OFFICE_RGB: RGB = [0.78, 0.76, 0.7];
 const RECYCLING_OFFICE_ROOF_RGB: RGB = [0.4, 0.42, 0.44];
+const RECYCLING_ROLL_OFF_RGB: RGB = [0.2, 0.42, 0.3];
 
 export interface RecyclingDepotLayout {
-  /** Footprint-frame centre of the shed and of the office, on the ground. */
-  shed: Vec2;
-  office: Vec2;
+  shed: Rect;
+  office: Rect;
+  /** Footprint-frame centre of each roll-off, long side along Z, in a row along the yard's back. */
+  rollOffs: Vec2[];
+  /** The stalls along the aisle, head-in toward the roll-offs. */
+  stalls: Rect[];
   /** Footprint-frame centre of each parked truck; every truck's nose points to local +Z. */
   trucks: Vec2[];
+  fence: Rect;
+  gate: Gap;
 }
 
 /**
- * Shed hard against the back-left corner (margin inside the lot), office
- * beside it, and the trucks in a row one apron in front of the bay doors.
+ * The roll-offs in a row along the back, the aisle and the hook-lift's pull
+ * clearance before them, the stalls along the aisle's far side, the shed at
+ * the back-right, the office by the gate and the trucks on their apron.
  * Pure; fixed per footprint.
  */
 export function computeRecyclingDepotLayout(footprint: FootprintSize): RecyclingDepotLayout {
   const { halfW, halfD } = footprintHalfExtents(footprint);
-  const shedX = -halfW + RECYCLING_EDGE_MARGIN + RECYCLING_SHED_SIZE.w / 2;
-  const shedZ = -halfD + RECYCLING_EDGE_MARGIN + RECYCLING_SHED_SIZE.d / 2;
-  const office: Vec2 = {
-    x: shedX + RECYCLING_SHED_SIZE.w / 2 + RECYCLING_OFFICE_SIZE.w / 2 + 0.5,
-    z: -halfD + RECYCLING_EDGE_MARGIN + RECYCLING_OFFICE_SIZE.d / 2,
-  };
-  const truckLength = sizeForKind(VehicleKind.Recycling)[2];
-  const truckZ = shedZ + RECYCLING_SHED_SIZE.d / 2 + RECYCLING_DOOR_APRON + truckLength / 2;
-  const firstTruckX = -halfW + RECYCLING_EDGE_MARGIN + sizeForKind(VehicleKind.Recycling)[0] / 2;
+  const back = -halfD + 1;
+  const rollOffZ = back + RECYCLING_ROLL_OFF.l / 2;
+  const rollOffs: Vec2[] = [];
+  for (let i = 0; i < RECYCLING_ROLL_OFF_COUNT; i++) {
+    rollOffs.push({
+      x: -halfW + 2 + RECYCLING_ROLL_OFF.w / 2 + i * RECYCLING_ROLL_OFF_PITCH,
+      z: rollOffZ,
+    });
+  }
+  const stallZ0 = back + RECYCLING_ROLL_OFF.l + Math.max(RECYCLING_AISLE_M, RECYCLING_PULL_M);
+  const stallsX0 = -(RECYCLING_STALL_COUNT * RECYCLING_STALL.w) / 2;
+  const stalls: Rect[] = [];
+  for (let i = 0; i < RECYCLING_STALL_COUNT; i++) {
+    const x0 = stallsX0 + i * RECYCLING_STALL.w;
+    stalls.push({ x0, x1: x0 + RECYCLING_STALL.w, z0: stallZ0, z1: stallZ0 + RECYCLING_STALL.l });
+  }
+  const gateX0 = 7;
+  const truckW = sizeForKind(VehicleKind.Recycling)[0];
   const trucks: Vec2[] = [];
   for (let i = 0; i < RECYCLING_TRUCK_COUNT; i++) {
-    trucks.push({ x: firstTruckX + i * RECYCLING_TRUCK_SPACING, z: truckZ });
+    trucks.push({ x: -halfW + 2 + truckW / 2 + i * RECYCLING_TRUCK_SPACING, z: 14.5 });
   }
-  return { shed: { x: shedX, z: shedZ }, office, trucks };
+  return {
+    shed: { x0: 3, x1: 3 + RECYCLING_SHED_SIZE.w, z0: back, z1: back + RECYCLING_SHED_SIZE.d },
+    office: {
+      x0: 14,
+      x1: 14 + RECYCLING_OFFICE_SIZE.w,
+      z0: halfD - 6,
+      z1: halfD - 6 + RECYCLING_OFFICE_SIZE.d,
+    },
+    rollOffs,
+    stalls,
+    trucks,
+    fence: lotRect(footprint, GEN_FENCE_INSET_M),
+    gate: { x0: gateX0, x1: gateX0 + GEN_GATE_M + 1 },
+  };
 }
 
 /**
@@ -1216,45 +1938,63 @@ function buildRecyclingYardGeometry(footprint: FootprintSize): THREE.BufferGeome
   return paintVertexColor(yard, hexFromRgb(RECYCLING_YARD_RGB));
 }
 
-/** Shed box + eaves cap + two bay doors proud of the street-side wall, merged; local Y=0 is the GROUND plane. */
-function buildRecyclingShedGeometry(footprint: FootprintSize): THREE.BufferGeometry {
-  const { shed } = computeRecyclingDepotLayout(footprint);
+/** The shed open to the yard (back and side walls, a roof on two posts at the open face), the office, the stall paint and the fence, merged; local Y=0 is the yard slab's top. */
+function buildRecyclingDepotGeometry(footprint: FootprintSize): THREE.BufferGeometry {
+  const layout = computeRecyclingDepotLayout(footprint);
+  const { shed, office } = layout;
+  const sc = rectCentre(shed);
   const { w, d, h } = RECYCLING_SHED_SIZE;
-
-  const body = new THREE.BoxGeometry(w, h, d);
-  body.translate(shed.x, h / 2, shed.z);
-  paintVertexColor(body, hexFromRgb(RECYCLING_SHED_RGB));
-
-  const cap = new THREE.BoxGeometry(w, RECYCLING_ROOF_CAP_HEIGHT, d);
-  cap.translate(shed.x, h + RECYCLING_ROOF_CAP_HEIGHT / 2, shed.z);
-  paintVertexColor(cap, hexFromRgb(RECYCLING_ROOF_RGB));
-
-  const parts: THREE.BufferGeometry[] = [body, cap];
-  for (let i = 0; i < RECYCLING_DOOR_COUNT; i++) {
-    const door = new THREE.BoxGeometry(
-      RECYCLING_DOOR_SIZE.w,
-      RECYCLING_DOOR_SIZE.h,
-      RECYCLING_DOOR_THICKNESS,
+  const t = 0.25;
+  const parts: THREE.BufferGeometry[] = [
+    standingBox(w, h, t, sc.x, 0, shed.z0 + t / 2, RECYCLING_SHED_RGB),
+    standingBox(t, h, d, shed.x0 + t / 2, 0, sc.z, RECYCLING_SHED_RGB),
+    standingBox(t, h, d, shed.x1 - t / 2, 0, sc.z, RECYCLING_SHED_RGB),
+    standingBox(w + 0.4, RECYCLING_ROOF_CAP_HEIGHT, d + 0.4, sc.x, h, sc.z, RECYCLING_ROOF_RGB),
+    standingBox(0.3, h, 0.3, shed.x0 + 0.15, 0, shed.z1 - 0.15, GEN_STEEL_RGB),
+    standingBox(0.3, h, 0.3, shed.x1 - 0.15, 0, shed.z1 - 0.15, GEN_STEEL_RGB),
+    ...cappedBox(
+      office,
+      RECYCLING_OFFICE_SIZE.h,
+      RECYCLING_OFFICE_RGB,
+      RECYCLING_ROOF_CAP_HEIGHT,
+      RECYCLING_OFFICE_ROOF_RGB,
+    ),
+  ];
+  // The stall lines: one at each stall edge, and a head line across them.
+  const first = layout.stalls[0]!;
+  const last = layout.stalls[layout.stalls.length - 1]!;
+  for (const x of [first.x0, ...layout.stalls.map((s) => s.x1)]) {
+    parts.push(
+      standingBox(0.1, 0.01, RECYCLING_STALL.l, x, 0, (first.z0 + first.z1) / 2, MARKING_COLOR),
     );
-    const x = shed.x + (i - (RECYCLING_DOOR_COUNT - 1) / 2) * (w / RECYCLING_DOOR_COUNT);
-    door.translate(x, RECYCLING_DOOR_SIZE.h / 2, shed.z + d / 2 + RECYCLING_DOOR_THICKNESS / 2);
-    paintVertexColor(door, hexFromRgb(RECYCLING_DOOR_RGB));
-    parts.push(door);
   }
+  parts.push(
+    standingBox(
+      last.x1 - first.x0,
+      0.01,
+      0.1,
+      (first.x0 + last.x1) / 2,
+      0,
+      first.z0,
+      MARKING_COLOR,
+    ),
+  );
+  fenceLoop(parts, layout.fence, GEN_FENCE_HEIGHT_M, layout.gate);
   return mergeParts(parts);
 }
 
-/** Office box + flat roof slab, merged; local Y=0 is the GROUND plane. */
-function buildRecyclingOfficeGeometry(footprint: FootprintSize): THREE.BufferGeometry {
-  const { office } = computeRecyclingDepotLayout(footprint);
-  const { w, d, h } = RECYCLING_OFFICE_SIZE;
-  const body = new THREE.BoxGeometry(w, h, d);
-  body.translate(office.x, h / 2, office.z);
-  paintVertexColor(body, hexFromRgb(RECYCLING_OFFICE_RGB));
-  const roof = new THREE.BoxGeometry(w, RECYCLING_ROOF_CAP_HEIGHT, d);
-  roof.translate(office.x, h + RECYCLING_ROOF_CAP_HEIGHT / 2, office.z);
-  paintVertexColor(roof, hexFromRgb(RECYCLING_OFFICE_ROOF_RGB));
-  return mergeParts([body, roof]);
+/** One roll-off at its own origin: an open-top box with a hook bar at its front, long side along Z. */
+function buildRecyclingRollOffGeometry(): THREE.BufferGeometry {
+  const { w, l, h } = RECYCLING_ROLL_OFF;
+  const skin = 0.08;
+  return mergeParts([
+    standingBox(w, 0.2, l, 0, 0, 0, RECYCLING_ROLL_OFF_RGB),
+    standingBox(skin, h, l, -w / 2 + skin / 2, 0, 0, RECYCLING_ROLL_OFF_RGB),
+    standingBox(skin, h, l, w / 2 - skin / 2, 0, 0, RECYCLING_ROLL_OFF_RGB),
+    standingBox(w, h, skin, 0, 0, -l / 2 + skin / 2, RECYCLING_ROLL_OFF_RGB),
+    standingBox(w, h, skin, 0, 0, l / 2 - skin / 2, RECYCLING_ROLL_OFF_RGB),
+    standingBox(0.3, 0.3, 0.3, 0, h - 0.5, l / 2 + 0.15, GEN_STEEL_RGB),
+  ]);
 }
 
 /** One parked service-fleet truck of `kind` at its real size, nose to local +Z, centred on its own origin on the ground. */
@@ -1276,26 +2016,37 @@ function buildParkedTruckGeometry(kind: ServiceVehicleKind): THREE.BufferGeometr
 /** The hall: 54 × 46.5 m is 2,511 m², 27,000 sq ft, 11 m over the tipping floor and balers. */
 export const MRF_HALL_SIZE = { w: 54, d: 46.5, h: 11 };
 export const MRF_OFFICE_SIZE = { w: 12, d: 8, h: 4 };
-/** A baled cube: 1.1 m wide, 0.75 m tall, 1.5 m long. */
-export const MRF_BALE_SIZE = { w: 1.1, h: 0.75, l: 1.5 };
+/** A 60 × 48 × 30 in bale, 1.52 m long, 1.22 m wide and 0.76 m tall. */
+export const MRF_BALE_SIZE = { w: 1.22, h: 0.76, l: 1.52 };
+/** Bales stack three high, and an outdoor stack never passes 6 m. */
+export const MRF_BALE_STACK = { high: 3, capM: 6 };
 export const MRF_TRUCK_COUNT = 4;
-/** Bale blocks across and deep in the bale yard, and bales across, deep and high in each block. */
+/** Bale blocks across and deep in the bale yard, and bales across and deep in each block. */
 const MRF_BALE_BLOCKS = { across: 4, deep: 3 };
-const MRF_BALES_PER_BLOCK = { across: 5, deep: 3, high: 3 };
+const MRF_BALES_PER_BLOCK = { across: 5, deep: 3 };
 const MRF_BALE_GAP = 0.12;
 const MRF_BALE_AISLE = 3;
 const MRF_EDGE_MARGIN = 3;
 /** Clear yard between the hall and the bale yard. */
 const MRF_YARD_GAP = 6;
 const MRF_ROOF_CAP_HEIGHT = 0.6;
-const MRF_DOOR_SIZE = { w: 6, h: 7.5 };
+/** The 18 × 26 ft tipping-floor doors. */
+export const MRF_DOOR_SIZE = { w: 5.5, h: 7.9 };
 const MRF_DOOR_THICKNESS = 0.3;
 const MRF_DOOR_COUNT = 3;
+/** The 10 ft wainscot band round the hall. */
+export const MRF_WAINSCOT_M = 3;
+/** Two bale docks on the yard side: a 1.2 m dock, 9 × 10 ft doors at 14 ft centres, as the industrial kit draws them. */
+export const MRF_DOCK = { doors: 2, h: 1.2, depth: 2.6, doorW: 2.74, doorH: 3.05, centres: 4.3 };
+/** A 6 × 8 ft dock leveller plate in the dock's top at each door. */
+export const MRF_LEVELLER = { w: 1.8, d: 2.4 };
+export const MRF_FAN = { radius: 0.6, h: 0.8, count: 4 };
 const MRF_TRUCK_SPACING = 6.5;
 /** The tipping apron: clear yard in front of the bay doors for a truck to turn and back in. */
 const MRF_DOOR_APRON = 14;
 
 const MRF_HALL_RGB: RGB = [0.58, 0.63, 0.6];
+const MRF_WAINSCOT_RGB: RGB = [0.4, 0.43, 0.42];
 const MRF_ROOF_RGB: RGB = [0.36, 0.4, 0.41];
 const MRF_DOOR_RGB: RGB = [0.22, 0.28, 0.31];
 const MRF_OFFICE_RGB: RGB = [0.78, 0.76, 0.7];
@@ -1318,13 +2069,21 @@ export interface MrfLayout {
   bales: { x: number; z: number; y: number; block: number }[];
   /** Footprint-frame centre of each parked truck; every truck's nose points to local +Z. */
   trucks: Vec2[];
+  /** The bale dock platform on the hall's yard side (+X), and its doors' centres along that wall. */
+  dock: Rect;
+  dockDoors: Vec2[];
+  /** The roof exhaust fans. */
+  fans: Vec2[];
+  weighbridge: Vec2;
+  scaleHouse: Vec2;
 }
 
 /**
  * Hall hard against the back-left corner (margin inside the lot), the bale
- * yard beside it to the right, the office at the front-right corner, and the
- * trucks in a row one apron in front of the bay doors. A block's back corner
- * stack is one bale shorter, so the stacks read as stacks. Pure; fixed per
+ * docks on its yard side, the bale yard beside it to the right, the office at
+ * the front-right corner, the scale on the way in beside it, and the trucks
+ * in a row one apron in front of the bay doors. A block's back corner stack
+ * is one bale shorter, so the stacks read as stacks. Pure; fixed per
  * footprint.
  */
 export function computeMrfLayout(footprint: FootprintSize): MrfLayout {
@@ -1341,7 +2100,8 @@ export function computeMrfLayout(footprint: FootprintSize): MrfLayout {
   const pitchZ = MRF_BALE_SIZE.l + MRF_BALE_GAP;
   const blockW = MRF_BALES_PER_BLOCK.across * pitchX;
   const blockD = MRF_BALES_PER_BLOCK.deep * pitchZ;
-  const yardX = hall.x + MRF_HALL_SIZE.w / 2 + MRF_YARD_GAP;
+  const hallX1 = hall.x + MRF_HALL_SIZE.w / 2;
+  const yardX = hallX1 + MRF_YARD_GAP;
   const yardZ = -halfD + MRF_EDGE_MARGIN;
   const bales: MrfLayout['bales'] = [];
   for (let bz = 0; bz < MRF_BALE_BLOCKS.deep; bz++) {
@@ -1352,7 +2112,7 @@ export function computeMrfLayout(footprint: FootprintSize): MrfLayout {
       for (let k = 0; k < MRF_BALES_PER_BLOCK.deep; k++) {
         for (let i = 0; i < MRF_BALES_PER_BLOCK.across; i++) {
           const corner = i === MRF_BALES_PER_BLOCK.across - 1 && k === 0;
-          const high = MRF_BALES_PER_BLOCK.high - (corner ? 1 : 0);
+          const high = MRF_BALE_STACK.high - (corner ? 1 : 0);
           for (let j = 0; j < high; j++) {
             bales.push({
               x: x0 + i * pitchX + MRF_BALE_SIZE.w / 2,
@@ -1372,12 +2132,44 @@ export function computeMrfLayout(footprint: FootprintSize): MrfLayout {
   for (let i = 0; i < MRF_TRUCK_COUNT; i++) {
     trucks.push({ x: firstTruckX + i * MRF_TRUCK_SPACING, z: truckZ });
   }
-  return { hall, office, bales, trucks };
+  const dockLength = MRF_DOCK.doors * MRF_DOCK.centres;
+  const dock: Rect = {
+    x0: hallX1,
+    x1: hallX1 + MRF_DOCK.depth,
+    z0: hall.z - dockLength / 2,
+    z1: hall.z + dockLength / 2,
+  };
+  const dockDoors = Array.from({ length: MRF_DOCK.doors }, (_, i) => ({
+    x: hallX1,
+    z: hall.z + (i - (MRF_DOCK.doors - 1) / 2) * MRF_DOCK.centres,
+  }));
+  const fans: Vec2[] = [];
+  for (const sx of [-1, 1])
+    for (const sz of [-1, 1]) fans.push({ x: hall.x + sx * 15, z: hall.z + sz * 12 });
+  const bridge = TRANSFER_WEIGHBRIDGE_SIZE;
+  const weighbridge: Vec2 = {
+    x: office.x - MRF_OFFICE_SIZE.w / 2 - 8,
+    z: halfD - 8 - bridge.l / 2,
+  };
+  return {
+    hall,
+    office,
+    bales,
+    trucks,
+    dock,
+    dockDoors,
+    fans,
+    weighbridge,
+    scaleHouse: {
+      x: weighbridge.x + bridge.w / 2 + TRANSFER_SCALE_GAP + TRANSFER_SCALE_HOUSE_SIZE.w / 2,
+      z: weighbridge.z,
+    },
+  };
 }
 
-/** Hall box + roof cap + the tipping-floor bay doors proud of the street-side wall, merged; local Y=0 is the GROUND plane. */
+/** Hall box + roof cap, the wainscot band round it, the tipping-floor doors proud of the street-side wall, the bale docks on the yard side and the roof fans, merged; local Y=0 is the GROUND plane. */
 function buildMrfHallGeometry(footprint: FootprintSize): THREE.BufferGeometry {
-  const { hall } = computeMrfLayout(footprint);
+  const { hall, dock, dockDoors, fans } = computeMrfLayout(footprint);
   const { w, d, h } = MRF_HALL_SIZE;
 
   const body = new THREE.BoxGeometry(w, h, d);
@@ -1388,15 +2180,93 @@ function buildMrfHallGeometry(footprint: FootprintSize): THREE.BufferGeometry {
   cap.translate(hall.x, h + MRF_ROOF_CAP_HEIGHT / 2, hall.z);
   paintVertexColor(cap, hexFromRgb(MRF_ROOF_RGB));
 
-  const parts: THREE.BufferGeometry[] = [body, cap];
+  const parts: THREE.BufferGeometry[] = [
+    body,
+    cap,
+    standingBox(w + 0.12, MRF_WAINSCOT_M, d + 0.12, hall.x, 0, hall.z, MRF_WAINSCOT_RGB),
+  ];
   for (let i = 0; i < MRF_DOOR_COUNT; i++) {
     const door = new THREE.BoxGeometry(MRF_DOOR_SIZE.w, MRF_DOOR_SIZE.h, MRF_DOOR_THICKNESS);
     const x = hall.x + (i - (MRF_DOOR_COUNT - 1) / 2) * (w / MRF_DOOR_COUNT);
-    door.translate(x, MRF_DOOR_SIZE.h / 2, hall.z + d / 2 + MRF_DOOR_THICKNESS / 2);
+    door.translate(x, MRF_DOOR_SIZE.h / 2, hall.z + d / 2 + MRF_DOOR_THICKNESS / 2 + 0.06);
     paintVertexColor(door, hexFromRgb(MRF_DOOR_RGB));
     parts.push(door);
   }
+  // The bale docks: the platform, and at each door the door, its shelter frame, two bumpers and a leveller plate.
+  parts.push(rectBox(dock, 0, RECYCLING_YARD_HEIGHT + MRF_DOCK.h, GEN_CONCRETE_RGB));
+  const dockTop = RECYCLING_YARD_HEIGHT + MRF_DOCK.h;
+  const frame = 0.3;
+  const proud = 0.3;
+  for (const door of dockDoors) {
+    const face = door.x + 0.06;
+    parts.push(
+      standingBox(0.12, MRF_DOCK.doorH, MRF_DOCK.doorW, face, dockTop, door.z, MRF_DOOR_RGB),
+      standingBox(
+        proud,
+        frame,
+        MRF_DOCK.doorW + 2 * frame,
+        door.x + 0.06 + proud / 2,
+        dockTop + MRF_DOCK.doorH,
+        door.z,
+        GEN_LOUVRE_RGB,
+      ),
+      standingBox(
+        proud,
+        MRF_DOCK.doorH + frame,
+        frame,
+        door.x + 0.06 + proud / 2,
+        dockTop,
+        door.z - (MRF_DOCK.doorW + frame) / 2,
+        GEN_LOUVRE_RGB,
+      ),
+      standingBox(
+        proud,
+        MRF_DOCK.doorH + frame,
+        frame,
+        door.x + 0.06 + proud / 2,
+        dockTop,
+        door.z + (MRF_DOCK.doorW + frame) / 2,
+        GEN_LOUVRE_RGB,
+      ),
+      standingBox(
+        MRF_LEVELLER.d,
+        0.03,
+        MRF_LEVELLER.w,
+        dock.x0 + MRF_LEVELLER.d / 2 + 0.1,
+        dockTop,
+        door.z,
+        GEN_STEEL_RGB,
+      ),
+    );
+    for (const k of [-1, 1]) {
+      parts.push(
+        standingBox(
+          0.11,
+          0.25,
+          0.3,
+          dock.x1 + 0.055,
+          dockTop - 0.3,
+          door.z + k * 0.9,
+          GEN_STACK_RIM_RGB,
+        ),
+      );
+    }
+  }
+  for (const fan of fans) {
+    const drum = new THREE.CylinderGeometry(MRF_FAN.radius, MRF_FAN.radius, MRF_FAN.h, 12);
+    drum.translate(fan.x, h + MRF_ROOF_CAP_HEIGHT + MRF_FAN.h / 2, fan.z);
+    parts.push(paintVertexColor(drum, hexFromRgb(GEN_STEEL_RGB)));
+    const hood = new THREE.CylinderGeometry(MRF_FAN.radius + 0.2, MRF_FAN.radius + 0.2, 0.15, 12);
+    hood.translate(fan.x, h + MRF_ROOF_CAP_HEIGHT + MRF_FAN.h + 0.075, fan.z);
+    parts.push(paintVertexColor(hood, hexFromRgb(GEN_STACK_RIM_RGB)));
+  }
   return mergeParts(parts);
+}
+
+/** The scale house and the weighbridge on the way in; local Y=0 is the GROUND plane. */
+function buildMrfScaleGeometry(footprint: FootprintSize): THREE.BufferGeometry {
+  const { weighbridge, scaleHouse } = computeMrfLayout(footprint);
+  return mergeParts(scaleParts(weighbridge, scaleHouse));
 }
 
 /** Every bale in the yard as one merged geometry, coloured by its block's material; local Y=0 is the GROUND plane. */
@@ -1454,12 +2324,16 @@ export const TRANSFER_PACKER_COUNT = 2;
 const TRANSFER_EDGE_MARGIN = 3;
 const TRANSFER_ROOF_OVERHANG = 0.4;
 const TRANSFER_ROOF_SKIN = 0.3;
-const TRANSFER_DOOR_SIZE = { w: 6, h: 7.5 };
-const TRANSFER_DOOR_THICKNESS = 0.3;
-const TRANSFER_DOOR_COUNT = 3;
+/** The roll-up doors, drawn open at 24 ft clear so the floor reads through them. */
+export const TRANSFER_DOOR = { w: 6, clear: 7.3, count: 3 };
+const TRANSFER_WALL_T = 0.3;
+/** The 14 ft concrete push walls along the hall's three closed sides. */
+export const TRANSFER_PUSH_WALL = { h: 4.3, t: 0.3 };
+/** The 42 in guard wall along the sunken bay's edge. */
+export const TRANSFER_GUARD_WALL_M = 1.07;
 /** The tipping apron: clear yard in front of the doors for a packer to turn and back in. */
 const TRANSFER_DOOR_APRON = 14;
-const TRANSFER_BAY_WALL = { thickness: 0.3, height: 1.1 };
+const TRANSFER_BAY_WALL = { thickness: 0.3, height: TRANSFER_GUARD_WALL_M };
 /** Clear yard between the bay's outer wall and the waiting rig. */
 const TRANSFER_RIG_GAP = 3;
 /** Gap between the weighbridge and the scale house's window wall. */
@@ -1468,6 +2342,7 @@ const TRANSFER_SCALE_GAP = 1.5;
 const TRANSFER_HALL_RGB: RGB = [0.55, 0.53, 0.45];
 const TRANSFER_ROOF_RGB: RGB = [0.34, 0.37, 0.38];
 const TRANSFER_DOOR_RGB: RGB = [0.25, 0.3, 0.33];
+const TRANSFER_INTERIOR_RGB: RGB = [0.28, 0.27, 0.24];
 const TRANSFER_BAY_FLOOR_RGB: RGB = [0.12, 0.12, 0.13];
 const TRANSFER_BAY_WALL_RGB: RGB = [0.5, 0.5, 0.48];
 const TRANSFER_SCALE_HOUSE_RGB: RGB = [0.7, 0.68, 0.6];
@@ -1488,6 +2363,10 @@ export interface TransferLayout {
   rigs: { x: number; z: number; sunk: number }[];
   /** Footprint-frame centre of each parked packer; every nose points to local +Z. */
   packers: Vec2[];
+  /** The open doors' centres along the hall's street wall. */
+  doors: Vec2[];
+  /** The push walls inside the hall's back, left and right walls. */
+  pushWalls: Rect[];
 }
 
 /**
@@ -1529,6 +2408,15 @@ export function computeTransferLayout(footprint: FootprintSize): TransferLayout 
   for (let i = 0; i < TRANSFER_PACKER_COUNT; i++) {
     packers.push({ x: transferDoorX(hall, i), z: packerZ });
   }
+  const { w, d } = TRANSFER_HALL_SIZE;
+  const t = TRANSFER_WALL_T;
+  const p = TRANSFER_PUSH_WALL.t;
+  const inner = {
+    x0: hall.x - w / 2 + t,
+    x1: hall.x + w / 2 - t,
+    z0: hall.z - d / 2 + t,
+    z1: hall.z + d / 2 - t,
+  };
   return {
     hall,
     bay,
@@ -1539,13 +2427,22 @@ export function computeTransferLayout(footprint: FootprintSize): TransferLayout 
       { x: waitingX, z: bay.z, sunk: 0 },
     ],
     packers,
+    doors: Array.from({ length: TRANSFER_DOOR.count }, (_, i) => ({
+      x: transferDoorX(hall, i),
+      z: hall.z + d / 2,
+    })),
+    pushWalls: [
+      { x0: inner.x0, x1: inner.x1, z0: inner.z0, z1: inner.z0 + p },
+      { x0: inner.x0, x1: inner.x0 + p, z0: inner.z0 + p, z1: inner.z1 },
+      { x0: inner.x1 - p, x1: inner.x1, z0: inner.z0 + p, z1: inner.z1 },
+    ],
   };
 }
 
 /** The local X of the hall's `i`th door, the doors spread evenly across its street wall. */
 function transferDoorX(hall: Vec2, i: number): number {
   return (
-    hall.x + (i - (TRANSFER_DOOR_COUNT - 1) / 2) * (TRANSFER_HALL_SIZE.w / TRANSFER_DOOR_COUNT)
+    hall.x + (i - (TRANSFER_DOOR.count - 1) / 2) * (TRANSFER_HALL_SIZE.w / TRANSFER_DOOR.count)
   );
 }
 
@@ -1572,11 +2469,78 @@ function standingBox(
  * is the GROUND plane.
  */
 function buildTransferHallGeometry(footprint: FootprintSize): THREE.BufferGeometry {
-  const { hall, bay } = computeTransferLayout(footprint);
+  const { hall, bay, doors, pushWalls } = computeTransferLayout(footprint);
   const { w, d, h } = TRANSFER_HALL_SIZE;
+  const t = TRANSFER_WALL_T;
+  const front = hall.z + d / 2;
+  // The hall is hollow, so the floor and the push walls read through its open
+  // doors; its inside faces are lined darker, so the openings read as shade.
+  const lining = 0.05;
+  const inner = { w: w - 2 * t, d: d - 2 * t };
   const parts: THREE.BufferGeometry[] = [
-    standingBox(w, h, d, hall.x, 0, hall.z, TRANSFER_HALL_RGB),
+    standingBox(w, h, t, hall.x, 0, hall.z - d / 2 + t / 2, TRANSFER_HALL_RGB),
+    standingBox(t, h, d, hall.x - w / 2 + t / 2, 0, hall.z, TRANSFER_HALL_RGB),
+    standingBox(t, h, d, hall.x + w / 2 - t / 2, 0, hall.z, TRANSFER_HALL_RGB),
+    standingBox(
+      inner.w,
+      h,
+      lining,
+      hall.x,
+      0,
+      hall.z - d / 2 + t + lining / 2,
+      TRANSFER_INTERIOR_RGB,
+    ),
+    standingBox(
+      lining,
+      h,
+      inner.d,
+      hall.x - w / 2 + t + lining / 2,
+      0,
+      hall.z,
+      TRANSFER_INTERIOR_RGB,
+    ),
+    standingBox(
+      lining,
+      h,
+      inner.d,
+      hall.x + w / 2 - t - lining / 2,
+      0,
+      hall.z,
+      TRANSFER_INTERIOR_RGB,
+    ),
+    standingBox(inner.w, 0.02, inner.d, hall.x, RECYCLING_YARD_HEIGHT, hall.z, GEN_CONCRETE_RGB),
   ];
+  // The street wall: piers between the openings and a lintel over each, the door's coil raised under it.
+  const edges = [
+    hall.x - w / 2,
+    ...doors.flatMap((door) => [door.x - TRANSFER_DOOR.w / 2, door.x + TRANSFER_DOOR.w / 2]),
+    hall.x + w / 2,
+  ];
+  for (let i = 0; i < edges.length; i += 2) {
+    const x0 = edges[i]!;
+    const x1 = edges[i + 1]!;
+    parts.push(standingBox(x1 - x0, h, t, (x0 + x1) / 2, 0, front - t / 2, TRANSFER_HALL_RGB));
+  }
+  for (const door of doors) {
+    parts.push(
+      standingBox(
+        TRANSFER_DOOR.w,
+        h - TRANSFER_DOOR.clear,
+        t,
+        door.x,
+        TRANSFER_DOOR.clear,
+        front - t / 2,
+        TRANSFER_HALL_RGB,
+      ),
+    );
+    const coil = new THREE.CylinderGeometry(0.35, 0.35, TRANSFER_DOOR.w + 0.2, 10);
+    coil.rotateZ(Math.PI / 2);
+    coil.translate(door.x, TRANSFER_DOOR.clear + 0.35, front - t - 0.4);
+    parts.push(paintVertexColor(coil, hexFromRgb(TRANSFER_DOOR_RGB)));
+  }
+  for (const wall of pushWalls) {
+    parts.push(rectBox(wall, RECYCLING_YARD_HEIGHT, TRANSFER_PUSH_WALL.h, GEN_CONCRETE_RGB));
+  }
 
   const halfSpan = w / 2 + TRANSFER_ROOF_OVERHANG;
   const profile = new THREE.Shape();
@@ -1600,20 +2564,6 @@ function buildTransferHallGeometry(footprint: FootprintSize): THREE.BufferGeomet
       TRANSFER_ROOF_RGB,
     ),
   );
-
-  for (let i = 0; i < TRANSFER_DOOR_COUNT; i++) {
-    parts.push(
-      standingBox(
-        TRANSFER_DOOR_SIZE.w,
-        TRANSFER_DOOR_SIZE.h,
-        TRANSFER_DOOR_THICKNESS,
-        transferDoorX(hall, i),
-        0,
-        hall.z + d / 2 + TRANSFER_DOOR_THICKNESS / 2,
-        TRANSFER_DOOR_RGB,
-      ),
-    );
-  }
 
   const { w: bayW, l: bayL } = TRANSFER_BAY_SIZE;
   const wall = TRANSFER_BAY_WALL;
@@ -1641,12 +2591,11 @@ function buildTransferHallGeometry(footprint: FootprintSize): THREE.BufferGeomet
   return mergeParts(parts);
 }
 
-/** The scale house (box + roof slab) and the weighbridge beside it, merged; local Y=0 is the GROUND plane. */
-function buildTransferScaleGeometry(footprint: FootprintSize): THREE.BufferGeometry {
-  const { scaleHouse, weighbridge } = computeTransferLayout(footprint);
+/** The scale house (box + roof slab) and the weighbridge beside it, standing on the ground at local Y=0; shared by every kit with a truck scale at its gate. */
+function scaleParts(weighbridge: Vec2, scaleHouse: Vec2): THREE.BufferGeometry[] {
   const { w, d, h } = TRANSFER_SCALE_HOUSE_SIZE;
   const bridge = TRANSFER_WEIGHBRIDGE_SIZE;
-  return mergeParts([
+  return [
     standingBox(w, h, d, scaleHouse.x, 0, scaleHouse.z, TRANSFER_SCALE_HOUSE_RGB),
     standingBox(w + 0.4, 0.3, d + 0.4, scaleHouse.x, h, scaleHouse.z, TRANSFER_SCALE_ROOF_RGB),
     standingBox(
@@ -1658,7 +2607,13 @@ function buildTransferScaleGeometry(footprint: FootprintSize): THREE.BufferGeome
       weighbridge.z,
       TRANSFER_WEIGHBRIDGE_RGB,
     ),
-  ]);
+  ];
+}
+
+/** The transfer station's scale, merged; local Y=0 is the GROUND plane. */
+function buildTransferScaleGeometry(footprint: FootprintSize): THREE.BufferGeometry {
+  const { scaleHouse, weighbridge } = computeTransferLayout(footprint);
+  return mergeParts(scaleParts(weighbridge, scaleHouse));
 }
 
 /**
@@ -5064,32 +6019,8 @@ function buildNuclearPlantGeometry(footprint: FootprintSize): THREE.BufferGeomet
       GEN_ENCLOSURE_RGB,
     ),
   ];
-  for (const g of layout.gantries) {
-    for (const s of [-1, 1]) {
-      parts.push(
-        standingBox(
-          0.6,
-          NUCLEAR_GANTRY.h,
-          0.6,
-          g.x + (s * NUCLEAR_GANTRY.span) / 2,
-          0,
-          g.z,
-          GEN_STEEL_RGB,
-        ),
-      );
-    }
-    parts.push(
-      standingBox(
-        NUCLEAR_GANTRY.span + 0.6,
-        0.6,
-        0.6,
-        g.x,
-        NUCLEAR_GANTRY.h - 0.6,
-        g.z,
-        GEN_STEEL_RGB,
-      ),
-    );
-  }
+  for (const g of layout.gantries)
+    parts.push(...gantryParts(g, NUCLEAR_GANTRY.span, NUCLEAR_GANTRY.h));
   for (const t of layout.transformers) parts.push(...transformerParts(t, NUCLEAR_TRANSFORMER.h));
   fenceLoop(parts, layout.outer, GEN_SECURITY_FENCE_HEIGHT_M, layout.gate);
   fenceLoop(parts, layout.inner, GEN_SECURITY_FENCE_HEIGHT_M, layout.gate);
@@ -6752,156 +7683,134 @@ export class UtilityKitRenderer {
   }
 
   private buildPumpKit(entry: BuildingCatalogEntry): KitDefinition {
-    const lambert = (): THREE.MeshLambertMaterial =>
-      new THREE.MeshLambertMaterial({ vertexColors: true });
+    const pool = (geometry: THREE.BufferGeometry) =>
+      new InstancedSlotPool(
+        this.scene,
+        geometry,
+        new THREE.MeshLambertMaterial({ vertexColors: true }),
+        INITIAL_KIT_CAPACITY,
+      );
+    const { footprint } = entry;
     return {
       entry,
+      pavesLot: true,
       pools: {
-        pumpHouse: new InstancedSlotPool(
-          this.scene,
-          buildPumpHouseGeometry(),
-          lambert(),
-          INITIAL_KIT_CAPACITY,
-        ),
-        pumpIntake: new InstancedSlotPool(
-          this.scene,
-          buildPumpIntakeGeometry(entry.footprint),
-          lambert(),
-          INITIAL_KIT_CAPACITY,
-        ),
+        pumpGrounds: pool(buildPumpGroundsGeometry(footprint)),
+        pumpStation: pool(buildPumpStationGeometry(footprint)),
+        pumpIntake: pool(buildPumpIntakeGeometry(footprint)),
       },
     };
   }
 
   private buildDrainKit(entry: BuildingCatalogEntry): KitDefinition {
-    const lambert = (): THREE.MeshLambertMaterial =>
-      new THREE.MeshLambertMaterial({ vertexColors: true });
+    const pool = (geometry: THREE.BufferGeometry) =>
+      new InstancedSlotPool(
+        this.scene,
+        geometry,
+        new THREE.MeshLambertMaterial({ vertexColors: true }),
+        INITIAL_KIT_CAPACITY,
+      );
+    const { footprint } = entry;
     return {
       entry,
+      pavesLot: true,
       pools: {
-        drainHeadwall: new InstancedSlotPool(
-          this.scene,
-          buildDrainHeadwallGeometry(entry.footprint),
-          lambert(),
-          INITIAL_KIT_CAPACITY,
-        ),
-        drainOutfall: new InstancedSlotPool(
-          this.scene,
-          buildDrainOutfallGeometry(entry.footprint),
-          lambert(),
-          INITIAL_KIT_CAPACITY,
-        ),
+        drainGrounds: pool(buildGeneratorGroundsGeometry(footprint, GEN_SCRUB_RGB, [])),
+        drainHeadwall: pool(buildDrainHeadwallGeometry(footprint)),
+        drainOutfall: pool(buildDrainOutfallGeometry(footprint)),
       },
     };
   }
 
   private buildWorksKit(entry: BuildingCatalogEntry): KitDefinition {
-    const lambert = (): THREE.MeshLambertMaterial =>
-      new THREE.MeshLambertMaterial({ vertexColors: true });
+    const pool = (geometry: THREE.BufferGeometry, capacity = INITIAL_KIT_CAPACITY) =>
+      new InstancedSlotPool(
+        this.scene,
+        geometry,
+        new THREE.MeshLambertMaterial({ vertexColors: true }),
+        capacity,
+      );
+    const { footprint } = entry;
     return {
       entry,
+      pavesLot: true,
       pools: {
-        worksBody: new InstancedSlotPool(
-          this.scene,
-          buildWorksBodyGeometry(),
-          lambert(),
-          INITIAL_KIT_CAPACITY,
+        worksGrounds: pool(buildWorksGroundsGeometry(footprint)),
+        worksPlant: pool(buildWorksPlantGeometry(footprint)),
+        worksClarifier: pool(
+          buildWorksClarifierGeometry(),
+          INITIAL_KIT_CAPACITY * WORKS_CLARIFIER_COUNT,
         ),
-        worksOutfall: new InstancedSlotPool(
-          this.scene,
-          buildDrainOutfallGeometry(entry.footprint),
-          lambert(),
-          INITIAL_KIT_CAPACITY,
-        ),
+        worksOutfall: pool(buildWorksOutfallGeometry(footprint)),
       },
     };
   }
 
   private buildCoalPlantKit(entry: BuildingCatalogEntry): KitDefinition {
-    const lambert = (): THREE.MeshLambertMaterial =>
-      new THREE.MeshLambertMaterial({ vertexColors: true });
+    const pool = (geometry: THREE.BufferGeometry, capacity = INITIAL_KIT_CAPACITY) =>
+      new InstancedSlotPool(
+        this.scene,
+        geometry,
+        new THREE.MeshLambertMaterial({ vertexColors: true }),
+        capacity,
+      );
+    const { footprint } = entry;
     return {
       entry,
+      pavesLot: true,
       pools: {
-        coalHall: new InstancedSlotPool(
-          this.scene,
-          buildCoalHallGeometry(entry.footprint),
-          lambert(),
-          INITIAL_KIT_CAPACITY,
-        ),
-        coalSmokestack: new InstancedSlotPool(
-          this.scene,
+        coalGrounds: pool(buildCoalGroundsGeometry(footprint)),
+        coalPlant: pool(buildCoalPlantGeometry(footprint)),
+        coalSmokestack: pool(
           buildCoalSmokestackGeometry(),
-          lambert(),
           INITIAL_KIT_CAPACITY * COAL_SMOKESTACK_COUNT,
         ),
-        coalHeap: new InstancedSlotPool(
-          this.scene,
-          buildCoalHeapGeometry(),
-          lambert(),
-          INITIAL_KIT_CAPACITY,
-        ),
+        coalHeap: pool(buildCoalHeapGeometry(footprint)),
       },
     };
   }
 
   private buildIncineratorKit(entry: BuildingCatalogEntry): KitDefinition {
-    const lambert = (): THREE.MeshLambertMaterial =>
-      new THREE.MeshLambertMaterial({ vertexColors: true });
+    const pool = (geometry: THREE.BufferGeometry) =>
+      new InstancedSlotPool(
+        this.scene,
+        geometry,
+        new THREE.MeshLambertMaterial({ vertexColors: true }),
+        INITIAL_KIT_CAPACITY,
+      );
+    const { footprint } = entry;
     return {
       entry,
+      pavesLot: true,
       pools: {
-        incineratorHall: new InstancedSlotPool(
-          this.scene,
-          buildIncineratorHallGeometry(entry.footprint),
-          lambert(),
-          INITIAL_KIT_CAPACITY,
-        ),
-        incineratorStack: new InstancedSlotPool(
-          this.scene,
-          buildIncineratorStackGeometry(),
-          lambert(),
-          INITIAL_KIT_CAPACITY,
-        ),
-        incineratorBay: new InstancedSlotPool(
-          this.scene,
-          buildIncineratorBayGeometry(),
-          lambert(),
-          INITIAL_KIT_CAPACITY,
-        ),
+        incineratorGrounds: pool(buildIncineratorGroundsGeometry(footprint)),
+        incineratorPlant: pool(buildIncineratorPlantGeometry(footprint)),
+        incineratorStack: pool(buildIncineratorStackGeometry()),
       },
     };
   }
 
   private buildRecyclingDepotKit(entry: BuildingCatalogEntry): KitDefinition {
-    const lambert = (): THREE.MeshLambertMaterial =>
-      new THREE.MeshLambertMaterial({ vertexColors: true });
+    const pool = (geometry: THREE.BufferGeometry, capacity = INITIAL_KIT_CAPACITY) =>
+      new InstancedSlotPool(
+        this.scene,
+        geometry,
+        new THREE.MeshLambertMaterial({ vertexColors: true }),
+        capacity,
+      );
+    const { footprint } = entry;
     return {
       entry,
       pavesLot: true,
       pools: {
-        recyclingYard: new InstancedSlotPool(
-          this.scene,
-          buildRecyclingYardGeometry(entry.footprint),
-          lambert(),
-          INITIAL_KIT_CAPACITY,
+        recyclingYard: pool(buildRecyclingYardGeometry(footprint)),
+        recyclingDepot: pool(buildRecyclingDepotGeometry(footprint)),
+        recyclingRollOff: pool(
+          buildRecyclingRollOffGeometry(),
+          INITIAL_KIT_CAPACITY * RECYCLING_ROLL_OFF_COUNT,
         ),
-        recyclingShed: new InstancedSlotPool(
-          this.scene,
-          buildRecyclingShedGeometry(entry.footprint),
-          lambert(),
-          INITIAL_KIT_CAPACITY,
-        ),
-        recyclingOffice: new InstancedSlotPool(
-          this.scene,
-          buildRecyclingOfficeGeometry(entry.footprint),
-          lambert(),
-          INITIAL_KIT_CAPACITY,
-        ),
-        recyclingTruck: new InstancedSlotPool(
-          this.scene,
+        recyclingTruck: pool(
           buildParkedTruckGeometry(VehicleKind.Recycling),
-          lambert(),
           INITIAL_KIT_CAPACITY * RECYCLING_TRUCK_COUNT,
         ),
       },
@@ -6921,6 +7830,7 @@ export class UtilityKitRenderer {
         mrfHall: pool(buildMrfHallGeometry(entry.footprint)),
         mrfBales: pool(buildMrfBalesGeometry(entry.footprint)),
         mrfOffice: pool(buildMrfOfficeGeometry(entry.footprint)),
+        mrfScale: pool(buildMrfScaleGeometry(entry.footprint)),
         mrfTruck: pool(
           buildParkedTruckGeometry(VehicleKind.Recycling),
           INITIAL_KIT_CAPACITY * MRF_TRUCK_COUNT,
@@ -7186,40 +8096,9 @@ export class UtilityKitRenderer {
         this.applyWaterTower(kit, building, centerX, groundY, centerZ, rotation);
         return;
       case 'water-pump':
-        this.applyShorePair(
-          kit,
-          building,
-          entry,
-          'pumpHouse',
-          'pumpIntake',
-          centerX,
-          groundY,
-          centerZ,
-        );
-        return;
       case 'water-drain':
-        this.applyShorePair(
-          kit,
-          building,
-          entry,
-          'drainHeadwall',
-          'drainOutfall',
-          centerX,
-          groundY,
-          centerZ,
-        );
-        return;
       case 'sewage-works':
-        this.applyShorePair(
-          kit,
-          building,
-          entry,
-          'worksBody',
-          'worksOutfall',
-          centerX,
-          groundY,
-          centerZ,
-        );
+        this.applyShoreKit(kit, building, entry, centerX, groundY, centerZ);
         return;
       case 'coal-plant':
         this.applyCoalPlant(kit, building, entry, centerX, groundY, centerZ, rotation);
@@ -7484,31 +8363,40 @@ export class UtilityKitRenderer {
   }
 
   /**
-   * A shore building's two parts, both turned so the kit's local +Z faces the
+   * A shore kit's parts, every one turned so the kit's local +Z faces the
    * water beside the footprint — never the rotation the player placed it at,
-   * since an intake pointing inland would draw from nothing.
+   * since an intake pointing inland would draw from nothing. The grounds
+   * stand on the ground, everything else on the plate's top, and the works'
+   * clarifiers at their own places in the turned frame.
    */
-  private applyShorePair(
+  private applyShoreKit(
     kit: KitDefinition,
     building: BuildingInstance,
     entry: BuildingCatalogEntry,
-    bodyKind: UtilityKitPartKind,
-    pipeKind: UtilityKitPartKind,
     centerX: number,
     groundY: number,
     centerZ: number,
   ): void {
-    const bodyPool = kit.pools[bodyKind];
-    const pipePool = kit.pools[pipeKind];
-    if (!bodyPool || !pipePool) return;
     const lot = footprintForRotation(entry, building.rotation);
     const facing = waterSideOf(building.x, building.z, lot, this.waterAt);
-    const bodySlot = this.placeAt(bodyPool, centerX, groundY, centerZ, facing);
-    const pipeSlot = this.placeAt(pipePool, centerX, groundY, centerZ, facing);
-    this.instances.set(building.id, {
-      catalogId: building.catalogId,
-      slots: { [bodyKind]: [bodySlot], [pipeKind]: [pipeSlot] },
-    });
+    const plateY = groundY + GEN_PLATE_M;
+    const slots: Partial<Record<UtilityKitPartKind, number[]>> = {};
+    for (const [kind, pool] of Object.entries(kit.pools) as [
+      UtilityKitPartKind,
+      InstancedSlotPool,
+    ][]) {
+      if (kind === 'worksClarifier') continue;
+      const y = kind.endsWith('Grounds') ? groundY : plateY;
+      slots[kind] = [this.placeAt(pool, centerX, y, centerZ, facing)];
+    }
+    const clarifierPool = kit.pools.worksClarifier;
+    if (clarifierPool) {
+      slots.worksClarifier = computeWorksLayout(entry.footprint).clarifiers.map((local) => {
+        const turned = rotateLocalXZ(local.x, local.z, facing);
+        return this.placeAt(clarifierPool, centerX + turned.x, plateY, centerZ + turned.z, facing);
+      });
+    }
+    this.instances.set(building.id, { catalogId: building.catalogId, slots });
   }
 
   private applyCoalPlant(
@@ -7520,32 +8408,25 @@ export class UtilityKitRenderer {
     centerZ: number,
     rotation: 0 | 1 | 2 | 3,
   ): void {
-    const hallPool = kit.pools.coalHall;
-    const stackPool = kit.pools.coalSmokestack;
-    const heapPool = kit.pools.coalHeap;
-    if (!hallPool || !stackPool || !heapPool) return;
-
-    const hallSlot = this.placeAt(hallPool, centerX, groundY, centerZ, rotation);
-
-    const stackSlots = computeCoalSmokestackLocalPlacements(entry.footprint).map((local) => {
-      const rotated = rotateLocalXZ(local.x, local.z, rotation);
-      return this.placeAt(stackPool, centerX + rotated.x, groundY, centerZ + rotated.z, rotation);
-    });
-
-    const heapLocal = computeCoalHeapLocalPlacement(entry.footprint);
-    const heapRotated = rotateLocalXZ(heapLocal.x, heapLocal.z, rotation);
-    const heapSlot = this.placeAt(
-      heapPool,
-      centerX + heapRotated.x,
-      groundY,
-      centerZ + heapRotated.z,
-      rotation,
-    );
-
-    this.instances.set(building.id, {
-      catalogId: building.catalogId,
-      slots: { coalHall: [hallSlot], coalSmokestack: stackSlots, coalHeap: [heapSlot] },
-    });
+    const { coalGrounds, coalPlant, coalSmokestack, coalHeap } = kit.pools;
+    if (!coalGrounds || !coalPlant || !coalSmokestack || !coalHeap) return;
+    const plateY = groundY + GEN_PLATE_M;
+    const slots = {
+      coalGrounds: [this.placeAt(coalGrounds, centerX, groundY, centerZ, rotation)],
+      coalPlant: [this.placeAt(coalPlant, centerX, plateY, centerZ, rotation)],
+      coalHeap: [this.placeAt(coalHeap, centerX, plateY, centerZ, rotation)],
+      coalSmokestack: computeCoalSmokestackLocalPlacements(entry.footprint).map((local) => {
+        const turned = rotateLocalXZ(local.x, local.z, rotation);
+        return this.placeAt(
+          coalSmokestack,
+          centerX + turned.x,
+          plateY,
+          centerZ + turned.z,
+          rotation,
+        );
+      }),
+    };
+    this.instances.set(building.id, { catalogId: building.catalogId, slots });
   }
 
   private applyIncinerator(
@@ -7557,41 +8438,19 @@ export class UtilityKitRenderer {
     centerZ: number,
     rotation: 0 | 1 | 2 | 3,
   ): void {
-    const hallPool = kit.pools.incineratorHall;
-    const stackPool = kit.pools.incineratorStack;
-    const bayPool = kit.pools.incineratorBay;
-    if (!hallPool || !stackPool || !bayPool) return;
-
-    const hallSlot = this.placeAt(hallPool, centerX, groundY, centerZ, rotation);
-
-    const stackLocal = computeIncineratorStackLocalPlacement(entry.footprint);
-    const stackRotated = rotateLocalXZ(stackLocal.x, stackLocal.z, rotation);
-    const stackSlot = this.placeAt(
-      stackPool,
-      centerX + stackRotated.x,
-      groundY,
-      centerZ + stackRotated.z,
-      rotation,
-    );
-
-    const bayLocal = computeIncineratorBayLocalPlacement(entry.footprint);
-    const bayRotated = rotateLocalXZ(bayLocal.x, bayLocal.z, rotation);
-    const baySlot = this.placeAt(
-      bayPool,
-      centerX + bayRotated.x,
-      groundY,
-      centerZ + bayRotated.z,
-      rotation,
-    );
-
-    this.instances.set(building.id, {
-      catalogId: building.catalogId,
-      slots: {
-        incineratorHall: [hallSlot],
-        incineratorStack: [stackSlot],
-        incineratorBay: [baySlot],
-      },
-    });
+    const { incineratorGrounds, incineratorPlant, incineratorStack } = kit.pools;
+    if (!incineratorGrounds || !incineratorPlant || !incineratorStack) return;
+    const plateY = groundY + GEN_PLATE_M;
+    const stack = computeIncineratorStackLocalPlacement(entry.footprint);
+    const turned = rotateLocalXZ(stack.x, stack.z, rotation);
+    const slots = {
+      incineratorGrounds: [this.placeAt(incineratorGrounds, centerX, groundY, centerZ, rotation)],
+      incineratorPlant: [this.placeAt(incineratorPlant, centerX, plateY, centerZ, rotation)],
+      incineratorStack: [
+        this.placeAt(incineratorStack, centerX + turned.x, plateY, centerZ + turned.z, rotation),
+      ],
+    };
+    this.instances.set(building.id, { catalogId: building.catalogId, slots });
   }
 
   private applyRecyclingDepot(
@@ -7603,32 +8462,22 @@ export class UtilityKitRenderer {
     centerZ: number,
     rotation: 0 | 1 | 2 | 3,
   ): void {
-    const yardPool = kit.pools.recyclingYard;
-    const shedPool = kit.pools.recyclingShed;
-    const officePool = kit.pools.recyclingOffice;
-    const truckPool = kit.pools.recyclingTruck;
-    if (!yardPool || !shedPool || !officePool || !truckPool) return;
-
-    const yardSlot = this.placeAt(yardPool, centerX, groundY, centerZ, rotation);
-    const shedSlot = this.placeAt(shedPool, centerX, groundY, centerZ, rotation);
-    const officeSlot = this.placeAt(officePool, centerX, groundY, centerZ, rotation);
-
-    // The trucks stand on the yard slab, not in it.
-    const truckY = groundY + RECYCLING_YARD_HEIGHT;
-    const truckSlots = computeRecyclingDepotLayout(entry.footprint).trucks.map((local) => {
-      const rotated = rotateLocalXZ(local.x, local.z, rotation);
-      return this.placeAt(truckPool, centerX + rotated.x, truckY, centerZ + rotated.z, rotation);
-    });
-
-    this.instances.set(building.id, {
-      catalogId: building.catalogId,
-      slots: {
-        recyclingYard: [yardSlot],
-        recyclingShed: [shedSlot],
-        recyclingOffice: [officeSlot],
-        recyclingTruck: truckSlots,
-      },
-    });
+    const { recyclingYard, recyclingDepot, recyclingRollOff, recyclingTruck } = kit.pools;
+    if (!recyclingYard || !recyclingDepot || !recyclingRollOff || !recyclingTruck) return;
+    // Everything but the yard stands on the yard slab, not in it.
+    const yardTop = groundY + RECYCLING_YARD_HEIGHT;
+    const layout = computeRecyclingDepotLayout(entry.footprint);
+    const placeLocal = (pool: InstancedSlotPool, local: Vec2): number => {
+      const turned = rotateLocalXZ(local.x, local.z, rotation);
+      return this.placeAt(pool, centerX + turned.x, yardTop, centerZ + turned.z, rotation);
+    };
+    const slots = {
+      recyclingYard: [this.placeAt(recyclingYard, centerX, groundY, centerZ, rotation)],
+      recyclingDepot: [this.placeAt(recyclingDepot, centerX, yardTop, centerZ, rotation)],
+      recyclingRollOff: layout.rollOffs.map((local) => placeLocal(recyclingRollOff, local)),
+      recyclingTruck: layout.trucks.map((local) => placeLocal(recyclingTruck, local)),
+    };
+    this.instances.set(building.id, { catalogId: building.catalogId, slots });
   }
 
   private applyMrf(
@@ -7640,14 +8489,15 @@ export class UtilityKitRenderer {
     centerZ: number,
     rotation: 0 | 1 | 2 | 3,
   ): void {
-    const { mrfYard, mrfHall, mrfBales, mrfOffice, mrfTruck } = kit.pools;
-    if (!mrfYard || !mrfHall || !mrfBales || !mrfOffice || !mrfTruck) return;
+    const { mrfYard, mrfHall, mrfBales, mrfOffice, mrfScale, mrfTruck } = kit.pools;
+    if (!mrfYard || !mrfHall || !mrfBales || !mrfOffice || !mrfScale || !mrfTruck) return;
 
     const slots = {
       mrfYard: [this.placeAt(mrfYard, centerX, groundY, centerZ, rotation)],
       mrfHall: [this.placeAt(mrfHall, centerX, groundY, centerZ, rotation)],
       mrfBales: [this.placeAt(mrfBales, centerX, groundY, centerZ, rotation)],
       mrfOffice: [this.placeAt(mrfOffice, centerX, groundY, centerZ, rotation)],
+      mrfScale: [this.placeAt(mrfScale, centerX, groundY, centerZ, rotation)],
       // The trucks stand on the yard slab, not in it.
       mrfTruck: computeMrfLayout(entry.footprint).trucks.map((local) => {
         const rotated = rotateLocalXZ(local.x, local.z, rotation);
