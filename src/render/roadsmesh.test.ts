@@ -35,6 +35,7 @@ import {
   TRAM_GROOVE_COLOR,
   TRAM_RAIL_COLOR,
   TRAM_SLAB_COLOR,
+  MEDIAN_GRASS_COLOR,
   RAIL_HALF_WIDTH_FRACTION,
   carriagewayHalfWidthMeters,
   curbWidthMeters,
@@ -351,6 +352,7 @@ describe('roadTileVertices — tram track (RoadTier.Tram)', () => {
   const isRail = isColour(TRAM_RAIL_COLOR);
   const isGroove = isColour(TRAM_GROOVE_COLOR);
   const isSlab = isColour(TRAM_SLAB_COLOR);
+  const isMedianGrass = isColour(MEDIAN_GRASS_COLOR);
   const isSleeper = (t: readonly number[]): boolean => {
     const [r, g, b] = t as [number, number, number];
     return r > 0.2 && r < 0.34 && r > g && g >= b;
@@ -410,14 +412,50 @@ describe('roadTileVertices — tram track (RoadTier.Tram)', () => {
     }
   });
 
-  it('lays the same street track on a road composed with a tram lane, mixed or reserved', () => {
-    for (const tram of ['mixed', 'reserved'] as const) {
-      const base = tram === 'mixed' ? RoadTier.TwoLane : RoadTier.Avenue;
-      const profile = composeProfile(presetProfileForTier(base), { ...NO_EDITS, tram });
-      const v = roadTileVertices(0, 0, base, N | S, flatHeightAt, undefined, profile);
-      expect(countWhere(v.colors, isSlab)).toBeGreaterThan(0);
-      expect(countWhere(v.colors, isRail)).toBeGreaterThan(0);
-      expect(countWhere(v.colors, isSleeper)).toBe(0);
+  it('lays street track on a road composed with mixed running, and a median under a reservation', () => {
+    // Mixed running is a street tramway: slab and rails in the shared lanes.
+    const mixedProfile = composeProfile(presetProfileForTier(RoadTier.TwoLane), {
+      ...NO_EDITS,
+      tram: 'mixed',
+    });
+    const mixed = roadTileVertices(
+      0,
+      0,
+      RoadTier.TwoLane,
+      N | S,
+      flatHeightAt,
+      undefined,
+      mixedProfile,
+    );
+    expect(countWhere(mixed.colors, isSlab)).toBeGreaterThan(0);
+    expect(countWhere(mixed.colors, isRail)).toBeGreaterThan(0);
+    expect(countWhere(mixed.colors, isSleeper)).toBe(0);
+
+    // A reservation's trams run on the guideway above it, so the road lays no
+    // track there: its span is a raised median, the column line.
+    const reservedProfile = composeProfile(presetProfileForTier(RoadTier.Avenue), {
+      ...NO_EDITS,
+      tram: 'reserved',
+    });
+    const reserved = roadTileVertices(
+      0,
+      0,
+      RoadTier.Avenue,
+      N | S,
+      flatHeightAt,
+      undefined,
+      reservedProfile,
+    );
+    expect(countWhere(reserved.colors, isSlab)).toBe(0);
+    expect(countWhere(reserved.colors, isRail)).toBe(0);
+    const bands = markingPlan(reservedProfile).bands.filter((b) => b.kind === 'tram');
+    const from = Math.min(...bands.map((b) => b.from));
+    const to = Math.max(...bands.map((b) => b.to));
+    const grass = spansOf(reserved, isMedianGrass);
+    expect(grass.length).toBeGreaterThan(0);
+    for (const g of grass) {
+      expect(g.lo).toBeGreaterThan(from - 1e-6);
+      expect(g.hi).toBeLessThan(to + 1e-6);
     }
   });
 
@@ -431,8 +469,8 @@ describe('roadTileVertices — tram track (RoadTier.Tram)', () => {
 
   it('lays the rails down the lanes that carry them, not down the middle of the road', () => {
     // A tramway's rails belong to a lane, so where the lane is decides where
-    // they go: a reservation of two tracks gets two, at its own offsets, and
-    // mixed running gets one in each lane it shares with the traffic. Drawing
+    // they go: mixed running gets one in each lane it shares with the
+    // traffic, and a reservation none, its tracks being on the guideway. Drawing
     // one track down the tile centreline is right only by coincidence, on the
     // one road whose tram lanes happen to straddle it.
     const railCentres = (profile: RoadProfile): number[] =>
@@ -443,9 +481,9 @@ describe('roadTileVertices — tram track (RoadTier.Tram)', () => {
         .map((r) => Math.round(((r.lo + r.hi) / 2) * 10_000) / 10_000)
         .sort((a, b) => a - b);
 
-    // A reservation: two 3.5 m tram lanes either side of the centreline, so
-    // their centres sit at ±1.75 and each carries a standard-gauge track —
-    // four rails in all, at ±1.0325 and ±2.4675.
+    // A reservation saved at the old 3.5 m track width lays no rails at all:
+    // its trams ride the guideway, and its 7 m is the median under it, inside
+    // its concrete kerb.
     const reserved: RoadProfile = {
       class: 'arterial',
       kerbs: true,
@@ -456,7 +494,12 @@ describe('roadTileVertices — tram track (RoadTier.Tram)', () => {
         { kind: 'travel', width: 3.6, flow: 'fwd' },
       ],
     };
-    expect(railCentres(reserved)).toEqual([-2.4675, -1.0325, 1.0325, 2.4675]);
+    expect(railCentres(reserved)).toEqual([]);
+    const grass = spansOf(
+      roadTileVertices(0, 0, RoadTier.Tram, N | S, flatHeightAt, undefined, reserved),
+      isMedianGrass,
+    );
+    expect(grass).toEqual([{ lo: expect.closeTo(-3.35, 6), hi: expect.closeTo(3.35, 6) }]);
 
     // Mixed running on a two-lane street: a track in each 3.5 m lane, whose
     // centres are at ±1.75 — the same four rails, and nothing on the road's
@@ -546,6 +589,24 @@ describe('roadTileVertices — tram track (RoadTier.Tram)', () => {
       // Told nothing of their profiles, two plain streets are not track.
       const told = { ...composed, track: undefined };
       expect(countWhere(crossing(N | E | S | W, told).colors, isRail)).toBe(0);
+    });
+
+    it('lays no slab or rails across the junction box where the guideway spans it', () => {
+      // Reservations east and west: the beams pass over, nothing crosses at grade.
+      const reservedArms: NeighborTiers = {
+        n: RoadTier.Avenue,
+        e: RoadTier.Avenue,
+        s: RoadTier.Avenue,
+        w: RoadTier.Avenue,
+        track: { n: false, e: true, s: false, w: true },
+        guideway: { n: false, e: true, s: false, w: true },
+      };
+      const spanned = crossing(N | E | S | W, reservedArms).colors;
+      expect(countWhere(spanned, isSlab)).toBe(0);
+      expect(countWhere(spanned, isRail)).toBe(0);
+      // Street track at one end is a crossing at grade: the rails run on across.
+      const oneAtGrade = { ...reservedArms, guideway: { n: false, e: true, s: false, w: false } };
+      expect(countWhere(crossing(N | E | S | W, oneAtGrade).colors, isRail)).toBeGreaterThan(0);
     });
   });
 

@@ -68,6 +68,23 @@ describe('markingPlan paints every preset the way a US road is painted', () => {
     expect(lineAt(p.solid, CENTRE_PAIR_OFFSET_M)).toBe(null);
   });
 
+  it('a tram reservation: marked as a median, a yellow line down each side and none on it', () => {
+    const p = markingPlan({
+      class: 'arterial',
+      kerbs: true,
+      pieces: [
+        { kind: 'travel', width: 3.6, flow: 'back' },
+        { kind: 'tram', width: 1.2, flow: 'back' },
+        { kind: 'tram', width: 1.2, flow: 'fwd' },
+        { kind: 'travel', width: 3.6, flow: 'fwd' },
+      ],
+    });
+    expect(lineAt(p.solid, -1.2 - MEDIAN_EDGE_LINE_INSET_M)).toBe('yellow');
+    expect(lineAt(p.solid, 1.2 + MEDIAN_EDGE_LINE_INSET_M)).toBe('yellow');
+    const onIt = [...p.solid, ...p.dashed].filter((l) => Math.abs(l.at) < 1.2);
+    expect(onIt).toEqual([]);
+  });
+
   it('highway: a yellow left edge, a white right edge, white lines between the lanes', () => {
     // Every lane runs the same way, which is exactly the case the standard
     // paints yellow: the far side of the left edge is where the opposing

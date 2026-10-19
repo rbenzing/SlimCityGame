@@ -262,22 +262,32 @@ outer two lanes reserved.
 lane is kerbside, because that is where the stops are and where a bus pulls in.
 A motorway has no stops to pull in at, and a kerbside reservation there would
 cut across every slip road — so a motorway's reserved lane is the INNER one,
-which is where every HOV and express lane runs. A tramway is the same question
-answered by width: a narrow street runs the rails in the running lane and the
-trams share it with the traffic, and a wider one gives them a reservation of
-two tracks down the middle.
+which is where every HOV and express lane runs. A tramway is the player's
+choice: rails in the running lane, where the trams share it with the traffic,
+or a reservation of two tracks down the middle, which goes up onto an elevated
+guideway.
 
-**A reserved lane always costs a general lane**, because the tile says so. Six
-running lanes and two footways do not fit 20 m, and neither do four lanes and a
-twin-track reservation. So the width budget above is what decides every
-combination, and the trade is the player's to make by choosing the lane count —
-lanes are never dropped silently to make something fit. The measured
-consequence is that the interesting variation is smaller than it looks: a bus
-lane produces one cross-section on a street whatever size it started from,
-since the bus lanes plus the general lanes it leaves is four running lanes
-either way, and a tram reservation likewise leaves one general lane each way.
-Only the bike lane genuinely varies with size, since it is an edge strip rather
-than a running lane.
+**A reserved bus lane always costs a general lane**, because the tile says so.
+Six running lanes and two footways do not fit 20 m. So the width budget above
+is what decides every combination, and the trade is the player's to make by
+choosing the lane count — lanes are never dropped silently to make something
+fit. The measured consequence is that the interesting variation is smaller
+than it looks: a bus lane produces one cross-section on a street whatever size
+it started from, since the bus lanes plus the general lanes it leaves is four
+running lanes either way. Only the bike lane genuinely varies with size, since
+it is an edge strip rather than a running lane.
+
+**A tram reservation costs a median, not a lane.** Its tracks run on two
+beams over the road ([streets.md](../art/streets.md)), so what the
+reservation takes at grade is the column line: its two `tram` pieces are
+1.2 m each, a 2.4 m median, and the road keeps its general lanes. Nothing
+drives on that median, so `laneCount` does not count it, and a reservation
+counts against no lane range. A reservation saved at the old 3.5 m width keeps
+it, as every saved piece keeps its width. A guideway track is priced at 2.25
+times a street track (`GUIDEWAY_COST_RATIO`), elevated light rail's cost over
+at-grade
+([tramways design](../game-design/features/tramways.md)); its upkeep is a
+street track's.
 
 Mixed running is a flag on the lanes the road already has, so it changes no
 widths; every other variant rearranges the core, and rearranging re-sizes the
@@ -296,11 +306,10 @@ depot touching it fields it, exactly as on the Tramway preset
 gate and the one that decides what a SMALL street may carry. A local street is
 built for two or three lanes, so it takes a bus lane on one side and is refused
 two — two reserved plus two general is a four-lane road, which is a different
-class of street, and the refusal says so rather than laying it anyway. The same
-rule is what makes a narrow street run its tram in the lane: a twin-track
-reservation is two more lanes, so the reservation is offered from the town
-street up while the small street gets mixed running. Neither rule is asserted
-anywhere; both fall out of the lane range the class is built to.
+class of street, and the refusal says so rather than laying it anyway. The rule
+is not asserted anywhere; it falls out of the lane range the class is built
+to. A tram reservation is not a lane, so it is offered on every street class
+that takes a tram, the local street included.
 
 **A road's tier is its SIZE, and the reserved lane is priced on top.** Giving a
 street a bus lane does not turn it into some other road that also has one: a

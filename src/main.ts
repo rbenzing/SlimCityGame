@@ -103,6 +103,7 @@ import { chunksOver, RoadMeshRenderer } from './render/roadsmesh';
 import { FreeRoadRenderer, freeRoadLampStands } from './render/freeroadmesh';
 import type { BandSpan } from './render/roadsmesh';
 import { BridgeRenderer } from './render/bridges';
+import { GuidewayRenderer } from './render/guideway';
 import { headingAlongX, VehicleRenderer } from './render/vehicles';
 import {
   TransitRenderer,
@@ -313,6 +314,9 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
   // (fire/police/ambulance from the shared buffer + incident pins), and the
   // district tint/boundary overlay. All fed from the snapshot channels.
   const transitRenderer = new TransitRenderer(world.scene, heightAt);
+  // A tram reservation's guideway, standing on the road surface; its trams ride it.
+  const guideway = new GuidewayRenderer(world.scene, roadSurfaceAt);
+  transitRenderer.setGuideway(guideway.seatAt);
   const serviceVehicles = new ServiceVehicleRenderer(world.scene, heightAt);
   const districtsRenderer = new DistrictsRenderer(world.scene, heightAt);
   const overlays = new OverlayRenderer(world.scene);
@@ -1865,6 +1869,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       rebuildLamps();
       roadFurniture.rebuild(roadTiles, freeJunctionTiles);
       bridges.rebuild(clientGrid.deckTiles());
+      guideway.rebuild(roadTiles);
       soundWalls.rebuild(clientGrid.soundWalls());
       // Ground cover follows the road only where the road touches the ground —
       // a mown band under a bridge would be a stripe of lawn across a river.

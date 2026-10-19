@@ -51,6 +51,7 @@ import {
 } from '../shared/types';
 import { TILE_METERS, tileToWorld } from '../shared/constants';
 import { COMMERCIAL_SPEED_MPS, inServiceSpan } from '../shared/transitfleet';
+import type { GuidewayPoint, GuidewaySeatSampler } from './guideway';
 
 /** Matches SimSnapshot.transit's shape (shared/types.ts) without importing the whole SimSnapshot type. */
 export interface TransitSnapshot {
@@ -170,6 +171,8 @@ interface ModeVehicle {
   readonly pitch: number;
   readonly speed: number;
   readonly keepsRight: boolean;
+  /** Rides the elevated guideway where its line runs over one. */
+  readonly ridesGuideway: boolean;
 }
 
 const MODE_VEHICLE: Record<TransitMode, ModeVehicle> = {
@@ -179,6 +182,7 @@ const MODE_VEHICLE: Record<TransitMode, ModeVehicle> = {
     pitch: 0,
     speed: COMMERCIAL_SPEED_MPS.bus,
     keepsRight: true,
+    ridesGuideway: false,
   },
   rail: {
     size: TRAIN_CAR_SIZE,
@@ -186,6 +190,7 @@ const MODE_VEHICLE: Record<TransitMode, ModeVehicle> = {
     pitch: TRAIN_CAR_PITCH,
     speed: COMMERCIAL_SPEED_MPS.rail,
     keepsRight: false,
+    ridesGuideway: false,
   },
   tram: {
     size: TRAM_CAR_SIZE,
@@ -193,8 +198,17 @@ const MODE_VEHICLE: Record<TransitMode, ModeVehicle> = {
     pitch: TRAM_CAR_PITCH,
     speed: COMMERCIAL_SPEED_MPS.tram,
     keepsRight: true,
+    ridesGuideway: true,
   },
 };
+
+/**
+ * How high the drawn tram car's floor stands above its own bottom: over its
+ * wheels, whose tops are there once the bus body is stretched to a tram's
+ * height. On the guideway the car is set by its floor, so the body hangs
+ * down either side of the beam it straddles.
+ */
+export const TRAM_FLOOR_ABOVE_ORIGIN_M = 0.95;
 
 /** Fixed-capacity pool sizing: the largest fleet one depot holds, on every line, every car drawn. */
 const MAX_TRANSIT_LINES = 32;
@@ -373,6 +387,7 @@ interface ActiveVehicle {
   readonly speed: number;
   /** Buses keep right; a train sits on the track it runs on. */
   readonly keepsRight: boolean;
+  readonly ridesGuideway: boolean;
 }
 
 const _matrix = new THREE.Matrix4();
@@ -387,6 +402,12 @@ const _unitScale = new THREE.Vector3(1, 1, 1);
 const _vehicleScale = new THREE.Vector3(...BUS_SIZE);
 const _color = new THREE.Color();
 const _yAxis = new THREE.Vector3(0, 1, 0);
+/** Yaw down the line, then the guideway's grade, for a car on the beam. */
+const _euler = new THREE.Euler(0, 0, 0, 'YXZ');
+/** Scratch seats on the guideway: the car's own, and a point ahead and behind it for its grade. */
+const _seat: GuidewayPoint = { x: 0, y: 0, z: 0 };
+const _seatAhead: GuidewayPoint = { x: 0, y: 0, z: 0 };
+const _seatBehind: GuidewayPoint = { x: 0, y: 0, z: 0 };
 const HIDDEN_MATRIX = new THREE.Matrix4().makeScale(0, 0, 0);
 
 function hexToRGB(hex: number): readonly [number, number, number] {
@@ -444,10 +465,17 @@ export class TransitRenderer {
   private stopTotal = 0;
   private lineTotal = 0;
   private busTotal = 0;
+  /** Where a tram sits on the elevated guideway; null where there is none to ride. */
+  private guideway: GuidewaySeatSampler | null = null;
 
   constructor(scene: THREE.Scene, heightAt: (x: number, z: number) => number) {
     this.scene = scene;
     this.heightAt = heightAt;
+  }
+
+  /** The guideway a tram rides wherever its line runs over one; null for none. */
+  setGuideway(sampler: GuidewaySeatSampler | null): void {
+    this.guideway = sampler;
   }
 
   /**
@@ -504,14 +532,40 @@ export class TransitRenderer {
       // the start of the route for the set to stretch back out, rather than
       // reappearing at the far end of it.
       const sample = sampleAlongPolyline(bus.points, Math.max(0, bus.progress - bus.trail));
-      // A bus keeps right on a two-way street; a train has the track to itself.
-      const offset = bus.keepsRight ? laneOffset(sample.heading) : { dx: 0, dz: 0 };
-      const renderX = sample.x + offset.dx;
-      const renderZ = sample.z + offset.dz;
-      const groundY = this.heightAt(renderX, renderZ);
-
-      _position.set(renderX, groundY + bus.size[1] / 2, renderZ);
-      _quaternion.setFromAxisAngle(_yAxis, sample.heading);
+      const guideway = bus.ridesGuideway ? this.guideway : null;
+      const seat = guideway ? guideway(sample.x, sample.z, sample.heading, _seat) : null;
+      if (guideway && seat) {
+        // On the guideway the car rides the beam on its right, its floor at the
+        // seat, and follows the ramp's grade; it never sinks below the road
+        // where the ramp meets the street.
+        const groundY = this.heightAt(seat.x, seat.z);
+        const reach = bus.size[2] / 2;
+        const ahead = guideway(
+          seat.x + Math.sin(sample.heading) * reach,
+          seat.z + Math.cos(sample.heading) * reach,
+          sample.heading,
+          _seatAhead,
+        );
+        const behind = guideway(
+          seat.x - Math.sin(sample.heading) * reach,
+          seat.z - Math.cos(sample.heading) * reach,
+          sample.heading,
+          _seatBehind,
+        );
+        const pitch = ahead && behind ? Math.atan2(ahead.y - behind.y, 2 * reach) : 0;
+        const bottom = Math.max(groundY, seat.y - TRAM_FLOOR_ABOVE_ORIGIN_M);
+        _position.set(seat.x, bottom + bus.size[1] / 2, seat.z);
+        _euler.set(-pitch, sample.heading, 0);
+        _quaternion.setFromEuler(_euler);
+      } else {
+        // A bus keeps right on a two-way street; a train has the track to itself.
+        const offset = bus.keepsRight ? laneOffset(sample.heading) : { dx: 0, dz: 0 };
+        const renderX = sample.x + offset.dx;
+        const renderZ = sample.z + offset.dz;
+        const groundY = this.heightAt(renderX, renderZ);
+        _position.set(renderX, groundY + bus.size[1] / 2, renderZ);
+        _quaternion.setFromAxisAngle(_yAxis, sample.heading);
+      }
       _vehicleScale.set(bus.size[0], bus.size[1], bus.size[2]);
       _matrix.compose(_position, _quaternion, _vehicleScale);
       this.busMesh.setMatrixAt(slot, _matrix);
@@ -756,6 +810,7 @@ export class TransitRenderer {
             size: vehicle.size,
             speed: vehicle.speed,
             keepsRight: vehicle.keepsRight,
+            ridesGuideway: vehicle.ridesGuideway,
           });
           colors.push(line.color);
         }

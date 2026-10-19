@@ -131,6 +131,16 @@ ends on the road it crosses.
 A road below cannot be re-laid up into an overpass: a ground-level deck that
 would leave the road above less than its clearance is refused.
 
+**Nothing crosses a guideway.** A road that gives its trams a reservation
+carries it on beams 6 to 7.22 m above its surface
+([../art/streets.md](../art/streets.md)), and an overpass deck stands 5 m
+over the road below, so the two cannot share a tile. An overpass across a
+guideway tile is refused ("An overpass can't cross a guideway"), and so is a
+guideway laid or composed under an existing overpass ("A guideway can't pass
+under an overpass"); the tool's preview gives the same reason. A guideway
+crosses other streets at their own level, over the junction, and a guideway
+road may itself be an overpass, its columns standing on the deck.
+
 A drag **along** a road, onto its crossing tile, only ever touches the road
 that runs that way. Replacing or re-profiling the under road at a crossing
 changes the under layer only, and the over road likewise. Rank still decides

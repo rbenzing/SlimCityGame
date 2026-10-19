@@ -102,6 +102,7 @@ import catalogData from '../data/catalog.json';
 import roadsData from '../data/roads.json';
 import {
   adoptCustomProfiles,
+  carriesGuideway,
   oneCarriagewayIds,
   FIRST_CUSTOM_PROFILE_ID,
   layRefusal,
@@ -182,7 +183,15 @@ import {
   setOverRoad,
   type OverRoad,
 } from '../world/overpass';
-import { atOneLevel, axisOfFlow, bitToward, crossingShape, overpassRise } from '../shared/overpass';
+import {
+  atOneLevel,
+  axisOfFlow,
+  bitToward,
+  crossingShape,
+  GUIDEWAY_UNDER_OVERPASS,
+  OVERPASS_OVER_GUIDEWAY,
+  overpassRise,
+} from '../shared/overpass';
 import {
   bulldozeReach,
   corridorPartnerTile,
@@ -2202,6 +2211,12 @@ class SimWorld implements WorkerSim {
     return this.customRoadProfiles.get(id) ?? null;
   }
 
+  /** Whether the road a profile id stands for runs its trams on a guideway. */
+  private guidewayOn(id: number): boolean {
+    const profile = this.profileForId(id);
+    return profile !== null && carriesGuideway(profile);
+  }
+
   /**
    * What a road of this profile costs and needs. A PRESET is priced as itself,
    * whatever it carries — the three transit roads that used to stand alone
@@ -2955,6 +2970,7 @@ class SimWorld implements WorkerSim {
     const elevations = exact
       ? profile.elevations
       : shareCorridorLifts(tiles, exactFlows ?? dragFlows, profile.elevations);
+    const guideway = this.guidewayOn(profileId);
 
     // A road never goes through a building, and it never quietly goes round
     // one either: laid with the building's tiles left out, it stands as two
@@ -3007,6 +3023,7 @@ class SimWorld implements WorkerSim {
             return refused(straightAcross);
           }
           if (overRoadAt(g, idx)) return refused('A tile holds two roads at most');
+          if (guideway) return refused(GUIDEWAY_UNDER_OVERPASS);
           if (deck === 0 && !isRoadBuildable(g, t.x, t.z)) {
             return refused('The ground under that road is too steep for another');
           }
@@ -3026,6 +3043,9 @@ class SimWorld implements WorkerSim {
           if (shape === 'skew') {
             return refused('An overpass crosses straight over a road, at right angles');
           }
+          if (this.guidewayOn(g.roadProfile[idx] || current)) {
+            return refused(OVERPASS_OVER_GUIDEWAY);
+          }
           const road: OverRoad = { tier, profile: profileId, flow, elevation: deck };
           if (overRoadChanges(overRoadAt(g, idx), road, replace)) {
             crossings.set(idx, road);
@@ -3036,6 +3056,8 @@ class SimWorld implements WorkerSim {
         }
       }
       const above = overRoadAt(g, idx);
+      // A guideway's beams stand higher than any deck above its road.
+      if (above && guideway) return refused(GUIDEWAY_UNDER_OVERPASS);
       if (above && above.elevation - deck < overpassRise(above.tier, tier)) {
         return refused('That would run into the overpass above');
       }

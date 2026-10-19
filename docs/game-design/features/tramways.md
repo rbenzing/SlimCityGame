@@ -1,6 +1,6 @@
 # Tramways — design
 
-- **Status:** Specified 2026-10-16; slice 1 (the street tramway and the tram graph) built 2026-10-16
+- **Status:** Specified 2026-10-16; slice 1 (the street tramway and the tram graph) built 2026-10-16; slice 2 (the elevated guideway) built 2026-10-19
 - **Date:** 2026-10-16
 
 ## What the player gets
@@ -70,18 +70,35 @@ Walt Disney World and Las Vegas beam and spacing
 [WDW](https://monorails.org/tMspages/TPDisney.html)) — on **T-columns** in
 the median, one column under both beams as Seattle's carry theirs
 ([Seattle ALWEG](https://monorails.org/tMspages/TPAlwfo.html)), one every
-30 m (the 27–33 m of the Disney spans). The column's crosshead stands 5 m
-clear of the road, the overpass clearance the game already uses, and 7 m over
-a railway; the beam tops are then 7.2 m up. The road below keeps its footways
-and its lamps, and the ground the reservation took becomes a **median** wide
-enough for the columns, so a reservation now costs the road a median rather
-than two of its lanes. The trams ride the beams, their bodies straddling
-them as a monorail's do.
+30 m (the 90 to 110 ft girders of the Disney line, its columns about 110 ft
+apart, [Disney](https://disneygeek.com/news/releases/2014/2014_05_01_monorail.php)). The column's crosshead stands 5 m
+clear of the road, the overpass clearance the game already uses; the beam
+tops are then 7.2 m up. A guideway road on a bridge or an overpass stands its
+columns on the deck. The road below keeps its footways and its lamps, and the
+ground the reservation took becomes a **median** 2.4 m wide for the columns,
+so a reservation now costs the road a median rather than two of its lanes,
+and any street that takes a tram can take one. The median is a 0.9 m column
+stem (the 36 in the Seattle Monorail Project gave its columns,
+[plan](https://www.monorails.org/pdfs/Seattle%20Monorail%20Plan.pdf); no
+built system states its own) with 0.75 m each side to the kerb face, between
+the 1.5 ft minimum lateral offset from a curb and the 3 ft at intersections
+([VDOT Appendix A2](https://www.vdot.virginia.gov/media/vdotvirginiagov/doing-business/technical-guidance-and-support/location-and-design/traffic-design/Appendix_a2_acc09142023_PM.pdf),
+after the AASHTO Roadside Design Guide). The trams ride the beams, their
+bodies straddling them as a monorail's do.
+
+**A guideway costs what an elevated line costs.** Elevated light rail costs
+2 to 2.5 times what it costs at grade
+([Flyvbjerg, Bruzelius & van Wee 2008](https://journals.open.tudelft.nl/ejtir/article/view/3327),
+EJTIR 8(1), Table 6), so a guideway track is priced at 2.25 times a street
+track, the midpoint. Its upkeep is the street track's, since no source gave a
+ratio for keeping one.
 
 **3. The guideway passes over.** It never meets a street at grade: where its
 road meets another the beams run on over the junction and the crossing street
 passes under, with no column in the junction box. A guideway turns where its
-road turns.
+road turns. Nothing passes over it: an overpass deck 5 m up would cut through
+beams 6 to 7.2 m up, so an overpass across a guideway is refused, and so is a
+guideway under one.
 
 **4. A guideway stop is a raised station.** A tram stop placed on a guideway
 road is a pair of **side platforms** at the trams' floor, 0.45 m above the
@@ -107,12 +124,13 @@ depot touching it fields it, which today only the Tramway preset allows.
 ## What it interacts with
 
 - **The road model** ([../../world-sim/road-model.md](../../world-sim/road-model.md)):
-  a reservation's width moves from two lanes to a median; the lane range rule
-  that offers the reservation from the town street up stands.
+  a reservation's width moves from two lanes to a median, and its tracks stop
+  counting against the class's lane range, so the small street that used to
+  be refused a reservation as "a bigger road" may now carry a guideway.
 - **Overpasses** ([../../world-sim/overpasses.md](../../world-sim/overpasses.md)):
   the guideway is not an overpass — it runs along its own road's tile, not
   across another at right angles — but it clears what passes under it by the
-  overpass figures, and an overpass over a guideway road clears the beams.
+  overpass figure, and no overpass crosses it.
 - **Transit** ([../../world-sim/transit-model.md](../../world-sim/transit-model.md)):
   the tram graph is built from the profile, not the tier; a tram on a
   guideway is not slowed by the traffic below, so its route time on the

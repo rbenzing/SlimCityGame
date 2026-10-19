@@ -80,6 +80,9 @@ import {
   withTurnPocket,
   roadPriceOf,
   transitLanesOf,
+  TRANSIT_LANE_PRICE,
+  GUIDEWAY_COST_RATIO,
+  GUIDEWAY_TRACK_PRICE,
   parkingStyleOn,
   type ProfileEdits,
 } from './roadprofile';
@@ -507,27 +510,43 @@ describe('composing a profile from a preset and the player’s edits', () => {
       ).toBe(true);
     });
 
-    it('runs a tram in the lane on a narrow street and in a reservation on a wide one', () => {
+    it('runs a tram in the lane, or on a guideway whose reservation is a 2.4 m median', () => {
       const small = presetProfileForTier(RoadTier.TwoLane);
       const mixed = composeProfile(small, { ...NO_EDITS, tram: 'mixed' });
       expect(kinds(mixed)).toEqual(['sidewalk', 'travel+rail', 'travel+rail', 'sidewalk']);
       // Mixed running costs no width at all: the rails are in the lane.
       expect(profileWidth(mixed)).toBeCloseTo(profileWidth(small), 6);
 
+      // A reservation's two pieces are the column line down the middle, not
+      // running lanes, so between them they are the guideway's median.
       const reserved = composeProfile(small, { ...NO_EDITS, tram: 'reserved' });
       expect(kinds(reserved)).toEqual(['sidewalk', 'travel', 'tram', 'tram', 'travel', 'sidewalk']);
+      const median = reserved.pieces
+        .filter((p) => p.kind === 'tram')
+        .reduce((w, p) => w + p.width, 0);
+      expect(median).toBeCloseTo(2.4, 6);
+      expect(laneCount(reserved)).toBe(2);
       expect(profileWidth(reserved)).toBeLessThanOrEqual(TILE_METERS + 1e-6);
     });
 
-    it('costs a four-lane road two of its lanes to give a tram a reservation', () => {
-      // The trade the width forces, and the one a city actually makes: four
-      // lanes and two tracks do not both fit, so the rails take the lanes.
+    it('keeps all four lanes of a four-lane road when it gives a tram a reservation', () => {
+      // A guideway costs the road a median, not two of its lanes: four lanes at
+      // the class width, the 2.4 m median and both footways fit one tile.
       const medium = presetProfileForTier(RoadTier.FourLane);
-      const overWide = composeProfile(medium, { ...NO_EDITS, tram: 'reserved' });
-      expect(profileWidth(overWide)).toBeGreaterThan(TILE_METERS);
-      const traded = composeProfile(medium, { ...NO_EDITS, tram: 'reserved', lanes: 1 });
-      expect(kinds(traded)).toEqual(['sidewalk', 'travel', 'tram', 'tram', 'travel', 'sidewalk']);
-      expect(profileWidth(traded)).toBeLessThanOrEqual(TILE_METERS + 1e-6);
+      const reserved = composeProfile(medium, { ...NO_EDITS, tram: 'reserved' });
+      expect(kinds(reserved)).toEqual([
+        'sidewalk',
+        'travel',
+        'travel',
+        'tram',
+        'tram',
+        'travel',
+        'travel',
+        'sidewalk',
+      ]);
+      expect(laneCount(reserved)).toBe(4);
+      expect(profileWidth(reserved)).toBeLessThanOrEqual(TILE_METERS + 1e-6);
+      expect(layRefusal(reserved)).toBeNull();
     });
 
     it('runs a motorway’s reserved lane down the MIDDLE, where an express lane goes', () => {
@@ -674,6 +693,30 @@ describe('composing a profile from a preset and the player’s edits', () => {
       });
     });
 
+    it('prices a guideway track at the street track times the guideway ratio, upkeep unchanged', () => {
+      // Elevated light rail costs 2 to 2.5 times at-grade; the midpoint.
+      expect(GUIDEWAY_COST_RATIO).toBe(2.25);
+      expect(GUIDEWAY_TRACK_PRICE.cost).toBe(Math.round(19 * 2.25));
+      const spec = ROAD_PRESETS.find((s) => s.tier === RoadTier.TwoLane)!;
+      const small = presetProfileForTier(RoadTier.TwoLane);
+      const reserved = roadPriceOf(spec, composeProfile(small, { ...NO_EDITS, tram: 'reserved' }));
+      expect(reserved.costPerTile).toBe(spec.costPerTile + 2 * Math.round(19 * 2.25));
+      expect(reserved.upkeepPerTile).toBeCloseTo(
+        spec.upkeepPerTile + 2 * TRANSIT_LANE_PRICE.tram.upkeep,
+        6,
+      );
+      expect(reserved.unlockMilestone).toBe(TRANSIT_LANE_PRICE.tram.unlockMilestone);
+    });
+
+    it('prices a mixed-running track at the street track’s own figure', () => {
+      const spec = ROAD_PRESETS.find((s) => s.tier === RoadTier.TwoLane)!;
+      const small = presetProfileForTier(RoadTier.TwoLane);
+      const mixed = roadPriceOf(spec, composeProfile(small, { ...NO_EDITS, tram: 'mixed' }));
+      expect(TRANSIT_LANE_PRICE.tram).toEqual({ cost: 19, upkeep: 0.3, unlockMilestone: 3 });
+      expect(mixed.costPerTile).toBe(spec.costPerTile + 2 * 19);
+      expect(mixed.upkeepPerTile).toBeCloseTo(spec.upkeepPerTile + 2 * 0.3, 6);
+    });
+
     it('keeps the retired presets loadable, so a save still holds the road it drew', () => {
       // The bus, bike and tram roads are no longer offered as road types of
       // their own, but a saved grid stores a raw tier byte per tile — so every
@@ -708,14 +751,15 @@ describe('composing a profile from a preset and the player’s edits', () => {
       expect(layRefusal(bothSides)).toBe('A local street runs 2 to 3 lanes');
     });
 
-    it('runs a small street’s tram in the lane, since a reservation makes it a bigger road', () => {
-      // Which is the rule the road guides give for a narrow street, arrived at
-      // by the width rather than asserted: the rails share the running lane.
+    it('lets a small street take a reservation, since a guideway’s tracks are not lanes', () => {
+      // A bus lane counts against the class's lane range; a reservation does
+      // not, because nothing drives on its median. So a local street takes a
+      // guideway as readily as it takes mixed running.
       const small = presetProfileForTier(RoadTier.TwoLane);
       expect(layRefusal(composeProfile(small, { ...NO_EDITS, tram: 'mixed' }))).toBeNull();
-      expect(layRefusal(composeProfile(small, { ...NO_EDITS, tram: 'reserved' }))).toBe(
-        'A local street runs 2 to 3 lanes',
-      );
+      const reserved = composeProfile(small, { ...NO_EDITS, tram: 'reserved' });
+      expect(laneCount(reserved)).toBe(laneCount(small));
+      expect(layRefusal(reserved)).toBeNull();
     });
   });
 
@@ -730,10 +774,20 @@ describe('composing a profile from a preset and the player’s edits', () => {
 });
 
 describe('composition rules the editor will enforce', () => {
-  it('counts reserved bus and tram lanes as lanes, and a shared lane for both directions', () => {
+  it('counts reserved bus lanes and a shared lane for both directions, never a tram reservation', () => {
     expect(laneCount(presetProfile(RoadTier.BusLane))).toBe(4);
     expect(laneCount(presetProfile(RoadTier.Alley))).toBe(2);
     expect(laneCount(presetProfile(RoadTier.Tram))).toBe(2);
+    const guideway: RoadProfile = {
+      class: 'urban',
+      pieces: [
+        { kind: 'travel', width: 3.35, flow: 'back' },
+        { kind: 'tram', width: 1.2, flow: 'back' },
+        { kind: 'tram', width: 1.2, flow: 'fwd' },
+        { kind: 'travel', width: 3.35, flow: 'fwd' },
+      ],
+    };
+    expect(laneCount(guideway)).toBe(2);
   });
 
   it('a four-lane street keeps its footways inside one tile', () => {

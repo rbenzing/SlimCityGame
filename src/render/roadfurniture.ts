@@ -564,7 +564,13 @@ function surroundingsOf(tileSet: RoadTileIndex): SeparateRoadSurroundings {
  * approach walk's own question, so the furniture stands where the road is
  * driven.
  */
-function joins(tileSet: RoadTileIndex, x: number, z: number, nx: number, nz: number): boolean {
+export function joins(
+  tileSet: RoadTileIndex,
+  x: number,
+  z: number,
+  nx: number,
+  nz: number,
+): boolean {
   if (!tileSet.has(tileKey(nx, nz))) return false;
   return !isSeparateRoad(x, z, nx - x, nz - z, surroundingsOf(tileSet));
 }
