@@ -14,6 +14,8 @@ import {
   type SideChoice,
 } from '../shared/roadprofile';
 import { TILE_METERS } from '../shared/constants';
+import { drawnSectionAt } from '../shared/kerblayout';
+import { carriagewaySpans } from '../shared/travellanes';
 
 const key = (c: readonly [number, number, number]): string => c.map((q) => q.toFixed(2)).join(',');
 const WHITE = key(MARKING_COLOR);
@@ -305,5 +307,31 @@ describe('a block face’s accessible stalls on the ground', () => {
       const blue = colourIn(r, s.centre - 1, middle - 1.2, s.centre + 1, middle + 1.2, BLUE);
       expect(blue > 0, `symbol in the stall at ${s.centre}`).toBe(s.accessible);
     }
+  });
+});
+
+describe('the parking a turn bay gives up along its taper', () => {
+  it('marks no stall in what the bay leaves of a parking lane', () => {
+    // Parking and bike lanes both sides leave no verge for the bay, so it takes
+    // the parking on the side it opens beside, a share per tile.
+    const profile = composeProfile(presetProfileForTier(RoadTier.TwoLane), {
+      ...NO_EDITS,
+      parking: 'both',
+      bike: 'both',
+    });
+    const r = street(profile, RoadFlow.None, 'signal');
+    const depth = PARKING_STYLES.parallel.laneWidth;
+    let strips = 0;
+    for (let x = 0; x < 10; x++) {
+      if (x === 5) continue;
+      const drawn = drawnSectionAt(x, 2, r.kerbSurroundings())!;
+      for (const span of carriagewaySpans(drawn)) {
+        if (span.piece.kind !== 'parking' || span.piece.width >= depth - 0.01) continue;
+        strips++;
+        const side = span.from + span.to < 0 ? 'low' : 'high';
+        expect(r.parkingStallsAt(x, 2, side) ?? [], `tile ${x}, ${side}`).toEqual([]);
+      }
+    }
+    expect(strips).toBeGreaterThan(0);
   });
 });

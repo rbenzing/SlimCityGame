@@ -13,7 +13,13 @@ import {
   SHARED_TURN_LANE_MAX_TILES,
   sharedTurnLaneAt,
 } from './approachzone';
-import { composeProfile, NO_EDITS, presetProfileForTier, worldOrderedProfile } from './roadprofile';
+import {
+  composeProfile,
+  NO_EDITS,
+  presetProfileForTier,
+  profileWidth,
+  worldOrderedProfile,
+} from './roadprofile';
 import { taperTilesFor } from './taper';
 import type { ApproachSurroundings } from './approachzone';
 import type { CorridorHalf, JunctionControl, RoadProfile } from './types';
@@ -114,6 +120,25 @@ describe('the approach zone', () => {
     expect(at(1)).toBeGreaterThan(0);
     // A tile carrying no bay is not half of one.
     expect(approachAhead(2, 1, 3, world(LONG_ARM))!.openness).toBe(1);
+  });
+
+  it('never narrows a road on its way into the junction, whatever the bay takes from it', () => {
+    // Parking and bike lanes both sides: the bay has to take the parking, and
+    // the road still only ever widens toward the stop line.
+    const street = composeProfile(presetProfileForTier(RoadTier.TwoLane), {
+      ...NO_EDITS,
+      parking: 'both',
+      bike: 'both',
+    });
+    const w = world(LONG_ARM, { '2,3': { control: 'signal' } });
+    let previous = profileWidth(street);
+    for (const z of [0, 1, 2]) {
+      const approach = approachAhead(2, z, 3, w);
+      const width = profileWidth(pocketedCrossSection(street, approach, RoadFlow.None));
+      expect(width, `tile ${z}`).toBeGreaterThanOrEqual(previous - 1e-9);
+      previous = width;
+    }
+    expect(previous).toBeGreaterThan(profileWidth(street));
   });
 
   it('holds the bay full where the zone leaves no room for a taper', () => {

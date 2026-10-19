@@ -75,6 +75,7 @@ import {
   withinLaneRange,
   withAuxiliaryLane,
   isOneWayProfile,
+  isParkingLane,
   withCentreTurn,
   withTurnPocket,
   roadPriceOf,
@@ -1280,16 +1281,139 @@ describe('turn pockets', () => {
     expect(withTurnPocket(street, 1, 0)).toEqual(street);
   });
 
-  it('takes the parking for the whole bay, not a sliver of it per tile', () => {
-    // The parking stops before the taper starts: a half-open tile has given up
-    // exactly what the tile against the junction has.
-    const parked = composeProfile(presetProfileForTier(RoadTier.TwoLane), {
-      ...NO_EDITS,
-      parking: 'both',
-    });
-    const kerbs = (p: RoadProfile): number[] =>
+  describe('what the road gives up along the taper', () => {
+    const twoLane = presetProfileForTier(RoadTier.TwoLane);
+    const parkedBike = composeProfile(twoLane, { ...NO_EDITS, parking: 'both', bike: 'both' });
+    // So spent that the parking cannot cover the bay and the lane beside it
+    // gives up the rest: 0.3 m of verge, 2.25 m of parking, 0.5 m of lane.
+    const squeezed: RoadProfile = {
+      class: 'local',
+      kerbs: true,
+      pieces: [
+        { kind: 'sidewalk', width: 2.5 },
+        { kind: 'bike', width: 1.6, flow: 'back' },
+        { kind: 'parking', width: 2.25 },
+        { kind: 'travel', width: 3.75, flow: 'back' },
+        { kind: 'travel', width: 3.75, flow: 'fwd' },
+        { kind: 'parking', width: 2.25 },
+        { kind: 'bike', width: 1.6, flow: 'fwd' },
+        { kind: 'sidewalk', width: 2.0 },
+      ],
+    };
+    const roads: Record<string, RoadProfile> = {
+      'a two-lane street': twoLane,
+      'a street parked both sides': composeProfile(twoLane, { ...NO_EDITS, parking: 'both' }),
+      'a street with parking and bike lanes': parkedBike,
+      'a street that has to narrow a lane': squeezed,
+      'a four-lane road': presetProfileForTier(RoadTier.FourLane),
+      'a six-lane corridor half': corridorHalfProfile(
+        composeProfile(presetProfileForTier(RoadTier.Avenue), { ...NO_EDITS, lanes: 3 }),
+        'left',
+      ),
+    };
+    const parkingWidths = (p: RoadProfile): number[] =>
       p.pieces.filter((q) => q.kind === 'parking').map((q) => q.width);
-    expect(kerbs(withTurnPocket(parked, 1, 0.25)!)).toEqual(kerbs(withTurnPocket(parked, 1)!));
+
+    it('never narrows the road toward the junction, on any tile of the taper', () => {
+      for (const [name, road] of Object.entries(roads)) {
+        for (const side of [1, -1] as const) {
+          let previous = profileWidth(road);
+          const full = withTurnPocket(road, side);
+          for (const open of [0.25, 0.5, 0.75, 1]) {
+            const pocketed = withTurnPocket(road, side, open);
+            // The full bay decides; the taper neither rescues nor refuses.
+            expect(pocketed === null, `${name}, side ${side}, open ${open}`).toBe(full === null);
+            if (!pocketed) continue;
+            const width = profileWidth(pocketed);
+            expect(width, `${name}, side ${side}, open ${open}`).toBeGreaterThanOrEqual(
+              profileWidth(road) - 1e-9,
+            );
+            expect(width, `${name}, side ${side}, open ${open}`).toBeGreaterThanOrEqual(
+              previous - 1e-9,
+            );
+            previous = width;
+          }
+        }
+      }
+    });
+
+    it('is, against the junction, exactly the full bay it always was', () => {
+      const widthAt = (road: RoadProfile): number | null => {
+        const p = withTurnPocket(road, 1, 1);
+        return p && profileWidth(p);
+      };
+      expect(widthAt(roads['a two-lane street']!)).toBeCloseTo(14.3, 9);
+      expect(widthAt(roads['a street parked both sides']!)).toBeCloseTo(18.8, 9);
+      expect(widthAt(parkedBike)).toBeCloseTo(19.75, 9);
+      expect(widthAt(squeezed)).toBeCloseTo(20, 9);
+      expect(widthAt(roads['a four-lane road']!)).toBeNull();
+      expect(widthAt(roads['a six-lane corridor half']!)).toBeCloseTo(16.875, 9);
+      const lanes = withTurnPocket(squeezed, 1)!.pieces.map((p) => [p.kind, p.width] as const);
+      expect(lanes.map(([kind]) => kind)).toEqual([
+        'sidewalk',
+        'bike',
+        'parking',
+        'travel',
+        'travel',
+        'travel',
+        'bike',
+        'sidewalk',
+      ]);
+      [2.5, 1.6, 2.25, 3.75, 3.05, 3.25, 1.6, 2.0].forEach((w, i) =>
+        expect(lanes[i]![1]).toBeCloseTo(w, 9),
+      );
+    });
+
+    it('gives up only what the opened bay needs of the parking, so it shrinks over the taper', () => {
+      // Replaces the rule that the parking stopped before the taper started,
+      // which left a partly open tile narrower than the road behind it. The
+      // verge is spent first (1.05 m of it here), then the parking gives the
+      // rest of the opened bay and keeps what is left of its width.
+      const half = withTurnPocket(parkedBike, 1, 0.5)!;
+      expect(half.pieces.find((p) => p.bay)!.width).toBeCloseTo(1.525, 9);
+      expect(parkingWidths(half)[0]).toBeCloseTo(2.25, 9);
+      expect(parkingWidths(half)[1]).toBeCloseTo(2.25 - (1.525 - 0.8), 9);
+      const most = withTurnPocket(parkedBike, 1, 0.75)!;
+      expect(parkingWidths(most)[1]).toBeCloseTo(2.25 - (2.2875 - 0.8), 9);
+      // A tile barely open spends nothing but verge.
+      expect(parkingWidths(withTurnPocket(parkedBike, 1, 0.25)!)).toEqual([2.25, 2.25]);
+    });
+
+    it('takes the whole of the parking, and narrows the lane, only against the junction', () => {
+      const travelWidths = (p: RoadProfile): number[] =>
+        p.pieces.filter((q) => q.kind === 'travel' && !q.bay).map((q) => q.width);
+      for (const open of [0.25, 0.5, 0.75]) {
+        const pocketed = withTurnPocket(squeezed, 1, open)!;
+        expect(parkingWidths(pocketed), `open ${open}`).toHaveLength(2);
+        expect(parkingWidths(pocketed)[1]!, `open ${open}`).toBeGreaterThan(0);
+      }
+      // A quarter open needs 0.7625 m: the verge and some of the parking.
+      expect(travelWidths(withTurnPocket(squeezed, 1, 0.25)!)).toEqual([3.75, 3.75]);
+      // Fully open, the parking is gone and the lane beside the bay gives 0.5 m.
+      const full = withTurnPocket(squeezed, 1)!;
+      expect(parkingWidths(full)).toEqual([2.25]);
+      expect(travelWidths(full)[1]).toBeCloseTo(3.25, 9);
+    });
+
+    it('keeps the rest of a source wider than the bay rather than narrowing the road', () => {
+      // A median wider than the bay it gives: taking all of it would leave the
+      // road narrower at the junction than it was behind it.
+      const wideMedian: RoadProfile = {
+        class: 'divided',
+        kerbs: true,
+        pieces: [
+          { kind: 'travel', width: 3.6, flow: 'back' },
+          { kind: 'travel', width: 3.6, flow: 'back' },
+          { kind: 'median', width: 4.5 },
+          { kind: 'travel', width: 3.6, flow: 'fwd' },
+          { kind: 'travel', width: 3.6, flow: 'fwd' },
+        ],
+      };
+      expect(TILE_METERS - profileWidth(wideMedian)).toBeLessThan(TURN_POCKET_MIN_WIDTH_M);
+      const pocketed = withTurnPocket(wideMedian, 1)!;
+      expect(profileWidth(pocketed)).toBeCloseTo(profileWidth(wideMedian), 9);
+      expect(pocketed.pieces.find((p) => p.kind === 'median')!.width).toBeCloseTo(4.5 - 3.6, 9);
+    });
   });
 
   it('refuses a bay the full width cannot have, however little of it is open', () => {
@@ -2058,6 +2182,23 @@ describe('parkingSides', () => {
     expect(parkingSides(pieces(false, true))).toEqual({ low: false, high: true });
     expect(parkingSides(pieces(true, true))).toEqual({ low: true, high: true });
     expect(parkingSides(pieces(false, false))).toEqual({ low: false, high: false });
+  });
+
+  it('does not count the strip a turn bay leaves of a parking lane, which no car fits', () => {
+    const strip: RoadProfile = {
+      class: 'local',
+      pieces: [
+        { kind: 'parking', width: 2.25 },
+        { kind: 'travel', width: 3.75, flow: 'back' },
+        { kind: 'travel', width: 3.75, flow: 'fwd' },
+        { kind: 'parking', width: 1.2 },
+      ],
+    };
+    expect(parkingSides(strip)).toEqual({ low: true, high: false });
+    expect(isParkingLane(strip.pieces[3]!)).toBe(false);
+    // An angled lane is a lane only at its own, deeper, depth.
+    expect(isParkingLane({ kind: 'parking', width: 6, parking: 'angled' })).toBe(true);
+    expect(isParkingLane({ kind: 'parking', width: 2.25, parking: 'angled' })).toBe(false);
   });
 });
 

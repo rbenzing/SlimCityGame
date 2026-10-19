@@ -32,6 +32,7 @@ import {
   carriagewayShiftOf,
   carriagewayWidth,
   isOneWayProfile,
+  isParkingLane,
   kerbWidthOf,
   parkingSides,
   presetProfileForTier,
@@ -467,16 +468,17 @@ function tierHasParking(tier: RoadTier | undefined): boolean {
 }
 
 /**
- * Whether this tile actually has somewhere to park — a `parking` piece in its
- * own cross-section, not merely a tier that is the sort of road which often
- * does. A meter is a charge to use a bay, so a meter with no bay beside it is
- * meaningless; a player who turns parking off on a street should watch the
- * meters go with it. A tile carrying no composed profile falls back to what
- * its tier says, which is what every tile did before profiles existed.
+ * Whether this tile actually has somewhere to park — a parking lane in the
+ * section it is drawn with, not merely a tier that is the sort of road which
+ * often does. A meter is a charge to use a bay, so a meter with no bay beside
+ * it is meaningless; a player who turns parking off on a street should watch
+ * the meters go with it, and so does the strip a turn bay leaves of a lane. A
+ * tile carrying no composed profile falls back to what its tier says, which is
+ * what every tile did before profiles existed.
  */
 function hasParkingBay(tile: FurnitureRoadTile): boolean {
   if (!tile.profile) return tierHasParking(tile.tier);
-  return tile.profile.pieces.some((p) => p.kind === 'parking');
+  return tile.profile.pieces.some(isParkingLane);
 }
 
 /**

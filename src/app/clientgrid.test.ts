@@ -10,7 +10,13 @@ import { RoadFlow, RoadTier, storedFlow, ZoneType } from '../shared/types';
 import type { BuildingCatalogEntry, BuildingInstance, MapData } from '../shared/types';
 import { ClientGridMirror } from './clientgrid';
 import { soilGrades } from '../shared/soil';
-import { FIRST_CUSTOM_PROFILE_ID, presetProfileForTier } from '../shared/roadprofile';
+import {
+  carriagewayHalfWidthOf,
+  FIRST_CUSTOM_PROFILE_ID,
+  presetProfileForTier,
+} from '../shared/roadprofile';
+import { streetLookupOf } from '../render/frontage';
+import { planHouseLot } from '../render/houselot';
 
 const SIZE = 32;
 
@@ -722,6 +728,51 @@ describe('ClientGridMirror — junction control', () => {
     const tiles = mirror.roadTiles();
     expect(tiles.find((t) => t.x === 4 && t.z === 4)?.control).toBe('allWayStop');
     expect(tiles.find((t) => t.x === 4 && t.z === 5)?.control).toBeUndefined();
+  });
+
+  it('runs a home’s drive out to the kerb its street is drawn with, turn bay and all', () => {
+    // A crossroads at (12, 12); the home fronts the west arm alone, a tile back
+    // from the stop line, where the bay is still opening.
+    const arms = [8, 9, 10, 11, 13, 14, 15, 16];
+    mirror.applyRoadDeltas([
+      road(12, 12),
+      ...arms.map((x) => road(x, 12)),
+      ...arms.map((z) => road(12, z)),
+    ]);
+    const roadAt = (x: number, z: number): boolean => mirror.profileAt(x, z) !== null;
+    const street = streetLookupOf(
+      (x, z) => (roadAt(x, z) ? RoadTier.TwoLane : RoadTier.None),
+      (x, z) => mirror.drawnProfileAt(x, z),
+    );
+    const detached: BuildingCatalogEntry = {
+      ...plant,
+      id: 'home',
+      category: 'res',
+      zone: ZoneType.ResLow,
+      kind: 'detached',
+      footprint: { w: 1, d: 2 },
+    };
+    const home: BuildingInstance = { ...instance(1, 10, 10), catalogId: 'home' };
+    /** How far beyond the lot's edge each drive's dropped kerb reaches into the road tile. */
+    const cutReach = (): number[] =>
+      planHouseLot(home, detached, roadAt, street)!.drives.map((d) => -d.cut.v0);
+    const kerbFromLot = (): number =>
+      TILE_METERS / 2 - carriagewayHalfWidthOf(mirror.drawnProfileAt(10, 12)!);
+
+    mirror.applyJunctions([
+      { x: 12, z: 12, control: 'signal', warranted: 'signal', auto: true, turns: 0 },
+    ]);
+    const bayed = mirror.drawnProfileAt(10, 12)!;
+    expect(bayed.pieces.some((p) => p.bay)).toBe(true);
+    expect(cutReach().length).toBeGreaterThan(0);
+    for (const reach of cutReach()) expect(reach).toBeCloseTo(kerbFromLot(), 6);
+
+    // The control goes, the bay with it, and the same lookup runs the drive
+    // back out to the plain street's kerb.
+    mirror.applyJunctions([]);
+    expect(mirror.drawnProfileAt(10, 12)).toEqual(mirror.ownProfileAt(10, 12));
+    expect(kerbFromLot()).toBeGreaterThan(TILE_METERS / 2 - carriagewayHalfWidthOf(bayed) + 1e-6);
+    for (const reach of cutReach()) expect(reach).toBeCloseTo(kerbFromLot(), 6);
   });
 });
 

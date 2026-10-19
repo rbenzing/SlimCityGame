@@ -773,7 +773,10 @@ from the door to the sidewalk.
 by seed, 3 m wide, running from the carriageway across the sidewalk — a curb
 cut, laid over the paving — and the verge onto the lot. A drive only crosses
 a straight stretch of street: never a junction tile, never a tile the street
-leaves on both axes. The resident's car stands on the drive, nose to the
+leaves on both axes. The street is the one drawn: beside a turn bay, whose
+kerb and sidewalk stand further out, the drive, the path and the lawn meet
+the widened kerb, and they are laid again when a junction gains or loses its
+bay. The resident's car stands on the drive, nose to the
 house, while the home is Active. Where the drive and its cover go depends on
 the home:
 

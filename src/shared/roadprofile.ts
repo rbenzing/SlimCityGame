@@ -664,6 +664,18 @@ export function medianOffsetOf(profile: RoadProfile): number {
 }
 
 /**
+ * Whether a piece is a parking lane a car can stand in: a parking piece as
+ * deep as its style's stalls. What a turn bay leaves of one along its taper is
+ * narrower, a strip at the kerb with no stalls, no cars and no meters.
+ */
+export function isParkingLane(piece: LanePiece): boolean {
+  return (
+    piece.kind === 'parking' &&
+    piece.width >= PARKING_STYLES[parkingStyleOf(piece)].laneWidth - 0.01
+  );
+}
+
+/**
  * Which sides of the carriageway carry a parking lane, in the order the
  * profile is laid: `low` is the negative-offset side, `high` the positive.
  */
@@ -672,7 +684,7 @@ export function parkingSides(profile: RoadProfile): { low: boolean; high: boolea
   let low = false;
   let high = false;
   profile.pieces.forEach((p, i) => {
-    if (p.kind !== 'parking') return;
+    if (!isParkingLane(p)) return;
     const at = centres[i] ?? 0;
     if (at < 0) low = true;
     else high = true;
@@ -740,11 +752,11 @@ function pieceCentres(profile: RoadProfile): (number | null)[] {
  * the approaching half has nothing to add one beside.
  *
  * `openness` is how far open the bay is on this tile, 0 to 1. A turn bay does
- * not appear at full width out of nothing — it opens over a taper. What the
- * road gives up for it does not taper with it: the parking stops before the
- * taper starts and the through lanes shift over along the whole bay, so only
- * the bay's own width grows. The full bay decides whether the road can have
- * one at all, and a partly open tile is never the one that refuses.
+ * not appear at full width out of nothing — it opens over a taper. The road
+ * gives up only what the opened bay needs, so the parking and the lanes shrink
+ * over the taper with it and the road never narrows toward the junction. The
+ * full bay decides whether the road can have one at all, and a partly open
+ * tile is never the one that refuses.
  */
 export function withTurnPocket(
   profile: RoadProfile,
@@ -808,34 +820,52 @@ export function withTurnPocket(
     width = Math.min(target, slack + source.piece.width);
   }
 
-  // Last resort: the lanes beside the pocket give up what is left of it.
+  // Last resort: the lanes beside the pocket give up what is left of it, each
+  // narrowed by its share of the shortfall.
   const narrowed = new Map<number, number>();
+  let shortfall = 0;
   if (width < minimum) {
-    const shortfall = minimum - width;
+    shortfall = minimum - width;
     const headroom = approaching.map((e) => ({ index: e.index, room: e.piece.width - minimum }));
     const available = headroom.reduce((sum, h) => sum + Math.max(0, h.room), 0);
     if (available + 1e-9 < shortfall) return null;
     for (const h of headroom) {
       if (h.room <= 0) continue;
-      const piece = profile.pieces[h.index]!;
-      narrowed.set(h.index, piece.width - (shortfall * h.room) / available);
+      narrowed.set(h.index, (shortfall * h.room) / available);
     }
     width = minimum;
   }
 
   // Everything above is settled by the bay at full width — whether the road
-  // can have one, what the parking gives up, how far the lanes shift over. All
-  // that changes along the opening taper is the bay itself, which grows out of
-  // the lane beside it.
-  const pocket: LanePiece = { kind: 'travel', width: width * open, bay: true };
+  // can have one at all, and what it costs against the junction. Along the
+  // opening taper the road is widened by no more than the full bay widens it,
+  // and what else the opened bay needs comes out of the piece it is carved
+  // from, then the lanes, so each gives up a share that grows to its whole
+  // cost at the stop line. Where the full bay would leave the road narrower
+  // than it was — a source wider than the bay — the road is not widened at all
+  // and keeps what is left of that source.
+  const needed = width * open;
+  const sourceWidth = takeSource && source ? source.piece.width : 0;
+  const widened = Math.min(needed, Math.max(0, width - sourceWidth - shortfall));
+  const fromSource = Math.min(sourceWidth, needed - widened);
+  const fromLanes = Math.max(0, needed - widened - fromSource);
+  const squeeze = shortfall > 0 ? fromLanes / shortfall : 0;
+
+  const pocket: LanePiece = { kind: 'travel', width: needed, bay: true };
   if (beside.piece.flow) pocket.flow = beside.piece.flow;
 
   const pieces: LanePiece[] = [];
   profile.pieces.forEach((piece, index) => {
     if (index === insertBefore) pieces.push(pocket);
-    if (takeSource && index === source?.index) return;
-    const squeezed = narrowed.get(index);
-    pieces.push(squeezed === undefined ? { ...piece } : { ...piece, width: squeezed });
+    if (takeSource && index === source?.index) {
+      const left = piece.width - fromSource;
+      if (left > 1e-6) pieces.push({ ...piece, width: left });
+      return;
+    }
+    const cut = narrowed.get(index);
+    pieces.push(
+      cut === undefined ? { ...piece } : { ...piece, width: piece.width - cut * squeeze },
+    );
   });
   if (insertBefore >= profile.pieces.length) pieces.push(pocket);
 

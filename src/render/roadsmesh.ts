@@ -6337,16 +6337,19 @@ function chunkKeyOf(x: number, z: number): number {
  */
 export function chunksReading(x: number, z: number): Set<number> {
   const reach = SECTION_REACH_TILES + 1;
+  const keys = chunksOver(x - reach, z - 1, x + reach, z + 1);
+  for (const key of chunksOver(x - 1, z - reach, x + 1, z + reach)) keys.add(key);
+  return keys;
+}
+
+/** The chunks covering the tiles from (x0, z0) to (x1, z1) inclusive, clamped to the map. */
+export function chunksOver(x0: number, z0: number, x1: number, z1: number): Set<number> {
   const chunkOf = (t: number): number =>
     Math.min(CHUNKS_PER_SIDE - 1, Math.max(0, Math.floor(t / CHUNK_TILES)));
   const keys = new Set<number>();
-  const band = (x0: number, z0: number, x1: number, z1: number): void => {
-    for (let cz = chunkOf(z0); cz <= chunkOf(z1); cz++) {
-      for (let cx = chunkOf(x0); cx <= chunkOf(x1); cx++) keys.add(cz * CHUNKS_PER_SIDE + cx);
-    }
-  };
-  band(x - reach, z - 1, x + reach, z + 1);
-  band(x - 1, z - reach, x + 1, z + reach);
+  for (let cz = chunkOf(z0); cz <= chunkOf(z1); cz++) {
+    for (let cx = chunkOf(x0); cx <= chunkOf(x1); cx++) keys.add(cz * CHUNKS_PER_SIDE + cx);
+  }
   return keys;
 }
 
@@ -6521,6 +6524,8 @@ export class RoadMeshRenderer {
    * moved. The crossings and stop bars painted on a junction follow its
    * control, and a control changes with no road delta behind it — the traffic
    * through the junction grew — so nothing else would trigger the rebuild.
+   * Answers the chunks it rebuilt, so what is laid out against the drawn road
+   * there can be laid again.
    */
   setJunctionControls(
     junctions: readonly {
@@ -6530,7 +6535,7 @@ export class RoadMeshRenderer {
       turns?: number;
       laneTurns?: readonly number[];
     }[],
-  ): void {
+  ): ReadonlySet<number> {
     const next = new Map<number, JunctionControl>();
     const nextTurns = new Map<number, number>();
     const nextLaneTurns = new Map<number, readonly number[]>();
@@ -6564,6 +6569,7 @@ export class RoadMeshRenderer {
 
     for (const key of dirty) this.rebuildChunk(key);
     if (dirty.size > 0) this.rebuildMedianTrees();
+    return dirty;
   }
 
   /** Current median-tree instance count (test/inspection hook). */

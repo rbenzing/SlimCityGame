@@ -30,6 +30,7 @@ import {
   corridorHalfProfile,
   NO_EDITS,
   presetProfileForTier,
+  withTurnPocket,
 } from '../shared/roadprofile';
 import { TILE_METERS } from '../shared/constants';
 
@@ -99,6 +100,32 @@ describe('a meter stands beside the bay it charges for', () => {
 
   it('on either side where both have it', () => {
     expect(sidesOf(street(true, true), 'ew')).toEqual(new Set([-1, 1]));
+  });
+
+  it('never beside what a turn bay leaves of a parking lane along its taper', () => {
+    // Parking and bike lanes both sides: the bay half open takes part of the
+    // high side's lane, and the strip it leaves is no bay to charge for.
+    const parked = composeProfile(presetProfileForTier(RoadTier.TwoLane), {
+      ...NO_EDITS,
+      parking: 'both',
+      bike: 'both',
+    });
+    const tapered = withTurnPocket(parked, 1, 0.5)!;
+    const strip = tapered.pieces.filter((p) => p.kind === 'parking');
+    expect(strip).toHaveLength(2);
+    expect(strip[1]!.width).toBeLessThan(2.25);
+    expect(sidesOf(tapered, 'ew')).toEqual(new Set([-1]));
+    const onlyStrip: RoadProfile = {
+      ...tapered,
+      pieces: tapered.pieces.filter((p) => p !== strip[0]),
+    };
+    const tiles = Array.from({ length: 60 }, (_, i) => ({
+      x: i,
+      z: 10,
+      tier: RoadTier.TwoLane,
+      profile: onlyStrip,
+    }));
+    expect(computeMeterPlacements(tiles)).toEqual([]);
   });
 });
 

@@ -561,6 +561,19 @@ MUTCD citations below use 11th-edition section numbers.
   street running through side streets that give way to it. —
   [road-model.md](world-sim/road-model.md); `armWarrant` and
   `sharedTurnLaneAt` in `src/shared/approachzone.ts`
+- A turn bay never narrows its road. On a tile where the bay is partly open,
+  the road gives up only what the opened bay needs beyond the tile's spare
+  width: the parking or shoulder narrows over the taper, and the through
+  lanes narrow with it, so the carriageway is never narrower than the plain
+  road's anywhere along the bay. A parking lane narrowed below its own width
+  is a kerb strip, with no stalls, cars or meters. Whatever the full bay
+  decides holds at the junction unchanged. — [road-model.md](world-sim/road-model.md);
+  `withTurnPocket` in `src/shared/roadprofile.ts`
+- A lot's drive, walk and yard are laid to the street as it is drawn,
+  turn bay included, and are re-laid when a junction gains or loses its bay;
+  the section without the bay puts a drive across the widened carriageway. —
+  [buildings.md](art/buildings.md#residential-lots); `drawnProfileAt` in
+  `src/app/clientgrid.ts`
 - Bridges are ordinary road tiles plus an elevation layer, never a second
   network. One deck height per road on a tile — the road on it, and at a
   crossing the road passing over it — no tunnels, no third level, and an
