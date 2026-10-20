@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.70.1](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.70.0...slimcity-v1.70.1) (2026-10-20)
+
+
+### Bug Fixes
+
+* **roads:** a turn bay never narrows its road, and the drives beside it meet its kerb ([9e2a3ce](https://github.com/rbenzing/SlimCityGame/commit/9e2a3ce1f32aaae45adb4ae142b82dd641e04f99))
+* **roads:** a turn bay never narrows its road, and the drives beside it meet its kerb ([558ad3d](https://github.com/rbenzing/SlimCityGame/commit/558ad3d1a4e29ee247d9c4d09912c530255dcbcc))
+
 ## [1.70.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.69.0...slimcity-v1.70.0) (2026-10-16)
 
 
