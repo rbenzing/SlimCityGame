@@ -545,7 +545,15 @@ pocket — it already turns from a lane of its own everywhere. The pocket
 does not snap in at full width: it opens over a taper the same length as an
 ordinary lane-drop taper for the class, full width only against the
 junction itself, so the width the road gives up (parking, verge) shrinks
-gracefully rather than vanishing at a line.
+gracefully rather than vanishing at a line. On a partly open tile the road
+gives up only what the opened bay needs beyond its spare width — first the
+verge, then as much of the parking as the bay has reached, then the through
+lanes in proportion — so the carriageway is never narrower than the plain
+road's anywhere along the bay, and a road never narrows toward its junction.
+Whether the road can have a bay at all, and what it gives up against the
+junction, is decided by the full bay, so a partly open tile is never the one
+that refuses. A parking lane narrowed below its own width is the taper's kerb
+strip: it carries no stalls, no parked cars and no meters.
 
 **A short block takes a shared turn lane instead of two bays.** A pocket
 belongs to ONE HALF of the road — it is the lane beside the centreline on the

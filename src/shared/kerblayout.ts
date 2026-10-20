@@ -34,13 +34,19 @@ import {
   carriagewayHalfWidthOf,
   corridorHalfProfile,
   hasFootway,
+  isParkingLane,
   kerbWidthOf,
   PARKING_STYLES,
   parkingStyleOn,
   presetProfileForTier,
   worldOrderedProfile,
 } from './roadprofile';
-import { approachingLanes, carriagewaySpans, travelLaneSpans } from './travellanes';
+import {
+  approachingLanes,
+  carriagewaySpans,
+  travelLaneSpans,
+  type CarriagewaySpan,
+} from './travellanes';
 import { corridorHalfOf, flowDirection, RoadFlow, RoadTier } from './types';
 import type { ParkingStyle, RoadProfile, RoadTileDelta, TilePoint } from './types';
 
@@ -384,7 +390,7 @@ export function parkingSetbacksAt(
 }
 
 /**
- * The parking lane a straight tile paints on one side, as signed offsets
+ * The parking lane a straight tile paints on one side, and its signed offsets
  * across the road, or null where that side paints none.
  */
 function parkingBandOn(
@@ -392,7 +398,7 @@ function parkingBandOn(
   z: number,
   side: 'low' | 'high',
   s: KerbSurroundings,
-): { from: number; to: number } | null {
+): CarriagewaySpan | null {
   const tile = s.roadAt(x, z);
   if (!tile || !isStraightRunMask(tile.mask)) return null;
   const painted = paintedSectionAt(x, z, s);
@@ -408,7 +414,8 @@ function parkingBandOn(
 /**
  * The world positions, along the road, of the stall ticks the tile at
  * (x, z) paints across its parking lane on one side, or null where that
- * side paints no parking lane.
+ * side paints no parking lane. What a turn bay leaves of a lane along its
+ * taper is too shallow to park in and is marked with none.
  */
 export function parkingTicksAt(
   x: number,
@@ -416,7 +423,8 @@ export function parkingTicksAt(
   side: 'low' | 'high',
   s: KerbSurroundings,
 ): number[] | null {
-  if (!parkingBandOn(x, z, side, s)) return null;
+  const band = parkingBandOn(x, z, side, s);
+  if (!band || !isParkingLane(band.piece)) return null;
   const tile = s.roadAt(x, z)!;
   const alongX = (tile.mask & (EAST | WEST)) !== 0;
   const core = halfAt(x, z, s);

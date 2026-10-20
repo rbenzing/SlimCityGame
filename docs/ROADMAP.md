@@ -120,7 +120,14 @@ not a test to fix.
 - The kerb paints stalls across curb cuts and house drives, so a lot's kerb
   credit can count a stall a driveway would block.
 - A lot's car park is laid when its building is built or levels up; a
-  street's kerb parking repainted later does not re-lay it.
+  street's kerb parking repainted later does not re-lay it. Lots are re-laid
+  when a junction control opens or closes a turn bay, but not on a road edit
+  alone, so a bay that a re-profiled road gains or loses leaves the drives
+  beside it as they were until the next building change.
+- Parked cars read the street's own section, not the drawn one: on the tile
+  against the stop line, where a turn bay has taken all of the parking, a
+  kerb row falls back to the plain section's lane offset, held off only by
+  the junction's no-parking zone.
 - A kerb-credited lot's customers are drawn parked on the lot, not in the
   kerb stalls its credit counts.
 - The district fire station's second company rolls as a second engine: there
@@ -378,6 +385,24 @@ roads, and pinning the Three.js version. See [adr/](engineering/adr/README.md).
 ---
 
 ## 10. History (newest first)
+
+### A turn bay never narrows its road, and the drives beside it meet its kerb (built 2026-10-19)
+
+The player saw the road choppy where it widens for a turn bay, its
+connecting segments not flush. The mesh was flush at every seam; two things
+beside the bay were not.
+
+- **A bay that takes the parking narrowed the road toward the junction.**
+  The whole parking lane was dropped on every bay tile while the bay itself
+  was only part open, so a street with parking and bike lanes went 15.2 m,
+  14.5 m, 16.0 m toward the junction. Now a partly open tile gives up only
+  what the opened bay needs beyond the spare width, the parking narrowing
+  over the taper, so the road never narrows toward its junction; at the
+  junction the bay is as it was. A parking lane narrowed below its width is
+  a kerb strip with no stalls, cars or meters.
+- **House drives were cut to the street without its bay,** so beside a bay a
+  drive ran across the widened kerb into the carriageway. Lots now read the
+  drawn section, and are re-laid when a junction gains or loses its bay.
 
 ### The street tramway drawn as a street, and every tram lane is track (slice 1 of tramways, built 2026-10-16)
 

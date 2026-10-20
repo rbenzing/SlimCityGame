@@ -99,7 +99,7 @@ import {
 import { LotRenderer } from './render/lots';
 import { BuildingKitRenderer } from './render/buildingkit';
 import { LandmarkRenderer } from './render/landmarks';
-import { RoadMeshRenderer } from './render/roadsmesh';
+import { chunksOver, RoadMeshRenderer } from './render/roadsmesh';
 import { FreeRoadRenderer, freeRoadLampStands } from './render/freeroadmesh';
 import type { BandSpan } from './render/roadsmesh';
 import { BridgeRenderer } from './render/bridges';
@@ -231,15 +231,16 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
   // The only road a farm's gate opens onto, which decides where its farmstead stands.
   const dirtAt = (x: number, z: number): boolean =>
     inBounds(x, z) && clientGrid.roadTier[z * clientGrid.size + x] === RoadTier.Gravel;
-  // How wide each street's verge and sidewalk are, read from the tile's own
-  // cross-section: a home's front yard is measured from the sidewalk, and its
-  // lawn and drive run out to it.
+  // How wide each street's verge and sidewalk are, read from the section the
+  // road is drawn with — a turn bay included — so a home's front yard is
+  // measured from the sidewalk as it stands, and its lawn and drive run out to
+  // the kerb the road mesh lays.
   const street = streetLookupOf(
     (x, z) =>
       inBounds(x, z)
         ? ((clientGrid.roadTier[z * clientGrid.size + x] ?? 0) as RoadTier)
         : RoadTier.None,
-    (x, z) => clientGrid.ownProfileAt(x, z),
+    (x, z) => clientGrid.drawnProfileAt(x, z),
   );
 
   /**
@@ -1828,8 +1829,8 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       clientGrid.applyRoundabouts(snap.roundabouts);
       roadsMesh.setRoundabouts(snap.roundabouts);
     }
+    const redrawnChunks = snap.junctions ? roadsMesh.setJunctionControls(snap.junctions) : null;
     if (snap.junctions || snap.roundabouts) {
-      if (snap.junctions) roadsMesh.setJunctionControls(snap.junctions);
       // An open inspector shows the junction as it IS: the worker may have
       // refused the change, or the warrant may have moved it while the panel
       // was open. A junction that has gone — bulldozed — closes the panel.
@@ -1906,6 +1907,31 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       if (selected) {
         const current = knownBuildings.get(selected.id) ?? null;
         if (current !== selected) state.setSelectedBuilding(current);
+      }
+    }
+    // A control that moves gives or takes the turn bays down its arms, which
+    // widens or narrows the street with no building changing: every lot beside
+    // a stretch the road mesh redrew is laid again against the kerb it now has,
+    // and its kerb stalls with it.
+    if (redrawnChunks && redrawnChunks.size > 0) {
+      const updated: BuildingInstance[] = [];
+      for (const b of knownBuildings.values()) {
+        const entry = catalogById.get(b.catalogId);
+        if (!entry) continue;
+        const { w, d } = footprintForRotation(entry, b.rotation);
+        const beside = chunksOver(b.x - 1, b.z - 1, b.x + w, b.z + d);
+        if ([...beside].some((key) => redrawnChunks.has(key))) updated.push(b);
+      }
+      if (updated.length > 0) {
+        const relaid = { added: [], removed: [], updated };
+        lots.apply(relaid);
+        instancer.apply(relaid);
+        massing.apply(relaid);
+        roofProps.apply(relaid);
+        buildingKit.apply(relaid);
+        houseRoofs.apply(relaid);
+        parkedCars.apply(relaid);
+        pedestrianRenderer.apply({ stops: latestStopPoints, buildings: relaid });
       }
     }
     if (snap.roads || snap.roadNet || snap.buildings) keepTreesOffOccupied();
