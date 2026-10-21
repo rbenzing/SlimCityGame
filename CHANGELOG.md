@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.70.2](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.70.1...slimcity-v1.70.2) (2026-10-21)
+
+
+### Bug Fixes
+
+* **roads:** the ground stays under every road, a ramp bends itself, and a T's far side keeps the arms' width ([ac9ad17](https://github.com/rbenzing/SlimCityGame/commit/ac9ad17e1d7b044530f3a28bf4392492adac5b6a))
+* **roads:** the ground stays under every road, a ramp bends itself, and a T's far side keeps the arms' width ([ff006c8](https://github.com/rbenzing/SlimCityGame/commit/ff006c8825356e8e754fc68da6911bf0e5bb16e0))
+
 ## [1.70.1](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.70.0...slimcity-v1.70.1) (2026-10-20)
 
 
