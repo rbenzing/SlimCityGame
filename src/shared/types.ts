@@ -1476,6 +1476,8 @@ export interface RoadClassSpec {
 export interface RoadSpec {
   tier: RoadTier;
   name: string;
+  /** How the road is laid, in the player's words, shown on its card where present. */
+  description?: string;
   costPerTile: number;
   upkeepPerTile: number;
   speed: number; // m/s along edges

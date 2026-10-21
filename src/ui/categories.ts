@@ -57,6 +57,8 @@ export const CATEGORY_DEFS: ReadonlyArray<{ id: DockCategory; label: string; ico
 export interface AssetCard {
   id: ToolId;
   name: string;
+  /** How it is laid, in the player's words, where the card has more to say than its name. */
+  description?: string;
   cost: number;
   unlockMilestone: number;
 }
@@ -99,7 +101,15 @@ function roadCard(tier: RoadTier): AssetCard[] {
   const spec = roadSpecs.find((s) => s.tier === tier);
   const id = spec ? roadToolId(spec.tier) : null;
   return spec && id
-    ? [{ id, name: spec.name, cost: spec.costPerTile, unlockMilestone: spec.unlockMilestone }]
+    ? [
+        {
+          id,
+          name: spec.name,
+          ...(spec.description !== undefined ? { description: spec.description } : {}),
+          cost: spec.costPerTile,
+          unlockMilestone: spec.unlockMilestone,
+        },
+      ]
     : [];
 }
 

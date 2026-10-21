@@ -514,6 +514,51 @@ describe('which roads may touch — the world refuses, not only the tool', () =>
     expect(tierAt(h, 21, 11)).toBe(RoadTier.Ramp);
   });
 
+  /** An eastbound motorway along z = 10 and a street along z = 16, both x = 10..21. */
+  function motorwayAndStreet(): Harness {
+    const h = sandboxed();
+    run(h, 1, [
+      { kind: 'buildRoad', tier: RoadTier.Highway, tiles: roadRow(10, 10, 12) },
+      { kind: 'buildRoad', tier: RoadTier.TwoLane, tiles: roadRow(10, 16, 12) },
+    ]);
+    return h;
+  }
+  const NORTH = 1;
+  const SOUTH = 4;
+
+  it('refuses a ramp laid onto a street, which it meets at a junction instead', () => {
+    const h = motorwayAndStreet();
+    // Clear of the motorway, so the street's tile is the only thing wrong.
+    const ack = run(h, 2, [{ kind: 'buildRoad', tier: RoadTier.Ramp, tiles: column(14, 12, 5) }]);
+    expect(ack.ok).toBe(false);
+    expect(ack.reason).toBe('A ramp joins a street at its side, it does not take its tiles');
+    expect(tierAt(h, 14, 16)).toBe(RoadTier.TwoLane);
+    expect(tierAt(h, 14, 15)).toBe(RoadTier.None);
+  });
+
+  it('joins a ramp laid street, elbow, alongside the motorway at both its ends, and cars drive it', () => {
+    const h = motorwayAndStreet();
+    // Up from beside the street, round the elbow beside the motorway, east
+    // along it to merge.
+    const tiles = [...column(14, 11, 5).reverse(), ...roadRow(15, 11, 4)];
+    const ack = run(h, 2, [{ kind: 'buildRoad', tier: RoadTier.Ramp, tiles }]);
+    expect(ack.ok).toBe(true);
+    h.sim.handleMessage({ type: 'requestSave' });
+    const g = latestSaveGrid(h);
+    const mask = (x: number, z: number): number => g.roadMask[tileIndex(x, z)] ?? 0;
+    // The merge: the ramp's last tile and the motorway tile beside it hold each other.
+    expect(mask(18, 11) & NORTH).toBe(NORTH);
+    expect(mask(18, 10) & SOUTH).toBe(SOUTH);
+    // The terminal: the ramp's first tile and the street tile beside it.
+    expect(mask(14, 15) & SOUTH).toBe(SOUTH);
+    expect(mask(14, 16) & NORTH).toBe(NORTH);
+    // The street tile is still the street's.
+    expect(tierAt(h, 14, 16)).toBe(RoadTier.TwoLane);
+    const cars = new RoadNetwork();
+    cars.rebuild(g);
+    expect(cars.findPath({ x: 10, z: 16 }, { x: 21, z: 10 })).not.toBeNull();
+  });
+
   it('draws a loaded city by the rules of today, not the masks its save was written with', () => {
     const h = sandboxed();
     run(h, 1, [{ kind: 'buildRoad', tier: RoadTier.TwoLane, tiles: roadRow(30, 30, 3) }]);

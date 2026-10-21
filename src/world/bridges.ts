@@ -13,9 +13,10 @@ import {
   BRIDGE_MAX_GRADE,
   SEA_LEVEL,
 } from '../shared/constants';
+import { partnerTileOf } from '../shared/corridor';
 import { atOneLevel } from '../shared/overpass';
 import type { GridState, TilePoint } from '../shared/types';
-import { RoadTier } from '../shared/types';
+import { RoadFlow, RoadTier } from '../shared/types';
 
 // Indexing — parameterized by the grid's own `size`, matching the convention in
 // src/world/grid.ts and src/world/roads.ts.
@@ -111,6 +112,13 @@ function connectionHeights(
  * differs by more than BRIDGE_MAX_GRADE. That yields the LOWEST profile that
  * both clears the water and ramps legally, which is also the cheapest.
  *
+ * A drag may lay more than one run — a corridor is two, side by side — and
+ * each run is solved on its own: the sweeps relate a tile to the one before
+ * it, and where the list steps from the end of one run to the start of the
+ * next, those two are not neighbours. Chained, the step between them read as
+ * a climb no road could make, and one run's tail was lifted onto decks to
+ * meet the other's head.
+ *
  * Fails rather than half-building when the ends cannot reach the ground they
  * connect to — drag from further back on the bank to give the ramp room.
  */
@@ -119,12 +127,72 @@ export function solveElevationProfile(
   tiles: readonly TilePoint[],
   manual = 0,
 ): ElevationProfile {
-  const n = tiles.length;
-  if (n === 0) return { ok: true, elevations: [], cost: 0 };
+  if (tiles.length === 0) return { ok: true, elevations: [], cost: 0 };
 
   const inDrag = new Set(
     tiles.filter((t) => inBoundsOf(g.size, t.x, t.z)).map((t) => indexOf(g.size, t.x, t.z)),
   );
+  const elevations: number[] = [];
+  let cost = 0;
+  for (const run of contiguousRuns(tiles)) {
+    const solved = solveRun(g, run, inDrag, manual);
+    if (!solved.ok) return solved;
+    elevations.push(...solved.elevations);
+    cost += solved.cost;
+  }
+  return { ok: true, elevations, cost };
+}
+
+/** The drag cut wherever a tile is not orthogonally next to the one before it. */
+function contiguousRuns(tiles: readonly TilePoint[]): TilePoint[][] {
+  const runs: TilePoint[][] = [];
+  let run: TilePoint[] = [];
+  for (const t of tiles) {
+    const prev = run[run.length - 1];
+    if (prev && Math.abs(t.x - prev.x) + Math.abs(t.z - prev.z) !== 1) {
+      runs.push(run);
+      run = [];
+    }
+    run.push(t);
+  }
+  if (run.length > 0) runs.push(run);
+  return runs;
+}
+
+/**
+ * Both halves of a corridor are one road, so a station lifted on one half is
+ * lifted on the other: each pair of partners takes the higher of the two
+ * lifts, and a pair left on the ground is levelled together as one footprint.
+ * `flows` are the stored flow bytes the tiles will carry; a tile that is not
+ * a corridor half, or whose partner the drag does not lay, keeps its own.
+ */
+export function shareCorridorLifts(
+  tiles: readonly TilePoint[],
+  flows: readonly number[],
+  elevations: readonly number[],
+): number[] {
+  const at = new Map<string, number>();
+  tiles.forEach((t, i) => at.set(`${t.x},${t.z}`, i));
+  const shared = [...elevations];
+  tiles.forEach((t, i) => {
+    const partner = partnerTileOf(t.x, t.z, flows[i] ?? RoadFlow.None);
+    if (!partner) return;
+    const j = at.get(`${partner.x},${partner.z}`);
+    if (j === undefined) return;
+    const lift = Math.max(shared[i] ?? 0, shared[j] ?? 0);
+    shared[i] = lift;
+    shared[j] = lift;
+  });
+  return shared;
+}
+
+function solveRun(
+  g: DeckGround,
+  tiles: readonly TilePoint[],
+  inDrag: ReadonlySet<number>,
+  manual: number,
+): ElevationProfile {
+  const n = tiles.length;
   // Which way the drag's line lies across each tile: x when it runs along z.
   const acrossX = tiles.map((t, i): boolean | null => {
     const step = tiles[i + 1] ?? tiles[i - 1];

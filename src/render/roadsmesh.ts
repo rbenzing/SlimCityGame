@@ -5270,22 +5270,76 @@ export function roadTileVertices(
         cornerFill(-1, -1, halfN, halfW, cornerEdgeInset(planN, halfN, -1, planW, halfW, -1));
     }
 
-    // The far side of a T. An edge line is broken only across the mouth of a
-    // road that joins, so a side no road leaves by — or only an alley, which
-    // is an access the edge line runs across — is the kerb of the road
-    // running past, and its edge line runs the whole length of the tile. It
-    // holds its inset from this tile's kerb, easing from the arm's inset at
-    // one end to the other's at the other where the two differ.
+    // The sides no road leaves by — or only an alley, which is an access the
+    // road runs past. A flank strip crosses an UNKERBED arm only where that
+    // arm is a side access: the road runs past it on the other axis, so the
+    // strip lies along the carriageway the way a footway does. Where the
+    // unkerbed road is this road's own continuation, the same strip would lie
+    // ACROSS the carriageway and wall the road off. None runs down the middle
+    // of the road.
+    const runsEW = hasE || hasW;
+    const runsNS = hasN || hasS;
+    const flankN = (!hasN || (serviceN && runsEW)) && seamAt.z !== -1;
+    const flankS = (!hasS || (serviceS && runsEW)) && seamAt.z !== 1;
+    const flankE = (!hasE || (serviceE && runsNS)) && seamAt.x !== 1;
+    const flankW = (!hasW || (serviceW && runsNS)) && seamAt.x !== -1;
+
+    // The far side of a T is the kerb of the road running past, and that road
+    // arrives at the width its through arms carry — a turn bay or an auxiliary
+    // lane makes an arm wider than the junction's own section. The tarmac,
+    // the kerb and the edge line there all follow the arms, easing from one
+    // arm's half at that tile edge to the other's at the other; an arm no
+    // wider than the junction leaves the junction's own kerb where it was.
+    const farHalf = (half: number): number => (isJunction ? Math.max(coreHalf, half) : coreHalf);
+    const farHalfN = farHalf(halfN);
+    const farHalfS = farHalf(halfS);
+    const farHalfE = farHalf(halfE);
+    const farHalfW = farHalf(halfW);
+    // The tarmac under a kerb that stands wider than the core plate: between
+    // the two arms' extensions there is only the plate, so out from it to the
+    // kerb would be bare ground.
+    if (isJunction && !rampNode) {
+      const farPlate = (vertical: boolean, side: 1 | -1, farLo: number, farHi: number): void => {
+        if (farLo <= coreHalf + 1e-6 && farHi <= coreHalf + 1e-6) return;
+        const lo = vertical ? -edgeZ(-1) : -edgeX(-1);
+        const hi = vertical ? edgeZ(1) : edgeX(1);
+        const inner = (): number => side * coreHalf;
+        const outer = driftBetween(side * farLo, side * farHi, lo, hi);
+        pushDriftingStrip(
+          positions,
+          colors,
+          vertical,
+          centerX,
+          centerZ,
+          side > 0 ? inner : outer,
+          side > 0 ? outer : inner,
+          lo,
+          hi,
+          ROAD_Y_OFFSET,
+          plateColor,
+          hAt,
+        );
+      };
+      if (flankS) farPlate(false, 1, farHalfW, farHalfE);
+      if (flankN) farPlate(false, -1, farHalfW, farHalfE);
+      if (flankE) farPlate(true, 1, farHalfN, farHalfS);
+      if (flankW) farPlate(true, -1, farHalfN, farHalfS);
+    }
+
+    // An edge line is broken only across the mouth of a road that joins, so
+    // on the far side of a T it runs the whole length of the tile. It holds
+    // its inset from the kerb there, easing from the arm's inset at one end
+    // to the other's at the other where the two differ.
     if (isJunction && breaksMarkings && control !== 'roundabout' && spec.paved) {
-      const runsEW = hasE || hasW;
-      const runsNS = hasN || hasS;
       const farLine = (
         alongX: boolean,
         side: 1 | -1,
         planLo: MarkingPlan | null,
         halfLo: number,
+        farLo: number,
         planHi: MarkingPlan | null,
         halfHi: number,
+        farHi: number,
       ): void => {
         const insetLo = edgeInsetOf(planLo, halfLo, side);
         const insetHi = edgeInsetOf(planHi, halfHi, side);
@@ -5298,22 +5352,18 @@ export function roadTileVertices(
           !alongX,
           centerX,
           centerZ,
-          side * (coreHalf - insetLo),
-          side * (coreHalf - insetHi),
+          side * (farLo - insetLo),
+          side * (farHi - insetHi),
           lo,
           hi,
           hAt,
           paintOf(outermostLine(planLo, side) ?? { at: 0, color: 'white' }),
         );
       };
-      if ((!hasS || (serviceS && runsEW)) && seamAt.z !== 1)
-        farLine(true, 1, planW, halfW, planE, halfE);
-      if ((!hasN || (serviceN && runsEW)) && seamAt.z !== -1)
-        farLine(true, -1, planW, halfW, planE, halfE);
-      if ((!hasE || (serviceE && runsNS)) && seamAt.x !== 1)
-        farLine(false, 1, planN, halfN, planS, halfS);
-      if ((!hasW || (serviceW && runsNS)) && seamAt.x !== -1)
-        farLine(false, -1, planN, halfN, planS, halfS);
+      if (flankS) farLine(true, 1, planW, halfW, farHalfW, planE, halfE, farHalfE);
+      if (flankN) farLine(true, -1, planW, halfW, farHalfW, planE, halfE, farHalfE);
+      if (flankE) farLine(false, 1, planN, halfN, farHalfN, planS, halfS, farHalfS);
+      if (flankW) farLine(false, -1, planN, halfN, farHalfN, planS, halfS, farHalfS);
     }
 
     // The footway CARRIES ON ROUND THE CORNER, through the junction.
@@ -5420,18 +5470,6 @@ export function roadTileVertices(
       // The flank sidewalks (the sides parallel to the road) stay, but stop at
       // the bulb base rather than running to the tile edge, so they don't
       // overhang the rounded end.
-      // A flank strip crosses an UNKERBED arm only where that arm is a side
-      // access — the road runs past it on the other axis, so the strip lies
-      // along the carriageway the way a footway does. Where the unkerbed road
-      // is this road's own continuation, the same strip would lie ACROSS the
-      // carriageway and wall the road off.
-      const runsEW = hasE || hasW;
-      const runsNS = hasN || hasS;
-      // None runs down the middle of the road.
-      const flankN = (!hasN || (serviceN && runsEW)) && seamAt.z !== -1;
-      const flankS = (!hasS || (serviceS && runsEW)) && seamAt.z !== 1;
-      const flankE = (!hasE || (serviceE && runsNS)) && seamAt.x !== 1;
-      const flankW = (!hasW || (serviceW && runsNS)) && seamAt.x !== -1;
       // A flank runs on to the tile edge where the road carries on — the
       // middle of the road, on a corridor half — and where the road stops
       // square, to the corner of the kerb laid across its end.
@@ -5440,66 +5478,32 @@ export function roadTileVertices(
       const flankZHi = capS ? coreHalf : hasS || seamAt.z === 1 ? edgeZ(1) : squareEnd;
       const flankXLo = capW ? -coreHalf : hasW || seamAt.x === -1 ? -edgeX(-1) : -squareEnd;
       const flankXHi = capE ? coreHalf : hasE || seamAt.x === 1 ? edgeX(1) : squareEnd;
-      if (flankN && !capN) {
-        pushLocalRect(
+      // On the far side of a T the strip stands at the through arms' kerb,
+      // which is the junction's own everywhere else.
+      const flank = (vertical: boolean, side: 1 | -1, farLo: number, farHi: number): void => {
+        const lo = vertical ? flankZLo : flankXLo;
+        const hi = vertical ? flankZHi : flankXHi;
+        const inner = driftBetween(side * farLo, side * farHi, lo, hi);
+        const outer = driftBetween(side * (farLo + curbWidth), side * (farHi + curbWidth), lo, hi);
+        pushDriftingStrip(
           positions,
           colors,
+          vertical,
           centerX,
           centerZ,
-          flankXLo,
-          flankXHi,
-          -coreHalf - curbWidth,
-          -coreHalf,
+          side > 0 ? inner : outer,
+          side > 0 ? outer : inner,
+          lo,
+          hi,
           CURB_Y_OFFSET,
           SIDEWALK_COLOR,
           hAt,
         );
-      }
-      if (flankS && !capS) {
-        pushLocalRect(
-          positions,
-          colors,
-          centerX,
-          centerZ,
-          flankXLo,
-          flankXHi,
-          coreHalf,
-          coreHalf + curbWidth,
-          CURB_Y_OFFSET,
-          SIDEWALK_COLOR,
-          hAt,
-        );
-      }
-      if (flankE && !capE) {
-        pushLocalRect(
-          positions,
-          colors,
-          centerX,
-          centerZ,
-          coreHalf,
-          coreHalf + curbWidth,
-          flankZLo,
-          flankZHi,
-          CURB_Y_OFFSET,
-          SIDEWALK_COLOR,
-          hAt,
-        );
-      }
-      if (flankW && !capW) {
-        pushLocalRect(
-          positions,
-          colors,
-          centerX,
-          centerZ,
-          -coreHalf - curbWidth,
-          -coreHalf,
-          flankZLo,
-          flankZHi,
-          CURB_Y_OFFSET,
-          SIDEWALK_COLOR,
-          hAt,
-        );
-      }
+      };
+      if (flankN && !capN) flank(false, -1, farHalfW, farHalfE);
+      if (flankS && !capS) flank(false, 1, farHalfW, farHalfE);
+      if (flankE && !capE) flank(true, 1, farHalfN, farHalfS);
+      if (flankW && !capW) flank(true, -1, farHalfN, farHalfS);
     }
   } // end !isTurn (straight/junction rectangular geometry)
 

@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { MAP_SIZE, MAP_TILES, START_FUNDS, tileIndex } from '../../src/shared/constants';
 import { RoadTier, ZoneType } from '../../src/shared/types';
-import type { GridState, MapData, TilePoint, WorkerToMain } from '../../src/shared/types';
+import type { Command, GridState, MapData, TilePoint, WorkerToMain } from '../../src/shared/types';
 import { createGrid } from '../../src/world/grid';
 import { computeTerraformPatch, type TerraformCommand } from '../../src/world/terraform';
 import {
@@ -15,6 +15,7 @@ import {
   roadRow,
   rows,
   send,
+  sixLaneCommands,
   standingBuildings,
   type Harness,
 } from '../support/sim';
@@ -495,6 +496,89 @@ describe('auto-flatten: the ground levels under a placed footprint', () => {
     expect(join).toBeLessThanOrEqual(hi + 1e-5);
 
     assertNoApronPoke(grid, { x0: 118, z0: 98, x1: 126, z1: 105 });
+  });
+
+  it('carries the ground a run ends on two tiles past each dead end, raised or lowered to the end tile', () => {
+    // A terrace 118..135 wide with a 3 m/tile cross-slope, dropping to a
+    // plain at 2 m either side of it; the run along z = 100 ends one tile
+    // short of each drop.
+    const height = new Float32Array(MAP_TILES).fill(2);
+    for (let z = 0; z < MAP_SIZE; z++) {
+      for (let x = 118; x <= 135; x++) {
+        height[tileIndex(x, z)] = 20 + 3 * Math.max(-5, Math.min(5, z - 100));
+      }
+    }
+    const map: MapData = {
+      name: 'Terrace',
+      size: MAP_SIZE,
+      height,
+      water: new Uint8Array(MAP_TILES),
+      trees: new Uint8Array(MAP_TILES),
+      seaLevel: 0,
+      spawn: { x: MAP_SIZE / 2, z: MAP_SIZE / 2 },
+    };
+    const h = makeHarness();
+    h.sim.handleMessage({ type: 'init', seed: 1337, map });
+    send(h, 1, [{ kind: 'buildRoad', tier: RoadTier.TwoLane, tiles: roadRow(120, 100, 12) }]);
+    h.ticks(1);
+    expect(h.ackFor(1)!.ok).toBe(true);
+
+    h.sim.handleMessage({ type: 'requestSave' });
+    const grid = latestSaveGrid(h);
+    const at = (x: number, z: number): number => grid.height[tileIndex(x, z)]!;
+    for (let x = 120; x <= 131; x++) expect(at(x, 100)).toBeCloseTo(20, 5);
+    // Two tiles past each end carry the end tile's own cross-section: its
+    // height, the downhill shoulder as it lies, the uphill shoulder cut down
+    // to it — the plain beyond the terrace raised to meet them.
+    for (const x of [118, 119, 132, 133]) {
+      expect(at(x, 99)).toBeCloseTo(17, 5);
+      expect(at(x, 100)).toBeCloseTo(20, 5);
+      expect(at(x, 101)).toBeCloseTo(20, 5);
+    }
+    // Three tiles out is nobody's.
+    expect(at(117, 100)).toBe(2);
+    expect(at(134, 101)).toBeCloseTo(23, 5);
+    assertNoApronPoke(grid, { x0: 116, z0: 98, x1: 135, z1: 102 });
+  });
+
+  it('lays both halves of a corridor sent as one drag on the ground down a fall line, levelled alike', () => {
+    const height = new Float32Array(MAP_TILES);
+    for (let z = 0; z < MAP_SIZE; z++) {
+      for (let x = 0; x < MAP_SIZE; x++) height[tileIndex(x, z)] = 5 + 1.5 * Math.min(z, 60);
+    }
+    const map: MapData = {
+      name: 'FallLine',
+      size: MAP_SIZE,
+      height,
+      water: new Uint8Array(MAP_TILES),
+      trees: new Uint8Array(MAP_TILES),
+      seaLevel: 0,
+      spawn: { x: MAP_SIZE / 2, z: MAP_SIZE / 2 },
+    };
+    const h = makeHarness();
+    h.sim.handleMessage({ type: 'init', seed: 1337, map });
+    send(h, 0, [{ kind: 'setSandbox', on: true }]);
+    h.ticks(1);
+    const [define, near, far] = sixLaneCommands(column(40, 30, 10));
+    if (near?.kind !== 'buildRoad' || far?.kind !== 'buildRoad') throw new Error('corridor');
+    const both: Command = {
+      ...near,
+      tiles: [...near.tiles, ...far.tiles],
+      flows: [...near.flows!, ...far.flows!],
+    };
+    send(h, 1, [define!, both]);
+    h.ticks(1);
+    expect(h.ackFor(1)!.ok).toBe(true);
+
+    h.sim.handleMessage({ type: 'requestSave' });
+    const grid = latestSaveGrid(h);
+    for (let z = 30; z < 40; z++) {
+      for (const x of [40, 41]) {
+        expect(grid.roadTier[tileIndex(x, z)]).not.toBe(RoadTier.None);
+        expect(grid.roadElevation[tileIndex(x, z)]).toBe(0);
+      }
+      expect(grid.height[tileIndex(40, z)]).toBeCloseTo(grid.height[tileIndex(41, z)]!, 5);
+    }
   });
 
   it('skips apron tiles that are water: they are neither leveled nor pulled down', () => {

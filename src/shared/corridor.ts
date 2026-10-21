@@ -397,6 +397,18 @@ export function rampJoinAround(
 }
 
 /**
+ * Whether a class is a street: a road a ramp ends against at a junction and
+ * never runs over. A motorway and another ramp are what a ramp is laid beside;
+ * a railway is outside the road hierarchy altogether.
+ */
+export function isStreetClass(cls: RoadClassId): boolean {
+  return cls !== 'highway' && cls !== 'ramp' && cls !== 'rail';
+}
+
+/** Why a ramp may not go down on a tile a street holds, whatever outranks what. */
+export const RAMP_TAKES_STREET = 'A ramp joins a street at its side, it does not take its tiles';
+
+/**
  * Why laying `laid` as class `laidClass`, each tile with the stored flow in
  * `flows`, would make a ramp meet a motorway head-on or against its traffic —
  * or null when every ramp it touches meets one alongside, the way it runs.

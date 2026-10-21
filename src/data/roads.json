@@ -381,6 +381,7 @@
     {
       "tier": 12,
       "name": "Ramp",
+      "description": "Start on a street and drag toward the highway; it bends to run beside the highway the way its traffic goes and joins at its end",
       "costPerTile": 70,
       "upkeepPerTile": 1.4,
       "speed": 17,

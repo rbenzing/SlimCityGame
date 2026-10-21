@@ -1512,6 +1512,18 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
             clientGrid.profileById(id),
           )
         : null,
+    // A drag the tool refused is told the way one the world refused is: the
+    // cursor's reason outlives the cursor.
+    onRefused: (label, reason) => {
+      audio.play('denied');
+      store.getState().pushNotification({
+        id: Date.now(),
+        severity: 'warning',
+        title: `${label} failed`,
+        body: reason,
+        tick: store.getState().stats.tick,
+      });
+    },
     entry: (catalogId: string) => catalogById.get(catalogId),
     onPreview: (preview) => {
       store

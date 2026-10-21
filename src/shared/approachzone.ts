@@ -751,7 +751,9 @@ export function auxiliaryLaneAt(
   world: ApproachSurroundings,
 ): AuxiliaryLane | undefined {
   const mine = world.profileAt(x, z);
-  if (!mine) return undefined;
+  // Only a motorway grows one: the street at a slip road's other end takes
+  // the ordinary approach lanes any junction gives it.
+  if (!mine || mine.class !== 'highway') return undefined;
   // The tile the slip road meets carries the lane at full width too: the lane
   // runs across the join rather than stopping short of it and starting again.
   if (isRampNodeAt(x, z, world)) return auxiliaryLaneOnNode(x, z, world);
