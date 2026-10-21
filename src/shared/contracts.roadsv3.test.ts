@@ -148,6 +148,9 @@ describe('roads.json catalog v3 (UI-SPEC §6.7 Roads v3)', () => {
       carriesWater: false,
       noiseMult: 3,
       oneWay: true,
+      // The one road a player cannot draw without being told how.
+      description:
+        'Start on a street and drag toward the highway; it bends to run beside the highway the way its traffic goes and joins at its end',
     });
   });
 

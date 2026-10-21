@@ -2059,16 +2059,22 @@ describe('ToolManager — a road cannot be drawn through one it does not outrank
   });
 
   it('still lets a bigger road cross, and lets Replace mode through', () => {
+    // An avenue across a street. Neither a motorway nor a ramp would do: a
+    // motorway is limited access and refuses the avenue outright, and a ramp
+    // ends against a street rather than taking its tiles, so either would
+    // prove a refusal rather than the rank.
+    const bigger = makeEnv();
+    bigger.env.roadProfileAt = (t) =>
+      t.z === 5 && t.x >= 0 && t.x < 10 ? presetProfileForTier(RoadTier.TwoLane) : null;
+    const over = new ToolManager(bigger.env);
+    over.setTool('road.avenue');
+    over.pointerDown(3, 0, 0);
+    over.pointerMove(3, 9, 0);
+    expect(bigger.previews.at(-1)?.valid).toBe(true);
+    over.cancel();
+
     const { env, previews } = withAvenueAtZ5();
     const tm = new ToolManager(env);
-    // A ramp, not a motorway: a motorway is limited access and refuses the
-    // avenue outright, so it would prove the refusal rather than the rank.
-    tm.setTool('road.ramp');
-    tm.pointerDown(3, 0, 0);
-    tm.pointerMove(3, 9, 0);
-    expect(previews.at(-1)?.valid).toBe(true);
-    tm.cancel();
-
     tm.setTool('road.gravel');
     tm.setFlags({ angleLock: false, straightMode: false, replaceRoad: true });
     tm.pointerDown(6, 0, 0);
@@ -2287,7 +2293,7 @@ describe('a road too wide for its tile is laid as two carriageways', () => {
     expect(preview.lengthMeters).toBe(5 * TILE_METERS);
   });
 
-  it('lays two runs in one batch, each flagged as its own half', () => {
+  it('lays two runs in one command, each flagged as its own half', () => {
     const { env, sent } = makeEnv();
     env.profileIdFor = () => 12;
     const tm = new ToolManager(env);
@@ -2297,21 +2303,22 @@ describe('a road too wide for its tile is laid as two carriageways', () => {
     tm.pointerMove(0, 4, 0);
     tm.pointerUp(0, 4, 0);
     expect(sent).toHaveLength(1);
-    const [define, near, far] = sent[0]!.commands;
+    const [define, road, extra] = sent[0]!.commands;
     expect(define).toMatchObject({ kind: 'defineRoadProfile', id: 12 });
-    if (near?.kind !== 'buildRoad' || far?.kind !== 'buildRoad') {
-      throw new Error('expected two buildRoad commands after the definition');
-    }
+    if (road?.kind !== 'buildRoad') throw new Error('expected a buildRoad after the definition');
+    // One command carries both runs, so the world solves their grades
+    // together and neither half climbs onto a deck without the other.
+    expect(extra).toBeUndefined();
+    const key = (t: { x: number; z: number }): string => `${t.x},${t.z}`;
     // Two contiguous runs one tile apart across the way they run.
-    expect(near.tiles.map((t) => `${t.x},${t.z}`)).toEqual(['0,0', '0,1', '0,2', '0,3', '0,4']);
-    expect(far.tiles.map((t) => `${t.x},${t.z}`)).toEqual(['1,0', '1,1', '1,2', '1,3', '1,4']);
+    expect(road.tiles.slice(0, 5).map(key)).toEqual(['0,0', '0,1', '0,2', '0,3', '0,4']);
+    expect(road.tiles.slice(5).map(key)).toEqual(['1,0', '1,1', '1,2', '1,3', '1,4']);
     // Same road, same direction, opposite halves — which is what stops the
     // two of them reading as a junction the whole length of the road.
-    expect(near.profile).toBe(12);
-    expect(far.profile).toBe(12);
-    for (const f of near.flows!) expect(corridorHalfOf(f)).toBe('left');
-    for (const f of far.flows!) expect(corridorHalfOf(f)).toBe('right');
-    expect(flowDirection(near.flows![0]!)).toBe(flowDirection(far.flows![0]!));
+    expect(road.profile).toBe(12);
+    for (const f of road.flows!.slice(0, 5)) expect(corridorHalfOf(f)).toBe('left');
+    for (const f of road.flows!.slice(5)) expect(corridorHalfOf(f)).toBe('right');
+    expect(flowDirection(road.flows![0]!)).toBe(flowDirection(road.flows![5]!));
   });
 
   it('refuses a corridor round a corner, and says why before the money is spent', () => {
@@ -2548,6 +2555,135 @@ describe('a ramp meets a motorway alongside it, never head-on', () => {
     expect(preview.valid).toBe(true);
     tm.pointerUp(7, 9, 0);
     expect(sent).toHaveLength(1);
+  });
+});
+
+describe('the road tool bends a ramp to meet the motorway, and says why when it cannot', () => {
+  const HEAD_ON =
+    'A ramp meets a highway alongside it: bend it to run beside the highway before it joins';
+  const TAKES_STREET = 'A ramp joins a street at its side, it does not take its tiles';
+  const NEEDS_ROOM = 'A ramp needs room to meet the street';
+
+  /** An eastbound motorway along z = 5 and a street along z = 10, both x = 0..11. */
+  const town = (): ReturnType<typeof makeEnv> & { refused: [string, string][] } => {
+    const made = makeEnv();
+    const refused: [string, string][] = [];
+    const onRow = (t: TilePoint, z: number): boolean => t.z === z && t.x >= 0 && t.x <= 11;
+    made.env.roadProfileAt = (t) =>
+      onRow(t, 5)
+        ? presetProfileForTier(RoadTier.Highway)
+        : onRow(t, 10)
+          ? presetProfileForTier(RoadTier.TwoLane)
+          : null;
+    made.env.roadFlowAt = (t) => (onRow(t, 5) ? RoadFlow.East : RoadFlow.None);
+    made.env.onRefused = (label, reason) => {
+      refused.push([label, reason]);
+    };
+    return { ...made, refused };
+  };
+  const has = (tiles: readonly TilePoint[] | undefined, x: number, z: number): boolean =>
+    tiles?.some((t) => t.x === x && t.z === z) ?? false;
+  const laidTiles = (sent: ReturnType<typeof makeEnv>['sent']): TilePoint[] => {
+    const road = sent[0]?.commands.find((c) => c.kind === 'buildRoad');
+    return road?.kind === 'buildRoad' ? road.tiles : [];
+  };
+
+  it('lays an on-ramp dragged the long way along the motorway with its elbow beside it', () => {
+    const { env, previews, sent, refused } = town();
+    const tm = new ToolManager(env);
+    tm.setTool('road.ramp');
+    tm.pointerDown(4, 9, 0);
+    tm.pointerMove(9, 6, 0); // |dx| = 5 > |dz| = 3: drawn, the elbow would sit at (9,9)
+    const preview = previews.at(-1)!;
+    expect(preview.invalidReason).toBeUndefined();
+    expect(preview.valid).toBe(true);
+    expect(has(preview.tiles, 4, 6), 'the elbow is beside the motorway').toBe(true);
+    expect(has(preview.tiles, 9, 9), 'not beside the street').toBe(false);
+    tm.pointerUp(9, 6, 0);
+    expect(sent).toHaveLength(1);
+    expect(laidTiles(sent)).toEqual(preview.tiles);
+    expect(laidTiles(sent)[0]).toEqual({ x: 4, z: 9 });
+    expect(laidTiles(sent).at(-1)).toEqual({ x: 9, z: 6 });
+    expect(refused).toEqual([]);
+  });
+
+  it('lays an off-ramp dragged from the motorway end the short way along it, bent the same', () => {
+    const { env, previews, sent } = town();
+    const tm = new ToolManager(env);
+    tm.setTool('road.ramp');
+    tm.pointerDown(4, 6, 0);
+    tm.pointerMove(6, 9, 0); // |dz| = 3 > |dx| = 2: drawn, it would leave the motorway head-on
+    const preview = previews.at(-1)!;
+    expect(preview.invalidReason).toBeUndefined();
+    expect(preview.valid).toBe(true);
+    expect(has(preview.tiles, 6, 6)).toBe(true);
+    expect(has(preview.tiles, 4, 9)).toBe(false);
+    tm.pointerUp(6, 9, 0);
+    expect(laidTiles(sent)).toEqual(preview.tiles);
+  });
+
+  it('bends a drag as long one way as the other, which is drawn along X first', () => {
+    const { env, previews, sent } = town();
+    const tm = new ToolManager(env);
+    tm.setTool('road.ramp');
+    tm.pointerDown(4, 9, 0);
+    tm.pointerMove(7, 6, 0);
+    expect(previews.at(-1)?.valid).toBe(true);
+    expect(has(previews.at(-1)?.tiles, 4, 6)).toBe(true);
+    tm.pointerUp(7, 6, 0);
+    expect(sent).toHaveLength(1);
+  });
+
+  it('still refuses a ramp drawn straight into the motorway, and says so when it is let go', () => {
+    const { env, previews, sent, refused } = town();
+    const tm = new ToolManager(env);
+    tm.setTool('road.ramp');
+    tm.pointerDown(4, 9, 0);
+    tm.pointerMove(4, 6, 0); // one leg: there is no other way to bend it
+    expect(previews.at(-1)?.valid).toBe(false);
+    expect(previews.at(-1)?.invalidReason).toBe(HEAD_ON);
+    tm.pointerUp(4, 6, 0);
+    expect(sent).toEqual([]);
+    expect(refused).toEqual([['Ramp', HEAD_ON]]);
+  });
+
+  it('gives a street its tile back: a ramp ended on the street meets it from the tile before', () => {
+    const { env, previews, sent } = town();
+    const tm = new ToolManager(env);
+    tm.setTool('road.ramp');
+    tm.pointerDown(4, 6, 0);
+    tm.pointerMove(6, 10, 0); // let go on the street itself
+    const preview = previews.at(-1)!;
+    expect(preview.invalidReason).toBeUndefined();
+    expect(preview.valid).toBe(true);
+    expect(preview.tiles.some((t) => t.z === 10)).toBe(false);
+    expect(preview.tiles.at(-1)).toEqual({ x: 6, z: 9 });
+    expect(preview.lengthMeters).toBe(preview.tiles.length * TILE_METERS);
+    tm.pointerUp(6, 10, 0);
+    expect(laidTiles(sent)).toEqual(preview.tiles);
+  });
+
+  it('refuses a ramp with nothing left once the street has its tile back', () => {
+    const { env, previews, sent, refused } = town();
+    const tm = new ToolManager(env);
+    tm.setTool('road.ramp');
+    tm.pointerDown(4, 10, 0);
+    tm.pointerMove(4, 10, 0);
+    expect(previews.at(-1)?.invalidReason).toBe(NEEDS_ROOM);
+    tm.pointerUp(4, 10, 0);
+    expect(sent).toEqual([]);
+    expect(refused).toEqual([['Ramp', NEEDS_ROOM]]);
+  });
+
+  it('refuses a ramp run over a street, which it meets at its side instead', () => {
+    const { env, previews, sent } = town();
+    const tm = new ToolManager(env);
+    tm.setTool('road.ramp');
+    tm.pointerDown(4, 10, 0); // started on the street
+    tm.pointerMove(4, 7, 0);
+    expect(previews.at(-1)?.invalidReason).toBe(TAKES_STREET);
+    tm.pointerUp(4, 7, 0);
+    expect(sent).toEqual([]);
   });
 });
 
@@ -3002,7 +3138,8 @@ describe('Snapping to roads', () => {
     tm.pointerMove(0, 4, 0);
     tm.pointerUp(0, 4, 0);
     const laid = roadsLaid(sent);
-    expect(laid).toHaveLength(2);
+    expect(laid).toHaveLength(1);
+    expect(laid[0]!.tiles).toHaveLength(10);
     for (const road of laid) expect(road).toMatchObject({ join: false });
   });
 

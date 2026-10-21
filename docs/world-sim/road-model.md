@@ -888,9 +888,12 @@ has not spent, and then from the hard shoulder on that side, which narrows
 to no less than 1.2 m (the motorway's own median-side shoulder, and the 4 ft
 a constrained section may narrow an outside shoulder to beside such a lane),
 so a walled motorway grows the lane inside its wall; a side whose shoulder
-is already at that floor, with no verge to spare, grows none. A ramp's other end is a **terminal**: an
-ordinary node on the surface network, taking an ordinary warranted control
-and ordinary approach lanes like any other junction.
+is already at that floor, with no verge to spare, grows none. Only a
+motorway grows one: the auxiliary lane is read off the road that carries
+it, and a street that meets a ramp grows nothing but its ordinary approach.
+A ramp's other end is a **terminal**: an ordinary node on the surface
+network, taking an ordinary warranted control and ordinary approach lanes
+like any other junction.
 
 ### How a ramp meets a motorway: alongside, never head-on
 
@@ -914,13 +917,30 @@ off the same way in reverse. On this grid that is:
   parallel stretch a ramp tile and the motorway tile next to it are separate
   roads, exactly as two carriageways side by side are: no mask bit, no graph
   edge, no junction. Traffic changes road only at the join.
+- **The tool bends the ramp for the player.** A ramp drawn as an L-path has
+  two legs, and which is laid first decides where its elbow lands. The player
+  marks the two ends; the road tool tries both leg orders and keeps the one a
+  ramp can join by — the elbow beside the motorway, the last leg running
+  alongside it. Only when neither order joins does the drag stay refused.
+  However long the leg along the motorway, the same two ends give the same
+  ramp. The ramp still flows the way it is drawn: dragged from the street it
+  is an on-ramp, dragged from the motorway it is an off-ramp, and either way
+  its alongside leg has to run with the motorway's traffic — the tool bends a
+  ramp, it never turns one round.
 - **A head-on ramp is refused, and so is one against the traffic.** A ramp
-  tile that would join a motorway while flowing across it (a T) or against it
-  (a wrong-way merge) is refused with the reason, by the road tool and again
-  by the world when the command arrives, and the reason says what to do: bend
-  the ramp to run beside the motorway, the way it is going, before it meets
-  it. A save that already holds a head-on ramp keeps it and draws it as it
-  always did.
+  that cannot bend — a straight drag into the motorway's side — or one whose
+  alongside leg runs against the motorway's traffic is refused with the
+  reason, by the road tool and again by the world when the command arrives,
+  and the reason says what to do: bend the ramp to run beside the motorway,
+  the way it is going, before it meets it. A save that already holds a
+  head-on ramp keeps it and draws it as it always did.
+- **A ramp's street end is a junction on the street, never a tile of it.** A
+  ramp drag ended on a street tile is trimmed to the tile before it, so the
+  ramp meets the street at a T and the street keeps its tile; a ramp may not
+  replace a street tile, whatever the class rank says, because a one-way
+  ramp tile in a two-way street breaks the street in both directions. A
+  ramp that would have no tile left to meet the street from is refused with
+  the reason.
 - **The join tile is a taper, not a corner.** On the ramp side the join tile
   carries the ramp's carriageway straight along its flow and fans its asphalt
   across the verge into the motorway's auxiliary lane on the half of the tile

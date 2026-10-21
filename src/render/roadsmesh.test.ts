@@ -63,6 +63,7 @@ import {
   NO_EDITS,
   presetProfileForTier,
   PRESET_LANE_WIDTH_M,
+  withTurnPocket,
   worldOrderedProfile,
 } from '../shared/roadprofile';
 import { BIKE_PAINT_MAX_WIDTH_M, EDGE_LINE_MARGIN_M, markingPlan } from './roadmarkings';
@@ -4838,5 +4839,109 @@ describe('a compact roundabout', () => {
     expect(grass()).toBeGreaterThan(0);
     renderer.setRoundabouts([]);
     expect(grass()).toBe(0);
+  });
+});
+
+describe('roadTileVertices — the far side of a T is the kerb of the road running past', () => {
+  // A two-lane street meeting a T from the north; the street runs east-west
+  // and its far side is the south. Either through arm may arrive with a turn
+  // bay, which makes it wider than the junction tile's own section.
+  const preset = presetProfileForTier(RoadTier.TwoLane);
+  const coreHalf = carriagewayHalfWidthOf(preset);
+  const bayed = withTurnPocket(preset, 1)!;
+  const wide = carriagewayHalfWidthOf(bayed);
+  const centre = TILE_METERS / 2;
+  const edgeLineAt = (profile: RoadProfile): number =>
+    Math.max(
+      ...markingPlan(profile)
+        .solid.filter((l) => l.at > 0)
+        .map((l) => l.at),
+    );
+  const tee = (
+    west: RoadProfile,
+    east: RoadProfile,
+    halves?: Partial<NeighborHalves>,
+  ): { positions: number[]; colors: number[] } =>
+    roadTileVertices(
+      0,
+      0,
+      RoadTier.TwoLane,
+      N | E | W,
+      flatHeightAt,
+      { n: RoadTier.TwoLane, e: RoadTier.TwoLane, s: RoadTier.None, w: RoadTier.TwoLane },
+      undefined,
+      {
+        n: coreHalf,
+        e: carriagewayHalfWidthOf(east),
+        s: 0,
+        w: carriagewayHalfWidthOf(west),
+        plans: { n: markingPlan(preset), e: markingPlan(east), s: null, w: markingPlan(west) },
+        ...halves,
+      },
+    );
+  const isTarmac = (t: readonly number[]): boolean =>
+    !isSidewalk(t) && !isPaint(t) && (t[0] as number) < 0.6;
+  /** Where a line's centre runs: paint vertices sit half the paint's width either side of it. */
+  const lineCentre = (vzs: number[]): number => {
+    expect(vzs.length).toBeGreaterThan(0);
+    return (Math.min(...vzs) + Math.max(...vzs)) / 2;
+  };
+  /** The south-side vertices of one kind within `reach` of a world x, as offsets from the tile centre. */
+  const southAt = (
+    geo: { positions: number[]; colors: number[] },
+    pred: (t: readonly number[]) => boolean,
+    dx: number,
+    reach = 0.05,
+  ): number[] => {
+    const out: number[] = [];
+    for (let i = 0; i < geo.positions.length / 3; i++) {
+      if (!pred(geo.colors.slice(i * 3, i * 3 + 3))) continue;
+      const vx = geo.positions[i * 3]! - centre;
+      const vz = geo.positions[i * 3 + 2]! - centre;
+      if (vz > 0 && Math.abs(vx - dx) <= reach) out.push(vz);
+    }
+    return out;
+  };
+
+  it('stands its footway and its edge line at the arms’ kerb where both arrive with a turn bay', () => {
+    expect(wide).toBeGreaterThan(coreHalf);
+    const geo = tee(bayed, bayed);
+    for (const dx of [-centre, centre]) {
+      expect(Math.min(...southAt(geo, isSidewalk, dx))).toBeCloseTo(wide, 6);
+      expect(Math.max(...southAt(geo, isTarmac, dx))).toBeCloseTo(wide, 6);
+      // The far edge line is the arm's own, carried straight through.
+      const lines = southAt(geo, isMarkingWhite, dx).filter((vz) => vz > coreHalf - 1);
+      expect(lineCentre(lines)).toBeCloseTo(edgeLineAt(bayed), 6);
+    }
+  });
+
+  it('eases from one arm’s kerb to the other’s where only one arrives wider', () => {
+    const geo = tee(bayed, preset);
+    expect(Math.min(...southAt(geo, isSidewalk, -centre))).toBeCloseTo(wide, 6);
+    expect(Math.min(...southAt(geo, isSidewalk, centre))).toBeCloseTo(coreHalf, 6);
+    expect(Math.max(...southAt(geo, isTarmac, -centre))).toBeCloseTo(wide, 6);
+    expect(Math.max(...southAt(geo, isTarmac, centre))).toBeCloseTo(coreHalf, 6);
+    // Halfway across, the kerb is halfway between, and there is tarmac under it.
+    const mid = (wide + coreHalf) / 2;
+    expect(Math.min(...southAt(geo, isSidewalk, 0, 0.6))).toBeCloseTo(mid, 0);
+    expect(Math.max(...southAt(geo, isTarmac, 0, 0.6))).toBeGreaterThanOrEqual(mid - 0.3);
+    const west = southAt(geo, isMarkingWhite, -centre).filter((vz) => vz > coreHalf - 1);
+    const east = southAt(geo, isMarkingWhite, centre).filter((vz) => vz > coreHalf - 1);
+    expect(lineCentre(west)).toBeCloseTo(edgeLineAt(bayed), 6);
+    expect(lineCentre(east)).toBeCloseTo(edgeLineAt(preset), 6);
+  });
+
+  it('is the junction’s own kerb, as it always was, where the arms are no wider', () => {
+    const plain = roadTileVertices(0, 0, RoadTier.TwoLane, N | E | W, flatHeightAt, {
+      n: RoadTier.TwoLane,
+      e: RoadTier.TwoLane,
+      s: RoadTier.None,
+      w: RoadTier.TwoLane,
+    });
+    const same = tee(preset, preset);
+    expect(same.positions).toEqual(plain.positions);
+    expect(same.colors).toEqual(plain.colors);
+    for (const dx of [-centre, centre])
+      expect(Math.min(...southAt(same, isSidewalk, dx))).toBeCloseTo(coreHalf, 6);
   });
 });

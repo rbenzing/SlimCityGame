@@ -598,6 +598,18 @@ describe('the auxiliary lane a motorway grows beside a slip road', () => {
     expect(auxiliaryLaneAt(2, 5, w)).toBeUndefined();
   });
 
+  it('is the motorway’s alone: the street at the slip road’s other end grows none', () => {
+    // The slip road ends on the street at (6,4) in a T, whichever way it was
+    // drawn. A street takes the ordinary approach lanes any junction gives
+    // it, not an acceleration lane, so no tile of it either side carries one.
+    for (const rampFlow of [RoadFlow.East, RoadFlow.West]) {
+      const w = interchange(rampFlow);
+      for (let z = 2; z <= 7; z++) expect(auxiliaryLaneAt(6, z, w)).toBeUndefined();
+      // The motorway's own lane is still there.
+      expect(auxiliaryLaneAt(2, rampFlow === RoadFlow.East ? 5 : 3, w)).toBeDefined();
+    }
+  });
+
   it('says nothing where the slip road never recorded which way it runs', () => {
     const w = interchange(RoadFlow.None);
     expect(auxiliaryLaneAt(2, 5, w)).toBeUndefined();

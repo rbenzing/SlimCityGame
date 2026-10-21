@@ -25,7 +25,7 @@ current behavior only and carry no dates of their own._
 
 ## Status (2026-09-29)
 
-**Test suite:** 6,864 tests passing across 195 test files, run 2026-10-16.
+**Test suite:** 6,890 tests passing across 195 test files, run 2026-10-21.
 This is the only test count in the documentation set. When the suite changes
 again, update the figure here and nowhere else.
 
@@ -124,6 +124,10 @@ not a test to fix.
   when a junction control opens or closes a turn bay, but not on a road edit
   alone, so a bay that a re-profiled road gains or loses leaves the drives
   beside it as they were until the next building change.
+- The clipping sweep's junction cases read ground 0.32 m above the deck at
+  an Avenue-on-Avenue crossroads (118,40 on seed 12345) and 0.09–0.12 m at
+  two street crossroads; the parade's runs are clean. Trace the junction
+  box's corners against the levelling the way the dead ends were.
 - Parked cars read the street's own section, not the drawn one: on the tile
   against the stop line, where a turn bay has taken all of the parking, a
   kerb row falls back to the plain section's lane offset, held off only by
@@ -385,6 +389,41 @@ roads, and pinning the Three.js version. See [adr/](engineering/adr/README.md).
 ---
 
 ## 10. History (newest first)
+
+### The ground stays under every road, and a ramp bends itself (built 2026-10-21)
+
+The player saw the landscape through roads, and could not get a ramp to
+connect a highway to a street.
+
+- **A parade of every road type**, laid as parallel runs one tile apart
+  across a slope, a fall line and a flat control, joins the clipping sweep
+  (`tools/roadclip-shots.mjs parade`), sampling the rendered ground against
+  the road surface on every tile. It found two real defects and now reads
+  zero clipped on every row.
+- **A wide road's end was buried in the hillside.** Its turning head reaches
+  past its tile, over ground the one-tile apron never levelled, and a
+  rendered corner is the mean of four cells, not a tile's own height. The
+  levelling now runs out two tiles past a dead end, so the head stands on a
+  level shelf with the terrace edge behind it.
+- **A six-lane corridor on a fall line lifted one half onto decks** while the
+  other stayed on the ground, and the ground mounded through the at-grade
+  half. The grade solver now reads a command as contiguous runs, the halves
+  take the higher of their lifts at each station, and the road tool lays a
+  corridor as one command so they are solved together.
+- **A ramp joined only when drawn one exact way.** The L-path laid its longer
+  leg first, so most drags put the elbow on the street side and were refused
+  silently on release. The tool now tries both leg orders and keeps the one
+  that joins; a refused drag raises its reason as a notification when let
+  go; the Ramp card says how to draw one; a ramp ended on a street tile
+  stops short and meets the street at a T, and never takes a street's tile.
+  `tools/ramp-shots.mjs` lays the working shape again.
+- **The far side of a T stepped.** The side of a T with no arm drew its
+  footway and edge line at the junction tile's own width while the through
+  arms arrived wider for a turn bay, a 1.5 m notch at both tile edges that a
+  crossroads, with an arm on every side, never showed. The far side now
+  carries the arms' width across the tile, easing between them. And the
+  street at a ramp's terminal was growing the motorway's eight-tile
+  auxiliary lane, against the spec: only a motorway grows one.
 
 ### A turn bay never narrows its road, and the drives beside it meet its kerb (built 2026-10-19)
 

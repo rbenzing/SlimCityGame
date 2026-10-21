@@ -169,6 +169,11 @@ MUTCD citations below use 11th-edition section numbers.
   roads are not in the way. — [road-model.md](world-sim/road-model.md);
   `ROAD_THROUGH_BUILDING` in `src/sim/worker.entry.ts`, `isClearOfBuildings`
   in `src/app/clientgrid.ts`
+- A refused drag says why when it is released, not only while it is held: the
+  chip's reason is raised as the same notification a refusal from the world
+  raises, and nothing is laid. A tool that refuses silently has laid nothing
+  and taught nothing. — [interaction.md](ux/interaction.md);
+  `src/tools/tools.ts`
 - The `RoadTier` byte is a persisted, append-only preset id, not a hierarchy.
   Never use a tier number as rank. — [road-model.md](world-sim/road-model.md),
   [data-model.md](engineering/data-model.md)
@@ -194,8 +199,9 @@ MUTCD citations below use 11th-edition section numbers.
   ramp-side edge line only across the ramp's mouth, carries the auxiliary lane
   across itself, and is no junction anything approaches, so nothing is arrowed
   on the way in. Its exit board stands once, on the tile before a ramp that
-  leaves. Decided once and asked everywhere: the mesh, the approach walk and
-  the furniture never count arms for themselves. —
+  leaves. Only a motorway grows an auxiliary lane; a street a ramp ends on
+  takes its ordinary approach. Decided once and asked everywhere: the mesh,
+  the approach walk and the furniture never count arms for themselves. —
   [road-model.md](world-sim/road-model.md); `isRampNode` in
   `src/shared/junction.ts`, `isRampNodeAt` in `src/shared/approachzone.ts`
 - The warrant ladder is none, yield, stop, all-way stop, signal, and it only
@@ -459,7 +465,12 @@ MUTCD citations below use 11th-edition section numbers.
   is its own road. A ramp that would join across the motorway or against it is
   refused whole, by the road tool and again by the worker, with a reason
   saying what to do (`rampMeetingRefusal`); a save that already holds one
-  keeps it connected. The join tile draws as a taper into
+  keeps it connected. The player marks a ramp's two ends and the tool bends
+  it: an L-path ramp is laid in whichever leg order joins, so the elbow lands
+  beside the motorway; it still flows the way it was drawn and is never
+  turned round to run with the traffic. A ramp's street
+  end is a junction on the street, never a tile of it: a drag ended on a
+  street tile stops one short, and a ramp never replaces a street tile. The join tile draws as a taper into
   the motorway — the lane narrowing to nothing against its edge — never as a
   corner, and the motorway's edge line opens over the downstream half at a
   merge and the upstream half at a diverge. — [road-model.md](world-sim/road-model.md);
@@ -490,7 +501,11 @@ MUTCD citations below use 11th-edition section numbers.
   of any junction it meets and never narrows toward the road it crosses,
   however much narrower that road is. The junction mouth is drawn at each
   arm's own width, footways or not, and the corner rounds between the two at
-  the kerb return. Along one road, the pieces that end close over the taper
+  the kerb return. The side of a T that has no arm carries the through
+  arms' width across the tile — its footway and its edge line ease from the
+  one arm's edge to the other's — never the junction tile's own section,
+  which a turn bay or an auxiliary lane on the arms has outgrown. Along one
+  road, the pieces that end close over the taper
   and the pieces that carry on keep their width: a lane drop never squeezes
   the lanes that remain. The paint follows the pavement: lines and coloured
   lanes bend with the edge across a tile and never step at a seam. —
@@ -561,6 +576,19 @@ MUTCD citations below use 11th-edition section numbers.
   street running through side streets that give way to it. —
   [road-model.md](world-sim/road-model.md); `armWarrant` and
   `sharedTurnLaneAt` in `src/shared/approachzone.ts`
+- A road levels its footprint and a one-tile apron, and past a dead end the
+  levelling runs out two tiles, each run-out cell taking the height of the
+  end or apron cell behind it, held at or below the end tile and never a cell
+  a road, a building or water owns: a wide road's turning head reaches past
+  its tile and stands on that ground. A rendered corner is the mean of the
+  four cells meeting there, never one tile's own height. —
+  [terrain.md](visual-render/terrain.md); `computeRoadGradePatch` in
+  `src/sim/worker.entry.ts`, `cornerHeight` in `src/render/terrain.ts`
+- The grade solver reads a drag as contiguous runs and solves each on its
+  own ground; the two halves of a corridor, which the road tool lays in one
+  command, take the higher of their lifts at each station, so they are on
+  the ground together or on decks together. — [terrain.md](visual-render/terrain.md);
+  `solveElevationProfile` and `shareCorridorLifts` in `src/world/bridges.ts`
 - A turn bay never narrows its road. On a tile where the bay is partly open,
   the road gives up only what the opened bay needs beyond the tile's spare
   width: the parking or shoulder narrows over the taper, and the through

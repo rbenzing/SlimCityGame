@@ -43,7 +43,7 @@ import {
   RoadTier as RoadTierValue,
   ZoneType as ZoneTypeValue,
 } from '../shared/types';
-import type { RoadProfile } from '../shared/types';
+import type { RoadClassId, RoadProfile } from '../shared/types';
 import {
   carriagewayShiftOf,
   composeProfile,
@@ -83,6 +83,8 @@ import {
   corridorRunsFor,
   corridorSplitRefusal,
   corridorTiles,
+  isStreetClass,
+  RAMP_TAKES_STREET,
   rampMeetingRefusal,
 } from '../shared/corridor';
 import type { CorridorRuns } from '../shared/corridor';
@@ -335,9 +337,52 @@ export interface ToolEnv {
    * after release instead.
    */
   gridRunRefusal?(tiles: readonly TilePoint[], moves: readonly EndMove[]): string | null;
+  /**
+   * A road drag let go while the cursor said it could not be laid: `label` is
+   * the road the player picked, `reason` the words the cursor showed. The chip
+   * goes with the drag, so this is where the player is told once it is over.
+   * Optional: an env that omits it lays nothing and says nothing.
+   */
+  onRefused?(label: string, reason: string): void;
 }
 
 const NO_CROSSINGS: ReadonlySet<string> = new Set();
+
+/** Why a ramp drag that ends on a street has nothing left once the street's tile is given back. */
+const RAMP_NEEDS_ROOM = 'A ramp needs room to meet the street';
+
+/** What a road tool lays once its profile edits are applied to its preset. */
+interface RoadBuild {
+  tier: RoadTier;
+  spec: RoadSpec;
+  /** What it costs and what it needs, which is the size's price plus its reserved lanes'. */
+  price: RoadPrice;
+  profile: RoadProfile | null;
+  layable: boolean;
+  /** Why it may not be laid, in the words the player is shown, or null. */
+  refusal: string | null;
+}
+
+/**
+ * A road drag judged as it will stand once it lands: the shape the ghost
+ * shows, the tiles the command lays, and why it may not be laid — one answer
+ * for the preview, the price and the release.
+ */
+interface RoadDragPlan {
+  build: RoadBuild;
+  /** The run as drawn, one tile wide. */
+  path: TilePoint[];
+  /** Every tile laid: the path, or both carriageways of a corridor. */
+  tiles: TilePoint[];
+  corridor: { runs: CorridorRuns | null; needed: boolean };
+  overpass: OverpassPlan | null;
+  /** The cross-section laid: the composed profile, or the tier's preset. */
+  section: RoadProfile;
+  profileId: number | undefined;
+  moves: EndMove[];
+  /** Why it may not be laid, in the words the cursor shows, or null. */
+  refusal: string | null;
+}
 
 /** Where a drag passes over the roads it crosses, and how high it must be to. */
 interface OverpassPlan {
@@ -465,17 +510,26 @@ export const DEFAULT_BRUSH_SETTINGS: BrushSettings = {
   strength: Math.round((TERRAFORM_STRENGTH_MIN + TERRAFORM_STRENGTH_MAX) / 2),
 };
 
+/** The axis an L-path from `start` to `end` runs first: the longer, with ties broken toward X. */
+export function lPathFirstAxis(start: TilePoint, end: TilePoint): 'x' | 'z' {
+  return Math.abs(end.x - start.x) >= Math.abs(end.z - start.z) ? 'x' : 'z';
+}
+
 /**
- * Builds the road-drag L-path from `start` to `end` inclusive: the longer
- * axis is traversed first, then the shorter axis, with ties broken toward X.
- * The elbow tile is never duplicated.
+ * Builds the road-drag L-path from `start` to `end` inclusive: `firstAxis` is
+ * traversed first, then the other — the longer axis unless said, with ties
+ * broken toward X. The elbow tile is never duplicated.
  */
-export function buildLPath(start: TilePoint, end: TilePoint): TilePoint[] {
+export function buildLPath(
+  start: TilePoint,
+  end: TilePoint,
+  firstAxis: 'x' | 'z' = lPathFirstAxis(start, end),
+): TilePoint[] {
   const dx = end.x - start.x;
   const dz = end.z - start.z;
   const stepX = dx === 0 ? 0 : Math.sign(dx);
   const stepZ = dz === 0 ? 0 : Math.sign(dz);
-  const xMajor = Math.abs(dx) >= Math.abs(dz);
+  const xMajor = firstAxis === 'x';
   const tiles: TilePoint[] = [];
   if (xMajor) {
     for (let x = start.x; x !== end.x; x += stepX) tiles.push({ x, z: start.z });
@@ -955,16 +1009,7 @@ export class ToolManager {
    * the preset itself when the edits change nothing, else the composed
    * profile under its nearest tier, and whether that composition may be laid.
    */
-  private roadBuild(presetTier: RoadTier): {
-    tier: RoadTier;
-    spec: RoadSpec;
-    /** What it costs and what it needs, which is the size's price plus its reserved lanes'. */
-    price: RoadPrice;
-    profile: RoadProfile | null;
-    layable: boolean;
-    /** Why it may not be laid, in the words the player is shown, or null. */
-    refusal: string | null;
-  } {
+  private roadBuild(presetTier: RoadTier): RoadBuild {
     const base = presetProfileForTier(presetTier);
     const composed = composeProfile(base, this.profileEdits);
     if (profilesEqual(composed, base)) {
@@ -1022,6 +1067,14 @@ export class ToolManager {
     // A tile the run passes OVER keeps the road beneath it and never meets
     // it, so neither the rank nor the class rule applies there.
     const over = (t: TilePoint): boolean => crossings.has(`${t.x},${t.z}`);
+    // A ramp ends against a street at a junction; it never takes the street's
+    // tiles, however far it outranks them, replace mode or not.
+    if (profile.class === 'ramp') {
+      for (const t of tiles) {
+        const existing = at(t);
+        if (existing && !over(t) && isStreetClass(existing.class)) return RAMP_TAKES_STREET;
+      }
+    }
     // A road cannot be drawn THROUGH one it does not outrank: an avenue's
     // raised median leaves nowhere to cross, and a motorway has no gap in it
     // at all. Laying the tiles either side and skipping the middle would leave
@@ -1737,7 +1790,11 @@ export class ToolManager {
     return this.roadPath(snapPipeEnd(start, world), snapPipeEnd(end, world));
   }
 
-  private roadPath(rawStart: TilePoint, rawEnd: TilePoint): TilePoint[] {
+  /**
+   * The tiles a drag lays from `rawStart` to `rawEnd`. An L-path bends once;
+   * `bend` says which leg to lay first, the longer unless said.
+   */
+  private roadPath(rawStart: TilePoint, rawEnd: TilePoint, bend?: 'x' | 'z'): TilePoint[] {
     // Guide snapping moves where the drag's ENDS sit, before any path is built
     // from them, so it composes with every mode rather than replacing one.
     const start = this.guided(rawStart);
@@ -1748,9 +1805,103 @@ export class ToolManager {
     // A motorway is never laid as a grid; with `Grid` selected it runs straight.
     const grid = this.flags.gridMode && offersGrid(this._tool);
     if (grid) return buildGridPath(start, end);
-    return this.flags.angleLock || this.flags.straightMode || this.flags.gridMode
-      ? straightPath(start, end)
-      : buildLPath(start, end);
+    return this.bendsOnce() ? buildLPath(start, end, bend) : straightPath(start, end);
+  }
+
+  /** Whether the road drag is an L-path: one bend, rather than a straight run or a grid. */
+  private bendsOnce(): boolean {
+    return !this.flags.angleLock && !this.flags.straightMode && !this.flags.gridMode;
+  }
+
+  /**
+   * A road drag judged as it will be laid. An L-path has two shapes with the
+   * same ends, and for a ramp — or any road an L would bring against a
+   * motorway — only one of them may meet the motorway alongside, running its
+   * way. The drag is judged as drawn first; refused, it is judged bent the
+   * other way, and laid so if that is what the motorway takes. The ends the
+   * player put down never move.
+   */
+  private judgeRoadDrag(presetTier: RoadTier, start: TilePoint, end: TilePoint): RoadDragPlan {
+    const build = this.roadBuild(presetTier);
+    const section = build.profile ?? presetProfileForTier(build.tier);
+    const drawn = this.judgeRoadRun(build, section, this.roadPath(start, end));
+    if (drawn.refusal === null || !this.bendsOnce()) return drawn;
+    const from = this.guided(start);
+    const to = this.guided(end);
+    if (from.x === to.x || from.z === to.z) return drawn;
+    const bent = this.judgeRoadRun(
+      build,
+      section,
+      this.roadPath(start, end, lPathFirstAxis(from, to) === 'x' ? 'z' : 'x'),
+    );
+    if (bent.refusal !== null) return drawn;
+    const motorway =
+      section.class === 'ramp' ||
+      this.touches(drawn.path, 'highway') ||
+      this.touches(bent.path, 'highway');
+    return motorway ? bent : drawn;
+  }
+
+  /** Whether any tile of `path`, or one beside it, holds a road of `cls`. */
+  private touches(path: readonly TilePoint[], cls: RoadClassId): boolean {
+    const at = this.env.roadProfileAt;
+    if (!at) return false;
+    return path.some((t) =>
+      (
+        [
+          [0, 0],
+          [0, -1],
+          [1, 0],
+          [0, 1],
+          [-1, 0],
+        ] as const
+      ).some(([dx, dz]) => at({ x: t.x + dx, z: t.z + dz })?.class === cls),
+    );
+  }
+
+  /**
+   * One run of `build` judged over `drawn`: a ramp whose last tile is a
+   * street's gives that tile back and meets the street at a junction on the
+   * tile before it, and the rest is judged as the world will judge it.
+   */
+  private judgeRoadRun(build: RoadBuild, section: RoadProfile, drawn: TilePoint[]): RoadDragPlan {
+    const at = this.env.roadProfileAt;
+    const last = drawn.at(-1);
+    const onStreet = section.class === 'ramp' && at && last ? (at(last)?.class ?? null) : null;
+    const path = onStreet !== null && isStreetClass(onStreet) ? drawn.slice(0, -1) : drawn;
+    const corridor = this.roadCorridor(build.profile, path);
+    const tiles = corridor.runs ? corridorTiles(corridor.runs) : path;
+    // A corridor is two runs side by side; only a single run crosses over.
+    const overpass = corridor.runs ? null : this.overpassPlan(tiles, section);
+    const profileId = build.profile ? this.env.profileIdFor?.(build.profile) : undefined;
+    const moves = this.endMoves(tiles);
+    // A composition the tile cannot hold, or a run touching a road its class
+    // may not meet, is refused here with the reason rather than laid as
+    // something else.
+    const refusal =
+      build.refusal ??
+      (path.length === 0 ? RAMP_NEEDS_ROOM : null) ??
+      (corridor.needed && !corridor.runs ? 'A corridor is laid in a straight run' : null) ??
+      overpass?.refusal ??
+      this.meetRefusal(tiles, section, passingBy(overpass), moves) ??
+      this.splitRefusal(
+        tiles,
+        this.roadFlows(corridor.runs, tiles),
+        profileId ?? build.tier,
+        passingBy(overpass),
+      );
+    return {
+      build,
+      // A drag with nothing left to lay still shows where it was drawn.
+      path: path.length === 0 ? drawn : path,
+      tiles: tiles.length === 0 ? drawn : tiles,
+      corridor,
+      overpass,
+      section,
+      profileId,
+      moves,
+      refusal,
+    };
   }
 
   /** `tile` pulled into line with a nearby road run, when guide snapping is on. */
@@ -1929,44 +2080,19 @@ export class ToolManager {
         this.previewFree(free, [this.freeDragStart]);
         return;
       }
-      const build = this.roadBuild(ROAD_TOOL_TO_TIER[tool] as RoadTier);
-      const path = this.roadPath(start, current);
-      // A section too wide for one tile is laid as two carriageways, so the
-      // preview outlines both and the cost covers both.
-      const corridor = this.roadCorridor(build.profile, path);
-      const tiles = corridor.runs ? corridorTiles(corridor.runs) : path;
+      // Judged once, as the release will judge it: the ghost shows the shape
+      // that is laid. A section too wide for one tile is laid as two
+      // carriageways, so the preview outlines both and the cost covers both.
+      const plan = this.judgeRoadDrag(ROAD_TOOL_TO_TIER[tool] as RoadTier, start, current);
+      const { build, path, tiles, corridor, overpass } = plan;
       const cost = tiles.length * build.price.costPerTile;
       const evaluated = this.evaluate(tiles, cost, build.price.unlockMilestone, true);
-      // A composition the tile cannot hold, or a run touching a road its class
-      // may not meet, is refused here with the reason rather than laid as
-      // something else.
-      const section = build.profile ?? presetProfileForTier(build.tier);
-      // A corridor is two runs side by side; only a single run crosses over.
-      const overpass = corridor.runs ? null : this.overpassPlan(tiles, section);
-      const profileId = build.profile
-        ? (this.env.profileIdFor?.(build.profile) ?? build.tier)
-        : build.tier;
-      const meet =
-        overpass?.refusal ??
-        this.meetRefusal(tiles, section, passingBy(overpass), this.endMoves(tiles)) ??
-        this.splitRefusal(
-          tiles,
-          this.roadFlows(corridor.runs, tiles),
-          profileId,
-          passingBy(overpass),
-        );
       const { valid, invalidReason } =
-        build.refusal !== null
-          ? { valid: false, invalidReason: build.refusal }
-          : corridor.needed && !corridor.runs
-            ? { valid: false, invalidReason: 'A corridor is laid in a straight run' }
-            : meet !== null
-              ? { valid: false, invalidReason: meet }
-              : evaluated;
+        plan.refusal !== null ? { valid: false, invalidReason: plan.refusal } : evaluated;
       // What the ghost is drawn at: the composed section's own width, halved
       // for a corridor because each of its two tile rows carries one
       // carriageway and corridorHalfProfile splits it exactly down the middle.
-      const previewProfile = build.profile ?? presetProfileForTier(build.tier);
+      const previewProfile = plan.section;
       const sectionWidth = profileWidth(previewProfile);
       // Drawn at the deck it will be laid at: the height commit sends, solved
       // over each run as the world solves it.
@@ -2217,28 +2343,12 @@ export class ToolManager {
         this.env.send('Bulldoze', [{ kind: 'bulldoze', tiles }]);
       }
     } else if (tool in ROAD_TOOL_TO_TIER) {
-      const build = this.roadBuild(ROAD_TOOL_TO_TIER[tool] as RoadTier);
-      const path = this.roadPath(start, end);
-      const corridor = this.roadCorridor(build.profile, path);
-      const tiles = corridor.runs ? corridorTiles(corridor.runs) : path;
-      const profileId = build.profile ? this.env.profileIdFor?.(build.profile) : undefined;
-      const section = build.profile ?? presetProfileForTier(build.tier);
-      const overpass = corridor.runs ? null : this.overpassPlan(tiles, section);
+      // Judged again as it is laid, by the same rule the ghost was drawn by.
+      const plan = this.judgeRoadDrag(ROAD_TOOL_TO_TIER[tool] as RoadTier, start, end);
+      const { build, tiles, corridor, overpass, profileId, moves } = plan;
       // The deck height to send: what the player asked for, raised as far as
       // any road the run crosses over needs.
       const elevation = overpass?.elevation ?? this.roadElevation;
-      const moves = this.endMoves(tiles);
-      const refused =
-        (build.profile && !build.layable) ||
-        (corridor.needed && !corridor.runs) ||
-        (overpass?.refusal ?? null) !== null ||
-        this.meetRefusal(tiles, section, passingBy(overpass), moves) !== null ||
-        this.splitRefusal(
-          tiles,
-          this.roadFlows(corridor.runs, tiles),
-          profileId ?? build.tier,
-          passingBy(overpass),
-        ) !== null;
       // The curve ends the run meets move onto their tile centres first, so the
       // grid road finds them there.
       const moveEnds = moves.map((m): Command => ({
@@ -2251,30 +2361,28 @@ export class ToolManager {
         ...(this.flags.replaceRoad ? { replace: true } : {}),
         ...(this.flags.roadSnap ? {} : { join: false }),
       };
-      if (refused) {
-        // The preview already said why; laying nothing is the whole answer.
+      if (plan.refusal !== null) {
+        // The cursor said why while the drag was held and goes with it, so
+        // the reason is said once more now the drag is let go.
+        this.env.onRefused?.(build.spec.name, plan.refusal);
       } else if (corridor.runs && build.profile && profileId !== undefined) {
-        // Two carriageways of ONE road: each run is its own contiguous path
-        // and carries the flow byte saying which half of the section it holds.
-        // One batch, so undo takes the whole road down rather than half of it.
+        // Two carriageways of ONE road, laid by one command: each run is its
+        // own contiguous path and carries the flow byte saying which half of
+        // the section it holds, and the world solves the two runs' grades
+        // together, so the halves climb onto decks together or not at all.
         const runs = corridor.runs;
-        const lay = (
-          runTiles: TilePoint[],
-          flow: number,
-        ): Extract<Command, { kind: 'buildRoad' }> => ({
-          kind: 'buildRoad',
-          tier: build.tier,
-          tiles: runTiles,
-          elevation: this.roadElevation,
-          profile: profileId,
-          flows: runTiles.map(() => flow),
-          ...options,
-        });
         this.env.send(build.spec.name, [
           ...moveEnds,
           { kind: 'defineRoadProfile', id: profileId, profile: build.profile },
-          lay(runs.near, runs.nearFlow),
-          lay(runs.far, runs.farFlow),
+          {
+            kind: 'buildRoad',
+            tier: build.tier,
+            tiles: [...runs.near, ...runs.far],
+            elevation: this.roadElevation,
+            profile: profileId,
+            flows: [...runs.near.map(() => runs.nearFlow), ...runs.far.map(() => runs.farFlow)],
+            ...options,
+          },
         ]);
       } else if (build.profile && profileId !== undefined) {
         // Define and lay in one batch, so undo treats them as one edit and a

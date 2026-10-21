@@ -110,8 +110,10 @@ The cursor chip carries the cost, the length along the centre line and, for a
 curve, its tightest radius. When the road would be refused it carries the
 reason instead: too tight for its class (with the radius it needs), too
 narrow an angle where it meets another road, a crossing of two classes that
-may not meet, or ground that is taken. A refused ghost draws red and the final
-click does nothing.
+may not meet, or ground that is taken. A refused ghost draws red, and
+releasing it lays nothing and raises the chip's reason as a notification, the
+same one a refusal from the world raises, so a drag that came to nothing says
+why after the chip has gone.
 
 `Backspace` takes back the last click, so a misplaced bend is moved without
 starting again. Right-click is not used, and leaves a curve in progress
@@ -127,6 +129,19 @@ step, including any road it split.
 `Straight`, `L-path` and `Curve`. Every class except the motorway (highway
 and ramp) also offers `Grid`. Picking a motorway while `Grid` is selected
 falls back to `Straight`.
+
+**Drawing a ramp.** The Ramp card says how: start on a street and drag toward
+the highway, and the ramp bends to run beside the highway the way its traffic
+goes and joins at its end. The player marks the two ends and the tool chooses
+the bend — it tries the L-path's two leg orders and keeps the one that joins
+([road-model.md](../world-sim/road-model.md#how-a-ramp-meets-a-motorway-alongside-never-head-on)) —
+so dragging further along the highway than toward it lays the same ramp. A
+ramp flows the way it is drawn: from the street it is an on-ramp, from the
+highway an off-ramp, and its leg beside the highway has to run the way the
+highway's traffic does. A drag ended on the street's own tile stops one tile
+short and meets the street at a T. What is still refused, with the reason: a
+straight drag into the highway's side, which has no leg to bend, and a ramp
+whose leg beside the highway would run against its traffic.
 
 ## Snapping to roads
 

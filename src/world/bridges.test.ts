@@ -5,9 +5,9 @@ import {
   BRIDGE_MAX_ELEVATION,
   BRIDGE_MAX_GRADE,
 } from '../shared/constants';
-import { RoadTier } from '../shared/types';
+import { RoadFlow, RoadTier, storedFlow } from '../shared/types';
 import type { GridState, TilePoint } from '../shared/types';
-import { isElevated, solveElevationProfile } from './bridges';
+import { isElevated, shareCorridorLifts, solveElevationProfile } from './bridges';
 import { createGrid } from './grid';
 
 function makeGrid(size: number): GridState {
@@ -187,6 +187,57 @@ describe('solveElevationProfile', () => {
   it('returns an empty profile for an empty drag', () => {
     const g = makeGrid(8);
     expect(solveElevationProfile(g, [])).toEqual({ ok: true, elevations: [], cost: 0 });
+  });
+});
+
+describe('solveElevationProfile over a drag of more than one run', () => {
+  /** A hillside falling 1 m a tile along +z: any one run down it lies on the ground. */
+  function fallLine(): GridState {
+    const g = makeGrid(24);
+    for (let z = 0; z < 24; z++) {
+      for (let x = 0; x < 24; x++) g.height[idx(24, x, z)] = 5 + z;
+    }
+    return g;
+  }
+  /** A run down column x from z = 0 to z = 11. */
+  const down = (x: number): TilePoint[] => Array.from({ length: 12 }, (_, z) => ({ x, z }));
+
+  it('solves each run on its own, so the step from one run’s tail to the next run’s head lifts nothing', () => {
+    const g = fallLine();
+    const both = [...down(10), ...down(11)];
+    const result = solveElevationProfile(g, both);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.elevations).toEqual(both.map(() => 0));
+    expect(result.cost).toBe(0);
+  });
+
+  it('gives both halves of a corridor the higher of their lifts, and leaves a tile without a partner its own', () => {
+    const near = down(10);
+    const far = down(11);
+    const flows = [
+      ...near.map(() => storedFlow(RoadFlow.South, 'left')),
+      ...far.map(() => storedFlow(RoadFlow.South, 'right')),
+    ];
+    const lifts = [
+      ...near.map((_, i) => (i === 3 ? 1.5 : 0)),
+      ...far.map((_, i) => (i === 7 ? 0.4 : 0)),
+    ];
+    const shared = shareCorridorLifts([...near, ...far], flows, lifts);
+    expect(shared[3]).toBe(1.5);
+    expect(shared[12 + 3]).toBe(1.5);
+    expect(shared[7]).toBe(0.4);
+    expect(shared[12 + 7]).toBe(0.4);
+    expect(shared.filter((e) => e > 0)).toHaveLength(4);
+
+    // A half whose partner the drag does not lay keeps its own lift.
+    const alone = shareCorridorLifts(
+      near,
+      near.map(() => storedFlow(RoadFlow.South, 'left')),
+      near.map((_, i) => (i === 2 ? 0.7 : 0)),
+    );
+    expect(alone[2]).toBe(0.7);
+    expect(alone.filter((e) => e > 0)).toHaveLength(1);
   });
 });
 

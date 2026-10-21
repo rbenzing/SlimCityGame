@@ -14,13 +14,35 @@ sim grows is placed as surely as one the player plops, and levels its ground
 the same way when it spawns and when it levels up; growth is not a command,
 so there is nothing to undo.
 
-A tile's height is the terrain vertex at its north-west corner, so a
-footprint's own tiles reach only the vertices along its north and west edges;
-the vertices along its south and east edges belong to the tiles one past it.
-The levelling takes those too where open ground owns them — so the whole
-surface under the footprint is one plane — and leaves alone any that a road,
-another building or water owns, since moving it would tilt the road, unseat
-the neighbour or move the shoreline. The body is then seated on the highest
+A map cell holds one height, and a rendered terrain corner is the mean of
+the four cells meeting there (`cornerHeight` in `src/render/terrain.ts`), so
+every corner of a tile is shared with its neighbours and the ground inside a
+tile is one plane only when the cells around it agree. The levelling takes
+the apron's cells too where open ground owns them — so the whole surface
+under the footprint is one plane — and leaves alone any that a road, another
+building or water owns, since moving it would tilt the road, unseat the
+neighbour or move the shoreline.
+
+**A road's ground carries on past its end.** A wide road's turning head —
+the rounded cap and the footway that wraps it, up to the class's kerb return
+past the carriageway's end — stands over the apron tile beyond a dead end,
+whose far corners average cells the apron never touched. Cut into a
+hillside, that ground rose over the cap's uphill corner. So the levelling
+runs out two tiles past a dead end: each run-out cell takes the height of
+the end tile or side-apron cell it lies behind, raised or lowered to it,
+held at or below the end tile and any road it borders, and never a cell a
+road, a building or water owns. The cap then stands on a level shelf with
+the terrace edge behind it. A narrow road's head never leaves its tile, and
+the run-out is harmless there.
+
+**A drag is solved one run at a time.** The grade solver that lifts a road
+onto decks where the ground steps more than it may climb reads a drag as
+contiguous runs; a command that carries two runs — the two halves of a
+corridor, which the road tool lays as one command for this reason — solves
+each on its own ground, and the halves take the higher of their two lifts at
+each station, so both are on the ground or both on decks and neither's
+corners average the other's unlevelled cells. The body is
+then seated on the highest
 ground under the body itself ([buildings.md](../art/buildings.md#lots-and-paved-ground)),
 never under the whole footprint, so a street climbing past the lot does not
 lift the house off the pad it stands on.

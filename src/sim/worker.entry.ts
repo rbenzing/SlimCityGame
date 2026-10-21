@@ -187,10 +187,12 @@ import {
   bulldozeReach,
   corridorPartnerTile,
   corridorSplitRefusal,
+  isStreetClass,
+  RAMP_TAKES_STREET,
   rampMeetingRefusal,
 } from '../shared/corridor';
 import type { RoadLayerReader } from '../shared/corridor';
-import { solveElevationProfile } from '../world/bridges';
+import { shareCorridorLifts, solveElevationProfile } from '../world/bridges';
 import {
   applyHeightPatch,
   computeTerraformPatch,
@@ -416,6 +418,29 @@ const NEIGHBOUR_STEPS: ReadonlyArray<readonly [number, number]> = [
   [0, 1],
   [-1, 0],
 ];
+
+/**
+ * The ways a road tile's dead ends face: away from its one arm, or both ways
+ * along the line a lone tile was drawn on, which lies east-west when nothing
+ * was recorded. A tile with two arms or more has no end.
+ */
+function deadEndFacings(mask: number, flow: number): ReadonlyArray<readonly [number, number]> {
+  const arms = NEIGHBOUR_STEPS.filter(([dx, dz]) => (mask & bitToward(dx, dz)) !== 0);
+  if (arms.length === 0) {
+    return axisOfFlow(flow) === 'z'
+      ? [
+          [0, -1],
+          [0, 1],
+        ]
+      : [
+          [-1, 0],
+          [1, 0],
+        ];
+  }
+  if (arms.length > 1) return [];
+  const [dx, dz] = arms[0]!;
+  return [[-dx, -dz]];
+}
 
 /** 8-neighbor (Chebyshev distance 1) ring offsets — the "1-tile apron" around a road footprint. */
 const APRON_NEIGHBOR_OFFSETS: ReadonlyArray<readonly [number, number]> = [
@@ -2852,6 +2877,7 @@ class SimWorld implements WorkerSim {
     if (!this.sandbox && price.unlockMilestone > this.stats.milestoneLevel) {
       return { ok: false, cost: 0, inverse: [], reason: 'locked' };
     }
+    const laidClass = this.profileForId(profileId)?.class ?? null;
     if (layer === 'over') {
       return this.layOverRoads(tier, profileId, tiles, exact, exactFlows, price.costPerTile);
     }
@@ -2923,6 +2949,12 @@ class SimWorld implements WorkerSim {
       ? ({ ok: true, elevations: exact, cost: 0 } as const)
       : solveElevationProfile(g, tiles, elevation);
     if (!profile.ok) return { ok: false, cost: 0, inverse: [], reason: profile.reason };
+    // The two halves of a corridor rise and fall together; a half left on the
+    // ground beside one on a deck stood on ground the deck's half never
+    // levelled, and that ground came up through its carriageway.
+    const elevations = exact
+      ? profile.elevations
+      : shareCorridorLifts(tiles, exactFlows ?? dragFlows, profile.elevations);
 
     // A road never goes through a building, and it never quietly goes round
     // one either: laid with the building's tiles left out, it stands as two
@@ -2938,7 +2970,7 @@ class SimWorld implements WorkerSim {
       if (!inBounds(t.x, t.z)) continue;
       const idx = tileIndex(t.x, t.z);
       const current = (g.roadTier[idx] ?? 0) as RoadTier;
-      const deck = profile.elevations[i] ?? 0;
+      const deck = elevations[i] ?? 0;
       // Road-on-slope placement: a NEW road tile uses the road-specific
       // slope gate (ROAD_MAX_SLOPE, steeper than MAX_BUILD_SLOPE) since the
       // auto-flatten below re-levels/banks it right after. Upgrading
@@ -3013,6 +3045,12 @@ class SimWorld implements WorkerSim {
       const priorDeck = g.roadElevation[idx] ?? 0;
       const priorFlow = g.roadFlow[idx] ?? RoadFlow.None;
       const prevProfile = g.roadProfile[idx] || current;
+      // A ramp ends against a street at a junction; it never takes the
+      // street's tiles, however far it outranks them, replace mode or not.
+      if (current !== 0 && laidClass === 'ramp') {
+        const underneath = this.roadClassAt(t.x, t.z);
+        if (underneath !== null && isStreetClass(underneath)) return refused(RAMP_TAKES_STREET);
+      }
       // A road is replaced by one ABOVE it in the hierarchy, or by a different
       // composition of the same road; the same road again only ever re-profiles
       // its deck. Replace mode lands whatever the drag draws, lesser included.
@@ -3190,9 +3228,10 @@ class SimWorld implements WorkerSim {
         ...heldApart(group.apart),
       });
     }
-    // Auto-flatten: the newly built/upgraded tiles + a 1-tile apron. Elevated
-    // tiles are exempt — the deck spans the ground, it does not sit on it, and
-    // levelling a riverbed under a bridge would drain the river.
+    // Auto-flatten: the newly built/upgraded tiles, a 1-tile apron and the
+    // run-out past a dead end. Elevated tiles are exempt — the deck spans the
+    // ground, it does not sit on it, and levelling a riverbed under a bridge
+    // would drain the river.
     const grounded = rebuilt.filter((t) => (g.roadElevation[tileIndex(t.x, t.z)] ?? 0) === 0);
     this.flattenFootprint(grounded, true, inverse);
     return { ok: true, cost, inverse };
@@ -3813,8 +3852,12 @@ class SimWorld implements WorkerSim {
       newHeight.set(idx, sum / count);
     }
 
-    // Apron ring: grass tiles bordering R (never water/road/building). Each is
-    // pulled down to at most the highest road height it borders, never raised.
+    // Grass: never water, road or building.
+    const isOpenGround = (idx: number): boolean =>
+      g.water[idx] === 0 && g.roadTier[idx] === RoadTier.None && g.buildingId[idx] === 0;
+
+    // Apron ring: grass tiles bordering R. Each is pulled down to at most the
+    // highest road height it borders, never raised.
     const apron = new Map<number, TilePoint>();
     for (const t of rSet.values()) {
       for (const [ox, oz] of APRON_NEIGHBOR_OFFSETS) {
@@ -3822,13 +3865,12 @@ class SimWorld implements WorkerSim {
         const nz = t.z + oz;
         if (!inBounds(nx, nz)) continue;
         const idx = tileIndex(nx, nz);
-        if (rSet.has(idx)) continue;
-        if (g.water[idx] !== 0) continue;
-        if (g.roadTier[idx] !== RoadTier.None) continue;
-        if (g.buildingId[idx] !== 0) continue;
+        if (rSet.has(idx) || !isOpenGround(idx)) continue;
         apron.set(idx, { x: nx, z: nz });
       }
     }
+    // The highest road an apron tile borders: the most it may ever stand at.
+    const apronCap = new Map<number, number>();
     for (const [idx, a] of apron) {
       let m = -Infinity;
       for (const [ox, oz] of APRON_NEIGHBOR_OFFSETS) {
@@ -3840,11 +3882,50 @@ class SimWorld implements WorkerSim {
         m = Math.max(m, newHeight.get(nIdx)!);
       }
       if (m === -Infinity) continue; // borders no R tile — leave unchanged
+      apronCap.set(idx, m);
       newHeight.set(idx, Math.min(g.height[idx]!, m));
     }
 
-    // Bounding rect over R ∪ apron; unmodified tiles keep their current height.
-    const modified: TilePoint[] = [...rSet.values(), ...apron.values()];
+    // Run-out past a dead end: the ground a road ends on carries on two tiles
+    // beyond it. A wide road's turning head rounds out past its own tile onto
+    // the next, and a rendered corner is the mean of the four tiles meeting
+    // there, so that tile's far corners stand on the tile behind it as well.
+    // Each run-out tile takes the height of the end tile, or of the side-apron
+    // tile, it lies behind — raised or lowered to it, held at or below the end
+    // tile and any road it borders — so the head stands on the plane its road
+    // ends on instead of ground falling or rising away from it.
+    const runOut = new Map<number, { t: TilePoint; height: number }>();
+    for (const [idx, t] of rSet) {
+      const own = newHeight.get(idx)!;
+      for (const [fx, fz] of deadEndFacings(g.roadMask[idx] ?? 0, g.roadFlow[idx] ?? 0)) {
+        for (let s = -1; s <= 1; s++) {
+          const sx = t.x + s * fz;
+          const sz = t.z + s * fx;
+          if (!inBounds(sx, sz)) continue;
+          const sIdx = tileIndex(sx, sz);
+          const height = Math.min(own, newHeight.get(sIdx) ?? g.height[sIdx]!);
+          for (let k = 1; k <= 2; k++) {
+            const x = sx + k * fx;
+            const z = sz + k * fz;
+            if (!inBounds(x, z)) continue;
+            const oIdx = tileIndex(x, z);
+            if (rSet.has(oIdx) || !isOpenGround(oIdx)) continue;
+            const prior = runOut.get(oIdx);
+            if (!prior || height < prior.height) runOut.set(oIdx, { t: { x, z }, height });
+          }
+        }
+      }
+    }
+    for (const [idx, { height }] of runOut) {
+      newHeight.set(idx, Math.min(height, apronCap.get(idx) ?? Infinity));
+    }
+
+    // Bounding rect over R ∪ apron ∪ run-out; unmodified tiles keep their current height.
+    const modified: TilePoint[] = [
+      ...rSet.values(),
+      ...apron.values(),
+      ...Array.from(runOut.values(), (o) => o.t),
+    ];
     const rect = growRect(null, modified);
     if (!rect) return null;
     const w = rect.maxX - rect.minX + 1;

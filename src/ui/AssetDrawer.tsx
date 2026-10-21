@@ -309,7 +309,9 @@ export function AssetDrawer({ category, onClose }: AssetDrawerProps): JSX.Elemen
                 title={
                   locked
                     ? `${card.name} (unlocks at ${MILESTONES[card.unlockMilestone]?.name ?? 'a later milestone'})`
-                    : card.name
+                    : card.description
+                      ? `${card.name}: ${card.description}`
+                      : card.name
                 }
                 onClick={() => setTool(card.id)}
                 className={`relative flex w-24 flex-col gap-1 rounded-[6px] border p-1.5 text-left text-[11px] transition-colors ${

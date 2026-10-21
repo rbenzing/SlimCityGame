@@ -1,9 +1,11 @@
-/** Ramp check (SPEC 29, wave 5a): the slip road is a road the player can lay.
- * Draw one beside the motorway it serves, read back the cross-section it
- * carries and the direction it runs, and shoot it.
+/** Ramp check: the slip road is a road the player can lay, in the shape it is
+ * laid — up from the street, round an elbow beside the motorway, along the
+ * motorway to the merge. Lay an on-ramp and an off-ramp that way, read back
+ * the cross-section each carries, the direction it runs, that the motorway
+ * end is joined both ways and the street end meets the street, and shoot it.
  *
  * The read-back is the point: a screenshot shows asphalt but not how many
- * lanes wide it is, nor which way its one lane goes.
+ * lanes wide it is, which way its one lane goes, nor whether a mask holds.
  *
  * Usage: node tools/ramp-shots.mjs [url] [outDir]
  */
@@ -19,6 +21,8 @@ mkdirSync(out, { recursive: true });
 const HIGHWAY = 3;
 const RAMP = 12;
 const TWO_LANE = 1;
+const FLOW = { N: 1, E: 2, S: 3, W: 4 };
+const BIT = { N: 1, E: 2, S: 4, W: 8 };
 
 const b = await chromium.launch({ headless: true, args: ['--use-angle=default'] });
 const page = await b.newPage({ viewport: { width: 1400, height: 900 } });
@@ -95,32 +99,75 @@ const row = (z, from, to) =>
 const col = (x, from, to) =>
   Array.from({ length: to - from + 1 }, (_, i) => ({ x: X + x, z: Z + from + i }));
 
-// A motorway running east-west, a street to the south, and a ramp joining
-// them: the shape every interchange is built out of.
-await cmd('motorway', [{ kind: 'buildRoad', tier: HIGHWAY, tiles: row(4, 0, 18) }]);
-await cmd('street', [{ kind: 'buildRoad', tier: TWO_LANE, tiles: row(14, 0, 18) }]);
-await cmd('ramp', [{ kind: 'buildRoad', tier: RAMP, tiles: col(9, 5, 13) }]);
+// A motorway running east, a street to the south, and the two ramps that join
+// them: the shapes every interchange is built out of. An on-ramp climbs from
+// beside the street, turns beside the motorway and runs east along it to
+// merge; an off-ramp leaves the motorway running east and turns down to the
+// street. Each is one drag.
+const HWY = 4;
+const STREET = 14;
+const ON = { x: 9, mergeX: 13 };
+const OFF = { x: 5, leaveX: 2 };
+const onRamp = [...col(ON.x, HWY + 1, STREET - 1).reverse(), ...row(HWY + 1, ON.x + 1, ON.mergeX)];
+const offRamp = [...row(HWY + 1, OFF.leaveX, OFF.x), ...col(OFF.x, HWY + 2, STREET - 1)];
+await cmd('motorway', [{ kind: 'buildRoad', tier: HIGHWAY, tiles: row(HWY, 0, 18) }]);
+await cmd('street', [{ kind: 'buildRoad', tier: TWO_LANE, tiles: row(STREET, 0, 18) }]);
+await cmd('on-ramp', [{ kind: 'buildRoad', tier: RAMP, tiles: onRamp }]);
+await cmd('off-ramp', [{ kind: 'buildRoad', tier: RAMP, tiles: offRamp }]);
 await page.waitForTimeout(2500);
 
 const failures = [];
 const g = await readGrid();
-const laid = [];
-for (let d = 6; d <= 12; d++) laid.push(g.roadTier[idx(X + 9, Z + d)]);
-console.log('ramp tiles:', JSON.stringify(laid));
-if (!laid.every((t) => t === RAMP)) failures.push(`the ramp did not lay as tier ${RAMP}: ${laid}`);
+const tierAt = (x, z) => g.roadTier[idx(X + x, Z + z)];
+const maskAt = (x, z) => g.roadMask[idx(X + x, Z + z)];
+const flowAt = (x, z) => g.roadFlow[idx(X + x, Z + z)] & 7;
 
-const mid = await approach(X + 9, Z + 9);
-console.log('mid ramp:', JSON.stringify(mid));
+for (const [name, tiles] of [
+  ['on-ramp', onRamp],
+  ['off-ramp', offRamp],
+]) {
+  const laid = tiles.map((t) => g.roadTier[idx(t.x, t.z)]);
+  console.log(`${name} tiles:`, JSON.stringify(laid));
+  if (!laid.every((t) => t === RAMP))
+    failures.push(`the ${name} did not lay as tier ${RAMP}: ${laid}`);
+}
+if (tierAt(ON.x, STREET) !== TWO_LANE || tierAt(OFF.x, STREET) !== TWO_LANE) {
+  failures.push('a ramp took a tile of the street it ends against');
+}
+
+const mid = await approach(X + ON.x, Z + 9);
+console.log('mid on-ramp:', JSON.stringify(mid));
 if (!mid) failures.push('the ramp carries no cross-section at all');
 if (mid && mid.lanes !== 1) failures.push(`the ramp draws ${mid.lanes} lanes, wanted 1`);
 if (mid && Math.abs(mid.width - 7.8) > 1e-6)
   failures.push(`the ramp is ${mid.width} m across, wanted 7.8`);
 
-// It runs the way it was drawn — a ramp is one-way, so the stored direction is
-// the whole of its meaning.
-const flow = g.roadFlow ? g.roadFlow[idx(X + 9, Z + 9)] & 7 : null;
-console.log('stored flow:', flow);
-if (flow !== 3) failures.push(`the ramp runs ${flow}, wanted 3 (south, the way it was drawn)`);
+// Each runs the way it was drawn — a ramp is one-way, so the stored direction
+// is the whole of its meaning: the on-ramp climbs north, the off-ramp drops south.
+console.log('stored flows: on-ramp', flowAt(ON.x, 9), 'off-ramp', flowAt(OFF.x, 9));
+if (flowAt(ON.x, 9) !== FLOW.N) failures.push(`the on-ramp runs ${flowAt(ON.x, 9)}, wanted north`);
+if (flowAt(OFF.x, 9) !== FLOW.S)
+  failures.push(`the off-ramp runs ${flowAt(OFF.x, 9)}, wanted south`);
+
+// Where a ramp meets the motorway the two hold each other: the ramp's tile
+// points at the motorway and the motorway's tile points back. The same at
+// the street, where the ramp's terminal meets the street's tile.
+const joined = (what, x, z, bit, nx, nz, back) => {
+  const ok = (maskAt(x, z) & bit) !== 0 && (maskAt(nx, nz) & back) !== 0;
+  console.log(
+    `${what}: ramp (${x},${z}) m${maskAt(x, z)} / other (${nx},${nz}) m${maskAt(nx, nz)}`,
+  );
+  if (!ok) failures.push(`${what} is not joined both ways`);
+};
+joined('on-ramp merge', ON.mergeX, HWY + 1, BIT.N, ON.mergeX, HWY, BIT.S);
+joined('on-ramp terminal', ON.x, STREET - 1, BIT.S, ON.x, STREET, BIT.N);
+joined('off-ramp diverge', OFF.leaveX, HWY + 1, BIT.N, OFF.leaveX, HWY, BIT.S);
+joined('off-ramp terminal', OFF.x, STREET - 1, BIT.S, OFF.x, STREET, BIT.N);
+// The stretch alongside is the ramp's own road: beside the motorway, not of it.
+for (const x of [ON.x + 1, ON.mergeX - 1]) {
+  if ((maskAt(x, HWY + 1) & BIT.N) !== 0)
+    failures.push(`the on-ramp joins the motorway at (${x},${HWY + 1}), before its end`);
+}
 
 // The two ends of a slip road are not the same kind of place. Where it meets
 // the motorway nothing holds anybody — that end is a merge. Where it meets the
@@ -131,8 +178,8 @@ const controlAt = (x, z) =>
     ([cx, cz]) => (window.__slimcity.readJunctions() ?? []).find((j) => j.x === cx && j.z === cz),
     [x, z],
   );
-const atMotorway = await controlAt(X + 9, Z + 4);
-const atStreet = await controlAt(X + 9, Z + 14);
+const atMotorway = await controlAt(X + ON.mergeX, Z + HWY);
+const atStreet = await controlAt(X + ON.x, Z + STREET);
 console.log('motorway end:', JSON.stringify(atMotorway), 'street end:', JSON.stringify(atStreet));
 if (atMotorway && atMotorway.control !== 'none')
   failures.push(
@@ -149,9 +196,10 @@ const shot = async (name, tx, tz, d, yaw, pitch) => {
   await page.screenshot({ path: `${out}/${name}.png` });
   console.log('shot', name);
 };
-await shot('ramp-junction', X + 9, Z + 5, 90, 0.6, 0.95);
-await shot('ramp-along', X + 9, Z + 9, 120, 0.2, 1.05);
-await shot('ramp-wide', X + 9, Z + 9, 260, 0.7, 1.0);
+await shot('ramp-merge', X + ON.mergeX, Z + HWY + 1, 90, 0.6, 0.95);
+await shot('ramp-elbow', X + ON.x, Z + HWY + 1, 110, 0.4, 1.0);
+await shot('ramp-terminal', X + ON.x, Z + STREET - 1, 90, 0.6, 0.95);
+await shot('ramp-wide', X + 8, Z + 9, 300, 0.7, 1.0);
 
 await b.close();
 if (failures.length > 0) {
