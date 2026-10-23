@@ -39,7 +39,9 @@ above, built from the same body + cabin-band + wheel-box parts:
 - **Fire** — red body, red roof light-bar, the largest of the four bodies.
 - **Police** — blue body, blue roof light-bar, sedan-sized.
 - **Ambulance** — white body, the same red light-bar as fire, plus a small
-  red-cross accent on the roof in front of the bar.
+  red-cross accent on the roof in front of the bar; a US Type III box on a
+  van chassis, 6.9 × 2.5 × 2.7 m (the figure is derived in
+  [healthcare-and-death-care.md](../engineering/features/healthcare-and-death-care.md)).
 - **Garbage** — municipal green body, no light-bar; instead a raised rear
   hopper/compactor box in a darker green over the back ~40% of the body, plus
   a small amber beacon.
@@ -60,7 +62,7 @@ ambulance (white, red light-bar, 2.7 m tall) by height and colour, and from a ca
 | Kind      | Size (w × h × l, m) | Livery                          |
 | --------- | ------------------- | ------------------------------- |
 | Car       | 1.8 × 1.5 × 4.0     | randomized palette              |
-| Ambulance | 2.2 × 2.7 × 6.2     | white, red light-bar, red cross |
+| Ambulance | 2.5 × 2.7 × 6.9     | white, red light-bar, red cross |
 | Hearse    | 1.9 × 1.9 × 6.2     | black, chrome-grey trim, no bar |
 
 Like every kind it is one InstancedMesh, in the service-vehicle renderer.
@@ -287,12 +289,20 @@ visible — a facility, not a data lens the player has to switch on.
   low-poly, instanced, deterministic per stop; the figures are in
   [civic-massing.md](civic-massing.md#the-clinic-the-depot-and-the-bus-stop).
   A line's stop on a plopped bus stop's tile draws no shelter of its own.
+- **Incident pins**: a call's marker is a cone the selection pin's size,
+  4.4 m tall and 1.6 m across at its base, point down, hovering 2.5 m above
+  the roof of the building it marks (above the ground where there is none),
+  grown to one and a half times that by severity. It is read against the
+  art anchors — taller than a 1.75 m person, shorter than a two-storey
+  house — and never covers what it marks; its colour is the call's kind,
+  dimmed toward ash when nobody is coming.
 - **Pedestrians**: cosmetic low-poly people, a few idling at each shelter and
   a sparse scatter walking the sidewalks near Active buildings — instanced,
   deterministic, with a slow walk-cycle offset. Idling people cluster around
   the shelter's own ground anchor on the sidewalk, matching how far the
   shelter itself sits from the carriageway, rather than around the stop's
-  road-tile centre. A walker walks the **footway**, which is on the road
+  road-tile centre; under a raised station, where no shelter stands, they
+  stand on the platforms. A walker walks the **footway**, which is on the road
   tile and not the lot: the street's own cross-section puts the pavement
   between its verge and its kerb, and the lot's first row is the house's
   lawn — or the house. Anchored a tile back from the road instead, a walker

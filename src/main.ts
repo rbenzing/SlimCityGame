@@ -322,7 +322,19 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
   transitRenderer.setGuideway(guideway.seatAt);
   // A tram stop on the guideway at full height is a raised station over it.
   const tramStations = new TramStationRenderer(world.scene, roadSurfaceAt);
-  const serviceVehicles = new ServiceVehicleRenderer(world.scene, heightAt);
+  // A call's pin hovers over the roof of the building it marks, at its lot
+  // centre: the same anchor the selection pin stands on. A call's own tile
+  // may be the lot's back yard.
+  const serviceVehicles = new ServiceVehicleRenderer(world.scene, heightAt, undefined, (x, z) => {
+    if (!inBounds(x, z)) return null;
+    const building = knownBuildings.get(clientGrid.buildingId[z * clientGrid.size + x] ?? 0);
+    const entry = building ? catalogById.get(building.catalogId) : undefined;
+    if (!building || !entry) return null;
+    const lot = footprintForRotation(entry, building.rotation);
+    const centerX = (building.x + lot.w / 2) * TILE_METERS;
+    const centerZ = (building.z + lot.d / 2) * TILE_METERS;
+    return { x: centerX, y: heightAt(centerX, centerZ) + entry.height, z: centerZ };
+  });
   const districtsRenderer = new DistrictsRenderer(world.scene, heightAt);
   const overlays = new OverlayRenderer(world.scene);
   overlays.setSoil(clientGrid.soil);
@@ -399,8 +411,9 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       inBounds(x, z)
         ? ((clientGrid.roadTier[z * clientGrid.size + x] ?? 0) as RoadTier)
         : RoadTier.None,
-    // The tile's OWN section: on a corridor that is its half of the road.
-    (x, z) => clientGrid.ownProfileAt(x, z),
+    // The section the tile is DRAWN to, turn bay included, as the lots read
+    // it: where a bay has taken the parking, no car stands.
+    (x, z) => clientGrid.drawnProfileAt(x, z),
     // The furniture's junction test, so a kerb beside a corridor's other half
     // keeps its cars the way it keeps its lamps.
     (x, z) => hasCrossingRoad(latestRoadTileSet, x, z),
@@ -1859,6 +1872,12 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
     if (snap.heightPatches && snap.heightPatches.length > 0) {
       terrain.applyHeightPatches(snap.heightPatches);
       clientGrid.applyHeightPatches(snap.heightPatches);
+      // The trees were scattered on the seed map: a riverbed sunk since loses
+      // them, and raised ground carries them up with it.
+      trees.applyHeightPatches(
+        snap.heightPatches,
+        (x, z) => clientGrid.water[z * clientGrid.size + x] === 1,
+      );
       zoneGrid.rebuild(clientGrid);
       // The mirror regraded the soil the new heights reshaped.
       overlays.setSoil(clientGrid.soil);
@@ -2073,6 +2092,10 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
           if (plopped && entry) {
             return { x: s.x, z: s.z, anchor: busStopShelterAnchor(plopped, entry) };
           }
+          // Under a raised station no shelter stands at the kerb: the idlers
+          // wait up on its platforms.
+          const platforms = tramStations.platformsAt(s.x, s.z);
+          if (platforms) return { x: s.x, z: s.z, platforms };
           const layout = computeShelterLayout(
             pts[i]!,
             computeStopHeading(pts, i),

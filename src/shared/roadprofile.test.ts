@@ -2284,6 +2284,18 @@ describe('parkingLaneOffset', () => {
     };
     expect(parkingLaneOffset(profile, 'high')).toBeCloseTo(1.5 + 1.125, 6);
   });
+
+  it('is null for a parking lane a turn bay has narrowed to a kerb strip', () => {
+    const profile: RoadProfile = {
+      class: 'local',
+      pieces: [
+        { kind: 'travel', width: 3.75, flow: 'back' },
+        { kind: 'travel', width: 3.75, flow: 'fwd' },
+        { kind: 'parking', width: 1.0 },
+      ],
+    };
+    expect(parkingLaneOffset(profile, 'high')).toBeNull();
+  });
 });
 
 describe('rankedTogether', () => {

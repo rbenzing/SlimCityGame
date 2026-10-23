@@ -161,10 +161,13 @@ for (const [i, r] of ROWS.entries()) {
         mode: 'tram',
         // The ramp's line runs from the street up onto the guideway. The
         // reservation's second stop, STATION_AT, sits mid-run on a straight
-        // full-height tile, so it is drawn as a raised station.
+        // full-height tile, so it is drawn as a raised station; its third
+        // stands on the tile past the cross street, so its stair must take
+        // the far end rather than land in the junction.
         stops: [
           { x: X + 6, z: r.z },
           { x: X + (r.name === 'ramp' ? 30 : STATION_AT), z: r.z },
+          ...(r.name === 'reserved' ? [{ x: X + CROSS_AT + 1, z: r.z }] : []),
         ],
       },
     },
@@ -235,6 +238,9 @@ views.push(['reserved-junction-low', X + CROSS_AT, reservedZ, 40, Math.PI - 0.9,
 views.push(['station-street', X + STATION_AT, reservedZ, 60, Math.PI, PITCH]);
 views.push(['station-close', X + STATION_AT + 0.5, reservedZ, 40, Math.PI - 0.5, 0.4]);
 views.push(['station-platform', X + STATION_AT - 1, reservedZ + 0.35, 45, Math.PI / 2, 0.2]);
+// The station on the tile past the cross street: its stair and lift stand at
+// the far end, away from the junction, with idlers up on the platforms.
+views.push(['station-junction', X + CROSS_AT + 1.5, reservedZ, 45, Math.PI - 0.5, 0.4]);
 for (const [name, tx, tz, d, yaw, pitch] of views) {
   await camera(tx, tz, d, yaw, pitch);
   await shot(name);

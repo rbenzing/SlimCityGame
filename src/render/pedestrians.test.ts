@@ -18,6 +18,7 @@ import {
   WALK_ANCHOR_SEARCH_TILES,
   IDLE_MIN_PER_STOP,
   IDLE_MAX_PER_STOP,
+  IDLE_PLATFORM_EDGE_MARGIN_M,
   MAX_IDLE_PEDESTRIANS,
   MAX_WALKING_PEDESTRIANS,
   MAX_PEDESTRIANS,
@@ -194,7 +195,36 @@ describe('computeIdlePlacements (pure)', () => {
     expect(placements.length).toBeLessThanOrEqual(MAX_IDLE_PEDESTRIANS);
     expect(placements.length).toBeGreaterThan(0);
   });
+
+  it('puts a station stop’s idlers on its platforms in turn, inside the edge margin, and leaves a kerb stop as it was', () => {
+    const placements = computeIdlePlacements([{ x: 7, z: 5, platforms: STATION_PLATFORMS }]);
+    expect(placements.length).toBe(idleCountForStop(7, 5));
+    for (const p of placements) {
+      expect(p.platform).toBeDefined();
+      const on = STATION_PLATFORMS[p.personIndex % STATION_PLATFORMS.length]!;
+      expect(p.platform!.y).toBe(on.top);
+      expect(p.platform!.x).toBeGreaterThanOrEqual(on.lo + IDLE_PLATFORM_EDGE_MARGIN_M);
+      expect(p.platform!.x).toBeLessThanOrEqual(on.hi - IDLE_PLATFORM_EDGE_MARGIN_M);
+      expect(Math.abs(p.platform!.z - on.z)).toBeLessThanOrEqual(
+        on.sz / 2 - IDLE_PLATFORM_EDGE_MARGIN_M,
+      );
+    }
+    // Deterministic, and the same stop without platforms is the plain placement.
+    expect(computeIdlePlacements([{ x: 7, z: 5, platforms: STATION_PLATFORMS }])).toEqual(
+      placements,
+    );
+    expect(computeIdlePlacements([{ x: 7, z: 5 }])).toEqual(
+      placements.map(({ x, z, personIndex }) => ({ x, z, personIndex })),
+    );
+    expect(computeIdlePlacements([{ x: 7, z: 5 }]).every((p) => !('platform' in p))).toBe(true);
+  });
 });
+
+/** Two side platforms of a raised station along x, as tramstations.ts lays them out. */
+const STATION_PLATFORMS = [
+  { x: 150, z: 95.3, top: 6.9, alongX: true, lo: 137, hi: 163, sx: 26, sz: 3 },
+  { x: 150, z: 104.7, top: 6.9, alongX: true, lo: 137, hi: 163, sx: 26, sz: 3 },
+] as const;
 
 describe('isWalkerBuilding / computeWalkerBuildingIds (pure)', () => {
   it('is deterministic for the same building id', () => {
@@ -384,8 +414,7 @@ describe('PedestrianRenderer.apply', () => {
     renderer.apply({ stops: [{ x: 0, z: 0, anchor }], buildings: emptyDelta() });
 
     const body = scene.children.filter((c) => c instanceof THREE.InstancedMesh)[0] as
-      | THREE.InstancedMesh
-      | undefined;
+      THREE.InstancedMesh | undefined;
     const count = renderer.idleCount();
     expect(count).toBeGreaterThan(0);
     expect(body).toBeDefined();
@@ -399,6 +428,43 @@ describe('PedestrianRenderer.apply', () => {
       expect(Math.hypot(p.x - anchor.x, p.z - anchor.z)).toBeLessThanOrEqual(2.2 + 1e-6);
       // ...and is therefore nowhere near the stop tile center (8, 8).
       expect(Math.hypot(p.x - 8, p.z - 8)).toBeGreaterThan(100);
+    }
+  });
+
+  it('stands a station stop’s idlers on its platform tops, never at the kerb anchor', () => {
+    const scene = new THREE.Scene();
+    const renderer = new PedestrianRenderer(scene, flatHeightAt);
+    const anchor = { x: 200, z: 200 };
+    renderer.apply({
+      stops: [{ x: 7, z: 5, anchor, platforms: STATION_PLATFORMS }],
+      buildings: emptyDelta(),
+    });
+
+    const [body, head] = scene.children.filter(
+      (c) => c instanceof THREE.InstancedMesh,
+    ) as THREE.InstancedMesh[];
+    const count = renderer.idleCount();
+    expect(count).toBeGreaterThan(0);
+
+    const m = new THREE.Matrix4();
+    const p = new THREE.Vector3();
+    for (let i = 0; i < count; i += 1) {
+      body!.getMatrixAt(i, m);
+      p.setFromMatrixPosition(m);
+      const top = STATION_PLATFORMS[0]!.top;
+      // Feet on the platform surface, which is above the road, not on the ground.
+      expect(p.y).toBeCloseTo(top + PEDESTRIAN_BODY_RADIUS + PEDESTRIAN_BODY_HEIGHT / 2, 5);
+      const onOne = STATION_PLATFORMS.some(
+        (pl) =>
+          p.x >= pl.lo + IDLE_PLATFORM_EDGE_MARGIN_M &&
+          p.x <= pl.hi - IDLE_PLATFORM_EDGE_MARGIN_M &&
+          Math.abs(p.z - pl.z) <= pl.sz / 2 - IDLE_PLATFORM_EDGE_MARGIN_M,
+      );
+      expect(onOne).toBe(true);
+      expect(Math.hypot(p.x - anchor.x, p.z - anchor.z)).toBeGreaterThan(2.2);
+      head!.getMatrixAt(i, m);
+      p.setFromMatrixPosition(m);
+      expect(p.y).toBeCloseTo(top + PEDESTRIAN_STATURE_METERS - PEDESTRIAN_HEAD_RADIUS, 5);
     }
   });
 

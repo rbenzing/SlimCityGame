@@ -133,12 +133,16 @@ for the surface, the paint, the furniture and the zoning overlay.
   plus 0.45 m, the car's floor. A canopy 0.15 m thick covers each platform
   2.7 m above it with a 0.3 m overhang, on posts 0.15 m square at the outer
   edge every 6.5 m, in the shelter's roof grey; the platforms and towers are
-  the guideway's concrete. At the platform's low-coordinate end on each side
-  a stair 1.5 m wide runs down along the road at 32° to the footway below,
-  one sloped box with a closed stringer, and beside it a lift tower 2.4 m
-  square rises from the footway to the canopy with a glazed pane on its
-  road face in the shelter's glass. Both land on the tile past the platform
-  end, at the kerb line where the road has no footway. The line's sign board
+  the guideway's concrete. At one end of the platform on each side a stair
+  1.5 m wide runs down along the road at 32° to the footway below, one
+  sloped box with a closed stringer, and beside it a lift tower 2.4 m square
+  rises from the footway to the canopy with a glazed pane on its road face
+  in the shelter's glass. Both land on the tile past the platform end, at
+  the kerb line where the road has no footway: the low-coordinate end, unless
+  the tile past it is a crossing street or a junction box, when they swap to
+  the other end so nobody steps off a stair into a junction; where both ends
+  meet a crossing they stay at the low end. A few idlers stand on each
+  platform, not at the kerb, since no shelter stands there. The line's sign board
   hangs from the canopy edge at the platform's centre in the line's colour.
   No shelter stands at the kerb under a station, and no lamp or pole stands
   on the stop tile or the landing tile. A stop on a ramp tile, a junction

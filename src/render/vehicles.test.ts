@@ -553,12 +553,18 @@ describe('sizeForKind (every kind is a real vehicle class)', () => {
     expect(sizeForKind(VehicleKind.Recycling)).toEqual(sizeForKind(VehicleKind.Garbage));
   });
 
-  it('sizes the hearse as a 6.2 × 1.9 × 1.9 m coach, within 0.3 m of an ambulance in length', () => {
+  it('sizes the hearse as a 6.2 × 1.9 × 1.9 m coach, a car and a half long', () => {
     expect(VehicleKind.Hearse).toBe(8);
     expect(sizeForKind(VehicleKind.Hearse)).toEqual([1.9, 1.9, 6.2]);
-    expect(
-      Math.abs(sizeForKind(VehicleKind.Hearse)[2] - sizeForKind(VehicleKind.Ambulance)[2]),
-    ).toBeLessThanOrEqual(0.3);
+    expect(sizeForKind(VehicleKind.Hearse)[2]).toBeGreaterThan(CAR_SIZE[2] * 1.5);
+  });
+
+  it('sizes the ambulance as a US Type III, 6.9 × 2.5 × 2.7 m, 0.8 m taller than the hearse', () => {
+    expect(sizeForKind(VehicleKind.Ambulance)).toEqual([2.5, 2.7, 6.9]);
+    expect(sizeForKind(VehicleKind.Ambulance)[1] - sizeForKind(VehicleKind.Hearse)[1]).toBeCloseTo(
+      0.8,
+      5,
+    );
   });
 
   it('orders every kind physically: longer than it is wide, and lower than it is long', () => {

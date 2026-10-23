@@ -1,8 +1,9 @@
 /**
- * Cosmetic pedestrians: a few low-poly people idling at
- * each bus-stop shelter (render/transit.ts) and a sparse deterministic
- * scatter walking near Active buildings. Purely decorative -- NO agent sim:
- * every position is a pure function of stable ids/tile
+ * Cosmetic pedestrians: a few low-poly people idling at each bus-stop
+ * shelter (render/transit.ts), or up on the platforms of a raised tram
+ * station (render/tramstations.ts) where no shelter stands, and a sparse
+ * deterministic scatter walking near Active buildings. Purely decorative --
+ * NO agent sim: every position is a pure function of stable ids/tile
  * coordinates (+ the frame's accumulated tMs for the walk-cycle offset),
  * never Math.random/Date.now, mirroring render/trees.ts's mulberry32 and
  * render/buildings.ts's hash(id, slot) idioms.
@@ -101,10 +102,60 @@ export function idleTint(x: number, z: number, personIndex: number): number {
   return hash1(seed + SLOT_IDLE_TINT);
 }
 
+/** A raised station's platform as the idlers need it: its centre, walking surface, run axis, ends and size. */
+export interface IdlePlatform {
+  readonly x: number;
+  readonly z: number;
+  /** Its walking surface, world metres up. */
+  readonly top: number;
+  readonly alongX: boolean;
+  /** Its ends along the run, world metres. */
+  readonly lo: number;
+  readonly hi: number;
+  readonly sx: number;
+  readonly sz: number;
+}
+
+/** A spot on a platform, world metres; `y` is the surface the person stands on. */
+export interface PlatformSpot extends WorldPoint {
+  readonly y: number;
+}
+
+/** An idler on a platform keeps this far inside its edges. */
+export const IDLE_PLATFORM_EDGE_MARGIN_M = 0.8;
+
+/**
+ * Where the personIndex-th idler at a station stop stands: the idlers take
+ * the platforms in turn, each spread along its platform's length and across
+ * its width inside the edge margin. Reuses the kerb scatter's hash slots as
+ * fractions along and across, so the same person is as stable as at a kerb.
+ */
+export function idlePlatformSpot(
+  x: number,
+  z: number,
+  personIndex: number,
+  platforms: readonly IdlePlatform[],
+): PlatformSpot {
+  const platform = platforms[personIndex % platforms.length]!;
+  const seed = stopSeed(x, z) + personIndex * STOP_PERSON_SLOT_STRIDE;
+  const margin = IDLE_PLATFORM_EDGE_MARGIN_M;
+  const width = platform.alongX ? platform.sz : platform.sx;
+  const along =
+    platform.lo +
+    margin +
+    hash1(seed + SLOT_IDLE_ANGLE) * Math.max(0, platform.hi - platform.lo - 2 * margin);
+  const across = (hash1(seed + SLOT_IDLE_RADIUS) - 0.5) * Math.max(0, width - 2 * margin);
+  return platform.alongX
+    ? { x: along, y: platform.top, z: platform.z + across }
+    : { x: platform.x + across, y: platform.top, z: along };
+}
+
 export interface IdlePlacement {
   readonly x: number;
   readonly z: number;
   readonly personIndex: number;
+  /** Where the idler stands on a raised station's platform; absent at a kerb stop. */
+  readonly platform?: PlatformSpot;
 }
 
 export const MAX_IDLE_PEDESTRIANS = 96;
@@ -113,11 +164,12 @@ export const MAX_IDLE_PEDESTRIANS = 96;
  * Every idling placement across a stop list, deduplicated by tile (two
  * lines sharing a physical stop shouldn't double its crowd), stably ordered
  * (so truncation at the cap is deterministic regardless of input order), and
- * hard-capped at MAX_IDLE_PEDESTRIANS.
+ * hard-capped at MAX_IDLE_PEDESTRIANS. A stop with platforms places its
+ * idlers on them; any other leaves the spot to the renderer's kerb anchor.
  */
-export function computeIdlePlacements(stops: readonly TilePoint[]): IdlePlacement[] {
+export function computeIdlePlacements(stops: readonly StopIdleInput[]): IdlePlacement[] {
   const seen = new Set<number>();
-  const uniqueStops: TilePoint[] = [];
+  const uniqueStops: StopIdleInput[] = [];
   for (const stop of stops) {
     const key = tileKey(stop.x, stop.z);
     if (seen.has(key)) continue;
@@ -129,9 +181,19 @@ export function computeIdlePlacements(stops: readonly TilePoint[]): IdlePlacemen
   const placements: IdlePlacement[] = [];
   for (const stop of uniqueStops) {
     const count = idleCountForStop(stop.x, stop.z);
+    const platforms = stop.platforms && stop.platforms.length > 0 ? stop.platforms : null;
     for (let personIndex = 0; personIndex < count; personIndex += 1) {
       if (placements.length >= MAX_IDLE_PEDESTRIANS) return placements;
-      placements.push({ x: stop.x, z: stop.z, personIndex });
+      placements.push(
+        platforms
+          ? {
+              x: stop.x,
+              z: stop.z,
+              personIndex,
+              platform: idlePlatformSpot(stop.x, stop.z, personIndex, platforms),
+            }
+          : { x: stop.x, z: stop.z, personIndex },
+      );
     }
   }
   return placements;
@@ -387,9 +449,12 @@ export const MAX_PEDESTRIANS = MAX_IDLE_PEDESTRIANS + MAX_WALKING_PEDESTRIANS;
  * ground center — idlers cluster there (on the sidewalk, beside the bench)
  * rather than on the carriageway. Absent (plain tile point) → idlers fall back
  * to scattering around the stop tile's own center, the pre-shelter behavior.
+ * `platforms`, for a stop under a raised station, puts the idlers up on
+ * the platforms instead of either; no shelter stands at that kerb.
  */
 export interface StopIdleInput extends TilePoint {
   readonly anchor?: WorldPoint;
+  readonly platforms?: readonly IdlePlatform[];
 }
 
 export interface PedestrianSnapshot {
@@ -629,6 +694,13 @@ export class PedestrianRenderer {
 
     for (let i = 0; i < this.idlePlacements.length; i += 1) {
       const p = this.idlePlacements[i]!;
+      const heading = idleHeading(p.x, p.z, p.personIndex);
+      const tint = paletteColor(idleTint(p.x, p.z, p.personIndex));
+      if (p.platform) {
+        // Up on the station platform, standing on its surface.
+        this.writePerson(i, p.platform.x, p.platform.y, p.platform.z, heading, tint);
+        continue;
+      }
       // Cluster around the shelter (sidewalk) when an anchor is known; else the
       // stop tile's own center (pre-shelter fallback).
       const base = this.idleAnchors.get(tileKey(p.x, p.z)) ?? {
@@ -639,8 +711,6 @@ export class PedestrianRenderer {
       const px = base.x + off.x;
       const pz = base.z + off.z;
       const groundY = this.heightAt(px, pz);
-      const heading = idleHeading(p.x, p.z, p.personIndex);
-      const tint = paletteColor(idleTint(p.x, p.z, p.personIndex));
       this.writePerson(i, px, groundY, pz, heading, tint);
     }
 

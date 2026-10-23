@@ -185,7 +185,7 @@ export function roadsideAllowance(
   z: number,
   roadAt: (tileX: number, tileZ: number) => boolean,
   roadTierAt: (tileX: number, tileZ: number) => RoadTier,
-  roadProfileAt: (tileX: number, tileZ: number) => RoadProfile | null = () => null,
+  drawnProfileAt: (tileX: number, tileZ: number) => RoadProfile | null = () => null,
   rotation: 0 | 1 | 2 | 3 = 0,
   kerb: KerbSurroundings | null = null,
 ): KerbAllowance {
@@ -200,7 +200,7 @@ export function roadsideAllowance(
   const edge = findRoadFacingEdge(x, z, lot.w, lot.d, roadAt);
   if (!edge) return 'none';
   const { roadTileX: rx, roadTileZ: rz } = edge;
-  return kerbAllowance(roadTierAt(rx, rz), roadProfileAt(rx, rz), kerbSideFacing(edge.side));
+  return kerbAllowance(roadTierAt(rx, rz), drawnProfileAt(rx, rz), kerbSideFacing(edge.side));
 }
 
 /** Whether this building's cars may line the kerb at all, at some hour. */
@@ -210,12 +210,12 @@ export function usesRoadsideParking(
   z: number,
   roadAt: (tileX: number, tileZ: number) => boolean,
   roadTierAt: (tileX: number, tileZ: number) => RoadTier,
-  roadProfileAt: (tileX: number, tileZ: number) => RoadProfile | null = () => null,
+  drawnProfileAt: (tileX: number, tileZ: number) => RoadProfile | null = () => null,
   rotation: 0 | 1 | 2 | 3 = 0,
   kerb: KerbSurroundings | null = null,
 ): boolean {
   return (
-    roadsideAllowance(entry, x, z, roadAt, roadTierAt, roadProfileAt, rotation, kerb) !== 'none'
+    roadsideAllowance(entry, x, z, roadAt, roadTierAt, drawnProfileAt, rotation, kerb) !== 'none'
   );
 }
 
@@ -815,7 +815,7 @@ export class ParkedCarRenderer {
   private readonly stripeMaterial = new THREE.MeshLambertMaterial({ vertexColors: true });
 
   private readonly roadTierAt: (x: number, z: number) => RoadTier;
-  private readonly roadProfileAt: (x: number, z: number) => RoadProfile | null;
+  private readonly drawnProfileAt: (x: number, z: number) => RoadProfile | null;
   private readonly junctionAt: (x: number, z: number) => boolean;
   private readonly kerbParking: KerbParking | null;
   /** The roads a car park's kerb credit is counted from; null credits none. */
@@ -837,8 +837,11 @@ export class ParkedCarRenderer {
     catalog: BuildingCatalogEntry[],
     roadAt: (x: number, z: number) => boolean,
     roadTierAt: (x: number, z: number) => RoadTier = () => RoadTier.TwoLane,
-    /** The street's own cross-section where it carries a composed one; kerb rows sit at ITS edge. */
-    roadProfileAt: (x: number, z: number) => RoadProfile | null = () => null,
+    /**
+     * The cross-section the tile is DRAWN to, turn bay included; kerb rows
+     * sit at ITS edge, and where a bay has taken the parking no car stands.
+     */
+    drawnProfileAt: (x: number, z: number) => RoadProfile | null = () => null,
     /**
      * Whether the road runs through a tile on both axes, so it has no kerb.
      * The game passes the furniture's join-aware test, which knows the other
@@ -857,7 +860,7 @@ export class ParkedCarRenderer {
     this.heightAt = heightAt;
     this.roadAt = roadAt;
     this.roadTierAt = roadTierAt;
-    this.roadProfileAt = roadProfileAt;
+    this.drawnProfileAt = drawnProfileAt;
     this.junctionAt = junctionAt;
     this.kerbParking = kerbParking;
     this.kerb = kerbParking?.kerbSurroundings?.() ?? null;
@@ -1084,7 +1087,7 @@ export class ParkedCarRenderer {
       building.z,
       this.roadAt,
       this.roadTierAt,
-      this.roadProfileAt,
+      this.drawnProfileAt,
       building.rotation,
       this.kerb,
     );
@@ -1095,7 +1098,7 @@ export class ParkedCarRenderer {
     if (!edge) return;
 
     const tier = this.roadTierAt(edge.roadTileX, edge.roadTileZ);
-    const profile = this.roadProfileAt(edge.roadTileX, edge.roadTileZ);
+    const profile = this.drawnProfileAt(edge.roadTileX, edge.roadTileZ);
     const side = kerbSideFacing(edge.side);
     const count = computeRoadsideStallCount(edge.edgeTiles);
     if (count <= 0) return;
@@ -1103,7 +1106,7 @@ export class ParkedCarRenderer {
     // Every car in the row keeps the rule the row was placed under: a kerb
     // further along that paints no lane does not take an overnight car.
     const parkable = (tx: number, tz: number): boolean =>
-      kerbAllowance(this.roadTierAt(tx, tz), this.roadProfileAt(tx, tz), side) === allowance;
+      kerbAllowance(this.roadTierAt(tx, tz), this.drawnProfileAt(tx, tz), side) === allowance;
     const tileAllows = (tileX: number, tileZ: number): boolean =>
       kerbTileAllowsParking(tileX, tileZ, this.roadAt, parkable, this.junctionAt);
     const laneOffset = profile ? (parkingLaneOffset(profile, side) ?? undefined) : undefined;
@@ -1262,7 +1265,7 @@ export class ParkedCarRenderer {
     // The driveway crosses the sidewalk at the curb cut; the lot's own ground
     // paves the verge between them (lots.ts).
     const tier = this.roadTierAt(edge.roadTileX, edge.roadTileZ);
-    const streetProfile = this.roadProfileAt(edge.roadTileX, edge.roadTileZ) ?? undefined;
+    const streetProfile = this.drawnProfileAt(edge.roadTileX, edge.roadTileZ) ?? undefined;
     const verge = vergeDepthMeters(tier, streetProfile);
     const sidewalk = sidewalkDepthMeters(tier, streetProfile);
     const cut = layout.curbCut;

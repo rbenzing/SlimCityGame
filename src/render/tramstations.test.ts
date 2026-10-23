@@ -236,7 +236,75 @@ describe('computeTramStations — what shortens or refuses a station', () => {
   });
 });
 
+describe('computeTramStations — which end the stair and lift land at', () => {
+  const street = (x: number, z: number): FurnitureRoadTile => ({ x, z, tier: RoadTier.TwoLane });
+  const crossingAt = (x: number): FurnitureRoadTile[] => [street(x, ROW - 1), street(x, ROW + 1)];
+  const STOP = 7;
+  const top = GUIDEWAY_BEAM_TOP_M + TRAM_FLOOR_ABOVE_BEAM_M;
+  const run = top / Math.tan(STATION_STAIR_ANGLE);
+
+  it('swaps to the high end when the tile past the low end is a crossing street', () => {
+    const tiles = [...row(0, 14, reserved), ...crossingAt(STOP - 1)];
+    const { stations, tiles: occupied } = stationsOver(tiles, [{ x: STOP, z: ROW }]);
+    expect(stations).toHaveLength(1);
+    const station = stations[0]!;
+    const { lo, hi } = station.platforms[0]!;
+    // The crossing cuts the platform short at the low end; the high end runs on.
+    expect(lo).toBeCloseTo(STOP * TILE_METERS, 9);
+    expect(hi).toBeCloseTo(tileToWorld(STOP) + STATION_PLATFORM_LENGTH_M / 2, 9);
+    expect(station.stairs).toHaveLength(2);
+    for (const s of station.stairs) {
+      expect(s.head.x).toBeCloseTo(hi, 9);
+      expect(s.foot.x).toBeCloseTo(hi + run, 9);
+      expect(s.foot.x).toBeGreaterThan(hi);
+      expect(Math.abs(s.pitch)).toBeCloseTo(STATION_STAIR_ANGLE, 9);
+      expect(s.x).toBeCloseTo((hi + s.foot.x) / 2, 9);
+    }
+    // The tower, its pane and the landing move with it, mirrored at the high end.
+    for (const t of station.towers) expect(t.x + STATION_TOWER_M / 2).toBeCloseTo(hi, 9);
+    for (const p of station.panes) expect(p.x).toBeCloseTo(hi - STATION_TOWER_M / 2, 9);
+    for (const l of station.landings) expect(l.x).toBeCloseTo(hi - STATION_TOWER_M / 2, 9);
+    // The landing tile is past the high end, never the junction.
+    expect(occupied.has(tileKey(STOP + 1, ROW))).toBe(true);
+    expect(occupied.has(tileKey(STOP - 1, ROW))).toBe(false);
+  });
+
+  it('stays at the low end when both ends meet a crossing', () => {
+    const tiles = [...row(0, 14, reserved), ...crossingAt(STOP - 1), ...crossingAt(STOP + 1)];
+    const { stations } = stationsOver(tiles, [{ x: STOP, z: ROW }]);
+    expect(stations).toHaveLength(1);
+    const station = stations[0]!;
+    const { lo } = station.platforms[0]!;
+    expect(lo).toBeCloseTo(STOP * TILE_METERS, 9);
+    for (const s of station.stairs) {
+      expect(s.head.x).toBeCloseTo(lo, 9);
+      expect(s.foot.x).toBeCloseTo(lo - run, 9);
+      expect(s.pitch).toBeCloseTo(STATION_STAIR_ANGLE, 9);
+    }
+    for (const t of station.towers) expect(t.x - STATION_TOWER_M / 2).toBeCloseTo(lo, 9);
+  });
+});
+
 describe('TramStationRenderer', () => {
+  it('answers platformsAt with both platforms on the stop tile and null elsewhere', () => {
+    const scene = new THREE.Scene();
+    const renderer = new TramStationRenderer(scene, flat);
+    const run = row(0, 14, reserved);
+    expect(renderer.platformsAt(7, ROW)).toBeNull();
+    renderer.rebuild([tramLine([{ x: 7, z: ROW }])], run, computeGuideway(run, flat));
+    const platforms = renderer.platformsAt(7, ROW);
+    expect(platforms).toHaveLength(2);
+    expect(platforms!.map((p) => p.side).sort()).toEqual([-1, 1]);
+    for (const p of platforms!) {
+      expect(p.top).toBeCloseTo(GUIDEWAY_BEAM_TOP_M + TRAM_FLOOR_ABOVE_BEAM_M, 9);
+      expect(p.alongX).toBe(true);
+    }
+    // The landing tile is the station's but not its stop.
+    expect(renderer.platformsAt(6, ROW)).toBeNull();
+    expect(renderer.platformsAt(8, ROW)).toBeNull();
+    renderer.dispose();
+  });
+
   it('draws each part as one instanced pool of boxes and answers isStation on the stop tile', () => {
     const scene = new THREE.Scene();
     const renderer = new TramStationRenderer(scene, flat);

@@ -1000,6 +1000,92 @@ describe('TreeRenderer', () => {
     });
   });
 
+  describe('applyHeightPatches', () => {
+    // The clearAt fixture: pines on (0,0), a broadleaf on (2,2), on a 4 x 4 map.
+    function buildTwoSpeciesMap(): MapData {
+      const size = 4;
+      const trees = new Array(size * size).fill(0);
+      const water = new Array(size * size).fill(0);
+      const height = new Array(size * size).fill(0);
+      height[0] = 25;
+      trees[0] = 200;
+      trees[2 * size + 2] = 150;
+      return makeMap(size, trees, water, height);
+    }
+
+    it('clears the trees on a tile sunk under water and leaves its neighbours standing', () => {
+      const scene = new THREE.Scene();
+      const renderer = new TreeRenderer(scene, flatHeightAt);
+      renderer.build(buildTwoSpeciesMap(), 42);
+      const pineMesh = renderer.meshFor('pine')!;
+      const broadleafMesh = renderer.meshFor('broadleaf')!;
+      expect(pineMesh.count).toBe(3);
+      expect(broadleafMesh.count).toBe(1);
+      const broadleafBefore = decomposeAt(broadleafMesh, 0);
+      const pineVersion = pineMesh.instanceMatrix.version;
+
+      renderer.applyHeightPatches(
+        [{ x: 0, z: 0, w: 3, h: 3 }],
+        (x, z) => x === 0 && z === 0, // the riverbed; (2,2) stays dry
+      );
+
+      for (let i = 0; i < pineMesh.count; i++) {
+        const m = new THREE.Matrix4();
+        pineMesh.getMatrixAt(i, m);
+        expect(isZeroScale(m)).toBe(true);
+      }
+      const broadleafAfter = decomposeAt(broadleafMesh, 0);
+      expect(broadleafAfter.position.toArray()).toEqual(broadleafBefore.position.toArray());
+      expect(broadleafAfter.scale.toArray()).toEqual(broadleafBefore.scale.toArray());
+      // The matrices were committed for upload.
+      expect(pineMesh.instanceMatrix.version).toBeGreaterThan(pineVersion);
+    });
+
+    it('re-seats the trees on raised ground by the rise, and leaves tiles outside the patch', () => {
+      let ground = 0;
+      const scene = new THREE.Scene();
+      const renderer = new TreeRenderer(scene, () => ground);
+      renderer.build(buildTwoSpeciesMap(), 42);
+      const pineMesh = renderer.meshFor('pine')!;
+      const broadleafMesh = renderer.meshFor('broadleaf')!;
+      const broadleafBefore = decomposeAt(broadleafMesh, 0);
+      const pineBefore = decomposeAt(pineMesh, 0);
+
+      ground = 7;
+      renderer.applyHeightPatches([{ x: 2, z: 2, w: 1, h: 1 }], () => false);
+
+      const broadleafAfter = decomposeAt(broadleafMesh, 0);
+      expect(broadleafAfter.position.y).toBeCloseTo(broadleafBefore.position.y + 7, 6);
+      expect(broadleafAfter.position.x).toBeCloseTo(broadleafBefore.position.x, 6);
+      expect(broadleafAfter.position.z).toBeCloseTo(broadleafBefore.position.z, 6);
+      expect(broadleafAfter.scale.toArray()).toEqual(broadleafBefore.scale.toArray());
+      expect(broadleafAfter.quaternion.angleTo(broadleafBefore.quaternion)).toBeCloseTo(0, 6);
+      // (0,0) is outside the patch: untouched even though the ground moved.
+      expect(decomposeAt(pineMesh, 0).position.toArray()).toEqual(pineBefore.position.toArray());
+    });
+
+    it('an empty patch list is a no-op', () => {
+      const scene = new THREE.Scene();
+      const renderer = new TreeRenderer(scene, flatHeightAt);
+      renderer.build(buildTwoSpeciesMap(), 42);
+      const pineMesh = renderer.meshFor('pine')!;
+      const broadleafMesh = renderer.meshFor('broadleaf')!;
+      const before = [
+        decomposeAt(pineMesh, 0).position.toArray(),
+        decomposeAt(broadleafMesh, 0).position.toArray(),
+      ];
+      const versions = [pineMesh.instanceMatrix.version, broadleafMesh.instanceMatrix.version];
+
+      renderer.applyHeightPatches([], () => true);
+
+      expect(decomposeAt(pineMesh, 0).position.toArray()).toEqual(before[0]);
+      expect(decomposeAt(broadleafMesh, 0).position.toArray()).toEqual(before[1]);
+      // Nothing was touched, so nothing was committed for upload.
+      expect(pineMesh.instanceMatrix.version).toBe(versions[0]);
+      expect(broadleafMesh.instanceMatrix.version).toBe(versions[1]);
+    });
+  });
+
   it('build() can be called again (e.g. a new map load) and fully replaces the previous instances across all species', () => {
     const size = 3;
     const treesA = new Array(size * size).fill(0);
