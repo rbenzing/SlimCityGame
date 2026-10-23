@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.74.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.73.0...slimcity-v1.74.0) (2026-10-23)
+
+
+### Features
+
+* **render:** the five park rungs drawn at their real sizes, and worn by their load ([d1a83a7](https://github.com/rbenzing/SlimCityGame/commit/d1a83a7dd6b68787760f26a8b8e22c8650e79d19))
+
 ## [1.73.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.72.0...slimcity-v1.73.0) (2026-10-23)
 
 
