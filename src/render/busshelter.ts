@@ -26,8 +26,9 @@ export const BUS_SHELTER = {
 } as const;
 
 const POST_COLOR = 0x53585d;
-const ROOF_COLOR = 0x8a8f94;
-const GLASS_COLOR = 0x384d5c;
+/** The roof's grey and the glazing's blue-grey, which the raised tram station shares. */
+export const SHELTER_ROOF_COLOR = 0x8a8f94;
+export const SHELTER_GLASS_COLOR = 0x384d5c;
 const BENCH_COLOR = 0x8a6a4a;
 
 function painted(geometry: THREE.BufferGeometry, hex: number): THREE.BufferGeometry {
@@ -69,10 +70,12 @@ export function buildBusShelterGeometry(): THREE.BufferGeometry {
       parts.push(painted(column, POST_COLOR));
     }
   }
-  parts.push(box(w + 2 * overhang, roof, d + 2 * overhang, 0, clear, 0, ROOF_COLOR));
-  parts.push(box(w - 2 * post, clear, glass, 0, 0, -d / 2 + post + glass / 2, GLASS_COLOR));
+  parts.push(box(w + 2 * overhang, roof, d + 2 * overhang, 0, clear, 0, SHELTER_ROOF_COLOR));
+  parts.push(box(w - 2 * post, clear, glass, 0, 0, -d / 2 + post + glass / 2, SHELTER_GLASS_COLOR));
   for (const sx of [-1, 1]) {
-    parts.push(box(glass, clear, d - 2 * post, sx * (w / 2 - post - glass / 2), 0, 0, GLASS_COLOR));
+    parts.push(
+      box(glass, clear, d - 2 * post, sx * (w / 2 - post - glass / 2), 0, 0, SHELTER_GLASS_COLOR),
+    );
   }
   const benchZ = -d / 2 + post + glass + bench.d / 2;
   parts.push(box(bench.l, bench.slab, bench.d, 0, bench.h - bench.slab, benchZ, BENCH_COLOR));

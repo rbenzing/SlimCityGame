@@ -1,6 +1,6 @@
 # Tramways — technical design
 
-- **Status:** Specified 2026-10-16; slice 1 built 2026-10-16; slice 2 built 2026-10-19
+- **Status:** Built — slice 1 2026-10-16, slice 2 2026-10-19, slice 3 2026-10-23. What it does is described in [../../art/streets.md](../../art/streets.md), [../../world-sim/road-model.md](../../world-sim/road-model.md) and [../../world-sim/transit-model.md](../../world-sim/transit-model.md).
 - **Date:** 2026-10-16
 - **Author:** Claude Opus 5.5
 
@@ -25,20 +25,21 @@ Three things, in three slices, at the player's request (2026-10-16):
 
 ## What it touches
 
-| Module                            | Slice | Change                                                                                                                                                              |
-| --------------------------------- | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `src/render/roadsmesh.ts`         | 1     | Mixed-running track: two grooved rails per track flush in a 2.7 m concrete slab band in the lane; no sleepers on a tram lane (the railway keeps its sleepers)       |
-| `src/render/roadfurniture.ts`     | 1     | Contact poles 10.7 m with a 1.9 m bracket every 22 m along the kerb of a mixed tram road, phase anchored at world-metre zero, clear of junction boxes and driveways |
-| `src/world/roadgraph.ts`          | 1     | `tramShape` reads the tile's profile: a tile is tram track when its profile carries a tram lane (mixed or reserved), not only `isTramTier`                          |
-| `src/shared/roadprofile.ts`       | 1     | `carriesTram`, `isTramTrack(tier, profile)` and `isTramTile(roads, i, custom)`; `tramCrossingAxes` in `types.ts` takes roads classified by them                     |
-| `src/sim/depots.ts`, worker gate  | 1     | The tram depot's adjacency reads `isTramTile`                                                                                                                       |
-| `src/shared/roadprofile.ts`       | 2     | A tram piece is 1.2 m, so the reservation is a 2.4 m median; `laneCount` skips tram pieces; `carriesGuideway`; the guideway track price                             |
-| `src/render/guideway.ts` (new)    | 2     | Beams, columns, the ramp, on the `bridges.ts` pattern; beam segments, stems and crossheads each one instanced pool                                                  |
-| `src/render/roadsmesh.ts`         | 2     | A reservation draws as a raised median, with no slab or rails; no tram crossing slab across a junction box the guideway spans                                       |
-| `src/sim/worker.entry.ts`, tools  | 2     | No overpass across a guideway, no guideway under one                                                                                                                |
-| `src/render/transit.ts`           | 2     | A tram on a guideway tile rides the beam at height; down the ramp it follows the ramp's grade                                                                       |
-| `src/render/transit.ts`, stations | 3     | A guideway stop draws platforms, canopy, stair and lift instead of the kerb shelter                                                                                 |
-| Docs                              | each  | GROUND-TRUTHS, road-model, streets, transit-model, overpasses, in the slice that changes them                                                                       |
+| Module                                 | Slice | Change                                                                                                                                                              |
+| -------------------------------------- | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/render/roadsmesh.ts`              | 1     | Mixed-running track: two grooved rails per track flush in a 2.7 m concrete slab band in the lane; no sleepers on a tram lane (the railway keeps its sleepers)       |
+| `src/render/roadfurniture.ts`          | 1     | Contact poles 10.7 m with a 1.9 m bracket every 22 m along the kerb of a mixed tram road, phase anchored at world-metre zero, clear of junction boxes and driveways |
+| `src/world/roadgraph.ts`               | 1     | `tramShape` reads the tile's profile: a tile is tram track when its profile carries a tram lane (mixed or reserved), not only `isTramTier`                          |
+| `src/shared/roadprofile.ts`            | 1     | `carriesTram`, `isTramTrack(tier, profile)` and `isTramTile(roads, i, custom)`; `tramCrossingAxes` in `types.ts` takes roads classified by them                     |
+| `src/sim/depots.ts`, worker gate       | 1     | The tram depot's adjacency reads `isTramTile`                                                                                                                       |
+| `src/shared/roadprofile.ts`            | 2     | A tram piece is 1.2 m, so the reservation is a 2.4 m median; `laneCount` skips tram pieces; `carriesGuideway`; the guideway track price                             |
+| `src/render/guideway.ts` (new)         | 2     | Beams, columns, the ramp, on the `bridges.ts` pattern; beam segments, stems and crossheads each one instanced pool                                                  |
+| `src/render/roadsmesh.ts`              | 2     | A reservation draws as a raised median, with no slab or rails; no tram crossing slab across a junction box the guideway spans                                       |
+| `src/sim/worker.entry.ts`, tools       | 2     | No overpass across a guideway, no guideway under one                                                                                                                |
+| `src/render/transit.ts`                | 2     | A tram on a guideway tile rides the beam at height; down the ramp it follows the ramp's grade                                                                       |
+| `src/render/tramstations.ts` (new)     | 3     | A guideway stop draws two side platforms, canopies, a stair and a lift each side; instanced boxes on the guideway pattern                                           |
+| `src/render/transit.ts`, `guideway.ts` | 3     | No kerb shelter under a station; `beamTopAt` for the platform height; lamps keep off the station's tiles                                                            |
+| Docs                                   | each  | GROUND-TRUTHS, road-model, streets, transit-model, overpasses, in the slice that changes them                                                                       |
 
 **Save format: no.** The profile already stores the tram choice per tile.
 **Worker protocol: no.**
@@ -145,6 +146,49 @@ A stop on a reserved tile: two side platforms 3 m wide and 26 m long at the
 trams' floor outside the beams, a canopy over each, a stair and a lift tower
 from one platform end to the footway, lit panes on the stations' material.
 The kerb shelter is not drawn there.
+
+- **Which stops.** A line's stop whose tile carries a guideway
+  (`carriesGuideway` on the tile's drawn profile) and whose beams are at full
+  height across the tile (not a ramp tile, not the tile a ramp ends on) is a
+  station. A stop on a ramp tile, a junction box or a turn draws neither a
+  station nor the kerb shelter: the sim serves it as before, and the limit
+  is stated in the road model. Nothing is saved; the station is derived
+  from the stop and the road every rebuild, as the shelters are.
+- **Geometry** (`src/render/tramstations.ts`, new; pure `computeTramStations`
+  over the stops and the road tiles, and a `TramStationRenderer` of
+  instanced unit boxes on the `guideway.ts` pattern). Along the run the
+  platform is centred on the stop tile and 26 m long, shortened to the
+  straight guideway run available through the tile's neighbours, never
+  shorter than the tile. Across the run each platform's inner edge stands at
+  ±3.2 m from the guideway centre, clear of a car body 2.6 m wide straddling
+  a beam at ±1.83 m, and it is 3 m wide and 0.25 m thick, its top at the
+  beam top plus 0.45 m. A canopy slab 0.15 m thick covers each platform at
+  2.7 m above it with a 0.3 m overhang, on posts 0.15 m square at the outer
+  edge every 6.5 m. At the platform's low-coordinate end, on each side, a
+  stair 1.5 m wide descends along the run to the footway at 32° (a run of
+  about 12 m from 7.67 m up), drawn as one sloped box with a closed stringer
+  face, and beside it a lift tower 2.4 m square from the footway to the
+  canopy with a glazed pane on its road face in the shelter's glass colour.
+  Both land on the tile past the platform end, at the kerb line where the
+  road has no footway. The line's sign, the shelters' sign board in the
+  line's colour, hangs from the canopy edge at the platform's centre.
+- **Heights** come from a new `GuidewayRenderer.beamTopAt(x, z)` (the mean of
+  the tile's beam ends at its centre, null off the guideway), and the ground
+  from `roadSurfaceAt`.
+- **The street below** keeps its kerb furniture, but lamps and tram poles
+  keep off the stop tile and the landing tile (they join `keepOff` in
+  `main.ts`), and `TransitRenderer.apply` takes an `isStation(x, z)`
+  predicate beside `hasStopBuilding` so no shelter stands under a station.
+- **Trams** do not dwell; the station is the stop's picture, as the shelter
+  is.
+- **Tests:** a stop on a full-height guideway tile makes two platforms at
+  ±3.2 m, 26 m long, tops at beam top + 0.45, canopies, posts, a stair and a
+  lift each side landing past the end; a platform shortened by a turn next
+  tile; a stop on a ramp tile makes nothing; a stop on a street tramway makes
+  nothing here and keeps its shelter; the shelter is suppressed under a
+  station; lamps keep off the station tiles; `beamTopAt`.
+- **Shots:** the station from the street, close, from the platform, and at
+  night, in `tools/tramway-shots.mjs`.
 
 ## What could go wrong
 

@@ -100,6 +100,14 @@ MUTCD citations below use 11th-edition section numbers.
   reach of its footprint, never from one nearest tile; a park on four streets
   serves from all four. — [services-model.md](world-sim/services-model.md);
   `src/sim/services.ts`
+- A tram stop on a guideway tile at full height is a raised station: two side
+  platforms at the trams' floor outside the beams, a canopy each, a stair and
+  a lift each side down to the footway, derived from the stop and the road
+  every rebuild and never saved. No kerb shelter stands under it, and no
+  lamp or pole on its tiles. A stop on a ramp tile, a junction box or a turn
+  draws no station; the line serves it all the same. —
+  [streets.md](art/streets.md); `computeTramStations` in
+  `src/render/tramstations.ts`
 - No overpass crosses a guideway, and no guideway passes under an overpass:
   the beams stand 6 to 7.22 m up and an overpass deck 5 m up. The worker
   refuses both, and the tool's preview says so. —

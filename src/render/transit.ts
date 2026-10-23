@@ -68,7 +68,8 @@ export interface TransitSnapshot {
 /** The stop SIGN rides its own slim pole just beyond one end of the shelter. */
 const STOP_POST_HEIGHT = 3.0;
 const STOP_POST_RADIUS = 0.1;
-const STOP_SIGN_SIZE: readonly [number, number, number] = [0.6, 0.5, 0.06];
+/** The stop's sign board: its width, height and thickness. The raised station hangs the same board. */
+export const STOP_SIGN_SIZE: readonly [number, number, number] = [0.6, 0.5, 0.06];
 const STOP_SIGN_Y_OFFSET = STOP_POST_HEIGHT * 0.42;
 
 /** The shelter's length along its local "long" axis (the line's local direction of travel). */
@@ -482,16 +483,18 @@ export class TransitRenderer {
    * Full rebuild from the worker's transit snapshot (lines change relatively
    * rarely). `hasStopBuilding` says whether a plopped bus stop stands on a
    * tile: a line's stop there draws no shelter and no sign of its own, since
-   * the kit's shelter is the stop's.
+   * the kit's shelter is the stop's. `isStation` says a raised tram station
+   * stands over a tile, which draws no kerb shelter under it either.
    */
   apply(
     snapshot: TransitSnapshot,
     hasStopBuilding: (x: number, z: number) => boolean = () => false,
+    isStation: (x: number, z: number) => boolean = () => false,
   ): void {
     this.disposeMeshes();
 
     this.lineTotal = snapshot.lines.length;
-    this.buildShelters(snapshot.lines, hasStopBuilding);
+    this.buildShelters(snapshot.lines, hasStopBuilding, isStation);
     this.buildRibbon(snapshot.lines);
     this.buildBuses(snapshot.lines, snapshot.served ?? []);
 
@@ -636,18 +639,20 @@ export class TransitRenderer {
   private buildShelters(
     lines: readonly TransitLine[],
     hasStopBuilding: (x: number, z: number) => boolean,
+    isStation: (x: number, z: number) => boolean,
   ): void {
     const placements: { x: number; z: number; color: number; heading: number }[] = [];
     for (const line of lines) {
       // A rail stop is a station: a ploppable building the player placed, which
       // already stands there. Dropping a bus shelter on top of it would be a
       // second, smaller shelter inside the first. A stop on a plopped bus
-      // stop's tile is the same case at the bus's scale.
+      // stop's tile is the same case at the bus's scale, and a tram stop under
+      // a raised station is served from the platforms above.
       if (modeOf(line) === 'rail') continue;
       const worldPoints = toWorldPoints(line.stops);
       for (let i = 0; i < line.stops.length; i += 1) {
         const stop = line.stops[i]!;
-        if (hasStopBuilding(stop.x, stop.z)) continue;
+        if (hasStopBuilding(stop.x, stop.z) || isStation(stop.x, stop.z)) continue;
         const heading = computeStopHeading(worldPoints, i);
         placements.push({ x: stop.x, z: stop.z, color: line.color, heading });
       }

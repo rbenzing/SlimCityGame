@@ -56,7 +56,7 @@ Outside the programme:
 | [parking-to-code.md](parking-to-code.md)   | Suburban commercial and industrial lots drawn with the parking their code asks of their floor; downtown parks at the kerb (lots built; kerb credit and larger lots not built) |
 | [underground-view.md](underground-view.md) | Pipes are buried: the city goes underground while the player works on the water, and shows the whole system beneath a glass surface (built)                                   |
 | [building-detail.md](building-detail.md)   | Every zoned building and ploppable drawn as the US type it is, from a sourced reference library, inside a measured triangle budget (built)                                    |
-| [tramways.md](tramways.md)                 | A street tramway drawn as a street cars share, and a tram reservation lifted onto an elevated guideway with raised stations; every tram lane routable (slices 1–2 built)      |
+| [tramways.md](tramways.md)                 | A street tramway drawn as a street cars share, and a tram reservation lifted onto an elevated guideway with raised stations; every tram lane routable (built)                 |
 
 The features built before this folder existed have no design document; their
 behaviour is described in the specs and their delivery in
