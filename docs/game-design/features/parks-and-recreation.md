@@ -1,7 +1,8 @@
 # Parks and recreation — design
 
-- **Status:** Draft
-- **Date:** 2026-09-18
+- **Status:** Agreed 2026-10-23 (drafted 2026-09-18; the rungs re-sized to real
+  park sizes and re-priced by real cost ratios at the player's choice)
+- **Date:** 2026-10-23
 
 Epic 8 of [municipal-services.md](municipal-services.md), and the last of it; the
 technical plan is
@@ -44,7 +45,15 @@ read, trace to a decision, and fix.
 
 **1. The city needs ground in proportion to its people.** The target is 60 tiles
 of open space per 1,000 residents (derived below). A city of 8,000 needs about
-480 tiles — nineteen district parks, or a mix. No buying that with dots.
+480 tiles — one district park and a neighbourhood park, or six neighbourhood
+parks, or a mix. No buying that with dots.
+
+**Parks are real-sized.** A park is ground, not a building, so the siting rule
+that keeps a civic building under six tiles of frontage does not apply to it:
+a neighbourhood park is the five to ten acres a real one is, and a district
+park is a real community park of forty acres, a quarter of a square mile that
+a district is laid out around. The player chose this (2026-10-23) over the
+earlier draft's parks shrunk to fit the building rule.
 
 **2. Open space serves the people who can walk to it.** Each rung carries its own
 walking-distance standard: a pocket park reaches 400 m, a sports ground 1,200 m.
@@ -59,13 +68,13 @@ than off a cliff.
 
 ### The ladder
 
-| Rung                   | Footprint | Capacity | Reach   | What it is for                  |
-| ---------------------- | --------- | -------- | ------- | ------------------------------- |
-| **Pocket Park**        | 1×1       | 32       | 400 m   | Closing the last gap            |
-| **Civic Plaza**        | 2×2       | 108      | 700 m   | Provision where grass is wrong  |
-| **Neighbourhood Park** | 3×3       | 117      | 480 m   | The everyday one, built often   |
-| **District Park**      | 5×5       | 250      | 710 m   | The flagship, and the value one |
-| **Sports Ground**      | 6×4       | 120      | 1,200 m | Reach, bought with ground       |
+| Rung                   | Footprint | Acres | Capacity | Reach   | What it is for                  |
+| ---------------------- | --------- | ----- | -------- | ------- | ------------------------------- |
+| **Pocket Park**        | 1×1       | 0.1   | 32       | 400 m   | Closing the last gap            |
+| **Civic Plaza**        | 5×5       | 2.5   | 675      | 700 m   | Provision where grass is wrong  |
+| **Neighbourhood Park** | 9×9       | 8.0   | 1,053    | 480 m   | The everyday one, built often   |
+| **District Park**      | 20×20     | 39.5  | 4,000    | 710 m   | The flagship, and the value one |
+| **Sports Ground**      | 6×4       | 2.4   | 120      | 1,200 m | Reach, bought with ground       |
 
 Each rung is a different decision because the standard gives each a different
 amount of ground per head, and the ranking is not the obvious one.
@@ -74,17 +83,22 @@ amount of ground per head, and the ranking is not the obvious one.
   in a city of thousands is nothing. It exists to reach an address nothing else
   reaches, and thirty of them buy reach without buying provision.
 - **Neighbourhood Park** has the shortest reach of the green rungs — 480 m — so
-  it is the one you need **many** of, and a spreading city keeps buying it.
-  **District Park** is its opposite: the most capacity of any facility and the
-  largest land-value uplift, one per district, sited where value should rise.
+  it is the one you need **many** of, and a spreading city keeps buying it: a
+  thousand people's worth of amenity green on eight acres, every half mile.
+  **District Park** is its opposite: forty acres and four thousand people's
+  provision, the largest land-value uplift in the game, one per city or one
+  per district in a big one, sited where value should rise and the city laid
+  out around it.
 - **Sports Ground** is the least efficient ground in the game — 24 tiles for 120
   people — and has by far the longest reach. It is how a sprawling city covers
   its sport obligation at all, and a mild disamenity up close, so the honest
   siting is a district's edge rather than its middle.
-- **Civic Plaza** is the downtown answer. The standard asks far less
-  hard-surfaced provision per head than parkland, so paving serves about 2.7
-  times the people per tile that grass does and buys almost no land value: you
-  keep a dense district provided rather than make it nicer.
+- **Civic Plaza** is the downtown answer: two and a half acres of paving, the
+  size of a real city square. The standard asks far less hard-surfaced
+  provision per head than parkland, so paving serves about 2.7 times the
+  people per tile that grass does and buys almost no land value: you keep a
+  dense district provided rather than make it nicer. It is also the dearest
+  ground per acre the city can buy.
 
 ### What an overloaded park looks like
 
@@ -124,15 +138,16 @@ meant to lift. Parks are also the only service that makes trips _shorter_ — th
 generate walking, and none dispatches a vehicle — so this is the one epic in the
 programme that adds no traffic.
 
-**The catalog has a bug in this category.** `airport` — "International Airport",
-8×6 — is filed as `category: 'park'` with `service: { kind: 'park' }`, so it
-appears in the **Parks** drawer, contributes park coverage, and under this epic
-would count as 48 tiles of open space with a recreation capacity. An airport is
-not a park. Its category should be `'transit'`, which already exists and has a
-drawer, and its `service` block should go — there is no `ServiceKind` for air
-transport and recreation is not a substitute. **Fixing it is not part of this
-epic**; it belongs with transport. But no parks work should sit on a catalog that
-believes an airport is open space.
+**The catalog has a bug in this category, and this epic fixes it.** `airport`
+— "International Airport", 8×6 — is filed as `category: 'park'` with
+`service: { kind: 'park' }`, so it appears in the **Parks** drawer, contributes
+park coverage, and would count as 48 tiles of open space with a recreation
+capacity. An airport is not a park. Its category becomes `'transit'`, which
+already exists and has a drawer, and its `service` block goes — there is no
+`ServiceKind` for air transport and recreation is not a substitute. The player
+chose to fix it here (2026-10-23) rather than ship a provision figure that
+lies while an airport stands; an airport in a save keeps its tiles, loses its
+park coverage, and no longer counts as open space.
 
 ## Tuning
 
@@ -148,9 +163,9 @@ Six Acre Standard_ (2015), which give per typology a quantity in hectares per
 | Typology (rung)                         | ha / 1,000 | m² / res. | Res. / tile | ÷ 5 | Tiles | **Capacity** |
 | --------------------------------------- | ---------- | --------- | ----------- | --- | ----- | ------------ |
 | Equipped play (Pocket Park)             | 0.25       | 2.5       | 160         | 32  | 1     | **32**       |
-| Other outdoor provision (Civic Plaza)   | 0.30       | 3.0       | 133         | 27  | 4     | **108**      |
-| Amenity greenspace (Neighbourhood Park) | 0.60       | 6.0       | 67          | 13  | 9     | **117**      |
-| Parks and gardens (District Park)       | 0.80       | 8.0       | 50          | 10  | 25    | **250**      |
+| Other outdoor provision (Civic Plaza)   | 0.30       | 3.0       | 133         | 27  | 25    | **675**      |
+| Amenity greenspace (Neighbourhood Park) | 0.60       | 6.0       | 67          | 13  | 81    | **1,053**    |
+| Parks and gardens (District Park)       | 0.80       | 8.0       | 50          | 10  | 400   | **4,000**    |
 | All outdoor sports (Sports Ground)      | 1.60       | 16.0      | 25          | 5   | 24    | **120**      |
 
 Residents per tile is 400 m² ÷ the m² each resident is owed, and it is the whole
@@ -164,7 +179,9 @@ pocket park, 8 of plaza, 15 of neighbourhood park, 20 of district park and 40 of
 sports ground is 89 tiles, and 192+216+195+200+200 = 1,003 of capacity. **The
 headline figure** is the Six Acre Standard the guidance is named for: 2.4 ha per
 1,000 population, so 2.4 × 25 tiles/ha = **60 tiles per 1,000 residents**, which
-is what the panel reports against.
+is what the panel reports against. Capacity scales with the tiles a rung
+really covers, so a forty-acre district park carries four thousand people's
+provision, as forty acres do.
 
 ### Walking distance, converted to range
 
@@ -191,16 +208,30 @@ because nothing checked a park's reach against anything.
 
 Most of this epic is **ground, not floor area**, so the gross-floor-area formula
 in [../../art/civic-massing.md](../../art/civic-massing.md) does not apply to
-four of the five rungs — there is no floor. Their sizes come from area standards,
-and for the pitch a dimension:
+four of the five rungs — there is no floor, and its six-tile siting rule is a
+building's rule, from which open space is exempt. Their sizes are the real
+sizes of the US park types, from the NRPA park classification (Mertes & Hall,
+_Park, Recreation, Open Space and Greenway Guidelines_, as cities cite it:
+mini-park 2,500 sq ft to 1 acre, neighbourhood park 5 to 10 acres,
+community park 30 to 50 acres —
+[Wichita Falls](https://www.wichitafallstx.gov/DocumentView.aspx?DID=5509),
+[Little Rock](https://LittleRock.gov/media/20749/classifications-and-land-needs-assessment-part-1.pdf)),
+and for the pitch a dimension. One tile is 400 m², 0.099 acre; ten tiles are
+an acre.
 
-| Rung               | Size | Derivation                                                                                                                                                                                                                                           |
-| ------------------ | ---- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Pocket Park        | 1×1  | The Fields in Trust minimum activity zone for a Locally Equipped Area for Play is 400 m², which is one tile. Unchanged, now justified.                                                                                                               |
-| Civic Plaza        | 2×2  | 40 m across; a square below about 25 m reads as a forecourt and one tile is 20 m. **Assumption:** the capacity is derived, the footprint is a scale judgement.                                                                                       |
-| Neighbourhood Park | 3×3  | 3,600 m² = 0.36 ha, just under the 0.4 ha ceiling the published hierarchies put on their smallest named park, and big enough for a 1,000 m² play zone with ground around it.                                                                         |
-| District Park      | 5×5  | Exactly 1 ha. **Override:** the published district park is 20 ha — 500 tiles, 447 m across, twenty-two tiles of frontage — which breaks civic-massing's 6-tile siting rule outright, so 1 ha is taken instead.                                       |
-| Sports Ground      | 6×4  | Sized by the pitch. FIFA's recommended field of play is 105 m × 68 m and The FA requires a 3 m minimum run-off all round, giving 111 m × 74 m graded = 5.55 × 3.7 tiles. The pitch alone is 5.25 tiles long, which is why this rung cannot be small. |
+| Rung               | Size  | Acres | Derivation                                                                                                                                                                                                                                                                                       |
+| ------------------ | ----- | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Pocket Park        | 1×1   | 0.1   | The Fields in Trust minimum activity zone for a Locally Equipped Area for Play is 400 m², one tile, inside the NRPA mini-park's range. Unchanged, so every save's pocket parks stand.                                                                                                            |
+| Civic Plaza        | 5×5   | 2.5   | A real city square: a sample of historic squares averages 2.45 acres ([Montgomery County](https://www.montgomeryplanning.org/community/ssgreenspace/documents/SSGreenSpaceGuidelinesAppendix4.pdf)), Union Square is 2.6, Campus Martius 1.6. 100 m across.                                      |
+| Neighbourhood Park | 9×9   | 8.0   | NRPA's 5 to 10 acres, toward the top of the range so a 1,000 m² play zone, a lawn and a treed edge all fit. 180 m across.                                                                                                                                                                        |
+| District Park      | 20×20 | 39.5  | NRPA's community park, 30 to 50 acres, at 40. 400 m across, a quarter of a square mile: the park a district is laid out around.                                                                                                                                                                  |
+| Sports Ground      | 6×4   | 2.4   | Sized by the pitch. FIFA's recommended field of play is 105 m × 68 m and The FA requires a 3 m minimum run-off all round, giving 111 m × 74 m graded = 5.55 × 3.7 tiles, 2.03 acres; the pavilion and its apron take the rest. The pitch alone is 5.25 tiles long, so this rung cannot be small. |
+
+**A park drapes on the ground.** A ploppable levels its footprint to one
+height; forty acres levelled would be a plateau. A park keeps the ground it
+is laid on, lawn, paths and trees following the terrain, as a lot's lawn
+does. Only what has to be flat is: the sports ground's pitch and pavilion,
+and the plaza's paving, level their own ground, and nothing else does.
 
 The **only** floor area in the epic is the sports ground's changing pavilion: 36
 occupants × 4.6 m² (the vocational-room factor) = 166 m² net, ÷ 0.65 efficiency =
@@ -210,19 +241,39 @@ grounds, so the pavilion sits at the site edge, never mid-pitch.
 
 ### Cost and strength
 
-Cost is ground plus edge, the shape of the real thing: paths, gates and planting
-scale with perimeter while turf scales with area. Calibrated on the pocket park —
-120 per tile of ground and 70 per perimeter tile gives its catalog cost of 400
-exactly — varying only the ground rate. Upkeep is that park's own 5%-of-cost
-ratio, halved for the plaza because open space's recurring cost is mowing.
+Each rung is priced off the pocket park by what the real thing costs, the
+player's standing choice for civic buildings. The anchor: a 400 m² equipped
+pocket park is about $366,000 to build (Lewisville, Texas, 6,612 sq ft for
+$556,000 in 2025–26, $84 a square foot,
+[TDLR](https://www.tdlr.texas.gov/TABS/Search/Print/TABS2025024601)), and
+about $6,000 a year to keep (a playground's $2,500–7,500 plus the NRPA median
+of $9,470 an acre,
+[NRPA 2026 Agency Performance Review](https://www.nrpa.org/globalassets/research/research-reports/2026-agency-performance-review.pdf)),
+so ¢400 and ¢20 stand for those. The rest scale by sourced cost per acre
+times the rung's real acreage, and by the NRPA median upkeep per acre:
 
-| Rung               | Ground rate        | Cost  | Upkeep | Premium | `strength` | `landValueBonus` |
-| ------------------ | ------------------ | ----- | ------ | ------- | ---------- | ---------------- |
-| Pocket Park        | 120                | 400   | 20     | 8%      | 80         | 40               |
-| Civic Plaza        | 320 (paving)       | 1,850 | 45     | 5%      | 50         | 30               |
-| Neighbourhood Park | 100                | 1,750 | 90     | 10%     | 100        | 60               |
-| District Park      | 90                 | 3,650 | 180    | 20%     | 200        | 100              |
-| Sports Ground      | 60 + 800 pitch kit | 3,600 | 180    | 5%      | 50         | 40               |
+| Rung               | Build, real                                                                                                                                                                                                                                                                                                                                                                           | × pocket | Cost   | Keep, real                                                              | × pocket | Upkeep |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- | ------ | ----------------------------------------------------------------------- | -------- | ------ |
+| Pocket Park        | $366k                                                                                                                                                                                                                                                                                                                                                                                 | 1        | 400    | $6k                                                                     | 1        | 20     |
+| Civic Plaza        | 2.5 ac × $5.2M/ac (Lakewood, Washington, Colonial Plaza: 18,972 sq ft of pavers, seat walls and lighting, engineer's estimate $2.25M in 2019, [City of Lakewood](https://cityoflakewood.us/wp-content/uploads/2019/04/Colonial-Plaza-presentation.pdf)) = $13.0M                                                                                                                      | 35.5     | 14,200 | 2.5 ac × $9,470 = $24k (the NRPA median; no hardscape figure was found) | 4        | 80     |
+| Neighbourhood Park | 8.0 ac × $580k/ac (Dixon, California, park impact fee nexus study 2023, neighbourhood parks, [City of Dixon](https://www.cityofdixonca.gov/media/Parks%20Masterplan/Dixon%20Park%20Impact%20Fee%20Nexus%20Study%20December%202023.pdf); Hayward 2019 puts local parks at $1.1M/ac) = $4.6M                                                                                            | 12.7     | 5,100  | 8.0 ac × $9,470 = $76k                                                  | 12.6     | 250    |
+| District Park      | 39.5 ac × $1.02M/ac (Dixon 2023, community parks) = $40.2M                                                                                                                                                                                                                                                                                                                            | 110      | 44,000 | 39.5 ac × $9,470 = $374k                                                | 62       | 1,250  |
+| Sports Ground      | a natural-grass field, $610k (2026 vendor range $400–820k, [Sports Venue Calculator](https://sportsvenuecalculator.com/knowledge/artificial-turf-field/how-much-does-a-turf-field-cost/)), plus a prefabricated restroom pavilion, $650k (Coconino County 2025, [Arizona Daily Sun](https://azdailysun.com/eedition/page-a3/page_306dc3d7-a1b2-5775-926c-b6362c1ef48c.html)) = $1.26M | 3.4      | 1,400  | a grass field's $27–35k a year plus the pavilion, about $36k            | 6        | 120    |
+
+The ranking is the real one: paving is the dearest ground per acre a city
+buys, developed parkland the cheapest, and a forty-acre park costs what a
+forty-acre park costs. Unlocks follow the ladder: the pocket park at the
+start as now, the neighbourhood park at the first milestone, the sports
+ground and the plaza at the second, the district park at the third — stated,
+not derived.
+
+| Rung               | Premium | `strength` | `landValueBonus` |
+| ------------------ | ------- | ---------- | ---------------- |
+| Pocket Park        | 8%      | 80         | 40               |
+| Civic Plaza        | 5%      | 50         | 30               |
+| Neighbourhood Park | 10%     | 100        | 60               |
+| District Park      | 20%     | 200        | 100              |
+| Sports Ground      | 5%      | 50         | 40               |
 
 **`strength` has no municipal standard, and that is said rather than hidden.** It
 is the size of the land-value uplift, and the published evidence for it is the
@@ -235,7 +286,8 @@ wrong, only its range. `landValueBonus` seeds the diffusion from a facility's ow
 tiles; it too is a dial with no standard, settled in
 [../balancing.md](../balancing.md). **The affordability override does not bite:**
 the pocket park at 400 is affordable at milestone 0, and the first real rung —
-the neighbourhood park at 1,750 — sits below the existing clinic and school.
+the neighbourhood park at 5,100 — is a town's purchase, priced like its
+clinic and school.
 
 ## What it is not
 
@@ -244,7 +296,6 @@ the neighbourhood park at 1,750 — sits below the existing clinic and school.
 - **Not tourism, and not landmarks.** A park drawing visitors from outside the
   city is a different system, and the city has no visitors.
 - **Not per-citizen leisure.** Nobody is tracked to a park; capacity is an
-  aggregate against a catchment. **Not an airport fix** either — that is named
-  above because parks work sits on top of it, but correcting it is transport's.
+  aggregate against a catchment.
 - **Not a new scalar field**, and **not a coverage rework**. BFS is untouched;
   the one change to how park coverage _combines_ is in the technical plan.

@@ -88,6 +88,18 @@ MUTCD citations below use 11th-edition section numbers.
   lanes and draws the reservation as a raised median. —
   [streets.md](art/streets.md); `computeGuideway` in `src/render/guideway.ts`,
   `carriesGuideway` in `src/shared/roadprofile.ts`
+- A park is the size the real park type is — a neighbourhood park eight
+  acres, a district park forty — and the six-tile siting rule for buildings
+  does not apply to open space. A park keeps the ground it is laid on: a
+  catalog entry whose `ground` is `drape` is never levelled, and only paving
+  and a pitch level theirs. Park coverage takes the best of overlapping parks
+  and adds once to land value, never the sum. —
+  [parks-and-recreation.md](game-design/features/parks-and-recreation.md);
+  `src/data/catalog.json`, `src/sim/services.ts`
+- A facility's coverage walks the street network from every road tile within
+  reach of its footprint, never from one nearest tile; a park on four streets
+  serves from all four. — [services-model.md](world-sim/services-model.md);
+  `src/sim/services.ts`
 - No overpass crosses a guideway, and no guideway passes under an overpass:
   the beams stand 6 to 7.22 m up and an overpass deck 5 m up. The worker
   refuses both, and the tool's preview says so. —
