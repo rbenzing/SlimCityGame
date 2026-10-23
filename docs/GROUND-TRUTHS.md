@@ -77,6 +77,21 @@ MUTCD citations below use 11th-edition section numbers.
   no line mixes tram and rail track. —
   [transit-model.md](world-sim/transit-model.md); `isTramTrack` and
   `isTramTile` in `src/shared/roadprofile.ts`
+- Mixed running stays on the street; a reservation goes up. A road whose
+  trams share its lanes runs them at grade. A road that gives its trams a
+  reservation carries that reservation on an elevated guideway: two beams
+  0.66 × 1.22 m at 3.66 m centres, tops 7.22 m above the road surface, on
+  T-columns every 30 m in a 2.4 m median, phased from world-metre zero, never
+  in a junction box or on a turn. The guideway passes over every street it
+  crosses and never meets one at grade. It ramps to grade over the five tiles
+  next to a street tramway. Its trams ride the beams. The road below keeps its
+  lanes and draws the reservation as a raised median. —
+  [streets.md](art/streets.md); `computeGuideway` in `src/render/guideway.ts`,
+  `carriesGuideway` in `src/shared/roadprofile.ts`
+- No overpass crosses a guideway, and no guideway passes under an overpass:
+  the beams stand 6 to 7.22 m up and an overpass deck 5 m up. The worker
+  refuses both, and the tool's preview says so. —
+  [overpasses.md](world-sim/overpasses.md); `src/sim/worker.entry.ts`
 - A street's track is drawn as a street tramway's is: per tram lane, two
   grooved rails at standard gauge flush in a 2.7 m concrete slab, and no
   sleepers. Only the railway, on its ballast, has sleepers. Contact poles
@@ -90,7 +105,8 @@ MUTCD citations below use 11th-edition section numbers.
   or two joined street tiles that are not tram track, with tram track joined at
   both ends, is a tram crossing: each tile keeps its own road, the tram graph
   counts it as track along that axis, and the road mesh lays the rails across
-  it. It is derived from the
+  it, unless the track is a guideway, whose beams span it overhead. It is
+  derived from the
   tiles every time, never stored, and a tram never turns at one. —
   [transit-model.md](world-sim/transit-model.md#tram-crossings);
   `tramCrossingAxes` in `src/shared/types.ts`
@@ -283,9 +299,13 @@ MUTCD citations below use 11th-edition section numbers.
   two-tile corridor only when the class's own largest road needs one, otherwise
   it is refused with a reason; a corridor is a straight run and a bend is
   refused. — [road-model.md](world-sim/road-model.md); `src/shared/corridor.ts`
-- A reserved lane (bus, tram, bike) always costs a general lane and counts
-  against the class's lane range; lanes are never dropped silently to fit. —
-  [road-model.md](world-sim/road-model.md)
+- A reserved bus or bike lane always costs a general lane, and a bus lane
+  counts against the class's lane range; lanes are never dropped silently to
+  fit. A tram reservation is a guideway over a 2.4 m median: it costs the
+  road a median, not a lane, and its tracks count against no lane range. A
+  guideway track is priced at 2.25 times a street track. —
+  [road-model.md](world-sim/road-model.md); `laneCount` and `roadPriceOf` in
+  `src/shared/roadprofile.ts`
 - Yellow marks the side of a line that oncoming traffic is on, adjacent or
   not. On an undivided road that is the centre line. On a **one-way
   carriageway — a motorway, a ramp, a one-way street, either half of a

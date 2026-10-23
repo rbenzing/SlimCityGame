@@ -396,16 +396,18 @@ describe('RoadToolOptions — the Sound wall panel', () => {
 });
 
 describe('RoadToolOptions — what one choice allows of another', () => {
-  it('never offers a tram reservation on a two-lane street, which it cannot hold', () => {
+  it('offers a tram reservation on a two-lane street, since a guideway’s tracks are not lanes', () => {
     useCityStore.getState().setTool('road.two');
     render(<RoadToolOptions />);
     const tram = screen.getByRole('group', { name: 'Tramway' });
     const reserved = within(tram).getByRole('button', { name: 'Reserved' });
-    // Two tracks down the middle count as two more lanes on a street built
-    // for two or three.
-    expect(reserved).toBeDisabled();
-    expect(reserved).toHaveAttribute('title', 'A local street runs 2 to 3 lanes');
+    // The reservation is the guideway's median, so a street built for two or
+    // three lanes keeps its two and takes the guideway too.
+    expect(reserved).toBeEnabled();
     expect(within(tram).getByRole('button', { name: 'Mixed' })).toBeEnabled();
+    fireEvent.click(reserved);
+    expect(composedNow().pieces.filter((p) => p.kind === 'tram')).toHaveLength(2);
+    expect(composedNow().pieces.filter((p) => p.kind === 'travel')).toHaveLength(2);
   });
 
   it('closes a choice the width can no longer hold, and reopens it when room is made', () => {

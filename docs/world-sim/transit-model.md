@@ -27,10 +27,15 @@ street whose cross-section carries a tram lane, mixed or reserved, is track
 (`isTramTrack` in `src/shared/roadprofile.ts`), the Tramway preset among
 them, so a tram lane composed onto any road joins the tram graph. The tram
 graph sees every cell of it as the tram tier, which is the one predicate it
-admits edges by.
+admits edges by. A reservation's tracks run on an elevated guideway above
+their street ([../art/streets.md](../art/streets.md)); in the graph they are
+the same track, and a line runs from a guideway onto a street tramway and
+back through the ramp where the two meet, so a tram depot at grade fields a
+guideway line.
 
-**Tram crossings.** A tramway crosses another street at grade the way a real
-one does, straight over the junction. A tramway drawn across a street leaves
+**Tram crossings.** A street tramway crosses another street at grade the way
+a real one does, straight over the junction; a guideway crosses it the same
+way in the graph and overhead on the ground. A tramway drawn across a street leaves
 the crossing tile as that street's — the street keeps its own lanes and class
 there, and a tramway never takes a tile from a road it does not outrank — so
 the crossing is recognised rather than stored: a straight run of one or two

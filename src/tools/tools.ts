@@ -46,6 +46,7 @@ import {
 import type { RoadClassId, RoadProfile } from '../shared/types';
 import {
   carriagewayShiftOf,
+  carriesGuideway,
   composeProfile,
   corridorHalfProfile,
   worldOrderedProfile,
@@ -104,7 +105,14 @@ import {
   type RoundaboutGround,
   type RoundaboutPlan,
 } from '../shared/roundabout';
-import { atOneLevel, bitToward, crossingShape, overpassRise } from '../shared/overpass';
+import {
+  atOneLevel,
+  bitToward,
+  crossingShape,
+  GUIDEWAY_UNDER_OVERPASS,
+  OVERPASS_OVER_GUIDEWAY,
+  overpassRise,
+} from '../shared/overpass';
 
 /**
  * The onPreview payload: every CursorChip field (cost/lengthMeters/
@@ -1123,8 +1131,9 @@ export class ToolManager {
    * a street across a motorway, anything a ramp may not touch, a road across a
    * railway. It is raised to at least what each road beneath needs, in the
    * elevation control's own steps, and it has to be long enough to climb that
-   * high before it gets there. The worker applies the same rules to what this
-   * sends; asking here puts the answer on the cursor first.
+   * high before it gets there. Nothing crosses over a guideway, and a guideway
+   * runs under nothing. The worker applies the same rules to what this sends;
+   * asking here puts the answer on the cursor first.
    */
   private overpassPlan(tiles: TilePoint[], profile: RoadProfile): OverpassPlan {
     const under = new Set<string>();
@@ -1134,6 +1143,11 @@ export class ToolManager {
       elevation: this.roadElevation,
       refusal: null,
     };
+    // A guideway's beams stand higher than any deck above its road.
+    const guideway = carriesGuideway(profile);
+    if (guideway && tiles.some((t) => this.env.overRoadAt?.(t))) {
+      return { ...none, refusal: GUIDEWAY_UNDER_OVERPASS };
+    }
     const at = this.env.roadProfileAt;
     const maskAt = this.env.roadMaskAt;
     if (!at || !maskAt || tiles.length < 3) return none;
@@ -1169,6 +1183,7 @@ export class ToolManager {
             refusal: 'A road passes under another straight across, at right angles',
           };
         }
+        if (guideway) return { ...none, refusal: GUIDEWAY_UNDER_OVERPASS };
         under.add(`${t.x},${t.z}`);
         continue;
       }
@@ -1184,6 +1199,9 @@ export class ToolManager {
     if (!crossesOver || (found.length === 0 && !skew)) return none;
     if (skew) {
       return { ...none, refusal: 'An overpass crosses straight over a road, at right angles' };
+    }
+    if (found.some((f) => carriesGuideway(f.beneath))) {
+      return { ...none, refusal: OVERPASS_OVER_GUIDEWAY };
     }
     const rise = Math.max(...found.map((f) => overpassRise(tier, tierForProfile(f.beneath))));
     const climb = Math.ceil(rise / BRIDGE_MAX_GRADE);

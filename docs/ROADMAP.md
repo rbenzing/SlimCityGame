@@ -244,8 +244,8 @@ apron. **In progress, at the player's request (2026-10-16): tramways**
 ([tramways.md](game-design/features/tramways.md)) — a street tramway drawn
 as a street cars share, a tram reservation lifted onto an elevated guideway
 in the Disney World monorail's form with raised stations, and every tram
-lane routable; the street tramway built, the guideway and its stations
-next. **After it, the programme's last epic**, parks and recreation
+lane routable; the street tramway and the guideway built, the raised
+stations next. **After it, the programme's last epic**, parks and recreation
 ([municipal-services.md](game-design/features/municipal-services.md)), the
 [DESIGN.md](DESIGN.md) deferred backlog (weather, deeper industry, more
 transit modes) and AI raster map packs, facade-atlas stage 2 and screen-space
@@ -442,6 +442,32 @@ beside the bay were not.
 - **House drives were cut to the street without its bay,** so beside a bay a
   drive ran across the widened kerb into the carriageway. Lots now read the
   drawn section, and are re-laid when a junction gains or loses its bay.
+
+### A tram reservation lifted onto an elevated guideway (slice 2 of tramways, built 2026-10-19)
+
+The player asked that a road carrying a tram reservation raise it, "like
+Disney World".
+
+- **The guideway.** A reservation's two tracks ride two concrete straddle
+  beams, 0.66 × 1.22 m at 3.66 m centres (the Walt Disney World and Las Vegas
+  beam), on T-columns every 30 m in the median. The crossheads clear the road
+  by 5 m, so the beam tops are at 7.22 m. The beams run unbroken through
+  junctions and turns and span the streets they cross; no column stands in a
+  junction box. Over the five tiles next to a street tramway they ramp down
+  to the road, about 7%, and the trams ride the beams onto the street's
+  rails.
+- **A median, not two lanes.** The reservation's pieces are now 1.2 m each, a
+  2.4 m median for a 0.9 m column, and they count against no lane range, so
+  a road keeps its general lanes under a guideway and a local street may
+  carry one. The road below draws the median raised, with no rails at grade.
+- **Priced as an elevated line.** A guideway track costs 2.25 times a street
+  track, the midpoint of elevated light rail's 2 to 2.5 times at-grade
+  (Flyvbjerg 2008); its upkeep is a street track's, since no ratio for that
+  was found.
+- **Nothing crosses it.** An overpass across a guideway, or a guideway under
+  an overpass, is refused, since a 5 m deck cannot clear beams 6 to 7.22 m
+  up.
+- The raised stations follow.
 
 ### The street tramway drawn as a street, and every tram lane is track (slice 1 of tramways, built 2026-10-16)
 

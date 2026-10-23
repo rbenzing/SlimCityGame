@@ -14,6 +14,7 @@ import {
   type InterchangeGround,
 } from '../shared/interchange';
 import { composeProfile, NO_EDITS, presetProfileForTier } from '../shared/roadprofile';
+import { GUIDEWAY_UNDER_OVERPASS, OVERPASS_OVER_GUIDEWAY } from '../shared/overpass';
 import { corridorRunsFor } from '../shared/corridor';
 import {
   brushDiscTiles,
@@ -2271,6 +2272,66 @@ describe('ToolManager — a road crossing over another', () => {
     drag(tm, 0, 20);
     expect(previews.at(-1)?.valid).toBe(false);
     expect(previews.at(-1)?.invalidReason).toMatch(/straight across/);
+  });
+
+  describe('a guideway and an overpass never share a tile', () => {
+    const RESERVED = { ...NO_EDITS, tram: 'reserved' } as const;
+    const guidewayStreet = composeProfile(presetProfileForTier(RoadTier.TwoLane), RESERVED);
+
+    it('refuses an overpass across a guideway', () => {
+      const { env, previews, sent } = withRoads([{ x: 10, tier: RoadTier.TwoLane }]);
+      const plain = env.roadProfileAt!;
+      env.roadProfileAt = (t) => (plain(t) ? guidewayStreet : null);
+      const tm = new ToolManager(env);
+      tm.setTool('road.two');
+      tm.setRoadElevation(8);
+      drag(tm, 0, 20);
+      expect(previews.at(-1)?.valid).toBe(false);
+      expect(previews.at(-1)?.invalidReason).toBe(OVERPASS_OVER_GUIDEWAY);
+      tm.pointerUp(20, 10, 0);
+      expect(sent).toEqual([]);
+    });
+
+    it('refuses a guideway passing under a raised road', () => {
+      const { env, previews, sent } = withRoads([{ x: 10, tier: RoadTier.TwoLane }]);
+      env.roadElevationAt = (t) => (t.x === 10 ? 8 : 0);
+      env.profileIdFor = () => 13;
+      const tm = new ToolManager(env);
+      tm.setTool('road.two');
+      tm.setProfileEdits(RESERVED);
+      drag(tm, 0, 20);
+      expect(previews.at(-1)?.valid).toBe(false);
+      expect(previews.at(-1)?.invalidReason).toBe(GUIDEWAY_UNDER_OVERPASS);
+      tm.pointerUp(20, 10, 0);
+      expect(sent).toEqual([]);
+    });
+
+    it('refuses a reservation composed onto a street with an overpass above it', () => {
+      const { env, previews, sent } = withRoads([]);
+      env.roadProfileAt = (t) => (t.z === 10 ? presetProfileForTier(RoadTier.TwoLane) : null);
+      env.roadMaskAt = (t) => (t.z === 10 ? 2 | 8 : 0);
+      env.overRoadAt = (t) =>
+        t.x === 10 && t.z === 10 ? { flow: RoadFlow.South, profile: RoadTier.TwoLane } : null;
+      env.profileIdFor = () => 13;
+      const tm = new ToolManager(env);
+      tm.setTool('road.two');
+      tm.setProfileEdits(RESERVED);
+      drag(tm, 0, 20);
+      expect(previews.at(-1)?.valid).toBe(false);
+      expect(previews.at(-1)?.invalidReason).toBe(GUIDEWAY_UNDER_OVERPASS);
+      tm.pointerUp(20, 10, 0);
+      expect(sent).toEqual([]);
+    });
+
+    it('still lays the same reservation where nothing passes over', () => {
+      const { env, previews } = withRoads([]);
+      env.profileIdFor = () => 13;
+      const tm = new ToolManager(env);
+      tm.setTool('road.two');
+      tm.setProfileEdits(RESERVED);
+      drag(tm, 0, 20);
+      expect(previews.at(-1)?.valid).toBe(true);
+    });
   });
 });
 

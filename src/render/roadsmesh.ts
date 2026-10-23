@@ -81,6 +81,7 @@
 import * as THREE from 'three';
 import {
   flowDirection,
+  isStreetTier,
   RoadFlow,
   RoadTileDelta,
   RoadTier,
@@ -114,6 +115,7 @@ import {
   medianOffsetOf,
   PRESET_LANE_WIDTH_M,
   isServiceClass,
+  carriesGuideway,
   isTramTrack,
   presetProfileForTier,
   rankForTier,
@@ -2097,6 +2099,13 @@ function trackRect(
   if (vertical)
     pushLocalRect(positions, colors, centerX, centerZ, c0, c1, a0, a1, yOff, color, hAt);
   else pushLocalRect(positions, colors, centerX, centerZ, a0, a1, c0, c1, yOff, color, hAt);
+}
+
+/** What the plan's tram bands cover across the road together, or null where it has none. */
+function tramSpan(plan: MarkingPlan): { from: number; to: number } | null {
+  const tram = plan.bands.filter((b) => b.kind === 'tram');
+  if (tram.length === 0) return null;
+  return { from: Math.min(...tram.map((b) => b.from)), to: Math.max(...tram.map((b) => b.to)) };
 }
 
 /**
@@ -4505,6 +4514,17 @@ export interface NeighborTiers {
     w: boolean;
     beyond?: { n: boolean; e: boolean; s: boolean; w: boolean };
   };
+  /**
+   * Whether each neighbour, and the road beyond it, carries a tram
+   * reservation, whose trams run on the guideway above it. Omitted, none does.
+   */
+  guideway?: {
+    n: boolean;
+    e: boolean;
+    s: boolean;
+    w: boolean;
+    beyond?: { n: boolean; e: boolean; s: boolean; w: boolean };
+  };
 }
 
 const NO_NEIGHBORS: NeighborTiers = {
@@ -5529,11 +5549,15 @@ export function roadTileVertices(
   // two tracks at its own offsets and mixed running gets one in each shared
   // lane, each in its slab. A railway has no lane pieces to read — it is a
   // track, not a street — so it keeps its single sleepered track down the
-  // tile centreline.
+  // tile centreline. A reservation's trams run on the guideway above it, so
+  // it lays no track at all: its span is the median the columns stand in.
   const railway = tier === RoadTier.RailTrack;
+  const reservation = !railway && carriesGuideway(crossSection) ? tramSpan(plan) : null;
   const tramAt = railway
     ? [0]
-    : plan.bands.filter((b) => b.kind === 'tram').map((b) => (b.from + b.to) / 2);
+    : reservation
+      ? []
+      : plan.bands.filter((b) => b.kind === 'tram').map((b) => (b.from + b.to) / 2);
   if (tramAt.length > 0 && !isJunction && !isTurn) {
     const emit = (vertical: boolean, lo: number, hi: number, across: number): void => {
       if (railway) emitRailwayTrack(positions, colors, centerX, centerZ, vertical, lo, hi, hAt);
@@ -5564,6 +5588,12 @@ export function roadTileVertices(
       return tramCrossingRoad(at, trackOf(side, steps));
     },
   );
+  // Where the track at both ends is a reservation, the guideway spans the
+  // crossing and nothing runs over the junction box at grade.
+  const endIsGuideway = (side: 'n' | 'e' | 's' | 'w'): boolean =>
+    (trackOf(side, 1) ? neighbors.guideway?.[side] : neighbors.guideway?.beyond?.[side]) ?? false;
+  const spanned = (a: 'n' | 'e' | 's' | 'w', b: 'n' | 'e' | 's' | 'w'): boolean =>
+    endIsGuideway(a) && endIsGuideway(b);
   const armRails = (a: 'n' | 'e' | 's' | 'w', b: 'n' | 'e' | 's' | 'w'): number[] => {
     for (const side of [a, b]) {
       const bands = neighborHalves.plans?.[side]?.bands.filter((band) => band.kind === 'tram');
@@ -5573,7 +5603,7 @@ export function roadTileVertices(
       .bands.filter((band) => band.kind === 'tram')
       .map((band) => (band.from + band.to) / 2);
   };
-  if (tramCrossing.alongZ) {
+  if (tramCrossing.alongZ && !spanned('n', 's')) {
     for (const across of armRails('n', 's')) {
       emitStreetTrack(
         positions,
@@ -5588,7 +5618,7 @@ export function roadTileVertices(
       );
     }
   }
-  if (tramCrossing.alongX) {
+  if (tramCrossing.alongX && !spanned('w', 'e')) {
     for (const across of armRails('w', 'e')) {
       emitStreetTrack(
         positions,
@@ -6089,6 +6119,24 @@ export function roadTileVertices(
         medianOffsetOf(crossSection),
       );
     else emitHighwayDivider(positions, colors, centerX, centerZ, vertical, { lo, hi }, hAt);
+  }
+  // A reservation is the guideway's column line, kerbed as a median over its
+  // own span and broken where the median would be: at corners and junctions.
+  if (reservation && (alone || isStraightRunMask(mask))) {
+    const vertical = hasVertical;
+    const lo = vertical ? (hasN ? -TILE_HALF : -coreHalf) : hasW ? -TILE_HALF : -coreHalf;
+    const hi = vertical ? (hasS ? TILE_HALF : coreHalf) : hasE ? TILE_HALF : coreHalf;
+    emitAvenueMedian(
+      positions,
+      colors,
+      centerX,
+      centerZ,
+      vertical,
+      { lo, hi },
+      hAt,
+      (reservation.to - reservation.from) / 2,
+      (reservation.from + reservation.to) / 2,
+    );
   }
 
   // Rounded roads: a half-disc cap on a dangling stub's dead end, and one on
@@ -6776,6 +6824,14 @@ export class RoadMeshRenderer {
     return road !== undefined && isTramTrack(road.tier, this.profileFor(road.profile));
   }
 
+  /** Whether the road met along `axis` at (x, z) carries a tram reservation, and so the guideway. */
+  private guidewayAlong(x: number, z: number, axis: 'x' | 'z'): boolean {
+    const road = this.roadAlong(x, z, axis);
+    if (road === undefined || !isStreetTier(road.tier)) return false;
+    const profile = this.profileFor(road.profile);
+    return profile !== null && carriesGuideway(profile);
+  }
+
   /**
    * `halfAt`, but for the road met along `axis`. A corner of a roundabout
    * reports none: a road into the ring keeps its own width to the ring, rather
@@ -7342,6 +7398,8 @@ export class RoadMeshRenderer {
       };
       const trackAt = (dx: number, dz: number, axis: 'x' | 'z'): boolean =>
         this.trackAlong(tile.x + dx, tile.z + dz, axis);
+      const guidewayAt = (dx: number, dz: number, axis: 'x' | 'z'): boolean =>
+        this.guidewayAlong(tile.x + dx, tile.z + dz, axis);
       const neighbors: NeighborTiers = {
         n: this.tierAlong(tile.x, tile.z - 1, 'z'),
         e: this.tierAlong(tile.x + 1, tile.z, 'x'),
@@ -7363,6 +7421,18 @@ export class RoadMeshRenderer {
             e: trackAt(2, 0, 'x'),
             s: trackAt(0, 2, 'z'),
             w: trackAt(-2, 0, 'x'),
+          },
+        },
+        guideway: {
+          n: guidewayAt(0, -1, 'z'),
+          e: guidewayAt(1, 0, 'x'),
+          s: guidewayAt(0, 1, 'z'),
+          w: guidewayAt(-1, 0, 'x'),
+          beyond: {
+            n: guidewayAt(0, -2, 'z'),
+            e: guidewayAt(2, 0, 'x'),
+            s: guidewayAt(0, 2, 'z'),
+            w: guidewayAt(-2, 0, 'x'),
           },
         },
       };

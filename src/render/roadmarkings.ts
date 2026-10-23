@@ -231,6 +231,28 @@ function bikeGreen(
 const isTravel = (p: LanePiece): boolean => p.kind === 'travel';
 const flowOf = (p: LanePiece): 'fwd' | 'back' | 'both' => p.flow ?? 'both';
 
+/**
+ * Where the piece dividing the two directions lies across the carriageway: the
+ * median, or the tram reservation's pieces together. Null where neither is.
+ */
+function dividerSpan(
+  pieces: readonly LanePiece[],
+  half: number,
+): { from: number; to: number } | null {
+  const median = pieces.some((p) => p.kind === 'median');
+  let edge = -half;
+  let from: number | null = null;
+  let to = 0;
+  for (const piece of pieces) {
+    const lo = edge;
+    edge += piece.width;
+    if (piece.kind !== (median ? 'median' : 'tram')) continue;
+    from ??= lo;
+    to = edge;
+  }
+  return from === null ? null : { from, to };
+}
+
 /** Lays the carriageway pieces across the tile and reads the lines between them. */
 /** `flow` is the stored direction, which decides which edge is the driver's left. */
 export function markingPlan(profile: RoadProfile, flow: number = RoadFlow.None): MarkingPlan {
@@ -430,10 +452,12 @@ export function markingPlan(profile: RoadProfile, flow: number = RoadFlow.None):
   // carried no yellow at all. Where the median is at an EDGE of the section —
   // a corridor's half — the edge-line rule above has already painted that
   // side, so nothing is added.
-  if (hasMedian && style.centre !== 'none') {
-    const medianIndex = pieces.findIndex((p) => p.kind === 'median');
-    const from = pieces.slice(0, medianIndex).reduce((w, p) => w + p.width, -half);
-    const to = from + pieces[medianIndex]!.width;
+  //
+  // A tram reservation divides the road the same way: it is the guideway's
+  // column line, kerbed as a median, and its edges are marked as a median's.
+  const divider = dividerSpan(pieces, half);
+  if (divider && style.centre !== 'none') {
+    const { from, to } = divider;
     if (from > -half + 1e-9) solid.push(yellow(from - MEDIAN_EDGE_LINE_INSET_M));
     if (to < half - 1e-9) solid.push(yellow(to + MEDIAN_EDGE_LINE_INSET_M));
   }

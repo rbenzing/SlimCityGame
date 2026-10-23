@@ -11,9 +11,20 @@ import {
   computeStopHeading,
   computeShelterLayout,
   shelterSide,
+  buildTramCarGeometry,
+  TRAM_CAR_SIZE,
+  TRAM_FLOOR_ABOVE_ORIGIN_M,
   type TransitSnapshot,
 } from './transit';
 import { BUS_SHELTER } from './busshelter';
+import {
+  computeGuideway,
+  GUIDEWAY_BEAM_TOP_M,
+  TRAM_FLOOR_ABOVE_BEAM_M,
+  type GuidewaySeatSampler,
+} from './guideway';
+import { composeProfile, NO_EDITS, presetProfileForTier } from '../shared/roadprofile';
+import { RoadTier } from '../shared/types';
 import type { TransitLine } from '../shared/types';
 import { TILE_METERS, tileToWorld } from '../shared/constants';
 import { COMMERCIAL_SPEED_MPS } from '../shared/transitfleet';
@@ -829,6 +840,81 @@ describe('tram lines (SPEC 27)', () => {
     const centerline = tileToWorld(0); // the route's own z, both stops being on tile row 0
     expect(Math.abs(carZ('tram', TRAM_CARS_PER_SET) - centerline)).toBeGreaterThan(0);
     expect(carZ('rail', TRAIN_CARS_PER_SET)).toBe(centerline);
+  });
+});
+
+describe('a tram on the guideway', () => {
+  /** A reservation down tile row 0 from x = 0 to 9: full height all along. */
+  const reservedProfile = composeProfile(presetProfileForTier(RoadTier.Avenue), {
+    ...NO_EDITS,
+    tram: 'reserved',
+  });
+  const run = Array.from({ length: 10 }, (_, x) => ({
+    x,
+    z: 0,
+    tier: RoadTier.Avenue,
+    profile: reservedProfile,
+  }));
+  const line: TransitLine = {
+    id: 1,
+    // Three stops, so the two cars' pool is the only one of two instances.
+    stops: [
+      { x: 1, z: 0 },
+      { x: 5, z: 0 },
+      { x: 8, z: 0 },
+    ],
+    color: 0x66bb6a,
+    mode: 'tram',
+  };
+
+  const carPositions = (sampler: GuidewaySeatSampler | null): THREE.Vector3[] => {
+    const scene = new THREE.Scene();
+    const renderer = new TransitRenderer(scene, flatHeightAt);
+    renderer.setGuideway(sampler);
+    renderer.apply({ lines: [line], ridership: [90], served: [1] });
+    const mesh = scene.children.find(
+      (c): c is THREE.InstancedMesh =>
+        c instanceof THREE.InstancedMesh && c.count === TRAM_CARS_PER_SET,
+    )!;
+    const m = new THREE.Matrix4();
+    return Array.from({ length: TRAM_CARS_PER_SET }, (_, i) => {
+      mesh.getMatrixAt(i, m);
+      return new THREE.Vector3().setFromMatrixPosition(m);
+    });
+  };
+
+  it('rides the beam on its right, its floor 0.45 m above the beam top', () => {
+    const { seatAt } = computeGuideway(run, flatHeightAt);
+    const floor = GUIDEWAY_BEAM_TOP_M + TRAM_FLOOR_ABOVE_BEAM_M;
+    for (const p of carPositions(seatAt)) {
+      expect(p.y - TRAM_CAR_SIZE[1] / 2 + TRAM_FLOOR_ABOVE_ORIGIN_M).toBeCloseTo(floor, 6);
+      // Eastbound, its right is +z: the beam south of the centre line.
+      const seat = seatAt(p.x, p.z, Math.PI / 2)!;
+      expect(p.z).toBeCloseTo(seat.z, 6);
+      expect(seat.z).toBeGreaterThan(tileToWorld(0));
+    }
+  });
+
+  it('stays on the street without a guideway under it', () => {
+    for (const p of carPositions(null)) expect(p.y).toBeCloseTo(TRAM_CAR_SIZE[1] / 2, 6);
+  });
+
+  it('sets the car by the floor the drawn car has, over its wheels', () => {
+    const geometry = buildTramCarGeometry();
+    const position = geometry.getAttribute('position');
+    const color = geometry.getAttribute('color');
+    let bottom = Infinity;
+    let wheelTop = -Infinity;
+    for (let i = 0; i < position.count; i++) {
+      bottom = Math.min(bottom, position.getY(i));
+      const wheel =
+        Math.abs(color.getX(i) - 0x0d / 255) < 1e-6 &&
+        Math.abs(color.getY(i) - 0x0e / 255) < 1e-6 &&
+        Math.abs(color.getZ(i) - 0x10 / 255) < 1e-6;
+      if (wheel) wheelTop = Math.max(wheelTop, position.getY(i));
+    }
+    expect(wheelTop - bottom).toBeCloseTo(TRAM_FLOOR_ABOVE_ORIGIN_M, 2);
+    geometry.dispose();
   });
 });
 

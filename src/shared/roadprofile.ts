@@ -167,6 +167,28 @@ export const TRANSIT_LANE_PRICE: Readonly<
 };
 
 /**
+ * What a reserved track costs against a street track. A reservation runs on an
+ * elevated guideway, and elevated light rail costs 2 to 2.5 times what it costs
+ * at grade (Flyvbjerg, Bruzelius & van Wee 2008, EJTIR 8(1)); this is the
+ * midpoint.
+ */
+export const GUIDEWAY_COST_RATIO = 2.25;
+
+/**
+ * One guideway track: the street track's build cost times the guideway ratio,
+ * to the whole unit. Its upkeep and milestone are the street track's, since no
+ * source gives a ratio for keeping one.
+ */
+export const GUIDEWAY_TRACK_PRICE: Readonly<{
+  cost: number;
+  upkeep: number;
+  unlockMilestone: number;
+}> = {
+  ...TRANSIT_LANE_PRICE.tram,
+  cost: Math.round(TRANSIT_LANE_PRICE.tram.cost * GUIDEWAY_COST_RATIO),
+};
+
+/**
  * The reserved lanes a profile carries, by kind. Mixed running counts as one
  * track per lane it shares, because that is how much rail is in the ground.
  */
@@ -197,17 +219,24 @@ export interface RoadPrice {
  * The size is the road — a four-lane street with a bus lane is a four-lane
  * street that costs a little more, not a different road that costs whatever
  * that other road cost. A reserved lane also carries its own milestone, so a
- * city cannot lay tram track before it could have laid a tramway.
+ * city cannot lay tram track before it could have laid a tramway. A tram's
+ * track is a street track where it shares the lane and a guideway track where
+ * it has a reservation.
  */
 export function roadPriceOf(sizeSpec: RoadSpec, profile: RoadProfile): RoadPrice {
   const lanes = transitLanesOf(profile);
+  const guideway = profile.pieces.filter((p) => p.kind === 'tram').length;
   let costPerTile = sizeSpec.costPerTile;
   let upkeepPerTile = sizeSpec.upkeepPerTile;
   let unlockMilestone = sizeSpec.unlockMilestone;
-  for (const kind of ['bus', 'bike', 'tram'] as const) {
-    const n = lanes[kind];
+  const priced: readonly [typeof GUIDEWAY_TRACK_PRICE, number][] = [
+    [TRANSIT_LANE_PRICE.bus, lanes.bus],
+    [TRANSIT_LANE_PRICE.bike, lanes.bike],
+    [TRANSIT_LANE_PRICE.tram, lanes.tram - guideway],
+    [GUIDEWAY_TRACK_PRICE, guideway],
+  ];
+  for (const [price, n] of priced) {
     if (n === 0) continue;
-    const price = TRANSIT_LANE_PRICE[kind];
     costPerTile += price.cost * n;
     upkeepPerTile += price.upkeep * n;
     unlockMilestone = Math.max(unlockMilestone, price.unlockMilestone);
@@ -241,6 +270,14 @@ export function presetProfileForTier(tier: RoadTier): RoadProfile {
 /** Whether a cross-section carries a tram: a lane the trams share, or a reservation of their own. */
 export function carriesTram(profile: RoadProfile): boolean {
   return profile.pieces.some((p) => p.kind === 'tram' || p.tram === true);
+}
+
+/**
+ * Whether a cross-section gives its trams a reservation, which runs on an
+ * elevated guideway above the street rather than in its lanes.
+ */
+export function carriesGuideway(profile: RoadProfile): boolean {
+  return profile.pieces.some((p) => p.kind === 'tram');
 }
 
 /**
@@ -336,10 +373,11 @@ export function profileCapacity(profile: RoadProfile): number {
 }
 
 /**
- * Traffic lanes in the profile: travel lanes, the reserved bus and tram lanes,
- * which are lanes with a different occupant, and a centre turn lane, which is
- * the third lane of a three-lane street. A shared two-way lane counts for both
- * directions.
+ * Traffic lanes in the profile: travel lanes, the reserved bus lanes, which
+ * are lanes with a different occupant, and a centre turn lane, which is the
+ * third lane of a three-lane street. A shared two-way lane counts for both
+ * directions. A tram reservation is no lane: its pieces are the guideway's
+ * median, and nothing drives on them.
  *
  * On a two-way road that is both directions summed; on a road every lane of
  * which runs one way — a motorway, a slip road, a one-way street — it is that
@@ -348,7 +386,7 @@ export function profileCapacity(profile: RoadProfile): number {
 export function laneCount(profile: RoadProfile): number {
   return profile.pieces.reduce((n, p) => {
     if (p.kind === 'centreTurn') return n + 1;
-    if (p.kind !== 'travel' && p.kind !== 'bus' && p.kind !== 'tram') return n;
+    if (p.kind !== 'travel' && p.kind !== 'bus') return n;
     return n + ((p.flow ?? 'both') === 'both' ? 2 : 1);
   }, 0);
 }
@@ -1068,11 +1106,10 @@ export type SideChoice = 'none' | 'left' | 'right' | 'both';
 export type MiddleChoice = 'none' | 'median' | 'turn';
 
 /**
- * How a road carries a tramway. A narrow street runs the rails in the running
- * lane and the trams share it with the traffic; a wider one gives them a
- * reservation down the middle, which is faster and is what a city builds when
- * it has the width. The reservation is two tracks, so it costs the road two
- * general lanes — four lanes and a reservation do not both fit on one tile.
+ * How a road carries a tramway. Mixed running puts the rails in the running
+ * lanes and the trams share them with the traffic. A reservation is faster: two
+ * tracks on an elevated guideway whose columns stand down the middle, so it
+ * costs the road a median and none of its lanes.
  */
 export type TramChoice = 'none' | 'mixed' | 'reserved';
 
@@ -1247,7 +1284,10 @@ export const DEFAULT_PIECE_WIDTHS: Readonly<Record<LanePieceKind, number>> = {
   parking: PARKING_STYLES.parallel.laneWidth,
   bike: 1.6,
   bus: 3.5,
-  tram: 3.5,
+  // A reservation's two pieces are the guideway's 2.4 m median: a 0.9 m column
+  // with 0.75 m each side to the kerb face, between the 1.5 ft minimum lateral
+  // offset and the 3 ft one at intersections.
+  tram: 1.2,
   rail: 5.6,
   median: 1.8,
   barrier: 0.6,

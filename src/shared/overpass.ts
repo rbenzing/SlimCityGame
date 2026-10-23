@@ -19,6 +19,15 @@ export function overpassRise(overTier: RoadTier, underTier: RoadTier): number {
 }
 
 /**
+ * A guideway's beams stand 6 to 7.22 m over its road, so a deck clearing that
+ * road by 5 m would cut through them: no overpass crosses a guideway and no
+ * guideway runs under an overpass. Said the same way by the worker that
+ * refuses one and the tool that previews it.
+ */
+export const OVERPASS_OVER_GUIDEWAY = "An overpass can't cross a guideway";
+export const GUIDEWAY_UNDER_OVERPASS = "A guideway can't pass under an overpass";
+
+/**
  * How a drag passing through a tile that already holds a road meets that road.
  *
  * - `across`: the road below runs straight across the drag at right angles and

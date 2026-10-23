@@ -90,10 +90,8 @@ for the surface, the paint, the furniture and the zoning overlay.
   groove drawn as a darker strip on the gauge side. No sleepers show:
   sleepers across paving read as a railway. A track belongs to the LANE that
   carries it, not to the road: mixed running lays one down each running lane
-  it shares with the traffic, and a reservation lays one down each of its two
-  tram lanes, so a twin-track reservation reads as two tracks rather than one
-  wide one; until the reservation is lifted onto its guideway it is drawn at
-  grade the same way. A dedicated Rail Track is not a street at all — a dark
+  it shares with the traffic. A reservation lays no track at grade; it goes up
+  onto the guideway below. A dedicated Rail Track is not a street at all — a dark
   ballast bed with no kerbs, markings or crosswalks, carrying two bright steel
   rails at a 1.5 m gauge on periodic cross-tie sleepers, sleeper phase
   anchored at global world-metre zero so ties line up across every seam, on a
@@ -104,7 +102,28 @@ for the surface, the paint, the furniture and the zoning overlay.
   different: where it crosses another street, its slab and rails run straight
   on across the junction box between the two tram arms, at the offsets the
   arm's own tram lanes give them, so the track reads as unbroken over the
-  crossing street's paving.
+  crossing street's paving. A guideway's crossing lays nothing at grade.
+- **The guideway**: a road that gives its trams a reservation carries it on
+  an elevated straddle-beam guideway, the Walt Disney World monorail's form.
+  Two concrete beams 0.66 m wide and 1.22 m deep at ±1.83 m from the median's
+  centre (3.66 m centres) sit on crossheads 1.0 m deep whose undersides clear
+  the road surface by 5 m, so the beam tops are 7.22 m up. Each crosshead
+  reaches 0.2 m past the beams' outer faces and is 1.2 m along the road, on a
+  stem 0.9 m square standing in the median. A column stands every 30 m of
+  road, phased from world-metre zero, on straight tiles only: none in a
+  junction box, on a turn, or on the street tiles the guideway spans where it
+  crosses another street. The beams run unbroken along the road's median
+  through junctions and turns, and at a crossing span the cross street at
+  their own height. A guideway on a bridge or an overpass stands its columns
+  on the deck. Over the five tiles next to a street tramway the beams descend
+  linearly to the road (7.22 m in 100 m) and meet the street's slab; a column
+  whose crosshead would stand less than 0.5 m clear is not drawn. Below, the
+  road draws the reservation's 2.4 m as a raised median, kerbed in concrete
+  and grassed as every median is, with a median's yellow edge lines either
+  side, and keeps its lanes, footways and lamps. Beams, stems and
+  crossheads are each one instanced pool of boxes. A tram on the guideway
+  rides the beam on its own side of travel, its floor 0.45 m above the beam
+  top and its body straddling the beam.
 - **Contact poles**: a street whose trams share its lanes is hung from
   overhead contact poles at the kerb face — 10.7 m tall, 0.25 m across, with a
   bracket arm reaching 1.9 m over the carriageway at 6.0 m — one every 22 m of

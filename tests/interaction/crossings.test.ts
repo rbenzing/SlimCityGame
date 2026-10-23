@@ -3,6 +3,13 @@ import { MAP_SIZE, BRIDGE_MAX_GRADE, START_FUNDS, tileIndex } from '../../src/sh
 import { RoadFlow, RoadTier } from '../../src/shared/types';
 import type { GridState, MapData, RoadTileDelta } from '../../src/shared/types';
 import {
+  composeProfile,
+  FIRST_CUSTOM_PROFILE_ID,
+  NO_EDITS,
+  presetProfileForTier,
+} from '../../src/shared/roadprofile';
+import { GUIDEWAY_UNDER_OVERPASS, OVERPASS_OVER_GUIDEWAY } from '../../src/shared/overpass';
+import {
   column,
   flatMap,
   initialized,
@@ -434,5 +441,89 @@ describe('a road drawn under a road already raised above it', () => {
       if (t.x === 20) continue;
       expect(g.roadTier[at(t.x, t.z)]).toBe(RoadTier.None);
     }
+  });
+});
+
+describe('a guideway and an overpass never share a tile', () => {
+  function grid(h: Harness): GridState {
+    h.sim.handleMessage({ type: 'requestSave' });
+    return latestSaveGrid(h);
+  }
+  const at = (x: number, z: number): number => z * MAP_SIZE + x;
+  const GUIDEWAY = FIRST_CUSTOM_PROFILE_ID;
+  const guidewayStreet = composeProfile(presetProfileForTier(RoadTier.TwoLane), {
+    ...NO_EDITS,
+    tram: 'reserved',
+  });
+  const across = roadRow(12, 14, 17); // x 12..28, crossing x = 20 at its middle
+  const down = column(20, 6, 17); // z 6..22, crossing z = 14 at its middle
+  function sandbox(): Harness {
+    const h = initialized();
+    run(h, 0, [
+      { kind: 'setSandbox', on: true },
+      { kind: 'defineRoadProfile', id: GUIDEWAY, profile: guidewayStreet },
+    ]);
+    return h;
+  }
+
+  it('refuses an overpass across a guideway, and lays nothing', () => {
+    const h = sandbox();
+    const laid = run(h, 1, [
+      { kind: 'buildRoad', tier: RoadTier.TwoLane, profile: GUIDEWAY, tiles: down },
+    ]);
+    expect(laid.ok).toBe(true);
+    const ack = run(h, 2, [
+      { kind: 'buildRoad', tier: RoadTier.TwoLane, tiles: across, elevation: 8 },
+    ]);
+    expect(ack.ok).toBe(false);
+    expect(ack.reason).toBe(OVERPASS_OVER_GUIDEWAY);
+    const g = grid(h);
+    expect(g.overTier[at(20, 14)]).toBe(0);
+    expect(g.roadProfile[at(20, 14)]).toBe(GUIDEWAY);
+    expect(g.roadTier[at(19, 14)]).toBe(RoadTier.None);
+  });
+
+  it('refuses a guideway laid under a raised road, and leaves the raised road as it stood', () => {
+    const h = sandbox();
+    expect(
+      run(h, 1, [{ kind: 'buildRoad', tier: RoadTier.TwoLane, tiles: down, elevation: 8 }]).ok,
+    ).toBe(true);
+    const ack = run(h, 2, [
+      { kind: 'buildRoad', tier: RoadTier.TwoLane, profile: GUIDEWAY, tiles: across },
+    ]);
+    expect(ack.ok).toBe(false);
+    expect(ack.reason).toBe(GUIDEWAY_UNDER_OVERPASS);
+    const g = grid(h);
+    expect(g.overTier[at(20, 14)]).toBe(0);
+    expect(g.roadElevation[at(20, 14)]).toBe(8);
+    expect(g.roadTier[at(19, 14)]).toBe(RoadTier.None);
+  });
+
+  it('refuses a reservation composed onto a street an overpass already crosses', () => {
+    const h = sandbox();
+    run(h, 1, [{ kind: 'buildRoad', tier: RoadTier.TwoLane, tiles: across }]);
+    const over = run(h, 2, [
+      { kind: 'buildRoad', tier: RoadTier.TwoLane, tiles: down, elevation: 8 },
+    ]);
+    expect(over.ok).toBe(true);
+    expect(grid(h).overTier[at(20, 14)]).toBe(RoadTier.TwoLane);
+    const ack = run(h, 3, [
+      { kind: 'buildRoad', tier: RoadTier.TwoLane, profile: GUIDEWAY, tiles: across },
+    ]);
+    expect(ack.ok).toBe(false);
+    expect(ack.reason).toBe(GUIDEWAY_UNDER_OVERPASS);
+    const g = grid(h);
+    for (const t of across) expect(g.roadProfile[at(t.x, t.z)]).toBe(RoadTier.TwoLane);
+    expect(g.overTier[at(20, 14)]).toBe(RoadTier.TwoLane);
+  });
+
+  it('still lets a guideway street pass over another road on a deck of its own', () => {
+    const h = sandbox();
+    run(h, 1, [{ kind: 'buildRoad', tier: RoadTier.TwoLane, tiles: down }]);
+    const ack = run(h, 2, [
+      { kind: 'buildRoad', tier: RoadTier.TwoLane, profile: GUIDEWAY, tiles: across, elevation: 8 },
+    ]);
+    expect(ack.ok).toBe(true);
+    expect(grid(h).overProfile[at(20, 14)]).toBe(GUIDEWAY);
   });
 });
