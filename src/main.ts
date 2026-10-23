@@ -34,6 +34,7 @@ import type {
   SimSnapshot,
   TilePoint,
   ToolId,
+  TransitLine,
   WorkerToMain,
 } from './shared/types';
 import {
@@ -104,6 +105,7 @@ import { FreeRoadRenderer, freeRoadLampStands } from './render/freeroadmesh';
 import type { BandSpan } from './render/roadsmesh';
 import { BridgeRenderer } from './render/bridges';
 import { GuidewayRenderer } from './render/guideway';
+import { TramStationRenderer } from './render/tramstations';
 import { headingAlongX, VehicleRenderer } from './render/vehicles';
 import {
   TransitRenderer,
@@ -111,6 +113,7 @@ import {
   computeStopHeading,
   shelterSide,
   toWorldPoints,
+  type TransitSnapshot,
 } from './render/transit';
 import { PedestrianRenderer, type StopIdleInput } from './render/pedestrians';
 import { ServiceVehicleRenderer } from './render/servicevehicles';
@@ -317,6 +320,8 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
   // A tram reservation's guideway, standing on the road surface; its trams ride it.
   const guideway = new GuidewayRenderer(world.scene, roadSurfaceAt);
   transitRenderer.setGuideway(guideway.seatAt);
+  // A tram stop on the guideway at full height is a raised station over it.
+  const tramStations = new TramStationRenderer(world.scene, roadSurfaceAt);
   const serviceVehicles = new ServiceVehicleRenderer(world.scene, heightAt);
   const districtsRenderer = new DistrictsRenderer(world.scene, heightAt);
   const overlays = new OverlayRenderer(world.scene);
@@ -988,6 +993,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       readFurnitureCounts: (): Record<string, number> => ({
         ...roadFurniture.furnitureCounts(),
         tramPoles: roadFurniture.tramPoleStands().length,
+        tramStations: tramStations.stationCount(),
         lamps: lamps.lampCount(),
       }),
       // What the transit renderer actually built. A transit vehicle and a
@@ -1097,6 +1103,36 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
   };
   /** The vehicle buffer as the worker last sent it. */
   let latestVehicles: Float32Array = new Float32Array(0);
+  /** The transit snapshot and its lines as the worker last sent them; the raised stations are read off the stops. */
+  let latestTransit: TransitSnapshot | null = null;
+  let latestTransitLines: readonly TransitLine[] = [];
+  /**
+   * The stations over the current lines, roads and guideway. True when the
+   * tiles they occupy changed, which is when the kerb furniture has to move.
+   */
+  const rebuildTramStations = (): boolean => {
+    const before = tramStations.tiles();
+    tramStations.rebuild(latestTransitLines, latestRoadTiles, guideway.structure());
+    return !sameTileKeySet(before, tramStations.tiles());
+  };
+  /** The plopped bus stops by tile: a line's stop there keeps the kit's shelter. */
+  const stopBuildingsByTile = (): Map<number, BuildingInstance> => {
+    const stopBuildings = new Map<number, BuildingInstance>();
+    for (const b of knownBuildings.values()) {
+      if (b.catalogId === 'bus-stop') stopBuildings.set(b.x * 100_000 + b.z, b);
+    }
+    return stopBuildings;
+  };
+  /** The lines as the transit renderer draws them: no shelter at a plopped stop or under a raised station. */
+  const applyTransit = (transit: TransitSnapshot | null): void => {
+    if (!transit) return;
+    const stopBuildings = stopBuildingsByTile();
+    transitRenderer.apply(
+      transit,
+      (x, z) => stopBuildings.has(x * 100_000 + z),
+      tramStations.isStation,
+    );
+  };
   /** Every street lamp: the grid's, from its road tiles, and those along roads off the grid. */
   const rebuildLamps = (): void => {
     const free = clientGrid.roads
@@ -1106,9 +1142,11 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
           (wx, wz) => clientGrid.poweredAt(worldToTile(wx), worldToTile(wz)),
         )
       : [];
+    // Nothing kerbside stands on a raised station's stop tile or its landing tile.
+    const stationTiles = tramStations.tiles();
     const keepOff =
-      freeJunctionTiles.size > 0
-        ? new Set([...drivewayTiles, ...freeJunctionTiles])
+      freeJunctionTiles.size > 0 || stationTiles.size > 0
+        ? new Set([...drivewayTiles, ...freeJunctionTiles, ...stationTiles])
         : drivewayTiles;
     // The tram's contact poles keep off the same kerbs, and a lamp beside one
     // gives way to it, so both are placed from the one answer.
@@ -1793,6 +1831,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
     landmarks.setNightFactor(nightFactor);
     utilityKits.setNightFactor(nightFactor);
     buildingKit.setNightFactor(nightFactor);
+    tramStations.setNightFactor(nightFactor);
     farms.setNightFactor(nightFactor);
     farms.setDayFraction(dayT); // the farm truck works sunrise to sunset
     transitRenderer.setDayHour(dayT * 24); // the lines run 05:00 to 23:00; their buses are in the depot otherwise
@@ -1866,10 +1905,12 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       zoneGrid.rebuild(clientGrid);
       const roadTiles = clientGrid.roadTiles();
       setLatestRoadTiles(roadTiles);
+      // The guideway and its stations go before the lamps, which keep off the stations.
+      guideway.rebuild(roadTiles);
+      if (rebuildTramStations() && !snap.transit) applyTransit(latestTransit);
       rebuildLamps();
       roadFurniture.rebuild(roadTiles, freeJunctionTiles);
       bridges.rebuild(clientGrid.deckTiles());
-      guideway.rebuild(roadTiles);
       soundWalls.rebuild(clientGrid.soundWalls());
       // Ground cover follows the road only where the road touches the ground —
       // a mown band under a bridge would be a stripe of lawn across a river.
@@ -1994,14 +2035,13 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
     }
     // Bus transit: rebuild stops/ribbon/buses + publish the line list.
     if (snap.transit) {
+      latestTransit = snap.transit;
+      latestTransitLines = snap.transit.lines;
       // A plopped bus stop's tile keeps that kit's shelter: the line draws
       // none there, and the idlers wait at the kit's.
-      const stopBuildings = new Map<number, BuildingInstance>();
-      for (const b of knownBuildings.values()) {
-        if (b.catalogId === 'bus-stop') stopBuildings.set(b.x * 100_000 + b.z, b);
-      }
-      const hasStopBuilding = (x: number, z: number): boolean => stopBuildings.has(x * 100_000 + z);
-      transitRenderer.apply(snap.transit, hasStopBuilding);
+      const stopBuildings = stopBuildingsByTile();
+      if (rebuildTramStations()) rebuildLamps();
+      applyTransit(snap.transit);
       // The depots park what is not out on the lines; an older worker lists
       // none, and every depot parks its whole fleet.
       utilityKits.setDepotFleets(snap.transit.depots ?? []);

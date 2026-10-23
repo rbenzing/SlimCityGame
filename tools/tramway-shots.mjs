@@ -6,8 +6,9 @@
  * street tramway running on into a reservation, so the guideway ramps up from
  * the street — each with a tram depot and a turbine on its north kerb and a
  * tram line down it, so trams field. Each at the default pitch from the street
- * and close up, the junction under the guideway, and the two street tramways
- * and the guideway again at night.
+ * and close up, the junction under the guideway, the raised station over the
+ * reservation's mid-run stop (from the street, close, from the platform and
+ * at night), and the two street tramways and the guideway again at night.
  *
  * Usage: node tools/tramway-shots.mjs [baseUrl]   (a dev server must be running) */
 import { chromium } from 'playwright';
@@ -145,6 +146,7 @@ await road(
 );
 await page.waitForTimeout(800);
 
+const STATION_AT = 16;
 const place = (catalogId, x, z, rotation) =>
   cmd(catalogId, [{ kind: 'placeBuilding', catalogId, x, z, rotation }]);
 for (const [i, r] of ROWS.entries()) {
@@ -157,10 +159,12 @@ for (const [i, r] of ROWS.entries()) {
         id: i,
         color: [0x3cb45a, 0xef5350, 0x42a5f5, 0xffb300][i],
         mode: 'tram',
-        // The ramp's line runs from the street up onto the guideway.
+        // The ramp's line runs from the street up onto the guideway. The
+        // reservation's second stop, STATION_AT, sits mid-run on a straight
+        // full-height tile, so it is drawn as a raised station.
         stops: [
           { x: X + 6, z: r.z },
-          { x: X + (r.name === 'ramp' ? 30 : 16), z: r.z },
+          { x: X + (r.name === 'ramp' ? 30 : STATION_AT), z: r.z },
         ],
       },
     },
@@ -226,6 +230,11 @@ for (const r of ROWS) {
 // and from low down beside it.
 views.push(['reserved-junction', X + CROSS_AT, reservedZ, 70, Math.PI - 0.6, PITCH]);
 views.push(['reserved-junction-low', X + CROSS_AT, reservedZ, 40, Math.PI - 0.9, 0.25]);
+// The raised station over the reservation's mid-run stop: from the street,
+// close, and from low beside its south platform's east end looking west along it.
+views.push(['station-street', X + STATION_AT, reservedZ, 60, Math.PI, PITCH]);
+views.push(['station-close', X + STATION_AT + 0.5, reservedZ, 40, Math.PI - 0.5, 0.4]);
+views.push(['station-platform', X + STATION_AT - 1, reservedZ + 0.35, 45, Math.PI / 2, 0.2]);
 for (const [name, tx, tz, d, yaw, pitch] of views) {
   await camera(tx, tz, d, yaw, pitch);
   await shot(name);
@@ -262,6 +271,8 @@ for (const r of ROWS.slice(0, 3)) {
   await camera(X + 11, r.z, 60, Math.PI, PITCH);
   await shot(`${r.name}-night`, 2500);
 }
+await camera(X + STATION_AT, reservedZ, 60, Math.PI, PITCH);
+await shot('station-night', 2500);
 
 console.log('page errors', errors.length ? errors : 'none');
 await browser.close();

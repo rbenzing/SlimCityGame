@@ -1,6 +1,6 @@
 # Tramways — design
 
-- **Status:** Specified 2026-10-16; slice 1 (the street tramway and the tram graph) built 2026-10-16; slice 2 (the elevated guideway) built 2026-10-19
+- **Status:** Specified 2026-10-16; slice 1 (the street tramway and the tram graph) built 2026-10-16; slice 2 (the elevated guideway) built 2026-10-19; slice 3 (the raised stations) built 2026-10-23 — Built
 - **Date:** 2026-10-16
 
 ## What the player gets

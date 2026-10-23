@@ -25,7 +25,7 @@ current behavior only and carry no dates of their own._
 
 ## Status (2026-09-29)
 
-**Test suite:** 6,890 tests passing across 195 test files, run 2026-10-21.
+**Test suite:** 6,923 tests passing and 16 skipped across 197 test files, run 2026-10-23.
 This is the only test count in the documentation set. When the suite changes
 again, update the figure here and nowhere else.
 
@@ -124,6 +124,12 @@ not a test to fix.
   when a junction control opens or closes a turn bay, but not on a road edit
   alone, so a bay that a re-profiled road gains or loses leaves the drives
   beside it as they were until the next building change.
+- Under a raised station the kerb shelter is not drawn, but idle pedestrians
+  still gather at the shelter's anchor on the footway rather than on the
+  platforms; the walkers do not know the station.
+- A raised station's stair and lift always stand at the platform's
+  low-coordinate end; where that neighbour is a crossing street they land
+  beside the junction rather than swapping to the other end.
 - The clipping sweep's junction cases read ground 0.32 m above the deck at
   an Avenue-on-Avenue crossroads (118,40 on seed 12345) and 0.09–0.12 m at
   two street crossroads; the parade's runs are clean. Trace the junction
@@ -244,8 +250,8 @@ apron. **In progress, at the player's request (2026-10-16): tramways**
 ([tramways.md](game-design/features/tramways.md)) — a street tramway drawn
 as a street cars share, a tram reservation lifted onto an elevated guideway
 in the Disney World monorail's form with raised stations, and every tram
-lane routable; the street tramway and the guideway built, the raised
-stations next. **After it, the programme's last epic**, parks and recreation
+lane routable; complete 2026-10-23 with the raised stations. **Next, the
+programme's last epic**, parks and recreation
 ([municipal-services.md](game-design/features/municipal-services.md)), the
 [DESIGN.md](DESIGN.md) deferred backlog (weather, deeper industry, more
 transit modes) and AI raster map packs, facade-atlas stage 2 and screen-space
@@ -389,6 +395,20 @@ roads, and pinning the Three.js version. See [adr/](engineering/adr/README.md).
 ---
 
 ## 10. History (newest first)
+
+### The raised stations (slice 3 of tramways, built 2026-10-23; feature complete)
+
+- A tram stop on a guideway tile at full height is a raised station in the
+  Las Vegas and Honolulu form: two side platforms 3 × 26 m at the trams'
+  floor outside the beams, a canopy over each on posts every 6.5 m, and a
+  stair and a lift each side down to the footway at the platform's end. The
+  line's sign hangs from the canopy. No shelter stands at the kerb under it,
+  and lamps and poles keep off its tiles.
+- A station is derived from the stop and the road every rebuild and never
+  saved. A stop on a ramp tile, a junction box or a turn draws no station;
+  the line serves it all the same.
+- With it, tramways are complete: the street tramway, the guideway and its
+  stations, and every tram lane routable.
 
 ### The ground stays under every road, and a ramp bends itself (built 2026-10-21)
 
