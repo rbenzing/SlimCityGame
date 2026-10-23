@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.71.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.70.2...slimcity-v1.71.0) (2026-10-23)
+
+
+### Features
+
+* **render:** a tram reservation lifted onto an elevated guideway ([eeb73f0](https://github.com/rbenzing/SlimCityGame/commit/eeb73f014bb0abe4c0622317931ce3dde95a3023))
+* **render:** a tram reservation lifted onto an elevated guideway ([24edbe4](https://github.com/rbenzing/SlimCityGame/commit/24edbe4ba8b57aa3af7ac8b127c7db8206a6e75b))
+
 ## [1.70.2](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.70.1...slimcity-v1.70.2) (2026-10-21)
 
 
