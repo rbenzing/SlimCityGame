@@ -373,6 +373,21 @@ export class ServiceSim {
   }
 
   /**
+   * The load of every park that has one, in id order — the parks whose catalog
+   * entry carries a capacity and that somebody can reach. An uncapped park, or
+   * one nobody reaches, has no load and is left out rather than reported at zero.
+   */
+  parkLoads(buildings: readonly BuildingInstance[]): { id: number; load: number }[] {
+    const loads: { id: number; load: number }[] = [];
+    for (const b of buildings) {
+      if (this.catalog.get(b.catalogId)?.service?.kind !== 'park') continue;
+      const load = this.loadByFacility.get(b.id);
+      if (load !== undefined) loads.push({ id: b.id, load });
+    }
+    return loads.sort((a, b) => a.id - b.id);
+  }
+
+  /**
    * Runs one kind at a time in two phases — gather every facility's reach and
    * the capacity it dedicates to each tile, then walk the same facilities again
    * in `id` order applying coverage scaled by min(1, supply) — and reports how

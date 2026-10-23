@@ -86,7 +86,24 @@ import {
   hospitalAccessibleSpaces,
   hospitalDeckSpaces,
   type Rect,
+  computeParkEdgeTrees,
+  computeParkEdgeTreeCount,
+  computePathBenchCount,
+  computeRingBenches,
+  computePlazaLayout,
+  computeNeighbourhoodParkLayout,
+  computeDistrictParkLayout,
+  computeSportsGroundLayout,
+  drapedQuad,
+  parkWear,
+  DISTRICT_POND,
+  DISTRICT_SPECIMEN,
+  PARK_MOUTH_CLEARANCE_M,
+  PARK_RING_PATH_WIDTH_M,
+  PITCH,
+  SCUFFED_EARTH_RGB,
 } from './utilitykits';
+import { SHALLOW_WATER_COLOR } from './water';
 import { adaAccessibleSpaces } from '../shared/parkingcode';
 import catalogData from '../data/catalog.json';
 import {
@@ -136,6 +153,10 @@ const PLOPPABLES = (catalogData as { buildings: BuildingCatalogEntry[] }).buildi
 );
 const DEPOTS = (catalogData as { buildings: BuildingCatalogEntry[] }).buildings.filter((e) =>
   ['bus-depot', 'bus-garage', 'tram-depot', 'rail-yard'].includes(e.id),
+);
+
+const PARKS = (catalogData as { buildings: BuildingCatalogEntry[] }).buildings.filter((e) =>
+  ['civic-plaza', 'neighbourhood-park', 'district-park', 'sports-ground'].includes(e.id),
 );
 
 const ALL_KINDS: readonly UtilityKitPartKind[] = [
@@ -193,6 +214,11 @@ const ALL_KINDS: readonly UtilityKitPartKind[] = [
   'parkGround',
   'parkTree',
   'parkBench',
+  'plazaGround',
+  'sportsGround',
+  'playFrame',
+  'pitchGoal',
+  'pavilionBlock',
   'clinicGrounds',
   'clinicBuilding',
   'clinicLit',
@@ -498,7 +524,7 @@ function decomposeQuaternion(m: THREE.Matrix4): THREE.Quaternion {
 // ---------------------------------------------------------------------------
 
 describe('UTILITY_KIT_CATALOG_IDS', () => {
-  it('is exactly the 34 silhouette-kit ids', () => {
+  it('is exactly the 38 silhouette-kit ids', () => {
     expect(UTILITY_KIT_CATALOG_IDS).toEqual([
       'wind-turbine',
       'water-tower',
@@ -527,6 +553,10 @@ describe('UTILITY_KIT_CATALOG_IDS', () => {
       'combined-cycle',
       'nuclear-plant',
       'small-park',
+      'civic-plaza',
+      'neighbourhood-park',
+      'district-park',
+      'sports-ground',
       'clinic',
       'rail-station',
       'bus-stop',
@@ -1343,6 +1373,576 @@ describe('small-park kit', () => {
 });
 
 // ---------------------------------------------------------------------------
+// The larger park rungs
+// ---------------------------------------------------------------------------
+
+const PLAZA = PARKS.find((e) => e.id === 'civic-plaza')!;
+const NEIGHBOURHOOD = PARKS.find((e) => e.id === 'neighbourhood-park')!;
+const DISTRICT = PARKS.find((e) => e.id === 'district-park')!;
+const SPORTS = PARKS.find((e) => e.id === 'sports-ground')!;
+
+function distance(a: { x: number; z: number }, b: { x: number; z: number }): number {
+  return Math.hypot(a.x - b.x, a.z - b.z);
+}
+
+function rectHas(r: Rect, p: { x: number; z: number }, margin = 0): boolean {
+  return p.x > r.x0 - margin && p.x < r.x1 + margin && p.z > r.z0 - margin && p.z < r.z1 + margin;
+}
+
+function instancedMeshes(scene: THREE.Scene): THREE.InstancedMesh[] {
+  return scene.children.filter((o): o is THREE.InstancedMesh => o instanceof THREE.InstancedMesh);
+}
+
+describe('park props scale with the perimeter and the paths (pure)', () => {
+  it('stands one tree per 24 m of perimeter: 17, 30, 67 and 17', () => {
+    expect(computeParkEdgeTreeCount(PLAZA.footprint)).toBe(17);
+    expect(computeParkEdgeTreeCount(NEIGHBOURHOOD.footprint)).toBe(30);
+    expect(computeParkEdgeTreeCount(DISTRICT.footprint)).toBe(67);
+    expect(computeParkEdgeTreeCount(SPORTS.footprint)).toBe(17);
+    expect(computeParkEdgeTrees(DISTRICT.footprint)).toHaveLength(67);
+  });
+
+  it('keeps every edge tree inset from the edge and clear of every path mouth', () => {
+    const inset = 3;
+    for (const entry of [NEIGHBOURHOOD, DISTRICT]) {
+      const halfW = (entry.footprint.w * TILE_METERS) / 2;
+      const mouths = [
+        { x: 0, z: -(halfW - inset) },
+        { x: 0, z: halfW - inset },
+        { x: -(halfW - inset), z: 0 },
+        { x: halfW - inset, z: 0 },
+      ];
+      const trees = computeParkEdgeTrees(entry.footprint, { mouths });
+      for (const tree of trees) {
+        const onEdge =
+          Math.abs(Math.abs(tree.x) - (halfW - inset)) < 1e-6 ||
+          Math.abs(Math.abs(tree.z) - (halfW - inset)) < 1e-6;
+        expect(onEdge).toBe(true);
+        for (const mouth of mouths) {
+          expect(distance(tree, mouth)).toBeGreaterThanOrEqual(PARK_MOUTH_CLEARANCE_M - 1e-9);
+        }
+      }
+    }
+  });
+
+  it('splits two-sided trees between the two edges along X', () => {
+    const trees = computeParkEdgeTrees(SPORTS.footprint, { sides: 'x' });
+    expect(trees).toHaveLength(17);
+    const front = trees.filter((t) => t.z < 0);
+    expect(front).toHaveLength(9);
+    expect(trees.length - front.length).toBe(8);
+    for (const t of trees) expect(Math.abs(t.z)).toBeCloseTo(40 - 3, 6);
+  });
+
+  it('seats one bench per 50 m of path, floored at two', () => {
+    expect(computePathBenchCount(0)).toBe(2);
+    expect(computePathBenchCount(360)).toBe(7);
+    expect(computePathBenchCount(800)).toBe(16);
+  });
+
+  it('turns every ring bench to face the centre', () => {
+    const line: Rect = { x0: -50, x1: 50, z0: -50, z1: 50 };
+    const benches = computeRingBenches(line, 8);
+    expect(benches).toHaveLength(8);
+    for (const bench of benches) {
+      const facing = rotateLocalXZ(0, -1, bench.rotation);
+      // The bench's front points inward: along -x on the right side, +z on the front, and so on.
+      expect(facing.x * bench.x + facing.z * bench.z).toBeLessThan(0);
+    }
+  });
+});
+
+describe('the civic plaza layout (pure)', () => {
+  const layout = computePlazaLayout(PLAZA.footprint);
+
+  it('plants 17 trees in planters along the two side edges and seats 8 benches about the feature square', () => {
+    expect(layout.planters).toHaveLength(17);
+    expect(layout.benches).toHaveLength(8);
+    for (const p of layout.planters) expect(Math.abs(p.x)).toBeCloseTo(47, 6);
+    for (const b of layout.benches) {
+      expect(rectHas(layout.feature, b)).toBe(false);
+      expect(Math.max(Math.abs(b.x), Math.abs(b.z))).toBeLessThan(12);
+    }
+  });
+
+  it('bands the paving every 10 m both ways with a 12 m feature square', () => {
+    expect(layout.bands).toHaveLength(18);
+    expect(layout.feature).toEqual({ x0: -6, x1: 6, z0: -6, z1: 6 });
+  });
+});
+
+describe('the neighbourhood park layout (pure)', () => {
+  const layout = computeNeighbourhoodParkLayout(NEIGHBOURHOOD.footprint);
+
+  it('rings 30 trees and 7 benches, with a play zone and two frames off-centre', () => {
+    expect(layout.trees).toHaveLength(30);
+    expect(layout.benches).toHaveLength(7);
+    expect(layout.playZone.x1 - layout.playZone.x0).toBe(30);
+    expect(layout.playFrames).toHaveLength(2);
+    expect(distance(layout.playFrames[0]!, layout.playFrames[1]!)).toBe(8);
+    for (const frame of layout.playFrames) expect(rectHas(layout.playZone, frame)).toBe(true);
+  });
+
+  it('keeps the play zone and every bench off the paths', () => {
+    for (const path of layout.paths) {
+      expect(
+        rectHas(path, { x: (layout.playZone.x0 + layout.playZone.x1) / 2, z: layout.playZone.z0 }),
+      ).toBe(false);
+      for (const bench of layout.benches) expect(rectHas(path, bench)).toBe(false);
+    }
+  });
+
+  it('lays no two path strips over each other', () => {
+    for (let i = 0; i < layout.paths.length; i++) {
+      for (let j = i + 1; j < layout.paths.length; j++) {
+        const a = layout.paths[i]!;
+        const b = layout.paths[j]!;
+        const overlap = a.x0 < b.x1 && a.x1 > b.x0 && a.z0 < b.z1 && a.z1 > b.z0;
+        expect(overlap, `paths ${i} and ${j}`).toBe(false);
+      }
+    }
+  });
+});
+
+describe('the district park layout (pure)', () => {
+  it('rings 67 trees and 8 specimens at 1.3 scale, seats 16 benches and a pavilion inside the ring', () => {
+    const layout = computeDistrictParkLayout(DISTRICT.footprint, () => 0);
+    expect(layout.trees).toHaveLength(67);
+    expect(layout.specimens).toHaveLength(DISTRICT_SPECIMEN.count);
+    expect(DISTRICT_SPECIMEN.scale).toBe(1.3);
+    expect(layout.benches).toHaveLength(16);
+    expect(layout.pavilion.w).toBe(12);
+    expect(layout.pavilion.d).toBe(8);
+    // The pavilion stands on the street side (local +Z), just inside the ring path.
+    expect(layout.pavilion.z).toBeGreaterThan(0);
+    expect(layout.pavilion.z + layout.pavilion.d / 2).toBeCloseTo(
+      layout.lawn.z1 - 10 - PARK_RING_PATH_WIDTH_M / 2,
+      9,
+    );
+    for (const path of layout.paths) {
+      expect(rectHas(path, layout.pavilion)).toBe(false);
+      for (const s of layout.specimens) expect(rectHas(path, s)).toBe(false);
+      for (const b of layout.benches) expect(rectHas(path, b)).toBe(false);
+    }
+  });
+
+  it('centres the pond on the lowest sampled ground and floats its surface just over the highest ground under it', () => {
+    const basin = { x: -90, z: 60 };
+    const heightAt = (x: number, z: number): number => 10 + 0.01 * distance({ x, z }, basin);
+    const layout = computeDistrictParkLayout(DISTRICT.footprint, heightAt);
+    expect((layout.pond.x0 + layout.pond.x1) / 2).toBe(basin.x);
+    expect((layout.pond.z0 + layout.pond.z1) / 2).toBe(basin.z);
+    expect(layout.pond.x1 - layout.pond.x0).toBe(DISTRICT_POND.w);
+    expect(layout.pond.z1 - layout.pond.z0).toBe(DISTRICT_POND.d);
+    expect(layout.pondLowest).toBe(10);
+    // The highest ground under the pond is at its corners, 25 m from the basin.
+    expect(layout.pondHighest).toBeCloseTo(10.25, 9);
+    expect(layout.pondY).toBeCloseTo(10.25 + DISTRICT_POND.lift, 9);
+    expect(layout.pondY).toBeLessThan(layout.pondHighest + 0.15);
+    for (const path of layout.paths) {
+      const crosses =
+        path.x0 < layout.pond.x1 &&
+        path.x1 > layout.pond.x0 &&
+        path.z0 < layout.pond.z1 &&
+        path.z1 > layout.pond.z0;
+      expect(crosses).toBe(false);
+    }
+    for (const s of layout.specimens) expect(rectHas(layout.pond, s, 1)).toBe(false);
+  });
+
+  it('cuts the lawn into four pieces that tile the footprint about the pond', () => {
+    const layout = computeDistrictParkLayout(DISTRICT.footprint, () => 0);
+    const area = (r: Rect): number => (r.x1 - r.x0) * (r.z1 - r.z0);
+    const lawnArea = layout.lawnPieces.reduce((sum, r) => sum + area(r), 0);
+    expect(lawnArea).toBeCloseTo(area(layout.lawn) - area(layout.pond), 6);
+  });
+});
+
+describe('the sports ground layout (pure)', () => {
+  const layout = computeSportsGroundLayout(SPORTS.footprint);
+
+  it('marks a 105 × 68 m pitch with its lines, two goals, 17 trees and 2 benches', () => {
+    expect(layout.pitch.x1 - layout.pitch.x0).toBe(PITCH.length);
+    expect(layout.pitch.z1 - layout.pitch.z0).toBe(PITCH.width);
+    expect(layout.lines).toHaveLength(5 + PITCH.centreSegments + 12);
+    expect(layout.goals).toHaveLength(2);
+    expect(layout.trees).toHaveLength(17);
+    expect(layout.benches).toHaveLength(2);
+    for (const goal of layout.goals) expect([layout.pitch.x0, layout.pitch.x1]).toContain(goal.x);
+  });
+
+  it('keeps the run-off inside the plate and the pavilion, fence and benches off the pitch on the street side', () => {
+    expect(layout.pitch.z0 - PITCH.runOff).toBeGreaterThanOrEqual(layout.plate.z0);
+    expect(layout.pitch.x0 - PITCH.runOff).toBeGreaterThanOrEqual(layout.plate.x0);
+    const pavilion: Rect = {
+      x0: layout.pavilion.x - layout.pavilion.w / 2,
+      x1: layout.pavilion.x + layout.pavilion.w / 2,
+      z0: layout.pavilion.z - layout.pavilion.d / 2,
+      z1: layout.pavilion.z + layout.pavilion.d / 2,
+    };
+    const overlapsPitch =
+      pavilion.x0 < layout.pitch.x1 &&
+      pavilion.x1 > layout.pitch.x0 &&
+      pavilion.z0 < layout.pitch.z1 &&
+      pavilion.z1 > layout.pitch.z0;
+    expect(overlapsPitch).toBe(false);
+    // Street side is local +Z: the pavilion sits on that edge, the fence and benches between it and the pitch.
+    expect(pavilion.z1).toBe(layout.plate.z1);
+    expect(layout.fenceLine.az).toBeGreaterThan(layout.pitch.z1);
+    expect(layout.fenceLine.az).toBeLessThan(pavilion.z0);
+    for (const post of layout.fencePosts) expect(rectHas(layout.pitch, post)).toBe(false);
+    for (const bench of layout.benches) {
+      expect(rectHas(layout.pitch, bench)).toBe(false);
+      expect(rectHas(pavilion, bench)).toBe(false);
+      expect(bench.z).toBeGreaterThan(layout.pitch.z1);
+      expect(bench.rotation).toBe(0);
+    }
+  });
+});
+
+describe('drapedQuad (pure)', () => {
+  it('lies on the ground plus its lift, in cells no longer than the step, facing up', () => {
+    const quad = drapedQuad(0, 0, 10, 6, {
+      step: 4,
+      lift: 0.15,
+      rgb: [0.2, 0.4, 0.2],
+      heightAt: (x, z) => x + 2 * z,
+    });
+    const position = quad.getAttribute('position');
+    expect(position.count).toBe((3 + 1) * (2 + 1));
+    for (let i = 0; i < position.count; i++) {
+      expect(position.getY(i)).toBeCloseTo(position.getX(i) + 2 * position.getZ(i) + 0.15, 4);
+    }
+    const normal = quad.getAttribute('normal');
+    for (let i = 0; i < normal.count; i++) expect(normal.getY(i)).toBeGreaterThan(0);
+    const color = quad.getAttribute('color');
+    expect(color.getX(0)).toBeCloseTo(0.2, 1);
+    expect(color.getY(0)).toBeCloseTo(0.4, 1);
+    expect(color.getZ(0)).toBeCloseTo(0.2, 1);
+  });
+});
+
+describe('the park kits in the renderer', () => {
+  it('shares one tree pool and one bench pool across every rung', () => {
+    const scene = new THREE.Scene();
+    const renderer = new UtilityKitRenderer(scene, flatHeightAt, [makeSmallParkEntry(), ...PARKS]);
+    const tree = renderer.partGeometry('small-park', 'parkTree');
+    const bench = renderer.partGeometry('small-park', 'parkBench');
+    for (const entry of PARKS) {
+      expect(renderer.partGeometry(entry.id, 'parkTree')).toBe(tree);
+      expect(renderer.partGeometry(entry.id, 'parkBench')).toBe(bench);
+    }
+    expect(renderer.partGeometry('district-park', 'pavilionBlock')).toBe(
+      renderer.partGeometry('sports-ground', 'pavilionBlock'),
+    );
+    expect(renderer.poolKinds('civic-plaza')).toEqual(['plazaGround', 'parkTree', 'parkBench']);
+    expect(renderer.poolKinds('neighbourhood-park')).toEqual([
+      'parkTree',
+      'parkBench',
+      'playFrame',
+    ]);
+    expect(renderer.poolKinds('district-park')).toEqual(['parkTree', 'parkBench', 'pavilionBlock']);
+    expect(renderer.poolKinds('sports-ground')).toEqual([
+      'sportsGround',
+      'parkTree',
+      'parkBench',
+      'pitchGoal',
+      'pavilionBlock',
+    ]);
+    // Five ground/part pools in all: parkGround, plazaGround, sportsGround, and the shared tree, bench, frame, goal, pavilion.
+    expect(instancedMeshes(scene)).toHaveLength(8);
+  });
+
+  it('draws N district parks as N draped meshes over the three pools the kit owns', () => {
+    const scene = new THREE.Scene();
+    const renderer = new UtilityKitRenderer(scene, flatHeightAt, [DISTRICT]);
+    renderer.apply(
+      deltaAdd(
+        makeInstance(1, 'district-park', { x: 0, z: 0 }),
+        makeInstance(2, 'district-park', { x: 30, z: 0 }),
+        makeInstance(3, 'district-park', { x: 60, z: 0 }),
+      ),
+    );
+    expect(renderer.drapedMeshCount()).toBe(3);
+    expect(instancedMeshes(scene)).toHaveLength(3);
+    const plain = scene.children.filter(
+      (o) => o instanceof THREE.Mesh && !(o instanceof THREE.InstancedMesh),
+    );
+    expect(plain).toHaveLength(3);
+    expect(renderer.partSlotsFor(1, 'parkTree')).toHaveLength(67 + DISTRICT_SPECIMEN.count);
+    expect(renderer.partSlotsFor(1, 'parkBench')).toHaveLength(16);
+    expect(renderer.partSlotsFor(1, 'pavilionBlock')).toHaveLength(1);
+    const geometry = renderer.drapedMesh(1)!.geometry;
+    expect(geometry.index!.count / 3).toBeLessThan(12000);
+  });
+
+  it('stands the plaza, neighbourhood park and sports ground with their counts', () => {
+    const renderer = new UtilityKitRenderer(new THREE.Scene(), flatHeightAt, PARKS);
+    renderer.apply(
+      deltaAdd(
+        makeInstance(1, 'civic-plaza', { x: 0, z: 0 }),
+        makeInstance(2, 'neighbourhood-park', { x: 10, z: 0 }),
+        makeInstance(3, 'sports-ground', { x: 30, z: 0 }),
+      ),
+    );
+    expect(renderer.partSlotsFor(1, 'plazaGround')).toHaveLength(1);
+    expect(renderer.partSlotsFor(1, 'parkTree')).toHaveLength(17);
+    expect(renderer.partSlotsFor(1, 'parkBench')).toHaveLength(8);
+    expect(renderer.drapedMesh(1)).toBeNull();
+    expect(renderer.partSlotsFor(2, 'parkTree')).toHaveLength(30);
+    expect(renderer.partSlotsFor(2, 'parkBench')).toHaveLength(7);
+    expect(renderer.partSlotsFor(2, 'playFrame')).toHaveLength(2);
+    expect(renderer.drapedMesh(2)).not.toBeNull();
+    expect(renderer.partSlotsFor(3, 'sportsGround')).toHaveLength(1);
+    expect(renderer.partSlotsFor(3, 'parkTree')).toHaveLength(17);
+    expect(renderer.partSlotsFor(3, 'parkBench')).toHaveLength(2);
+    expect(renderer.partSlotsFor(3, 'pitchGoal')).toHaveLength(2);
+    expect(renderer.partSlotsFor(3, 'pavilionBlock')).toHaveLength(1);
+  });
+
+  it('stands every tree of a draped park on the ground under it and the plaza trees on their planters', () => {
+    const slope = (x: number, z: number): number => 0.05 * x + 0.02 * z;
+    const renderer = new UtilityKitRenderer(new THREE.Scene(), slope, [DISTRICT, PLAZA]);
+    renderer.apply(
+      deltaAdd(
+        makeInstance(1, 'district-park', { x: 0, z: 0, rotation: 1 }),
+        makeInstance(2, 'civic-plaza', { x: 30, z: 0 }),
+      ),
+    );
+    const m = new THREE.Matrix4();
+    for (const slot of renderer.partSlotsFor(1, 'parkTree')) {
+      renderer.getPartMatrix('district-park', 'parkTree', slot, m);
+      const p = decomposePosition(m);
+      expect(p.y).toBeCloseTo(slope(p.x, p.z), 3);
+    }
+    const plazaGround = renderer.partSlotsFor(2, 'plazaGround')[0]!;
+    renderer.getPartMatrix('civic-plaza', 'plazaGround', plazaGround, m);
+    const plateY = decomposePosition(m).y;
+    for (const slot of renderer.partSlotsFor(2, 'parkTree')) {
+      renderer.getPartMatrix('civic-plaza', 'parkTree', slot, m);
+      expect(decomposePosition(m).y).toBeCloseTo(plateY + 0.45, 4);
+    }
+  });
+
+  it('lays the district pond as one flat water-coloured rect over the ground under it, both triangles facing up', () => {
+    const basin = { x: 400 - 90, z: 400 + 60 };
+    const heightAt = (x: number, z: number): number => 10 + 0.01 * distance({ x, z }, basin);
+    const renderer = new UtilityKitRenderer(new THREE.Scene(), heightAt, [DISTRICT]);
+    renderer.apply(deltaAdd(makeInstance(1, 'district-park', { x: 10, z: 10 })));
+    const geometry = renderer.drapedMesh(1)!.geometry;
+    const position = geometry.getAttribute('position');
+    const color = geometry.getAttribute('color');
+    const index = geometry.index!;
+    const isWater = (i: number): boolean =>
+      Math.abs(color.getX(i) - SHALLOW_WATER_COLOR[0]) < 0.02 &&
+      Math.abs(color.getY(i) - SHALLOW_WATER_COLOR[1]) < 0.02 &&
+      Math.abs(color.getZ(i) - SHALLOW_WATER_COLOR[2]) < 0.02;
+
+    // Every water-coloured triangle, wound to face up (positive area seen from +Y), tiles the whole 40 × 30 m.
+    let waterArea = 0;
+    let waterTriangles = 0;
+    const waterYs = new Set<number>();
+    for (let t = 0; t < index.count; t += 3) {
+      const [a, b, c] = [index.getX(t), index.getX(t + 1), index.getX(t + 2)];
+      if (!isWater(a) || !isWater(b) || !isWater(c)) continue;
+      const ux = position.getX(b) - position.getX(a);
+      const uz = position.getZ(b) - position.getZ(a);
+      const vx = position.getX(c) - position.getX(a);
+      const vz = position.getZ(c) - position.getZ(a);
+      // (b - a) × (c - a) has a +Y component when the triangle faces up.
+      const signedArea = (uz * vx - ux * vz) / 2;
+      expect(signedArea).toBeGreaterThan(0);
+      waterArea += signedArea;
+      waterTriangles++;
+      for (const i of [a, b, c]) waterYs.add(Math.round(position.getY(i) * 1e4) / 1e4);
+    }
+    expect(waterTriangles).toBe(2);
+    expect(waterArea).toBeCloseTo(DISTRICT_POND.w * DISTRICT_POND.d, 3);
+    expect(waterYs.size).toBe(1);
+    // The water lies over the highest ground under the pond, never under the terrain, and under the lawn there.
+    const pondY = [...waterYs][0]!;
+    expect(pondY).toBeCloseTo(10.25 + DISTRICT_POND.lift, 3);
+    for (const [x, z] of [
+      [basin.x - 20, basin.z - 15],
+      [basin.x + 20, basin.z - 15],
+      [basin.x - 20, basin.z + 15],
+      [basin.x + 20, basin.z + 15],
+      [basin.x, basin.z],
+    ]) {
+      expect(pondY).toBeGreaterThan(heightAt(x!, z!));
+    }
+    expect(pondY).toBeLessThan(10.25 + 0.15);
+  });
+
+  it('frees every slot a removed park owned and disposes its draped plate', () => {
+    const scene = new THREE.Scene();
+    const renderer = new UtilityKitRenderer(scene, flatHeightAt, PARKS);
+    renderer.apply(
+      deltaAdd(
+        makeInstance(1, 'district-park', { x: 0, z: 0 }),
+        makeInstance(2, 'sports-ground', { x: 30, z: 0 }),
+      ),
+    );
+    const mesh = renderer.drapedMesh(1)!;
+    let disposed = false;
+    mesh.geometry.addEventListener('dispose', () => {
+      disposed = true;
+    });
+    const owned = (
+      ['parkTree', 'parkBench', 'pavilionBlock', 'sportsGround', 'pitchGoal'] as const
+    ).map((kind): [UtilityKitPartKind, number[]] => [
+      kind,
+      [...renderer.partSlotsFor(1, kind), ...renderer.partSlotsFor(2, kind)],
+    ]);
+    expect(owned.reduce((n, [, slots]) => n + slots.length, 0)).toBeGreaterThan(100);
+
+    renderer.apply(deltaRemove(1, 2));
+
+    expect(renderer.hasInstance(1)).toBe(false);
+    expect(renderer.hasInstance(2)).toBe(false);
+    expect(renderer.drapedMeshCount()).toBe(0);
+    expect(scene.children).not.toContain(mesh);
+    expect(disposed).toBe(true);
+    const m = new THREE.Matrix4();
+    for (const [kind, slots] of owned) {
+      const catalogId =
+        kind === 'sportsGround' || kind === 'pitchGoal' ? 'sports-ground' : 'district-park';
+      for (const slot of slots) {
+        renderer.getPartMatrix(catalogId, kind, slot, m);
+        expect(isZeroScale(m), `${kind} slot ${slot}`).toBe(true);
+      }
+    }
+  });
+});
+
+describe('park wear', () => {
+  it('maps load to wear: nothing to 1, linear to bare at 3', () => {
+    expect(parkWear(0)).toBe(0);
+    expect(parkWear(1)).toBe(0);
+    expect(parkWear(2)).toBe(0.5);
+    expect(parkWear(3)).toBe(1);
+    expect(parkWear(9)).toBe(1);
+  });
+
+  it('tints the pocket park plate by instance colour, white at load 1 and earth at load 3', () => {
+    const renderer = new UtilityKitRenderer(new THREE.Scene(), flatHeightAt, [
+      makeSmallParkEntry(),
+    ]);
+    renderer.apply(deltaAdd(makeInstance(1, 'small-park')));
+    const slot = renderer.partSlotsFor(1, 'parkGround')[0]!;
+    const c = new THREE.Color();
+
+    renderer.setParkLoads([{ id: 1, load: 1 }]);
+    renderer.getPartColor('small-park', 'parkGround', slot, c);
+    expect([c.r, c.g, c.b]).toEqual([1, 1, 1]);
+
+    renderer.setParkLoads([{ id: 1, load: 0.4 }]);
+    renderer.getPartColor('small-park', 'parkGround', slot, c);
+    expect([c.r, c.g, c.b]).toEqual([1, 1, 1]);
+
+    renderer.setParkLoads([{ id: 1, load: 3 }]);
+    renderer.getPartColor('small-park', 'parkGround', slot, c);
+    expect(c.r).toBeCloseTo(SCUFFED_EARTH_RGB[0], 5);
+    expect(c.g).toBeCloseTo(SCUFFED_EARTH_RGB[1], 5);
+    expect(c.b).toBeCloseTo(SCUFFED_EARTH_RGB[2], 5);
+  });
+
+  it('rewrites a draped lawn toward earth and leaves its paths alone', () => {
+    const renderer = new UtilityKitRenderer(new THREE.Scene(), flatHeightAt, [NEIGHBOURHOOD]);
+    renderer.apply(deltaAdd(makeInstance(1, 'neighbourhood-park')));
+    const before = renderer.drapedLawnColor(1)!;
+    renderer.setParkLoads([{ id: 1, load: 2 }]);
+    const worn = renderer.drapedLawnColor(1)!;
+    for (let i = 0; i < 3; i++) {
+      expect(worn[i]).toBeCloseTo((before[i]! + SCUFFED_EARTH_RGB[i]!) / 2, 2);
+    }
+    const color = renderer.drapedMesh(1)!.geometry.getAttribute('color');
+    const last = color.count - 1;
+    expect([color.getX(last), color.getY(last), color.getZ(last)]).not.toEqual([
+      worn[0],
+      worn[1],
+      worn[2],
+    ]);
+  });
+
+  it('keeps a load listed before the park arrives and applies it then', () => {
+    const renderer = new UtilityKitRenderer(new THREE.Scene(), flatHeightAt, [
+      DISTRICT,
+      makeSmallParkEntry(),
+    ]);
+    renderer.setParkLoads([
+      { id: 1, load: 3 },
+      { id: 2, load: 3 },
+    ]);
+    renderer.apply(
+      deltaAdd(
+        makeInstance(1, 'district-park', { x: 0, z: 0 }),
+        makeInstance(2, 'small-park', { x: 30, z: 0 }),
+      ),
+    );
+    const lawn = renderer.drapedLawnColor(1)!;
+    for (let i = 0; i < 3; i++) expect(lawn[i]).toBeCloseTo(SCUFFED_EARTH_RGB[i]!, 5);
+    const c = new THREE.Color();
+    renderer.getPartColor(
+      'small-park',
+      'parkGround',
+      renderer.partSlotsFor(2, 'parkGround')[0]!,
+      c,
+    );
+    expect(c.r).toBeCloseTo(SCUFFED_EARTH_RGB[0], 5);
+  });
+
+  it('wears nothing on a plaza or a sports ground', () => {
+    const renderer = new UtilityKitRenderer(new THREE.Scene(), flatHeightAt, [PLAZA, SPORTS]);
+    renderer.apply(
+      deltaAdd(
+        makeInstance(1, 'civic-plaza', { x: 0, z: 0 }),
+        makeInstance(2, 'sports-ground', { x: 30, z: 0 }),
+      ),
+    );
+    renderer.setParkLoads([
+      { id: 1, load: 3 },
+      { id: 2, load: 3 },
+    ]);
+    const c = new THREE.Color();
+    renderer.getPartColor(
+      'civic-plaza',
+      'plazaGround',
+      renderer.partSlotsFor(1, 'plazaGround')[0]!,
+      c,
+    );
+    expect([c.r, c.g, c.b]).toEqual([1, 1, 1]);
+    renderer.getPartColor(
+      'sports-ground',
+      'sportsGround',
+      renderer.partSlotsFor(2, 'sportsGround')[0]!,
+      c,
+    );
+    expect([c.r, c.g, c.b]).toEqual([1, 1, 1]);
+    expect(renderer.drapedMesh(1)).toBeNull();
+    expect(renderer.drapedMesh(2)).toBeNull();
+  });
+
+  it('resets a recycled pocket-park slot to white for the next park', () => {
+    const renderer = new UtilityKitRenderer(new THREE.Scene(), flatHeightAt, [
+      makeSmallParkEntry(),
+    ]);
+    renderer.apply(deltaAdd(makeInstance(1, 'small-park')));
+    renderer.setParkLoads([{ id: 1, load: 3 }]);
+    renderer.apply(deltaRemove(1));
+    renderer.apply(deltaAdd(makeInstance(2, 'small-park')));
+    const c = new THREE.Color();
+    renderer.getPartColor(
+      'small-park',
+      'parkGround',
+      renderer.partSlotsFor(2, 'parkGround')[0]!,
+      c,
+    );
+    expect([c.r, c.g, c.b]).toEqual([1, 1, 1]);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Night cycle: only the turbine beacon glows
 // ---------------------------------------------------------------------------
 
@@ -2047,7 +2647,7 @@ describe('a paved kit on sloped ground', () => {
 // ---------------------------------------------------------------------------
 
 describe('multiple kits coexisting', () => {
-  it('builds and applies all 34 kits from one catalog + one delta without cross-talk', () => {
+  it('builds and applies all 38 kits from one catalog + one delta without cross-talk', () => {
     const renderer = new UtilityKitRenderer(new THREE.Scene(), flatHeightAt, [
       makeTurbineEntry(),
       makeWaterTowerEntry(),
@@ -2068,9 +2668,14 @@ describe('multiple kits coexisting', () => {
       ...PLOPPABLES,
       ...DEPOTS,
       makeSmallParkEntry(),
+      ...PARKS,
     ]);
     renderer.apply(
       deltaAdd(
+        makeInstance(35, 'civic-plaza', { x: 0, z: 40 }),
+        makeInstance(36, 'neighbourhood-park', { x: 10, z: 40 }),
+        makeInstance(37, 'district-park', { x: 20, z: 40 }),
+        makeInstance(38, 'sports-ground', { x: 50, z: 40 }),
         makeInstance(31, 'bus-depot', { x: 0, z: 20 }),
         makeInstance(32, 'bus-garage', { x: 10, z: 20 }),
         makeInstance(33, 'tram-depot', { x: 20, z: 20 }),
@@ -2153,6 +2758,12 @@ describe('multiple kits coexisting', () => {
     expect(renderer.partSlotsFor(33, 'tramDepotCar')).toHaveLength(16);
     expect(renderer.partSlotsFor(34, 'railYardCar')).toHaveLength(15);
     expect(renderer.partSlotsFor(33, 'railYardCar')).toHaveLength(0);
+    expect(renderer.partSlotsFor(35, 'plazaGround')).toHaveLength(1);
+    expect(renderer.partSlotsFor(36, 'playFrame')).toHaveLength(2);
+    expect(renderer.partSlotsFor(37, 'pavilionBlock')).toHaveLength(1);
+    expect(renderer.partSlotsFor(38, 'pitchGoal')).toHaveLength(2);
+    expect(renderer.partSlotsFor(5, 'parkTree').length).toBeGreaterThan(0);
+    expect(renderer.drapedMeshCount()).toBe(2);
   });
 });
 

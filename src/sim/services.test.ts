@@ -969,6 +969,53 @@ describe('ServiceSim: a facility keeps its own load, for the selection channel',
   });
 });
 
+describe('ServiceSim: every capped park reports its load, for the worn lawn', () => {
+  /** A park variant with its own capacity (undefined = uncapped). */
+  const parkWith = (id: string, capacity: number | undefined): BuildingCatalogEntry => ({
+    ...parkEntry,
+    id,
+    service: { kind: 'park', strength: 80, range: 8, capacity },
+  });
+
+  it('lists only the parks with a load, in id order, whatever order they were placed', () => {
+    const cat = [...catalog, parkWith('park-1000', 1000), clinicWith('clinic-1000', 1000), home500];
+    const g = makeGrid();
+    const buildings: BuildingInstance[] = [];
+    roadStrip(g, 12);
+    // Placed high id first: the listing sorts, it does not trust the registry's order.
+    place(g, buildings, 7, 'park-1000', 8, 0, 1, 1);
+    place(g, buildings, 2, 'park-1000', 0, 0, 1, 1);
+    // A capped clinic is a load, but not a park's; an uncapped park has no load.
+    place(g, buildings, 3, 'clinic-1000', 4, 0, 1, 1);
+    place(g, buildings, 4, 'park', 6, 0, 1, 1);
+    for (let i = 0; i < 3; i++) place(g, buildings, 10 + i, 'home-500', 2 + i, 2, 1, 1);
+
+    const sim = new ServiceSim(cat);
+    sim.tick(g, buildings, fullFunding(1));
+
+    const loads = sim.parkLoads(buildings);
+    expect(loads.map((p) => p.id)).toEqual([2, 7]);
+    for (const p of loads) expect(p.load).toBeCloseTo(sim.facilityLoad(p.id)!, 10);
+    expect(loads[0]!.load).toBeCloseTo(1.5, 10);
+  });
+
+  it('is empty when no park is capped, and before the first pass', () => {
+    const cat = [...catalog, clinicWith('clinic-1000', 1000), home500];
+    const g = makeGrid();
+    const buildings: BuildingInstance[] = [];
+    roadStrip(g, 9);
+    place(g, buildings, 1, 'park', 0, 0, 1, 1);
+    place(g, buildings, 2, 'clinic-1000', 1, 0, 1, 1);
+    place(g, buildings, 3, 'home-500', 2, 2, 1, 1);
+
+    const sim = new ServiceSim(cat);
+    expect(sim.parkLoads(buildings)).toEqual([]);
+    sim.tick(g, buildings, fullFunding(1));
+    expect(sim.facilityLoad(2)).toBeCloseTo(0.5, 10);
+    expect(sim.parkLoads(buildings)).toEqual([]);
+  });
+});
+
 // ---------------------------------------------------------------------------
 // Coverage seeds: a facility's walk starts from every road tile within reach
 // of its footprint, so a park on four streets serves from all four.

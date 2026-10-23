@@ -25,7 +25,7 @@ current behavior only and carry no dates of their own._
 
 ## Status (2026-09-29)
 
-**Test suite:** 6,959 tests passing and 16 skipped across 199 test files, run 2026-10-23.
+**Test suite:** 7,011 tests passing across 199 test files, run 2026-10-23.
 This is the only test count in the documentation set. When the suite changes
 again, update the figure here and nowhere else.
 
@@ -250,15 +250,15 @@ apron. **In progress, at the player's request (2026-10-16): tramways**
 ([tramways.md](game-design/features/tramways.md)) — a street tramway drawn
 as a street cars share, a tram reservation lifted onto an elevated guideway
 in the Disney World monorail's form with raised stations, and every tram
-lane routable; complete 2026-10-23 with the raised stations. **In progress:
-the programme's last epic, parks and recreation**
-([parks-and-recreation.md](game-design/features/parks-and-recreation.md)) —
+lane routable; complete 2026-10-23 with the raised stations. **The
+programme's last epic, parks and recreation, is complete (2026-10-23;
+[parks-and-recreation.md](game-design/features/parks-and-recreation.md))** —
 parks at the real sizes of the US park types, planned to a provision
-standard and capped like every other service; the rules built, the kits
-next. After it, the
-[DESIGN.md](DESIGN.md) deferred backlog (weather, deeper industry, more
-transit modes) and AI raster map packs, facade-atlas stage 2 and screen-space
-AO/reflections are the shelf to pick from.
+standard, capped like every other service, drawn as five kits that read
+apart and worn when full. **The municipal services programme is complete.**
+Next, the [DESIGN.md](DESIGN.md) deferred backlog (weather, deeper industry,
+more transit modes) and AI raster map packs, facade-atlas stage 2 and
+screen-space AO/reflections are the shelf to pick from.
 
 ---
 
@@ -398,6 +398,37 @@ roads, and pinning the Three.js version. See [adr/](engineering/adr/README.md).
 ---
 
 ## 10. History (newest first)
+
+### The five parks drawn at their real sizes, and worn by their load (slice 2 of parks and recreation, built 2026-10-23; epic and programme complete)
+
+With the kits, parks and recreation is complete, and with it the municipal
+services programme that began with service capacity in September: water and
+sewage, garbage, healthcare and death care, emergency services, the education
+ladder, power generation, transport depots, tramways and parks, every one at
+real sizes and sourced figures.
+
+- **Four kits above the pocket park, read apart at the default pitch
+  without a label.** The civic plaza is paving with planters, a band every
+  10 m and a feature square; the neighbourhood park a lawn with a path cross
+  and ring, trees along the ring and a tan play zone with two frames; the
+  district park open ground ringed with trees, specimens inside, a path ring
+  and crossing paths, a pond sunk where the ground is lowest and a pavilion
+  on the ring; the sports ground one FIFA pitch with its lines, goals, fence
+  and a long low changing pavilion along the street.
+- **A draped park lies on its hill.** A levelled rung's plate instances; a
+  neighbourhood or district park's is one mesh laid on the terrain under
+  that park, a vertex every 4 m (10 m on the district park), and the pick pad
+  under it sinks below its lowest ground so the lawn hides it.
+- **Props scale with perimeter, not area:** a tree every 24 m of edge, a
+  bench every 50 m of path, one instanced pool each across every rung. Eight
+  draw calls for any number of parks, plus one per draped park.
+- **A full park shows it.** Past a catchment load of 1 a lawn scuffs toward
+  earth, bare at 3; the snapshot carries each capped park's load so the
+  worn lawn is seen before it is read in a panel. The plaza and the pitch
+  wear nothing.
+- Checked in the browser: the five rungs side by side, the pitch at scale
+  beside a street, the district park at load 0.5 and 3, its edge flush with
+  the road and its lawn on a slope, the plaza between two blocks.
 
 ### Parks at real sizes, planned to a provision standard (slice 1 of parks and recreation, built 2026-10-23)
 

@@ -34,16 +34,42 @@ export function maxHeightOverRect(
   x1: number,
   z1: number,
 ): number {
+  return extremeHeightOverRect(heightAt, x0, z0, x1, z1, Math.max, -Infinity);
+}
+
+/**
+ * Lowest terrain under a world-metre rectangle, found the same way: the
+ * ground a draped park's hidden pad sinks to, so nothing of it shows through
+ * the lawn laid on the slope above.
+ */
+export function minHeightOverRect(
+  heightAt: (x: number, z: number) => number,
+  x0: number,
+  z0: number,
+  x1: number,
+  z1: number,
+): number {
+  return extremeHeightOverRect(heightAt, x0, z0, x1, z1, Math.min, Infinity);
+}
+
+function extremeHeightOverRect(
+  heightAt: (x: number, z: number) => number,
+  x0: number,
+  z0: number,
+  x1: number,
+  z1: number,
+  pick: (a: number, b: number) => number,
+  start: number,
+): number {
   const lines = (a: number, b: number): number[] => {
     const out = [a, b];
     for (let t = Math.ceil(a / TILE_METERS) * TILE_METERS; t < b; t += TILE_METERS) out.push(t);
     for (let t = Math.ceil(a); t < b; t += 1) out.push(t);
     return out;
   };
-  let max = -Infinity;
+  let found = start;
   for (const x of lines(x0, x1)) {
-    for (const z of lines(z0, z1)) max = Math.max(max, heightAt(x, z));
+    for (const z of lines(z0, z1)) found = pick(found, heightAt(x, z));
   }
-  return max;
+  return found;
 }
-

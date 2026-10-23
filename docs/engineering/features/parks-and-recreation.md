@@ -1,7 +1,8 @@
 # Parks and recreation — technical design
 
-- **Status:** Agreed 2026-10-23 (drafted 2026-09-18; re-planned for real-sized
-  parks, real cost ratios and the airport fix at the player's choice)
+- **Status:** Built 2026-10-23 (drafted 2026-09-18; re-planned for real-sized
+  parks, real cost ratios and the airport fix at the player's choice; slice 1
+  the rules, slice 2 the kits)
 - **Date:** 2026-10-23
 - **Author:** Claude Opus 5, revised by Claude Fable 5.1
 
@@ -147,21 +148,27 @@ These are the largest ground-level assets in the game and
 300 draw calls. Four rules keep the epic inside it, all four extending the
 pocket-park kit in `src/render/utilitykits.ts` — see
 [../../art/props-and-vehicles.md](../../art/props-and-vehicles.md).
-**1. A park's ground is one instance, not one per tile, draped on the
-terrain.** `buildParkGroundGeometry(footprint)` merges the lawn plate and path
-cross into one `BufferGeometry` sized from the footprint, so a 400-tile
-district park is **one** instance — the most important budget fact. Today the
-plate is a flat box at the kit's origin; it becomes a lattice at one vertex
-per tile edge (a 20×20 park is a 21×21 grid) with each vertex's height read
-from the terrain, the way a lot's lawn and a road's deck follow the ground,
-so the lawn and the path cross lie on the hillside a draped park stands on.
-A levelled entry's plate is flat, as its ground is. **2.
-Footprint-independent parts share one pool across all five kits.**
-Each kit today builds its own `InstancedSlotPool` per part, so five park kits
-would mean five tree and five bench pools for identical geometry. `parkTree` and
-`parkBench` do not depend on the footprint, so the whole cost becomes 5 ground
-pools + `parkTree` + `parkBench` + `pitchGoal` + `pavilionBlock` = **9 draw
-calls, for any number of parks**.
+**1. A park's ground is one plate, not one per tile.** A flat rung (pocket
+park, plaza, sports ground, whose ground the sim levels) merges its plate, paths
+and markings into one `BufferGeometry` sized from the footprint and instances
+it, one slot per park: `parkGround`, `plazaGround`, `sportsGround`. A draped
+rung (neighbourhood and district park) cannot share a geometry, because its
+heights are the terrain's under that one park, so each such park is one merged
+mesh of its own: a lattice at a vertex every 4 m (10 m on the district park,
+which keeps its plate near 4k triangles) with each vertex's height read from
+the terrain, the way a lot's lawn and a road's deck follow the ground, so the
+lawn and the paths lie on the hillside the park stands on. A 400-tile district
+park is still **one** draw call — the most important budget fact — and a city
+holds a handful of them, not hundreds. The instancer's pick pad under a draped
+entry sinks below the lowest ground beneath it (`minHeightOverRect`), so the
+lawn hides it on a slope and a click still finds the park. **2. Footprint-independent
+parts share one pool across all five kits.** Each kit today builds its own
+`InstancedSlotPool` per part, so five park kits would mean five tree and five
+bench pools for identical geometry. `parkTree` and `parkBench` do not depend
+on the footprint, so the whole cost becomes 3 ground pools + `parkTree` +
+`parkBench` + `pitchGoal` + `pavilionBlock` + `playFrame` = **8 draw calls
+plus one per draped park**. Planters and the pitch fence are fixed to their
+footprint, so they merge into the plaza's and the sports ground's plate.
 
 **3. Prop counts scale with perimeter, not area** — trees ring the edge and the
 paths, the middle stays open, and that is both the correct read and what keeps
@@ -173,7 +180,7 @@ An area-scaled rule would have put 75 trees on every district park.
 
 | Rung               | Perimeter | Trees            | Benches |
 | ------------------ | --------- | ---------------- | ------- |
-| Pocket Park        | 80 m      | 3                | 2       |
+| Pocket Park        | 80 m      | 2–3              | 2       |
 | Civic Plaza        | 400 m     | 17 (in planters) | 8       |
 | Neighbourhood Park | 720 m     | 30               | 7       |
 | District Park      | 1,600 m   | 67 + 8 specimens | 16      |
@@ -251,8 +258,9 @@ The rules above, as behaviour statements; the
   residents-per-tile ÷ 5 — table-driven, so it fails if a number is edited alone.
 - Provision reports park tiles per 1,000 residents from a fixture catalog, and is
   0 rather than `NaN` at population 0.
-- Tree and bench counts are pure functions of footprint — 3/2, 7/3, 10/2, 21/4,
-  17/2 — asserted without a scene; and removing a park frees every slot it owned.
+- Tree and bench counts are pure functions of footprint — 17/8, 30/7, 67+8/16,
+  17/2, the pocket park keeping its two or three — asserted without a scene; and
+  removing a park frees every slot it owned and the draped mesh it stood on.
 
 **What has to be looked at in a browser** — this epic is almost entirely visual
 and a read-back proves none of it.

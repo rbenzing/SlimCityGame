@@ -188,7 +188,7 @@ describe('the registry', () => {
       expect(UTILITY_KIT_CATALOG_IDS).toContain(entry.id);
       expect(renderer.kitIds().has(entry.id)).toBe(true);
     }
-    expect(UTILITY_KIT_CATALOG_IDS).toHaveLength(34);
+    expect(UTILITY_KIT_CATALOG_IDS).toHaveLength(38);
   });
 });
 
