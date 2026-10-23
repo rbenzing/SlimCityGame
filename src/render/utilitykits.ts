@@ -166,6 +166,7 @@ import { footprintForRotation } from '../shared/footprint';
 import { maxHeightOverRect } from './footprint';
 import { InstancedSlotPool } from './massing';
 import { sunDirection } from './sun';
+import { SHALLOW_WATER_COLOR } from './water';
 import { buildServiceVehicleGeometry, type ServiceVehicleKind } from './servicevehicles';
 import { buildVehicleGeometry, sizeForKind, VEHICLE_PALETTE_HEX } from './vehicles';
 import {
@@ -228,6 +229,10 @@ export const UTILITY_KIT_CATALOG_IDS: readonly string[] = [
   'combined-cycle',
   'nuclear-plant',
   'small-park',
+  'civic-plaza',
+  'neighbourhood-park',
+  'district-park',
+  'sports-ground',
   'clinic',
   'rail-station',
   'bus-stop',
@@ -317,6 +322,11 @@ export type UtilityKitPartKind =
   | 'parkGround'
   | 'parkTree'
   | 'parkBench'
+  | 'plazaGround'
+  | 'sportsGround'
+  | 'playFrame'
+  | 'pitchGoal'
+  | 'pavilionBlock'
   | 'clinicGrounds'
   | 'clinicBuilding'
   | 'clinicLit'
@@ -6262,6 +6272,838 @@ function buildParkBenchGeometry(): THREE.BufferGeometry {
 }
 
 // ---------------------------------------------------------------------------
+// The larger park rungs. A civic plaza and a sports ground stand on a flat
+// instanced plate like the pocket park; a neighbourhood park and a district
+// park are draped over the terrain, one merged mesh each. Trees and benches
+// are one pool across every rung; counts follow the perimeter and the paths.
+// ---------------------------------------------------------------------------
+
+export const PARK_TREE_SPACING_M = 24;
+export const PARK_TREE_INSET_M = 3;
+export const PARK_BENCH_SPACING_M = 50;
+export const PARK_BENCH_MIN = 2;
+export const PARK_RING_PATH_WIDTH_M = 3.2;
+/** A tree or bench keeps this far from where a path meets the edge or the ring. */
+export const PARK_MOUTH_CLEARANCE_M = 4;
+/** A bench stands this far inside the ring path's centre line. */
+const PARK_BENCH_RING_OFFSET_M = 2;
+/** A strip laid on a plate stands this proud of it. */
+const PARK_MARK_HEIGHT_M = 0.02;
+export const PARK_DRAPE_STEP_M = 4;
+/** The district park's 400 m lawn is coarsened to a half tile to stay inside the kit budget. */
+const DISTRICT_DRAPE_STEP_M = TILE_METERS / 2;
+export const PARK_SKIRT_DEPTH_M = 0.6;
+
+export const SCUFFED_EARTH_RGB: RGB = [0.55, 0.45, 0.3];
+const PLAZA_PAVING_RGB: RGB = [0.72, 0.7, 0.64];
+const PLAZA_BAND_RGB: RGB = [0.56, 0.54, 0.49];
+const PLAY_SURFACE_RGB: RGB = [0.78, 0.63, 0.42];
+const PLAY_FRAME_RGB: RGB = [0.9, 0.3, 0.1];
+const PITCH_RGB: RGB = [0.13, 0.38, 0.17];
+const PITCH_LINE_RGB: RGB = [0.95, 0.95, 0.93];
+const POND_BANK_RGB: RGB = [0.44, 0.35, 0.24];
+const PAVILION_WALL_RGB: RGB = [0.8, 0.78, 0.72];
+const PAVILION_ROOF_RGB: RGB = [0.38, 0.38, 0.4];
+const FENCE_RGB: RGB = [0.45, 0.47, 0.5];
+
+export const PLAZA_BAND_PITCH_M = 10;
+export const PLAZA_BAND_WIDTH_M = 0.6;
+export const PLAZA_FEATURE_M = 12;
+export const PLAZA_PLANTER = { size: 2, height: 0.45 } as const;
+
+export const NEIGHBOURHOOD_RING_INSET_M = 6;
+export const PLAY_ZONE_M = 30;
+export const PLAY_FRAME = { post: 0.1, height: 2.4, deckW: 3, deckD: 2, deckY: 1.2 } as const;
+const PLAY_FRAME_GAP_M = 8;
+
+export const DISTRICT_RING_INSET_M = 10;
+/**
+ * The pond's water lies `lift` above the highest ground under it, under the
+ * lawn's own lift: the terrain cannot be cut, so a surface sunk below the
+ * ground would be hidden by it.
+ */
+export const DISTRICT_POND = { w: 40, d: 30, lift: 0.08 } as const;
+const POND_LATTICE_M = 10;
+/** How finely the ground under the pond is sampled for its highest point. */
+const POND_SAMPLE_M = 5;
+const POND_MARGIN_M = 4;
+export const DISTRICT_SPECIMEN = { count: 8, radius: 60, scale: 1.3 } as const;
+export const DISTRICT_PAVILION = { w: 12, d: 8 } as const;
+export const PAVILION_HEIGHT_M = 3.2;
+const PAVILION_ROOF_M = 0.3;
+const PAVILION_FOOTING_M = 0.6;
+
+export const PITCH = {
+  length: 105,
+  width: 68,
+  runOff: 3,
+  line: 0.12,
+  centreRadius: 9.15,
+  centreSegments: 24,
+  penaltyDepth: 16.5,
+  penaltyWidth: 40.32,
+  goalDepth: 5.5,
+  goalWidth: 18.32,
+  goalMouth: 7.32,
+  goalHeight: 2.44,
+  goalPost: 0.12,
+} as const;
+/**
+ * The changing pavilion: two tiles along the street edge (local +Z), as deep
+ * as the strip beyond the pitch's run-off allows — a 6×4 site holds a FIFA
+ * pitch with its run-off and 6 m to spare across, so a full tile's depth
+ * would stand on the pitch.
+ */
+export const SPORTS_PAVILION = { w: 2 * TILE_METERS, d: 6 } as const;
+const SPORTS_BENCH_GAP_M = 4;
+const FENCE = { post: 0.1, height: 0.9, pitch: 4, rail: 0.06, railYs: [0.45, 0.85] } as const;
+
+export interface Strip {
+  ax: number;
+  az: number;
+  bx: number;
+  bz: number;
+}
+
+interface PathPoint extends Vec2 {
+  segment: number;
+}
+
+export interface PlacedBlock extends Vec2 {
+  w: number;
+  d: number;
+}
+
+function footprintRect(footprint: FootprintSize): Rect {
+  const { halfW, halfD } = footprintHalfExtents(footprint);
+  return { x0: -halfW, x1: halfW, z0: -halfD, z1: halfD };
+}
+
+function insetRect(r: Rect, by: number): Rect {
+  return { x0: r.x0 + by, x1: r.x1 - by, z0: r.z0 + by, z1: r.z1 - by };
+}
+
+function squareAt(x: number, z: number, side: number): Rect {
+  return { x0: x - side / 2, x1: x + side / 2, z0: z - side / 2, z1: z + side / 2 };
+}
+
+function rectsOverlap(a: Rect, b: Rect, margin = 0): boolean {
+  return (
+    a.x0 < b.x1 + margin && a.x1 > b.x0 - margin && a.z0 < b.z1 + margin && a.z1 > b.z0 - margin
+  );
+}
+
+function blockRect(block: PlacedBlock): Rect {
+  return {
+    x0: block.x - block.w / 2,
+    x1: block.x + block.w / 2,
+    z0: block.z - block.d / 2,
+    z1: block.z + block.d / 2,
+  };
+}
+
+/** The four edges of a rect as a loop: the −Z edge left to right, the +X side, the +Z edge right to left, the −X side. */
+function rectLoop(r: Rect): Strip[] {
+  return [
+    { ax: r.x0, az: r.z0, bx: r.x1, bz: r.z0 },
+    { ax: r.x1, az: r.z0, bx: r.x1, bz: r.z1 },
+    { ax: r.x1, az: r.z1, bx: r.x0, bz: r.z1 },
+    { ax: r.x0, az: r.z1, bx: r.x0, bz: r.z0 },
+  ];
+}
+
+/** The midpoints of a rect's edges, in loop order: where a path cross meets them. */
+function rectMidpoints(r: Rect): Vec2[] {
+  const c = rectCentre(r);
+  return [
+    { x: c.x, z: r.z0 },
+    { x: r.x1, z: c.z },
+    { x: c.x, z: r.z1 },
+    { x: r.x0, z: c.z },
+  ];
+}
+
+/**
+ * `count` points spread evenly along a run of segments, each nudged along its
+ * segment until it clears every mouth by `clearance`. Pure.
+ */
+function distributeAlong(
+  segments: readonly Strip[],
+  count: number,
+  mouths: readonly Vec2[],
+  clearance: number,
+): PathPoint[] {
+  const lengths = segments.map((s) => Math.hypot(s.bx - s.ax, s.bz - s.az));
+  const total = lengths.reduce((a, b) => a + b, 0);
+  const points: PathPoint[] = [];
+  if (count <= 0 || total <= 0) return points;
+  const step = total / count;
+  let segment = 0;
+  let start = 0;
+  for (let i = 0; i < count; i++) {
+    const s = (i + 0.5) * step;
+    while (segment < segments.length - 1 && s > start + lengths[segment]!) {
+      start += lengths[segment]!;
+      segment++;
+    }
+    const seg = segments[segment]!;
+    const len = lengths[segment]!;
+    const dx = (seg.bx - seg.ax) / len;
+    const dz = (seg.bz - seg.az) / len;
+    let t = s - start;
+    for (const mouth of mouths) {
+      const along = (mouth.x - seg.ax) * dx + (mouth.z - seg.az) * dz;
+      const across = Math.abs((mouth.x - seg.ax) * -dz + (mouth.z - seg.az) * dx);
+      if (across > clearance) continue;
+      const gap = t - along;
+      if (Math.abs(gap) >= clearance) continue;
+      t = along + (gap < 0 ? -clearance : clearance);
+    }
+    t = Math.min(len, Math.max(0, t));
+    points.push({ x: seg.ax + dx * t, z: seg.az + dz * t, segment });
+  }
+  return points;
+}
+
+export interface EdgeTreeOptions {
+  /** Metres in from the footprint edge the trees stand; 3 by default. */
+  inset?: number;
+  /** One tree per this many metres of the footprint's perimeter; 24 by default. */
+  spacing?: number;
+  /** Which edges carry trees: the whole ring, the two edges along X, or the two along Z. */
+  sides?: 'ring' | 'x' | 'z';
+  /** Local points the trees keep clear of, where paths meet the edge. */
+  mouths?: readonly Vec2[];
+  clearance?: number;
+}
+
+/** Trees = perimeter ÷ spacing, rounded. Pure. */
+export function computeParkEdgeTreeCount(
+  footprint: FootprintSize,
+  spacing = PARK_TREE_SPACING_M,
+): number {
+  return Math.round((2 * (footprint.w + footprint.d) * TILE_METERS) / spacing);
+}
+
+/**
+ * The trees along a park's edge: one per 24 m of perimeter, evenly along the
+ * inset edge (or along two opposite edges, split between them), each clear of
+ * every path mouth. Pure.
+ */
+export function computeParkEdgeTrees(
+  footprint: FootprintSize,
+  options: EdgeTreeOptions = {},
+): Vec2[] {
+  const {
+    inset = PARK_TREE_INSET_M,
+    spacing = PARK_TREE_SPACING_M,
+    sides = 'ring',
+    mouths = [],
+    clearance = PARK_MOUTH_CLEARANCE_M,
+  } = options;
+  const loop = rectLoop(insetRect(footprintRect(footprint), inset));
+  const count = computeParkEdgeTreeCount(footprint, spacing);
+  const strip = (p: PathPoint): Vec2 => ({ x: p.x, z: p.z });
+  if (sides === 'ring') return distributeAlong(loop, count, mouths, clearance).map(strip);
+  const [first, second] = sides === 'x' ? [loop[0]!, loop[2]!] : [loop[1]!, loop[3]!];
+  return [
+    ...distributeAlong([first], Math.ceil(count / 2), mouths, clearance),
+    ...distributeAlong([second], Math.floor(count / 2), mouths, clearance),
+  ].map(strip);
+}
+
+/** Benches = path length ÷ 50 m, floored at two. Pure. */
+export function computePathBenchCount(pathLengthM: number): number {
+  return Math.max(PARK_BENCH_MIN, Math.floor(pathLengthM / PARK_BENCH_SPACING_M));
+}
+
+/** The quarter turn that points a bench on each loop side (−Z edge, +X side, +Z edge, −X side) at the centre. */
+const RING_BENCH_ROTATION: readonly (0 | 1 | 2 | 3)[] = [2, 1, 0, 3];
+
+/** `count` benches evenly along a rectangular line, facing its centre, clear of every mouth. Pure. */
+export function computeRingBenches(
+  line: Rect,
+  count: number,
+  mouths: readonly Vec2[] = [],
+  clearance = PARK_MOUTH_CLEARANCE_M,
+): BenchPlacement[] {
+  return distributeAlong(rectLoop(line), count, mouths, clearance).map((p) => ({
+    x: p.x,
+    z: p.z,
+    rotation: RING_BENCH_ROTATION[p.segment]!,
+  }));
+}
+
+/** The four strips of a ring path centred on `ring`, the X sides stopping short of the corners the Z edges fill. */
+function ringPaths(ring: Rect): Rect[] {
+  const h = PARK_RING_PATH_WIDTH_M / 2;
+  return [
+    { x0: ring.x0 - h, x1: ring.x1 + h, z0: ring.z0 - h, z1: ring.z0 + h },
+    { x0: ring.x0 - h, x1: ring.x1 + h, z0: ring.z1 - h, z1: ring.z1 + h },
+    { x0: ring.x0 - h, x1: ring.x0 + h, z0: ring.z0 + h, z1: ring.z1 - h },
+    { x0: ring.x1 - h, x1: ring.x1 + h, z0: ring.z0 + h, z1: ring.z1 - h },
+  ];
+}
+
+/** A path cross through the centre of `lawn`, cut where it meets the ring and where its arms meet, so no two strips overlap. */
+function crossPaths(lawn: Rect, ring: Rect): Rect[] {
+  const h = PARK_RING_PATH_WIDTH_M / 2;
+  return [
+    { x0: -h, x1: h, z0: lawn.z0, z1: ring.z0 - h },
+    { x0: -h, x1: h, z0: ring.z0 + h, z1: ring.z1 - h },
+    { x0: -h, x1: h, z0: ring.z1 + h, z1: lawn.z1 },
+    { x0: lawn.x0, x1: ring.x0 - h, z0: -h, z1: h },
+    { x0: ring.x0 + h, x1: -h, z0: -h, z1: h },
+    { x0: h, x1: ring.x1 - h, z0: -h, z1: h },
+    { x0: ring.x1 + h, x1: lawn.x1, z0: -h, z1: h },
+  ];
+}
+
+function crossLength(lawn: Rect): number {
+  return lawn.x1 - lawn.x0 + (lawn.z1 - lawn.z0);
+}
+
+export interface PlazaLayout {
+  plate: Rect;
+  bands: Rect[];
+  feature: Rect;
+  /** The raised planters, one tree in each, along the two side edges. */
+  planters: Vec2[];
+  benches: BenchPlacement[];
+}
+
+/** Paving the whole footprint, a band every 10 m both ways, a 12 m feature square, 17 planters and 8 benches about it. Pure. */
+export function computePlazaLayout(footprint: FootprintSize): PlazaLayout {
+  const plate = footprintRect(footprint);
+  const half = PLAZA_BAND_WIDTH_M / 2;
+  const bands: Rect[] = [];
+  const nx = Math.floor((plate.x1 - half) / PLAZA_BAND_PITCH_M);
+  for (let k = -nx; k <= nx; k++) {
+    const x = k * PLAZA_BAND_PITCH_M;
+    bands.push({ x0: x - half, x1: x + half, z0: plate.z0, z1: plate.z1 });
+  }
+  const nz = Math.floor((plate.z1 - half) / PLAZA_BAND_PITCH_M);
+  for (let k = -nz; k <= nz; k++) {
+    const z = k * PLAZA_BAND_PITCH_M;
+    bands.push({ x0: plate.x0, x1: plate.x1, z0: z - half, z1: z + half });
+  }
+  const feature = squareAt(0, 0, PLAZA_FEATURE_M);
+  const planters = computeParkEdgeTrees(footprint, { sides: 'z' });
+  const benchLine = squareAt(0, 0, PLAZA_FEATURE_M + 2 * BENCH_SEAT.d + 2);
+  const benches = computeRingBenches(
+    benchLine,
+    computePathBenchCount(2 * (plate.x1 - plate.x0 + (plate.z1 - plate.z0))),
+  );
+  return { plate, bands, feature, planters, benches };
+}
+
+export interface NeighbourhoodParkLayout {
+  lawn: Rect;
+  paths: Rect[];
+  playZone: Rect;
+  playFrames: Vec2[];
+  trees: Vec2[];
+  benches: BenchPlacement[];
+}
+
+/** A lawn with a path cross and a ring 6 m in, 30 trees outside the ring, 7 benches on it, a play zone in the +X/+Z quadrant. Pure. */
+export function computeNeighbourhoodParkLayout(footprint: FootprintSize): NeighbourhoodParkLayout {
+  const lawn = footprintRect(footprint);
+  const ring = insetRect(lawn, NEIGHBOURHOOD_RING_INSET_M);
+  const paths = [...ringPaths(ring), ...crossPaths(lawn, ring)];
+  const trees = computeParkEdgeTrees(footprint, {
+    mouths: rectMidpoints(insetRect(lawn, PARK_TREE_INSET_M)),
+  });
+  const benchLine = insetRect(ring, PARK_BENCH_RING_OFFSET_M);
+  const benches = computeRingBenches(
+    benchLine,
+    computePathBenchCount(crossLength(lawn)),
+    rectMidpoints(benchLine),
+  );
+  const cx = ring.x1 / 2;
+  const cz = ring.z1 / 2;
+  const playZone = squareAt(cx, cz, PLAY_ZONE_M);
+  const playFrames = [
+    { x: cx - PLAY_FRAME_GAP_M / 2, z: cz },
+    { x: cx + PLAY_FRAME_GAP_M / 2, z: cz },
+  ];
+  return { lawn, paths, playZone, playFrames, trees, benches };
+}
+
+export interface DistrictParkLayout {
+  lawn: Rect;
+  /** The lawn in four rects about the pond. */
+  lawnPieces: Rect[];
+  paths: Rect[];
+  pond: Rect;
+  /** The lowest ground sampled inside the ring, where the pond is centred. */
+  pondLowest: number;
+  /** The highest ground sampled under the pond itself. */
+  pondHighest: number;
+  /** The pond's flat surface: just above the highest ground under it, below the lawn there. */
+  pondY: number;
+  specimens: Vec2[];
+  trees: Vec2[];
+  benches: BenchPlacement[];
+  pavilion: PlacedBlock;
+}
+
+/**
+ * Open ground ringed with 67 trees, 8 specimens on an inner ring, a path ring
+ * 10 m in with two crossing paths, 16 benches, a pond where the ground is
+ * lowest and a pavilion inside the ring on the street side (local +Z).
+ * `heightAtLocal` samples the terrain in the park's own frame. Pure.
+ */
+export function computeDistrictParkLayout(
+  footprint: FootprintSize,
+  heightAtLocal: (x: number, z: number) => number,
+): DistrictParkLayout {
+  const lawn = footprintRect(footprint);
+  const ring = insetRect(lawn, DISTRICT_RING_INSET_M);
+  const h = PARK_RING_PATH_WIDTH_M / 2;
+  const paths = [...ringPaths(ring), ...crossPaths(lawn, ring)];
+  const specimens: Vec2[] = [];
+  for (let i = 0; i < DISTRICT_SPECIMEN.count; i++) {
+    const angle = ((i + 0.5) * 2 * Math.PI) / DISTRICT_SPECIMEN.count;
+    specimens.push({
+      x: DISTRICT_SPECIMEN.radius * Math.cos(angle),
+      z: DISTRICT_SPECIMEN.radius * Math.sin(angle),
+    });
+  }
+  const pavilion: PlacedBlock = {
+    x: ring.x1 / 2,
+    z: ring.z1 - h - DISTRICT_PAVILION.d / 2,
+    w: DISTRICT_PAVILION.w,
+    d: DISTRICT_PAVILION.d,
+  };
+
+  // The pond: a 10 m lattice inside the ring, clear of the crossing paths, the
+  // specimens and the pavilion; the lowest sample wins, ties going to the
+  // quadrant away from the street so flat ground reads the same every time.
+  const inner = insetRect(ring, h + POND_MARGIN_M);
+  const halfPondW = DISTRICT_POND.w / 2;
+  const halfPondD = DISTRICT_POND.d / 2;
+  const preferred = { x: ring.x1 / 2, z: ring.z0 / 2 };
+  const specimenMargin = PARK_TREE_CANOPY_RADIUS * 2;
+  let best: { x: number; z: number; height: number; distance: number } | null = null;
+  for (
+    let cz = Math.ceil((inner.z0 + halfPondD) / POND_LATTICE_M) * POND_LATTICE_M;
+    cz + halfPondD <= inner.z1;
+    cz += POND_LATTICE_M
+  ) {
+    for (
+      let cx = Math.ceil((inner.x0 + halfPondW) / POND_LATTICE_M) * POND_LATTICE_M;
+      cx + halfPondW <= inner.x1;
+      cx += POND_LATTICE_M
+    ) {
+      if (Math.abs(cx) < halfPondW + h + POND_MARGIN_M) continue;
+      if (Math.abs(cz) < halfPondD + h + POND_MARGIN_M) continue;
+      const rect = {
+        x0: cx - halfPondW,
+        x1: cx + halfPondW,
+        z0: cz - halfPondD,
+        z1: cz + halfPondD,
+      };
+      if (rectsOverlap(rect, blockRect(pavilion), POND_MARGIN_M)) continue;
+      if (specimens.some((s) => rectsOverlap(rect, squareAt(s.x, s.z, 0), specimenMargin)))
+        continue;
+      const height = heightAtLocal(cx, cz);
+      const distance = Math.hypot(cx - preferred.x, cz - preferred.z);
+      if (!best || height < best.height || (height === best.height && distance < best.distance)) {
+        best = { x: cx, z: cz, height, distance };
+      }
+    }
+  }
+  const centre = best ?? {
+    x: preferred.x,
+    z: preferred.z,
+    height: heightAtLocal(preferred.x, preferred.z),
+    distance: 0,
+  };
+  const pond = {
+    x0: centre.x - halfPondW,
+    x1: centre.x + halfPondW,
+    z0: centre.z - halfPondD,
+    z1: centre.z + halfPondD,
+  };
+  let pondHighest = -Infinity;
+  const nx = Math.ceil(DISTRICT_POND.w / POND_SAMPLE_M);
+  const nz = Math.ceil(DISTRICT_POND.d / POND_SAMPLE_M);
+  for (let iz = 0; iz <= nz; iz++) {
+    for (let ix = 0; ix <= nx; ix++) {
+      const ground = heightAtLocal(
+        pond.x0 + (DISTRICT_POND.w * ix) / nx,
+        pond.z0 + (DISTRICT_POND.d * iz) / nz,
+      );
+      if (ground > pondHighest) pondHighest = ground;
+    }
+  }
+  const lawnPieces: Rect[] = [
+    { x0: lawn.x0, x1: pond.x0, z0: lawn.z0, z1: lawn.z1 },
+    { x0: pond.x1, x1: lawn.x1, z0: lawn.z0, z1: lawn.z1 },
+    { x0: pond.x0, x1: pond.x1, z0: lawn.z0, z1: pond.z0 },
+    { x0: pond.x0, x1: pond.x1, z0: pond.z1, z1: lawn.z1 },
+  ];
+
+  const trees = computeParkEdgeTrees(footprint, {
+    mouths: rectMidpoints(insetRect(lawn, PARK_TREE_INSET_M)),
+  });
+  const benchLine = insetRect(ring, PARK_BENCH_RING_OFFSET_M);
+  const benches = computeRingBenches(
+    benchLine,
+    computePathBenchCount(crossLength(lawn)),
+    [...rectMidpoints(benchLine), pavilion],
+    DISTRICT_PAVILION.w / 2 + PARK_MOUTH_CLEARANCE_M,
+  );
+  return {
+    lawn,
+    lawnPieces,
+    paths,
+    pond,
+    pondLowest: centre.height,
+    pondHighest,
+    pondY: pondHighest + DISTRICT_POND.lift,
+    specimens,
+    trees,
+    benches,
+    pavilion,
+  };
+}
+
+export interface SportsGroundLayout {
+  plate: Rect;
+  pitch: Rect;
+  /** Every white line, as a run from a to b. */
+  lines: Strip[];
+  goals: BenchPlacement[];
+  trees: Vec2[];
+  benches: BenchPlacement[];
+  pavilion: PlacedBlock;
+  fencePosts: Vec2[];
+  fenceLine: Strip;
+}
+
+/** A FIFA pitch behind the street-side strip (local +Z) the changing pavilion takes, its lines and goals, a fenced apron and two benches on the street-side touchline, trees along the long sides. Pure. */
+export function computeSportsGroundLayout(footprint: FootprintSize): SportsGroundLayout {
+  const plate = footprintRect(footprint);
+  const pavilion: PlacedBlock = {
+    x: 0,
+    z: plate.z1 - SPORTS_PAVILION.d / 2,
+    w: SPORTS_PAVILION.w,
+    d: SPORTS_PAVILION.d,
+  };
+  const pitchZ1 = plate.z1 - SPORTS_PAVILION.d - PITCH.runOff;
+  const pitch: Rect = {
+    x0: -PITCH.length / 2,
+    x1: PITCH.length / 2,
+    z0: pitchZ1 - PITCH.width,
+    z1: pitchZ1,
+  };
+  const cz = (pitch.z0 + pitch.z1) / 2;
+
+  const lines: Strip[] = [
+    { ax: pitch.x0, az: pitch.z0, bx: pitch.x1, bz: pitch.z0 },
+    { ax: pitch.x0, az: pitch.z1, bx: pitch.x1, bz: pitch.z1 },
+    { ax: pitch.x0, az: pitch.z0, bx: pitch.x0, bz: pitch.z1 },
+    { ax: pitch.x1, az: pitch.z0, bx: pitch.x1, bz: pitch.z1 },
+    { ax: 0, az: pitch.z0, bx: 0, bz: pitch.z1 },
+  ];
+  for (let i = 0; i < PITCH.centreSegments; i++) {
+    const a0 = (i * 2 * Math.PI) / PITCH.centreSegments;
+    const a1 = ((i + 1) * 2 * Math.PI) / PITCH.centreSegments;
+    lines.push({
+      ax: PITCH.centreRadius * Math.cos(a0),
+      az: cz + PITCH.centreRadius * Math.sin(a0),
+      bx: PITCH.centreRadius * Math.cos(a1),
+      bz: cz + PITCH.centreRadius * Math.sin(a1),
+    });
+  }
+  const box = (goalLineX: number, depth: number, width: number): void => {
+    const inward = goalLineX < 0 ? 1 : -1;
+    const inner = goalLineX + inward * depth;
+    lines.push(
+      { ax: goalLineX, az: cz - width / 2, bx: inner, bz: cz - width / 2 },
+      { ax: goalLineX, az: cz + width / 2, bx: inner, bz: cz + width / 2 },
+      { ax: inner, az: cz - width / 2, bx: inner, bz: cz + width / 2 },
+    );
+  };
+  for (const goalLineX of [pitch.x0, pitch.x1]) {
+    box(goalLineX, PITCH.penaltyDepth, PITCH.penaltyWidth);
+    box(goalLineX, PITCH.goalDepth, PITCH.goalWidth);
+  }
+
+  const goals: BenchPlacement[] = [
+    { x: pitch.x0, z: cz, rotation: 1 },
+    { x: pitch.x1, z: cz, rotation: 1 },
+  ];
+  const trees = computeParkEdgeTrees(footprint, { sides: 'x' });
+  const benchZ = pitch.z1 + PITCH.runOff / 2;
+  const benches: BenchPlacement[] = [
+    { x: -SPORTS_BENCH_GAP_M / 2, z: benchZ, rotation: 0 },
+    { x: SPORTS_BENCH_GAP_M / 2, z: benchZ, rotation: 0 },
+  ];
+  const fenceZ = pitch.z1 + PITCH.runOff - 0.5;
+  const fencePosts: Vec2[] = [];
+  const intervals = Math.floor(PITCH.length / FENCE.pitch);
+  for (let i = 0; i <= intervals; i++) {
+    fencePosts.push({ x: pitch.x0 + (i * PITCH.length) / intervals, z: fenceZ });
+  }
+  const fenceLine: Strip = { ax: pitch.x0, az: fenceZ, bx: pitch.x1, bz: fenceZ };
+  return { plate, pitch, lines, goals, trees, benches, pavilion, fencePosts, fenceLine };
+}
+
+/** A box laid along a strip from a to b, `width` across, standing on `y0`. */
+function stripBox(s: Strip, width: number, y0: number, h: number, rgb: RGB): THREE.BufferGeometry {
+  const len = Math.hypot(s.bx - s.ax, s.bz - s.az);
+  const box = new THREE.BoxGeometry(len, h, width);
+  box.rotateY(-Math.atan2(s.bz - s.az, s.bx - s.ax));
+  box.translate((s.ax + s.bx) / 2, y0 + h / 2, (s.az + s.bz) / 2);
+  return paintVertexColor(box, hexFromRgb(rgb));
+}
+
+/** The plaza's plate: paving, its bands and feature square, and the planters merged in. Local Y=0 is the GROUND plane. */
+function buildPlazaGroundGeometry(footprint: FootprintSize): THREE.BufferGeometry {
+  const layout = computePlazaLayout(footprint);
+  return mergeParts([
+    rectBox(layout.plate, 0, PARK_LAWN_HEIGHT, PLAZA_PAVING_RGB),
+    ...layout.bands.map((b) => rectBox(b, PARK_LAWN_HEIGHT, PARK_MARK_HEIGHT_M, PLAZA_BAND_RGB)),
+    rectBox(layout.feature, PARK_LAWN_HEIGHT, PARK_MARK_HEIGHT_M * 1.5, PLAZA_BAND_RGB),
+    ...layout.planters.map((p) =>
+      standingBox(
+        PLAZA_PLANTER.size,
+        PLAZA_PLANTER.height,
+        PLAZA_PLANTER.size,
+        p.x,
+        0,
+        p.z,
+        PLAZA_BAND_RGB,
+      ),
+    ),
+  ]);
+}
+
+/** The sports ground's plate: lawn, the pitch and its lines, the fence posts and rails merged in. Local Y=0 is the GROUND plane. */
+function buildSportsGroundGeometry(footprint: FootprintSize): THREE.BufferGeometry {
+  const layout = computeSportsGroundLayout(footprint);
+  const pitchTop = PARK_LAWN_HEIGHT + PARK_MARK_HEIGHT_M;
+  return mergeParts([
+    rectBox(layout.plate, 0, PARK_LAWN_HEIGHT, PARK_LAWN_RGB),
+    rectBox(layout.pitch, PARK_LAWN_HEIGHT, PARK_MARK_HEIGHT_M, PITCH_RGB),
+    ...layout.lines.map((l) =>
+      stripBox(l, PITCH.line, pitchTop, PARK_MARK_HEIGHT_M, PITCH_LINE_RGB),
+    ),
+    ...layout.fencePosts.map((p) =>
+      standingBox(FENCE.post, FENCE.height, FENCE.post, p.x, PARK_LAWN_HEIGHT, p.z, FENCE_RGB),
+    ),
+    ...FENCE.railYs.map((y) =>
+      stripBox(
+        layout.fenceLine,
+        FENCE.rail,
+        PARK_LAWN_HEIGHT + y - FENCE.rail / 2,
+        FENCE.rail,
+        FENCE_RGB,
+      ),
+    ),
+  ]);
+}
+
+/** Two posts and a crossbar, white; the mouth runs along local X. Local Y=0 is the GROUND plane. */
+function buildPitchGoalGeometry(): THREE.BufferGeometry {
+  const p = PITCH.goalPost;
+  const halfMouth = PITCH.goalMouth / 2;
+  return mergeParts([
+    standingBox(p, PITCH.goalHeight, p, -halfMouth, 0, 0, PITCH_LINE_RGB),
+    standingBox(p, PITCH.goalHeight, p, halfMouth, 0, 0, PITCH_LINE_RGB),
+    standingBox(PITCH.goalMouth + p, p, p, 0, PITCH.goalHeight - p, 0, PITCH_LINE_RGB),
+  ]);
+}
+
+/** A box-and-post play frame: four posts and a deck, in one bright colour. Local Y=0 is the surface it stands on. */
+function buildPlayFrameGeometry(): THREE.BufferGeometry {
+  const parts: THREE.BufferGeometry[] = [];
+  const px = PLAY_FRAME.deckW / 2 - PLAY_FRAME.post / 2;
+  const pz = PLAY_FRAME.deckD / 2 - PLAY_FRAME.post / 2;
+  for (const sx of [-1, 1]) {
+    for (const sz of [-1, 1]) {
+      parts.push(
+        standingBox(
+          PLAY_FRAME.post,
+          PLAY_FRAME.height,
+          PLAY_FRAME.post,
+          sx * px,
+          0,
+          sz * pz,
+          PLAY_FRAME_RGB,
+        ),
+      );
+    }
+  }
+  parts.push(
+    standingBox(
+      PLAY_FRAME.deckW,
+      PLAY_FRAME.post,
+      PLAY_FRAME.deckD,
+      0,
+      PLAY_FRAME.deckY - PLAY_FRAME.post / 2,
+      0,
+      PLAY_FRAME_RGB,
+    ),
+  );
+  return mergeParts(parts);
+}
+
+/**
+ * A unit pavilion: a 1×1 m block, PAVILION_HEIGHT_M tall with a darker roof
+ * slab and a footing below ground, scaled to its footprint where it is placed.
+ */
+function buildPavilionBlockGeometry(): THREE.BufferGeometry {
+  const wallTop = PAVILION_HEIGHT_M - PAVILION_ROOF_M;
+  return mergeParts([
+    standingBox(1, wallTop + PAVILION_FOOTING_M, 1, 0, -PAVILION_FOOTING_M, 0, PAVILION_WALL_RGB),
+    standingBox(1, PAVILION_ROOF_M, 1, 0, wallTop, 0, PAVILION_ROOF_RGB),
+  ]);
+}
+
+export interface DrapeOptions {
+  /** A cell is at most this long on either axis. */
+  step?: number;
+  /** Metres above the sampled ground the surface lies. */
+  lift: number;
+  rgb: RGB;
+  /** World-metre ground sampler. */
+  heightAt: (x: number, z: number) => number;
+}
+
+/**
+ * A plane over a world rect subdivided into cells no longer than `step`,
+ * every vertex at the ground under it plus `lift`, in one colour. Pure.
+ */
+export function drapedQuad(
+  x0: number,
+  z0: number,
+  x1: number,
+  z1: number,
+  options: DrapeOptions,
+): THREE.BufferGeometry {
+  const { step = PARK_DRAPE_STEP_M, lift, rgb, heightAt } = options;
+  const nx = Math.max(1, Math.ceil((x1 - x0) / step));
+  const nz = Math.max(1, Math.ceil((z1 - z0) / step));
+  const positions = new Float32Array((nx + 1) * (nz + 1) * 3);
+  for (let iz = 0; iz <= nz; iz++) {
+    const z = z0 + ((z1 - z0) * iz) / nz;
+    for (let ix = 0; ix <= nx; ix++) {
+      const x = x0 + ((x1 - x0) * ix) / nx;
+      const v = (iz * (nx + 1) + ix) * 3;
+      positions[v] = x;
+      positions[v + 1] = heightAt(x, z) + lift;
+      positions[v + 2] = z;
+    }
+  }
+  const indices = new Uint32Array(nx * nz * 6);
+  let n = 0;
+  for (let iz = 0; iz < nz; iz++) {
+    for (let ix = 0; ix < nx; ix++) {
+      const a = iz * (nx + 1) + ix;
+      const b = a + 1;
+      const c = a + nx + 1;
+      const d = c + 1;
+      indices[n++] = a;
+      indices[n++] = c;
+      indices[n++] = b;
+      indices[n++] = b;
+      indices[n++] = c;
+      indices[n++] = d;
+    }
+  }
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  geometry.setIndex(new THREE.BufferAttribute(indices, 1));
+  geometry.computeVertexNormals();
+  return paintVertexColor(geometry, hexFromRgb(rgb));
+}
+
+interface WallOptions {
+  step?: number;
+  rgb: RGB;
+  topAt: (x: number, z: number) => number;
+  bottomAt: (x: number, z: number, top: number) => number;
+}
+
+/**
+ * A vertical band along a strip from a to b, its top and bottom sampled per
+ * vertex; the face looks to the right of the a→b direction seen from above,
+ * so a clockwise loop faces outward and an anticlockwise one inward.
+ */
+function drapedWall(s: Strip, options: WallOptions): THREE.BufferGeometry {
+  const { step = PARK_DRAPE_STEP_M, rgb, topAt, bottomAt } = options;
+  const len = Math.hypot(s.bx - s.ax, s.bz - s.az);
+  const n = Math.max(1, Math.ceil(len / step));
+  const positions = new Float32Array((n + 1) * 2 * 3);
+  for (let i = 0; i <= n; i++) {
+    const x = s.ax + ((s.bx - s.ax) * i) / n;
+    const z = s.az + ((s.bz - s.az) * i) / n;
+    const top = topAt(x, z);
+    const bottom = bottomAt(x, z, top);
+    positions.set([x, top, z], i * 6);
+    positions.set([x, bottom, z], i * 6 + 3);
+  }
+  const indices = new Uint32Array(n * 6);
+  let k = 0;
+  for (let i = 0; i < n; i++) {
+    const a = i * 2;
+    const aBottom = a + 1;
+    const b = a + 2;
+    const bBottom = b + 1;
+    indices[k++] = a;
+    indices[k++] = b;
+    indices[k++] = aBottom;
+    indices[k++] = b;
+    indices[k++] = bBottom;
+    indices[k++] = aBottom;
+  }
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  geometry.setIndex(new THREE.BufferAttribute(indices, 1));
+  geometry.computeVertexNormals();
+  return paintVertexColor(geometry, hexFromRgb(rgb));
+}
+
+/** The skirt below a draped lawn's outer edge, in the lawn colour, so a slope shows no gap under it. */
+function drapedSkirt(r: Rect, options: DrapeOptions): THREE.BufferGeometry[] {
+  const { step, lift, rgb, heightAt } = options;
+  return rectLoop(r).map((s) =>
+    drapedWall(s, {
+      step,
+      rgb,
+      topAt: (x, z) => heightAt(x, z) + lift,
+      bottomAt: (_x, _z, top) => top - PARK_SKIRT_DEPTH_M,
+    }),
+  );
+}
+
+/** A local rect carried into the world: turned with the park and moved to its centre. */
+export function worldRect(
+  r: Rect,
+  centerX: number,
+  centerZ: number,
+  rotation: 0 | 1 | 2 | 3,
+): Rect {
+  const a = rotateLocalXZ(r.x0, r.z0, rotation);
+  const b = rotateLocalXZ(r.x1, r.z1, rotation);
+  return {
+    x0: centerX + Math.min(a.x, b.x),
+    x1: centerX + Math.max(a.x, b.x),
+    z0: centerZ + Math.min(a.z, b.z),
+    z1: centerZ + Math.max(a.z, b.z),
+  };
+}
+
+/** How far toward bare earth a park's lawn is worn: nothing to a load of 1, fully at 3. Pure. */
+export function parkWear(load: number): number {
+  return Math.min(1, Math.max(0, (load - 1) / 2));
+}
+
+// ---------------------------------------------------------------------------
 // the clinic, the rail station and the bus stop: the last ploppables without
 // a kit. The clinic is read by its covered drop-off, the station by its
 // platform, the bus stop by its shelter. Each stands on a lawn plate on the
@@ -8341,6 +9183,14 @@ interface KitDefinition {
 interface InstanceRecord {
   catalogId: string;
   slots: Partial<Record<UtilityKitPartKind, number[]>>;
+  /** A draped park's own plate, built from the terrain under it. */
+  drape?: DrapeRecord;
+}
+
+interface DrapeRecord {
+  mesh: THREE.Mesh;
+  /** The merged geometry's first vertices are the lawn's: this many, tinted as the park wears. */
+  lawnVertices: number;
 }
 
 interface CemeteryPlacement {
@@ -8384,6 +9234,7 @@ const _quaternion = new THREE.Quaternion();
 const _yawQuat = new THREE.Quaternion();
 const _spinQuat = new THREE.Quaternion();
 const _unitScale = new THREE.Vector3(1, 1, 1);
+const _scale = new THREE.Vector3(1, 1, 1);
 const _yAxis = new THREE.Vector3(0, 1, 0);
 const _zAxis = new THREE.Vector3(0, 0, 1);
 const _carColor = new THREE.Color();
@@ -8409,6 +9260,12 @@ export class UtilityKitRenderer {
   private readonly fleets = new Map<number, number>();
   /** Where each placed depot stands, so its parked fleet can be refit without a building delta. */
   private readonly depots = new Map<number, DepotPlacement>();
+  /** Catchment load on each park, by building id: kept for a park whose building arrives after its load. */
+  private readonly parkLoads = new Map<number, number>();
+  /** Parts whose geometry does not depend on the footprint, one pool across every kit that stands them. */
+  private readonly sharedPools = new Map<UtilityKitPartKind, InstancedSlotPool>();
+  /** Every draped park plate's material: vertex colours carry the lawn, paths, pond and wear. */
+  private readonly drapeMaterial = new THREE.MeshLambertMaterial({ vertexColors: true });
   private readonly beaconMaterial = new THREE.MeshLambertMaterial({
     color: TURBINE_BEACON_COLOR,
     emissive: TURBINE_BEACON_COLOR,
@@ -8472,6 +9329,52 @@ export class UtilityKitRenderer {
   /** How many headstones a cemetery stands now. */
   headstoneCount(buildingId: number): number {
     return this.instances.get(buildingId)?.slots.cemeteryStone?.length ?? 0;
+  }
+
+  /**
+   * Sets the catchment load on each park: past 1.0 its lawn wears toward
+   * scuffed earth, bare at 3. A plaza and a sports ground wear nothing. Only a
+   * park whose load changed is touched; a load listed before the park's
+   * building arrives is kept and applied when it does.
+   */
+  setParkLoads(parks: readonly { id: number; load: number }[]): void {
+    for (const { id, load } of parks) {
+      if (this.parkLoads.get(id) === load) continue;
+      this.parkLoads.set(id, load);
+      this.wearPark(id);
+    }
+    this.kits.get('small-park')?.pools.parkGround?.commit();
+  }
+
+  /** The per-instance colour one kit part carries now. */
+  getPartColor(catalogId: string, kind: UtilityKitPartKind, slot: number, out: THREE.Color): void {
+    this.kits.get(catalogId)?.pools[kind]?.getColorAt(slot, out);
+  }
+
+  /** The plate a draped park was built as, or null for a flat rung or an unknown id. */
+  drapedMesh(buildingId: number): THREE.Mesh | null {
+    return this.instances.get(buildingId)?.drape?.mesh ?? null;
+  }
+
+  /** The colour a draped park's lawn is now, from its first lawn vertex, or null. */
+  drapedLawnColor(buildingId: number): RGB | null {
+    const drape = this.instances.get(buildingId)?.drape;
+    if (!drape) return null;
+    const color = drape.mesh.geometry.getAttribute('color');
+    return [color.getX(0), color.getY(0), color.getZ(0)];
+  }
+
+  /** How many draped park plates stand now. */
+  drapedMeshCount(): number {
+    let count = 0;
+    for (const record of this.instances.values()) if (record.drape) count++;
+    return count;
+  }
+
+  /** The part kinds one kit pools, in declaration order. */
+  poolKinds(catalogId: string): UtilityKitPartKind[] {
+    const kit = this.kits.get(catalogId);
+    return kit ? (Object.keys(kit.pools) as UtilityKitPartKind[]) : [];
   }
 
   /**
@@ -8635,6 +9538,14 @@ export class UtilityKitRenderer {
         return this.buildGeneratorKit(entry);
       case 'small-park':
         return this.buildSmallParkKit(entry);
+      case 'civic-plaza':
+        return this.buildPlazaKit(entry);
+      case 'neighbourhood-park':
+        return this.buildNeighbourhoodParkKit(entry);
+      case 'district-park':
+        return this.buildDistrictParkKit(entry);
+      case 'sports-ground':
+        return this.buildSportsGroundKit(entry);
       case 'clinic':
         return this.buildClinicKit(entry);
       case 'rail-station':
@@ -9172,29 +10083,105 @@ export class UtilityKitRenderer {
     return { entry, pavesLot: true, pools };
   }
 
+  /** One pool per footprint-independent part kind, built on first use and shared by every kit that stands it. */
+  private sharedPool(
+    kind: UtilityKitPartKind,
+    build: () => THREE.BufferGeometry,
+    capacity: number,
+  ): InstancedSlotPool {
+    let pool = this.sharedPools.get(kind);
+    if (!pool) {
+      pool = new InstancedSlotPool(
+        this.scene,
+        build(),
+        new THREE.MeshLambertMaterial({ vertexColors: true }),
+        capacity,
+      );
+      this.sharedPools.set(kind, pool);
+    }
+    return pool;
+  }
+
+  /** The tree and bench pools every park rung shares. */
+  private parkProps(): Pick<KitDefinition['pools'], 'parkTree' | 'parkBench'> {
+    return {
+      parkTree: this.sharedPool('parkTree', buildParkTreeGeometry, INITIAL_MULTI_PART_CAPACITY),
+      parkBench: this.sharedPool('parkBench', buildParkBenchGeometry, INITIAL_MULTI_PART_CAPACITY),
+    };
+  }
+
   private buildSmallParkKit(entry: BuildingCatalogEntry): KitDefinition {
-    const lambert = (): THREE.MeshLambertMaterial =>
-      new THREE.MeshLambertMaterial({ vertexColors: true });
     return {
       entry,
       pools: {
         parkGround: new InstancedSlotPool(
           this.scene,
           buildParkGroundGeometry(entry.footprint),
-          lambert(),
+          new THREE.MeshLambertMaterial({ vertexColors: true }),
           INITIAL_KIT_CAPACITY,
         ),
-        parkTree: new InstancedSlotPool(
+        ...this.parkProps(),
+      },
+    };
+  }
+
+  private buildPlazaKit(entry: BuildingCatalogEntry): KitDefinition {
+    return {
+      entry,
+      pavesLot: true,
+      pools: {
+        plazaGround: new InstancedSlotPool(
           this.scene,
-          buildParkTreeGeometry(),
-          lambert(),
-          INITIAL_MULTI_PART_CAPACITY,
+          buildPlazaGroundGeometry(entry.footprint),
+          new THREE.MeshLambertMaterial({ vertexColors: true }),
+          INITIAL_KIT_CAPACITY,
         ),
-        parkBench: new InstancedSlotPool(
+        ...this.parkProps(),
+      },
+    };
+  }
+
+  private buildNeighbourhoodParkKit(entry: BuildingCatalogEntry): KitDefinition {
+    return {
+      entry,
+      pools: {
+        ...this.parkProps(),
+        playFrame: this.sharedPool('playFrame', buildPlayFrameGeometry, INITIAL_KIT_CAPACITY),
+      },
+    };
+  }
+
+  private buildDistrictParkKit(entry: BuildingCatalogEntry): KitDefinition {
+    return {
+      entry,
+      pools: {
+        ...this.parkProps(),
+        pavilionBlock: this.sharedPool(
+          'pavilionBlock',
+          buildPavilionBlockGeometry,
+          INITIAL_KIT_CAPACITY,
+        ),
+      },
+    };
+  }
+
+  private buildSportsGroundKit(entry: BuildingCatalogEntry): KitDefinition {
+    return {
+      entry,
+      pavesLot: true,
+      pools: {
+        sportsGround: new InstancedSlotPool(
           this.scene,
-          buildParkBenchGeometry(),
-          lambert(),
-          INITIAL_MULTI_PART_CAPACITY,
+          buildSportsGroundGeometry(entry.footprint),
+          new THREE.MeshLambertMaterial({ vertexColors: true }),
+          INITIAL_KIT_CAPACITY,
+        ),
+        ...this.parkProps(),
+        pitchGoal: this.sharedPool('pitchGoal', buildPitchGoalGeometry, INITIAL_KIT_CAPACITY),
+        pavilionBlock: this.sharedPool(
+          'pavilionBlock',
+          buildPavilionBlockGeometry,
+          INITIAL_KIT_CAPACITY,
         ),
       },
     };
@@ -9206,11 +10193,12 @@ export class UtilityKitRenderer {
     y: number,
     z: number,
     rotation: 0 | 1 | 2 | 3,
+    scale: THREE.Vector3 = _unitScale,
   ): number {
     const slot = pool.allocate();
     _position.set(x, y, z);
     _quaternion.setFromAxisAngle(_yAxis, rotation * (Math.PI / 2));
-    _matrix.compose(_position, _quaternion, _unitScale);
+    _matrix.compose(_position, _quaternion, scale);
     pool.setMatrixAt(slot, _matrix);
     return slot;
   }
@@ -9304,6 +10292,18 @@ export class UtilityKitRenderer {
         return;
       case 'small-park':
         this.applySmallPark(kit, building, entry, centerX, groundY, centerZ, rotation);
+        return;
+      case 'civic-plaza':
+        this.applyPlaza(kit, building, entry, centerX, groundY, centerZ, rotation);
+        return;
+      case 'neighbourhood-park':
+        this.applyNeighbourhoodPark(kit, building, entry, centerX, centerZ, rotation);
+        return;
+      case 'district-park':
+        this.applyDistrictPark(kit, building, entry, centerX, centerZ, rotation);
+        return;
+      case 'sports-ground':
+        this.applySportsGround(kit, building, entry, centerX, groundY, centerZ, rotation);
         return;
       case 'clinic':
         this.applyClinic(kit, building, entry, centerX, groundY, centerZ, rotation);
@@ -10235,6 +11235,366 @@ export class UtilityKitRenderer {
       catalogId: building.catalogId,
       slots: { parkGround: [groundSlot], parkTree: treeSlots, parkBench: benchSlots },
     });
+    this.wearPark(building.id);
+  }
+
+  /** Local placements carried into the world and stood on `yAt(worldX, worldZ)`, one slot each. */
+  private placeParkProps(
+    pool: InstancedSlotPool,
+    placements: readonly Vec2[],
+    centerX: number,
+    centerZ: number,
+    rotation: 0 | 1 | 2 | 3,
+    yAt: (x: number, z: number) => number,
+    scale: THREE.Vector3 = _unitScale,
+  ): number[] {
+    return placements.map((local) => {
+      const r = rotateLocalXZ(local.x, local.z, rotation);
+      const x = centerX + r.x;
+      const z = centerZ + r.z;
+      return this.placeAt(pool, x, yAt(x, z), z, rotation, scale);
+    });
+  }
+
+  /** As placeParkProps, each bench turned with the park on top of its own facing. */
+  private placeParkBenches(
+    pool: InstancedSlotPool,
+    benches: readonly BenchPlacement[],
+    centerX: number,
+    centerZ: number,
+    rotation: 0 | 1 | 2 | 3,
+    yAt: (x: number, z: number) => number,
+  ): number[] {
+    return benches.map((bench) => {
+      const r = rotateLocalXZ(bench.x, bench.z, rotation);
+      const x = centerX + r.x;
+      const z = centerZ + r.z;
+      const turn = ((rotation + bench.rotation) % 4) as 0 | 1 | 2 | 3;
+      return this.placeAt(pool, x, yAt(x, z), z, turn);
+    });
+  }
+
+  /** A pavilion block scaled to its footprint, seated on the highest ground under its corners so its footing, not a gap, meets a slope. */
+  private placePavilion(
+    pool: InstancedSlotPool,
+    block: PlacedBlock,
+    centerX: number,
+    centerZ: number,
+    rotation: 0 | 1 | 2 | 3,
+    yAt: (x: number, z: number) => number,
+  ): number {
+    const r = rotateLocalXZ(block.x, block.z, rotation);
+    const x = centerX + r.x;
+    const z = centerZ + r.z;
+    const rect = worldRect(blockRect(block), centerX, centerZ, rotation);
+    const y = Math.max(
+      yAt(rect.x0, rect.z0),
+      yAt(rect.x1, rect.z0),
+      yAt(rect.x0, rect.z1),
+      yAt(rect.x1, rect.z1),
+    );
+    return this.placeAt(pool, x, y, z, rotation, _scale.set(block.w, 1, block.d));
+  }
+
+  /** One mesh per draped park: the lawn parts first (their vertex range is what wears), then everything laid on it. */
+  private addDrape(
+    lawnParts: THREE.BufferGeometry[],
+    otherParts: THREE.BufferGeometry[],
+  ): DrapeRecord {
+    let lawnVertices = 0;
+    for (const part of lawnParts) lawnVertices += part.getAttribute('position').count;
+    const mesh = new THREE.Mesh(mergeParts([...lawnParts, ...otherParts]), this.drapeMaterial);
+    mesh.receiveShadow = true;
+    this.scene.add(mesh);
+    return { mesh, lawnVertices };
+  }
+
+  private applyPlaza(
+    kit: KitDefinition,
+    building: BuildingInstance,
+    entry: BuildingCatalogEntry,
+    centerX: number,
+    groundY: number,
+    centerZ: number,
+    rotation: 0 | 1 | 2 | 3,
+  ): void {
+    const groundPool = kit.pools.plazaGround;
+    const treePool = kit.pools.parkTree;
+    const benchPool = kit.pools.parkBench;
+    if (!groundPool || !treePool || !benchPool) return;
+
+    const layout = computePlazaLayout(entry.footprint);
+    const planterTop = (): number => groundY + PLAZA_PLANTER.height;
+    const flat = (): number => groundY;
+    this.instances.set(building.id, {
+      catalogId: building.catalogId,
+      slots: {
+        plazaGround: [this.placeAt(groundPool, centerX, groundY, centerZ, rotation)],
+        parkTree: this.placeParkProps(
+          treePool,
+          layout.planters,
+          centerX,
+          centerZ,
+          rotation,
+          planterTop,
+        ),
+        parkBench: this.placeParkBenches(
+          benchPool,
+          layout.benches,
+          centerX,
+          centerZ,
+          rotation,
+          flat,
+        ),
+      },
+    });
+  }
+
+  private applyNeighbourhoodPark(
+    kit: KitDefinition,
+    building: BuildingInstance,
+    entry: BuildingCatalogEntry,
+    centerX: number,
+    centerZ: number,
+    rotation: 0 | 1 | 2 | 3,
+  ): void {
+    const treePool = kit.pools.parkTree;
+    const benchPool = kit.pools.parkBench;
+    const framePool = kit.pools.playFrame;
+    if (!treePool || !benchPool || !framePool) return;
+
+    const layout = computeNeighbourhoodParkLayout(entry.footprint);
+    const toWorld = (r: Rect): Rect => worldRect(r, centerX, centerZ, rotation);
+    const quad = (r: Rect, lift: number, rgb: RGB): THREE.BufferGeometry => {
+      const w = toWorld(r);
+      return drapedQuad(w.x0, w.z0, w.x1, w.z1, { lift, rgb, heightAt: this.heightAt });
+    };
+    const lawnOptions: DrapeOptions = {
+      lift: PARK_LAWN_HEIGHT,
+      rgb: PARK_LAWN_RGB,
+      heightAt: this.heightAt,
+    };
+    const pathLift = PARK_LAWN_HEIGHT + PARK_PATH_Y_OFFSET;
+    const playLift = PARK_LAWN_HEIGHT + PARK_MARK_HEIGHT_M;
+    const drape = this.addDrape(
+      [
+        quad(layout.lawn, PARK_LAWN_HEIGHT, PARK_LAWN_RGB),
+        ...drapedSkirt(toWorld(layout.lawn), lawnOptions),
+      ],
+      [
+        ...layout.paths.map((p) => quad(p, pathLift, PARK_PATH_RGB)),
+        quad(layout.playZone, playLift, PLAY_SURFACE_RGB),
+      ],
+    );
+    const onSurface = (x: number, z: number): number => this.heightAt(x, z) + playLift;
+    this.instances.set(building.id, {
+      catalogId: building.catalogId,
+      slots: {
+        parkTree: this.placeParkProps(
+          treePool,
+          layout.trees,
+          centerX,
+          centerZ,
+          rotation,
+          this.heightAt,
+        ),
+        parkBench: this.placeParkBenches(
+          benchPool,
+          layout.benches,
+          centerX,
+          centerZ,
+          rotation,
+          this.heightAt,
+        ),
+        playFrame: this.placeParkProps(
+          framePool,
+          layout.playFrames,
+          centerX,
+          centerZ,
+          rotation,
+          onSurface,
+        ),
+      },
+      drape,
+    });
+    this.wearPark(building.id);
+  }
+
+  private applyDistrictPark(
+    kit: KitDefinition,
+    building: BuildingInstance,
+    entry: BuildingCatalogEntry,
+    centerX: number,
+    centerZ: number,
+    rotation: 0 | 1 | 2 | 3,
+  ): void {
+    const treePool = kit.pools.parkTree;
+    const benchPool = kit.pools.parkBench;
+    const pavilionPool = kit.pools.pavilionBlock;
+    if (!treePool || !benchPool || !pavilionPool) return;
+
+    const heightAtLocal = (x: number, z: number): number => {
+      const r = rotateLocalXZ(x, z, rotation);
+      return this.heightAt(centerX + r.x, centerZ + r.z);
+    };
+    const layout = computeDistrictParkLayout(entry.footprint, heightAtLocal);
+    const toWorld = (r: Rect): Rect => worldRect(r, centerX, centerZ, rotation);
+    const quad = (r: Rect, lift: number, rgb: RGB): THREE.BufferGeometry => {
+      const w = toWorld(r);
+      return drapedQuad(w.x0, w.z0, w.x1, w.z1, {
+        step: DISTRICT_DRAPE_STEP_M,
+        lift,
+        rgb,
+        heightAt: this.heightAt,
+      });
+    };
+    const lawnOptions: DrapeOptions = {
+      step: DISTRICT_DRAPE_STEP_M,
+      lift: PARK_LAWN_HEIGHT,
+      rgb: PARK_LAWN_RGB,
+      heightAt: this.heightAt,
+    };
+    const pathLift = PARK_LAWN_HEIGHT + PARK_PATH_Y_OFFSET;
+    const pond = toWorld(layout.pond);
+    const pondSurface = drapedQuad(pond.x0, pond.z0, pond.x1, pond.z1, {
+      step: DISTRICT_POND.w,
+      lift: 0,
+      rgb: SHALLOW_WATER_COLOR,
+      heightAt: () => layout.pondY,
+    });
+    // The banks run from the lawn to the water, which lies below it on the
+    // high side and may stand above it on the low side of a slope, so each
+    // is drawn facing both ways: the loop as it is and walked the other way.
+    const bankOptions: WallOptions = {
+      step: DISTRICT_DRAPE_STEP_M,
+      rgb: POND_BANK_RGB,
+      topAt: (x, z) => this.heightAt(x, z) + PARK_LAWN_HEIGHT,
+      bottomAt: () => layout.pondY,
+    };
+    const banks = rectLoop(pond).flatMap((s) => [
+      drapedWall(s, bankOptions),
+      drapedWall({ ax: s.bx, az: s.bz, bx: s.ax, bz: s.az }, bankOptions),
+    ]);
+    const drape = this.addDrape(
+      [
+        ...layout.lawnPieces.map((r) => quad(r, PARK_LAWN_HEIGHT, PARK_LAWN_RGB)),
+        ...drapedSkirt(toWorld(layout.lawn), lawnOptions),
+      ],
+      [...layout.paths.map((p) => quad(p, pathLift, PARK_PATH_RGB)), pondSurface, ...banks],
+    );
+    const specimenScale = _scale.setScalar(DISTRICT_SPECIMEN.scale);
+    const specimens = this.placeParkProps(
+      treePool,
+      layout.specimens,
+      centerX,
+      centerZ,
+      rotation,
+      this.heightAt,
+      specimenScale,
+    );
+    this.instances.set(building.id, {
+      catalogId: building.catalogId,
+      slots: {
+        parkTree: [
+          ...this.placeParkProps(treePool, layout.trees, centerX, centerZ, rotation, this.heightAt),
+          ...specimens,
+        ],
+        parkBench: this.placeParkBenches(
+          benchPool,
+          layout.benches,
+          centerX,
+          centerZ,
+          rotation,
+          this.heightAt,
+        ),
+        pavilionBlock: [
+          this.placePavilion(
+            pavilionPool,
+            layout.pavilion,
+            centerX,
+            centerZ,
+            rotation,
+            this.heightAt,
+          ),
+        ],
+      },
+      drape,
+    });
+    this.wearPark(building.id);
+  }
+
+  private applySportsGround(
+    kit: KitDefinition,
+    building: BuildingInstance,
+    entry: BuildingCatalogEntry,
+    centerX: number,
+    groundY: number,
+    centerZ: number,
+    rotation: 0 | 1 | 2 | 3,
+  ): void {
+    const groundPool = kit.pools.sportsGround;
+    const treePool = kit.pools.parkTree;
+    const benchPool = kit.pools.parkBench;
+    const goalPool = kit.pools.pitchGoal;
+    const pavilionPool = kit.pools.pavilionBlock;
+    if (!groundPool || !treePool || !benchPool || !goalPool || !pavilionPool) return;
+
+    const layout = computeSportsGroundLayout(entry.footprint);
+    const flat = (): number => groundY;
+    const pitchTop = (): number => groundY + PARK_LAWN_HEIGHT + PARK_MARK_HEIGHT_M;
+    this.instances.set(building.id, {
+      catalogId: building.catalogId,
+      slots: {
+        sportsGround: [this.placeAt(groundPool, centerX, groundY, centerZ, rotation)],
+        parkTree: this.placeParkProps(treePool, layout.trees, centerX, centerZ, rotation, flat),
+        parkBench: this.placeParkBenches(
+          benchPool,
+          layout.benches,
+          centerX,
+          centerZ,
+          rotation,
+          flat,
+        ),
+        pitchGoal: this.placeParkBenches(
+          goalPool,
+          layout.goals,
+          centerX,
+          centerZ,
+          rotation,
+          pitchTop,
+        ),
+        pavilionBlock: [
+          this.placePavilion(pavilionPool, layout.pavilion, centerX, centerZ, rotation, flat),
+        ],
+      },
+    });
+  }
+
+  /** Tints a park's lawn by its load: the pocket park's plate by instance colour, a draped park's lawn vertices in place. */
+  private wearPark(buildingId: number): void {
+    const record = this.instances.get(buildingId);
+    if (!record) return;
+    const t = parkWear(this.parkLoads.get(buildingId) ?? 0);
+    if (record.catalogId === 'small-park') {
+      const pool = this.kits.get(record.catalogId)?.pools.parkGround;
+      const slot = record.slots.parkGround?.[0];
+      if (!pool || slot === undefined) return;
+      _carColor.setRGB(
+        lerpNum(1, SCUFFED_EARTH_RGB[0], t),
+        lerpNum(1, SCUFFED_EARTH_RGB[1], t),
+        lerpNum(1, SCUFFED_EARTH_RGB[2], t),
+      );
+      pool.setColorAt(slot, _carColor);
+      return;
+    }
+    const drape = record.drape;
+    if (!drape) return;
+    const color = drape.mesh.geometry.getAttribute('color') as THREE.BufferAttribute;
+    const r = lerpNum(PARK_LAWN_RGB[0], SCUFFED_EARTH_RGB[0], t);
+    const g = lerpNum(PARK_LAWN_RGB[1], SCUFFED_EARTH_RGB[1], t);
+    const b = lerpNum(PARK_LAWN_RGB[2], SCUFFED_EARTH_RGB[2], t);
+    for (let i = 0; i < drape.lawnVertices; i++) color.setXYZ(i, r, g, b);
+    color.needsUpdate = true;
   }
 
   private freeInstance(buildingId: number): void {
@@ -10247,6 +11607,10 @@ export class UtilityKitRenderer {
           const slots = record.slots[kindKey];
           if (pool && slots) for (const slot of slots) pool.free(slot);
         }
+      }
+      if (record.drape) {
+        this.scene.remove(record.drape.mesh);
+        record.drape.mesh.geometry.dispose();
       }
       this.instances.delete(buildingId);
     }

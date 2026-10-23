@@ -183,8 +183,47 @@ of the generic building facade box:
   stack; a heat-recovery boiler, a taller stack and a cooling tower; a domeless
   reactor building, a switchyard and a shore intake. See
   [civic-massing.md](civic-massing.md#the-generators-solar-gas-combined-cycle-and-the-reactor).
-- **Small park**: a flat lawn plate, a cross-shaped walking path, 2–3 trees,
-  and benches, replacing a plain slab.
+- **The parks** are five rungs that read apart at the default pitch without
+  a label, each the real size of its type
+  ([parks-and-recreation.md](../game-design/features/parks-and-recreation.md)).
+  Every rung's ground is one merged plate: a draped rung's is a lattice at a
+  vertex every 4 m (every 10 m on the district park, whose 400 m of lawn
+  would otherwise cost more triangles than its trees) whose heights are read
+  from the terrain, so it lies on its hillside as a lot's lawn does, and a
+  levelled rung's is flat; the path cross
+  and every marking are vertex-colour strips in the same plate. Trees stand
+  along the edge and the paths at one every 24 m of perimeter, benches along
+  the paths at one every 50 m, floored at two; the middle stays open. Trees
+  and benches are one instanced pool each across every rung.
+  - **Pocket Park** (1×1): the lawn, a cross path, 2–3 trees, 2 benches — as
+    it has always been, a square with a cross.
+  - **Civic Plaza** (5×5): pale paving the whole footprint with a darker
+    band pattern every 10 m, a central feature square of 12 m, 17 trees in
+    raised planters 2 m square along two edges, 8 benches around the centre;
+    no grass. It must read as a public square between towers, not an
+    unzoned lot.
+  - **Neighbourhood Park** (9×9): a lawn with a path cross and a path ring
+    6 m in from the edge, 30 trees along the ring, 7 benches on it, and a
+    play zone of 30 × 30 m of tan safety surface off-centre with two bright
+    play frames (box-and-post) in it.
+  - **District Park** (20×20): open ground ringed with 67 trees at the edge
+    and 8 specimen trees at 1.3 scale inside, a path ring and two crossing
+    paths, 16 benches, a pond 40 × 30 m of the water colour sunk 0.3 m where
+    the ground is lowest within the footprint, and a 12 × 8 m pavilion block
+    of 3.2 m on the path ring.
+  - **Sports Ground** (6×4): one FIFA pitch, 105 × 68 m of a slightly
+    darker green than the lawn with the 3 m run-off left plain, white
+    vertex-colour lines 0.12 m wide (touchlines, halfway, centre circle
+    9.15 m, penalty areas 16.5 m, goal areas 5.5 m), two goals 7.32 × 2.44 m
+    of white posts, 17 trees along the long sides, 2 benches, and a 40 × 6 m
+    changing pavilion 3.2 m tall along the site's road edge, never mid-pitch
+    (the pitch and its run-off leave 6 m of the 80 m width, so the block is
+    long and shallow, as a changing-room range is), with a fenced apron of
+    0.9 m posts and rails on the pitch's long side toward it.
+  - **Wear.** Past a catchment load of 1.0 a park's lawn is tinted toward
+    scuffed earth by a per-instance colour on the ground plate, linearly to
+    bare at load 3; a plaza and a pitch wear nothing. A player sees a full
+    park before they read it in a panel.
 - **Hospital**: a six-storey block of about 2,800 m² a floor in light
   cladding, 27 m to its parapet, with a dark window band on every floor at
   its 4.5 m storey; a glazed main entrance under a canopy and, beside it, an

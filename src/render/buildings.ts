@@ -43,7 +43,7 @@ import {
 } from './massing';
 import { NO_STREETS, type StreetLookup } from './frontage';
 import type { KerbSurroundings } from '../shared/kerblayout';
-import { maxHeightOverRect, maxHeightUnderBody } from './footprint';
+import { maxHeightOverRect, maxHeightUnderBody, minHeightOverRect } from './footprint';
 import { isFarmEntry } from './archetypes';
 import { BARN_EAVE_SHARE, planFarm, type FarmRect } from './farmlot';
 import {
@@ -936,15 +936,22 @@ export class BuildingInstancer {
         h: PLINTH_PAD_HEIGHT,
         yOffset: 0,
       };
-      this.writeTier(
-        bucket,
-        slots[0]!,
-        0,
-        slab,
-        instance,
-        heightScale,
-        this.seatFor(entry, instance, slab),
-      );
+      const seat = this.seatFor(entry, instance, slab);
+      // A draped entry keeps its slope, so its pad sinks under the lowest
+      // ground beneath it: the lawn laid on the hillside hides it, and picking
+      // still finds it through the lawn.
+      if (entry.ground === 'drape') {
+        const [ex, ez] = instance.rotation % 2 === 1 ? [slab.d, slab.w] : [slab.w, slab.d];
+        seat.groundY =
+          minHeightOverRect(
+            this.heightAt,
+            seat.centerX - ex / 2,
+            seat.centerZ - ez / 2,
+            seat.centerX + ex / 2,
+            seat.centerZ + ez / 2,
+          ) - PLINTH_PAD_HEIGHT;
+      }
+      this.writeTier(bucket, slots[0]!, 0, slab, instance, heightScale, seat);
       return;
     }
     // A suburban commercial or industrial body stands where its car park

@@ -1554,7 +1554,13 @@ class SimWorld implements WorkerSim {
     // How hard each service is being leaned on, as the last service pass found
     // it — the services tick on their own period, so this rides every snapshot
     // rather than only the ones that happen to land on it.
-    if (this.serviceLoad) snap.serviceLoad = { ...this.serviceLoad };
+    if (this.serviceLoad) {
+      snap.serviceLoad = { ...this.serviceLoad };
+      // Each capped park's own load rides with it, for the worn lawn; left off
+      // while no park is capped, so an early town's snapshots stay small.
+      const parkLoads = this.services.parkLoads(this.registry.all());
+      if (parkLoads.length > 0) snap.parkLoads = parkLoads;
+    }
     snap.openSpace = openSpaceOf(this.registry.all(), this.catalogById, this.stats.population);
     const responders = this.dispatch.responderLoad(this.registry.all());
     if (Object.keys(responders).length > 0) snap.responders = responders;

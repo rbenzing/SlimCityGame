@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { TILE_METERS } from '../shared/constants';
-import { maxHeightOverRect, maxHeightUnderBody } from './footprint';
+import { maxHeightOverRect, maxHeightUnderBody, minHeightOverRect } from './footprint';
 
 describe('maxHeightUnderBody', () => {
   it('is the highest ground under the body itself, not under the whole footprint', () => {
@@ -27,5 +27,21 @@ describe('maxHeightUnderBody', () => {
     const heightAt = (x: number, z: number): number =>
       Math.round(x / TILE_METERS) === 1 && Math.round(z / TILE_METERS) === 1 ? 7 : 0;
     expect(maxHeightOverRect(heightAt, 5, 5, 35, 35)).toBe(7);
+  });
+});
+
+describe('minHeightOverRect', () => {
+  it('is the lowest ground under the rectangle, found on a tile corner inside it', () => {
+    const heightAt = (x: number, z: number): number =>
+      Math.round(x / TILE_METERS) === 1 && Math.round(z / TILE_METERS) === 1 ? -4 : 3;
+    expect(minHeightOverRect(heightAt, 5, 5, 35, 35)).toBe(-4);
+    // Pull the rectangle off that corner and the plain ground is the floor.
+    expect(minHeightOverRect(heightAt, 31, 31, 38, 38)).toBe(3);
+  });
+
+  it('reads a slope at the rectangle edge, so a draped pad sinks to its low side', () => {
+    const heightAt = (x: number): number => x / 10;
+    expect(minHeightOverRect(heightAt, 40, 0, 80, 20)).toBe(4);
+    expect(maxHeightOverRect(heightAt, 40, 0, 80, 20)).toBe(8);
   });
 });

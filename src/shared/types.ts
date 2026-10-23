@@ -1054,6 +1054,13 @@ export interface SimSnapshot {
    */
   serviceLoad?: Record<ServiceKind, ServiceLoad>;
   /**
+   * The load of every park with a capacity, as the last service pass found it,
+   * in id order — what lets a worn lawn be drawn where more people use a park
+   * than it was laid out for. Rides with serviceLoad, and only when some park
+   * is capped. Optional: a mirror that does not understand it ignores it.
+   */
+  parkLoads?: { id: number; load: number }[];
+  /**
    * Calls in flight over responders, for each kind whose facilities have a
    * `responders` figure. Optional: a mirror that does not understand it ignores it.
    */

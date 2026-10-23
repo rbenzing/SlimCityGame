@@ -521,6 +521,12 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       setInterments: (id: number, used: number): void => {
         utilityKits.setInterments([{ id, used }]);
       },
+      // Stands a park's load at an exact figure, so a screenshot can set a
+      // worn lawn beside a fresh one without the crowd that wears it. The next
+      // snapshot that carries park loads puts the real figure back.
+      setParkLoad: (id: number, load: number): void => {
+        utilityKits.setParkLoads([{ id, load }]);
+      },
       // Parks vehicles of any kind on the road, stopped, so a screenshot can set
       // a hearse beside an ambulance and a car. The next snapshot that carries
       // vehicles replaces them.
@@ -1994,6 +2000,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
     }
     if (snap.roads || snap.roadNet || snap.buildings) keepTreesOffOccupied();
     if (snap.deathCare) utilityKits.setInterments(snap.deathCare.facilities);
+    if (snap.parkLoads) utilityKits.setParkLoads(snap.parkLoads);
     if (snap.zones) {
       zoneGrid.applyZonePatches(snap.zones);
       clientGrid.applyZonePatches(snap.zones);

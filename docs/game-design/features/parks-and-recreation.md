@@ -1,7 +1,8 @@
 # Parks and recreation — design
 
-- **Status:** Agreed 2026-10-23 (drafted 2026-09-18; the rungs re-sized to real
-  park sizes and re-priced by real cost ratios at the player's choice)
+- **Status:** Built 2026-10-23 (drafted 2026-09-18; the rungs re-sized to real
+  park sizes and re-priced by real cost ratios at the player's choice; the
+  rules in slice 1, the kits in slice 2)
 - **Date:** 2026-10-23
 
 Epic 8 of [municipal-services.md](municipal-services.md), and the last of it; the
