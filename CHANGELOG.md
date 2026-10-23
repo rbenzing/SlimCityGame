@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.74.1](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.74.0...slimcity-v1.74.1) (2026-10-23)
+
+
+### Bug Fixes
+
+* **render:** seven debts the last epics logged, paid ([53645ee](https://github.com/rbenzing/SlimCityGame/commit/53645ee640565a2efdb966a0ce9757b5072ee279))
+* **render:** seven debts the last epics logged, paid ([1429e23](https://github.com/rbenzing/SlimCityGame/commit/1429e234477860e239a5fa83666cae72536d2f92))
+
 ## [1.74.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.73.0...slimcity-v1.74.0) (2026-10-23)
 
 
