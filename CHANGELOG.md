@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.73.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.72.0...slimcity-v1.73.0) (2026-10-23)
+
+
+### Features
+
+* **sim:** parks at real sizes, planned to a provision standard ([f4562cb](https://github.com/rbenzing/SlimCityGame/commit/f4562cbc336fe4e7cda654b24eb16e8f47bdc028))
+
 ## [1.72.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.71.0...slimcity-v1.72.0) (2026-10-23)
 
 
