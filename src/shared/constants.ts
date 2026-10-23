@@ -149,6 +149,13 @@ export const LOAN_MONTHLY_INTEREST = 0.01;
 export const SERVICE_FUNDING_MIN = 0;
 export const SERVICE_FUNDING_MAX = 1.5;
 
+/**
+ * Open space a city should hold per 1,000 residents, in tiles: the Six Acre
+ * Standard's 2.4 ha per 1,000 at 25 tiles a hectare. What the parks row reads
+ * the city's provision against.
+ */
+export const OPEN_SPACE_TILES_PER_THOUSAND = 60;
+
 // --- buildability -----------------------------------------------------------
 export const MAX_BUILD_SLOPE = 4; // max height delta (m) across a tile's corners
 /** Manhattan tiles a lot may stand from the road that serves it. */

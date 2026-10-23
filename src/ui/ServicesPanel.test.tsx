@@ -280,6 +280,33 @@ describe('ServicesPanel', () => {
     }
   });
 
+  it('reads the parks row’s provision against the 60 tiles per 1,000 standard, and flags a city short of it', () => {
+    open();
+    useCityStore.getState().setOpenSpace({ tiles: 304, perThousand: 38 });
+    render(<ServicesPanel />);
+
+    const provision = screen.getByTestId('service-provision-park');
+    expect(provision).toHaveTextContent('38 tiles per 1,000 · standard 60');
+    expect(provision).toHaveAttribute('data-short', 'true');
+    cleanup();
+
+    useCityStore.getState().setOpenSpace({ tiles: 900, perThousand: 72.4 });
+    render(<ServicesPanel />);
+    expect(screen.getByTestId('service-provision-park')).toHaveTextContent('72 tiles per 1,000');
+    expect(screen.getByTestId('service-provision-park')).toHaveAttribute('data-short', 'false');
+  });
+
+  it('reads the provision as an em dash, not zero, before any snapshot has carried it', () => {
+    open();
+    render(<ServicesPanel />);
+    expect(screen.getByTestId('service-provision-park')).toHaveTextContent(
+      '— tiles per 1,000 · standard 60',
+    );
+    expect(screen.getByTestId('service-provision-park')).toHaveAttribute('data-short', 'false');
+    // Only the parks row carries one.
+    expect(screen.getAllByTestId(/service-provision-/)).toHaveLength(1);
+  });
+
   it('sends setServiceFunding and shows the new value before the worker confirms', () => {
     open();
     const { sent } = bindSpy();

@@ -7,11 +7,14 @@ road access is the thing every service silently depends on.
 ## Coverage and funding
 
 Police, fire, health, education and parks share one mechanism. Each active
-service building first finds the nearest road tile within 2 orthogonal steps of
-its footprint, then walks outward from it by road-network hop count (not
-straight-line distance), following only the links where the road network
-joins one road to the next ([road-network.md](road-network.md)), capped at a
-range scaled by that service's funding.
+service building first finds every road tile within 2 orthogonal steps of
+its footprint, then walks outward from all of them at once by road-network
+hop count (not straight-line distance), following only the links where the
+road network joins one road to the next ([road-network.md](road-network.md)),
+capped at a range scaled by that service's funding. A building on a corner
+reaches down both its streets, and a park fronting four streets serves from
+all four; a building touching one road covers exactly what it did when the
+walk began from that road alone.
 Every road tile reached, plus every tile within 2 further orthogonal steps of
 one, receives coverage that fades linearly with hop distance:
 `strength × (1 − hopDistance / range)`.
@@ -24,9 +27,14 @@ radiates ([education-ladder.md](../game-design/features/education-ladder.md)).
 Coverage is blended into its field differently by kind: education and health
 take the higher of the field's existing value and the new one (a ceiling, not a
 stack); police and fire subtract half the coverage value from Crime and
-FireRisk; a park adds a quarter of its coverage value to LandValue, on top of a
-flat one-time `landValueBonus` applied to its own footprint tiles (40 for a
-pocket park, 120 for an airport).
+FireRisk; parks add a quarter of their coverage value to LandValue, taking the
+best of the parks that reach a tile and adding it once — two overlapping
+parks give a tile the better of the two, never the sum, so overlap is waste
+and spacing is the play — on top of a flat one-time `landValueBonus` applied
+to each park's own footprint tiles (40 for a pocket park, 100 for a district
+park). Parks carry a capacity like every other service, so a catchment with
+more people than its parks hold gives less, smoothly
+([parks-and-recreation.md](../game-design/features/parks-and-recreation.md)).
 
 Crime grows passively every tick on any zoned tile whose land value is below
 90, and fire risk grows on any tile carrying a building. A station's coverage

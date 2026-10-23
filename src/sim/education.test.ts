@@ -382,9 +382,11 @@ describe('each school writes its own field and no other', () => {
       place(world, entry, 0, 0, 1);
       new ServiceSim([entry]).tick(world.g, world.buildings, funding());
       expect(world.g.fields[field]![tileIndex(0, ROAD_Z)]).toBe(150);
-      // 150 × (1 − h/50) > 60 holds for h < 30, and the two tiles of radiation
-      // carry it two further: the last road tile over the gate is 29 + 2.
-      expect(reach(world.g, field)).toBe(31);
+      // The walk seeds from both street tiles beside the lot, (0,1) and (1,1).
+      // 150 × (1 − h/50) > 60 holds for h < 30 from (1,1), and the two tiles
+      // of radiation carry it two further: the last road tile over the gate
+      // is 1 + 29 + 2.
+      expect(reach(world.g, field)).toBe(32);
     }
   });
 
@@ -431,19 +433,20 @@ describe('a school’s load closes its gate as the supply-share model says', () 
   it('holds the full catchment at 100% load', () => {
     const { g, load } = loaded(2);
     expect(load).toBeCloseTo(1, 10);
-    expect(reach(g, FieldId.HighEducation)).toBe(31);
+    // Hops count from (1,1), the farther of the two street tiles beside the lot.
+    expect(reach(g, FieldId.HighEducation)).toBe(32);
   });
 
   it('shrinks the catchment toward the door as load rises, 0.4 of the range at 150%', () => {
     const { g, load } = loaded(3);
     expect(load).toBeCloseTo(1.5, 10);
-    // 150 × (1 − h/50) ÷ 1.5 > 60 holds for h < 20; the radiation adds two.
-    expect(reach(g, FieldId.HighEducation)).toBe(21);
+    // 150 × (1 − h/50) ÷ 1.5 > 60 holds for h < 20 from (1,1); the radiation adds two.
+    expect(reach(g, FieldId.HighEducation)).toBe(22);
   });
 
   it('reaches 0.2 of the range at 200%', () => {
     const { g } = loaded(4);
-    expect(reach(g, FieldId.HighEducation)).toBe(11);
+    expect(reach(g, FieldId.HighEducation)).toBe(12);
   });
 
   it('closes the gate everywhere at 250%, the same for every rung', () => {
@@ -463,12 +466,13 @@ describe('a school’s load closes its gate as the supply-share model says', () 
     for (let i = 0; i < 4; i++) place(world, household, 3 + i, 2, 10 + i);
     new ServiceSim([entry, household]).tick(world.g, world.buildings, funding());
     // 2,000 people over 2 × 1,000 places is 100%, not the 200% one school would read:
-    // the pair reaches as far as it does with nobody to serve (the second sits a tile on).
+    // the pair reaches as far as it does with nobody to serve (the second sits a
+    // tile on, and seeds from (2,1)).
     const unloaded = strip();
     place(unloaded, entry, 0, 0, 1);
     place(unloaded, entry, 1, 0, 2);
     new ServiceSim([entry, household]).tick(unloaded.g, unloaded.buildings, funding());
-    expect(reach(world.g, FieldId.HighEducation)).toBe(32);
+    expect(reach(world.g, FieldId.HighEducation)).toBe(33);
     expect(reach(world.g, FieldId.HighEducation)).toBe(reach(unloaded.g, FieldId.HighEducation));
     expect(world.g.fields[FieldId.HighEducation]![tileIndex(0, ROAD_Z)]).toBe(150);
   });
@@ -520,7 +524,7 @@ describe('the library', () => {
     const base = reach(alone(), FieldId.Education);
     const { g } = withLibrary({ libraryId: 2, schoolId: 1 });
     const stretched = reach(g, FieldId.Education);
-    expect(base).toBe(31);
+    expect(base).toBe(32);
     expect(stretched).toBeGreaterThan(base);
     // Up to a fifth, never more: no uplift can carry the gate past 0.6 × range × 1.2.
     expect(stretched).toBeLessThanOrEqual(Math.ceil(0.6 * 50 * 1.2) + 2);

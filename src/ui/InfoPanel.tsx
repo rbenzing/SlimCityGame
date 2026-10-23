@@ -72,6 +72,8 @@ function zoneDisplayName(entry: BuildingCatalogEntry | undefined): string {
       return 'Utility';
     case 'park':
       return 'Park';
+    case 'transit':
+      return 'Transit';
     default:
       return 'Unzoned';
   }

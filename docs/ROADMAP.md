@@ -25,7 +25,7 @@ current behavior only and carry no dates of their own._
 
 ## Status (2026-09-29)
 
-**Test suite:** 6,923 tests passing and 16 skipped across 197 test files, run 2026-10-23.
+**Test suite:** 6,959 tests passing and 16 skipped across 199 test files, run 2026-10-23.
 This is the only test count in the documentation set. When the suite changes
 again, update the figure here and nowhere else.
 
@@ -250,9 +250,12 @@ apron. **In progress, at the player's request (2026-10-16): tramways**
 ([tramways.md](game-design/features/tramways.md)) — a street tramway drawn
 as a street cars share, a tram reservation lifted onto an elevated guideway
 in the Disney World monorail's form with raised stations, and every tram
-lane routable; complete 2026-10-23 with the raised stations. **Next, the
-programme's last epic**, parks and recreation
-([municipal-services.md](game-design/features/municipal-services.md)), the
+lane routable; complete 2026-10-23 with the raised stations. **In progress:
+the programme's last epic, parks and recreation**
+([parks-and-recreation.md](game-design/features/parks-and-recreation.md)) —
+parks at the real sizes of the US park types, planned to a provision
+standard and capped like every other service; the rules built, the kits
+next. After it, the
 [DESIGN.md](DESIGN.md) deferred backlog (weather, deeper industry, more
 transit modes) and AI raster map packs, facade-atlas stage 2 and screen-space
 AO/reflections are the shelf to pick from.
@@ -395,6 +398,33 @@ roads, and pinning the Three.js version. See [adr/](engineering/adr/README.md).
 ---
 
 ## 10. History (newest first)
+
+### Parks at real sizes, planned to a provision standard (slice 1 of parks and recreation, built 2026-10-23)
+
+The programme's last epic, begun. The player chose real-sized parks over
+the draft's parks shrunk to the building rule, the airport fix inside the
+epic, and prices by real cost ratios.
+
+- **Four parks above the pocket park, at the real sizes of the US park
+  types:** a civic plaza of 2.5 acres, a neighbourhood park of 8 acres, a
+  district park of 40 acres (NRPA's community park) and a sports ground sized
+  by one FIFA field with its run-off. Each carries a capacity from the Fields
+  in Trust quantity standard and a reach from its walking distance, and is
+  priced off the pocket park by sourced US cost per acre: ¢14,200, ¢5,100,
+  ¢44,000 and ¢1,400.
+- **Parks fill, and overlap is waste.** Parks are capped like every other
+  service; park coverage takes the best of the parks reaching a tile and
+  adds it once to land value, so tiling the city with the cheapest park no
+  longer wins.
+- **Coverage walks from every road a building touches,** not one nearest
+  tile, so a forty-acre park on four streets serves from all four and a
+  building on a corner reaches down both its streets.
+- **A park keeps its ground.** A draped entry is never levelled; only the
+  plaza's paving and the pitch level theirs.
+- **Open space is a number:** tiles per 1,000 residents against the Six Acre
+  Standard's 60, on the parks row. The airport leaves the park category.
+- The kits — the draped lawn, the pitch and pavilion, the plaza's planters,
+  the worn grass of a full park — follow.
 
 ### The raised stations (slice 3 of tramways, built 2026-10-23; feature complete)
 

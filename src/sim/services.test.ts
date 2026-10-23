@@ -8,7 +8,14 @@ import type {
 } from '../shared/types';
 import { BuildingState, FieldId, RoadTier, ZoneType } from '../shared/types';
 import { TICKS_PER_MONTH, tileIndex } from '../shared/constants';
-import { ServiceSim, nearestRoadTile, roadBfsDistances } from './services';
+import {
+  ServiceSim,
+  nearestRoadTile,
+  openSpaceOf,
+  roadBfsDistances,
+  roadBfsFrom,
+  roadSeedsOf,
+} from './services';
 import { tileCentreCm } from '../shared/roadgeom';
 import { applyRoad } from '../world/roads';
 import { networkFromGrid, reconcileRoads } from '../world/roadnet';
@@ -207,19 +214,21 @@ describe('ServiceSim: coverage follows road distance, not euclidean distance', (
     };
     place(g, buildings, 1, 'long-range-school', 0, 0, 1, 1);
 
-    // A single bent path, starting one tile east of the school footprint (hop 0):
-    //   east 10 tiles (hop 0..9), then south 20 (hop 10..29), then west 9 (hop 30..38),
-    //   then north 17 back up to (1,3) (hop 39..55) -- physically close to the school again,
-    //   but only reachable via this whole 56-tile detour.
+    // A single bent path, starting one tile east of the school footprint. The
+    // walk seeds from every street within two steps of the lot — (1,0) and
+    // (2,0) — so hops count from (2,0):
+    //   east 10 tiles (hop 0..8), then south 20 (hop 9..28), then west 9 (hop 29..37),
+    //   then north 17 back up to (1,3) (hop 38..54) -- physically close to the school again,
+    //   but only reachable via this whole detour.
     const east = straightRun(0, 0, 1, 0, 10); // (1,0)..(10,0), hop 0..9
     const south = straightRun(10, 0, 0, 1, 20); // (10,1)..(10,20), hop 10..29
     const west = straightRun(10, 20, -1, 0, 9); // (9,20)..(1,20), hop 30..38
     const north = straightRun(1, 20, 0, -1, 17); // (1,19)..(1,3), hop 39..55
     paintPath(g, [...east, ...south, ...west, ...north]);
 
-    // Euclidean ~12 from the school, but only 9 hops away by road (end of the short `east` run).
+    // Euclidean ~12 from the school, but only 8 hops away by road (end of the short `east` run).
     place(g, buildings, 2, 'target-marker', 12, 0, 1, 1);
-    // Euclidean ~4.2 from the school (much closer!), but 55 hops away by road (end of the long detour).
+    // Euclidean ~4.2 from the school (much closer!), but 54 hops away by road (end of the long detour).
     place(g, buildings, 3, 'target-marker', 3, 3, 1, 1);
 
     const sim = new ServiceSim([...catalog, longRangeSchool]);
@@ -228,10 +237,10 @@ describe('ServiceSim: coverage follows road distance, not euclidean distance', (
     const farEuclideanNearRoad = g.fields[FieldId.Education]![tileIndex(12, 0)]!;
     const nearEuclideanFarRoad = g.fields[FieldId.Education]![tileIndex(3, 3)]!;
 
-    // strength 100, range 100: hop 9 -> 100*(1-9/100) = 91
-    expect(farEuclideanNearRoad).toBe(91);
-    // hop 55 -> 100*(1-55/100) = 45
-    expect(nearEuclideanFarRoad).toBe(45);
+    // strength 100, range 100: hop 8 -> 100*(1-8/100) = 92
+    expect(farEuclideanNearRoad).toBe(92);
+    // hop 54 -> 100*(1-54/100) = 46
+    expect(nearEuclideanFarRoad).toBe(46);
     // The physically closer tile receives strictly LESS coverage than the physically farther one.
     expect(nearEuclideanFarRoad).toBeLessThan(farEuclideanNearRoad);
   });
@@ -242,25 +251,27 @@ describe('ServiceSim: coverage follows road distance, not euclidean distance', (
     place(g, buildings, 1, 'clinic', 0, 0, 1, 1); // clinic: range 10
     const path: Array<[number, number]> = [[1, 0]];
     for (let x = 2; x <= 8; x++) path.push([x, 0]);
-    paintPath(g, path); // hop distances 0..7 along x=1..8, row 0
+    // The walk seeds from (1,0) and (2,0), both within two steps of the lot, so
+    // hop distances run 0..6 along x=2..8, row 0.
+    paintPath(g, path);
 
-    // Target adjacent to the road tile at hop distance 6 (x=7,z=0 -> hop 6), i.e. tile (7,1).
-    place(g, buildings, 2, 'house-stub', 7, 1, 1, 1);
+    // Target adjacent to the road tile at hop distance 6 (x=8,z=0 -> hop 6), i.e. tile (8,1).
+    place(g, buildings, 2, 'house-stub', 8, 1, 1, 1);
 
     const sim = new ServiceSim(catalog);
 
     // funding 0.5 -> range = floor(10*0.5) = 5; hop 6 is beyond range -> no coverage.
     sim.tick(g, buildings, fullFunding(0.5));
-    expect(g.fields[FieldId.Health]![tileIndex(7, 1)]).toBe(0);
+    expect(g.fields[FieldId.Health]![tileIndex(8, 1)]).toBe(0);
 
     // funding 1.5 -> range = floor(10*1.5) = 15; hop 6 is within range -> coverage present.
     const g2 = makeGrid();
     const buildings2: BuildingInstance[] = [];
     place(g2, buildings2, 1, 'clinic', 0, 0, 1, 1);
     paintPath(g2, path);
-    place(g2, buildings2, 2, 'house-stub', 7, 1, 1, 1);
+    place(g2, buildings2, 2, 'house-stub', 8, 1, 1, 1);
     sim.tick(g2, buildings2, fullFunding(1.5));
-    expect(g2.fields[FieldId.Health]![tileIndex(7, 1)]).toBeGreaterThan(0);
+    expect(g2.fields[FieldId.Health]![tileIndex(8, 1)]).toBeGreaterThan(0);
   });
 });
 
@@ -651,9 +662,13 @@ describe('ServiceSim: capacity', () => {
   it('walks the road network exactly once per active facility per tick', () => {
     const cat = [...catalog, clinicWith('clinic-1000', 1000)];
     let calls = 0;
-    const counting = (g: GridState, start: number, maxDist: number): Map<number, number> => {
+    const counting = (
+      g: GridState,
+      starts: readonly number[],
+      maxDist: number,
+    ): Map<number, number> => {
       calls += 1;
-      return roadBfsDistances(g, start, maxDist);
+      return roadBfsFrom(g, starts, maxDist);
     };
     const sim = new ServiceSim(cat, counting);
 
@@ -777,7 +792,7 @@ describe('ServiceSim: capacity', () => {
     expect(summary.health.capped).toBe(2);
   });
 
-  it('counts no capped facility for an uncapped kind, however many parks are open', () => {
+  it('counts no capped facility for a park entry with no capacity figure, as a pre-epic save holds, however many are open', () => {
     const cat = [...catalog, home500];
     const g = makeGrid();
     const buildings: BuildingInstance[] = [];
@@ -792,10 +807,11 @@ describe('ServiceSim: capacity', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Behaviour preservation: with no capacity anywhere, the capacity pass must
-// write exactly the bytes the per-facility pass wrote before it existed. The
-// fingerprints asserted below were captured from the pre-capacity
-// implementation on this very scenario — they are what "unchanged" means.
+// Behaviour pin: with no capacity anywhere, the capacity pass writes exactly
+// the bytes the per-facility pass writes. The fingerprints asserted below are
+// what the pass wrote on this very scenario once coverage seeded from every
+// street beside a lot and overlapping parks took the best of themselves; the
+// pre-parks figures (crime 12558, land value 17574) are gone with those rules.
 // ---------------------------------------------------------------------------
 
 /** Order-sensitive fingerprint of a whole field, so a single shifted byte shows. */
@@ -821,16 +837,16 @@ function fieldFingerprint(f: Uint8Array): {
 }
 
 /**
- * What the pre-capacity pass wrote on the scenario below, captured by running
- * it against that implementation. Any drift here is a change in behaviour for
- * every city that has no capacity figure anywhere — which is every old save.
+ * What the pass writes on the scenario below with no capacity figure anywhere,
+ * captured by running it. Any drift here is a change in behaviour for every
+ * city that has no capacity figure anywhere — which is every pre-capacity save.
  */
-const PRE_CAPACITY_FIELDS = {
-  crime: { sum: 12558, weighted: 516809, nonZero: 143, max: 201 },
-  fireRisk: { sum: 11034, weighted: 435665, nonZero: 125, max: 179 },
-  landValue: { sum: 17574, weighted: 544450, nonZero: 200, max: 186 },
-  education: { sum: 19171, weighted: 546220, nonZero: 197, max: 150 },
-  health: { sum: 17957, weighted: 515996, nonZero: 196, max: 140 },
+const UNCAPPED_FIELDS = {
+  crime: { sum: 12462, weighted: 514504, nonZero: 143, max: 201 },
+  fireRisk: { sum: 11008, weighted: 435036, nonZero: 125, max: 179 },
+  landValue: { sum: 16338, weighted: 519238, nonZero: 200, max: 168 },
+  education: { sum: 19359, weighted: 550420, nonZero: 197, max: 150 },
+  health: { sum: 18202, weighted: 521609, nonZero: 196, max: 140 },
 };
 
 /** Strengths and ranges exactly as src/data/catalog.json states them, fractional coverage and all. */
@@ -876,8 +892,8 @@ function twoOfEachCity(): { g: GridState; buildings: BuildingInstance[] } {
   return { g, buildings };
 }
 
-describe('ServiceSim: the capacity pass preserves the fields the old pass wrote', () => {
-  it('writes the pre-capacity bytes for two overlapping facilities of every kind', () => {
+describe('ServiceSim: the capacity pass writes the uncapped bytes, pinned', () => {
+  it('writes the pinned bytes for two overlapping facilities of every kind, the parks blended rather than summed', () => {
     const { g, buildings } = twoOfEachCity();
     new ServiceSim(preservationCatalog).tick(g, buildings, fullFunding(1));
 
@@ -887,7 +903,7 @@ describe('ServiceSim: the capacity pass preserves the fields the old pass wrote'
       landValue: fieldFingerprint(g.fields[FieldId.LandValue]!),
       education: fieldFingerprint(g.fields[FieldId.Education]!),
       health: fieldFingerprint(g.fields[FieldId.Health]!),
-    }).toEqual(PRE_CAPACITY_FIELDS);
+    }).toEqual(UNCAPPED_FIELDS);
   });
 });
 
@@ -950,6 +966,220 @@ describe('ServiceSim: a facility keeps its own load, for the selection channel',
     g.buildingId[tileIndex(0, 0)] = 0;
     sim.tick(g, [buildings[1]!], fullFunding(1));
     expect(sim.facilityLoad(1)).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Coverage seeds: a facility's walk starts from every road tile within reach
+// of its footprint, so a park on four streets serves from all four.
+// ---------------------------------------------------------------------------
+
+/** The district park as the catalog states it: forty acres, capped at 4,000 people. */
+const districtPark: BuildingCatalogEntry = {
+  ...parkEntry,
+  id: 'district-park',
+  name: 'District Park',
+  footprint: { w: 20, d: 20 },
+  landValueBonus: 100,
+  service: { kind: 'park', strength: 200, range: 34, capacity: 4000 },
+};
+
+/** The pocket park exactly as src/data/catalog.json states it. */
+const realPocketPark = (catalogData as { buildings: BuildingCatalogEntry[] }).buildings.find(
+  (e) => e.id === 'small-park',
+)!;
+
+describe('coverage seeds from every road the footprint touches', () => {
+  it('lists every street within two steps of the footprint, in tile order', () => {
+    const g = makeGrid();
+    roadStrip(g, 12);
+    // A 1×1 lot at (4,0) sees (3,1), (4,1) and (5,1) on the street below it.
+    expect(roadSeedsOf(g, [tileIndex(4, 0)])).toEqual([
+      tileIndex(3, 1),
+      tileIndex(4, 1),
+      tileIndex(5, 1),
+    ]);
+    expect(roadSeedsOf(g, [tileIndex(40, 40)])).toEqual([]);
+  });
+
+  it('walks exactly the tiles the single nearest seed walked for a lot beside one road tile', () => {
+    const g = makeGrid();
+    // One road tile within reach of the lot at (5,5): the stub's end at (5,7),
+    // two steps south; the rest of the stub runs away from it.
+    paintPath(g, straightRun(5, 6, 0, 1, 14)); // (5,7)..(5,20)
+    const footprint = [tileIndex(5, 5)];
+    const seeds = roadSeedsOf(g, footprint);
+    expect(seeds).toEqual([nearestRoadTile(g, footprint)]);
+    const fromAll = roadBfsFrom(g, seeds, 10);
+    const fromNearest = roadBfsDistances(g, nearestRoadTile(g, footprint)!, 10);
+    expect(fromAll).toEqual(fromNearest);
+    expect(fromAll.size).toBe(11);
+    expect(fromAll.get(tileIndex(5, 17))).toBe(10);
+  });
+
+  it('serves all four sides of a 20×20 park, each from its own unconnected street', () => {
+    const g = makeGrid();
+    const buildings: BuildingInstance[] = [];
+    place(g, buildings, 1, 'district-park', 10, 10, 20, 20);
+    // Four separate streets along the park's four edges, none joined to another.
+    paintPath(g, straightRun(9, 9, 1, 0, 20)); // north: (10..29, 9)
+    paintPath(g, straightRun(9, 30, 1, 0, 20)); // south: (10..29, 30)
+    paintPath(g, straightRun(9, 9, 0, 1, 20)); // west: (9, 10..29)
+    paintPath(g, straightRun(30, 9, 0, 1, 20)); // east: (30, 10..29)
+
+    new ServiceSim([...catalog, districtPark]).tick(g, buildings, fullFunding(1));
+
+    // Strength 200 at the street, over four: the same figure two tiles out on every side.
+    const landValue = g.fields[FieldId.LandValue]!;
+    expect(landValue[tileIndex(20, 7)]).toBe(50);
+    expect(landValue[tileIndex(20, 32)]).toBe(50);
+    expect(landValue[tileIndex(7, 20)]).toBe(50);
+    expect(landValue[tileIndex(32, 20)]).toBe(50);
+  });
+
+  it('reaches 20 tiles of road from a pocket park at range 18, counting the two it radiates, and nothing at 21', () => {
+    const g = makeGrid();
+    const buildings: BuildingInstance[] = [];
+    place(g, buildings, 1, 'small-park', 0, 0, 1, 1);
+    paintPath(g, straightRun(-1, 1, 1, 0, 30)); // (0..29, 1)
+
+    new ServiceSim([realPocketPark]).tick(g, buildings, fullFunding(1));
+
+    const landValue = g.fields[FieldId.LandValue]!;
+    expect(realPocketPark.service?.range).toBe(18);
+    expect(landValue[tileIndex(20, 1)]).toBeGreaterThan(0);
+    expect(landValue[tileIndex(21, 1)]).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Parks blend: the best of overlapping parks, added once to land value, and
+// a park fills up like any capped facility.
+// ---------------------------------------------------------------------------
+
+describe('ServiceSim: parks take the best of overlapping parks and add it once', () => {
+  it('raises a tile two overlapping pocket parks both reach by what one alone does, never the sum', () => {
+    const one = makeGrid();
+    const oneBuildings: BuildingInstance[] = [];
+    roadStrip(one, 12);
+    place(one, oneBuildings, 1, 'park', 4, 0, 1, 1);
+    new ServiceSim(catalog).tick(one, oneBuildings, fullFunding(1));
+
+    const two = makeGrid();
+    const twoBuildings: BuildingInstance[] = [];
+    roadStrip(two, 12);
+    place(two, twoBuildings, 1, 'park', 4, 0, 1, 1);
+    place(two, twoBuildings, 2, 'park', 6, 0, 1, 1);
+    new ServiceSim(catalog).tick(two, twoBuildings, fullFunding(1));
+
+    // (5,1) is a seed of both parks, so (5,3) takes strength 80 from each: +20, not +40.
+    expect(one.fields[FieldId.LandValue]![tileIndex(5, 3)]).toBe(20);
+    expect(two.fields[FieldId.LandValue]![tileIndex(5, 3)]).toBe(20);
+  });
+
+  it('adds to a tile already worth 200 rather than flooring it at the park’s value', () => {
+    const g = makeGrid();
+    const buildings: BuildingInstance[] = [];
+    place(g, buildings, 1, 'park', 0, 0, 1, 1);
+    g.roadTier[tileIndex(1, 0)] = RoadTier.TwoLane;
+    g.fields[FieldId.LandValue]![tileIndex(1, 1)] = 200;
+
+    new ServiceSim(catalog).tick(g, buildings, fullFunding(1));
+
+    expect(g.fields[FieldId.LandValue]![tileIndex(1, 1)]).toBe(220);
+  });
+
+  it('keeps the flat footprint bonus additive under the blend, on top of the park’s own coverage', () => {
+    const g = makeGrid();
+    const buildings: BuildingInstance[] = [];
+    roadStrip(g, 12);
+    place(g, buildings, 1, 'park', 4, 0, 1, 1);
+
+    new ServiceSim(catalog).tick(g, buildings, fullFunding(1));
+
+    // Bonus 40 at the source plus the park's own coverage from the street beside it.
+    expect(g.fields[FieldId.LandValue]![tileIndex(4, 0)]).toBe(60);
+  });
+
+  it('runs a lone district park at load 2 with twice its capacity in reach, at half strength; a second one restores full strength', () => {
+    const cat = [...catalog, districtPark, home500];
+    // A 20×20 park at (0..19, 0..19), a street along its south edge, and sixteen
+    // homes of 500 two tiles off the street: 8,000 people against 4,000 places.
+    const build = (second: boolean): { g: GridState; buildings: BuildingInstance[] } => {
+      const g = makeGrid();
+      const buildings: BuildingInstance[] = [];
+      paintPath(g, straightRun(-1, 20, 1, 0, 41)); // (0..40, 20)
+      place(g, buildings, 1, 'district-park', 0, 0, 20, 20);
+      if (second) place(g, buildings, 2, 'district-park', 21, 0, 20, 20);
+      for (let i = 0; i < 16; i++) place(g, buildings, 10 + i, 'home-500', i, 22, 1, 1);
+      return { g, buildings };
+    };
+
+    const alone = build(false);
+    const aloneSim = new ServiceSim(cat);
+    const aloneLoad = aloneSim.tick(alone.g, alone.buildings, fullFunding(1));
+    expect(aloneLoad.park.capped).toBe(1);
+    expect(aloneLoad.park.load).toBeCloseTo(2, 10);
+    expect(aloneLoad.park.worst).toBeCloseTo(2, 10);
+    expect(aloneSim.facilityLoad(1)).toBeCloseTo(2, 10);
+    // Strength 200 at the street, halved by the load, over four.
+    expect(alone.g.fields[FieldId.LandValue]![tileIndex(17, 22)]).toBe(25);
+
+    const paired = build(true);
+    const pairedSim = new ServiceSim(cat);
+    const pairedLoad = pairedSim.tick(paired.g, paired.buildings, fullFunding(1));
+    expect(pairedLoad.park.capped).toBe(2);
+    expect(pairedLoad.park.worst).toBeCloseTo(1, 10);
+    expect(paired.g.fields[FieldId.LandValue]![tileIndex(17, 22)]).toBe(50);
+  });
+
+  it('counts a park with a capacity figure as capped, so the pocket park now reads a load', () => {
+    const g = makeGrid();
+    const buildings: BuildingInstance[] = [];
+    roadStrip(g, 9);
+    place(g, buildings, 1, 'small-park', 0, 0, 1, 1);
+    place(g, buildings, 2, 'home-500', 2, 2, 1, 1);
+
+    const summary = new ServiceSim([realPocketPark, home500]).tick(g, buildings, fullFunding(1));
+
+    expect(summary.park.capped).toBe(1);
+    expect(summary.park.load).toBeCloseTo(500 / 32, 10);
+  });
+});
+
+describe('openSpaceOf: park tiles per 1,000 residents', () => {
+  const airport: BuildingCatalogEntry = {
+    ...parkEntry,
+    id: 'airport',
+    name: 'International Airport',
+    category: 'transit',
+    footprint: { w: 8, d: 6 },
+    service: undefined,
+  };
+  const byId = new Map([parkEntry, districtPark, airport, home500].map((e) => [e.id, e] as const));
+
+  it('sums the footprint of every Active park and divides by the population', () => {
+    const g = makeGrid();
+    const buildings: BuildingInstance[] = [];
+    place(g, buildings, 1, 'park', 0, 0, 1, 1);
+    place(g, buildings, 2, 'district-park', 10, 10, 20, 20);
+    place(g, buildings, 3, 'park', 2, 0, 1, 1, BuildingState.Constructing);
+    place(g, buildings, 4, 'airport', 40, 40, 8, 6);
+    place(g, buildings, 5, 'home-500', 5, 5, 1, 1);
+
+    // One pocket park and one district park: 401 tiles; the airport is not open
+    // space and a park still being built is not open yet.
+    const provision = openSpaceOf(buildings, byId, 8020);
+    expect(provision.tiles).toBe(401);
+    expect(provision.perThousand).toBeCloseTo(50, 9);
+  });
+
+  it('reads 0 per 1,000 at population 0, never NaN', () => {
+    const g = makeGrid();
+    const buildings: BuildingInstance[] = [];
+    place(g, buildings, 1, 'park', 0, 0, 1, 1);
+    expect(openSpaceOf(buildings, byId, 0)).toEqual({ tiles: 1, perThousand: 0 });
+    expect(openSpaceOf([], byId, 0)).toEqual({ tiles: 0, perThousand: 0 });
   });
 });
 

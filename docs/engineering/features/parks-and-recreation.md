@@ -1,8 +1,9 @@
 # Parks and recreation — technical design
 
-- **Status:** Draft
-- **Date:** 2026-09-18
-- **Author:** Claude Opus 5
+- **Status:** Agreed 2026-10-23 (drafted 2026-09-18; re-planned for real-sized
+  parks, real cost ratios and the airport fix at the player's choice)
+- **Date:** 2026-10-23
+- **Author:** Claude Opus 5, revised by Claude Fable 5.1
 
 Epic 8 of [municipal-services.md](municipal-services.md), and the last of it. The
 design it is written against is
@@ -19,16 +20,27 @@ it is the first epic whose whole point is capacity, so it needs
 [service-capacity.md](service-capacity.md) finished — and epic 0 shipped the park
 entries **without** a capacity, leaving this hole to fill.
 
+Two slices, each a pull request:
+
+1. **The rules.** The catalog entries at real sizes, the airport fix, the
+   drape flag and its placement path, multi-source coverage, the park
+   max-blend, capacity, the provision statistic and the parks row. The new
+   parks draw as the pocket park's kit scaled (a flat plate, trees, benches)
+   until slice 2, which is enough to play and test the rules.
+2. **The kits.** The draped ground, the four kits read apart at a glance,
+   perimeter-scaled trees and benches, the pitch and its pavilion, the plaza's
+   planters, and the wear colour; the six browser checks below.
+
 ## What it touches
 
-| Module                      | Change                                                                  |
-| --------------------------- | ----------------------------------------------------------------------- |
-| `src/data/catalog.json`     | 4 new `category: 'park'` entries; `small-park` gains range and capacity |
-| `src/sim/services.ts`       | Park coverage max-blends across parks before one additive write         |
-| `src/sim/worker.entry.ts`   | Open-space tiles and tiles-per-1,000 onto the snapshot                  |
-| `src/shared/types.ts`       | `SimSnapshot.openSpace?`                                                |
-| `src/render/utilitykits.ts` | 4 new kits; shared tree/bench pools; wear colour; 2 new part kinds      |
-| `src/ui/` (panel, store)    | The parks row gains a provision line; mirror `openSpace`                |
+| Module                      | Slice | Change                                                                                                                                                      |
+| --------------------------- | ----- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/data/catalog.json`     | 1     | 4 new `category: 'park'` entries at real sizes; `small-park` gains range 18 and capacity; `airport` moves to `transit` and loses its service block          |
+| `src/shared/types.ts`       | 1     | `BuildingCatalogEntry.ground?: 'level' \| 'drape'`; `SimSnapshot.openSpace?`                                                                                |
+| `src/sim/worker.entry.ts`   | 1     | A `drape` entry skips the footprint levelling; open-space tiles and tiles-per-1,000 onto the snapshot                                                       |
+| `src/sim/services.ts`       | 1     | Coverage seeds from every road tile within reach of the footprint, not one; park coverage max-blends across parks before one additive write                 |
+| `src/ui/` (panel, store)    | 1     | The parks row gains a provision line; mirror `openSpace`; the Parks drawer no longer lists the airport                                                      |
+| `src/render/utilitykits.ts` | 2     | The park ground draped on the terrain; 4 new kits; shared tree/bench pools; perimeter-scaled props; wear colour; `pitchGoal` and `pavilionBlock` part kinds |
 
 **Save format: no.** `SAVE_VERSION` does not move; everything added is catalog
 data or derived per tick. The additive rule holds and is what the loader relies
@@ -51,13 +63,38 @@ every derivation live in the design document. `height` is the lawn or paving
 plate for four of them; the sports ground's 3.2 m is its changing pavilion, the
 only floor area in the epic.
 
-| `id`                    | Footprint | `height` | `range`         | `capacity` |
-| ----------------------- | --------- | -------- | --------------- | ---------- |
-| `small-park` (existing) | 1×1       | 2        | **18** (was 16) | 32         |
-| `civic-plaza`           | 2×2       | 2        | 33              | 108        |
-| `neighbourhood-park`    | 3×3       | 2        | 22              | 117        |
-| `district-park`         | 5×5       | 2        | 34              | 250        |
-| `sports-ground`         | 6×4       | 3.2      | 58              | 120        |
+| `id`                    | Footprint | `height` | `range`         | `capacity` | `ground` | Cost / upkeep  | Unlock |
+| ----------------------- | --------- | -------- | --------------- | ---------- | -------- | -------------- | ------ |
+| `small-park` (existing) | 1×1       | 2        | **18** (was 16) | 32         | level    | 400 / 20       | M0     |
+| `civic-plaza`           | 5×5       | 2        | 33              | 675        | level    | 14,200 / 80    | M2     |
+| `neighbourhood-park`    | 9×9       | 2        | 22              | 1,053      | drape    | 5,100 / 250    | M1     |
+| `district-park`         | 20×20     | 2        | 34              | 4,000      | drape    | 44,000 / 1,250 | M3     |
+| `sports-ground`         | 6×4       | 3.2      | 58              | 120        | level    | 1,400 / 120    | M2     |
+
+And `airport`: `category` becomes `'transit'` and its `service` block is
+removed; its id, footprint, cost and everything else stand, so a save that
+holds one loads with the building where it was. The Parks drawer test and
+the catalog contract test move with it.
+
+### Behaviour: a park keeps its ground
+
+`cmdPlaceBuilding` levels a footprint to its mean height. An entry whose
+`ground` is `'drape'` skips `flattenFootprint` and is placed on the terrain
+as it lies, subject only to the buildable test per tile (slope and water as
+for anything else); the catalog contract pins which entries drape. The
+levelled entries — the pocket park, the plaza and the sports ground, whose
+paving and pitch are graded flat in reality — level as every ploppable does.
+Nothing is saved for it; the flag is catalog data.
+
+### Behaviour: coverage seeds from every road the park touches
+
+`nearestRoadTile` picks one road tile for a facility's BFS, so a 400 m park
+fronting four streets would serve from one corner. The BFS now starts from
+every road tile within `NEAR_ROAD_RADIUS` of the footprint at distance 0, a
+multi-source search over the same graph with the same range. Every service
+gains from it the same way (a hospital on a corner reaches both its streets),
+which widens coverage a little and narrows nothing; the first-town regression
+is the check that it changes no prerequisite.
 
 ### Behaviour: park coverage max-blends with itself, then adds once
 
@@ -100,11 +137,8 @@ population, as `openSpace?: { tiles: number; perThousand: number }` on
 `SimSnapshot`. `perThousand` is `tiles / population * 1000` and **0 at population
 0**, not `NaN`; the parks row reads it against the 60 tiles per 1,000 standard.
 It goes on `SimSnapshot` and not `CityStats` for the reason epic 0 gave for load:
-`CityStats` is carried into saves, where a derived figure can go stale. Note what
-that selector means today — it includes the 8×6 `airport`, so the statistic would
-credit a city with 48 tiles of open space for building one. That entry is
-miscategorised (it belongs in `transit`) and fixing it is transport's work, so
-provision tests run against a fixture catalog and pin the rule, not the bug.
+`CityStats` is carried into saves, where a derived figure can go stale. With the
+airport moved to `transit` the selector counts only parks.
 
 ### Rendering
 
@@ -113,11 +147,16 @@ These are the largest ground-level assets in the game and
 300 draw calls. Four rules keep the epic inside it, all four extending the
 pocket-park kit in `src/render/utilitykits.ts` — see
 [../../art/props-and-vehicles.md](../../art/props-and-vehicles.md).
-**1. A park's ground is one instance, not one per tile.**
-`buildParkGroundGeometry(footprint)` already merges the lawn plate and path cross
-into one `BufferGeometry` sized from the footprint, so a 25-tile district park is
-**one** instance — the most important budget fact, and already how the code
-works. **2. Footprint-independent parts share one pool across all five kits.**
+**1. A park's ground is one instance, not one per tile, draped on the
+terrain.** `buildParkGroundGeometry(footprint)` merges the lawn plate and path
+cross into one `BufferGeometry` sized from the footprint, so a 400-tile
+district park is **one** instance — the most important budget fact. Today the
+plate is a flat box at the kit's origin; it becomes a lattice at one vertex
+per tile edge (a 20×20 park is a 21×21 grid) with each vertex's height read
+from the terrain, the way a lot's lawn and a road's deck follow the ground,
+so the lawn and the path cross lie on the hillside a draped park stands on.
+A levelled entry's plate is flat, as its ground is. **2.
+Footprint-independent parts share one pool across all five kits.**
 Each kit today builds its own `InstancedSlotPool` per part, so five park kits
 would mean five tree and five bench pools for identical geometry. `parkTree` and
 `parkBench` do not depend on the footprint, so the whole cost becomes 5 ground
@@ -135,10 +174,13 @@ An area-scaled rule would have put 75 trees on every district park.
 | Rung               | Perimeter | Trees            | Benches |
 | ------------------ | --------- | ---------------- | ------- |
 | Pocket Park        | 80 m      | 3                | 2       |
-| Civic Plaza        | 160 m     | 7 (in planters)  | 3       |
-| Neighbourhood Park | 240 m     | 10               | 2       |
-| District Park      | 400 m     | 17 + 4 specimens | 4       |
+| Civic Plaza        | 400 m     | 17 (in planters) | 8       |
+| Neighbourhood Park | 720 m     | 30               | 7       |
+| District Park      | 1,600 m   | 67 + 8 specimens | 16      |
 | Sports Ground      | 400 m     | 17 (long sides)  | 2       |
+
+Trees stand on the terrain under them, each at its own vertex height, as the
+wild trees do; the path cross and the benches along it follow the plate.
 
 **4. Markings and wear cost nothing.** Pitch lines are vertex-colour strips
 merged into the sports ground's plate, exactly as the path cross already is, and
@@ -201,8 +243,8 @@ The rules above, as behaviour statements; the
   tile at land value 200 under a strength-80 park ends above 200, never at 20.
 - `small-park` at `range: 18` reaches exactly 20 tiles of road distance once the
   2-tile radiation is counted, and nothing at 21.
-- A district park alone in a catchment of 500 residents runs at load 2 and gives
-  half its strength; a second district park restores both to full.
+- A district park alone in a catchment of 8,000 residents runs at load 2 and
+  gives half its strength; a second district park restores both to full.
 - A park entry with no `capacity` leaves its catchment uncapped, so a pre-epic
   save behaves exactly as it did, and `SAVE_VERSION` is unchanged.
 - Every entry's `capacity` equals its tile count × its typology's
@@ -236,9 +278,6 @@ and a read-back proves none of it.
 
 ## Out of scope
 
-- **Fixing the `airport` entry** — named in the design document because parks
-  work sits on top of it, but correcting its category and dropping its bogus
-  `service` block belongs with transport.
 - **Decoration ploppables** — fountains, statues and flowerbeds whose only effect
   is a land-value number. Anything that should never be built belongs in
   [../../DESIGN.md](../../DESIGN.md).

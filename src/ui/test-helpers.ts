@@ -30,6 +30,7 @@ export function resetCityStore(): void {
     brushSettings: DEFAULT_BRUSH_SETTINGS,
     serviceLoad: null,
     responders: null,
+    openSpace: null,
     // Component tests assume a live game (the App chrome/HUD only renders
     // while screen === 'playing'); menu-screen behavior gets its own tests.
     screen: 'playing',

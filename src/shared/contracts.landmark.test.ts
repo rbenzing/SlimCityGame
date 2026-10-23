@@ -1,10 +1,11 @@
 /**
  * Landmark-ploppable contract additions (Airport): the
  * BuildingCatalogEntry.noise emission channel and the airport
- * catalog entry. The airport is a LANDMARK, not transit — every sim effect
- * flows through EXISTING systems (field emissions, park-kind service
- * coverage, power/water draw, upkeep), so the entire contract is one
- * optional field plus data.
+ * catalog entry. The airport is a LANDMARK filed under transit — every sim
+ * effect flows through EXISTING systems (field emissions, power/water draw,
+ * upkeep), so the entire contract is one optional field plus data. It is not
+ * a park: it carries no service block, so it neither covers nor counts as
+ * open space.
  *
  * Type-level guarantees are enforced by `npx tsc --noEmit` over this file
  * (vitest transpiles without type-checking); runtime asserts pin the
@@ -78,8 +79,8 @@ describe('airport landmark catalog entry (UI-SPEC §6.10)', () => {
     expect(airport?.name).toBe('International Airport');
   });
 
-  it('is a park-category ploppable — no zone, no level, no utility spec', () => {
-    expect(airport?.category).toBe('park');
+  it('is a transit-category ploppable, not a park — no zone, no level, no utility spec', () => {
+    expect(airport?.category).toBe('transit');
     expect(airport?.zone).toBeUndefined();
     expect(airport?.level).toBeUndefined();
     expect(airport?.utility).toBeUndefined();
@@ -115,9 +116,8 @@ describe('airport landmark catalog entry (UI-SPEC §6.10)', () => {
     }
   });
 
-  it('covers as a park-kind service, strength 200 over range 80', () => {
-    expect(airport?.service).toEqual({ kind: 'park', strength: 200, range: 80 });
-    expect(airport?.service?.strength).toBeLessThanOrEqual(255);
+  it('carries no service block: an airport is not a park, so it covers nothing and counts as no open space', () => {
+    expect(airport?.service).toBeUndefined();
   });
 
   it('draws the power of its terminal floor and the water of its passengers (derived in contracts.test)', () => {
