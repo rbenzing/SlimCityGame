@@ -13,12 +13,16 @@
  * is never the binding constraint on a building — merged ground geometry is.
  */
 import * as THREE from 'three';
+import { MeshStandardNodeMaterial } from 'three/webgpu';
+import type { UniformNode } from 'three/webgpu';
+import { uniform, varyingProperty, vec3 } from 'three/tsl';
 import {
   BuildingCatalogEntry,
   BuildingDelta,
   BuildingInstance,
   BuildingState,
 } from '../shared/types';
+import { nightBodyMaterial } from './nightlook';
 import {
   computeSetbacks,
   frontageSetbackFor,
@@ -33,7 +37,13 @@ import { findRoadFacingEdge, localSideOf, NO_STREETS, type Side } from './fronta
 import { materialHex } from './palette';
 import { isApartmentEntry, isWalkUpEntry, partsFor, type BuildingPart } from './archetypes';
 import { computeCornerOffset, hasSmokestack, smokestackCorner } from './props';
-import { deriveFacadeParams, FLOOR_HEIGHT_METERS, windowGrid, type RGB } from './facade';
+import {
+  deriveFacadeParams,
+  FLOOR_HEIGHT_METERS,
+  STOREFRONT_BULKHEAD_M,
+  windowGrid,
+  type RGB,
+} from './facade';
 import { hipRoofGeometry } from './hiproof';
 import { buildGableRoofGeometry, roofColorHex, trimColor } from './houses';
 import {
@@ -105,7 +115,7 @@ const PART_COLOR: Readonly<Record<BuildingPart, number>> = {
   ridgeVent: GALVANISED,
   dockShelter: KIT_DARK,
   dockBumper: KIT_DARK,
-  dockLight: GALVANISED,
+  dockLight: materialHex('whiteBrick'), // the wall-pack over a door: lit, so its day colour is its glow's
   officeCorner: materialHex('whiteBrick'),
   officeCanopy: materialHex('whiteBrick'),
   panelReveal: KIT_DARK,
@@ -165,10 +175,27 @@ export const LIT_PARTS: ReadonlySet<BuildingPart> = new Set<BuildingPart>([
   'officeCorner',
   'clerestory',
   'storefrontBand',
+  'dockLight',
 ]);
 
 /** A lit cabinet is white by day on whichever side the sun is: its glow never falls below this share. */
 export const LIT_DAY_FLOOR = 0.45;
+
+/**
+ * A lit part glows in its own livery colour, warm-shifted — a white band
+ * reads cream, a red one red — never flat white: its emissive is the
+ * instance colour times this shift, scaled by the lit intensity.
+ */
+export const LIT_WARM_SHIFT: RGB = [1, 0.88, 0.7];
+
+/** The lit parts' material: its glow the instance's own colour, warm-shifted (the standard node material is the one that carries an emissive node). */
+function litPartMaterial(intensity: UniformNode<'float', number>): MeshStandardNodeMaterial {
+  const material = new MeshStandardNodeMaterial({ roughness: 1, metalness: 0, vertexColors: true });
+  material.emissiveNode = varyingProperty('vec3', 'vInstanceColor')
+    .mul(vec3(...LIT_WARM_SHIFT))
+    .mul(intensity);
+  return material;
+}
 
 /** A sloped awning: its top falls from the wall to a short valance at the front; +z is out from the wall. */
 function awningGeometry(): THREE.BufferGeometry {
@@ -287,7 +314,7 @@ const SIGN_ABOVE_CANOPY_M = 0.5;
 export const SIGN_CENTRE_Y_M = CANOPY_HEIGHT_M + SIGN_ABOVE_CANOPY_M;
 
 /** A shop: a dark base band, an awning a bay, a cornice across the parapet. */
-export const BULKHEAD_HEIGHT_M = 0.6;
+export const BULKHEAD_HEIGHT_M = STOREFRONT_BULKHEAD_M;
 const BULKHEAD_PROUD_M = 0.1;
 const SHOP_BAY_M = 6;
 export const AWNING_OUT_M = 1.5;
@@ -2863,6 +2890,7 @@ export function computePartPlacements(
       case 'walkDoor': {
         if (!side || (entry.kind !== 'workshop' && entry.kind !== 'factory')) break;
         const count = serviceDoorCount(entry.kind, span);
+        const along = doorRow(span, count).walk;
         out.push(
           againstFacade(
             part,
@@ -2872,7 +2900,21 @@ export function computePartPlacements(
             DOOR_THICKNESS_M,
             WALK_DOOR_HEIGHT_M,
             WALK_DOOR_HEIGHT_M / 2,
-            doorRow(span, count).walk,
+            along,
+          ),
+        );
+        // A wall-pack over the door, as over a dock door: what a yard reads by at night.
+        const [lw, lh, ld] = DOCK_LIGHT_SIZE_M;
+        out.push(
+          againstFacade(
+            'dockLight',
+            baseBox,
+            side,
+            lw,
+            ld,
+            lh,
+            WALK_DOOR_HEIGHT_M + DOCK_LIGHT_ABOVE_M + lh / 2,
+            along,
           ),
         );
         break;
@@ -3483,13 +3525,13 @@ export class BuildingKitRenderer {
   private readonly kerb: KerbSurroundings | null;
   private readonly pools = new Map<BuildingPart, InstancedSlotPool>();
   private readonly buildingSlots = new Map<number, { part: BuildingPart; slot: number }[]>();
-  private readonly material = new THREE.MeshLambertMaterial({ vertexColors: true });
-  /** The lit parts: white by day, a glow that follows the night factor. */
-  private readonly litMaterial = new THREE.MeshLambertMaterial({
-    vertexColors: true,
-    emissive: 0xffffff,
-    emissiveIntensity: LIT_DAY_FLOOR,
-  });
+  private readonly nightFactorUniform = uniform(0);
+  /** The body parts: their instance colour, carried toward the shared night tint. */
+  private readonly material = nightBodyMaterial(this.nightFactorUniform, { vertexColors: true });
+  /** LIT_DAY_FLOOR by day .. 1 at night: what the lit parts' glow is scaled by. */
+  private readonly litIntensityUniform = uniform(LIT_DAY_FLOOR);
+  /** The lit parts: their own colour by day, a warm glow in that colour that follows the night factor. */
+  private readonly litMaterial = litPartMaterial(this.litIntensityUniform);
 
   constructor(
     scene: THREE.Scene,
@@ -3520,15 +3562,16 @@ export class BuildingKitRenderer {
     for (const pool of this.pools.values()) pool.commit();
   }
 
-  /** 0 (day) .. 1 (night): how brightly the lit parts glow. A dark building has none, since only Active buildings stand parts. */
+  /** 0 (day) .. 1 (night): how brightly the lit parts glow and how far the body parts shade toward the night tint. A dark building has none, since only Active buildings stand parts. */
   setNightFactor(nightFactor: number): void {
     const night = Math.min(1, Math.max(0, nightFactor));
-    this.litMaterial.emissiveIntensity = LIT_DAY_FLOOR + (1 - LIT_DAY_FLOOR) * night;
+    this.nightFactorUniform.value = night;
+    this.litIntensityUniform.value = LIT_DAY_FLOOR + (1 - LIT_DAY_FLOOR) * night;
   }
 
   /** How brightly the lit parts glow now. */
   litIntensity(): number {
-    return this.litMaterial.emissiveIntensity;
+    return this.litIntensityUniform.value;
   }
 
   /** The material a part kind is drawn with, once a building has stood one. */

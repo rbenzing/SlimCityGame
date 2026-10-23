@@ -55,7 +55,7 @@ import {
   SIDEWALK_COLOR,
   YELLOW_MARKING_COLOR,
   dashSegments,
-  roadNightDim,
+  roadNightTint,
   surfaceColor,
 } from './roadsmesh';
 
@@ -837,7 +837,7 @@ export class FreeRoadRenderer {
   }
 
   setNightFactor(nightFactor: number): void {
-    this.material.color.setScalar(roadNightDim(nightFactor));
+    this.material.color.setRGB(...roadNightTint(nightFactor));
   }
 
   /** The grid tiles the last rebuild drew a junction over, which the tile renderer leaves to it. */

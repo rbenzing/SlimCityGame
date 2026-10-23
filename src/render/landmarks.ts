@@ -43,7 +43,9 @@
  * computePropPlacement/rotateLocalOffset.
  */
 import * as THREE from 'three';
+import { uniform } from 'three/tsl';
 import { BuildingCatalogEntry, BuildingDelta, BuildingInstance } from '../shared/types';
+import { nightBodyMaterial } from './nightlook';
 import { TILE_METERS } from '../shared/constants';
 import { footprintForRotation } from '../shared/footprint';
 import { InstancedSlotPool } from './massing';
@@ -685,6 +687,8 @@ export class LandmarkRenderer {
   private readonly apronSurfaceMaterial = new THREE.MeshBasicMaterial({ vertexColors: true });
 
   private nightFactorValue = 0;
+  /** The same value, as the uniform the structure materials shade by. */
+  private readonly nightFactorUniform = uniform(0);
   private lastTMs = 0;
 
   constructor(
@@ -714,6 +718,7 @@ export class LandmarkRenderer {
   /** 0 (day) .. 1 (night): drives the apron lights' + window band's steady glow, and gates the beacon pulse. */
   setNightFactor(nightFactor: number): void {
     this.nightFactorValue = Math.min(1, Math.max(0, nightFactor));
+    this.nightFactorUniform.value = this.nightFactorValue;
     for (const kit of this.kits.values()) {
       kit.apronLightMaterial.emissiveIntensity = this.nightFactorValue;
       kit.windowBandMaterial.emissiveIntensity = this.nightFactorValue;
@@ -811,9 +816,13 @@ export class LandmarkRenderer {
     const scene = this.scene;
     const noseZ = computeApronNoseZ(entry.footprint);
 
-    const structureMaterial = new THREE.MeshLambertMaterial({ color: STRUCTURE_COLOR });
-    const planeMaterial = new THREE.MeshLambertMaterial({ color: PLANE_COLOR });
-    const jetBridgeMaterial = new THREE.MeshLambertMaterial({ color: JETBRIDGE_COLOR });
+    const structureMaterial = nightBodyMaterial(this.nightFactorUniform, {
+      color: STRUCTURE_COLOR,
+    });
+    const planeMaterial = nightBodyMaterial(this.nightFactorUniform, { color: PLANE_COLOR });
+    const jetBridgeMaterial = nightBodyMaterial(this.nightFactorUniform, {
+      color: JETBRIDGE_COLOR,
+    });
     const beaconMaterial = new THREE.MeshLambertMaterial({
       color: BEACON_COLOR,
       emissive: BEACON_COLOR,

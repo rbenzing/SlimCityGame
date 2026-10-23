@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
 import {
   HouseRoofRenderer,
-  NIGHT_ROOF_TINT,
   buildCarportGeometry,
   buildGableRoofGeometry,
   buildGrillGeometry,
@@ -17,7 +16,6 @@ import {
 } from './houses';
 import { isHouseEntry } from './archetypes';
 import { deriveFacadeParams } from './facade';
-import { NIGHT_BODY_TINT } from './buildings';
 import {
   ROOF_MAX_RISE_M,
   computeRoofRise,
@@ -352,14 +350,6 @@ describe('HouseRoofRenderer', () => {
     expect(r.nightFactor()).toBe(1);
     r.setNightFactor(-1);
     expect(r.nightFactor()).toBe(0);
-  });
-
-  it('roof night tint stays recognizable (matches the body, not the hidden massing tiers) so a house never reads as a flat box at night', () => {
-    // Must track the exposed BODY tint, never the near-black hidden-tier value.
-    expect(NIGHT_ROOF_TINT).toEqual(NIGHT_BODY_TINT);
-    const [r, g, b] = NIGHT_ROOF_TINT;
-    const luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b;
-    expect(luminance).toBeGreaterThan(0.3); // the "still recognizable at night" floor
   });
 });
 

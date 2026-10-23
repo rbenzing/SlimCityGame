@@ -23,7 +23,8 @@
  */
 import * as THREE from 'three';
 import { MeshStandardNodeMaterial } from 'three/webgpu';
-import { mix, uniform, vec3 } from 'three/tsl';
+import { uniform } from 'three/tsl';
+import { nightTintNode } from './nightlook';
 import {
   BuildingCatalogEntry,
   BuildingDelta,
@@ -94,17 +95,6 @@ const HASH_SLOT_CAR_VARIANT = 74;
 const HASH_SLOT_TRIM = 75;
 
 const INITIAL_KIT_CAPACITY = 64;
-/**
- * Night tint the kit multiplies toward at full night. Matches the BODY's tint
- * (buildings.ts NIGHT_BODY_TINT, relative luminance ~0.377 — above the 0.3
- * "still recognizable" floor), NOT the massing tiers' much darker [0.11,0.13,
- * 0.19]: those tiers sit hidden inside the body box so their near-black night
- * value never shows, but the roof/garage are exposed — at the dark value the
- * house shape vanishes at night and reads as a flat glowing box. Re-declared
- * locally per this repo's "each render file keeps its own copy of shared
- * visual constants" convention.
- */
-export const NIGHT_ROOF_TINT: readonly [number, number, number] = [0.34, 0.38, 0.46];
 
 /**
  * Roof-tile palette, spread across the calibrated range rather than bunched at
@@ -526,7 +516,7 @@ export class HouseRoofRenderer {
 
   private kitMaterial(vertexColors: boolean): MeshStandardNodeMaterial {
     const material = new MeshStandardNodeMaterial({ roughness: 1, metalness: 0, vertexColors });
-    material.colorNode = mix(vec3(1, 1, 1), vec3(...NIGHT_ROOF_TINT), this.nightFactorUniform);
+    material.colorNode = nightTintNode(this.nightFactorUniform);
     return material;
   }
 

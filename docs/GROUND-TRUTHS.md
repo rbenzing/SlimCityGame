@@ -1612,6 +1612,15 @@ MUTCD citations below use 11th-edition section numbers.
   transparency without a reason; water and the additive lamp pool are the
   exceptions. — [materials.md](visual-render/materials.md),
   [lighting.md](visual-render/lighting.md)
+- A building stays legible at night and the night stays night: a body at
+  full night reads at 18 to 30% of its noon brightness and the ground at 12
+  to 25%, every sunlit surface — bodies, kit parts, terrain, roads, lots,
+  trees — carrying the one shared night tint, and the sky's night light and
+  the tint tuned as one, never each dimming the scene on its own. Only
+  window panes and a kit's lit parts glow, and a lit pane keeps its colour
+  rather than clipping to white; a garage door, porch, roof or wall never
+  glows. — [lighting.md](visual-render/lighting.md); `NIGHT_TINT` in
+  `src/render/nightlook.ts`, measured by `tools/nightlook-shots.mjs`
 - Anything laid on the ground (pad, apron, driveway, bay, lamp pool, grid)
   samples real terrain height per vertex and splits on the terrain's own
   diagonal. — [buildings.md](art/buildings.md),

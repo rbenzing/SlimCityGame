@@ -150,26 +150,35 @@ interface Keyframe {
 }
 
 const NIGHT_KEYFRAME: Keyframe = {
-  sunColor: [0.55, 0.65, 1.0], // dim blue moonlight directional
-  sunIntensity: 0.12, // gentle moonlight so terrain forms read
-  // Hemisphere floor (sole ambient term) kept just below dusk's 0.28 so night
-  // stays darkest, but high enough that landscape silhouettes stay legible.
-  hemiSkyColor: [0.08, 0.11, 0.24],
-  hemiGroundColor: [0.06, 0.07, 0.11],
-  hemiIntensity: 0.26,
+  sunColor: [0.6, 0.7, 1.0], // blue moonlight directional
+  // The moon: a directional light from the noon sun's place (placeSun), so a
+  // roof — whose noon value is mostly sun — keeps the same share of its day
+  // value at night as a wall does.
+  sunIntensity: 0.55,
+  // The hemisphere is the sole ambient term on a wall. With the one night
+  // tint every sunlit surface reads (nightlook.ts) it lands a body at 03:00
+  // at 18–30% of its noon value and the ground at 12–25% — the two are one
+  // dial — while the sky dome and background stay navy.
+  hemiSkyColor: [0.49, 0.55, 0.78],
+  hemiGroundColor: [0.06, 0.07, 0.1],
+  hemiIntensity: 0.5,
   backgroundColor: [0x0a / 0xff, 0x12 / 0xff, 0x24 / 0xff], // deep navy #0a1224
   shadowIntensity: 0.2,
   nightFactor: 1,
 };
 
 const DUSK_KEYFRAME: Keyframe = {
-  sunColor: [0.5, 0.35, 0.55], // cooling toward violet
-  sunIntensity: 0.25,
-  hemiSkyColor: [0.16, 0.14, 0.28],
-  hemiGroundColor: [0.05, 0.04, 0.09],
-  hemiIntensity: 0.28,
+  sunColor: [0.7, 0.65, 0.85], // cooling toward violet
+  sunIntensity: 0.55,
+  // Twilight sits between golden hour and night on the ramp, and 03:00 is
+  // lerped halfway from night toward this frame: its light matches the
+  // night's in strength and differs in hue, so the small hours never fall
+  // under the night's own legibility floor.
+  hemiSkyColor: [0.56, 0.53, 0.73],
+  hemiGroundColor: [0.07, 0.06, 0.09],
+  hemiIntensity: 0.5,
   backgroundColor: [0.14, 0.1, 0.22], // violet dusk sky
-  shadowIntensity: 0.45,
+  shadowIntensity: 0.3,
   nightFactor: 0.65,
 };
 
@@ -240,6 +249,22 @@ function sampleKeyframes(elevation: number): Keyframe {
 }
 
 export { sunDirection };
+
+/** The sun's elevation (its direction's y) at the dusk keyframe: where the moon has fully taken the light. */
+const MOON_FULL_ELEVATION = -0.4;
+
+/**
+ * How far the night light has slewed from where the sun set to the moon's
+ * place overhead: 0 while the sun is up, 1 from the dusk keyframe on. Pure.
+ */
+export function moonBlend(sunElevation: number): number {
+  return clamp01(sunElevation / MOON_FULL_ELEVATION);
+}
+
+/** Where the moon lights from: the noon sun's own direction, so night is noon's light scaled. */
+export function moonDirection(): { x: number; y: number; z: number } {
+  return sunDirection(0.5);
+}
 
 // Sky dome: zenith is a simple 2-point ramp driven directly by
 // nightFactor (always blue, brightness follows day/night) — deliberately NOT
@@ -368,6 +393,12 @@ export function createWorldScene(): WorldScene {
   // shorten toward noon. Color/intensity/the visible sun billboard still use
   // the true `sunDir`, so the day/night look is unchanged; only the direction
   // the shadow map is projected from is lifted, and only while the sun is low.
+  //
+  // Once the sun is under the horizon the light is the moon, and over the
+  // dusk ramp it slews from where the sun set to the noon sun's own place
+  // overhead (moonDirection): lit from where noon lit it, a roof, a wall and
+  // a slope each keep the same share of their day value at night, so the
+  // body-legibility band (nightlook.ts) holds whichever way a building faces.
   const placeSun = (): void => {
     let dx = sunDir.x;
     let dy = sunDir.y;
@@ -380,6 +411,17 @@ export function createWorldScene(): WorldScene {
       dx *= horizScale;
       dz *= horizScale;
       dy = MIN_SHADOW_SUN_ELEVATION_SIN;
+    }
+    const moon = moonBlend(sunDir.y);
+    if (moon > 0) {
+      const zenith = moonDirection();
+      dx += (zenith.x - dx) * moon;
+      dy += (zenith.y - dy) * moon;
+      dz += (zenith.z - dz) * moon;
+      const len = Math.hypot(dx, dy, dz) || 1;
+      dx /= len;
+      dy /= len;
+      dz /= len;
     }
     sun.position.set(
       shadowFocus.x + dx * sunDistance,

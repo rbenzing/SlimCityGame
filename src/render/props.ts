@@ -17,6 +17,8 @@
  * layers (massing.ts's generic allocator), one per prop kind.
  */
 import * as THREE from 'three';
+import { uniform } from 'three/tsl';
+import { nightBodyMaterial } from './nightlook';
 import {
   BuildingCatalogEntry,
   BuildingDelta,
@@ -393,6 +395,8 @@ export class RoofPropRenderer {
   private readonly kerb: KerbSurroundings | null;
   private readonly catalogById: Map<string, BuildingCatalogEntry>;
   private readonly warningLightMaterial: THREE.MeshLambertMaterial;
+  /** 0 (day) .. 1 (night): what the prop bodies shade by. */
+  private readonly nightFactorUniform = uniform(0);
   private readonly pools: Record<PropKind, InstancedSlotPool>;
   private readonly buildingSlots = new Map<number, BuildingPropSlots>();
 
@@ -414,25 +418,12 @@ export class RoofPropRenderer {
       emissiveIntensity: 0,
     });
 
+    // Every body prop shades toward the shared night tint; only the warning light glows.
+    const body = (): THREE.Material => nightBodyMaterial(this.nightFactorUniform);
     this.pools = {
-      vent: new InstancedSlotPool(
-        scene,
-        baseAnchoredBox(),
-        new THREE.MeshLambertMaterial(),
-        INITIAL_PROP_CAPACITY,
-      ),
-      ac: new InstancedSlotPool(
-        scene,
-        baseAnchoredBox(),
-        new THREE.MeshLambertMaterial(),
-        INITIAL_PROP_CAPACITY,
-      ),
-      antenna: new InstancedSlotPool(
-        scene,
-        baseAnchoredCylinder(),
-        new THREE.MeshLambertMaterial(),
-        INITIAL_PROP_CAPACITY,
-      ),
+      vent: new InstancedSlotPool(scene, baseAnchoredBox(), body(), INITIAL_PROP_CAPACITY),
+      ac: new InstancedSlotPool(scene, baseAnchoredBox(), body(), INITIAL_PROP_CAPACITY),
+      antenna: new InstancedSlotPool(scene, baseAnchoredCylinder(), body(), INITIAL_PROP_CAPACITY),
       warningLight: new InstancedSlotPool(
         scene,
         new THREE.SphereGeometry(0.5, 8, 6),
@@ -442,15 +433,10 @@ export class RoofPropRenderer {
       smokestack: new InstancedSlotPool(
         scene,
         baseAnchoredCylinder(),
-        new THREE.MeshLambertMaterial(),
+        body(),
         INITIAL_PROP_CAPACITY,
       ),
-      silo: new InstancedSlotPool(
-        scene,
-        baseAnchoredCylinder(),
-        new THREE.MeshLambertMaterial(),
-        INITIAL_PROP_CAPACITY,
-      ),
+      silo: new InstancedSlotPool(scene, baseAnchoredCylinder(), body(), INITIAL_PROP_CAPACITY),
     };
   }
 
@@ -464,7 +450,9 @@ export class RoofPropRenderer {
 
   /** 0 (day) .. 1 (night) — drives the shared warning-light material's emissive strength (antenna tip + smokestack tip alike), exactly like lamps.ts's head glow. */
   setNightFactor(nightFactor: number): void {
-    this.warningLightMaterial.emissiveIntensity = Math.min(1, Math.max(0, nightFactor));
+    const night = Math.min(1, Math.max(0, nightFactor));
+    this.warningLightMaterial.emissiveIntensity = night;
+    this.nightFactorUniform.value = night;
   }
 
   nightFactor(): number {

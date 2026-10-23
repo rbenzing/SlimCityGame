@@ -15,7 +15,8 @@
  */
 import { BuildingCatalogEntry, ZoneType } from '../shared/types';
 import { TILE_METERS } from '../shared/constants';
-import { FLOOR_HEIGHT_METERS } from '../shared/floorarea';
+import { bodyMetresFor, FLOOR_HEIGHT_METERS } from '../shared/floorarea';
+import { isHouseKind } from '../shared/buildingkind';
 import { materialUnit, saturatedUnit } from './palette';
 
 // ---------------------------------------------------------------------------
@@ -82,6 +83,86 @@ export function isRowHouseArchetype(entry: BuildingCatalogEntry): boolean {
   return entry.kind === 'townhouse';
 }
 
+/** A house's window is a sash about 1 m wide and 1.5 m tall, one to a bay of HOUSE_BAY_M along the wall. */
+export const HOUSE_PANE_WIDTH_M = 1.0;
+export const HOUSE_PANE_HEIGHT_M = 1.5;
+export const HOUSE_BAY_M = 2.4;
+/** The most of a cell a house's margins may take on each side, so a cramped cell still shows a pane. */
+const HOUSE_MARGIN_MAX = 0.42;
+
+/** The inset of a pane from its grid cell's edge, as a fraction of the cell, across and up. */
+export interface PaneMargins {
+  x: number;
+  y: number;
+}
+
+/**
+ * A house's panes are window-sized in metres rather than a share of the
+ * cell: the margins that leave HOUSE_PANE_WIDTH_M x HOUSE_PANE_HEIGHT_M in
+ * the cell the grid cuts for this entry. Null for every other family, whose
+ * panes are the mullion-margin share of the cell. Pure.
+ */
+export function housePaneMargins(
+  entry: BuildingCatalogEntry,
+  tierHeight: number,
+): PaneMargins | null {
+  if (!isHouseKind(entry.kind)) return null;
+  const { cols, rows } = windowGrid(entry, tierHeight);
+  const body = bodyMetresFor(entry);
+  const cellW = (body.w + body.d) / 2 / cols;
+  const cellH = tierHeight / rows;
+  const inset = (cell: number, pane: number): number =>
+    Math.min(HOUSE_MARGIN_MAX, Math.max(0, (cell - pane) / 2 / cell));
+  return { x: inset(cellW, HOUSE_PANE_WIDTH_M), y: inset(cellH, HOUSE_PANE_HEIGHT_M) };
+}
+
+/** A storefront's glazing is cut into bays this wide by dark mullions. */
+export const STOREFRONT_BAY_M = 1.5;
+/** The dark mullion between two storefront bays. */
+export const STOREFRONT_MULLION_M = 0.12;
+/** The dark bulkhead the storefront glazing stands on. */
+export const STOREFRONT_BULKHEAD_M = 0.6;
+/** The dark head over the glazing, under the sign band. */
+export const STOREFRONT_HEAD_M = 0.3;
+
+/** How a commercial ground floor's glazing is cut: bays across the face, and the pane's sill and head as fractions of the tier. */
+export interface StorefrontCut {
+  bays: number;
+  /** The mullion's half, as a fraction of a bay, on each side of its pane. */
+  marginX: number;
+  sillFraction: number;
+  headFraction: number;
+}
+
+/**
+ * The storefront cut for a commercial entry — bays of about STOREFRONT_BAY_M
+ * over the bulkhead, under the head — so a lit shopfront reads as a row of
+ * windows under its sign band, never one slab. Null for any other category. Pure.
+ */
+export function storefrontCut(
+  entry: BuildingCatalogEntry,
+  tierHeight: number,
+): StorefrontCut | null {
+  if (entry.category !== 'com' || !(tierHeight > 0)) return null;
+  const body = bodyMetresFor(entry);
+  const faceM = (body.w + body.d) / 2;
+  const bays = Math.max(1, Math.round(faceM / STOREFRONT_BAY_M));
+  const bayM = faceM / bays;
+  const bandM = Math.min(tierHeight, GROUND_FLOOR_METERS);
+  return {
+    bays,
+    marginX: Math.min(0.4, STOREFRONT_MULLION_M / 2 / bayM),
+    sillFraction: STOREFRONT_BULKHEAD_M / tierHeight,
+    headFraction: Math.max(STOREFRONT_BULKHEAD_M, bandM - STOREFRONT_HEAD_M) / tierHeight,
+  };
+}
+
+/** How many window bays a house's body carries along an average face. */
+function houseBayCount(entry: BuildingCatalogEntry): number {
+  const body = bodyMetresFor(entry);
+  return (body.w + body.d) / 2 / HOUSE_BAY_M;
+}
+
 /**
  * The window grid every face of a building's body is cut into (columns across
  * a face, rows up one tier of `tierHeight` metres). The facade material draws
@@ -95,10 +176,13 @@ export function windowGrid(
   const colsPerTile = isRowHouseArchetype(entry)
     ? ROW_HOUSE_WINDOW_COLS_PER_TILE
     : WINDOW_COLS_PER_TILE;
-  const cols = Math.min(
-    MAX_WINDOW_COLS,
-    Math.max(MIN_WINDOW_COLS, Math.round(avgFootprintTiles * colsPerTile)),
-  );
+  // A detached house, a duplex or a fourplex has a bay every HOUSE_BAY_M of
+  // its body; a terrace keeps its per-unit rhythm above.
+  const wanted =
+    isHouseKind(entry.kind) && !isRowHouseArchetype(entry)
+      ? houseBayCount(entry)
+      : avgFootprintTiles * colsPerTile;
+  const cols = Math.min(MAX_WINDOW_COLS, Math.max(MIN_WINDOW_COLS, Math.round(wanted)));
   const rows = Math.min(
     MAX_WINDOW_ROWS,
     Math.max(MIN_WINDOW_ROWS, Math.round(tierHeight / FLOOR_HEIGHT_METERS)),

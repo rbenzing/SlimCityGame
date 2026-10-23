@@ -1,12 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import { BuildingCatalogEntry, ZoneType } from '../shared/types';
 import { TILE_METERS } from '../shared/constants';
+import { bodyMetresFor } from '../shared/floorarea';
 import {
   ACCENT_BLUE,
   ACCENT_RED,
   BAY_WIDTH_METERS,
   FLOOR_HEIGHT_METERS,
   GROUND_FLOOR_METERS,
+  HOUSE_BAY_M,
+  HOUSE_PANE_HEIGHT_M,
+  HOUSE_PANE_WIDTH_M,
   HUE_JITTER_FRACTION,
   INDUSTRIAL_ROOF_COLOR,
   INDUSTRIAL_WALL_PALETTE,
@@ -15,8 +19,14 @@ import {
   PARAPET_METERS,
   ROOF_PALETTE,
   RGB,
+  STOREFRONT_BAY_M,
+  STOREFRONT_BULKHEAD_M,
+  STOREFRONT_HEAD_M,
+  STOREFRONT_MULLION_M,
+  storefrontCut,
   deriveFacadeParams,
   groundFloorBand,
+  housePaneMargins,
   hslToRgb,
   industrialAccentColor,
   industrialWallBase,
@@ -146,11 +156,54 @@ describe('windowGrid: the bays and storeys the material draws', () => {
     expect(windowGrid(entry({ footprint: { w: 2, d: 2 } }), 9.6)).toEqual({ cols: 4, rows: 3 });
   });
 
+  it('cuts a detached house into a bay every HOUSE_BAY_M of its body, so its panes come out window-sized', () => {
+    // A 1 x 2 detached lot carries a 9.5 x 9.5 m body: four bays, not the three a tile count gives.
+    const house = entry({ footprint: { w: 1, d: 2 }, kind: 'detached' });
+    expect(windowGrid(house, 6.5)).toEqual({ cols: 4, rows: 2 });
+    const body = bodyMetresFor(house);
+    const bay = (body.w + body.d) / 2 / 4;
+    expect(Math.abs(bay - HOUSE_BAY_M)).toBeLessThan(HOUSE_BAY_M / 4);
+  });
+
   it('is denser across a terrace, so each home reads as its own', () => {
     const plain = windowGrid(entry({ footprint: { w: 1, d: 2 } }), 9);
     const row = windowGrid(entry({ footprint: { w: 1, d: 2 }, kind: 'townhouse' }), 9);
     expect(row.cols).toBeGreaterThan(plain.cols);
     expect(row.rows).toBe(plain.rows);
+  });
+
+  it('gives a house a pane about 1 m by 1.5 m, and every other family none', () => {
+    const house = entry({ footprint: { w: 1, d: 2 }, kind: 'detached' });
+    const tier = 6.5;
+    const margins = housePaneMargins(house, tier)!;
+    expect(margins).not.toBeNull();
+    const { cols, rows } = windowGrid(house, tier);
+    const body = bodyMetresFor(house);
+    const paneW = ((body.w + body.d) / 2 / cols) * (1 - 2 * margins.x);
+    const paneH = (tier / rows) * (1 - 2 * margins.y);
+    expect(paneW).toBeCloseTo(HOUSE_PANE_WIDTH_M, 6);
+    expect(paneH).toBeCloseTo(HOUSE_PANE_HEIGHT_M, 6);
+    // A one-storey ranch's single row is taller than a storey; the pane stays 1.5 m, centred.
+    const ranch = entry({ footprint: { w: 1, d: 2 }, kind: 'detached' });
+    const ranchMargins = housePaneMargins(ranch, 4)!;
+    expect((4 / windowGrid(ranch, 4).rows) * (1 - 2 * ranchMargins.y)).toBeCloseTo(1.5, 6);
+    expect(housePaneMargins(entry({ footprint: { w: 1, d: 1 } }), 4.5)).toBeNull();
+  });
+
+  it('cuts a shop front into bays of about 1.5 m over a 0.6 m bulkhead, and no other category', () => {
+    const shop = entry({ footprint: { w: 1, d: 1 }, category: 'com', zone: ZoneType.ComLow });
+    const tier = 4.5;
+    const cut = storefrontCut(shop, tier)!;
+    expect(cut).not.toBeNull();
+    const body = bodyMetresFor(shop);
+    const bayM = (body.w + body.d) / 2 / cut.bays;
+    expect(Math.abs(bayM - STOREFRONT_BAY_M)).toBeLessThan(STOREFRONT_BAY_M / 3);
+    expect(cut.marginX * 2 * bayM).toBeCloseTo(STOREFRONT_MULLION_M, 6);
+    expect(cut.sillFraction * tier).toBeCloseTo(STOREFRONT_BULKHEAD_M, 6);
+    expect(cut.headFraction * tier).toBeCloseTo(GROUND_FLOOR_METERS - STOREFRONT_HEAD_M, 6);
+    expect(cut.headFraction).toBeGreaterThan(cut.sillFraction);
+    expect(storefrontCut(entry({ footprint: { w: 1, d: 2 }, kind: 'detached' }), 6.5)).toBeNull();
+    expect(storefrontCut(entry({ footprint: { w: 2, d: 2 }, category: 'ind' }), 8)).toBeNull();
   });
 
   it('stays inside its clamps, so the window seed slots hold', () => {

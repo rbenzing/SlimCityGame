@@ -155,12 +155,14 @@
  * renderer's swap/free convention.
  */
 import * as THREE from 'three';
+import { uniform } from 'three/tsl';
 import {
   BuildingCatalogEntry,
   BuildingDelta,
   BuildingInstance,
   VehicleKind,
 } from '../shared/types';
+import { nightBodyMaterial } from './nightlook';
 import { TILE_METERS } from '../shared/constants';
 import { footprintForRotation } from '../shared/footprint';
 import { maxHeightOverRect } from './footprint';
@@ -9265,7 +9267,10 @@ export class UtilityKitRenderer {
   /** Parts whose geometry does not depend on the footprint, one pool across every kit that stands them. */
   private readonly sharedPools = new Map<UtilityKitPartKind, InstancedSlotPool>();
   /** Every draped park plate's material: vertex colours carry the lawn, paths, pond and wear. */
-  private readonly drapeMaterial = new THREE.MeshLambertMaterial({ vertexColors: true });
+  private readonly nightFactorUniform = uniform(0);
+  private readonly drapeMaterial = nightBodyMaterial(this.nightFactorUniform, {
+    vertexColors: true,
+  });
   private readonly beaconMaterial = new THREE.MeshLambertMaterial({
     color: TURBINE_BEACON_COLOR,
     emissive: TURBINE_BEACON_COLOR,
@@ -9417,6 +9422,7 @@ export class UtilityKitRenderer {
   /** 0 (day) .. 1 (night): the turbine beacon and the lit panes of the stations, schools and library react; every other kit stays unlit. */
   setNightFactor(nightFactor: number): void {
     this.nightFactorValue = Math.min(1, Math.max(0, nightFactor));
+    this.nightFactorUniform.value = this.nightFactorValue;
     this.beaconMaterial.emissiveIntensity = this.nightFactorValue;
     this.stationLightMaterial.emissiveIntensity = this.nightFactorValue;
   }
@@ -9475,6 +9481,11 @@ export class UtilityKitRenderer {
   }
 
   /** The material's absolute emissive color as a hex, or null if that (catalogId, kind) has no pool — used to prove non-turbine kits carry no emissive color at all. */
+  /** A part's material, plate or body: its vertex and instance colours, shaded toward the one night tint. */
+  private bodyMaterial(): THREE.Material {
+    return nightBodyMaterial(this.nightFactorUniform, { vertexColors: true });
+  }
+
   partEmissiveHex(catalogId: string, kind: UtilityKitPartKind): number | null {
     const pool = this.kits.get(catalogId)?.pools[kind];
     if (!pool) return null;
@@ -9569,8 +9580,7 @@ export class UtilityKitRenderer {
 
   /** The two bus sizes share one recipe, the stall rows, bays, islands and office keyed off the footprint. */
   private buildBusBaseKit(entry: BuildingCatalogEntry): KitDefinition {
-    const lambert = (): THREE.MeshLambertMaterial =>
-      new THREE.MeshLambertMaterial({ vertexColors: true });
+    const lambert = (): THREE.Material => this.bodyMaterial();
     const pool = (
       geometry: THREE.BufferGeometry,
       material: THREE.Material = lambert(),
@@ -9595,8 +9605,7 @@ export class UtilityKitRenderer {
 
   /** A yard's track and grounds come in the two frames its lot can take, the lead off the long edge or off the end; the rest is one geometry. */
   private buildYardKit(entry: BuildingCatalogEntry, mode: 'tram' | 'rail'): KitDefinition {
-    const lambert = (): THREE.MeshLambertMaterial =>
-      new THREE.MeshLambertMaterial({ vertexColors: true });
+    const lambert = (): THREE.Material => this.bodyMaterial();
     const pool = (
       geometry: THREE.BufferGeometry,
       material: THREE.Material = lambert(),
@@ -9637,8 +9646,7 @@ export class UtilityKitRenderer {
   }
 
   private buildClinicKit(entry: BuildingCatalogEntry): KitDefinition {
-    const lambert = (): THREE.MeshLambertMaterial =>
-      new THREE.MeshLambertMaterial({ vertexColors: true });
+    const lambert = (): THREE.Material => this.bodyMaterial();
     const pool = (
       geometry: THREE.BufferGeometry,
       material: THREE.Material = lambert(),
@@ -9663,8 +9671,7 @@ export class UtilityKitRenderer {
 
   /** The station's grounds and canopy come in the two track frames its lot can take; the depot and its panes are one geometry in the depot frame. */
   private buildDepotKit(entry: BuildingCatalogEntry): KitDefinition {
-    const lambert = (): THREE.MeshLambertMaterial =>
-      new THREE.MeshLambertMaterial({ vertexColors: true });
+    const lambert = (): THREE.Material => this.bodyMaterial();
     const pool = (
       geometry: THREE.BufferGeometry,
       material: THREE.Material = lambert(),
@@ -9687,8 +9694,7 @@ export class UtilityKitRenderer {
   }
 
   private buildBusStopKit(entry: BuildingCatalogEntry): KitDefinition {
-    const lambert = (): THREE.MeshLambertMaterial =>
-      new THREE.MeshLambertMaterial({ vertexColors: true });
+    const lambert = (): THREE.Material => this.bodyMaterial();
     const pool = (geometry: THREE.BufferGeometry) =>
       new InstancedSlotPool(this.scene, geometry, lambert(), INITIAL_MULTI_PART_CAPACITY);
     return {
@@ -9703,8 +9709,7 @@ export class UtilityKitRenderer {
   }
 
   private buildTurbineKit(entry: BuildingCatalogEntry): KitDefinition {
-    const lambert = (): THREE.MeshLambertMaterial =>
-      new THREE.MeshLambertMaterial({ vertexColors: true });
+    const lambert = (): THREE.Material => this.bodyMaterial();
     return {
       entry,
       pools: {
@@ -9731,8 +9736,7 @@ export class UtilityKitRenderer {
   }
 
   private buildWaterTowerKit(entry: BuildingCatalogEntry): KitDefinition {
-    const lambert = (): THREE.MeshLambertMaterial =>
-      new THREE.MeshLambertMaterial({ vertexColors: true });
+    const lambert = (): THREE.Material => this.bodyMaterial();
     return {
       entry,
       pools: {
@@ -9754,12 +9758,7 @@ export class UtilityKitRenderer {
 
   private buildPumpKit(entry: BuildingCatalogEntry): KitDefinition {
     const pool = (geometry: THREE.BufferGeometry) =>
-      new InstancedSlotPool(
-        this.scene,
-        geometry,
-        new THREE.MeshLambertMaterial({ vertexColors: true }),
-        INITIAL_KIT_CAPACITY,
-      );
+      new InstancedSlotPool(this.scene, geometry, this.bodyMaterial(), INITIAL_KIT_CAPACITY);
     const { footprint } = entry;
     return {
       entry,
@@ -9774,12 +9773,7 @@ export class UtilityKitRenderer {
 
   private buildDrainKit(entry: BuildingCatalogEntry): KitDefinition {
     const pool = (geometry: THREE.BufferGeometry) =>
-      new InstancedSlotPool(
-        this.scene,
-        geometry,
-        new THREE.MeshLambertMaterial({ vertexColors: true }),
-        INITIAL_KIT_CAPACITY,
-      );
+      new InstancedSlotPool(this.scene, geometry, this.bodyMaterial(), INITIAL_KIT_CAPACITY);
     const { footprint } = entry;
     return {
       entry,
@@ -9794,12 +9788,7 @@ export class UtilityKitRenderer {
 
   private buildWorksKit(entry: BuildingCatalogEntry): KitDefinition {
     const pool = (geometry: THREE.BufferGeometry, capacity = INITIAL_KIT_CAPACITY) =>
-      new InstancedSlotPool(
-        this.scene,
-        geometry,
-        new THREE.MeshLambertMaterial({ vertexColors: true }),
-        capacity,
-      );
+      new InstancedSlotPool(this.scene, geometry, this.bodyMaterial(), capacity);
     const { footprint } = entry;
     return {
       entry,
@@ -9818,12 +9807,7 @@ export class UtilityKitRenderer {
 
   private buildCoalPlantKit(entry: BuildingCatalogEntry): KitDefinition {
     const pool = (geometry: THREE.BufferGeometry, capacity = INITIAL_KIT_CAPACITY) =>
-      new InstancedSlotPool(
-        this.scene,
-        geometry,
-        new THREE.MeshLambertMaterial({ vertexColors: true }),
-        capacity,
-      );
+      new InstancedSlotPool(this.scene, geometry, this.bodyMaterial(), capacity);
     const { footprint } = entry;
     return {
       entry,
@@ -9842,12 +9826,7 @@ export class UtilityKitRenderer {
 
   private buildIncineratorKit(entry: BuildingCatalogEntry): KitDefinition {
     const pool = (geometry: THREE.BufferGeometry) =>
-      new InstancedSlotPool(
-        this.scene,
-        geometry,
-        new THREE.MeshLambertMaterial({ vertexColors: true }),
-        INITIAL_KIT_CAPACITY,
-      );
+      new InstancedSlotPool(this.scene, geometry, this.bodyMaterial(), INITIAL_KIT_CAPACITY);
     const { footprint } = entry;
     return {
       entry,
@@ -9862,12 +9841,7 @@ export class UtilityKitRenderer {
 
   private buildRecyclingDepotKit(entry: BuildingCatalogEntry): KitDefinition {
     const pool = (geometry: THREE.BufferGeometry, capacity = INITIAL_KIT_CAPACITY) =>
-      new InstancedSlotPool(
-        this.scene,
-        geometry,
-        new THREE.MeshLambertMaterial({ vertexColors: true }),
-        capacity,
-      );
+      new InstancedSlotPool(this.scene, geometry, this.bodyMaterial(), capacity);
     const { footprint } = entry;
     return {
       entry,
@@ -9888,8 +9862,7 @@ export class UtilityKitRenderer {
   }
 
   private buildMrfKit(entry: BuildingCatalogEntry): KitDefinition {
-    const lambert = (): THREE.MeshLambertMaterial =>
-      new THREE.MeshLambertMaterial({ vertexColors: true });
+    const lambert = (): THREE.Material => this.bodyMaterial();
     const pool = (geometry: THREE.BufferGeometry, capacity = INITIAL_KIT_CAPACITY) =>
       new InstancedSlotPool(this.scene, geometry, lambert(), capacity);
     return {
@@ -9910,8 +9883,7 @@ export class UtilityKitRenderer {
   }
 
   private buildTransferKit(entry: BuildingCatalogEntry): KitDefinition {
-    const lambert = (): THREE.MeshLambertMaterial =>
-      new THREE.MeshLambertMaterial({ vertexColors: true });
+    const lambert = (): THREE.Material => this.bodyMaterial();
     const pool = (geometry: THREE.BufferGeometry, capacity = INITIAL_KIT_CAPACITY) =>
       new InstancedSlotPool(this.scene, geometry, lambert(), capacity);
     return {
@@ -9931,8 +9903,7 @@ export class UtilityKitRenderer {
   }
 
   private buildHospitalKit(entry: BuildingCatalogEntry): KitDefinition {
-    const lambert = (): THREE.MeshLambertMaterial =>
-      new THREE.MeshLambertMaterial({ vertexColors: true });
+    const lambert = (): THREE.Material => this.bodyMaterial();
     const pool = (geometry: THREE.BufferGeometry, capacity = INITIAL_KIT_CAPACITY) =>
       new InstancedSlotPool(this.scene, geometry, lambert(), capacity);
     return {
@@ -9953,8 +9924,7 @@ export class UtilityKitRenderer {
   }
 
   private buildCemeteryKit(entry: BuildingCatalogEntry): KitDefinition {
-    const lambert = (): THREE.MeshLambertMaterial =>
-      new THREE.MeshLambertMaterial({ vertexColors: true });
+    const lambert = (): THREE.Material => this.bodyMaterial();
     const pool = (geometry: THREE.BufferGeometry, capacity = INITIAL_KIT_CAPACITY) =>
       new InstancedSlotPool(this.scene, geometry, lambert(), capacity);
     const plots = cemeteryPlots(entry);
@@ -9972,8 +9942,7 @@ export class UtilityKitRenderer {
   }
 
   private buildCrematoriumKit(entry: BuildingCatalogEntry): KitDefinition {
-    const lambert = (): THREE.MeshLambertMaterial =>
-      new THREE.MeshLambertMaterial({ vertexColors: true });
+    const lambert = (): THREE.Material => this.bodyMaterial();
     const pool = (geometry: THREE.BufferGeometry) =>
       new InstancedSlotPool(this.scene, geometry, lambert(), INITIAL_KIT_CAPACITY);
     return {
@@ -9988,8 +9957,7 @@ export class UtilityKitRenderer {
   }
 
   private buildStationKit(entry: BuildingCatalogEntry): KitDefinition {
-    const lambert = (): THREE.MeshLambertMaterial =>
-      new THREE.MeshLambertMaterial({ vertexColors: true });
+    const lambert = (): THREE.Material => this.bodyMaterial();
     const pool = (
       geometry: THREE.BufferGeometry,
       material: THREE.Material = lambert(),
@@ -10017,8 +9985,7 @@ export class UtilityKitRenderer {
   }
 
   private buildEducationKit(entry: BuildingCatalogEntry): KitDefinition {
-    const lambert = (): THREE.MeshLambertMaterial =>
-      new THREE.MeshLambertMaterial({ vertexColors: true });
+    const lambert = (): THREE.Material => this.bodyMaterial();
     const pool = (
       geometry: THREE.BufferGeometry,
       material: THREE.Material = lambert(),
@@ -10050,8 +10017,7 @@ export class UtilityKitRenderer {
   }
 
   private buildGeneratorKit(entry: BuildingCatalogEntry): KitDefinition {
-    const lambert = (): THREE.MeshLambertMaterial =>
-      new THREE.MeshLambertMaterial({ vertexColors: true });
+    const lambert = (): THREE.Material => this.bodyMaterial();
     const pool = (geometry: THREE.BufferGeometry, capacity = INITIAL_KIT_CAPACITY) =>
       new InstancedSlotPool(this.scene, geometry, lambert(), capacity);
     const { footprint } = entry;
@@ -10091,12 +10057,7 @@ export class UtilityKitRenderer {
   ): InstancedSlotPool {
     let pool = this.sharedPools.get(kind);
     if (!pool) {
-      pool = new InstancedSlotPool(
-        this.scene,
-        build(),
-        new THREE.MeshLambertMaterial({ vertexColors: true }),
-        capacity,
-      );
+      pool = new InstancedSlotPool(this.scene, build(), this.bodyMaterial(), capacity);
       this.sharedPools.set(kind, pool);
     }
     return pool;
@@ -10117,7 +10078,7 @@ export class UtilityKitRenderer {
         parkGround: new InstancedSlotPool(
           this.scene,
           buildParkGroundGeometry(entry.footprint),
-          new THREE.MeshLambertMaterial({ vertexColors: true }),
+          this.bodyMaterial(),
           INITIAL_KIT_CAPACITY,
         ),
         ...this.parkProps(),
@@ -10133,7 +10094,7 @@ export class UtilityKitRenderer {
         plazaGround: new InstancedSlotPool(
           this.scene,
           buildPlazaGroundGeometry(entry.footprint),
-          new THREE.MeshLambertMaterial({ vertexColors: true }),
+          this.bodyMaterial(),
           INITIAL_KIT_CAPACITY,
         ),
         ...this.parkProps(),
@@ -10173,7 +10134,7 @@ export class UtilityKitRenderer {
         sportsGround: new InstancedSlotPool(
           this.scene,
           buildSportsGroundGeometry(entry.footprint),
-          new THREE.MeshLambertMaterial({ vertexColors: true }),
+          this.bodyMaterial(),
           INITIAL_KIT_CAPACITY,
         ),
         ...this.parkProps(),

@@ -16,13 +16,13 @@
  */
 import * as THREE from 'three';
 import { MeshStandardNodeMaterial } from 'three/webgpu';
-import { mix, uniform, vec3 } from 'three/tsl';
+import { uniform, vec3 } from 'three/tsl';
+import { nightTintNode } from './nightlook';
 import { BuildingState, VehicleKind } from '../shared/types';
 import type { BuildingCatalogEntry, BuildingDelta, BuildingInstance } from '../shared/types';
 import {
   COOL_WINDOW_COLOR,
   GLASS_TINT_PUNCHED,
-  NIGHT_BODY_TINT,
   WARM_WINDOW_COLOR,
   WINDOW_EMISSIVE_STRENGTH,
   isBuildingLitEligible,
@@ -592,7 +592,7 @@ export class FarmRenderer {
     // Instance colour carries each part's surface and the silos' and bins' vertex colour their
     // hoops; the night ramp darkens all of it.
     material.vertexColors = true;
-    material.colorNode = mix(vec3(1, 1, 1), vec3(...NIGHT_BODY_TINT), this.nightFactorUniform);
+    material.colorNode = nightTintNode(this.nightFactorUniform);
     const materials: Partial<Record<Part, MeshStandardNodeMaterial>> = {
       windowWarm: litPaneMaterial(WARM_WINDOW_COLOR, this.nightFactorUniform),
       windowCool: litPaneMaterial(COOL_WINDOW_COLOR, this.nightFactorUniform),

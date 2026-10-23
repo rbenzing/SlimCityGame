@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import * as THREE from 'three';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createWorldScene, sunDirection, timeOfDayColors } from './scene';
+import { createWorldScene, moonBlend, moonDirection, sunDirection, timeOfDayColors } from './scene';
 
 // createWorldScene() wires in sky.ts's SunBillboard, which
 // draws a canvas texture once at construction — jsdom has no canvas 2D
@@ -22,7 +22,7 @@ describe('timeOfDayColors (pure)', () => {
   it('is dim and blue-tinted at midnight (t=0)', () => {
     const midnight = timeOfDayColors(0);
     expect(midnight.sunDirection.y).toBeLessThan(-0.8);
-    expect(midnight.sunIntensity).toBeLessThan(0.2);
+    expect(midnight.sunIntensity).toBeLessThan(timeOfDayColors(0.5).sunIntensity);
     // moonlight-blue: blue channel should dominate red in the background
     expect(midnight.backgroundColor[2]).toBeGreaterThan(midnight.backgroundColor[0]);
   });
@@ -40,15 +40,19 @@ describe('timeOfDayColors (pure)', () => {
   it('noon is substantially brighter than midnight', () => {
     const midnight = timeOfDayColors(0);
     const noon = timeOfDayColors(0.5);
-    expect(noon.sunIntensity).toBeGreaterThan(midnight.sunIntensity * 5);
+    expect(noon.sunIntensity).toBeGreaterThan(midnight.sunIntensity);
     expect(noon.hemiIntensity).toBeGreaterThan(midnight.hemiIntensity);
   });
 
-  it('lifts the midnight ambient floor for legibility yet keeps it below dusk', () => {
+  it('lifts the midnight ambient floor for legibility, matched by dusk so the small hours never fall under it', () => {
     const midnight = timeOfDayColors(0);
     const dusk = timeOfDayColors(Math.acos(0.4) / (Math.PI * 2)); // elevation -0.4
     expect(midnight.hemiIntensity).toBeGreaterThan(0.2);
-    expect(midnight.hemiIntensity).toBeLessThan(dusk.hemiIntensity);
+    expect(midnight.hemiIntensity).toBeLessThanOrEqual(dusk.hemiIntensity);
+    // Dusk keeps its violet hue: red leads blue more than at midnight.
+    expect(dusk.hemiSkyColor[0] / dusk.hemiSkyColor[2]).toBeGreaterThan(
+      midnight.hemiSkyColor[0] / midnight.hemiSkyColor[2],
+    );
   });
 
   it('warms the sun color near the horizon (dawn/dusk) relative to noon', () => {
@@ -103,10 +107,12 @@ describe('timeOfDayColors (pure)', () => {
   // land test samples exactly on those keyframes without hardcoding a `t`.
   const tForElevation = (elevation: number): number => Math.acos(-elevation) / (Math.PI * 2);
 
-  it('matches the night keyframe at t=0: deep navy #0a1224, dim moonlight, nightFactor=1', () => {
+  it('matches the night keyframe at t=0: deep navy #0a1224, moonlight under the noon sun, nightFactor=1', () => {
     const c = timeOfDayColors(0);
     expect(c.nightFactor).toBeCloseTo(1, 9);
-    expect(c.sunIntensity).toBeCloseTo(0.12, 9);
+    expect(c.sunIntensity).toBeLessThan(timeOfDayColors(0.5).sunIntensity);
+    // Blue moonlight: blue leads red.
+    expect(c.sunColor[2]).toBeGreaterThan(c.sunColor[0]);
     expect(c.backgroundColor[0]).toBeCloseTo(0x0a / 0xff, 5);
     expect(c.backgroundColor[1]).toBeCloseTo(0x12 / 0xff, 5);
     expect(c.backgroundColor[2]).toBeCloseTo(0x24 / 0xff, 5);
@@ -208,6 +214,38 @@ describe('sunDirection (pure, standalone export)', () => {
 
 // sky dome gradient endpoints, extended onto the existing
 // pure ramp function so sky.ts never re-derives its own color math.
+describe('the moon (pure): the night light slews to where the noon sun stands', () => {
+  it('has not taken the light while the sun is up, takes it fully from the dusk keyframe on', () => {
+    expect(moonBlend(1)).toBe(0);
+    expect(moonBlend(0)).toBe(0);
+    expect(moonBlend(-0.2)).toBeCloseTo(0.5, 9);
+    expect(moonBlend(-0.4)).toBe(1);
+    expect(moonBlend(-1)).toBe(1);
+  });
+
+  it('lights from where the noon sun lights, so night is noon scaled on every surface', () => {
+    expect(moonDirection()).toEqual(sunDirection(0.5));
+  });
+
+  it('places the night light overhead at the noon azimuth, and the day light along the sun', () => {
+    const { scene, setTimeOfDay } = createWorldScene();
+    const sun = scene.children.find(
+      (c): c is THREE.DirectionalLight => c instanceof THREE.DirectionalLight,
+    )!;
+    setTimeOfDay(0.5);
+    const noon = sun.position.clone().sub(sun.target.position).normalize();
+    setTimeOfDay(0); // midnight
+    const midnight = sun.position.clone().sub(sun.target.position).normalize();
+    expect(midnight.distanceTo(noon)).toBeLessThan(1e-6);
+    setTimeOfDay(0.125); // 03:00: fully slewed as well
+    const smallHours = sun.position.clone().sub(sun.target.position).normalize();
+    expect(smallHours.distanceTo(noon)).toBeLessThan(1e-6);
+    setTimeOfDay(0.3); // mid-morning: the sun's own azimuth, well east of overhead
+    const morning = sun.position.clone().sub(sun.target.position).normalize();
+    expect(Math.abs(morning.x)).toBeGreaterThan(0.3);
+  });
+});
+
 describe('timeOfDayColors sky-dome gradient fields (UI-SPEC §6.14)', () => {
   const sum = (c: readonly [number, number, number]): number => c[0] + c[1] + c[2];
 
@@ -332,8 +370,8 @@ describe('createWorldScene', () => {
     const midnightIntensity = sun.intensity;
     const midnightY = sun.position.y;
 
-    expect(noonIntensity).toBeGreaterThan(midnightIntensity * 5);
-    expect(noonY).toBeGreaterThan(midnightY);
+    expect(noonIntensity).toBeGreaterThan(midnightIntensity);
+    expect(noonY).toBeGreaterThanOrEqual(midnightY); // the moon stands where the noon sun stood
     expect(hemi.intensity).toBeGreaterThanOrEqual(0);
 
     // At midnight the dome's zenith should read as dark and blue-tinted.

@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { MeshStandardNodeMaterial } from 'three/webgpu';
 import { describe, expect, it } from 'vitest';
 import catalogData from '../data/catalog.json';
 import { footprintForRotation } from '../shared/footprint';
@@ -11,6 +12,7 @@ import {
   DOOR_COUNT,
   kitPlanFor,
   LIT_DAY_FLOOR,
+  LIT_WARM_SHIFT,
   LIT_PARTS,
   downspoutPositions,
   placementBounds,
@@ -1002,6 +1004,35 @@ describe('the storefront and industrial kits on the map', () => {
       if (!material || LIT_PARTS.has(part)) continue;
       expect(material.emissive.getHex(), part).toBe(0);
     }
+  });
+
+  it('glows a lit part in its own livery, warm-shifted, never flat white', () => {
+    const r = make();
+    const lit = r.litMaterialOf() as MeshStandardNodeMaterial;
+    expect(lit).toBeInstanceOf(MeshStandardNodeMaterial);
+    expect(lit.vertexColors).toBe(true);
+    expect(lit.emissiveNode).not.toBeNull(); // the instance colour, shifted and scaled, not a flat emissive
+    expect(lit.emissive.getHex()).toBe(0);
+    const [red, green, blue] = LIT_WARM_SHIFT;
+    expect(red).toBe(1);
+    expect(green).toBeLessThan(red);
+    expect(blue).toBeLessThan(green);
+  });
+
+  it('stands a wall-pack over every dock door and every walk door, on the lit material', () => {
+    const r = make();
+    r.apply({ added: row.map((e, i) => inst(e, i)), updated: [], removed: [] });
+    expect(r.materialOf('dockLight')).toBe(r.litMaterialOf());
+    const docks = row.filter((e) => partsFor(e).includes('dockShelter'));
+    const walkDoors = row.filter((e) => partsFor(e).includes('walkDoor'));
+    expect(docks.length + walkDoors.length).toBeGreaterThan(0);
+    expect(r.instanceCount('dockLight')).toBeGreaterThanOrEqual(r.instanceCount('walkDoor'));
+    // A workshop alone: one pack per walk door, nothing else lit on it.
+    const workshop = row.find((e) => e.kind === 'workshop')!;
+    const solo = make();
+    solo.apply({ added: [inst(workshop, 0)], updated: [], removed: [] });
+    expect(solo.instanceCount('dockLight')).toBe(solo.instanceCount('walkDoor'));
+    expect(solo.instanceCount('walkDoor')).toBeGreaterThan(0);
   });
 
   it('stands no part, lit or not, on a building that is not Active, so a dark building has no lit sign', () => {

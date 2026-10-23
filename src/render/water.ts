@@ -46,6 +46,7 @@ import {
   uniform,
   vec3,
 } from 'three/tsl';
+import { nightTintNode } from './nightlook';
 import { MAP_SIZE, MAX_WATER_DEPTH_VIS, SEA_LEVEL, TILE_METERS } from '../shared/constants';
 
 export type HeightSampler = (x: number, z: number) => number;
@@ -619,7 +620,11 @@ export class WaterRenderer {
     const foamA = sin(foamPhaseA).mul(0.5).add(0.5);
     const foamB = sin(foamPhaseB).mul(0.5).add(0.5);
     const foam = foamEnvelope.mul(foamA.mul(foamB).pow(FOAM_PATTERN_EXPONENT)).mul(FOAM_MAX);
-    material.colorNode = mix(reflected, vec3(1, 1, 1), foam);
+    // The surface is lit by the scene's sun and sky like any other, so it
+    // carries the one night tint too and reads no brighter than the shore.
+    material.colorNode = mix(reflected, vec3(1, 1, 1), foam).mul(
+      nightTintNode(this.nightFactorUniform),
+    );
 
     // Sun/moon glint: specular-ish sparkle along the light's half-vector,
     // tinted warm by day / pale by night, scaled by (1-nightFactor) with the

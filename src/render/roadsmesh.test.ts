@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
+import { NIGHT_TINT } from './nightlook';
 import {
   roadTileVertices,
   RoadMeshRenderer,
@@ -1819,7 +1820,9 @@ describe('RoadMeshRenderer — night dimming', () => {
     const material = (scene.children[0] as THREE.Mesh).material as THREE.MeshBasicMaterial;
 
     renderer.setNightFactor(1);
-    expect(material.color.r).toBeLessThan(0.5);
+    // The one night tint every sunlit surface reads: cool, so blue holds more than red.
+    expect(material.color.toArray()).toEqual([...NIGHT_TINT]);
+    expect(material.color.b).toBeGreaterThan(material.color.r);
     const night = material.color.r;
 
     renderer.setNightFactor(0);

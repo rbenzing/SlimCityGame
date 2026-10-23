@@ -25,7 +25,7 @@ current behavior only and carry no dates of their own._
 
 ## Status (2026-09-29)
 
-**Test suite:** 7,011 tests passing and 16 skipped across 199 test files, run 2026-10-23.
+**Test suite:** 7,037 tests passing across 200 test files, run 2026-10-23.
 This is the only test count in the documentation set. When the suite changes
 again, update the figure here and nowhere else.
 
@@ -376,6 +376,36 @@ roads, and pinning the Three.js version. See [adr/](engineering/adr/README.md).
 ---
 
 ## 10. History (newest first)
+
+### The night stays night, and a building stays legible in it (built 2026-10-23)
+
+The player found the night render "very wrong": bodies pitch black, lit
+windows as blown-out slabs, a garage door glowing, dark streets. Measured
+against [lighting.md](visual-render/lighting.md) every one was a divergence,
+and one was the spec's own: a body tint multiplied onto a dimmed sky dimmed
+the body twice.
+
+- **One tint, one dial.** `NIGHT_TINT` in `src/render/nightlook.ts` is read
+  by every sunlit surface — bodies, kit parts, terrain, roads, lots, trees,
+  water — and the night sky's light and the tint are tuned as one, to a
+  measured target: a body at 18 to 30% of its noon light, the ground at 12
+  to 25%, panes and lamps the bright spots. The kit renderers that had no
+  night tint at all, and a massing tint that had drifted to a third of the
+  spec, now read the one constant.
+- **A pane is a window.** A house's grid is a 1 × 1.5 m pane per 2.4 m bay,
+  its shutters on the pane; the storey-high storefront panes that peeked
+  beside the garage were the "glowing garage door". A lit pane keeps its
+  warm colour, never clipping to white.
+- **A shop is a row of lit bays** under a sign band glowing in its own
+  livery colour; floors above follow the window hash; an office's do not,
+  which tells the two apart at night. A dock door gets a wall pack.
+- **The moon slews to the sun's azimuth** after sunset, since a moon at its
+  own azimuth lit one wall at noon's strength and the opposite one black.
+- **Dark streets were unpowered streets.** Lamps follow power, as they
+  should; the house harness now stands a turbine. No lamp rule changed.
+- `tools/nightlook-shots.mjs` measures it: the same camera at noon, 03:00
+  and midnight, wall, shutter, roof, lawn and road pixels read back in light
+  space, failing outside the bands or on a clipped pane.
 
 ### Seven debts the last epics logged, paid (render sweep, built 2026-10-23)
 
