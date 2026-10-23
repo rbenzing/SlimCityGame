@@ -2,7 +2,8 @@
  * The raised tram stations: a line's stop on a guideway tile at full height
  * is a pair of side platforms at the trams' floor outside the beams, each
  * under a canopy, with a stair and a lift tower down to the footway at the
- * platforms' low-coordinate end. Seven instanced parts, all unit boxes:
+ * platforms' low-coordinate end, or the high end where the tile past the low
+ * end is a junction. Seven instanced parts, all unit boxes:
  *   PLATFORMS — the two slabs along the run, and each one's landing out to
  *               its lift tower over the kerb lane.
  *   CANOPIES  — the roof slab over each platform.
@@ -86,6 +87,7 @@ export interface StationPlatform extends StationBox {
 /** A sloped box pitched about the across axis so its high end is at `head`. */
 export interface StationStair extends StationBox {
   alongX: boolean;
+  /** Signed: positive raises the box's high-coordinate end, so the head is there; negative, the other. */
   pitch: number;
   head: GuidewayPoint;
   foot: GuidewayPoint;
@@ -227,6 +229,17 @@ function buildStation(
   const mid = (lo + hi) / 2;
   const canopyBottom = top + STATION_CANOPY_CLEAR_M;
   const canopyTop = canopyBottom + STATION_CANOPY_DEPTH_M;
+  // The stair and lift land on the tile past the platform's low end, unless
+  // that tile is a crossing street or a junction box, when they swap to the
+  // high end so nobody steps off the stair into a junction; where both ends
+  // meet one they stay at the low end.
+  const junctionPast = (step: 1 | -1): boolean => {
+    const nx = road.x + (alongX ? step : 0);
+    const nz = road.z + (alongX ? 0 : step);
+    return tileSet.get(tileKey(nx, nz))?.ring === true || hasCrossingRoad(tileSet, nx, nz);
+  };
+  const end: 1 | -1 = junctionPast(-1) && !junctionPast(1) ? 1 : -1;
+  const endAlong = end < 0 ? lo : hi;
 
   const point = (along: number, across: number, y: number): GuidewayPoint =>
     alongX ? { x: along, y, z: across } : { x: across, y, z: along };
@@ -312,7 +325,7 @@ function buildStation(
     const kerb = kerbLine(road, alongX, side);
     const towerFace = side > 0 ? Math.max(kerb, outer) : Math.min(kerb, outer);
     const towerCentre = towerFace + side * (STATION_TOWER_M / 2);
-    const towerAlong = lo + STATION_TOWER_M / 2;
+    const towerAlong = endAlong - end * (STATION_TOWER_M / 2);
     const towerAt = point(towerAlong, towerCentre, 0);
     const footway = surfaceAt(towerAt.x, towerAt.z);
     station.towers.push(
@@ -351,22 +364,22 @@ function buildStation(
       ),
     );
 
-    // The stair heads at the platform's low end beside the tower and runs
-    // down along the road to the footway; its run follows the ground it
-    // lands on.
-    const head = point(lo, towerCentre, top);
+    // The stair heads at the platform's landing end beside the tower and runs
+    // down along the road, away from the platform, to the footway; its run
+    // follows the ground it lands on.
+    const head = point(endAlong, towerCentre, top);
     const tan = Math.tan(STATION_STAIR_ANGLE);
-    let footAlong = lo - (top - surfaceAt(head.x, head.z)) / tan;
+    let footAlong = endAlong + end * ((top - surfaceAt(head.x, head.z)) / tan);
     const footAt = point(footAlong, towerCentre, 0);
     const footY = surfaceAt(footAt.x, footAt.z);
     const height = top - footY;
     const run = height / tan;
-    footAlong = lo - run;
+    footAlong = endAlong + end * run;
     const foot = point(footAlong, towerCentre, footY);
     const slope = Math.hypot(run, height);
     station.stairs.push({
       ...box(
-        (lo + footAlong) / 2,
+        (endAlong + footAlong) / 2,
         towerCentre,
         (top + footY) / 2 - STATION_STAIR_DEPTH_M / 2,
         slope,
@@ -374,7 +387,7 @@ function buildStation(
         STATION_STAIR_WIDTH_M,
       ),
       alongX,
-      pitch: Math.atan2(height, run),
+      pitch: -end * Math.atan2(height, run),
       head,
       foot,
     });
@@ -425,6 +438,12 @@ export class TramStationRenderer {
 
   /** True on a stop tile a station stands on, as last rebuilt; stable across rebuilds. */
   readonly isStation = (x: number, z: number): boolean => this.current.stopTiles.has(tileKey(x, z));
+
+  /** The platforms of the station on stop tile (x, z) as last rebuilt, or null where none stands. */
+  platformsAt(x: number, z: number): readonly StationPlatform[] | null {
+    if (!this.isStation(x, z)) return null;
+    return this.current.stations.find((s) => s.x === x && s.z === z)?.platforms ?? null;
+  }
 
   /** `surfaceAt` is the road surface the stairs and towers land on. */
   constructor(scene: THREE.Scene, surfaceAt: (wx: number, wz: number) => number) {

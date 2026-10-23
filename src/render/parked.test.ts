@@ -55,7 +55,9 @@ import {
   corridorHalfProfile,
   NO_EDITS,
   PARKING_STYLES,
+  parkingLaneOffset,
   presetProfileForTier,
+  withTurnPocket,
 } from '../shared/roadprofile';
 import { CURB_CUT_M, STALL_LENGTH_M, STALL_WIDTH_M } from '../shared/parkingcode';
 import { lotPlanFor, type LotPlan } from './lotplan';
@@ -1876,5 +1878,91 @@ describe('a walk-up parks on its own lot', () => {
     });
     expect(hasOwnLotParking(slab, 4, 6, roadAt)).toBe(false);
     expect(usesRoadsideParking(slab, 4, 6, roadAt, () => RoadTier.TwoLane)).toBe(true);
+  });
+});
+
+describe('kerb-parked cars read the drawn section', () => {
+  // A street along z = 4 with a side street joining from the north at x = 7.
+  // Flats at (5, 5) front its south kerb on tiles 5 and 6; tile 6 is the one
+  // against the stop line, where the junction's turn bay opens.
+  const laned: RoadProfile = {
+    class: 'local',
+    pieces: [
+      { kind: 'sidewalk', width: 2.5 },
+      { kind: 'parking', width: 2.5 },
+      { kind: 'travel', width: 3.75, flow: 'back' },
+      { kind: 'travel', width: 3.75, flow: 'fwd' },
+      { kind: 'parking', width: 2.5 },
+      { kind: 'sidewalk', width: 2.5 },
+    ],
+  };
+  // Eastbound traffic approaches on the high side; the bay opened fully has
+  // to be carved out of that side's parking, since the tile has too little
+  // spare width to widen into.
+  const stopLine = withTurnPocket(laned, 1, 1)!;
+  const taper = withTurnPocket(laned, 1, 0.5)!;
+  const tiles: [number, number][] = [
+    ...Array.from({ length: 13 }, (_, x): [number, number] => [x, 4]),
+    ...[0, 1, 2, 3].map((z): [number, number] => [7, z]),
+  ];
+  const roadAt = roadAtTiles(tiles);
+  const flats = makeCatalogEntry({
+    category: 'res',
+    zone: ZoneType.ResHigh,
+    kind: 'midrise',
+    footprint: { w: 2, d: 2 },
+  });
+  const parkedBeside = (
+    drawnAt: (x: number, z: number) => RoadProfile | null,
+  ): ParkedCarRenderer => {
+    const renderer = new ParkedCarRenderer(
+      new THREE.Scene(),
+      flatHeightAt,
+      [flats],
+      roadAt,
+      () => RoadTier.TwoLane,
+      drawnAt,
+    );
+    renderer.apply(deltaAdd(makeBuilding({ id: 1, x: 5, z: 5, level: 2 })));
+    return renderer;
+  };
+  const onTile = (positions: { x: number }[], tileX: number): number =>
+    positions.filter((p) => Math.floor(p.x / TILE_METERS) === tileX).length;
+
+  it('a parking lane the bay has taken, or narrowed to a kerb strip, offers no row', () => {
+    expect(parkingLaneOffset(laned, 'high')).not.toBeNull();
+    expect(stopLine.pieces.some((p) => p.kind === 'parking' && p.width < 2.5)).toBe(false);
+    expect(parkingLaneOffset(stopLine, 'high')).toBeNull();
+    expect(taper.pieces.some((p) => p.kind === 'parking' && p.width < 2.5)).toBe(true);
+    expect(parkingLaneOffset(taper, 'high')).toBeNull();
+  });
+
+  it('stands no car on the tile whose bay took the parking, and keeps the row on the tile behind', () => {
+    const plain = parkedBeside((_x, z) => (z === 4 ? laned : null)).stallWorldPositions(1);
+    expect(onTile(plain, 5)).toBeGreaterThan(0);
+    expect(onTile(plain, 6)).toBeGreaterThan(0);
+
+    const drawn = parkedBeside((x, z) =>
+      z === 4 ? (x === 6 ? stopLine : laned) : null,
+    ).stallWorldPositions(1);
+    expect(onTile(drawn, 5)).toBe(onTile(plain, 5));
+    expect(onTile(drawn, 6)).toBe(0);
+  });
+
+  it('measures the row off the drawn section: a narrower one moves the row in', () => {
+    // The same street with a lane closed ahead: its carriageway is narrower,
+    // so the parking lane's middle is further from the lot's edge.
+    const narrower: RoadProfile = {
+      ...laned,
+      pieces: laned.pieces.filter((p, i) => !(p.kind === 'travel' && i === 2)),
+    };
+    const own = parkedBeside((_x, z) => (z === 4 ? laned : null)).stallWorldPositions(1);
+    const drawn = parkedBeside((_x, z) => (z === 4 ? narrower : null)).stallWorldPositions(1);
+    expect(own.length).toBeGreaterThan(0);
+    expect(drawn.length).toBe(own.length);
+    const lotEdge = 5 * TILE_METERS;
+    for (let i = 0; i < own.length; i++) {
+      expect(lotEdge - drawn[i]!.z).toBeGreaterThan(lotEdge - own[i]!.z);
+    }
   });
 });

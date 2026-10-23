@@ -25,7 +25,7 @@ current behavior only and carry no dates of their own._
 
 ## Status (2026-09-29)
 
-**Test suite:** 7,011 tests passing across 199 test files, run 2026-10-23.
+**Test suite:** 7,011 tests passing and 16 skipped across 199 test files, run 2026-10-23.
 This is the only test count in the documentation set. When the suite changes
 again, update the figure here and nowhere else.
 
@@ -124,20 +124,10 @@ not a test to fix.
   when a junction control opens or closes a turn bay, but not on a road edit
   alone, so a bay that a re-profiled road gains or loses leaves the drives
   beside it as they were until the next building change.
-- Under a raised station the kerb shelter is not drawn, but idle pedestrians
-  still gather at the shelter's anchor on the footway rather than on the
-  platforms; the walkers do not know the station.
-- A raised station's stair and lift always stand at the platform's
-  low-coordinate end; where that neighbour is a crossing street they land
-  beside the junction rather than swapping to the other end.
 - The clipping sweep's junction cases read ground 0.32 m above the deck at
   an Avenue-on-Avenue crossroads (118,40 on seed 12345) and 0.09–0.12 m at
   two street crossroads; the parade's runs are clean. Trace the junction
   box's corners against the levelling the way the dead ends were.
-- Parked cars read the street's own section, not the drawn one: on the tile
-  against the stop line, where a turn bay has taken all of the parking, a
-  kerb row falls back to the plain section's lane offset, held off only by
-  the junction's no-parking zone.
 - A kerb-credited lot's customers are drawn parked on the lot, not in the
   kerb stalls its credit counts.
 - The district fire station's second company rolls as a second engine: there
@@ -148,8 +138,6 @@ not a test to fix.
   every kind, longer than an average police call (Austin's assessment: about
   26 minutes for responsive calls); re-derive it per kind, which sets how busy
   a station's crews are.
-- Incident pins stand about 18 m tall and cover the building they mark; size
-  them against the art anchors.
 - After the performance slice (2026-10-15) the Metropolis is triangle-bound
   on the measured laptop GPU: the city still adds 19–26 M triangles over the
   empty map's 8.4 M, and the overview still draws three times the oblique's
@@ -182,19 +170,9 @@ not a test to fix.
   station, drain or treatment works shows as placeable over dry land, and only
   the commit is refused, with a toast. The ghost should refuse it as it refuses
   an overlap.
-- In the shared test town's south-bank shot, trees stand in the water of the
-  river. Find whether tree scatter can land on water on generated maps or only
-  where the fixture changes the shore after the scatter.
 - The crematorium's upkeep of ¢600 is the design's dial: no US operating
   cost for a crematory was found (gas is 12.5–28.5 therms a cremation by one
   maker's metering, staff unpublished).
-- The ambulance is drawn 6.2 × 2.2 × 2.7 m (`KIND_SIZE` in
-  [`render/vehicles.ts`](../src/render/vehicles.ts)) while the healthcare
-  technical design gives 6.5 × 2.1 × 2.8 m from a UK fleet; re-source it from
-  a US Type III ambulance and make the two agree.
-- `tools/profile-shots.mjs` defines its custom profile as id 12, which is
-  the Ramp preset; custom profiles start at 13
-  ([`shared/roadprofile.ts`](../src/shared/roadprofile.ts)).
 
 Before writing "not built" anywhere in this document, check the code.
 
@@ -398,6 +376,33 @@ roads, and pinning the Three.js version. See [adr/](engineering/adr/README.md).
 ---
 
 ## 10. History (newest first)
+
+### Seven debts the last epics logged, paid (render sweep, built 2026-10-23)
+
+With the programme closed, the player chose to clear the open list before
+the next epic. The first sweep is the render side; a rules sweep follows.
+
+- **A raised station's stair swaps ends beside a junction.** The stair and
+  lift land at the platform's low end unless the tile past it is a crossing
+  street or junction box, when they take the other end; a stair never lands
+  in a junction.
+- **Idlers under a raised station stand on its platforms,** not at the kerb
+  where the suppressed shelter would be: the station hands the walkers its
+  platforms, and a stop with none keeps its kerb anchor.
+- **Kerb-parked cars read the drawn section,** as lots do: where a turn bay
+  has taken the parking, no car stands at the plain section's offset.
+- **Incident pins are sized against the art anchors:** a 4.4 m cone the
+  selection pin's size, point down, 2.5 m above the roof it marks, grown to
+  one and a half times by severity — not a 10 to 22 m spike standing on the
+  ground through the building.
+- **Trees leave ground that becomes water.** A loaded save's and a
+  terraform's height patches now reach the trees: a tile sunk below sea
+  level loses its trees and a tile that moves re-seats them. The river in
+  the shared town shot was the seed map's scatter under the fixture's bed.
+- **The ambulance is a US Type III,** 6.9 × 2.5 × 2.7 m from three builders'
+  specs, replacing a UK Sprinter figure the renderer never matched anyway.
+- The road-profile harness defines its custom profiles from 13, past the
+  Ramp preset at 12.
 
 ### The five parks drawn at their real sizes, and worn by their load (slice 2 of parks and recreation, built 2026-10-23; epic and programme complete)
 

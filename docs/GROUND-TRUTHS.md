@@ -103,9 +103,12 @@ MUTCD citations below use 11th-edition section numbers.
 - A tram stop on a guideway tile at full height is a raised station: two side
   platforms at the trams' floor outside the beams, a canopy each, a stair and
   a lift each side down to the footway, derived from the stop and the road
-  every rebuild and never saved. No kerb shelter stands under it, and no
-  lamp or pole on its tiles. A stop on a ramp tile, a junction box or a turn
-  draws no station; the line serves it all the same. —
+  every rebuild and never saved. The stair lands at the platform's low end
+  unless that tile is a crossing street or junction box, when it swaps ends;
+  a stair never lands in a junction. No kerb shelter stands under it, and no
+  lamp or pole on its tiles; its idlers stand on the platforms, never at the
+  kerb where the shelter would be. A stop on a ramp tile, a junction box or
+  a turn draws no station; the line serves it all the same. —
   [streets.md](art/streets.md); `computeTramStations` in
   `src/render/tramstations.ts`
 - No overpass crosses a guideway, and no guideway passes under an overpass:
@@ -639,7 +642,10 @@ MUTCD citations below use 11th-edition section numbers.
   `withTurnPocket` in `src/shared/roadprofile.ts`
 - A lot's drive, walk and yard are laid to the street as it is drawn,
   turn bay included, and are re-laid when a junction gains or loses its bay;
-  the section without the bay puts a drive across the widened carriageway. —
+  the section without the bay puts a drive across the widened carriageway.
+  Kerb-parked cars read the same drawn section: where a bay has taken the
+  parking, no car stands, rather than a row at the plain section's offset
+  held off only by the junction's no-parking zone. —
   [buildings.md](art/buildings.md#residential-lots); `drawnProfileAt` in
   `src/app/clientgrid.ts`
 - Bridges are ordinary road tiles plus an elevation layer, never a second

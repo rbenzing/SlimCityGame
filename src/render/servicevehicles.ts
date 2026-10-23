@@ -28,7 +28,7 @@ import {
   VehicleKind,
   type Incident,
 } from '../shared/types';
-import { TILE_METERS, tileToWorld } from '../shared/constants';
+import { tileToWorld } from '../shared/constants';
 import { laneOffset, lerpVehicle, sizeForKind } from './vehicles';
 import { ROAD_Y_OFFSET } from './roadsmesh';
 
@@ -70,6 +70,23 @@ const AMBULANCE_WHITE = hexToRGB(0xe9edf0);
 /** An unanswered call's pin: its kind's colour dimmed toward ash, so it reads as a call nobody is coming to. */
 const UNANSWERED_ASH = 0.22;
 const UNANSWERED_KIND_SHARE = 0.2;
+/**
+ * A call's pin: a cone the selection pin's size, point down, hovering over the
+ * roof of the building it marks (over the ground where there is none), grown
+ * by up to half again by severity. Taller than a person, shorter than a
+ * two-storey house, and never covering what it marks.
+ */
+export const INCIDENT_PIN_HEIGHT_M = 4.4;
+export const INCIDENT_PIN_BASE_M = 1.6;
+export const INCIDENT_PIN_HOVER_M = 2.5;
+export const INCIDENT_PIN_SEVERITY_GROWTH = 0.5;
+
+/**
+ * Where a call on a tile is pinned: the lot centre and roof of the building
+ * standing there, in world metres, or null where there is none. A lot's
+ * anchor tile may be its back yard; the pin hangs over the building.
+ */
+export type PinAnchorLookup = (x: number, z: number) => { x: number; y: number; z: number } | null;
 const GARBAGE_GREEN = hexToRGB(0x3f7d4f);
 const GARBAGE_HOPPER = hexToRGB(0x2f5e3b);
 const RECYCLING_TEAL = hexToRGB(0x1d9bb5);
@@ -289,6 +306,7 @@ const HIDDEN_MATRIX = new THREE.Matrix4().makeScale(0, 0, 0);
  */
 export class ServiceVehicleRenderer {
   private readonly heightAt: (x: number, z: number) => number;
+  private readonly pinAnchorAt: PinAnchorLookup | null;
   private readonly meshes: Record<ServiceVehicleKind, THREE.InstancedMesh>;
   private prevBuffer: Float32Array | null = null;
   private currBuffer: Float32Array | null = null;
@@ -300,8 +318,15 @@ export class ServiceVehicleRenderer {
     scene: THREE.Scene,
     heightAt: (x: number, z: number) => number,
     incidentCapacity = 64,
+    /**
+     * Where a call on a tile is pinned: the lot centre and roof of the
+     * building standing there, in world metres, or null where there is none.
+     * Omitted, every pin hovers over its tile's centre on the ground.
+     */
+    pinAnchorAt: PinAnchorLookup | null = null,
   ) {
     this.heightAt = heightAt;
+    this.pinAnchorAt = pinAnchorAt;
     this.incidentCapacity = incidentCapacity;
 
     const meshes = {} as Record<ServiceVehicleKind, THREE.InstancedMesh>;
@@ -322,8 +347,11 @@ export class ServiceVehicleRenderer {
 
     // A plain (uncolored) cone; per-marker color is carried entirely by
     // InstancedMesh.setColorAt/instanceColor below (three.js applies it via
-    // instancing regardless of the material's own vertexColors flag).
+    // instancing regardless of the material's own vertexColors flag). Turned
+    // point down, with its point at y = 0 and its base at y = 1, so an
+    // instance's position is where the point hovers.
     const pinGeometry = new THREE.ConeGeometry(1, 1, 8);
+    pinGeometry.rotateX(Math.PI);
     pinGeometry.translate(0, 0.5, 0);
     const pinMaterial = new THREE.MeshBasicMaterial();
     this.incidentMesh = new THREE.InstancedMesh(pinGeometry, pinMaterial, incidentCapacity);
@@ -413,7 +441,7 @@ export class ServiceVehicleRenderer {
     }
   }
 
-  /** Colors an incident marker pin by kind: fire=red, crime=blue, medical=white-pink. Sized by severity (0..1). */
+  /** Colors an incident marker pin by kind: fire=red, crime=blue, medical=white-pink. */
   private colorForIncident(kind: Incident['kind']): readonly [number, number, number] {
     switch (kind) {
       case 'fire':
@@ -429,20 +457,32 @@ export class ServiceVehicleRenderer {
   /**
    * Places one marker pin per active incident (up to `incidentCapacity`,
    * silently truncating any excess -- MAX_SERVICE_VEHICLES caps the sim side
-   * well under any reasonable capacity here). Call once per snapshot.
+   * well under any reasonable capacity here), its point hovering over the
+   * lot centre and roof of the building it marks, or over its tile's centre
+   * on the ground where there is none, and grown by severity. Call once per
+   * snapshot.
    */
   setIncidents(incidents: readonly Incident[]): void {
     const n = Math.min(incidents.length, this.incidentCapacity);
     for (let i = 0; i < n; i++) {
       const incident = incidents[i]!;
-      const worldX = tileToWorld(incident.x);
-      const worldZ = tileToWorld(incident.z);
-      const groundY = this.heightAt(worldX, worldZ);
-      const size = TILE_METERS * (0.5 + incident.severity * 0.6);
+      const tileX = tileToWorld(incident.x);
+      const tileZ = tileToWorld(incident.z);
+      const anchor = this.pinAnchorAt?.(incident.x, incident.z) ?? {
+        x: tileX,
+        y: this.heightAt(tileX, tileZ),
+        z: tileZ,
+      };
+      const severity = Math.min(1, Math.max(0, incident.severity));
+      const grown = 1 + INCIDENT_PIN_SEVERITY_GROWTH * severity;
 
-      _position.set(worldX, groundY + size / 2, worldZ);
+      _position.set(anchor.x, anchor.y + INCIDENT_PIN_HOVER_M, anchor.z);
       _quaternion.identity();
-      _scale.set(size * 0.4, size, size * 0.4);
+      _scale.set(
+        (INCIDENT_PIN_BASE_M / 2) * grown,
+        INCIDENT_PIN_HEIGHT_M * grown,
+        (INCIDENT_PIN_BASE_M / 2) * grown,
+      );
       _matrix.compose(_position, _quaternion, _scale);
       this.incidentMesh.setMatrixAt(i, _matrix);
 

@@ -14,6 +14,7 @@ import {
 } from '../shared/types';
 import { laneOffset, sizeForKind } from './vehicles';
 import { ROAD_Y_OFFSET } from './roadsmesh';
+import { tileToWorld } from '../shared/constants';
 
 const flatHeightAt = (): number => 0;
 
@@ -425,6 +426,80 @@ describe('ServiceVehicleRenderer', () => {
       expect(lapsing.r).toBeLessThan(answeredFire.r);
       // Absent means answered, as it does everywhere else.
       expect(colour(2).equals(answeredFire)).toBe(true);
+    });
+
+    describe('sized against the art anchors, point down over the roof', () => {
+      const pinMeshOf = (scene: THREE.Scene): THREE.InstancedMesh =>
+        scene.children.find(
+          (c): c is THREE.InstancedMesh =>
+            c instanceof THREE.InstancedMesh && !('vehicleKind' in c.userData),
+        )!;
+      // The geometry's point is at y = 0 and its base at y = 1, so the
+      // instance's position is where the point hovers and its y scale is its
+      // height. Its base is a unit-radius circle, so the x scale is half the
+      // base's width.
+      const pointYOf = (geometry: THREE.BufferGeometry): [number, number] => {
+        geometry.computeBoundingBox();
+        return [geometry.boundingBox!.min.y, geometry.boundingBox!.max.y];
+      };
+
+      it('hovers its point 2.5 m over a 10 m roof at the lot centre, 4.4 m tall and 1.6 m across at severity 0', () => {
+        const scene = new THREE.Scene();
+        const hill = (): number => 3;
+        // The call's tile (4, 4) is the back yard of a lot whose building
+        // stands centred at (3.5, 3) tiles: the pin hangs over the building.
+        const lotCentre = { x: 70, y: 3 + 10, z: 60 };
+        const renderer = new ServiceVehicleRenderer(scene, hill, 8, (x, z) =>
+          x === 4 && z === 4 ? lotCentre : null,
+        );
+        renderer.setIncidents([{ kind: 'fire', x: 4, z: 4, severity: 0 }]);
+        const pin = pinMeshOf(scene);
+        expect(pointYOf(pin.geometry)).toEqual([0, 1]);
+        const { pos, scl } = decomposeAt(pin, 0);
+        expect(pos.x).toBeCloseTo(lotCentre.x, 6);
+        expect(pos.z).toBeCloseTo(lotCentre.z, 6);
+        expect(pos.y).toBeCloseTo(3 + 10 + 2.5, 6);
+        expect(scl.y).toBeCloseTo(4.4, 6);
+        expect(scl.x * 2).toBeCloseTo(1.6, 6);
+        expect(scl.z * 2).toBeCloseTo(1.6, 6);
+      });
+
+      it('grows to one and a half times by severity 1, and no further', () => {
+        const scene = new THREE.Scene();
+        const renderer = new ServiceVehicleRenderer(scene, flatHeightAt, 8, (x, z) => ({
+          x: tileToWorld(x),
+          y: 10,
+          z: tileToWorld(z),
+        }));
+        renderer.setIncidents([
+          { kind: 'crime', x: 1, z: 1, severity: 1 },
+          { kind: 'crime', x: 2, z: 2, severity: 5 },
+        ]);
+        const pin = pinMeshOf(scene);
+        const full = decomposeAt(pin, 0);
+        expect(full.scl.y).toBeCloseTo(6.6, 6);
+        expect(full.scl.x * 2).toBeCloseTo(2.4, 6);
+        // It still hovers the same 2.5 m: the growth is in the cone, not the gap.
+        expect(full.pos.y).toBeCloseTo(12.5, 6);
+        expect(decomposeAt(pin, 1).scl.y).toBeCloseTo(6.6, 6);
+      });
+
+      it('hovers 2.5 m over the tile centre on the ground where there is no building, and when nobody can say', () => {
+        const scene = new THREE.Scene();
+        const ground = (): number => 4;
+        const asked = new ServiceVehicleRenderer(scene, ground, 8, () => null);
+        asked.setIncidents([{ kind: 'medical', x: 4, z: 6, severity: 0 }]);
+        const fallback = decomposeAt(pinMeshOf(scene), 0).pos;
+        expect(fallback.x).toBeCloseTo(tileToWorld(4), 6);
+        expect(fallback.z).toBeCloseTo(tileToWorld(6), 6);
+        expect(fallback.y).toBeCloseTo(4 + 2.5, 6);
+
+        const unaskedScene = new THREE.Scene();
+        const unasked = new ServiceVehicleRenderer(unaskedScene, ground, 8);
+        unasked.setIncidents([{ kind: 'medical', x: 4, z: 6, severity: 0 }]);
+        const unaskedPos = decomposeAt(pinMeshOf(unaskedScene), 0).pos;
+        expect(unaskedPos.toArray()).toEqual(fallback.toArray());
+      });
     });
   });
 });

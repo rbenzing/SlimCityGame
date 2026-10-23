@@ -747,7 +747,11 @@ export function parkingStyleOn(profile: RoadProfile, side: 'low' | 'high'): Park
   return lane ? parkingStyleOf(lane.piece) : null;
 }
 
-/** One side's parking piece nearest the kerb, and how far in from the carriageway's edge its centre is. */
+/**
+ * One side's parking lane nearest the kerb, and how far in from the
+ * carriageway's edge its centre is. What a turn bay has narrowed to a kerb
+ * strip is not a lane: no stall, no car, no meter.
+ */
 function kerbParkingLane(
   profile: RoadProfile,
   side: 'low' | 'high',
@@ -757,7 +761,7 @@ function kerbParkingLane(
   let best: { piece: LanePiece; fromEdge: number } | null = null;
   profile.pieces.forEach((p, i) => {
     const at = centres[i];
-    if (p.kind !== 'parking' || at === null || at === undefined) return;
+    if (!isParkingLane(p) || at === null || at === undefined) return;
     if (side === 'low' ? at >= 0 : at < 0) return;
     const fromEdge = side === 'low' ? at + half : half - at;
     if (best === null || fromEdge < best.fromEdge) best = { piece: p, fromEdge };

@@ -88,14 +88,17 @@ await page.waitForTimeout(300);
 
 const row = (z) => Array.from({ length: 12 }, (_, i) => ({ x: X + 2 + i, z }));
 await cmd('Two-Lane Road', [{ kind: 'buildRoad', tier: TWO_LANE, tiles: row(Z) }]);
-// Define and lay in one batch, the way the tool does.
+// Define and lay in one batch, the way the tool does. Custom profiles start
+// past the presets, whose last is the Ramp at 12.
+const PARKED_ID = 13;
+const BARE_ID = 14;
 await cmd('Two-Lane Road', [
-  { kind: 'defineRoadProfile', id: 12, profile: PARKED },
-  { kind: 'buildRoad', tier: TWO_LANE, tiles: row(Z + 3), profile: 12 },
+  { kind: 'defineRoadProfile', id: PARKED_ID, profile: PARKED },
+  { kind: 'buildRoad', tier: TWO_LANE, tiles: row(Z + 3), profile: PARKED_ID },
 ]);
 await cmd('Two-Lane Road', [
-  { kind: 'defineRoadProfile', id: 13, profile: BARE },
-  { kind: 'buildRoad', tier: TWO_LANE, tiles: row(Z + 6), profile: 13 },
+  { kind: 'defineRoadProfile', id: BARE_ID, profile: BARE },
+  { kind: 'buildRoad', tier: TWO_LANE, tiles: row(Z + 6), profile: BARE_ID },
 ]);
 await page.waitForTimeout(1200);
 
@@ -112,10 +115,10 @@ console.log('rows:', JSON.stringify(report));
 const failures = [];
 if (!(report.preset.profile.length === 1 && report.preset.profile[0] === 1))
   failures.push('preset row does not carry profile 1');
-if (!(report.parked.profile.length === 1 && report.parked.profile[0] === 12))
-  failures.push('parked row does not carry profile 12');
-if (!(report.bare.profile.length === 1 && report.bare.profile[0] === 13))
-  failures.push('bare row does not carry profile 13');
+if (!(report.parked.profile.length === 1 && report.parked.profile[0] === PARKED_ID))
+  failures.push(`parked row does not carry profile ${PARKED_ID}`);
+if (!(report.bare.profile.length === 1 && report.bare.profile[0] === BARE_ID))
+  failures.push(`bare row does not carry profile ${BARE_ID}`);
 for (const k of ['preset', 'parked', 'bare']) {
   if (!(report[k].tier.length === 1 && report[k].tier[0] === TWO_LANE))
     failures.push(`${k} row is not nearest the two-lane tier`);
@@ -138,9 +141,12 @@ console.log(
     parked: parkedPoles.map((v) => v.toFixed(2)),
   }),
 );
-if (presetPoles.length === 0 || parkedPoles.length === 0) failures.push('no lamps found to measure');
-if (presetPoles.some((v) => v < 3.75 || v > 3.75 + 1.875)) failures.push('preset lamps off the kerb');
-if (parkedPoles.some((v) => v < 6.0 || v > 6.0 + 1.875)) failures.push('parked-row lamps not at the 6 m kerb');
+if (presetPoles.length === 0 || parkedPoles.length === 0)
+  failures.push('no lamps found to measure');
+if (presetPoles.some((v) => v < 3.75 || v > 3.75 + 1.875))
+  failures.push('preset lamps off the kerb');
+if (parkedPoles.some((v) => v < 6.0 || v > 6.0 + 1.875))
+  failures.push('parked-row lamps not at the 6 m kerb');
 
 await cmd('Speed', []);
 await call(() => window.__slimcity.setSpeed(0));

@@ -98,10 +98,16 @@ costs nothing in the save — it costs **one more InstancedMesh, permanently**,
 since the vehicle kit is one mesh per kind
 ([../../art/props-and-vehicles.md](../../art/props-and-vehicles.md)), charged
 against [../performance-budget.md](../performance-budget.md). Real metres, which
-do not scale with the tile: an **ambulance is 6.5 × 2.1 × 2.8 m** (London
-Ambulance Service FOI, box-body Sprinter); a **hearse is 6.2 × 1.9 × 1.9 m**
-(Coleman Milne Mercedes 214; a Cadillac XT5 coach is 6.32 m). Within 0.3 m of
-each other, so **the silhouette read comes from height and livery**.
+do not scale with the tile: an **ambulance is 6.9 × 2.5 × 2.7 m**, a US Type
+III on a Ford E-450 with a 170-inch module, the commonest US box ambulance —
+builders land within a few inches of each other: an
+[AEV at 269 × 97 × 107.5 in](https://www.shopgarage.com/listing/2026-AEV-Ford-Type-III-1c9eec37-5413-4926-a252-c480804653f4),
+a
+[Braun Chief XL bid at 272.75 × 98 × 106.5 in](https://docs.southbendin.gov/WebLink/0/doc/106217/Page26.aspx)
+and a [PL Custom Medallion at 275 × 99 × 107 in](https://signal-12.com/wiki/13-EM_%282013%29);
+a **hearse is 6.2 × 1.9 × 1.9 m** (Coleman Milne Mercedes 214; a Cadillac XT5
+coach is 6.32 m). The ambulance is 0.7 m longer and 0.8 m taller, so **the
+silhouette read comes from height and livery** as much as length.
 
 ### Deriving every footprint and height
 
@@ -489,9 +495,9 @@ Behaviour, in the order the risk sits:
   zoomed to the 1.75 m pedestrian, to confirm plot rows and a gatehouse rather
   than a grey slab — with **the crematorium's flue** in both, since a process
   utility is recognised by its plant.
-- **Hearse, ambulance and car stopped on one street** — 6.2 m, 6.5 m and 4.0 m.
-  The shot checks that height and livery separate the service vehicles, since
-  their lengths do not.
+- **Hearse, ambulance and car stopped on one street** — 6.2 m, 6.9 m and 4.0 m.
+  The shot checks that height and livery separate the service vehicles, whose
+  lengths are close.
 - **The health lens over a district with a backlog.** The grey must be a hole
   where the bodies are, not a city-wide smear.
 

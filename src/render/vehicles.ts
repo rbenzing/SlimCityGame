@@ -174,7 +174,7 @@ const KIND_SIZE: Record<VehicleKind, readonly [number, number, number]> = {
   [VehicleKind.Bus]: [2.5, 3.0, 10.0],
   [VehicleKind.Fire]: [2.5, 3.3, 10.0],
   [VehicleKind.Police]: [1.9, 1.6, 5.0],
-  [VehicleKind.Ambulance]: [2.2, 2.7, 6.2],
+  [VehicleKind.Ambulance]: [2.5, 2.7, 6.9],
   [VehicleKind.Garbage]: [2.5, 3.2, 9.0],
   [VehicleKind.Recycling]: [2.5, 3.2, 9.0],
   [VehicleKind.Hearse]: [1.9, 1.9, 6.2],

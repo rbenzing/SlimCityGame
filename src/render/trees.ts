@@ -810,6 +810,51 @@ export class TreeRenderer {
     }
   }
 
+  /**
+   * The ground under the patched rects has moved (a loaded save, a terraform,
+   * a lot's flatten): a tile now under water loses its trees, and every other
+   * tile's trees are re-seated on the new ground. `isWater` is asked per tile
+   * after the ground has moved.
+   */
+  applyHeightPatches(
+    patches: readonly { x: number; z: number; w: number; h: number }[],
+    isWater: (x: number, z: number) => boolean,
+  ): void {
+    const drowned: TilePoint[] = [];
+    const touchedSpecies = new Set<TreeSpecies>();
+
+    for (const patch of patches) {
+      for (let row = 0; row < patch.h; row++) {
+        const z = patch.z + row;
+        for (let col = 0; col < patch.w; col++) {
+          const x = patch.x + col;
+          const refs = this.tileToInstances.get(z * this.gridSize + x);
+          if (!refs) continue;
+          if (isWater(x, z)) {
+            drowned.push({ x, z });
+            continue;
+          }
+          for (const ref of refs) {
+            const mesh = this.meshes[ref.species];
+            if (!mesh) continue;
+            mesh.getMatrixAt(ref.slot, _matrix);
+            _matrix.decompose(_position, _quaternion, _scale);
+            _position.y = this.heightAt(_position.x, _position.z);
+            _matrix.compose(_position, _quaternion, _scale);
+            mesh.setMatrixAt(ref.slot, _matrix);
+            touchedSpecies.add(ref.species);
+          }
+        }
+      }
+    }
+
+    for (const species of touchedSpecies) {
+      const mesh = this.meshes[species];
+      if (mesh) mesh.instanceMatrix.needsUpdate = true;
+    }
+    if (drowned.length > 0) this.clearAt(drowned);
+  }
+
   /** Seasonal foliage tint: broadleaf + shrub only, pine/poplar stay green. */
   setSeason(month: number): void {
     const [r, g, b] = seasonalTint(month);
