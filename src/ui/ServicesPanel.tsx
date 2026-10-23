@@ -17,7 +17,11 @@
  * upkeep) and confirms on the next snapshot.
  */
 import type { JSX } from 'react';
-import { SERVICE_FUNDING_MAX, SERVICE_FUNDING_MIN } from '../shared/constants';
+import {
+  OPEN_SPACE_TILES_PER_THOUSAND,
+  SERVICE_FUNDING_MAX,
+  SERVICE_FUNDING_MIN,
+} from '../shared/constants';
 import { FieldId, fundingKeyOf } from '../shared/types';
 import type { LensId, ServiceKind } from '../shared/types';
 import { catalogEntryForTool } from './categories';
@@ -66,12 +70,23 @@ function loadText(value: number, capped: number): string {
   return capped > 0 ? `${Math.round(value * 100)}%` : '—';
 }
 
+/**
+ * The parks row's second answer: not how full the parks are but how much
+ * ground the city gives them, read against the provision standard. A mirror
+ * that never received the figure reads an em dash rather than zero.
+ */
+function provisionText(perThousand: number | undefined): string {
+  const reading = perThousand === undefined ? '—' : `${Math.round(perThousand)}`;
+  return `${reading} tiles per 1,000 · standard ${OPEN_SPACE_TILES_PER_THOUSAND}`;
+}
+
 export function ServicesPanel(): JSX.Element | null {
   const selectedTool = useCityStore((s) => s.selectedTool);
   const overlay = useCityStore((s) => s.overlay);
   const serviceFunding = useCityStore((s) => s.stats.serviceFunding);
   const serviceLoad = useCityStore((s) => s.serviceLoad);
   const responders = useCityStore((s) => s.responders);
+  const openSpace = useCityStore((s) => s.openSpace);
   const setServiceFunding = useCityStore((s) => s.setServiceFunding);
 
   const holdingService = catalogEntryForTool(selectedTool)?.service !== undefined;
@@ -167,6 +182,21 @@ export function ServicesPanel(): JSX.Element | null {
                 >
                   {crew ? `${crew.inFlight}/${crew.total}` : '—'}
                 </span>
+                {kind === 'park' && (
+                  <span
+                    data-testid="service-provision-park"
+                    data-short={
+                      openSpace !== undefined &&
+                      openSpace !== null &&
+                      openSpace.perThousand < OPEN_SPACE_TILES_PER_THOUSAND
+                        ? 'true'
+                        : 'false'
+                    }
+                    className="basis-full text-[11px] text-white/60"
+                  >
+                    {provisionText(openSpace?.perThousand)}
+                  </span>
+                )}
               </div>
             );
           })}

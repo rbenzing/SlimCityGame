@@ -216,7 +216,7 @@ import { BuildingRegistry, settleBuildingDelta } from './buildings';
 import { computeDemand, jobRoom } from './demand';
 import { GrowthSystem, schoolsMissingAt, type GrowthSupply } from './growth';
 import { gridKerbSurroundings } from './kerbsurroundings';
-import { ServiceSim, nearestRoadTile } from './services';
+import { ServiceSim, nearestRoadTile, openSpaceOf } from './services';
 import { EconomySystem, buildingMonthlyTax, type Occupancy } from './economy';
 import { DeathCareSystem, type DeathCareFacility } from './deathcare';
 import { occupiedResidents } from '../shared/occupancy';
@@ -1555,6 +1555,7 @@ class SimWorld implements WorkerSim {
     // it — the services tick on their own period, so this rides every snapshot
     // rather than only the ones that happen to land on it.
     if (this.serviceLoad) snap.serviceLoad = { ...this.serviceLoad };
+    snap.openSpace = openSpaceOf(this.registry.all(), this.catalogById, this.stats.population);
     const responders = this.dispatch.responderLoad(this.registry.all());
     if (Object.keys(responders).length > 0) snap.responders = responders;
     snap.growthWaiting = this.growth.waitingFor(this.grid, this.registry, this.supply);
@@ -3675,8 +3676,9 @@ class SimWorld implements WorkerSim {
     const footprint = footprintTiles(x, z, w, d);
     this.invalidateAround(footprint);
     const inverse: Command[] = [{ kind: 'bulldoze', tiles: footprint }];
-    // Auto-flatten: the whole footprint, no apron.
-    this.flattenFootprint(footprint, false, inverse);
+    // Auto-flatten: the whole footprint, no apron. A draped park keeps the
+    // ground it is laid on, so there is nothing to level and nothing to undo.
+    if (entry.ground !== 'drape') this.flattenFootprint(footprint, false, inverse);
     return { ok: true, cost: price, inverse };
   }
 

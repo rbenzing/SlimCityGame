@@ -2,13 +2,14 @@
  * Service coverage & passive scalar-field growth.
  *
  * Every tick: crime/fire risk grow passively across the grid, then each
- * Active service building projects coverage outward from the nearest road
- * tile through the connected road network — BFS hop distance (not
- * euclidean), capped at a funding-scaled range — radiating 2 tiles around
- * every reached road tile. Coverage blends into the relevant scalar field
- * per service kind (education, one field per rung, and health: max-blend;
- * police/fire: subtract; park: additive, plus a flat bonus at the source). A
- * library writes no field: it lengthens the range of every school it reaches.
+ * Active service building projects coverage outward from every road tile
+ * beside its footprint through the connected road network — BFS hop distance
+ * (not euclidean), capped at a funding-scaled range — radiating 2 tiles
+ * around every reached road tile. Coverage blends into the relevant scalar
+ * field per service kind (education, one field per rung, and health:
+ * max-blend; police/fire: subtract; park: the best of overlapping parks added
+ * once to land value, plus a flat bonus at the source). A library writes no
+ * field: it lengthens the range of every school it reaches.
  *
  * A facility also serves a number of PEOPLE. Each tile's supply is the sum,
  * over the facilities reaching it, of the capacity each dedicates to the
@@ -22,6 +23,7 @@ import type {
   BuildingInstance,
   FundingKey,
   GridState,
+  OpenSpace,
   ServiceKind,
   ServiceLoad,
 } from '../shared/types';
@@ -78,16 +80,16 @@ export function footprintsByBuildingId(g: GridState): Map<number, number[]> {
 }
 
 /**
- * Closest tile carrying a street — on the grid or off it — to any tile in
- * `footprint`, searched within NEAR_ROAD_RADIUS; ties broken by lowest tile index.
+ * Every tile carrying a street — on the grid or off it — within
+ * NEAR_ROAD_RADIUS orthogonal steps of any tile in `footprint`, with the
+ * fewest steps it takes from the footprint to reach it.
  */
-export function nearestRoadTile(g: GridState, footprint: readonly number[]): number | null {
+function roadTilesNear(g: GridState, footprint: readonly number[]): Map<number, number> {
   const cells = roadCellsOf(g);
   const hasStreet = (tile: number): boolean =>
     isStreetTier(g.roadTier[tile]!) ||
     freeCellsOn(cells, tile).some((c) => isStreetTier(cells.tier[c]!));
-  let best: number | null = null;
-  let bestDist = Infinity;
+  const near = new Map<number, number>();
   for (const idx of footprint) {
     const x = idx % MAP_SIZE;
     const z = Math.floor(idx / MAP_SIZE);
@@ -98,16 +100,41 @@ export function nearestRoadTile(g: GridState, footprint: readonly number[]): num
         const nz = z + dz;
         if (!inBounds(nx, nz)) continue;
         const ni = tileIndex(nx, nz);
-        if (!hasStreet(ni)) continue;
         const dist = Math.abs(dx) + Math.abs(dz);
-        if (dist < bestDist || (dist === bestDist && (best === null || ni < best))) {
-          bestDist = dist;
-          best = ni;
-        }
+        const known = near.get(ni);
+        if (known !== undefined && known <= dist) continue;
+        if (known === undefined && !hasStreet(ni)) continue;
+        near.set(ni, dist);
       }
     }
   }
+  return near;
+}
+
+/**
+ * Closest tile carrying a street — on the grid or off it — to any tile in
+ * `footprint`, searched within NEAR_ROAD_RADIUS; ties broken by lowest tile index.
+ */
+export function nearestRoadTile(g: GridState, footprint: readonly number[]): number | null {
+  let best: number | null = null;
+  let bestDist = Infinity;
+  for (const [tile, dist] of roadTilesNear(g, footprint)) {
+    if (dist < bestDist || (dist === bestDist && (best === null || tile < best))) {
+      bestDist = dist;
+      best = tile;
+    }
+  }
   return best;
+}
+
+/**
+ * The road tiles a facility's coverage starts from: every street within
+ * NEAR_ROAD_RADIUS of its footprint, in tile order. A park on four streets
+ * serves from all four, not from one corner; a lot beside one street starts
+ * where it always did.
+ */
+export function roadSeedsOf(g: GridState, footprint: readonly number[]): number[] {
+  return [...roadTilesNear(g, footprint).keys()].sort((a, b) => a - b);
 }
 
 /**
@@ -120,15 +147,30 @@ export function roadBfsDistances(
   start: number,
   maxDist: number,
 ): Map<number, number> {
+  return roadBfsFrom(g, [start], maxDist);
+}
+
+/**
+ * BFS hop-distance from the streets on every tile in `starts` at once, each
+ * at distance 0, so a tile's distance is the fewest hops from any of them.
+ */
+export function roadBfsFrom(
+  g: GridState,
+  starts: readonly number[],
+  maxDist: number,
+): Map<number, number> {
   // Walked along the road network rather than tile to tile: it goes only where
   // roads join, so coverage runs over a road it crosses and never down into
   // it, and never jumps to a road that merely lies alongside.
   const cells = roadCellsOf(g);
-  const streetsOnStart = freeCellsOn(cells, start).filter((c) => isStreetTier(cells.tier[c]!));
-  const seeds = isStreetTier(cells.tier[start]!) || streetsOnStart.length === 0 ? [start] : [];
-  seeds.push(...streetsOnStart);
+  const seeds: number[] = [];
+  for (const start of starts) {
+    const streetsOnStart = freeCellsOn(cells, start).filter((c) => isStreetTier(cells.tier[c]!));
+    if (isStreetTier(cells.tier[start]!) || streetsOnStart.length === 0) seeds.push(start);
+    seeds.push(...streetsOnStart);
+  }
   const dist = new Map<number, number>(seeds.map((s) => [s, 0]));
-  const queue: number[] = [...seeds];
+  const queue: number[] = [...dist.keys()];
   let head = 0;
   while (head < queue.length) {
     const cur = queue[head]!;
@@ -209,14 +251,38 @@ export function reachOfFootprint(
   range: number,
 ): Map<number, number> | null {
   if (!footprint || footprint.length === 0) return null;
-  const start = nearestRoadTile(g, footprint);
-  if (start === null) return null;
-  const coverage = radiateWeighted(roadBfsDistances(g, start, range), range, 1);
+  const starts = roadSeedsOf(g, footprint);
+  if (starts.length === 0) return null;
+  const coverage = radiateWeighted(roadBfsFrom(g, starts, range), range, 1);
   return coverage.size === 0 ? null : coverage;
 }
 
 /** The road walk a facility's reach is built from; injectable so a tick's traversals can be counted. */
-export type RoadBfs = (g: GridState, start: number, maxDist: number) => Map<number, number>;
+export type RoadBfs = (
+  g: GridState,
+  starts: readonly number[],
+  maxDist: number,
+) => Map<number, number>;
+
+/**
+ * Park tiles the city holds — the footprint of every Active building whose
+ * entry is a park service — and those tiles per 1,000 residents. An empty
+ * city reads 0, not NaN: nobody is short of parks until somebody lives there.
+ */
+export function openSpaceOf(
+  buildings: readonly BuildingInstance[],
+  catalog: ReadonlyMap<string, BuildingCatalogEntry>,
+  population: number,
+): OpenSpace {
+  let tiles = 0;
+  for (const b of buildings) {
+    if (b.state !== BuildingState.Active) continue;
+    const spec = catalog.get(b.catalogId);
+    if (spec?.service?.kind !== 'park') continue;
+    tiles += spec.footprint.w * spec.footprint.d;
+  }
+  return { tiles, perThousand: population > 0 ? (tiles / population) * 1000 : 0 };
+}
 
 /**
  * Residents per building id — Active residential buildings only, exactly the
@@ -282,8 +348,16 @@ export class ServiceSim {
    */
   private readonly uplift = new Map<number, number>();
   private maxUplift = 0;
+  /**
+   * The best park contribution reaching each tile this tick, by tile index,
+   * and the tiles any park reached. One array for the whole map rather than a
+   * map per tick: with ranges up to 58 the union of park-covered tiles can be
+   * most of the city, and it is the largest transient the pass holds.
+   */
+  private readonly parkBlend = new Float32Array(MAP_TILES);
+  private readonly parkTouched: number[] = [];
 
-  constructor(catalog: BuildingCatalogEntry[], bfs: RoadBfs = roadBfsDistances) {
+  constructor(catalog: BuildingCatalogEntry[], bfs: RoadBfs = roadBfsFrom) {
     this.catalog = new Map(catalog.map((c) => [c.id, c] as const));
     this.bfs = bfs;
   }
@@ -422,15 +496,15 @@ export class ServiceSim {
 
       const range = Math.floor(spec.service.range * funding);
       if (range <= 0 || footprint.length === 0) continue;
-      const start = nearestRoadTile(g, footprint);
-      if (start === null) continue;
+      const starts = roadSeedsOf(g, footprint);
+      if (starts.length === 0) continue;
 
       // A library stretches a school's range where its own reach is: the walk is
       // cut at the widest range any library allows, and each road tile falls off
       // over the range it has locally. With no library both are the plain range.
       const school = SCHOOL_FIELD[kind] !== undefined;
       const reach = school ? Math.ceil(range * (1 + this.maxUplift / 100)) : range;
-      const reached = this.bfs(g, start, reach);
+      const reached = this.bfs(g, starts, reach);
       const coverage = radiateWeighted(
         reached,
         range,
@@ -478,8 +552,10 @@ export class ServiceSim {
       for (const [tile, value] of coverage) {
         coverage.set(tile, value * Math.min(1, supply.get(tile) ?? Infinity));
       }
-      this.applyCoverage(g, kind, coverage);
+      if (kind === 'park') this.blendPark(coverage);
+      else this.applyCoverage(g, kind, coverage);
     }
+    if (kind === 'park') this.flushParks(g);
 
     // The worst any tile with people on it is served. A tile an uncapped
     // facility reaches has infinite supply, so it reads 0 and never wins.
@@ -548,11 +624,36 @@ export class ServiceSim {
         for (const [tile, value] of coverage) field[tile] = clamp255(field[tile]! - value / 2);
         break;
       }
-      case 'park': {
-        const field = g.fields[FieldId.LandValue]!;
-        for (const [tile, value] of coverage) field[tile] = clamp255(field[tile]! + value / 4);
-        break;
-      }
     }
+  }
+
+  /**
+   * Holds the better of this park's contribution and any park's before it on
+   * each tile. Two overlapping parks give the best of the two, never the sum:
+   * overlap is waste and spacing is the play.
+   */
+  private blendPark(coverage: ReadonlyMap<number, number>): void {
+    for (const [tile, value] of coverage) {
+      const contribution = value / 4;
+      const held = this.parkBlend[tile]!;
+      if (contribution <= held) continue;
+      if (held === 0) this.parkTouched.push(tile);
+      this.parkBlend[tile] = contribution;
+    }
+  }
+
+  /**
+   * Adds the blended park contribution to land value once, and clears the
+   * scratch for the next tick. Added rather than max-blended into the field:
+   * land value carries the whole land-value model, and flooring it at a park's
+   * value would drop a tile worth 200 to 20.
+   */
+  private flushParks(g: GridState): void {
+    const field = g.fields[FieldId.LandValue]!;
+    for (const tile of this.parkTouched) {
+      field[tile] = clamp255(field[tile]! + this.parkBlend[tile]!);
+      this.parkBlend[tile] = 0;
+    }
+    this.parkTouched.length = 0;
   }
 }

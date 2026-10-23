@@ -707,6 +707,85 @@ describe('auto-flatten: the ground levels under a placed footprint', () => {
     });
   });
 
+  it('a draped park keeps the ground it is laid on: no tile of a district park is levelled, and the ack carries no terraformSet', () => {
+    const h = initializedVaried();
+    const park = catalog.find((e) => e.id === 'district-park')!;
+    expect(park.ground).toBe('drape');
+    const x = 50;
+    const z = 60;
+    const footprint = rows(x, z, park.footprint.w, park.footprint.d);
+    // The ripple really varies under forty acres: a plateau would have to move something.
+    expect(new Set(footprint.map((t) => variedHeight(t.x, t.z))).size).toBeGreaterThan(1);
+
+    send(h, 1, [
+      { kind: 'setSandbox', on: true },
+      { kind: 'placeBuilding', catalogId: park.id, x, z, rotation: 0 },
+    ]);
+    h.ticks(2);
+    const ack = h.ackFor(1)!;
+    expect(ack.ok).toBe(true);
+    expect(ack.inverse.some((c) => c.kind === 'terraformSet')).toBe(false);
+    expect(ack.inverse.some((c) => c.kind === 'bulldoze')).toBe(true);
+
+    h.sim.handleMessage({ type: 'requestSave' });
+    const grid = latestSaveGrid(h);
+    for (const t of footprint) {
+      expect(grid.height[tileIndex(t.x, t.z)]).toBe(variedHeight(t.x, t.z));
+      expect(grid.buildingId[tileIndex(t.x, t.z)]).not.toBe(0);
+    }
+  });
+
+  it('a levelled park grades its paving flat: a plaza goes to its mean height, as a building does', () => {
+    const h = initializedVaried();
+    const plaza = catalog.find((e) => e.id === 'civic-plaza')!;
+    expect(plaza.ground).toBe('level');
+    const x = 50;
+    const z = 60;
+    const footprint = rows(x, z, plaza.footprint.w, plaza.footprint.d);
+    const mean = footprint.reduce((sum, t) => sum + variedHeight(t.x, t.z), 0) / footprint.length;
+
+    send(h, 1, [
+      { kind: 'setSandbox', on: true },
+      { kind: 'placeBuilding', catalogId: plaza.id, x, z, rotation: 0 },
+    ]);
+    h.ticks(2);
+    const ack = h.ackFor(1)!;
+    expect(ack.ok).toBe(true);
+    expect(ack.inverse.some((c) => c.kind === 'terraformSet')).toBe(true);
+
+    h.sim.handleMessage({ type: 'requestSave' });
+    const grid = latestSaveGrid(h);
+    for (const t of footprint) expect(grid.height[tileIndex(t.x, t.z)]).toBeCloseTo(mean, 5);
+  });
+
+  it('undo (ack.inverse) of a draped park removes it and leaves the ground exactly as it was', () => {
+    const h = initializedVaried();
+    const park = catalog.find((e) => e.id === 'district-park')!;
+    const x = 30;
+    const z = 40;
+    const footprint = rows(x, z, park.footprint.w, park.footprint.d);
+
+    send(h, 1, [
+      { kind: 'setSandbox', on: true },
+      { kind: 'placeBuilding', catalogId: park.id, x, z, rotation: 0 },
+    ]);
+    h.ticks(2);
+    const ack = h.ackFor(1)!;
+    expect(ack.ok).toBe(true);
+    expect(ack.cost).toBe(park.cost);
+
+    send(h, 2, ack.inverse);
+    h.ticks(2);
+    expect(h.ackFor(2)!.ok).toBe(true);
+
+    h.sim.handleMessage({ type: 'requestSave' });
+    const afterUndo = latestSaveGrid(h);
+    for (const t of footprint) {
+      expect(afterUndo.height[tileIndex(t.x, t.z)]).toBe(variedHeight(t.x, t.z));
+      expect(afterUndo.buildingId[tileIndex(t.x, t.z)]).toBe(0);
+    }
+  });
+
   it('is deterministic: identical placement on two independent sims yields bit-identical flattened heights (no Math.random)', () => {
     const h1 = initializedVaried();
     const h2 = initializedVaried();

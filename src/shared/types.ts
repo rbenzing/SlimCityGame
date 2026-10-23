@@ -1059,6 +1059,13 @@ export interface SimSnapshot {
    */
   responders?: Partial<Record<ServiceKind, ResponderLoad>>;
   /**
+   * Open-space provision: the footprint tiles of every Active park, and those
+   * tiles per 1,000 residents — 0 at population 0, never NaN. Derived each
+   * snapshot rather than carried in CityStats, where it would go stale in a
+   * save. Optional: a mirror that does not understand it ignores it.
+   */
+  openSpace?: OpenSpace;
+  /**
    * How many lots and buildings growth is holding back for want of power and
    * of water, against what the grid has spare now — the Advisor's word that a
    * full grid is what stops the city growing. Sent on every snapshot.
@@ -1195,6 +1202,12 @@ export interface ServiceLoad {
   load: number;
   worst: number;
   capped: number;
+}
+
+/** Park tiles the city holds, and how many it holds per 1,000 residents. */
+export interface OpenSpace {
+  tiles: number;
+  perThousand: number;
 }
 
 export interface UtilitySpec {
@@ -1356,6 +1369,13 @@ export interface BuildingCatalogEntry {
    * wall to wall with its own kind.
    */
   spacing?: number;
+  /**
+   * How the ground under this entry is treated at placement. Absent or
+   * `'level'` flattens the footprint to one height, as every building needs;
+   * `'drape'` leaves the terrain as it lies, for a park whose lawn and paths
+   * follow the hillside they are laid on. Catalog data, never saved.
+   */
+  ground?: 'level' | 'drape';
 }
 
 // ---------------------------------------------------------------------------

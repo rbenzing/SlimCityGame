@@ -206,12 +206,16 @@ describe('subTabsFor', () => {
       'plop.college',
       'plop.library',
     ]);
-    // The airport landmark is a park-category ploppable, so it joins
-    // the Parks drawer alongside the pocket park (catalog order).
+    // The five park rungs in catalog order, and nothing else: the airport is
+    // not a park, so it files under Transit rather than here.
     expect(subTabsFor('parks')[0]?.cards.map((c) => c.id)).toEqual([
       'plop.small-park',
-      'plop.airport',
+      'plop.civic-plaza',
+      'plop.neighbourhood-park',
+      'plop.district-park',
+      'plop.sports-ground',
     ]);
+    expect(subTabsFor('transit')[0]?.cards.map((c) => c.id)).toContain('plop.airport');
   });
 
   it('every card carries a real cost + unlockMilestone sourced from the data files', () => {
@@ -221,8 +225,8 @@ describe('subTabsFor', () => {
     expect(avenue).toEqual({ id: 'road.avenue', name: 'Avenue', cost: 45, unlockMilestone: 1 });
   });
 
-  it('the §6.10 airport card carries the landmark price and stays milestone-5 locked', () => {
-    const airport = subTabsFor('parks')
+  it('the §6.10 airport card sits in the Transit drawer, carries the landmark price and stays milestone-5 locked', () => {
+    const airport = subTabsFor('transit')
       .flatMap((t) => t.cards)
       .find((c) => c.id === 'plop.airport');
     expect(airport).toEqual({

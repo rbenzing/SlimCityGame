@@ -25,6 +25,7 @@ import type {
   FundingKey,
   JunctionControl,
   LensId,
+  OpenSpace,
   RoadFlow,
   Policy,
   SelectionInfo,
@@ -244,6 +245,11 @@ export interface CityStoreState {
    * SimSnapshot.responders). Null when no station of any kind offers responders.
    */
   responders: Partial<Record<ServiceKind, ResponderLoad>> | null;
+  /**
+   * Park tiles per 1,000 residents (from SimSnapshot.openSpace). Null for a
+   * mirror feeding this store from a snapshot that never carried the field.
+   */
+  openSpace: OpenSpace | null;
   // --- Stats charts + Photo mode -------------------------------------------
   /** Live stats history samples (pushed by main.ts each snapshot). */
   statsSamples: StatsSample[];
@@ -304,6 +310,7 @@ export interface CityStoreState {
   /** Replaces the per-kind service load from a snapshot. */
   setServiceLoad: (load: Record<ServiceKind, ServiceLoad> | null) => void;
   setResponders: (responders: Partial<Record<ServiceKind, ResponderLoad>> | null) => void;
+  setOpenSpace: (openSpace: OpenSpace | null) => void;
   /**
    * Sets a service kind's funding — clamps to what the command accepts, emits
    * setServiceFunding, and mirrors the new figure into the stats readout so the
@@ -357,6 +364,7 @@ export const useCityStore = create<CityStoreState>((set, get) => ({
   districtPolicies: {},
   serviceLoad: null,
   responders: null,
+  openSpace: null,
   statsSamples: [],
   statsOpen: false,
   photoMode: false,
@@ -454,6 +462,7 @@ export const useCityStore = create<CityStoreState>((set, get) => ({
     }),
   setServiceLoad: (load) => set({ serviceLoad: load }),
   setResponders: (responders) => set({ responders }),
+  setOpenSpace: (openSpace) => set({ openSpace }),
   setServiceFunding: (service, funding) =>
     set((state) => {
       const clamped = Math.max(SERVICE_FUNDING_MIN, Math.min(SERVICE_FUNDING_MAX, funding));

@@ -2056,6 +2056,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
     // than reading zero.
     if (snap.serviceLoad) state.setServiceLoad(snap.serviceLoad);
     state.setResponders(snap.responders ?? null);
+    state.setOpenSpace(snap.openSpace ?? null);
   };
 
   worker.onmessage = (ev: MessageEvent<WorkerToMain>) => {

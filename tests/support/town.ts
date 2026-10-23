@@ -40,6 +40,8 @@ export const WALLED_MOTORWAY = composeProfile(presetProfileForTier(RoadTier.High
  *              rail yard along the track at x 100–103
  *   z  44      station road, homes and shops along its south side
  *   z  57      the road out to the motorway ramp, x 130–151
+ *   z  78–87   a civic plaza at x 131–135, z 78–82 and a sports ground at
+ *              x 131–136, z 84–87, east of the road down to the ramp
  *   z  68–69   a pumping station on the north bank at x 95–96, piped to the
  *              avenue along z 68, and a drain pipe at x 89 beside the avenue
  *   z  70–74   a river, which the avenue and the ramp road bridge
@@ -64,6 +66,9 @@ export const WALLED_MOTORWAY = composeProfile(presetProfileForTier(RoadTier.High
  *   z 130      four-lane road, x 50–130, industry, power, the incinerator and,
  *              south of it, the transfer station at x 91–94 beside the avenue
  *              and the recovery facility at x 115–119
+ *   z 135–154  a district park west of the avenue at x 70–89, draped on the
+ *              ground, and a neighbourhood park east of it at x 91–99,
+ *              z 136–144
  *   z 146–151  an airfield beside the avenue
  *   z 160      dirt road, x 50–130, farms south of it — joined to the town by a
  *              power line down from the avenue's end and along it, and by no
@@ -131,6 +136,10 @@ export const TOWN = {
   highSchool: { x: 65, z: 101 },
   college: { x: 61, z: 107 },
   library: { x: 116, z: 101 },
+  plaza: { x: 131, z: 78 },
+  sportsGround: { x: 131, z: 84 },
+  districtPark: { x: 70, z: 135 },
+  neighbourhoodPark: { x: 91, z: 136 },
   hill: { x: 210, z: 210 },
 } as const;
 
@@ -428,7 +437,7 @@ export function townSteps(): TownStep[] {
       ],
     },
     {
-      label: 'services and a park',
+      label: 'services and the parks',
       commands: [
         place('police-station', { x: 61, z: 101 }),
         place('fire-station', { x: 71, z: 105 }),
@@ -445,6 +454,10 @@ export function townSteps(): TownStep[] {
         place('library', t.library),
         place('small-park', { x: 100, z: 101 }),
         place('small-park', { x: 56, z: 86 }),
+        place('civic-plaza', t.plaza),
+        place('sports-ground', t.sportsGround),
+        place('district-park', t.districtPark),
+        place('neighbourhood-park', t.neighbourhoodPark),
       ],
     },
     {
