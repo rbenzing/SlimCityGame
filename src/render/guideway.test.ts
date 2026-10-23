@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
 import {
+  beamTopAtTile,
   computeGuideway,
   GuidewayRenderer,
   GUIDEWAY_BEAM_DEPTH_M,
@@ -13,6 +14,7 @@ import {
   TRAM_FLOOR_ABOVE_BEAM_M,
   type GuidewayBeam,
 } from './guideway';
+import { tileKey } from './roadfurniture';
 import type { FurnitureRoadTile } from './roadfurniture';
 import { markingPlan } from './roadmarkings';
 import { composeProfile, NO_EDITS, presetProfileForTier } from '../shared/roadprofile';
@@ -241,6 +243,45 @@ describe('the guideway seat sampler', () => {
 
   it('answers null off the guideway', () => {
     expect(seatAt(x, tileToWorld(ROW + 3), Math.PI / 2)).toBeNull();
+  });
+});
+
+describe('the beam top at a tile', () => {
+  const ramp = [...row(0, 2, mixed), ...row(3, 14, reserved)];
+
+  it('is the surface plus the full height on a full tile, read through the renderer', () => {
+    const deck = (): number => 8;
+    const renderer = new GuidewayRenderer(new THREE.Scene(), deck);
+    renderer.rebuild(row(0, 9, reserved));
+    expect(renderer.beamTopAt(tileToWorld(4), tileToWorld(ROW))).toBeCloseTo(
+      8 + GUIDEWAY_BEAM_TOP_M,
+      9,
+    );
+    expect(renderer.beamTopAt(tileToWorld(4), tileToWorld(ROW + 3))).toBeNull();
+    renderer.dispose();
+  });
+
+  it('is the mean of the two edge tops on a ramp tile', () => {
+    const guideway = computeGuideway(ramp, flat);
+    // x = 4 is the second ramp tile: one fifth up at its west edge, two fifths at its east.
+    expect(beamTopAtTile(guideway, 4, ROW)).toBeCloseTo((GUIDEWAY_BEAM_TOP_M * 3) / 10, 9);
+    expect(beamTopAtTile(guideway, 10, ROW)).toBeCloseTo(GUIDEWAY_BEAM_TOP_M, 9);
+    expect(beamTopAtTile(guideway, 1, ROW)).toBeNull();
+  });
+
+  it('marks a tile at full height only when both its edges are: not the ramp, nor the tile it ends on', () => {
+    const { tiles } = computeGuideway(ramp, flat);
+    const full = (x: number): boolean => tiles.get(tileKey(x, ROW))!.fullHeight;
+    for (let x = 3; x <= 7; x++) expect(full(x)).toBe(false);
+    for (let x = 8; x <= 14; x++) expect(full(x)).toBe(true);
+    expect(tiles.get(tileKey(10, ROW))).toMatchObject({ reserved: true, alongX: true });
+    expect(tiles.get(tileKey(10, ROW))!.line).toBeCloseTo(tileToWorld(ROW) + medianCentre(), 9);
+  });
+
+  it('answers null before the first rebuild', () => {
+    const renderer = new GuidewayRenderer(new THREE.Scene(), flat);
+    expect(renderer.beamTopAt(tileToWorld(4), tileToWorld(ROW))).toBeNull();
+    expect(renderer.structure()).toBeNull();
   });
 });
 

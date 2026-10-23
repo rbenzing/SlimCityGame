@@ -31,7 +31,10 @@ admits edges by. A reservation's tracks run on an elevated guideway above
 their street ([../art/streets.md](../art/streets.md)); in the graph they are
 the same track, and a line runs from a guideway onto a street tramway and
 back through the ramp where the two meet, so a tram depot at grade fields a
-guideway line.
+guideway line. A stop on a guideway tile is served like any other; on the
+ground it is drawn as a raised station where the beams are at full height on
+a straight tile, and as nothing on a ramp tile, a junction box or a turn
+([../art/streets.md](../art/streets.md)).
 
 **Tram crossings.** A street tramway crosses another street at grade the way
 a real one does, straight over the junction; a guideway crosses it the same

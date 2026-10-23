@@ -102,9 +102,25 @@ export type GuidewaySeatSampler = (
   out?: GuidewayPoint,
 ) => GuidewayPoint | null;
 
+/** One tile the guideway is drawn over, as a station reads it. */
+export interface GuidewayTile {
+  x: number;
+  z: number;
+  /** The tile's own reservation, as against a street the guideway spans. */
+  reserved: boolean;
+  /** The axis the beams run straight along, or null at a turn or a junction. */
+  alongX: boolean | null;
+  /** The world coordinate across the run of the centre line, where the run is straight. */
+  line: number | null;
+  /** Every beam end on the tile stands the full height over the surface: not a ramp tile, nor the tile a ramp ends on. */
+  fullHeight: boolean;
+}
+
 export interface Guideway {
   beams: GuidewayBeam[];
   columns: GuidewayColumn[];
+  /** The tiles the beams are drawn over, keyed by `tileKey`. */
+  tiles: ReadonlyMap<number, GuidewayTile>;
   seatAt: GuidewaySeatSampler;
 }
 
@@ -347,10 +363,19 @@ export function computeGuideway(
     );
   };
 
+  const tiles = new Map<number, GuidewayTile>();
   for (const node of nodes.values()) {
     const reserved = roleAt(node.tile.x, node.tile.z) === 'guideway';
     if (reserved && !drawsGuideway(node.tile)) continue;
     const axis = straightAxis(node);
+    tiles.set(node.key, {
+      x: node.tile.x,
+      z: node.tile.z,
+      reserved,
+      alongX: axis,
+      line: axis === null ? null : lineOf(node, axis),
+      fullHeight: false,
+    });
     if (axis !== null) {
       through(node, axis);
       if (reserved) placeColumns(node, axis);
@@ -451,7 +476,36 @@ export function computeGuideway(
     }
   }
 
-  return { beams, columns, seatAt: seatSampler(beams) };
+  // A tile is at full height when every beam end over it stands the full
+  // height above the surface under that end.
+  const atFullHeight = (p: GuidewayPoint): boolean =>
+    Math.abs(p.y - surfaceAt(p.x, p.z) - GUIDEWAY_BEAM_TOP_M) < 1e-3;
+  const lowEnds = new Set<number>();
+  for (const beam of beams) {
+    if (!atFullHeight(beam.from) || !atFullHeight(beam.to)) {
+      lowEnds.add(tileKey(beam.tileX, beam.tileZ));
+    }
+  }
+  for (const tile of tiles.values()) {
+    tile.fullHeight = !lowEnds.has(tileKey(tile.x, tile.z));
+  }
+
+  return { beams, columns, tiles, seatAt: seatSampler(beams) };
+}
+
+/**
+ * The beam top at a tile's centre: the mean of its beam ends' heights, which
+ * on a ramp tile is midway between its two edges. Null off the guideway.
+ */
+export function beamTopAtTile(guideway: Guideway, tileX: number, tileZ: number): number | null {
+  let sum = 0;
+  let count = 0;
+  for (const beam of guideway.beams) {
+    if (beam.tileX !== tileX || beam.tileZ !== tileZ) continue;
+    sum += beam.from.y + beam.to.y;
+    count += 2;
+  }
+  return count === 0 ? null : sum / count;
 }
 
 interface Crossing {
@@ -656,6 +710,16 @@ export class GuidewayRenderer {
       stems.instanceMatrix.needsUpdate = true;
       heads.instanceMatrix.needsUpdate = true;
     }
+  }
+
+  /** The beam top at the tile under a world point, as `beamTopAtTile` reads it; null off the guideway. */
+  beamTopAt(x: number, z: number): number | null {
+    return this.current ? beamTopAtTile(this.current, worldToTile(x), worldToTile(z)) : null;
+  }
+
+  /** The guideway as last rebuilt, for what stands on it; null before the first rebuild. */
+  structure(): Guideway | null {
+    return this.current;
   }
 
   /** Beam segments drawn, for a test or a frame report. */

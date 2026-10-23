@@ -124,6 +124,26 @@ for the surface, the paint, the furniture and the zoning overlay.
   crossheads are each one instanced pool of boxes. A tram on the guideway
   rides the beam on its own side of travel, its floor 0.45 m above the beam
   top and its body straddling the beam.
+- **The raised station**: a tram stop on a guideway tile at full height is
+  a pair of side platforms, the Las Vegas and Honolulu form. Each platform
+  is 3 m wide, 0.25 m thick and 26 m long, centred on the stop tile along
+  the run and shortened to the straight run through the neighbouring tiles,
+  never shorter than the tile; its inner edge stands 3.2 m from the guideway
+  centre, clear of a car straddling its beam, and its top is at the beam top
+  plus 0.45 m, the car's floor. A canopy 0.15 m thick covers each platform
+  2.7 m above it with a 0.3 m overhang, on posts 0.15 m square at the outer
+  edge every 6.5 m, in the shelter's roof grey; the platforms and towers are
+  the guideway's concrete. At the platform's low-coordinate end on each side
+  a stair 1.5 m wide runs down along the road at 32° to the footway below,
+  one sloped box with a closed stringer, and beside it a lift tower 2.4 m
+  square rises from the footway to the canopy with a glazed pane on its
+  road face in the shelter's glass. Both land on the tile past the platform
+  end, at the kerb line where the road has no footway. The line's sign board
+  hangs from the canopy edge at the platform's centre in the line's colour.
+  No shelter stands at the kerb under a station, and no lamp or pole stands
+  on the stop tile or the landing tile. A stop on a ramp tile, a junction
+  box or a turn draws no station and no shelter. Platforms, canopies, posts,
+  stairs, towers and panes are each one instanced pool of boxes.
 - **Contact poles**: a street whose trams share its lanes is hung from
   overhead contact poles at the kerb face — 10.7 m tall, 0.25 m across, with a
   bracket arm reaching 1.9 m over the carriageway at 6.0 m — one every 22 m of

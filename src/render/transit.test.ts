@@ -428,6 +428,43 @@ describe('TransitRenderer.apply', () => {
     expect(renderer.shelterInstanceCount()).toBe(3);
   });
 
+  it('draws no shelter and no sign under a raised tram station, and keeps the others', () => {
+    const scene = new THREE.Scene();
+    const renderer = new TransitRenderer(scene, flatHeightAt);
+    const tram: TransitLine = {
+      id: 1,
+      stops: [
+        { x: 0, z: 0 },
+        { x: 5, z: 0 },
+        { x: 9, z: 0 },
+      ],
+      color: 0xff0000,
+      mode: 'tram',
+    };
+    const snapshot: TransitSnapshot = { lines: [tram], ridership: [0] };
+    renderer.apply(
+      snapshot,
+      () => false,
+      (x, z) => x === 5 && z === 0,
+    );
+    expect(renderer.stopCount()).toBe(2);
+    expect(renderer.shelterInstanceCount()).toBe(2);
+    expect(renderer.signInstanceCount()).toBe(2);
+
+    const m = new THREE.Matrix4();
+    const p = new THREE.Vector3();
+    for (const slot of [0, 1]) {
+      renderer.getShelterMatrix(slot, m);
+      p.setFromMatrixPosition(m);
+      expect(Math.abs(p.x - tileToWorld(5))).toBeGreaterThan(TILE_METERS / 2);
+    }
+
+    // A stop on a street tramway keeps its shelter: nothing says it is a station.
+    renderer.apply(snapshot);
+    expect(renderer.stopCount()).toBe(3);
+    expect(renderer.shelterInstanceCount()).toBe(3);
+  });
+
   it('casts and receives shadows on every shelter mesh (UI-SPEC §15 #3)', () => {
     const scene = new THREE.Scene();
     const renderer = new TransitRenderer(scene, flatHeightAt);
