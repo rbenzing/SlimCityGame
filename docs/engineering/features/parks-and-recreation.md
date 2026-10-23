@@ -243,8 +243,8 @@ The rules above, as behaviour statements; the
   tile at land value 200 under a strength-80 park ends above 200, never at 20.
 - `small-park` at `range: 18` reaches exactly 20 tiles of road distance once the
   2-tile radiation is counted, and nothing at 21.
-- A district park alone in a catchment of 500 residents runs at load 2 and gives
-  half its strength; a second district park restores both to full.
+- A district park alone in a catchment of 8,000 residents runs at load 2 and
+  gives half its strength; a second district park restores both to full.
 - A park entry with no `capacity` leaves its catchment uncapped, so a pre-epic
   save behaves exactly as it did, and `SAVE_VERSION` is unchanged.
 - Every entry's `capacity` equals its tile count × its typology's

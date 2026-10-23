@@ -147,7 +147,9 @@ already exists and has a drawer, and its `service` block goes — there is no
 `ServiceKind` for air transport and recreation is not a substitute. The player
 chose to fix it here (2026-10-23) rather than ship a provision figure that
 lies while an airport stands; an airport in a save keeps its tiles, loses its
-park coverage, and no longer counts as open space.
+park coverage and the land-value bonus it stamped on its own ground, and no
+longer counts as open space. An airport at 160 noise was never a reason for
+land value to rise.
 
 ## Tuning
 
