@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.75.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.74.1...slimcity-v1.75.0) (2026-10-26)
+
+
+### Features
+
+* **render:** the commercial kinds told apart at 40 m, from sources ([589cdb5](https://github.com/rbenzing/SlimCityGame/commit/589cdb513a08485fd6a143f3ad6e3b5546c96252))
+* **render:** the commercial kinds told apart at 40 m, from sources ([9a66aca](https://github.com/rbenzing/SlimCityGame/commit/9a66acaa1b651b6a50c00f338b76957a81076459))
+
+
+### Bug Fixes
+
+* **render:** the night stays night, and a building stays legible in it ([457b1b8](https://github.com/rbenzing/SlimCityGame/commit/457b1b8e528a24eabcf5f642c959d8f5de44987a))
+* **render:** the night stays night, and a building stays legible in it ([9047de7](https://github.com/rbenzing/SlimCityGame/commit/9047de7a9f50cd956a6ae42e4b5b63cb24dd0c42))
+
 ## [1.74.1](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.74.0...slimcity-v1.74.1) (2026-10-23)
 
 
