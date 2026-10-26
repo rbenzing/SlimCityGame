@@ -4,9 +4,12 @@
  * downtown, each at the default camera pitch with the lot's cars in their
  * stalls; then the same streets at night, where the sign bands, the pylon, the
  * price sign, the tower glazing and the lobby portal glow and nothing else
- * does. Buildings are placed by command along streets on flat dry ground with
- * the sim paused, as the frame budget does: a running sim with no power, water
- * or zones abandons and clears them within a minute.
+ * does. Last, the line-up: one of each commercial kind along one street, framed
+ * whole at the default pitch so a metre is about four pixels, the second pass's
+ * test that each kind is nameable without its label, by day and at 22:00.
+ * Buildings are placed by command along streets on flat dry ground with the
+ * sim paused, as the frame budget does: a running sim with no power, water or
+ * zones abandons and clears them within a minute.
  *
  * Usage: node tools/storefront-shots.mjs [baseUrl] [outDir]   (a dev server must be running) */
 import { chromium } from 'playwright';
@@ -31,8 +34,13 @@ const STREET_ROWS = 9;
 /** Tiles of road beyond each end of a street's buildings. */
 const MARGIN = 2;
 const LONGEST = 24;
+/** The eye's distance for a street shot, and the tiles of row that distance frames. */
+const STREET_DISTANCE = 95;
+const STREET_FRAMED_TILES = 9;
+/** The line-up's night: 22:00. */
+const LINEUP_NIGHT = 22 / 24;
 
-/** The streets, north to south: what stands along each, left to right. */
+/** The streets, north to south: what stands along each, left to right; the line-up last, shot on its own. */
 const STREETS = [
   {
     name: 'main',
@@ -62,6 +70,19 @@ const STREETS = [
   {
     name: 'downtown',
     ids: ['com-high-1', 'com-office-2', 'com-high-2', 'com-hotel-1', 'com-hotel-2', 'com-hotel-3'],
+  },
+  {
+    name: 'lineup',
+    lineup: true,
+    ids: [
+      'com-low-1',
+      'com-strip-1',
+      'com-market-1',
+      'com-restaurant-1-lot2x2',
+      'com-fuel-1',
+      'com-high-1',
+      'com-hotel-1',
+    ],
   },
 ];
 
@@ -192,10 +213,25 @@ try {
     return (placed[0].x + last.x + last.w) / 2;
   };
   const centre = (b) => ({ x: b.x + b.w / 2, z: b.z + b.d / 2 });
+  /**
+   * The whole row in frame with a margin at each end: the eye backs off with
+   * the row's length, and further again because it orbits the road itself
+   * rather than a point two tiles south of it, which puts it nearer the row
+   * than a street shot's eye.
+   */
+  const rowDistance = (s) => {
+    const tiles = spans[s].reduce((sum, b) => sum + b.w, 0);
+    return (1.6 * STREET_DISTANCE * Math.max(tiles, STREET_FRAMED_TILES)) / STREET_FRAMED_TILES;
+  };
+  const lineup = STREETS.findIndex((s) => s.lineup);
+  // Aimed at the road, so the row stands in the upper half of the frame rather than along its top edge.
+  const shootLineup = (suffix) =>
+    shoot(`lineup${suffix}`, middleOf(lineup), roadRow(lineup), rowDistance(lineup), 0.2);
 
   const views = (suffix) => async () => {
     for (const [s, street] of STREETS.entries()) {
-      await shoot(`${street.name}${suffix}`, middleOf(s), roadRow(s) + 2, 95, 0.3);
+      if (street.lineup) continue;
+      await shoot(`${street.name}${suffix}`, middleOf(s), roadRow(s) + 2, STREET_DISTANCE, 0.3);
     }
     const strip = centre(find('strip', 'com-strip-2'));
     await shoot(`strip-pylon${suffix}`, strip.x, strip.z + 2, 85, 0.3);
@@ -213,6 +249,7 @@ try {
 
   await setPhase(0.5);
   await views('')();
+  await shootLineup('');
 
   // The close shots, at twice the pixels over the camera's floor distance.
   const restore = await closeUp(page, 2);
@@ -228,6 +265,9 @@ try {
 
   await setPhase(0.96);
   await views('-night')();
+
+  await setPhase(LINEUP_NIGHT);
+  await shootLineup('-night');
 } finally {
   await browser.close();
 }

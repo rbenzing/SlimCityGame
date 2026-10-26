@@ -64,11 +64,34 @@ import {
   WALK_UP_BRICK_BASE_PROUD_M,
   windowBays,
   storeysOf,
+  stripTenants,
+  ACCENT_BAND_M,
+  BASE_BAND_M,
+  CORNICE_HEIGHT_M,
+  DOCK_SCREEN_M,
+  FUEL_FASCIA_HEIGHT_M,
+  LOBBY_HEIGHT_M,
+  MANSARD_BAND_M,
+  MENU_BOARD_HEIGHT_M,
+  PARAPET_STEP_M,
+  PORTE_COCHERE_UNDERSIDE_M,
+  RIBBON_BAND_M,
+  SIGN_HEIGHT_M,
+  SPANDREL_BAND_M,
+  STRIP_CANOPY_FASCIA_M,
+  TOWER_OVER_PARAPET_M,
 } from './buildingkit';
 import { computeSetbacks, type SetbackBox } from './massing';
 import { bodyMetresFor } from '../shared/floorarea';
 import { WALK_UP_REAR_YARD_M } from '../shared/parkingcode';
-import { deriveFacadeParams } from './facade';
+import { deriveFacadeParams, FLOOR_HEIGHT_METERS, type RGB } from './facade';
+import {
+  materialUnit,
+  SATURATED,
+  saturatedUnit,
+  type MaterialName,
+  type SaturatedName,
+} from './palette';
 import { trimColor } from './houses';
 import type { Side } from './frontage';
 import {
@@ -423,6 +446,16 @@ const ROOF_PARTS: readonly BuildingPart[] = [
   'coolingTower',
 ];
 
+/** The saturated chart entry an instance colour is, or null for any other colour. */
+const accentNames = (color: RGB | undefined): SaturatedName | null => {
+  if (!color) return null;
+  const same = (a: RGB, b: RGB): boolean => a.every((c, i) => Math.abs(c - b[i]!) < 1e-9);
+  const name = (Object.keys(SATURATED) as SaturatedName[]).find((n) =>
+    same(saturatedUnit(n), color),
+  );
+  return name ?? null;
+};
+
 describe('the storefront kit: where every part stands', () => {
   it('stands every part inside its lot, at every turn and every street side', () => {
     const outside: string[] = [];
@@ -472,8 +505,14 @@ describe('the storefront kit: where every part stands', () => {
           if (ROOF_PARTS.includes(p.part)) {
             const within = b.x0 >= roof.x0 && b.x1 <= roof.x1 && b.z0 >= roof.z0 && b.z1 <= roof.z1;
             if (bottomOf(p) < roofY - 1e-6 || !within) inside.push(label);
-          } else if (p.part === 'anchorParapet') {
+          } else if (p.part === 'anchorParapet' || p.part === 'parapetStep') {
             if (Math.abs(bottomOf(p) - baseTop) > 1e-6) inside.push(label);
+          } else if (p.part === 'ribbonBand') {
+            // A ribbon band is a ring round its tier: on the base tier it holds the body, never sits inside it.
+            const ring = placementBounds(p);
+            const holds =
+              ring.x0 <= body.x0 && ring.x1 >= body.x1 && ring.z0 <= body.z0 && ring.z1 >= body.z1;
+            if (!holds && bottomOf(p) < baseTop - 1e-6) inside.push(label);
           } else if (p.part !== 'entryTower' && overlap(b, body) && bottomOf(p) < baseTop - 1e-6) {
             inside.push(label);
           }
@@ -501,15 +540,36 @@ describe('the storefront kit: where every part stands', () => {
 describe('a shop', () => {
   const shop = southern(byId('com-low-1'));
 
-  it('has awnings a bay, 1.5 m out, their underside at 2.45 m, and no flat canopy', () => {
+  it('has an awning every 1.5 m storefront bay, 1.5 m out, their underside at 2.45 m, and no flat canopy', () => {
     const awnings = only(shop, 'awning');
-    expect(awnings.length).toBe(2);
+    expect(awnings.length).toBe(Math.round(shop.baseBox.w / 1.5));
+    expect(awnings.length).toBeGreaterThan(2);
     for (const a of awnings) {
       expect(bottomOf(a)).toBeCloseTo(2.45, 9);
       expect(a.size[2]).toBeCloseTo(1.5, 9);
       expect(placementBounds(a).z0).toBeCloseTo(shop.baseBox.d / 2, 9);
     }
     expect(only(shop, 'canopy')).toEqual([]);
+  });
+
+  it('hangs its awnings in one of three liveries by building id, never the kit’s default red', () => {
+    const liveries = ['greenPlaster', 'redPlaster', 'darkWood'].map((m) =>
+      materialUnit(m as MaterialName),
+    );
+    const seen = new Set<string>();
+    for (const id of [1, 2, 3, 4, 5, 6]) {
+      const plan = kitPlanFor(
+        byId('com-low-1'),
+        { id, x: 10, z: 10, rotation: 0 },
+        streetOn('S', 1, 1),
+      )!;
+      const colours = new Set(only(plan, 'awning').map((a) => JSON.stringify(a.color)));
+      expect(colours.size).toBe(1);
+      const [colour] = colours;
+      expect(liveries.map((l) => JSON.stringify(l))).toContain(colour);
+      seen.add(colour!);
+    }
+    expect(seen.size).toBe(3);
   });
 
   it('turns an awning out of the wall it hangs on, at every street side', () => {
@@ -525,22 +585,81 @@ describe('a shop', () => {
     }
   });
 
-  it('has a 0.6 m bulkhead along the foot of the street face, and a cornice 0.5 m deep and 0.45 m tall at the parapet', () => {
+  it('has a 0.6 m bulkhead along the foot of the street face, and a cornice 0.5 m deep and 0.5 m tall at the parapet', () => {
     const [bulkhead] = only(shop, 'bulkhead');
     expect(bulkhead!.size[1]).toBeCloseTo(0.6, 9);
     expect(bottomOf(bulkhead!)).toBeCloseTo(0, 9);
     expect(bulkhead!.size[0]).toBeCloseTo(shop.baseBox.w, 9);
     const [cornice] = only(shop, 'cornice');
     expect(cornice!.size[2]).toBeCloseTo(0.5, 9);
-    expect(cornice!.size[1]).toBeCloseTo(0.45, 9);
+    expect(cornice!.size[1]).toBeCloseTo(0.5, 9);
     expect(topOf(cornice!)).toBeCloseTo(shop.baseBox.h, 9);
   });
 
-  it('signs 60% of its frontage in a band 0.9 m tall at 3.6 m', () => {
+  it('signs 60% of its frontage in a band 1.2 m tall above the awnings and under the cornice, in the tenant’s accent', () => {
     const [band] = only(shop, 'signageBand');
     expect(band!.size[0]).toBeCloseTo(shop.baseBox.w * 0.6, 9);
-    expect(band!.size[1]).toBeCloseTo(0.9, 9);
-    expect(band!.offset[1]).toBeCloseTo(3.6, 9);
+    expect(band!.size[1]).toBeCloseTo(1.2, 9);
+    expect(band!.offset[1]).toBeCloseTo(3.5, 9);
+    const [cornice] = only(shop, 'cornice');
+    expect(bottomOf(cornice!)).toBeGreaterThanOrEqual(topOf(band!) - 0.2);
+    expect(accentNames(band!.color)).not.toBeNull();
+  });
+});
+
+/** The identifying parts the art table names per commercial kind, each sized to read at 40 m. */
+const IDENTIFYING_PARTS: Readonly<Record<string, readonly BuildingPart[]>> = {
+  shop: ['bulkhead', 'awning', 'signageBand', 'cornice'],
+  strip: ['stripCanopy', 'baseBand', 'signageBand', 'anchorParapet', 'parapetStep', 'pylon'],
+  supermarket: ['entryTower', 'baseBand', 'cartCorral', 'dockScreen', 'signageBand'],
+  restaurant: ['featureWall', 'menuBoard', 'accentBand', 'pylon', 'mansardBand'],
+  fuel: ['fuelFascia', 'priceSign'],
+  office: ['ribbonBand', 'lobbyPortal'],
+  hotel: ['baseBand', 'porteCochere', 'signageBand'],
+};
+
+describe('the second pass: what tells the kinds apart at 40 m', () => {
+  it('maps every identifying part the art table names onto its kind', () => {
+    for (const [kind, parts] of Object.entries(IDENTIFYING_PARTS)) {
+      const e = commercial.find((c) => c.kind === kind && (c.level ?? 1) === 1)!;
+      for (const part of parts) expect(partsFor(e), `${kind} ${part}`).toContain(part);
+    }
+  });
+
+  it('sizes each identifying part to its art figure, none under 0.5 m', () => {
+    expect(SIGN_HEIGHT_M).toBe(1.2);
+    expect(STRIP_CANOPY_FASCIA_M).toBe(0.9);
+    expect(PARAPET_STEP_M).toBe(1.2);
+    expect(BASE_BAND_M).toEqual({ strip: 1.2, supermarket: 2.4, hotel: 1.2 });
+    expect(DOCK_SCREEN_M).toBe(1.8);
+    expect(MENU_BOARD_HEIGHT_M).toBe(2.4);
+    expect(ACCENT_BAND_M).toBe(0.6);
+    expect(MANSARD_BAND_M).toBe(1.5);
+    expect(FUEL_FASCIA_HEIGHT_M).toBe(0.76);
+    expect(PORTE_COCHERE_UNDERSIDE_M).toBeGreaterThanOrEqual(4.1);
+    expect(RIBBON_BAND_M).toBe(1.2);
+    expect(SPANDREL_BAND_M).toBe(1);
+    expect(CORNICE_HEIGHT_M).toBe(0.5);
+    expect(TOWER_OVER_PARAPET_M).toBe(FLOOR_HEIGHT_METERS);
+    expect(LOBBY_HEIGHT_M).toBe(2 * FLOOR_HEIGHT_METERS);
+  });
+
+  it('stands every identifying part on a south-fronting example of each kind, given a lot with room for its lane and drive', () => {
+    const examples: Record<string, string> = {
+      shop: 'com-low-1',
+      strip: 'com-strip-1',
+      supermarket: 'com-market-1',
+      restaurant: 'com-restaurant-1-lot2x2',
+      fuel: 'com-fuel-1',
+      office: 'com-high-1',
+      hotel: 'com-hotel-1',
+    };
+    for (const [kind, parts] of Object.entries(IDENTIFYING_PARTS)) {
+      const e = byId(examples[kind]!);
+      const plan = southern(e);
+      for (const part of parts)
+        expect(only(plan, part).length, `${e.id} ${part}`).toBeGreaterThan(0);
+    }
   });
 });
 
@@ -548,11 +667,11 @@ describe('a shopping strip', () => {
   const strip = southern(byId('com-strip-1'));
   const span = strip.baseBox.w;
 
-  it('has one canopy the length of its frontage, 2.1 m deep, its underside at 2.75 m, on 0.3 m columns no more than 6 m apart', () => {
+  it('has one canopy the length of its frontage, 2.1 m deep with a 0.9 m fascia, its underside at 2.75 m, on 0.3 m columns no more than 6 m apart', () => {
     const [canopy] = only(strip, 'stripCanopy');
     expect(canopy!.size[0]).toBeCloseTo(span, 9);
     expect(canopy!.size[2]).toBeCloseTo(2.1, 9);
-    expect(canopy!.size[1]).toBeCloseTo(0.3, 9);
+    expect(canopy!.size[1]).toBeCloseTo(0.9, 9);
     expect(bottomOf(canopy!)).toBeCloseTo(2.75, 9);
     const columns = only(strip, 'stripColumn').sort((a, b) => a.offset[0] - b.offset[0]);
     expect(columns.length).toBeGreaterThanOrEqual(Math.ceil(span / 6));
@@ -596,6 +715,36 @@ describe('a shopping strip', () => {
     }
   });
 
+  it('steps the parapet up 1.2 m over every other tenant’s entry, 80% of its bay wide, with the tenant’s 1.2 m band in the step, each in its own accent', () => {
+    const tenants = stripTenants(span, strip.lot, 'S');
+    const steps = only(strip, 'parapetStep').sort((a, b) => a.offset[0] - b.offset[0]);
+    expect(steps).toHaveLength(tenants.length - 1);
+    for (const step of steps) {
+      expect(step.size[1]).toBeCloseTo(1.2, 9);
+      expect(bottomOf(step)).toBeCloseTo(strip.baseBox.h, 9);
+      const tenant = tenants.find((t) => Math.abs(t.along - step.offset[0]) < 1e-9)!;
+      expect(step.size[0]).toBeCloseTo(tenant.width * 0.8, 9);
+    }
+    const bands = only(strip, 'signageBand');
+    expect(bands).toHaveLength(tenants.length);
+    for (const band of bands) {
+      expect(band.size[1]).toBeCloseTo(1.2, 9);
+      expect(bottomOf(band)).toBeCloseTo(strip.baseBox.h, 9);
+      expect(placementBounds(band).z0).toBeCloseTo(strip.baseBox.d / 2, 9);
+    }
+    expect(new Set(bands.map((b) => JSON.stringify(b.color))).size).toBeGreaterThan(1);
+  });
+
+  it('runs a 1.2 m split-face base band along its frontage, and glows its pylon cabinet in the tenant’s accent', () => {
+    const [base] = only(strip, 'baseBand');
+    expect(base!.size[0]).toBeCloseTo(span, 9);
+    expect(base!.size[1]).toBeCloseTo(1.2, 9);
+    expect(bottomOf(base!)).toBeCloseTo(0, 9);
+    expect(base!.color).toBeUndefined();
+    const [cabinet] = only(strip, 'pylon');
+    expect(accentNames(cabinet!.color)).not.toBeNull();
+  });
+
   it('has a pylon 6.1 m tall at the drive mouth, its face 1.5 m inside the lot line, on a 0.4 m pole', () => {
     for (const e of commercial.filter((c) => c.kind === 'strip')) {
       for (const side of STREET_SIDES) {
@@ -628,13 +777,17 @@ describe('a supermarket', () => {
   const plan = southern(market);
   const span = plan.baseBox.w;
 
-  it('has an entry tower 6 × 4 m rising to 1.28 times the body, proud of the wall', () => {
+  it('has an entry tower 6 × 4 m rising a full storey over the parapet, proud of the wall, in the tenant’s accent', () => {
     const [tower] = only(plan, 'entryTower');
     expect(tower!.size[0]).toBeCloseTo(6, 9);
     expect(tower!.size[2]).toBeCloseTo(4, 9);
-    expect(topOf(tower!)).toBeCloseTo(1.28 * market.height, 9);
+    expect(topOf(tower!)).toBeCloseTo(market.height + FLOOR_HEIGHT_METERS, 9);
     expect(bottomOf(tower!)).toBeCloseTo(0, 9);
     expect(placementBounds(tower!).z1).toBeGreaterThan(plan.baseBox.d / 2);
+    expect(accentNames(tower!.color)).not.toBeNull();
+    const [band] = only(plan, 'signageBand');
+    expect(band!.size[1]).toBeCloseTo(1.2, 9);
+    expect(band!.color).toEqual(tower!.color);
   });
 
   it('steps its parapet up to 1.17 times the body for 12 m either side of the tower', () => {
@@ -647,20 +800,59 @@ describe('a supermarket', () => {
     }
   });
 
-  it('glazes the tower’s face only, and runs a brick base across the rest of the street face', () => {
+  it('glazes the tower’s face only, and runs a 2.4 m split-face base across the rest of the street face', () => {
     const [tower] = only(plan, 'entryTower');
     const [glazing] = only(plan, 'towerGlazing');
     expect(placementBounds(glazing!).z0).toBeCloseTo(placementBounds(tower!).z1, 9);
     expect(glazing!.size[0]).toBeLessThanOrEqual(6);
-    const bricks = only(plan, 'brickBase');
-    for (const b of bricks) {
-      expect(b.size[1]).toBeCloseTo(1.2, 9);
+    const base = only(plan, 'baseBand');
+    for (const b of base) {
+      expect(b.size[1]).toBeCloseTo(2.4, 9);
       expect(b.size[2]).toBeCloseTo(0.1, 9);
+      expect(bottomOf(b)).toBeCloseTo(0, 9);
     }
-    expect(bricks.reduce((sum, b) => sum + b.size[0], 0)).toBeCloseTo(span - 6, 9);
+    expect(base.reduce((sum, b) => sum + b.size[0], 0)).toBeCloseTo(span - 6, 9);
+    expect(only(plan, 'brickBase')).toEqual([]);
   });
 
-  it('stands two cart corrals 3.66 × 1.52 m with 1.0 m rails and a 2.3 m sign post, in planted islands by the entrance', () => {
+  it('stands a 1.8 m screen wall up to 8 m long by the berths, within 12 m of them, clear of the body and of every stall, aisle and berth', () => {
+    let stood = 0;
+    for (const e of commercial.filter((c) => c.kind === 'supermarket')) {
+      for (const side of STREET_SIDES) {
+        const p = kitOf(e, 0, side);
+        const [screen] = only(p, 'dockScreen');
+        const dock = p.lot!.dock;
+        if (!dock) {
+          expect(screen, `${e.id} ${side}`).toBeUndefined();
+          continue;
+        }
+        expect(screen, `${e.id} ${side}`).toBeDefined();
+        stood += 1;
+        expect(screen!.size[1]).toBeCloseTo(1.8, 9);
+        expect(bottomOf(screen!)).toBeCloseTo(0, 9);
+        const length = Math.max(screen!.size[0], screen!.size[2]);
+        expect(length).toBeLessThanOrEqual(8 + 1e-9);
+        expect(length).toBeGreaterThanOrEqual(3);
+        expect(Math.min(screen!.size[0], screen!.size[2])).toBeCloseTo(0.2, 9);
+        expect(
+          Math.hypot(screen!.offset[0] - dock.x, screen!.offset[2] - dock.z),
+        ).toBeLessThanOrEqual(12 * Math.SQRT2);
+        const b = placementBounds(screen!);
+        const body = {
+          x0: -p.baseBox.w / 2,
+          x1: p.baseBox.w / 2,
+          z0: -p.baseBox.d / 2,
+          z1: p.baseBox.d / 2,
+        };
+        expect(overlap(b, body)).toBe(false);
+        for (const t of p.lot!.taken) expect(overlap(t, b), `${e.id} ${side}`).toBe(false);
+      }
+    }
+    expect(stood).toBeGreaterThan(0);
+    expect(only(plan, 'dockScreen')).toHaveLength(1);
+  });
+
+  it('stands two cart corrals 3.66 × 1.52 m with rails at least 0.9 m and a 2.3 m sign post, in planted islands by the entrance', () => {
     const rails = only(plan, 'cartCorral');
     expect(rails).toHaveLength(6);
     const posts = only(plan, 'signPole');
@@ -668,7 +860,10 @@ describe('a supermarket', () => {
     for (const post of posts) expect(topOf(post)).toBeCloseTo(2.3, 9);
     for (let i = 0; i < 2; i += 1) {
       const corral = rails.slice(i * 3, i * 3 + 3);
-      for (const r of corral) expect(topOf(r)).toBeCloseTo(1, 9);
+      for (const r of corral) {
+        expect(topOf(r)).toBeCloseTo(1, 9);
+        expect(topOf(r)).toBeGreaterThanOrEqual(0.9);
+      }
       const b = boundsOf(corral);
       const dims = [b.x1 - b.x0, b.z1 - b.z0].sort((a, c) => a - c);
       expect(dims[0]).toBeCloseTo(1.52, 9);
@@ -762,7 +957,7 @@ describe('rooftop units', () => {
 describe('a filling station', () => {
   const station = southern(byId('com-fuel-1'));
 
-  it('has its canopy’s underside at 4.27 m, a 0.91 m fascia round its edge, and four 0.4 m posts', () => {
+  it('has its canopy’s underside at 4.27 m, a 0.76 m fascia round its edge in the brand’s accent, and four 0.4 m posts', () => {
     const canopy = only(station, 'fuelCanopy');
     const slab = canopy.find((p) => p.size[1] === 0.5)!;
     expect(bottomOf(slab)).toBeCloseTo(4.27, 9);
@@ -775,10 +970,11 @@ describe('a filling station', () => {
     const fascia = only(station, 'fuelFascia');
     expect(fascia).toHaveLength(4);
     for (const f of fascia) {
-      expect(f.size[1]).toBeCloseTo(0.91, 9);
+      expect(f.size[1]).toBeCloseTo(0.76, 9);
       expect(bottomOf(f)).toBeCloseTo(4.27, 9);
       // Wrapped round the slab's edge, none of it across the deck.
       expect(overlap(placementBounds(f), placementBounds(slab))).toBe(false);
+      expect(accentNames(f.color)).not.toBeNull();
     }
   });
 
@@ -820,15 +1016,51 @@ describe('a filling station', () => {
 });
 
 describe('an office and a hotel', () => {
-  it('has a lit lobby portal 4 m wide and 4.5 m tall, projecting 1.5 m', () => {
+  it('has a lit lobby portal 4 m wide and two storeys tall, projecting 1.5 m', () => {
     for (const id of ['com-high-1', 'com-office-2', 'com-high-2']) {
       const plan = southern(byId(id));
       const [portal] = only(plan, 'lobbyPortal');
-      expect(portal!.size).toEqual([4, 4.5, 1.5]);
+      expect(portal!.size).toEqual([4, 2 * FLOOR_HEIGHT_METERS, 1.5]);
       expect(bottomOf(portal!)).toBeCloseTo(0, 9);
       expect(placementBounds(portal!).z0).toBeCloseTo(plan.baseBox.d / 2, 9);
     }
     expect(LIT_PARTS.has('lobbyPortal')).toBe(true);
+  });
+
+  it('bands an office at every floor line of every tier: a 1.2 m precast ring a floor on a block, a 1.0 m dark spandrel ring on the tower', () => {
+    for (const id of ['com-high-1', 'com-office-2', 'com-high-2']) {
+      const e = byId(id);
+      const plan = southern(e);
+      const { boxes } = computeSetbacks(e, 7, plan.frontage);
+      const floors = boxes.reduce((n, box) => n + storeysOf(e, box).rows, 0);
+      const bands = only(plan, 'ribbonBand').sort((a, b) => a.offset[1] - b.offset[1]);
+      expect(bands.length, id).toBe(floors);
+      const tower = id === 'com-high-2';
+      const precast = ['precastGrey', 'precastBuff'].map((m) => materialUnit(m as MaterialName));
+      for (const band of bands) {
+        expect(band.size[1]).toBeCloseTo(tower ? 1 : 1.2, 9);
+        if (tower) expect(band.color).toEqual(materialUnit('spandrelDark'));
+        else expect(precast).toContainEqual(band.color);
+        expect(band.color).toEqual(bands[0]!.color);
+      }
+      // The top band of each tier ends at that tier's top, wrapping the tier 0.1 m proud.
+      for (const box of boxes) {
+        const top = box.yOffset + box.h;
+        const ring = bands.find((b) => Math.abs(topOf(b) - top) < 1e-6)!;
+        expect(ring, `${id} tier at ${top}`).toBeDefined();
+        expect(ring.size[0]).toBeCloseTo(box.w + 0.2, 9);
+        expect(ring.size[2]).toBeCloseTo(box.d + 0.2, 9);
+      }
+    }
+    // Grey or buff by building id: two neighbours differ.
+    const other = kitPlanFor(
+      byId('com-high-1'),
+      { id: 8, x: 10, z: 10, rotation: 0 },
+      streetOn('S', 2, 2),
+    )!;
+    expect(only(other, 'ribbonBand')[0]!.color).not.toEqual(
+      only(southern(byId('com-high-1')), 'ribbonBand')[0]!.color,
+    );
   });
 
   it('puts rooftop units on levels one and two and a screened cooling tower on the tower', () => {
@@ -864,7 +1096,26 @@ describe('an office and a hotel', () => {
         expect(c.size[0]).toBeCloseTo(0.4, 9);
         expect(topOf(c)).toBeCloseTo(4.27, 9);
       }
+      expect(bottomOf(slab)).toBeGreaterThanOrEqual(4.1);
       expect(only(plan, 'canopy')).toEqual([]);
+    }
+  });
+
+  it('gives a hotel a 1.2 m stone base band along its frontage and a 1.2 m sign band on the top floor of its top tier, navy or green', () => {
+    for (const id of ['com-hotel-1', 'com-hotel-2', 'com-hotel-3']) {
+      const plan = southern(byId(id));
+      const [base] = only(plan, 'baseBand');
+      expect(base!.size[1]).toBeCloseTo(1.2, 9);
+      expect(base!.size[0]).toBeCloseTo(plan.baseBox.w, 9);
+      expect(bottomOf(base!)).toBeCloseTo(0, 9);
+      expect(base!.color).toEqual(materialUnit('stoneVeneer'));
+      const [band] = only(plan, 'signageBand');
+      const roofY = plan.topBox.yOffset + plan.topBox.h;
+      const floor = storeysOf(byId(id), plan.topBox).pitch;
+      expect(band!.size[1]).toBeCloseTo(1.2, 9);
+      expect(band!.offset[1]).toBeCloseTo(roofY - floor / 2, 9);
+      expect(placementBounds(band!).z0).toBeCloseTo(plan.topBox.d / 2, 9);
+      expect(['navyAccent', 'greenAccent']).toContain(accentNames(band!.color));
     }
   });
 });
@@ -905,12 +1156,12 @@ describe('a restaurant’s drive-through', () => {
     expect(placed.filter((p) => p.part === 'awning').length).toBeGreaterThan(0);
   });
 
-  it('stands a menu board 1.8 m wide and 2.1 m tall at the head of a six-car stack, in the lane', () => {
+  it('stands a menu board 1.8 m wide and 2.4 m tall at the head of a six-car stack, in the lane', () => {
     for (const { e, plan } of laned) {
       const lane = plan.lot!.lane!;
       const [board] = only(plan, 'menuBoard');
       expect(Math.max(board!.size[0], board!.size[2]), e.id).toBeCloseTo(1.8, 9);
-      expect(topOf(board!)).toBeCloseTo(2.1, 9);
+      expect(topOf(board!)).toBeCloseTo(2.4, 9);
       const head = alongPath(lane.path, Math.max(1.8, lane.length - DRIVE_THROUGH_STACK_M)).at;
       const [bx, bz] = [board!.offset[0], board!.offset[2]];
       expect(Math.hypot(bx - head.x, bz - head.z), e.id).toBeLessThanOrEqual(1.83 + 1e-9);
@@ -944,6 +1195,77 @@ describe('a restaurant’s drive-through', () => {
       expect(dims[0]).toBeCloseTo(3.05, 9);
       expect(dims[1]).toBeCloseTo(3.66, 9);
       for (const t of plan.lot!.taken) expect(overlap(t, b), e.id).toBe(false);
+    }
+  });
+
+  it('darkens the drive-through end of the body as a feature wall its full height, on the pickup wall where there is a lane', () => {
+    for (const { e, plan } of laned) {
+      const [wall] = only(plan, 'featureWall');
+      expect(wall, e.id).toBeDefined();
+      expect(wall!.size[1]).toBeCloseTo(plan.topBox.yOffset + plan.topBox.h, 9);
+      expect(bottomOf(wall!)).toBeCloseTo(0, 9);
+      expect(Math.min(wall!.size[0], wall!.size[2])).toBeCloseTo(0.1, 9);
+      const f = plan.lot!.lane!.pickupFacing;
+      const b = placementBounds(wall!);
+      const onPickupWall =
+        Math.abs(f.x) > Math.abs(f.z)
+          ? Math.abs((f.x > 0 ? b.x0 : b.x1) - (f.x * plan.baseBox.w) / 2) < 1e-6
+          : Math.abs((f.z > 0 ? b.z0 : b.z1) - (f.z * plan.baseBox.d) / 2) < 1e-6;
+      expect(onPickupWall, e.id).toBe(true);
+    }
+  });
+
+  it('caps the parapet on every face with a 0.6 m red band and a 0.2 m yellow stripe over it', () => {
+    for (const { e, plan } of plans) {
+      const bands = only(plan, 'accentBand');
+      expect(bands, e.id).toHaveLength(8);
+      const roofY = plan.topBox.yOffset + plan.topBox.h;
+      const red = bands.filter((b) => accentNames(b.color) === 'red');
+      const yellow = bands.filter((b) => accentNames(b.color) === 'yellow');
+      expect(red).toHaveLength(4);
+      expect(yellow).toHaveLength(4);
+      for (const b of red) {
+        expect(b.size[1]).toBeCloseTo(0.6, 9);
+        expect(bottomOf(b)).toBeCloseTo(roofY, 9);
+      }
+      for (const b of yellow) {
+        expect(b.size[1]).toBeCloseTo(0.2, 9);
+        expect(bottomOf(b)).toBeCloseTo(roofY + 0.6, 9);
+      }
+    }
+  });
+
+  it('wears the brown mansard band, 1.5 m tall round the parapet, at level 1 only', () => {
+    for (const { e, plan } of plans) {
+      const mansard = only(plan, 'mansardBand');
+      if ((e.level ?? 1) >= 2) {
+        expect(mansard, e.id).toEqual([]);
+        continue;
+      }
+      expect(mansard, e.id).toHaveLength(4);
+      const baseTop = plan.baseBox.yOffset + plan.baseBox.h;
+      for (const m of mansard) {
+        expect(m.pitch).toBeLessThan(0);
+        // The slab's rise is the band's height.
+        expect(m.size[2] * Math.sin(-m.pitch!)).toBeCloseTo(1.5, 9);
+        expect(m.offset[1]).toBeCloseTo(baseTop - 0.75, 9);
+        expect(m.color).toBeUndefined();
+      }
+    }
+    // The sign hangs on the mansard, proud of its run.
+    for (const { e, plan } of plans.filter((p) => p.rotation === 0 && p.side === 'S')) {
+      if ((e.level ?? 1) >= 2) continue;
+      const [band] = only(plan, 'signageBand');
+      expect(placementBounds(band!).z0, e.id).toBeGreaterThan(plan.baseBox.d / 2 + 0.5);
+    }
+  });
+
+  it('glows its sign band and pylon cabinet in fast food’s red', () => {
+    for (const { e, plan } of plans) {
+      for (const part of ['signageBand', 'pylon'] as const) {
+        for (const p of only(plan, part))
+          expect(accentNames(p.color), `${e.id} ${part}`).toBe('red');
+      }
     }
   });
 });

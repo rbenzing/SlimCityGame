@@ -45,8 +45,10 @@ and triangle budget.
 brick red-brown and painted masonry; a strip's EIFS cream and tan; a
 warehouse's tilt-up white and light grey; a workshop's metal two-tone), and
 the body takes one by id hash, as the industrial palette does today. The
-desaturation clamp that flattened every commercial colour is lifted to the
-palette's own saturation; the lightness clamp stays. A kind's roof palette
+desaturation and lightness clamps that flattened every commercial colour do
+not touch a chart pick: a measured swatch is the truth, and a brick below
+the lightness floor stays brick, as the industrial picks already do; the
+clamps still govern a body that takes its catalog colour. A kind's roof palette
 is its own: white TPO on a warehouse and a food plant, dark EPDM on an older
 shop, galvanised on a shed.
 

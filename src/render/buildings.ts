@@ -55,6 +55,7 @@ import {
   HASH_SLOT_HUE_JITTER,
   HASH_SLOT_INDUSTRIAL_ACCENT,
   HASH_SLOT_INDUSTRIAL_WALL,
+  HASH_SLOT_KIND_WALL,
   HASH_SLOT_ROOF_ROTATION,
   HUE_JITTER_FRACTION,
   INDUSTRIAL_ACCENT_HEIGHT_FRACTION,
@@ -68,11 +69,15 @@ import {
   MULLION_MARGIN_PUNCHED,
   ROOF_PALETTE,
   RGB,
+  bodyPaletteFor,
   deriveFacadeParams,
+  glassTintFor,
   groundFloorBand,
   isRowHouseArchetype,
+  paletteUnits,
   parapetBand,
   rgbToHsl,
+  roofPaletteFor,
   windowGrid,
 } from './facade';
 
@@ -271,11 +276,12 @@ function selectFromPalette(indexNode: Node<'float'>, options: readonly RGB[]): N
 
 /**
  * Per-instance wall base color: industrial rotates among its own
- * steel-blue/light-grey/off-white palette; everything else
+ * steel-blue/light-grey/off-white palette; a kind with a body palette
+ * rotates among its chart materials, unclamped; everything else
  * desaturates the catalog color down to MAX_WALL_SATURATION (via three's own
  * `saturation()` color-adjustment node — a cheap, robust luminance-lerp
  * desaturation rather than a hand-rolled HSL round-trip in the shader).
- * Both paths finish with the same deterministic ±HUE_JITTER_FRACTION hue
+ * Every path finishes with the same deterministic ±HUE_JITTER_FRACTION hue
  * rotation (three's `hue()` node), mirroring facade.ts's deriveWallColor
  * formula.
  */
@@ -290,6 +296,7 @@ function buildWallColorNode(
     .sub(1)
     .mul(HUE_JITTER_FRACTION * Math.PI * 2);
 
+  const kindPalette = isIndustrial ? null : bodyPaletteFor(entry.kind, entry.level);
   let base: Node<'vec3'>;
   if (isIndustrial) {
     const rotationSeed = buildingIdAttr
@@ -297,6 +304,11 @@ function buildWallColorNode(
       .add(HASH_SLOT_INDUSTRIAL_WALL);
     const index = floor(hash(rotationSeed).mul(INDUSTRIAL_WALL_PALETTE.length));
     base = selectFromPalette(index, INDUSTRIAL_WALL_PALETTE);
+  } else if (kindPalette) {
+    const units = paletteUnits(kindPalette);
+    const kindSeed = buildingIdAttr.mul(FACADE_HASH_SLOT_MULTIPLIER).add(HASH_SLOT_KIND_WALL);
+    const index = floor(hash(kindSeed).mul(units.length));
+    base = selectFromPalette(index, units);
   } else {
     const catalogColor = new THREE.Color(entry.color);
     const { s: originalSaturation } = rgbToHsl(catalogColor.r, catalogColor.g, catalogColor.b);
@@ -314,9 +326,12 @@ function buildWallColorNode(
  * ("distinct from walls"). facade.ts's rotateRoofColor does the full
  * 3-attempt cycle for its CPU-tested reference; a single retry is enough
  * here since the 3 palette entries already sit >0.2 apart pairwise.
- * Industrial always gets the fixed grey roof plate instead.
+ * Industrial always gets the fixed grey roof plate instead, and a kind with
+ * a roof palette one of its own materials by the same hash, no distance
+ * check: the kind decides the roof, mirroring facade.ts's kindRoofColor.
  */
 function buildRoofColorNode(
+  entry: BuildingCatalogEntry,
   buildingIdAttr: Node<'float'>,
   wallColorNode: Node<'vec3'>,
   isIndustrial: boolean,
@@ -324,6 +339,12 @@ function buildRoofColorNode(
   if (isIndustrial) return vec3(...INDUSTRIAL_ROOF_COLOR);
 
   const rotationSeed = buildingIdAttr.mul(FACADE_HASH_SLOT_MULTIPLIER).add(HASH_SLOT_ROOF_ROTATION);
+  const kindPalette = roofPaletteFor(entry.kind);
+  if (kindPalette) {
+    const units = paletteUnits(kindPalette);
+    return selectFromPalette(floor(hash(rotationSeed).mul(units.length)), units);
+  }
+
   const baseIndex = floor(hash(rotationSeed).mul(ROOF_PALETTE.length));
   const nextIndex = baseIndex.add(1).mod(ROOF_PALETTE.length);
 
@@ -642,7 +663,7 @@ export class BuildingInstancer {
 
     // --- day facade -------------------------------------------------------
     const wallColorNode = buildWallColorNode(entry, buildingIdAttr, isIndustrial);
-    const roofColorNode = buildRoofColorNode(buildingIdAttr, wallColorNode, isIndustrial);
+    const roofColorNode = buildRoofColorNode(entry, buildingIdAttr, wallColorNode, isIndustrial);
     const isParapet = uvNode.y.greaterThan(1 - parapetThreshold);
 
     // Solid wall base (the frame/mullion color where there is no pane):
@@ -665,7 +686,11 @@ export class BuildingInstancer {
       .mul(WINDOW_REFLECTANCE_SALT_MUL)
       .add(WINDOW_REFLECTANCE_SALT_ADD);
     const reflectance = hash(reflectanceSeed);
-    const glassBase = family === 'glass' ? GLASS_TINT_CURTAIN : GLASS_TINT_PUNCHED;
+    // An office's cells tint with the chart's glass for its level; every
+    // other kind keeps the family pane.
+    const glassBase =
+      glassTintFor(entry.kind, entry.level) ??
+      (family === 'glass' ? GLASS_TINT_CURTAIN : GLASS_TINT_PUNCHED);
     const glassColor = vec3(...glassBase).mul(
       mix(GLASS_REFLECTANCE_MIN, GLASS_REFLECTANCE_MAX, reflectance),
     );
