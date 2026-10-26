@@ -28,6 +28,7 @@ import {
   BuildingCatalogEntry,
   BuildingInstance,
   BuildingState,
+  CommercialKind,
   Problem,
   ZoneType,
 } from '../shared/types';
@@ -765,6 +766,34 @@ describe('day facade (UI-SPEC §6.6 Stage 1) — extends the §6.5 material, no 
     expect(
       () => new BuildingInstancer(new THREE.Scene(), FULL_CATALOG, flatHeightAt),
     ).not.toThrow();
+  });
+
+  it('constructs the kind-palette body, roof and glass for every commercial kind, the office at every level, without throwing', () => {
+    const kinds: CommercialKind[] = [
+      'shop',
+      'strip',
+      'supermarket',
+      'restaurant',
+      'fuel',
+      'office',
+      'hotel',
+    ];
+    const kindCatalog: BuildingCatalogEntry[] = kinds.flatMap((kind) =>
+      [1, 2, 3].map((level) => ({
+        ...MASONRY_COM,
+        id: `${kind}-${level}`,
+        zone: kind === 'office' || kind === 'hotel' ? ZoneType.ComHigh : ZoneType.ComLow,
+        kind,
+        level,
+      })),
+    );
+    const instancer = new BuildingInstancer(new THREE.Scene(), kindCatalog, flatHeightAt);
+    instancer.apply({
+      added: kindCatalog.map((e, i) => instanceAt(i + 1, i * 4, 0, { catalogId: e.id })),
+      removed: [],
+      updated: [],
+    });
+    expect(instancer.getPickables().length).toBe(kindCatalog.length);
   });
 
   it('renders one instance per archetype with correct matrix/id bookkeeping and exactly one InstancedMesh per catalog entry (no draw-call growth)', () => {

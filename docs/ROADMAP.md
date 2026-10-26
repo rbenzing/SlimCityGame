@@ -25,7 +25,7 @@ current behavior only and carry no dates of their own._
 
 ## Status (2026-09-29)
 
-**Test suite:** 7,037 tests passing across 200 test files, run 2026-10-23.
+**Test suite:** 7,065 tests passing across 200 test files, run 2026-10-26.
 This is the only test count in the documentation set. When the suite changes
 again, update the figure here and nowhere else.
 
@@ -376,6 +376,34 @@ roads, and pinning the Three.js version. See [adr/](engineering/adr/README.md).
 ---
 
 ## 10. History (newest first)
+
+### The commercial kinds told apart at 40 m (slice 1 of the kits' second pass, built 2026-10-26)
+
+The player's verdict on the building-detail programme's commercial kits:
+grey boxes, not distinguishable by type. Three research agents sourced what
+identifies each US commercial type at a glance
+([rci-kits-second-pass.md](game-design/features/rci-kits-second-pass.md));
+the first slice applies it.
+
+- **A body reads by its kind, not its catalog entry.** Each commercial kind
+  takes one of its own chart materials by id hash — brick and painted
+  masonry on a shop, EIFS on a strip and a supermarket over a split-face
+  base, precast bands and tinted glass on an office, a curtain wall on the
+  tower, EIFS over stone on a hotel — and its roof likewise. A chart pick is
+  never clamped; the catalog colour is never read for a commercial body.
+- **The identifying parts are sized to the reference distance:** a 1.2 m
+  sign band, a 0.9 m bronze canopy fascia, the strip's parapet stepping over
+  each tenant with its band in the step, the supermarket's entry tower a
+  storey over its parapet with corrals and a dock screen, the restaurant's
+  dark feature wall, menu board, red cap with a yellow stripe and level-1
+  mansard, the office's precast ring per floor and two-storey lobby, the
+  tower's dark spandrels, the hotel's stone base and top-floor band.
+- Thirty-seven chart materials added, each derived from a chart swatch under
+  the albedo ceiling; the accents in the saturated block.
+- Checked in the browser: a line-up of the seven kinds along one street by
+  day and at 22:00. Six are nameable without a label at the whole-row
+  framing; the filling station's fascia is a few pixels at that distance and
+  reads at the street framing. Industrial and residential slices follow.
 
 ### The night stays night, and a building stays legible in it (built 2026-10-23)
 

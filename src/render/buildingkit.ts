@@ -34,8 +34,23 @@ import { TILE_METERS } from '../shared/constants';
 import { footprintForRotation } from '../shared/footprint';
 import { maxHeightUnderBody } from './footprint';
 import { findRoadFacingEdge, localSideOf, NO_STREETS, type Side } from './frontage';
-import { materialHex } from './palette';
-import { isApartmentEntry, isWalkUpEntry, partsFor, type BuildingPart } from './archetypes';
+import {
+  materialHex,
+  materialUnit,
+  rgb255ToHex,
+  SATURATED,
+  saturatedUnit,
+  type MaterialName,
+  type SaturatedName,
+} from './palette';
+import {
+  hasMansard,
+  isApartmentEntry,
+  isOfficeTower,
+  isWalkUpEntry,
+  partsFor,
+  type BuildingPart,
+} from './archetypes';
 import { computeCornerOffset, hasSmokestack, smokestackCorner } from './props';
 import {
   deriveFacadeParams,
@@ -83,8 +98,8 @@ const PART_COLOR: Readonly<Record<BuildingPart, number>> = {
   awning: materialHex('redPlaster'),
   bulkhead: materialHex('stainedConcrete'),
   cornice: materialHex('whiteBrick'),
-  stripCanopy: materialHex('whiteBrick'),
-  stripColumn: materialHex('whiteBrick'),
+  stripCanopy: materialHex('canopyBronze'),
+  stripColumn: materialHex('canopyBronze'),
   anchorParapet: materialHex('whitePlaster'),
   pylon: materialHex('whiteBrick'),
   entryTower: materialHex('whitePlaster'),
@@ -152,7 +167,39 @@ const PART_COLOR: Readonly<Record<BuildingPart, number>> = {
   boxBay: materialHex('whitePlaster'),
   elevatorBulkhead: materialHex('cleanConcrete'),
   penthouse: materialHex('metalPlates'),
+  // The second pass's identifying parts: the colours a placement does not override.
+  parapetStep: materialHex('whitePlaster'),
+  baseBand: materialHex('splitFaceGrey'),
+  dockScreen: materialHex('splitFaceGrey'),
+  featureWall: materialHex('darkFeatureWall'),
+  accentBand: rgb255ToHex(SATURATED.red),
+  mansardBand: materialHex('clayRoof'),
+  ribbonBand: materialHex('precastGrey'),
 };
+
+/**
+ * A tenant's accent, by building id: what its sign band and pylon glow in and
+ * its entry tower or canopy fascia is painted. No source gives a palette by
+ * tenant class, so the accents are the game's own, except fast food's red.
+ */
+const TENANT_ACCENTS: readonly SaturatedName[] = [
+  'red',
+  'green',
+  'blue',
+  'navyAccent',
+  'greenAccent',
+];
+/** A hotel's sign band is navy or green. */
+const HOTEL_ACCENTS: readonly SaturatedName[] = ['navyAccent', 'greenAccent'];
+/** A shop's awnings: dark green, burgundy or black, by building id. */
+const AWNING_LIVERIES: readonly MaterialName[] = ['greenPlaster', 'redPlaster', 'darkWood'];
+/** An office's ribbon bands: grey or buff precast, by building id. */
+const PRECAST: readonly MaterialName[] = ['precastGrey', 'precastBuff'];
+
+/** One of `names` by building id, salted so a strip's tenants differ from each other. */
+function pick<T>(names: readonly T[], buildingId: number, salt = 0): T {
+  return names[Math.abs(buildingId + salt) % names.length]!;
+}
 
 /** The tower's glass guard: the kit's glazing blue, a solid slab on the kit's own material. */
 const GLAZING_BLUE: RGB = (() => {
@@ -305,35 +352,49 @@ const CANOPY_THICKNESS_M = 0.22;
 const CANOPY_HEIGHT_M = 3.1;
 const CANOPY_FRONTAGE_FRACTION = 0.82;
 
-/** A lit sign band: 0.9 m tall at 3.6 m, 60% of its tenant's frontage. */
-export const SIGN_HEIGHT_M = 0.9;
+/** A lit sign band: 1.2 m tall, 60% of its tenant's frontage, sized to read at 40 m. */
+export const SIGN_HEIGHT_M = 1.2;
 const SIGN_THICKNESS_M = 0.16;
 export const SIGN_FRONTAGE_FRACTION = 0.6;
-/** The band sits just above the shopfront. */
-const SIGN_ABOVE_CANOPY_M = 0.5;
+/** The band sits just above the shopfront, under the cornice. */
+const SIGN_ABOVE_CANOPY_M = 0.4;
 export const SIGN_CENTRE_Y_M = CANOPY_HEIGHT_M + SIGN_ABOVE_CANOPY_M;
 
-/** A shop: a dark base band, an awning a bay, a cornice across the parapet. */
+/** A shop: a dark base band, an awning a storefront bay, a cornice across the parapet. */
 export const BULKHEAD_HEIGHT_M = STOREFRONT_BULKHEAD_M;
 const BULKHEAD_PROUD_M = 0.1;
-const SHOP_BAY_M = 6;
+/** A shop's storefront is cut into 1.5 m bays, an awning each; a restaurant's awnings keep a wider bay. */
+export const SHOP_BAY_M = 1.5;
+const RESTAURANT_BAY_M = 6;
 export const AWNING_OUT_M = 1.5;
 export const AWNING_UNDERSIDE_M = 2.45;
 const AWNING_HEIGHT_M = 0.55;
 const AWNING_GAP_M = 0.4;
 export const CORNICE_DEPTH_M = 0.5;
-export const CORNICE_HEIGHT_M = 0.45;
+export const CORNICE_HEIGHT_M = 0.5;
 
 /** A strip: one canopy the length of its frontage, tenants in bays, an anchor, a pylon. */
 export const STRIP_CANOPY_DEPTH_M = 2.1;
 export const STRIP_CANOPY_UNDERSIDE_M = 2.75;
-export const STRIP_CANOPY_FASCIA_M = 0.3;
+/** The canopy's fascia, the canopy's whole depth in bronze: the strip's read at 40 m. */
+export const STRIP_CANOPY_FASCIA_M = 0.9;
 export const STRIP_COLUMN_M = 0.3;
 export const STRIP_COLUMN_SPACING_M = 6;
 export const STRIP_BAY_M = 8;
 export const ANCHOR_BAYS = 2;
-export const ANCHOR_STEP_M = 1.2;
+/** The parapet steps up this much over the anchor and over every tenant's entry; the tenant's sign band sits in the step. */
+export const PARAPET_STEP_M = 1.2;
+export const ANCHOR_STEP_M = PARAPET_STEP_M;
+/** A tenant's step is this share of its bay, so the steps read as separate blocks. */
+export const PARAPET_STEP_SHARE = 0.8;
 const PARAPET_THICKNESS_M = 0.4;
+/** The base band along the frontage: split-face block under a strip and a supermarket, stone veneer under a hotel. */
+export const BASE_BAND_M: Readonly<Record<'strip' | 'supermarket' | 'hotel', number>> = {
+  strip: 1.2,
+  supermarket: 2.4,
+  hotel: 1.2,
+};
+export const BASE_BAND_PROUD_M = 0.1;
 export const PYLON_HEIGHT_M = 6.1;
 export const PYLON_WIDTH_M = 3.66;
 export const PYLON_CABINET_M = 1.8;
@@ -341,30 +402,47 @@ export const PYLON_POLE_M = 0.4;
 export const PYLON_SETBACK_M = 1.5;
 const SIGN_STAND_GAP_M = 0.5;
 
-/** A supermarket: an entry tower, stepped parapets either side, a brick base, cart corrals. */
+/** A supermarket: an entry tower, stepped parapets either side, a block base, cart corrals, a dock screen. */
 export const TOWER_WIDTH_M = 6;
 export const TOWER_DEPTH_M = 4;
-export const TOWER_RISE = 1.28;
+/** The entry tower rises a full storey over the parapet, in the tenant's accent. */
+export const TOWER_OVER_PARAPET_M = FLOOR_HEIGHT_METERS;
 export const ENTRY_PARAPET_RISE = 1.17;
 export const ENTRY_WING_M = 12;
 const TOWER_PROJECT_M = 1.5;
 const GLAZING_WIDTH_M = 4.4;
 const GLAZING_HEIGHT_M = 2.9;
 const GLAZING_THICKNESS_M = 0.1;
-export const BRICK_BASE_HEIGHT_M = 1.2;
-export const BRICK_BASE_PROUD_M = 0.1;
 export const CORRAL_LENGTH_M = 3.66;
 export const CORRAL_WIDTH_M = 1.52;
 export const CORRAL_RAIL_M = 1;
 const CORRAL_RAIL_THICKNESS_M = 0.08;
 export const CORRAL_POST_HEIGHT_M = 2.3;
 const SMALL_POST_M = 0.1;
+/** The screen wall at the dock: 1.8 m of masonry running out from the loading wall beside the berths. */
+export const DOCK_SCREEN_M = 1.8;
+export const DOCK_SCREEN_LENGTH_M = 8;
+/** A yard too tight for a screen this long gets none. */
+export const DOCK_SCREEN_MIN_M = 3;
+const DOCK_SCREEN_THICKNESS_M = 0.2;
+/** How far from the berths the screen may stand. */
+export const DOCK_SCREEN_SEARCH_M = 12;
 
 /** A drive-through: a menu board, a clearance bar, a pickup canopy and a dumpster enclosure. */
 export const MENU_BOARD_WIDTH_M = 1.8;
-export const MENU_BOARD_HEIGHT_M = 2.1;
-const MENU_BOARD_PANEL_M = 1.2;
+export const MENU_BOARD_HEIGHT_M = 2.4;
+const MENU_BOARD_PANEL_M = 1.5;
 const MENU_BOARD_THICKNESS_M = 0.15;
+/** A restaurant's dark feature wall: the drive-through end of the body as one slab its full height. */
+const FEATURE_WALL_PROUD_M = 0.1;
+/** The red accent band capping the parapet, with a yellow stripe over it, on every face. */
+export const ACCENT_BAND_M = 0.6;
+export const ACCENT_STRIPE_M = 0.2;
+/** The old form's brown mansard round the parapet: a slab 1.5 m tall leaning out at a steep pitch. */
+export const MANSARD_BAND_M = 1.5;
+export const MANSARD_PITCH = (70 * Math.PI) / 180;
+export const MANSARD_RUN_M = MANSARD_BAND_M / Math.tan(MANSARD_PITCH);
+const MANSARD_THICKNESS_M = 0.15;
 export const CLEARANCE_BAR_M = 2.74;
 const CLEARANCE_BAR_THICKNESS_M = 0.15;
 export const PICKUP_CANOPY_WIDTH_M = 1.8;
@@ -383,7 +461,7 @@ export { FUEL_CANOPY_GAP_M, FUEL_CANOPY_DEPTH_M, TANK_DIAMETER_M, TANK_GAP_M };
 export const FUEL_CANOPY_THICKNESS_M = 0.5;
 export const FUEL_CANOPY_HEIGHT_M = 4.27;
 export const FUEL_CANOPY_FRONTAGE_FRACTION = 0.9;
-export const FUEL_FASCIA_HEIGHT_M = 0.91;
+export const FUEL_FASCIA_HEIGHT_M = 0.76;
 const FUEL_FASCIA_THICKNESS_M = 0.15;
 const FUEL_POST_M = 0.4;
 const FUEL_POST_INSET_M = 1;
@@ -402,10 +480,14 @@ export const PRICE_SIGN_HEIGHT_M = 1.5;
 export const PRICE_SIGN_POLE_M = 0.3;
 const KIOSK_AWNING_WIDTH_M = 4;
 
-/** An office's lobby portal, a hotel's porte-cochere, and what stands on a roof. */
+/** An office's lobby portal, two storeys tall, its ribbon bands, a hotel's porte-cochere, and what stands on a roof. */
 export const LOBBY_WIDTH_M = 4;
-export const LOBBY_HEIGHT_M = 4.5;
+export const LOBBY_HEIGHT_M = 2 * FLOOR_HEIGHT_METERS;
 export const LOBBY_PROJECT_M = 1.5;
+/** A precast band at every floor line round an office; the tower's are dark spandrel, 1.0 m. */
+export const RIBBON_BAND_M = 1.2;
+export const SPANDREL_BAND_M = 1;
+const RIBBON_BAND_PROUD_M = 0.1;
 export const PORTE_COCHERE_WIDTH_M = 6.1;
 export const PORTE_COCHERE_DEPTH_M = 6;
 export const PORTE_COCHERE_THICKNESS_M = 0.6;
@@ -1089,6 +1171,69 @@ function dumpsterSpot(
     }
   }
   return best ? { centre: best.centre, away: best.away } : null;
+}
+
+/**
+ * Where a supermarket's dock screen stands: a free-standing wall on the
+ * metre's lattice nearest the berths, either way round, on ground the lot
+ * leaves free and clear of the body, as long as the yard there allows. Null
+ * for a lot with no berths or no room beside them.
+ */
+function dockScreen(baseBox: SetbackBox, lot: KitLot): PartPlacement | null {
+  const dock = lot.dock;
+  if (!dock) return null;
+  const body = {
+    x0: -baseBox.w / 2,
+    x1: baseBox.w / 2,
+    z0: -baseBox.d / 2,
+    z1: baseBox.d / 2,
+  };
+  const fits = (p: PartPlacement): boolean => {
+    const b = placementBounds(p);
+    return (
+      rectInside(b, lot.lot) && !rectsOverlap(b, body) && !lot.taken.some((t) => rectsOverlap(t, b))
+    );
+  };
+  const t = DOCK_SCREEN_THICKNESS_M;
+  let best: { screen: PartPlacement; cost: number } | null = null;
+  const x0 = Math.ceil(Math.max(lot.lot.x0, dock.x - DOCK_SCREEN_SEARCH_M));
+  const x1 = Math.min(lot.lot.x1, dock.x + DOCK_SCREEN_SEARCH_M);
+  const z0 = Math.ceil(Math.max(lot.lot.z0, dock.z - DOCK_SCREEN_SEARCH_M));
+  const z1 = Math.min(lot.lot.z1, dock.z + DOCK_SCREEN_SEARCH_M);
+  for (let x = x0; x <= x1; x += 1) {
+    for (let z = z0; z <= z1; z += 1) {
+      const distance = Math.hypot(x - dock.x, z - dock.z);
+      if (best && distance >= best.cost) continue;
+      for (const alongX of [true, false]) {
+        // The longest run that fits here; a metre of shortfall costs as much as a metre of distance.
+        for (let length = DOCK_SCREEN_LENGTH_M; length >= DOCK_SCREEN_MIN_M; length -= 1) {
+          const cost = distance + (DOCK_SCREEN_LENGTH_M - length);
+          if (best && cost >= best.cost) break;
+          const screen = atPoint(
+            'dockScreen',
+            x,
+            z,
+            alongX ? length : t,
+            alongX ? t : length,
+            DOCK_SCREEN_M,
+            DOCK_SCREEN_M / 2,
+          );
+          if (fits(screen)) {
+            best = { screen, cost };
+            break;
+          }
+        }
+      }
+    }
+  }
+  return best?.screen ?? null;
+}
+
+/** The end wall of a body fronting `side` away from the lot's drive: where a drive-through lane would run. */
+function farEnd(side: Side, lot: KitLot | null): Side {
+  const end = -officeEnd(side, lot, null);
+  if (isAlongX(side)) return end > 0 ? 'E' : 'W';
+  return end > 0 ? 'S' : 'N';
 }
 
 /** The wall a vector out of the body faces, in the unrotated frame. */
@@ -2228,11 +2373,19 @@ export function computePartPlacements(
   lot: KitLot | null = null,
   buildingId: number | null = null,
   podium: SetbackBox | null = null,
+  tiers: readonly SetbackBox[] | null = null,
 ): PartPlacement[] {
   const out: PartPlacement[] = [];
   const roofY = topBox.yOffset + topBox.h;
   const baseTop = baseBox.yOffset + baseBox.h;
   const parts = partsFor(entry);
+  const id = buildingId ?? 0;
+  /** The tenant's accent: fast food is red; a hotel navy or green; anyone else their own by id. */
+  const accent = (salt = 0): RGB =>
+    entry.kind === 'restaurant'
+      ? saturatedUnit('red')
+      : saturatedUnit(pick(entry.kind === 'hotel' ? HOTEL_ACCENTS : TENANT_ACCENTS, id, salt));
+  const tierBoxes = tiers ?? (baseBox === topBox ? [baseBox] : [baseBox, topBox]);
   let block: PartPlacement[] | null = null;
   const blockOf = (part: BuildingPart): PartPlacement[] => {
     if (!block) {
@@ -2413,28 +2566,39 @@ export function computePartPlacements(
       }
       case 'signageBand': {
         if (!side) break;
-        // A strip signs each tenant: a band a bay, and one two bays wide for the anchor.
-        // A supermarket's runs along either side of its entry tower.
-        const tenants =
-          entry.kind === 'strip'
-            ? stripTenants(span, lot, side)
-            : entry.kind === 'supermarket'
-              ? towerWings(span)
-              : [{ along: 0, width: span }];
-        for (const t of tenants) {
-          out.push(
-            againstFacade(
+        // A strip signs each tenant: a band a bay, and one two bays wide for the anchor,
+        // each in the parapet step over its entry. A supermarket's runs along either
+        // side of its entry tower. A hotel's sits on the top floor of its top tier.
+        // A restaurant's hangs on the mansard where it wears one.
+        const hotel = entry.kind === 'hotel';
+        const strip = entry.kind === 'strip';
+        const box = hotel ? topBox : baseBox;
+        const tenants = strip
+          ? stripTenants(span, lot, side)
+          : entry.kind === 'supermarket'
+            ? towerWings(span)
+            : [{ along: 0, width: facadeSpan(box, side) }];
+        const proud = hasMansard(entry) ? MANSARD_RUN_M : 0;
+        const centreY = strip
+          ? baseTop + PARAPET_STEP_M / 2
+          : hotel
+            ? roofY - storeysOf(entry, topBox).pitch / 2
+            : SIGN_CENTRE_Y_M;
+        tenants.forEach((t, i) => {
+          out.push({
+            ...onSide(
               part,
-              baseBox,
               side,
+              t.along,
+              halfDepthTo(box, side) + proud + SIGN_THICKNESS_M / 2,
               t.width * SIGN_FRONTAGE_FRACTION,
               SIGN_THICKNESS_M,
               SIGN_HEIGHT_M,
-              SIGN_CENTRE_Y_M,
-              t.along,
+              centreY,
             ),
-          );
-        }
+            color: accent(strip ? i : 0),
+          });
+        });
         break;
       }
       case 'bulkhead': {
@@ -2454,14 +2618,16 @@ export function computePartPlacements(
       }
       case 'awning': {
         if (!side) break;
-        // A shop or restaurant has an awning a bay; a filling station one over the kiosk door.
+        // A shop has an awning every storefront bay, a restaurant one a wider bay, each
+        // in the building's livery; a filling station one over the kiosk door.
         const fuel = entry.kind === 'fuel';
         const bays = fuel
           ? { count: 1, width: KIOSK_AWNING_WIDTH_M + AWNING_GAP_M }
-          : baysOf(span, SHOP_BAY_M);
+          : baysOf(span, entry.kind === 'shop' ? SHOP_BAY_M : RESTAURANT_BAY_M);
+        const livery = fuel ? undefined : materialUnit(pick(AWNING_LIVERIES, id));
         for (let i = 0; i < bays.count; i += 1) {
-          out.push(
-            onSide(
+          out.push({
+            ...onSide(
               part,
               side,
               fuel ? 0 : bayCentre(span, bays.count, i),
@@ -2472,7 +2638,8 @@ export function computePartPlacements(
               AWNING_UNDERSIDE_M + AWNING_HEIGHT_M / 2,
               true,
             ),
-          );
+            ...(livery ? { color: livery } : {}),
+          });
         }
         break;
       }
@@ -2571,24 +2738,44 @@ export function computePartPlacements(
         if (!side || !lot) break;
         const stand = signStand(side, lot, PYLON_WIDTH_M, PYLON_POLE_M);
         if (!stand) break;
-        out.push(
-          ...signOnPole(
-            part,
-            side,
-            stand,
-            PYLON_WIDTH_M,
-            PYLON_CABINET_M,
-            PYLON_POLE_M,
-            PYLON_POLE_M,
-          ),
+        // The cabinet glows in the tenant's accent; the pole under it is the kit's steel.
+        const [cabinet, pole] = signOnPole(
+          part,
+          side,
+          stand,
+          PYLON_WIDTH_M,
+          PYLON_CABINET_M,
+          PYLON_POLE_M,
+          PYLON_POLE_M,
         );
+        out.push({ ...cabinet!, color: accent() }, pole!);
+        break;
+      }
+      case 'parapetStep': {
+        if (!side) break;
+        // The parapet steps up over every tenant's entry; the anchor's own step is its parapet.
+        const wallOut = halfDepthTo(baseBox, side) - PARAPET_THICKNESS_M / 2;
+        for (const t of stripTenants(span, lot, side).slice(1)) {
+          out.push(
+            onSide(
+              part,
+              side,
+              t.along,
+              wallOut,
+              t.width * PARAPET_STEP_SHARE,
+              PARAPET_THICKNESS_M,
+              PARAPET_STEP_M,
+              baseTop + PARAPET_STEP_M / 2,
+            ),
+          );
+        }
         break;
       }
       case 'entryTower': {
         if (!side) break;
-        const height = TOWER_RISE * entry.height;
-        out.push(
-          onSide(
+        const height = entry.height + TOWER_OVER_PARAPET_M;
+        out.push({
+          ...onSide(
             part,
             side,
             0,
@@ -2598,7 +2785,8 @@ export function computePartPlacements(
             height,
             height / 2,
           ),
-        );
+          color: accent(),
+        });
         break;
       }
       case 'towerGlazing': {
@@ -2618,33 +2806,37 @@ export function computePartPlacements(
         );
         break;
       }
-      case 'brickBase': {
+      case 'baseBand': {
         if (!side) break;
-        // Across the street face on either side of the entry tower, which stands in front of it.
-        for (const wing of towerWings(span)) {
-          out.push(
-            againstFacade(
+        // Along the street face: a supermarket's on either side of the entry tower, which stands in front of it.
+        const kind = entry.kind as keyof typeof BASE_BAND_M;
+        const height = BASE_BAND_M[kind] ?? BASE_BAND_M.strip;
+        const runs = entry.kind === 'supermarket' ? towerWings(span) : [{ along: 0, width: span }];
+        for (const run of runs) {
+          out.push({
+            ...againstFacade(
               part,
               baseBox,
               side,
-              wing.width,
-              BRICK_BASE_PROUD_M,
-              BRICK_BASE_HEIGHT_M,
-              BRICK_BASE_HEIGHT_M / 2,
-              wing.along,
+              run.width,
+              BASE_BAND_PROUD_M,
+              height,
+              height / 2,
+              run.along,
             ),
-          );
+            ...(entry.kind === 'hotel' ? { color: materialUnit('stoneVeneer') } : {}),
+          });
         }
         break;
       }
       case 'cartCorral': {
         if (!side || !lot) break;
-        // The two islands nearest the entrance whose corral clears the entry tower and the brick base.
+        // The two islands nearest the entrance whose corral clears the entry tower and the base band.
         const wall = {
-          x0: -baseBox.w / 2 - BRICK_BASE_PROUD_M,
-          x1: baseBox.w / 2 + BRICK_BASE_PROUD_M,
-          z0: -baseBox.d / 2 - BRICK_BASE_PROUD_M,
-          z1: baseBox.d / 2 + BRICK_BASE_PROUD_M,
+          x0: -baseBox.w / 2 - BASE_BAND_PROUD_M,
+          x1: baseBox.w / 2 + BASE_BAND_PROUD_M,
+          z0: -baseBox.d / 2 - BASE_BAND_PROUD_M,
+          z1: baseBox.d / 2 + BASE_BAND_PROUD_M,
         };
         const tower = placementBounds(
           onSide(
@@ -2667,6 +2859,105 @@ export function computePartPlacements(
             ),
           );
         for (const corral of corrals.slice(0, 2)) out.push(...corral);
+        break;
+      }
+      case 'dockScreen': {
+        if (!side || !lot) break;
+        const screen = dockScreen(baseBox, lot);
+        if (screen) out.push(screen);
+        break;
+      }
+      case 'featureWall': {
+        if (!side) break;
+        // The drive-through end of the body, the whole body's height, as one dark
+        // slab; the other end where that one stands on the lot line, and neither
+        // where the body fills its lot's width.
+        const end = lot?.lane ? sideOfFacing(lot.lane.pickupFacing) : farEnd(side, lot);
+        for (const wall of [end, oppositeSide(end)]) {
+          const slab = againstFacade(
+            part,
+            baseBox,
+            wall,
+            facadeSpan(baseBox, wall),
+            FEATURE_WALL_PROUD_M,
+            roofY,
+            roofY / 2,
+          );
+          if (lot && !rectInside(placementBounds(slab), lot.lot)) continue;
+          out.push(slab);
+          break;
+        }
+        break;
+      }
+      case 'accentBand': {
+        if (!side) break;
+        // A red band capping the parapet on every face, a yellow stripe over it.
+        for (const face of facesOf(topBox)) {
+          const corner = isAlongX(face.side) ? 0 : 2 * PARAPET_THICKNESS_M;
+          const wallOut = halfDepthTo(topBox, face.side) - PARAPET_THICKNESS_M / 2;
+          const band = (height: number, bottom: number, color: RGB): PartPlacement => ({
+            ...onSide(
+              part,
+              face.side,
+              0,
+              wallOut,
+              face.span - corner,
+              PARAPET_THICKNESS_M,
+              height,
+              bottom + height / 2,
+            ),
+            color,
+          });
+          out.push(
+            band(ACCENT_BAND_M, roofY, saturatedUnit('red')),
+            band(ACCENT_STRIPE_M, roofY + ACCENT_BAND_M, saturatedUnit('yellow')),
+          );
+        }
+        break;
+      }
+      case 'mansardBand': {
+        if (!side) break;
+        // A slab round the parapet on every face, its foot leaning out from the wall and its top at the roof edge.
+        const length = MANSARD_BAND_M / Math.sin(MANSARD_PITCH);
+        // What the leaning slab covers on the plan, from the wall out: its run and its thickness's lean.
+        const plan = MANSARD_RUN_M + MANSARD_THICKNESS_M * Math.sin(MANSARD_PITCH);
+        for (const face of facesOf(baseBox)) {
+          out.push({
+            ...onSide(
+              part,
+              face.side,
+              0,
+              halfDepthTo(baseBox, face.side) + plan / 2,
+              face.span + 2 * MANSARD_RUN_M,
+              length,
+              MANSARD_THICKNESS_M,
+              baseTop - MANSARD_BAND_M / 2,
+              true,
+            ),
+            pitch: -MANSARD_PITCH,
+          });
+        }
+        break;
+      }
+      case 'ribbonBand': {
+        if (!side) break;
+        // A band at every floor line of every tier, round all four faces: precast on a
+        // block, dark spandrel on the tower. One box a floor wraps the body, so a
+        // tower of sixteen floors stays a handful of boxes.
+        const tower = isOfficeTower(entry);
+        const height = tower ? SPANDREL_BAND_M : RIBBON_BAND_M;
+        const color = materialUnit(tower ? 'spandrelDark' : pick(PRECAST, id));
+        for (const box of tierBoxes) {
+          const { rows, pitch } = storeysOf(entry, box);
+          for (let k = 1; k <= rows; k += 1) {
+            out.push({
+              part,
+              size: [box.w + 2 * RIBBON_BAND_PROUD_M, height, box.d + 2 * RIBBON_BAND_PROUD_M],
+              offset: [0, box.yOffset + k * pitch - height / 2, 0],
+              color,
+            });
+          }
+        }
         break;
       }
       case 'menuBoard':
@@ -2723,15 +3014,17 @@ export function computePartPlacements(
         const near = halfDepthTo(baseBox, side) + FUEL_CANOPY_GAP_M;
         const centreY = FUEL_CANOPY_HEIGHT_M + FUEL_FASCIA_HEIGHT_M / 2;
         const t = FUEL_FASCIA_THICKNESS_M;
-        // The band runs round the slab's edge, outside it: kiosk end and street end, and both sides.
+        // The band runs round the slab's edge, outside it, in the brand's accent: kiosk end and street end, and both sides.
+        const brand = accent();
         for (const edge of [near - t / 2, near + FUEL_CANOPY_DEPTH_M + t / 2]) {
-          out.push(
-            onSide(part, side, 0, edge, canopySpan + 2 * t, t, FUEL_FASCIA_HEIGHT_M, centreY),
-          );
+          out.push({
+            ...onSide(part, side, 0, edge, canopySpan + 2 * t, t, FUEL_FASCIA_HEIGHT_M, centreY),
+            color: brand,
+          });
         }
         for (const a of [-1, 1]) {
-          out.push(
-            onSide(
+          out.push({
+            ...onSide(
               part,
               side,
               (a * (canopySpan + t)) / 2,
@@ -2741,7 +3034,8 @@ export function computePartPlacements(
               FUEL_FASCIA_HEIGHT_M,
               centreY,
             ),
-          );
+            color: brand,
+          });
         }
         break;
       }
@@ -3486,6 +3780,7 @@ export function kitPlanFor(
     kitLot,
     building.id,
     podium ?? null,
+    boxes,
   );
 
   const back = ((4 - building.rotation) % 4) as 0 | 1 | 2 | 3;

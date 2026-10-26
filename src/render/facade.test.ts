@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { BuildingCatalogEntry, ZoneType } from '../shared/types';
+import { BuildingCatalogEntry, BuildingKind, CommercialKind, ZoneType } from '../shared/types';
 import { TILE_METERS } from '../shared/constants';
 import { bodyMetresFor } from '../shared/floorarea';
+import { MATERIALS, MaterialName, materialUnit } from './palette';
 import {
   ACCENT_BLUE,
   ACCENT_RED,
@@ -16,6 +17,7 @@ import {
   INDUSTRIAL_WALL_PALETTE,
   MAX_WALL_SATURATION,
   MIN_ROOF_WALL_DISTANCE,
+  OFFICE_TOWER_LEVEL,
   PARAPET_METERS,
   ROOF_PALETTE,
   RGB,
@@ -23,15 +25,20 @@ import {
   STOREFRONT_BULKHEAD_M,
   STOREFRONT_HEAD_M,
   STOREFRONT_MULLION_M,
+  bodyPaletteFor,
   storefrontCut,
   deriveFacadeParams,
+  glassTintFor,
   groundFloorBand,
   housePaneMargins,
   hslToRgb,
   industrialAccentColor,
   industrialWallBase,
+  kindRoofColor,
+  kindWallBase,
   parapetBand,
   rgbToHsl,
+  roofPaletteFor,
   windowGrid,
 } from './facade';
 
@@ -406,6 +413,185 @@ describe('deriveFacadeParams: roofColor', () => {
     const e = entry({ category: 'ind', zone: ZoneType.Industrial, color: 0x112233 });
     for (let id = 0; id < 12; id++) {
       expect(deriveFacadeParams(e, id).roofColor).toEqual(INDUSTRIAL_ROOF_COLOR);
+    }
+  });
+});
+
+// The art table "What tells the kinds apart, at 40 m": body materials and
+// roof per commercial kind. A test that fails when one is edited without the
+// other.
+const ART_TABLE_BODIES: Readonly<Record<CommercialKind, readonly MaterialName[]>> = {
+  shop: ['redBrick', 'brownBrick', 'paintedMasonry'],
+  strip: ['eifsCream', 'eifsTan'],
+  supermarket: ['eifsTan', 'eifsGrey'],
+  restaurant: ['eifsBeige', 'paintedMasonry'],
+  fuel: ['paintedMasonry', 'whiteBrick'],
+  office: ['precastGrey', 'precastBuff'],
+  hotel: ['eifsBeige'],
+};
+const ART_TABLE_ROOFS: Readonly<Record<CommercialKind, MaterialName>> = {
+  shop: 'brightBitumen',
+  strip: 'brightBitumen',
+  supermarket: 'whiteMembrane',
+  restaurant: 'brightBitumen',
+  fuel: 'whiteMembrane',
+  office: 'greyMembrane',
+  hotel: 'greyMembrane',
+};
+const COMMERCIAL_KINDS = Object.keys(ART_TABLE_BODIES) as CommercialKind[];
+const OTHER_KINDS: (BuildingKind | undefined)[] = [
+  undefined,
+  'detached',
+  'duplex',
+  'fourplex',
+  'townhouse',
+  'multiplex',
+  'garden',
+  'midrise',
+  'tower',
+  'crops',
+  'orchard',
+  'pasture',
+];
+
+function commercialEntry(kind: CommercialKind, level = 1): BuildingCatalogEntry {
+  return entry({
+    category: 'com',
+    zone: kind === 'office' || kind === 'hotel' ? ZoneType.ComHigh : ZoneType.ComLow,
+    kind,
+    level,
+    color: 0xff00ff, // absurd catalog colour: a body never reads it
+  });
+}
+
+describe('bodyPaletteFor / roofPaletteFor: the art table, kind by kind', () => {
+  it('returns the art table list for every commercial kind, and the tower its curtain wall', () => {
+    for (const kind of COMMERCIAL_KINDS) {
+      expect(bodyPaletteFor(kind)).toEqual(ART_TABLE_BODIES[kind]);
+      expect(bodyPaletteFor(kind, OFFICE_TOWER_LEVEL - 1)).toEqual(ART_TABLE_BODIES[kind]);
+    }
+    expect(bodyPaletteFor('office', OFFICE_TOWER_LEVEL)).toEqual(['curtainWall']);
+  });
+
+  it('returns the art table roof for every commercial kind', () => {
+    for (const kind of COMMERCIAL_KINDS) {
+      expect(roofPaletteFor(kind)).toEqual([ART_TABLE_ROOFS[kind]]);
+    }
+  });
+
+  it('is null for houses, apartments, farms and entries with no kind, which keep their own paths', () => {
+    for (const kind of OTHER_KINDS) {
+      expect(bodyPaletteFor(kind), `body for ${kind}`).toBeNull();
+      expect(bodyPaletteFor(kind, OFFICE_TOWER_LEVEL), `body for ${kind}`).toBeNull();
+      expect(roofPaletteFor(kind), `roof for ${kind}`).toBeNull();
+    }
+  });
+
+  it('never gives two kinds the same list', () => {
+    const lists = [
+      ...COMMERCIAL_KINDS.map((kind) => bodyPaletteFor(kind)!.join(',')),
+      bodyPaletteFor('office', OFFICE_TOWER_LEVEL)!.join(','),
+    ];
+    expect(new Set(lists).size).toBe(lists.length);
+  });
+
+  it('names only chart materials, so every body and roof sits under the albedo ceiling', () => {
+    const named = new Set<string>();
+    for (const kind of COMMERCIAL_KINDS) {
+      for (const name of bodyPaletteFor(kind)!) named.add(name);
+      for (const name of roofPaletteFor(kind)!) named.add(name);
+    }
+    for (const name of bodyPaletteFor('office', OFFICE_TOWER_LEVEL)!) named.add(name);
+    expect(named.size).toBeGreaterThan(0);
+    for (const name of named) expect(MATERIALS, `${name} is not in the chart`).toHaveProperty(name);
+  });
+});
+
+describe('deriveFacadeParams: a commercial body takes its kind palette by id hash', () => {
+  it('draws the wall base from the kind list, hue-jittered, never from the catalog colour', () => {
+    for (const kind of COMMERCIAL_KINDS) {
+      const e = commercialEntry(kind);
+      const members = ART_TABLE_BODIES[kind].map((name) => materialUnit(name).join(','));
+      for (let id = 0; id < 24; id++) {
+        const base = kindWallBase(e, id)!;
+        expect(members).toContain(base.join(','));
+        const { wallColor } = deriveFacadeParams(e, id);
+        const baseHsl = rgbToHsl(...base);
+        const wallHsl = rgbToHsl(...wallColor);
+        expect(circularHueDiff(wallHsl.h, baseHsl.h)).toBeLessThanOrEqual(
+          HUE_JITTER_FRACTION + 1e-6,
+        );
+        expect(wallHsl.s).toBeCloseTo(baseHsl.s, 6);
+        expect(wallHsl.l).toBeCloseTo(baseHsl.l, 6);
+      }
+    }
+  });
+
+  it('keeps the chart material’s own saturation: brick is not flattened to the catalog clamp', () => {
+    const e = commercialEntry('shop');
+    const redBrick = materialUnit('redBrick');
+    expect(rgbToHsl(...redBrick).s).toBeGreaterThan(MAX_WALL_SATURATION);
+    let sawBrick = false;
+    for (let id = 0; id < 60; id++) {
+      if (kindWallBase(e, id)!.join(',') !== redBrick.join(',')) continue;
+      sawBrick = true;
+      expect(rgbToHsl(...deriveFacadeParams(e, id).wallColor).s).toBeCloseTo(
+        rgbToHsl(...redBrick).s,
+        6,
+      );
+    }
+    expect(sawBrick).toBe(true);
+  });
+
+  it('lets two entries of one kind differ: a list of more than one member is rotated by hash', () => {
+    for (const kind of COMMERCIAL_KINDS) {
+      const e = commercialEntry(kind);
+      const seen = new Set<string>();
+      for (let id = 0; id < 60; id++) seen.add(kindWallBase(e, id)!.join(','));
+      expect(seen.size, kind).toBe(ART_TABLE_BODIES[kind].length);
+    }
+  });
+
+  it('gives the tower-sized office its curtain wall, and the lower levels precast', () => {
+    const tower = commercialEntry('office', OFFICE_TOWER_LEVEL);
+    const block = commercialEntry('office', 1);
+    const curtainWall = materialUnit('curtainWall').join(',');
+    const precast = ['precastGrey', 'precastBuff'].map((n) =>
+      materialUnit(n as MaterialName).join(','),
+    );
+    for (let id = 0; id < 20; id++) {
+      expect(kindWallBase(tower, id)!.join(',')).toBe(curtainWall);
+      expect(precast).toContain(kindWallBase(block, id)!.join(','));
+    }
+  });
+
+  it('still clamps a non-commercial masonry entry to the catalog saturation rule', () => {
+    const e = entry({ category: 'res', zone: ZoneType.ResHigh, level: 1, color: 0xff0000 });
+    expect(kindWallBase(e, 1)).toBeNull();
+    for (let id = 0; id < 15; id++) {
+      expect(rgbToHsl(...deriveFacadeParams(e, id).wallColor).s).toBeLessThanOrEqual(
+        MAX_WALL_SATURATION + 1e-9,
+      );
+    }
+  });
+
+  it('roofs a commercial kind with its own material and leaves the rotation to the rest', () => {
+    for (const kind of COMMERCIAL_KINDS) {
+      const e = commercialEntry(kind);
+      const roof = materialUnit(ART_TABLE_ROOFS[kind]);
+      for (let id = 0; id < 12; id++) {
+        expect(kindRoofColor(e, id)).toEqual(roof);
+        expect(deriveFacadeParams(e, id).roofColor).toEqual(roof);
+      }
+    }
+    expect(kindRoofColor(entry({ category: 'res', zone: ZoneType.ResHigh }), 1)).toBeNull();
+  });
+
+  it('tints an office’s cells with tinted glass, the tower’s with its curtain wall, and no other kind', () => {
+    expect(glassTintFor('office', 1)).toEqual(materialUnit('tintedGlass'));
+    expect(glassTintFor('office', OFFICE_TOWER_LEVEL)).toEqual(materialUnit('curtainWall'));
+    for (const kind of [...COMMERCIAL_KINDS.filter((k) => k !== 'office'), ...OTHER_KINDS]) {
+      expect(glassTintFor(kind, OFFICE_TOWER_LEVEL), `${kind}`).toBeNull();
     }
   });
 });

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   archetypeFor,
+  hasMansard,
   hasPart,
   isApartmentEntry,
   isCleanIndustry,
@@ -75,8 +76,10 @@ describe('archetypeFor', () => {
     expect(partsFor(com('strip'))).toEqual([
       'stripCanopy',
       'stripColumn',
+      'baseBand',
       'signageBand',
       'anchorParapet',
+      'parapetStep',
       'pylon',
       'signPole',
       'rooftopUnit',
@@ -86,20 +89,25 @@ describe('archetypeFor', () => {
       'entryTower',
       'towerGlazing',
       'anchorParapet',
-      'brickBase',
+      'baseBand',
       'cartCorral',
+      'dockScreen',
       'signPole',
       'signageBand',
       'rooftopUnit',
       'roofHatch',
     ]);
     expect(partsFor(com('restaurant'))).toEqual([
+      'featureWall',
       'awning',
       'signageBand',
+      'accentBand',
+      'mansardBand',
       'menuBoard',
       'clearanceBar',
       'pickupCanopy',
       'dumpsterEnclosure',
+      'pylon',
       'signPole',
       'rooftopUnit',
       'roofHatch',
@@ -116,20 +124,56 @@ describe('archetypeFor', () => {
       'rooftopUnit',
       'roofHatch',
     ]);
-    expect(partsFor(com('office', 1))).toEqual(['lobbyPortal', 'rooftopUnit', 'roofHatch']);
-    expect(partsFor(com('office', 2))).toEqual(['lobbyPortal', 'rooftopUnit', 'roofHatch']);
+    const office = ['lobbyPortal', 'ribbonBand', 'rooftopUnit', 'roofHatch'];
+    expect(partsFor(com('office', 1))).toEqual(office);
+    expect(partsFor(com('office', 2))).toEqual(office);
     expect(partsFor(com('hotel'))).toEqual([
       'porteCochere',
+      'baseBand',
       'signageBand',
       'rooftopUnit',
       'roofHatch',
     ]);
   });
 
-  it('swaps an office tower its rooftop units for a screen and a cooling tower', () => {
+  it('swaps an office tower its rooftop units for a screen and a cooling tower, keeping its ribbon bands', () => {
     const tower = entry({ category: 'com', kind: 'office', level: 3 });
-    expect(partsFor(tower)).toEqual(['lobbyPortal', 'roofScreen', 'coolingTower', 'roofHatch']);
+    expect(partsFor(tower)).toEqual([
+      'lobbyPortal',
+      'ribbonBand',
+      'roofScreen',
+      'coolingTower',
+      'roofHatch',
+    ]);
     expect(hasPart(tower, 'rooftopUnit')).toBe(false);
+  });
+
+  it('gives a restaurant the old form’s mansard band at level 1 only', () => {
+    const com = (level: number) => entry({ category: 'com', kind: 'restaurant', level });
+    expect(hasMansard(com(1))).toBe(true);
+    expect(hasPart(com(1), 'mansardBand')).toBe(true);
+    for (const level of [2, 3]) {
+      expect(hasMansard(com(level))).toBe(false);
+      expect(hasPart(com(level), 'mansardBand')).toBe(false);
+      expect(hasPart(com(level), 'accentBand')).toBe(true);
+    }
+    expect(hasMansard(entry({ category: 'com', kind: 'shop', level: 1 }))).toBe(false);
+  });
+
+  it('holds every part the art table names for each commercial kind', () => {
+    const named: Record<string, string[]> = {
+      shop: ['bulkhead', 'awning', 'signageBand', 'cornice'],
+      strip: ['stripCanopy', 'baseBand', 'signageBand', 'anchorParapet', 'parapetStep', 'pylon'],
+      supermarket: ['entryTower', 'baseBand', 'cartCorral', 'dockScreen', 'signageBand'],
+      restaurant: ['featureWall', 'menuBoard', 'accentBand', 'pylon', 'mansardBand'],
+      fuel: ['fuelFascia', 'priceSign'],
+      office: ['ribbonBand', 'lobbyPortal'],
+      hotel: ['baseBand', 'porteCochere', 'signageBand'],
+    };
+    for (const [kind, parts] of Object.entries(named)) {
+      const e = entry({ category: 'com', kind: kind as BuildingKind, level: 1 });
+      for (const part of parts) expect(partsFor(e), `${kind} ${part}`).toContain(part);
+    }
   });
 
   it('takes the flat canopy off a shop, which has awnings, and leaves a kindless storefront its canopy', () => {

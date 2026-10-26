@@ -83,6 +83,54 @@ export const MATERIALS = {
   brightWood: [86, 67, 57],
   darkWood: [56, 46, 40],
   darkestWood: [38, 33, 31],
+
+  // The commercial kinds' bodies, each derived from a chart swatch so a kind
+  // reads as its material: brick darkened toward wood, plaster warmed to bone,
+  // EIFS as plaster in cream, tan, grey and beige, split-face block as stone
+  // brick greyed, precast as concrete in grey and buff, glass as blue plaster
+  // lifted, a membrane roof in white and grey, a feature wall near coal.
+  brownBrick: [60, 46, 38],
+  paintedMasonry: [112, 108, 100],
+  eifsCream: [128, 120, 104],
+  eifsTan: [118, 104, 84],
+  eifsGrey: [104, 104, 100],
+  eifsBeige: [122, 112, 96],
+  splitFaceGrey: [84, 84, 82],
+  canopyBronze: [48, 40, 32],
+  darkFeatureWall: [40, 40, 42],
+  whiteMembrane: [134, 134, 132],
+  greyMembrane: [88, 88, 88],
+  precastGrey: [98, 98, 96],
+  precastBuff: [118, 110, 94],
+  tintedGlass: [52, 70, 86],
+  curtainWall: [58, 84, 96],
+  spandrelDark: [36, 44, 52],
+  stoneVeneer: [96, 90, 80],
+
+  // The industrial kinds' bodies: ribbed metal panel in the makers' standard
+  // colours (polar white, light stone, ash grey, rustic red, burnished slate,
+  // evergreen, aztec blue), galvanised steel as metal plates lifted, painted
+  // tilt-up in white and grey, block as clean concrete, insulated panel and
+  // aluminium cladding near white, a dike in stained concrete, rack steel,
+  // oxide red and dark panel for the mills, a chip pile as bright wood.
+  ribbedStone: [116, 108, 92],
+  ribbedAsh: [92, 94, 96],
+  ribbedWhite: [130, 130, 128],
+  ribbedRed: [96, 40, 34],
+  ribbedSlate: [56, 58, 60],
+  ribbedGreen: [40, 72, 44],
+  ribbedBlue: [44, 62, 88],
+  galvanised: [104, 108, 110],
+  tiltUpWhite: [132, 131, 128],
+  tiltUpGrey: [108, 108, 106],
+  concreteBlock: [94, 92, 88],
+  insulatedWhite: [130, 131, 132],
+  aluminiumClad: [118, 120, 122],
+  concreteDike: [84, 82, 78],
+  rackSteel: [66, 68, 70],
+  oxideRed: [88, 42, 32],
+  darkPanel: [44, 45, 47],
+  woodChip: [112, 92, 62],
 } as const satisfies Record<string, RGB255>;
 
 export type MaterialName = keyof typeof MATERIALS;
@@ -100,6 +148,12 @@ export const SATURATED = {
   cyan: [36, 102, 102],
   magenta: [102, 36, 102],
   yellow: [102, 102, 36],
+  // The kits' painted accents: a hotel's navy and green sign bands, a
+  // warehouse's tilt-up colour band in blue and red.
+  navyAccent: [30, 40, 102],
+  greenAccent: [36, 90, 48],
+  tiltBandBlue: [36, 52, 102],
+  tiltBandRed: [102, 40, 36],
 } as const satisfies Record<string, RGB255>;
 
 export type SaturatedName = keyof typeof SATURATED;

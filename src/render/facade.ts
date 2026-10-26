@@ -13,11 +13,11 @@
  * from hashing the buildingId (and, for windows, the window index), per the
  * project's determinism rule.
  */
-import { BuildingCatalogEntry, ZoneType } from '../shared/types';
+import { BuildingCatalogEntry, BuildingKind, CommercialKind, ZoneType } from '../shared/types';
 import { TILE_METERS } from '../shared/constants';
 import { bodyMetresFor, FLOOR_HEIGHT_METERS } from '../shared/floorarea';
 import { isHouseKind } from '../shared/buildingkind';
-import { materialUnit, saturatedUnit } from './palette';
+import { MaterialName, materialUnit, saturatedUnit } from './palette';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -35,9 +35,9 @@ export interface FacadeParams {
   bays: number;
   /** Archetype family, decided from category + zone + level. */
   family: FacadeFamily;
-  /** Desaturated + hue-jittered wall base color for this specific building instance. */
+  /** Hue-jittered wall base color for this specific building instance: a kind's chart material, the industrial palette, or the desaturated catalog colour. */
   wallColor: RGB;
-  /** White/grey/tan rotation (or the fixed industrial grey), always distinct from wallColor. */
+  /** The kind's own roof material, the fixed industrial grey, or the white/grey/tan rotation kept distinct from wallColor. */
   roofColor: RGB;
   /** Punched (inset) window openings vs. flush curtain-wall glazing. */
   windowInset: boolean;
@@ -227,6 +227,73 @@ export const ACCENT_BLUE: RGB = saturatedUnit('blue');
 /** Accent stripe sits at 2/3 height. */
 export const INDUSTRIAL_ACCENT_HEIGHT_FRACTION = 2 / 3;
 
+// ---------------------------------------------------------------------------
+// The commercial kinds' bodies: a body takes one chart material of its kind's
+// short list by id hash, never the catalog entry's colour, under the kind's
+// own roof. The lists are the art table's; every name is a chart entry, so a
+// pick needs no saturation clamp. Houses and industry keep their own paths.
+// ---------------------------------------------------------------------------
+
+/** The office level that stands as a 16-storey tower: a curtain wall, where the lower levels are precast bands. */
+export const OFFICE_TOWER_LEVEL = 3;
+
+const COMMERCIAL_BODY_PALETTES: Readonly<Record<CommercialKind, readonly MaterialName[]>> = {
+  shop: ['redBrick', 'brownBrick', 'paintedMasonry'],
+  strip: ['eifsCream', 'eifsTan'],
+  supermarket: ['eifsTan', 'eifsGrey'],
+  restaurant: ['eifsBeige', 'paintedMasonry'],
+  fuel: ['paintedMasonry', 'whiteBrick'],
+  office: ['precastGrey', 'precastBuff'],
+  hotel: ['eifsBeige'],
+};
+const OFFICE_TOWER_BODY_PALETTE: readonly MaterialName[] = ['curtainWall'];
+
+const COMMERCIAL_ROOF_PALETTES: Readonly<Record<CommercialKind, readonly MaterialName[]>> = {
+  shop: ['brightBitumen'],
+  strip: ['brightBitumen'],
+  supermarket: ['whiteMembrane'],
+  restaurant: ['brightBitumen'],
+  fuel: ['whiteMembrane'],
+  office: ['greyMembrane'],
+  hotel: ['greyMembrane'],
+};
+
+/** An office's ribbons are tinted glass; the tower's cells are its curtain wall's vision glass. */
+const OFFICE_GLASS: MaterialName = 'tintedGlass';
+const OFFICE_TOWER_GLASS: MaterialName = 'curtainWall';
+
+function commercialKindOf(kind: BuildingKind | undefined): CommercialKind | null {
+  return kind !== undefined && kind in COMMERCIAL_BODY_PALETTES ? (kind as CommercialKind) : null;
+}
+
+/** The chart materials a kind's body is drawn from, or null for a kind that keeps its own path (houses, industry, no kind). */
+export function bodyPaletteFor(
+  kind: BuildingKind | undefined,
+  level: number = 1,
+): readonly MaterialName[] | null {
+  const commercial = commercialKindOf(kind);
+  if (commercial === null) return null;
+  if (commercial === 'office' && level >= OFFICE_TOWER_LEVEL) return OFFICE_TOWER_BODY_PALETTE;
+  return COMMERCIAL_BODY_PALETTES[commercial];
+}
+
+/** The chart materials a kind's flat roof is drawn from, or null for the white/grey/tan rotation. */
+export function roofPaletteFor(kind: BuildingKind | undefined): readonly MaterialName[] | null {
+  const commercial = commercialKindOf(kind);
+  return commercial === null ? null : COMMERCIAL_ROOF_PALETTES[commercial];
+}
+
+/** The chart glass a kind's window cells tint with, or null for the family's default pane. */
+export function glassTintFor(kind: BuildingKind | undefined, level: number = 1): RGB | null {
+  if (kind !== 'office') return null;
+  return materialUnit(level >= OFFICE_TOWER_LEVEL ? OFFICE_TOWER_GLASS : OFFICE_GLASS);
+}
+
+/** Chart names to the 0..1 tuples a palette pick and the shader's select cascade read. */
+export function paletteUnits(names: readonly MaterialName[]): readonly RGB[] {
+  return names.map((name) => materialUnit(name));
+}
+
 /**
  * Seed-slot scheme for combining (buildingId, drawSlot) into one hash input,
  * mirroring buildings.ts's existing WINDOW_SEED_SLOTS convention so every
@@ -240,6 +307,7 @@ export const HASH_SLOT_HUE_JITTER = 1;
 export const HASH_SLOT_ROOF_ROTATION = 2;
 export const HASH_SLOT_INDUSTRIAL_WALL = 3;
 export const HASH_SLOT_INDUSTRIAL_ACCENT = 4;
+export const HASH_SLOT_KIND_WALL = 5;
 
 // ---------------------------------------------------------------------------
 // Deterministic hashing (32-bit avalanche mix, "triple32", public domain —
@@ -365,10 +433,24 @@ export function industrialWallBase(buildingId: number): RGB {
   return paletteAt(INDUSTRIAL_WALL_PALETTE, Math.min(index, INDUSTRIAL_WALL_PALETTE.length - 1));
 }
 
-/** The pre-jitter HSL base for a wall: industrial draws from its own fixed palette; everything else desaturates+lightness-clamps the catalog color. */
+/** A kind's wall base: one of its chart materials by id hash, before hue jitter; null where the kind has no palette of its own. */
+export function kindWallBase(entry: BuildingCatalogEntry, buildingId: number): RGB | null {
+  const palette = bodyPaletteFor(entry.kind, entry.level);
+  if (!palette) return null;
+  const units = paletteUnits(palette);
+  const index = Math.floor(facadeHash(buildingId, HASH_SLOT_KIND_WALL) * units.length);
+  return paletteAt(units, Math.min(index, units.length - 1));
+}
+
+/** The pre-jitter HSL base for a wall: industrial and the kinds with a palette draw a chart material unclamped; everything else desaturates+lightness-clamps the catalog color. */
 function baseWallHsl(entry: BuildingCatalogEntry, buildingId: number): HSL {
   if (entry.category === 'ind') {
     const [r, g, b] = industrialWallBase(buildingId);
+    return rgbToHsl(r, g, b);
+  }
+  const kindBase = kindWallBase(entry, buildingId);
+  if (kindBase) {
+    const [r, g, b] = kindBase;
     return rgbToHsl(r, g, b);
   }
   const [r, g, b] = hexToRgb01(entry.color);
@@ -404,9 +486,18 @@ function rotateRoofColor(buildingId: number, wallColor: RGB): RGB {
   return paletteAt(ROOF_PALETTE, baseIndex % ROOF_PALETTE.length);
 }
 
+/** A kind's roof: one of its chart materials by id hash, chosen by the kind rather than by distance from the wall; null where the kind has no roof palette. */
+export function kindRoofColor(entry: BuildingCatalogEntry, buildingId: number): RGB | null {
+  const palette = roofPaletteFor(entry.kind);
+  if (!palette) return null;
+  const units = paletteUnits(palette);
+  const index = Math.floor(facadeHash(buildingId, HASH_SLOT_ROOF_ROTATION) * units.length);
+  return paletteAt(units, Math.min(index, units.length - 1));
+}
+
 function deriveRoofColor(entry: BuildingCatalogEntry, buildingId: number, wallColor: RGB): RGB {
   if (entry.category === 'ind') return INDUSTRIAL_ROOF_COLOR;
-  return rotateRoofColor(buildingId, wallColor);
+  return kindRoofColor(entry, buildingId) ?? rotateRoofColor(buildingId, wallColor);
 }
 
 // ---------------------------------------------------------------------------
