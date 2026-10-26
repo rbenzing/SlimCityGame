@@ -25,7 +25,7 @@ current behavior only and carry no dates of their own._
 
 ## Status (2026-09-29)
 
-**Test suite:** 7,065 tests passing across 200 test files, run 2026-10-26.
+**Test suite:** 7,095 tests passing across 200 test files, run 2026-10-26.
 This is the only test count in the documentation set. When the suite changes
 again, update the figure here and nowhere else.
 
@@ -112,6 +112,13 @@ not a test to fix.
 
 **Open:**
 
+- The shipped industrial lots are too shallow for the yard the second pass
+  gives the heavy kinds: a body fills 13.6 m of each 20 m lot tile, so no
+  warehouse lot has the 18.7 m a 16 m van needs behind a dock door, and no
+  4×3 heavy lot has room for a 20 × 12 m scrap yard or a 24 m chip pile.
+  The kit omits what does not fit and parks the vans in the lot's trailer
+  stalls. The real fix is deeper lots for the heavy kinds in the lot layout
+  (truck courts run 120–135 ft), a lots-and-land change.
 - The incinerator's pollution of 120, now what it emits at its burn ceiling,
   and its 2 kL of water are dials: municipal waste-to-energy plants do not
   report to the Toxics Release Inventory, so there is no like-for-like
@@ -376,6 +383,35 @@ roads, and pinning the Three.js version. See [adr/](engineering/adr/README.md).
 ---
 
 ## 10. History (newest first)
+
+### The industrial kinds told apart at 40 m (slice 2 of the kits' second pass, built 2026-10-26)
+
+The second slice of [rci-kits-second-pass.md](game-design/features/rci-kits-second-pass.md):
+the three pale greys under one grey roof give way to a body and a yard per
+kind.
+
+- **A body reads by its kind:** two-tone ribbed metal on a workshop and a
+  flex unit (a 2.4 m wainscot in red, slate or green), painted tilt-up under
+  a white membrane on a warehouse, ribbed blue or block on a factory, flat
+  insulated panel on a food plant and a chemical works, oxide red and dark
+  panel on the mills. The facade's accent stripe stays on the sheds and goes
+  where a kit band replaces it; a food plant is windowless.
+- **The yard object that names each kind** stands at a size that reads: the
+  warehouse's 2.4 m colour band, reveal joints every 8 m, a glazed office
+  corner, a guard booth and vans on its dock; the factory's baghouse and
+  12 m stack, silo and fenced yard, its monitor roof only on the old level-1
+  plant; the food plant's condensers by level, penthouse and silos; the
+  chemical works' dike, 5 m pipe rack, 30 m flare with a lit tip and cooling
+  tower; the melt shop's ridge vent, 36 m stack, scrap yard and gantry; the
+  paper mill's 12 m chip pile and 60 m recovery stack. A flex unit's
+  two-storey glass front glows at night.
+- Checked in the browser: a line-up of the eight kinds along one street by
+  day and at 22:00; five nameable outright, the food plant, workshop and
+  paper mill by their roof plant, shed and stack.
+- **Open, logged below:** the shipped heavy lots are too shallow for a 16 m
+  van backed onto a dock, a 20 × 12 m scrap yard or a 24 m chip pile, so
+  those stand only where a lot leaves room; the vans park in the lot's
+  trailer stalls instead. Deeper industrial lots are a lot-layout change.
 
 ### The commercial kinds told apart at 40 m (slice 1 of the kits' second pass, built 2026-10-26)
 

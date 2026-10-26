@@ -79,6 +79,7 @@ import {
   rgbToHsl,
   roofPaletteFor,
   windowGrid,
+  windowlessBody,
 } from './facade';
 
 const INITIAL_CAPACITY = 64;
@@ -275,9 +276,9 @@ function selectFromPalette(indexNode: Node<'float'>, options: readonly RGB[]): N
 }
 
 /**
- * Per-instance wall base color: industrial rotates among its own
- * steel-blue/light-grey/off-white palette; a kind with a body palette
- * rotates among its chart materials, unclamped; everything else
+ * Per-instance wall base color: a kind with a body palette rotates among
+ * its chart materials, unclamped; a kindless industrial entry rotates
+ * among the steel-blue/light-grey/off-white palette; everything else
  * desaturates the catalog color down to MAX_WALL_SATURATION (via three's own
  * `saturation()` color-adjustment node — a cheap, robust luminance-lerp
  * desaturation rather than a hand-rolled HSL round-trip in the shader).
@@ -296,19 +297,19 @@ function buildWallColorNode(
     .sub(1)
     .mul(HUE_JITTER_FRACTION * Math.PI * 2);
 
-  const kindPalette = isIndustrial ? null : bodyPaletteFor(entry.kind, entry.level);
+  const kindPalette = bodyPaletteFor(entry.kind, entry.level);
   let base: Node<'vec3'>;
-  if (isIndustrial) {
+  if (kindPalette) {
+    const units = paletteUnits(kindPalette);
+    const kindSeed = buildingIdAttr.mul(FACADE_HASH_SLOT_MULTIPLIER).add(HASH_SLOT_KIND_WALL);
+    const index = floor(hash(kindSeed).mul(units.length));
+    base = selectFromPalette(index, units);
+  } else if (isIndustrial) {
     const rotationSeed = buildingIdAttr
       .mul(FACADE_HASH_SLOT_MULTIPLIER)
       .add(HASH_SLOT_INDUSTRIAL_WALL);
     const index = floor(hash(rotationSeed).mul(INDUSTRIAL_WALL_PALETTE.length));
     base = selectFromPalette(index, INDUSTRIAL_WALL_PALETTE);
-  } else if (kindPalette) {
-    const units = paletteUnits(kindPalette);
-    const kindSeed = buildingIdAttr.mul(FACADE_HASH_SLOT_MULTIPLIER).add(HASH_SLOT_KIND_WALL);
-    const index = floor(hash(kindSeed).mul(units.length));
-    base = selectFromPalette(index, units);
   } else {
     const catalogColor = new THREE.Color(entry.color);
     const { s: originalSaturation } = rgbToHsl(catalogColor.r, catalogColor.g, catalogColor.b);
@@ -326,9 +327,9 @@ function buildWallColorNode(
  * ("distinct from walls"). facade.ts's rotateRoofColor does the full
  * 3-attempt cycle for its CPU-tested reference; a single retry is enough
  * here since the 3 palette entries already sit >0.2 apart pairwise.
- * Industrial always gets the fixed grey roof plate instead, and a kind with
- * a roof palette one of its own materials by the same hash, no distance
- * check: the kind decides the roof, mirroring facade.ts's kindRoofColor.
+ * A kind with a roof palette gets one of its own materials by the same
+ * hash, no distance check: the kind decides the roof, mirroring facade.ts's
+ * kindRoofColor. A kindless industrial entry gets the fixed grey roof plate.
  */
 function buildRoofColorNode(
   entry: BuildingCatalogEntry,
@@ -336,14 +337,13 @@ function buildRoofColorNode(
   wallColorNode: Node<'vec3'>,
   isIndustrial: boolean,
 ): Node<'vec3'> {
-  if (isIndustrial) return vec3(...INDUSTRIAL_ROOF_COLOR);
-
   const rotationSeed = buildingIdAttr.mul(FACADE_HASH_SLOT_MULTIPLIER).add(HASH_SLOT_ROOF_ROTATION);
   const kindPalette = roofPaletteFor(entry.kind);
   if (kindPalette) {
     const units = paletteUnits(kindPalette);
     return selectFromPalette(floor(hash(rotationSeed).mul(units.length)), units);
   }
+  if (isIndustrial) return vec3(...INDUSTRIAL_ROOF_COLOR);
 
   const baseIndex = floor(hash(rotationSeed).mul(ROOF_PALETTE.length));
   const nextIndex = baseIndex.add(1).mod(ROOF_PALETTE.length);
@@ -560,7 +560,7 @@ export class BuildingInstancer {
     // the per-instance jitter/rotation is instead mirrored below as TSL hash
     // nodes reading the real aBuildingId attribute, exactly like the night
     // code already mirrors windowHash's CPU formula with the TSL `hash()`.)
-    const { family, windowInset, spandrel } = deriveFacadeParams(entry, 0);
+    const { family, windowInset, spandrel, accentStripe } = deriveFacadeParams(entry, 0);
     // The bands are cut to one tier: every tier of a stacked body is one
     // instance of this bucket, so the parapet lip crowns each terrace while
     // the storefront band, below, is gated to the base tier.
@@ -626,7 +626,9 @@ export class BuildingInstancer {
     const marginY = housePane ? float(housePane.y) : margin;
     const insidePaneX = cellU.greaterThan(marginX).and(cellU.lessThan(float(1).sub(marginX)));
     const insidePaneY = cellV.greaterThan(marginY).and(cellV.lessThan(float(1).sub(marginY)));
-    let isPane: Node<'bool'> = insidePaneX.and(insidePaneY);
+    // A windowless body (a food plant's insulated panel) shows no pane at
+    // all, by day or lit at night; the grid still cuts its storeys.
+    let isPane: Node<'bool'> = windowlessBody(entry) ? bool(false) : insidePaneX.and(insidePaneY);
     // A commercial ground floor is a storefront: bays of glass between dark
     // mullions over a dark bulkhead, so a lit shopfront is a row of windows.
     const storefront = housePane ? null : storefrontCut(entry, tierHeight);
@@ -707,8 +709,9 @@ export class BuildingInstancer {
     const paneColor = select(activeAttr.greaterThan(0.5), glassColor, frameColor);
     let wallWithWindows: Node<'vec3'> = select(isPane, paneColor, frameColor);
 
-    // Industrial accent stripe band at 2/3 height, red or blue by hash.
-    if (isIndustrial) {
+    // Industrial accent stripe band at 2/3 height, red or blue by hash, on
+    // the sheds only: a warehouse's band is the kit's tilt-up band.
+    if (accentStripe) {
       const accentSeed = buildingIdAttr
         .mul(FACADE_HASH_SLOT_MULTIPLIER)
         .add(HASH_SLOT_INDUSTRIAL_ACCENT);

@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { BuildingCatalogEntry, BuildingKind, CommercialKind, ZoneType } from '../shared/types';
+import {
+  BuildingCatalogEntry,
+  BuildingKind,
+  CommercialKind,
+  IndustrialKind,
+  ZoneType,
+} from '../shared/types';
 import { TILE_METERS } from '../shared/constants';
 import { bodyMetresFor } from '../shared/floorarea';
 import { MATERIALS, MaterialName, materialUnit } from './palette';
@@ -33,6 +39,7 @@ import {
   housePaneMargins,
   hslToRgb,
   industrialAccentColor,
+  industrialAccentStripe,
   industrialWallBase,
   kindRoofColor,
   kindWallBase,
@@ -40,6 +47,7 @@ import {
   rgbToHsl,
   roofPaletteFor,
   windowGrid,
+  windowlessBody,
 } from './facade';
 
 function entry(overrides: Partial<BuildingCatalogEntry> = {}): BuildingCatalogEntry {
@@ -365,7 +373,7 @@ describe('deriveFacadeParams: wallColor', () => {
     expect(seen.size).toBeGreaterThan(10);
   });
 
-  it('industrial buildings draw their wall base from the industrial palette, not the catalog color', () => {
+  it('a kindless industrial entry draws its wall base from the industrial palette, not the catalog color', () => {
     const e = entry({ category: 'ind', zone: ZoneType.Industrial, color: 0xff00ff }); // absurd catalog color
     for (let id = 0; id < 20; id++) {
       const { wallColor } = deriveFacadeParams(e, id);
@@ -409,7 +417,7 @@ describe('deriveFacadeParams: roofColor', () => {
     }
   });
 
-  it('industrial buildings always get the fixed grey roof plate color (no rotation)', () => {
+  it('a kindless industrial entry always gets the fixed grey roof plate color (no rotation)', () => {
     const e = entry({ category: 'ind', zone: ZoneType.Industrial, color: 0x112233 });
     for (let id = 0; id < 12; id++) {
       expect(deriveFacadeParams(e, id).roofColor).toEqual(INDUSTRIAL_ROOF_COLOR);
@@ -593,6 +601,190 @@ describe('deriveFacadeParams: a commercial body takes its kind palette by id has
     for (const kind of [...COMMERCIAL_KINDS.filter((k) => k !== 'office'), ...OTHER_KINDS]) {
       expect(glassTintFor(kind, OFFICE_TOWER_LEVEL), `${kind}`).toBeNull();
     }
+  });
+});
+
+// The art table "What tells the kinds apart, at 40 m" for the industrial
+// kinds: body materials and roof per kind, and which carry the facade's
+// stripe or no window. A test that fails when one is edited without the other.
+const INDUSTRIAL_ART_BODIES: Readonly<Record<IndustrialKind, readonly MaterialName[]>> = {
+  workshop: ['ribbedStone', 'ribbedAsh', 'ribbedWhite'],
+  flex: ['ribbedStone', 'ribbedAsh', 'ribbedWhite'],
+  warehouse: ['tiltUpWhite', 'tiltUpGrey'],
+  factory: ['ribbedBlue', 'concreteBlock'],
+  foodplant: ['insulatedWhite'],
+  chemical: ['insulatedWhite', 'concreteBlock'],
+  metals: ['oxideRed', 'darkPanel'],
+  paper: ['ribbedAsh', 'insulatedWhite'],
+};
+const INDUSTRIAL_ART_ROOFS: Readonly<Record<IndustrialKind, MaterialName>> = {
+  workshop: 'galvanised',
+  flex: 'galvanised',
+  warehouse: 'whiteMembrane',
+  factory: 'greyMembrane',
+  foodplant: 'whiteMembrane',
+  chemical: 'greyMembrane',
+  metals: 'darkPanel',
+  paper: 'greyMembrane',
+};
+const INDUSTRIAL_KINDS = Object.keys(INDUSTRIAL_ART_BODIES) as IndustrialKind[];
+/** The sheds keep the facade's accent stripe; a warehouse's band is a kit part and the heavy plants carry none. */
+const STRIPED_KINDS: readonly IndustrialKind[] = ['workshop', 'factory', 'flex'];
+const WINDOWLESS_KINDS: readonly IndustrialKind[] = ['foodplant'];
+
+function industrialEntry(kind: IndustrialKind, level = 1): BuildingCatalogEntry {
+  const heavy =
+    kind === 'foodplant' || kind === 'chemical' || kind === 'metals' || kind === 'paper';
+  return entry({
+    category: 'ind',
+    zone: heavy ? ZoneType.IndHeavy : ZoneType.Industrial,
+    kind,
+    level,
+    footprint: { w: 3, d: 3 },
+    color: 0xff00ff, // absurd catalog colour: a body never reads it
+  });
+}
+
+describe('bodyPaletteFor / roofPaletteFor: the industrial art table, kind by kind', () => {
+  it('returns the art table list for every industrial kind at every level', () => {
+    for (const kind of INDUSTRIAL_KINDS) {
+      for (const level of [1, 2, 3]) {
+        expect(bodyPaletteFor(kind, level), `${kind} L${level}`).toEqual(
+          INDUSTRIAL_ART_BODIES[kind],
+        );
+      }
+    }
+  });
+
+  it('returns the art table roof for every industrial kind', () => {
+    for (const kind of INDUSTRIAL_KINDS) {
+      expect(roofPaletteFor(kind), kind).toEqual([INDUSTRIAL_ART_ROOFS[kind]]);
+    }
+  });
+
+  it('gives every kind its own list, except that the flex building is a shed like the workshop', () => {
+    const lists = INDUSTRIAL_KINDS.filter((kind) => kind !== 'flex').map((kind) =>
+      bodyPaletteFor(kind)!.join(','),
+    );
+    expect(new Set(lists).size).toBe(lists.length);
+    expect(bodyPaletteFor('flex')).toEqual(bodyPaletteFor('workshop'));
+    for (const kind of INDUSTRIAL_KINDS) {
+      for (const commercial of COMMERCIAL_KINDS) {
+        expect(bodyPaletteFor(kind)!.join(',')).not.toBe(bodyPaletteFor(commercial)!.join(','));
+      }
+    }
+  });
+
+  it('names only chart materials, so every body and roof sits under the albedo ceiling', () => {
+    const named = new Set<string>();
+    for (const kind of INDUSTRIAL_KINDS) {
+      for (const name of bodyPaletteFor(kind)!) named.add(name);
+      for (const name of roofPaletteFor(kind)!) named.add(name);
+    }
+    expect(named.size).toBeGreaterThan(0);
+    for (const name of named) expect(MATERIALS, `${name} is not in the chart`).toHaveProperty(name);
+  });
+});
+
+describe('deriveFacadeParams: an industrial body takes its kind palette by id hash', () => {
+  it('draws the wall base from the kind list, hue-jittered, never from the catalog colour', () => {
+    for (const kind of INDUSTRIAL_KINDS) {
+      const e = industrialEntry(kind);
+      const members = INDUSTRIAL_ART_BODIES[kind].map((name) => materialUnit(name).join(','));
+      for (let id = 0; id < 24; id++) {
+        const base = kindWallBase(e, id)!;
+        expect(members, kind).toContain(base.join(','));
+        const { wallColor } = deriveFacadeParams(e, id);
+        const baseHsl = rgbToHsl(...base);
+        const wallHsl = rgbToHsl(...wallColor);
+        expect(circularHueDiff(wallHsl.h, baseHsl.h)).toBeLessThanOrEqual(
+          HUE_JITTER_FRACTION + 1e-6,
+        );
+        expect(wallHsl.s).toBeCloseTo(baseHsl.s, 6);
+        expect(wallHsl.l).toBeCloseTo(baseHsl.l, 6);
+      }
+    }
+  });
+
+  it('never draws a kind body from the old three-colour industrial palette', () => {
+    const old = INDUSTRIAL_WALL_PALETTE.map((c) => c.join(','));
+    for (const kind of INDUSTRIAL_KINDS) {
+      const e = industrialEntry(kind);
+      for (let id = 0; id < 24; id++) {
+        expect(old, kind).not.toContain(kindWallBase(e, id)!.join(','));
+      }
+    }
+  });
+
+  it('lets two works of one kind differ: a list of more than one member is rotated by hash', () => {
+    for (const kind of INDUSTRIAL_KINDS) {
+      const e = industrialEntry(kind);
+      const seen = new Set<string>();
+      for (let id = 0; id < 60; id++) seen.add(kindWallBase(e, id)!.join(','));
+      expect(seen.size, kind).toBe(INDUSTRIAL_ART_BODIES[kind].length);
+    }
+  });
+
+  it('roofs an industrial kind with its own material, never the fixed grey plate', () => {
+    for (const kind of INDUSTRIAL_KINDS) {
+      const e = industrialEntry(kind);
+      const roof = materialUnit(INDUSTRIAL_ART_ROOFS[kind]);
+      for (let id = 0; id < 12; id++) {
+        expect(kindRoofColor(e, id), kind).toEqual(roof);
+        expect(deriveFacadeParams(e, id).roofColor, kind).toEqual(roof);
+      }
+    }
+  });
+
+  it('keeps the old palette and grey plate for an industrial entry with no kind, and for a farm', () => {
+    for (const kind of [undefined, 'crops', 'pasture'] as const) {
+      const e = entry({ category: 'ind', zone: ZoneType.Industrial, kind, color: 0xff00ff });
+      expect(kindWallBase(e, 1), `${kind}`).toBeNull();
+      expect(kindRoofColor(e, 1), `${kind}`).toBeNull();
+      for (let id = 0; id < 12; id++) {
+        const { wallColor, roofColor, accentStripe } = deriveFacadeParams(e, id);
+        const { h: baseHue } = rgbToHsl(...industrialWallBase(id));
+        expect(circularHueDiff(rgbToHsl(...wallColor).h, baseHue)).toBeLessThanOrEqual(
+          HUE_JITTER_FRACTION + 1e-6,
+        );
+        expect(roofColor).toEqual(INDUSTRIAL_ROOF_COLOR);
+        expect(accentStripe).toBe(true);
+      }
+    }
+  });
+
+  it('keeps the accent stripe on the sheds and drops it where the band is a kit part or there is none', () => {
+    for (const kind of INDUSTRIAL_KINDS) {
+      const expected = STRIPED_KINDS.includes(kind);
+      for (const level of [1, 2, 3]) {
+        const e = industrialEntry(kind, level);
+        expect(industrialAccentStripe(e), `${kind} L${level}`).toBe(expected);
+        expect(deriveFacadeParams(e, 7).accentStripe, `${kind} L${level}`).toBe(expected);
+      }
+    }
+    expect(STRIPED_KINDS).toEqual(['workshop', 'factory', 'flex']);
+  });
+
+  it('never stripes another category, kind or not', () => {
+    expect(industrialAccentStripe(commercialEntry('shop'))).toBe(false);
+    expect(deriveFacadeParams(commercialEntry('supermarket'), 3).accentStripe).toBe(false);
+    expect(industrialAccentStripe(entry({ category: 'res', kind: 'detached' }))).toBe(false);
+    expect(industrialAccentStripe(entry({ category: 'service' }))).toBe(false);
+  });
+
+  it('leaves only the food plant windowless; every other body keeps its grid', () => {
+    for (const kind of INDUSTRIAL_KINDS) {
+      for (const level of [1, 2, 3]) {
+        expect(windowlessBody(industrialEntry(kind, level)), `${kind} L${level}`).toBe(
+          WINDOWLESS_KINDS.includes(kind),
+        );
+      }
+    }
+    expect(WINDOWLESS_KINDS).toEqual(['foodplant']);
+    const foodplant = industrialEntry('foodplant');
+    expect(windowGrid(foodplant, 8).cols).toBeGreaterThanOrEqual(2); // the kit still cuts its bays
+    for (const kind of COMMERCIAL_KINDS) expect(windowlessBody(commercialEntry(kind))).toBe(false);
+    for (const kind of OTHER_KINDS) expect(windowlessBody(entry({ kind }))).toBe(false);
   });
 });
 
