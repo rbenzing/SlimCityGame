@@ -4,9 +4,13 @@
  * default camera pitch with the lot's cars and box trucks in their stalls; then
  * a crop farm, an orchard and a pasture with their farmsteads, up close; then
  * the same again at night, where the factory's clerestory and the warehouse's
- * office corner glow and nothing else does. Buildings are placed by command on
- * flat dry ground with the sim paused, as the frame budget does: a running sim
- * with no power, water or zones abandons and clears them within a minute.
+ * office corner glow and nothing else does. Last, the line-up: one of each
+ * industrial kind along one street, framed whole at the default pitch so a
+ * metre is about four pixels, the second pass's test that each kind is
+ * nameable without its label, by day and at 22:00. Buildings are placed by
+ * command on flat dry ground with the sim paused, as the frame budget does: a
+ * running sim with no power, water or zones abandons and clears them within a
+ * minute.
  *
  * Usage: node tools/industry-shots.mjs [baseUrl] [outDir]   (a dev server must be running) */
 import { chromium } from 'playwright';
@@ -33,8 +37,13 @@ const STREET_ROWS = 9;
 const MARGIN = 2;
 /** Tiles across one column of streets. */
 const COLUMN_W = 24;
+/** The eye's distance for a street shot, and the tiles of row that distance frames. */
+const STREET_DISTANCE = 95;
+const STREET_FRAMED_TILES = 9;
+/** The line-up's night: 22:00. */
+const LINEUP_NIGHT = 22 / 24;
 
-/** The streets, filled down a column and then across: what stands along each, left to right. */
+/** The streets, filled down a column and then across: what stands along each, left to right; the line-up last, shot on its own. */
 const STREETS = [
   { name: 'warehouse', ids: ['ind-warehouse-1', 'ind-warehouse-2', 'ind-warehouse-3'] },
   { name: 'workshop', ids: ['ind-1', 'ind-workshop-2', 'ind-workshop-3'] },
@@ -44,6 +53,20 @@ const STREETS = [
   { name: 'chem', ids: ['heavy-chem-1', 'heavy-chem-2', 'heavy-chem-3'] },
   { name: 'steel', ids: ['heavy-metals-1', 'heavy-metals-2', 'heavy-metals-3'] },
   { name: 'paper', ids: ['heavy-paper-1', 'heavy-paper-2', 'heavy-paper-3'] },
+  {
+    name: 'lineup',
+    lineup: true,
+    ids: [
+      'ind-1',
+      'ind-warehouse-1',
+      'ind-factory-1',
+      'ind-flex-1',
+      'heavy-food-1',
+      'heavy-chem-1',
+      'heavy-metals-1',
+      'heavy-paper-1',
+    ],
+  },
 ];
 /** The farms: a dirt road with a farm of each kind, large to small, south of it. */
 const FARMS = ['farm-crops-2', 'farm-orchard-2', 'farm-pasture-2', 'farm-crops-1', 'farm-crops-3'];
@@ -90,14 +113,14 @@ try {
     z < N &&
     !g.water[idx(x, z)] &&
     Math.abs(g.height[idx(x, z)] - h0) <= slope;
-  // Two columns of four streets where the ground allows, else four columns of two, on ground
+  // Three columns of three streets where the ground allows, else five columns of two, on ground
   // as flat as the map gives.
   let anchor = null;
   let layout = null;
   for (const slope of [6, 9, 12]) {
     for (const [columns, perColumn] of [
-      [2, 4],
-      [4, 2],
+      [3, 3],
+      [5, 2],
     ]) {
       const rows = perColumn * STREET_ROWS + STREET_ROWS;
       const cols = columns * COLUMN_W;
@@ -138,6 +161,26 @@ try {
       return placed;
     });
   });
+  // The line-up's block is levelled to the anchor's height first: the street grid is
+  // sited on ground within a few metres of flat, but one lot of eight on a tile over
+  // MAX_BUILD_SLOPE would be refused and leave a gap in the one row that must be whole.
+  const lineupStreet = STREETS.find((s) => s.lineup);
+  const lineupLength = spans[STREETS.indexOf(lineupStreet)].reduce((sum, b) => sum + b.w, 0);
+  await page.evaluate(
+    ([x, z, w, h, height]) => {
+      const heights = new Float32Array(w * h);
+      heights.fill(height);
+      window.__slimcity.cmd('Level', [{ kind: 'terraformSet', x, z, w, h, heights }]);
+    },
+    [
+      startX(lineupStreet) - MARGIN,
+      roadRow(lineupStreet) - 5,
+      lineupLength + 2 * MARGIN,
+      7,
+      g.height[idx(X, Z0)],
+    ],
+  );
+  await page.waitForTimeout(500);
   for (const [s, placed] of spans.entries()) {
     const street = STREETS[s];
     const length = placed.reduce((sum, b) => sum + b.w, 0) + 2 * MARGIN;
@@ -227,6 +270,20 @@ try {
     const last = placed[placed.length - 1];
     return (placed[0].x + last.x + last.w) / 2;
   };
+  /**
+   * The whole row in frame with a margin at each end: the eye backs off with
+   * the row's length, and further again because it orbits the road itself
+   * rather than a point two tiles south of it, which puts it nearer the row
+   * than a street shot's eye.
+   */
+  const rowDistance = (s) => {
+    const tiles = spans[s].reduce((sum, b) => sum + b.w, 0);
+    return (1.6 * STREET_DISTANCE * Math.max(tiles, STREET_FRAMED_TILES)) / STREET_FRAMED_TILES;
+  };
+  const lineup = STREETS.findIndex((s) => s.lineup);
+  // Aimed at the road, so the row stands in the upper half of the frame rather than along its top edge.
+  const shootLineup = (suffix) =>
+    shoot(`lineup${suffix}`, middleOf(lineup), roadRow(STREETS[lineup]), rowDistance(lineup), 0.2);
 
   const views = (suffix) => async () => {
     // Each kind from the street, its biggest rung in the middle of the frame.
@@ -242,7 +299,7 @@ try {
     ];
     for (const [street, id] of subjects) {
       const c = centre(find(street, id));
-      await shoot(`${street}${suffix}`, c.x, c.z + 2, 95, 0.3);
+      await shoot(`${street}${suffix}`, c.x, c.z + 2, STREET_DISTANCE, 0.3);
     }
     // The warehouse and the food plant from behind, where the truck court is.
     for (const [street, id] of [
@@ -273,6 +330,7 @@ try {
 
   await setPhase(0.5);
   await views('')();
+  await shootLineup('');
 
   // The close shots, at twice the pixels over the camera's floor distance.
   const restore = await closeUp(page, 2);
@@ -296,6 +354,8 @@ try {
 
   await setPhase(0.96);
   await views('-night')();
+  await setPhase(LINEUP_NIGHT);
+  await shootLineup('-night');
 } finally {
   await browser.close();
 }

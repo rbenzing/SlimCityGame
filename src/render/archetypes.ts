@@ -133,7 +133,22 @@ export type BuildingPart =
   | 'featureWall'
   | 'accentBand'
   | 'mansardBand'
-  | 'ribbonBand';
+  | 'ribbonBand'
+  | 'tiltBand'
+  | 'dockTrailer'
+  | 'trailerAxle'
+  | 'guardBooth'
+  | 'glassFront'
+  | 'baghouse'
+  | 'stack'
+  | 'silo'
+  | 'yardFence'
+  | 'flare'
+  | 'flareTip'
+  | 'coolingFan'
+  | 'scrapYard'
+  | 'gantry'
+  | 'recoveryStack';
 
 /**
  * Whether an industrial building is the CLEAN kind, taken from whether it
@@ -324,10 +339,31 @@ const DOCK_BANK_PARTS: readonly BuildingPart[] = [
   'officeCanopy',
 ];
 
-/** An industrial building of a known kind is dressed by its kind; one of no kind keeps its archetype's plain parts. */
+/**
+ * An industrial building of a known kind is dressed by its kind; one of no
+ * kind keeps its archetype's plain parts. The reveals come before the band
+ * that wraps every face, since a reveal is left out behind whatever already
+ * stands on the wall.
+ */
 const INDUSTRY_PARTS: Readonly<Record<string, readonly BuildingPart[]>> = {
-  workshop: ['rollUpDoors', 'walkDoor', 'wainscot', 'gutter', 'downspout', 'ridgeVent'],
-  warehouse: [...DOCK_BANK_PARTS, 'panelReveal', 'parapetBand'],
+  workshop: [
+    'rollUpDoors',
+    'walkDoor',
+    'glassFront',
+    'wainscot',
+    'gutter',
+    'downspout',
+    'ridgeVent',
+  ],
+  warehouse: [
+    ...DOCK_BANK_PARTS,
+    'panelReveal',
+    'tiltBand',
+    'parapetBand',
+    'dockTrailer',
+    'trailerAxle',
+    'guardBooth',
+  ],
   factory: [
     'monitorRoof',
     'clerestory',
@@ -336,13 +372,45 @@ const INDUSTRY_PARTS: Readonly<Record<string, readonly BuildingPart[]>> = {
     'wainscot',
     'gutter',
     'downspout',
+    'baghouse',
+    'stack',
+    'silo',
+    'yardFence',
   ],
-  flex: ['roofArray', 'entryCanopy', 'wainscot'],
-  foodplant: [...DOCK_BANK_PARTS, 'condenser'],
-  chemical: ['tanks', 'bundWall', 'bullet', 'pipeRack', 'processColumn'],
-  metals: ['monitorRoof', 'furnace', 'stove', 'skipBridge', 'duct'],
-  paper: ['monitorRoof', 'tanks', 'chipPile', 'stacker'],
+  flex: ['roofArray', 'entryCanopy', 'glassFront', 'rollUpDoors', 'wainscot'],
+  foodplant: [...DOCK_BANK_PARTS, 'condenser', 'penthouse', 'silo'],
+  chemical: [
+    'tanks',
+    'bundWall',
+    'bullet',
+    'pipeRack',
+    'processColumn',
+    'flare',
+    'flareTip',
+    'coolingTower',
+    'coolingFan',
+  ],
+  metals: [
+    'monitorRoof',
+    'ridgeVent',
+    'furnace',
+    'stove',
+    'skipBridge',
+    'duct',
+    'stack',
+    'scrapYard',
+    'gantry',
+  ],
+  paper: ['monitorRoof', 'tanks', 'chipPile', 'stacker', 'recoveryStack'],
 };
+
+/** The old plant's monitor roof dresses a factory at this level only; the levels above it are flat-roofed. */
+export const OLD_PLANT_LEVEL = 1;
+
+/** Whether a factory wears the monitor roof: its first level only. */
+export function hasMonitorRoof(entry: BuildingCatalogEntry): boolean {
+  return entry.kind === 'factory' && (entry.level ?? 1) === OLD_PLANT_LEVEL;
+}
 
 /** The walk-ups' shared parts: a hip roof, a brick base and the mail kiosk by the walk. */
 const WALK_UP_PARTS: readonly BuildingPart[] = ['hipRoofBlock', 'brickBase', 'mailKiosk'];
@@ -401,7 +469,10 @@ export function partsFor(entry: BuildingCatalogEntry): readonly BuildingPart[] {
       : parts.filter((p) => p !== 'mansardBand');
   }
   if (entry.category === 'ind' && !isFarmEntry(entry)) {
-    return INDUSTRY_PARTS[entry.kind ?? ''] ?? PARTS[archetype];
+    const parts = INDUSTRY_PARTS[entry.kind ?? ''] ?? PARTS[archetype];
+    return hasMonitorRoof(entry) || entry.kind !== 'factory'
+      ? parts
+      : parts.filter((p) => p !== 'monitorRoof');
   }
   if (archetype === 'office' && isOfficeTower(entry)) return OFFICE_TOWER_PARTS;
   if (archetype === 'apartment') return APARTMENT_PARTS[entry.kind ?? ''] ?? PARTS.apartment;

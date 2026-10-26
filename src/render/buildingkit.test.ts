@@ -80,6 +80,34 @@ import {
   SPANDREL_BAND_M,
   STRIP_CANOPY_FASCIA_M,
   TOWER_OVER_PARAPET_M,
+  BAGHOUSE_HEIGHT_M,
+  BAGHOUSE_SIZE_M,
+  CHEM_COOLING_TOWER_SIZE_M,
+  CHIP_PILE_DIAMETER_M,
+  CHIP_PILE_HEIGHT_M,
+  CONDENSER_SIZE_M,
+  condenserCount,
+  COOLING_FAN_M,
+  FACTORY_SILO_HEIGHT_M,
+  FLARE_HEIGHT_M,
+  FLARE_TIP_M,
+  FOOD_PENTHOUSE_SIZE_M,
+  FOOD_SILO_HEIGHT_M,
+  GANTRY_HEIGHT_M,
+  GUARD_BOOTH_SIZE_M,
+  MELT_RIDGE_VENT_M,
+  MELT_STACK_HEIGHT_M,
+  PANEL_REVEAL_SPACING_M,
+  RACK_CLEAR_M,
+  RECOVERY_STACK_HEIGHT_M,
+  SCRAP_YARD_SIZE_M,
+  SILO_DIAMETER_M,
+  STACK_HEIGHT_M,
+  TILT_BAND_M,
+  TRAILER_DOOR_STEP,
+  TRAILER_SIZE_M,
+  WAINSCOT_HEIGHT_M,
+  YARD_FENCE_M,
 } from './buildingkit';
 import { computeSetbacks, type SetbackBox } from './massing';
 import { bodyMetresFor } from '../shared/floorarea';
@@ -1421,6 +1449,7 @@ describe('the industrial kit: where every part stands', () => {
       'roofArray',
       'ridgeVent',
       'clerestory',
+      'penthouse',
     ];
     for (const e of standing) {
       const plan = kitPlanFor(e, { id: 7, x: 10, z: 10, rotation: 0 }, () => false)!;
@@ -1455,15 +1484,23 @@ describe('a workshop and a factory', () => {
     }
   });
 
-  it('has a 1 m wainscot round every face, gutters along both eaves, a downspout at each corner and every 6 m, and a ridge vent', () => {
+  it('has a 2.4 m two-tone wainscot round every face, gutters along both eaves, a downspout at each corner and every 6 m, and a ridge vent', () => {
     // On a lot as wide as the body a wall on the lot line leaves the wainscot off it, so this one stands free.
     const plan = southern(indById('ind-workshop-2'));
     expect(only(plan, 'wainscot').length).toBeGreaterThan(0);
     const wide: SetbackBox = { w: 27.2, d: 27.2, h: 6.1, yOffset: 0 };
     const placed = computePartPlacements(indById('ind-workshop-2'), wide, wide, 'S', null);
     expect(placed.filter((p) => p.part === 'wainscot')).toHaveLength(4);
-    for (const w of placed.filter((p) => p.part === 'wainscot'))
-      expect(w.size[1]).toBeCloseTo(1, 9);
+    const liveries = (['ribbedRed', 'ribbedSlate', 'ribbedGreen'] as const).map((n) =>
+      materialUnit(n),
+    );
+    for (const w of placed.filter((p) => p.part === 'wainscot')) {
+      expect(w.size[1]).toBeCloseTo(WAINSCOT_HEIGHT_M, 9);
+      expect(liveries).toContainEqual(w.color);
+    }
+    // A factory's wainscot is the plate's own grey: no livery.
+    const factoryPlan = southern(indById('ind-2'));
+    for (const w of only(factoryPlan, 'wainscot')) expect(w.color).toBeUndefined();
     const gutters = only(plan, 'gutter');
     expect(gutters).toHaveLength(2);
     for (const g of gutters) expect(g.size[1]).toBeCloseTo(0.2, 9);
@@ -1569,16 +1606,23 @@ describe('a warehouse and a food plant', () => {
     expect(LIT_PARTS.has('officeCorner')).toBe(true);
   });
 
-  it('draws panel reveals and a parapet band on a distribution centre, and two condensers 6 × 3.6 × 3 m on a food plant’s roof', () => {
+  it('draws panel reveals every 8 m and a parapet band on a distribution centre, and two to four condensers 6 × 3.6 × 2.4 m on a food plant’s roof by level', () => {
     const plan = southern(indById('ind-warehouse-2'));
     expect(only(plan, 'panelReveal').length).toBeGreaterThan(10);
+    expect(PANEL_REVEAL_SPACING_M).toBe(8);
     for (const r of only(plan, 'parapetBand')) expect(r.size[1]).toBeCloseTo(1, 9);
-    const food = southern(indById('heavy-food-2'));
-    const condensers = only(food, 'condenser');
-    expect(condensers).toHaveLength(2);
-    for (const c of condensers) {
-      expect([...c.size].sort((a, b) => a - b)).toEqual([3, 3.6, 6]);
-      expect(bottomOf(c)).toBeCloseTo(food.topBox.yOffset + food.topBox.h, 9);
+    expect([1, 2, 3].map(condenserCount)).toEqual([2, 3, 4]);
+    for (const id of ['heavy-food-1', 'heavy-food-2', 'heavy-food-3']) {
+      const e = indById(id);
+      const food = southern(e);
+      const condensers = only(food, 'condenser');
+      expect(condensers, id).toHaveLength(condenserCount(e.level ?? 1));
+      for (const c of condensers) {
+        expect([...c.size].sort((a, b) => a - b)).toEqual([2.4, 3.6, 6]);
+        expect(bottomOf(c)).toBeCloseTo(food.topBox.yOffset + food.topBox.h, 9);
+      }
+      const at = condensers.map((c) => c.offset[0] + c.offset[2]).sort((a, b) => a - b);
+      for (let i = 1; i < at.length; i += 1) expect(at[i]! - at[i - 1]!).toBeCloseTo(7, 9);
     }
   });
 });
@@ -1594,7 +1638,12 @@ describe('a chemical plant, a steelworks and a paper mill', () => {
     expect(of('pipeRack').filter((p) => p.size[1] === 0.8)).toHaveLength(2);
     const tiers = of('pipeRack').filter((p) => p.size[0] === 6 && p.size[1] === 0.4);
     expect(tiers).toHaveLength(2);
-    expect(bottomOf(tiers[0]!)).toBeCloseTo(5.5, 9);
+    expect(bottomOf(tiers[0]!)).toBeCloseTo(RACK_CLEAR_M, 9);
+    // Each bent is a portal: two columns and a cross beam at each tier.
+    const columns = of('pipeRack').filter((p) => p.size[0] === 0.3 && p.size[2] === 0.3);
+    const crossBeams = of('pipeRack').filter((p) => p.size[0] === 6.3);
+    expect(columns.length).toBeGreaterThan(0);
+    expect(crossBeams).toHaveLength(columns.length);
     const [column] = of('processColumn');
     expect(column!.size[0]).toBeCloseTo(3, 9);
     expect(topOf(column!)).toBeCloseTo(1.6 * 12, 9);
@@ -1622,24 +1671,11 @@ describe('a chemical plant, a steelworks and a paper mill', () => {
     );
   });
 
-  it('piles chips 25 m across and 8 m tall with a stacker, only where the lot has room', () => {
+  it('piles chips 24 m across and 12 m tall with a stacker, only where the lot has room', () => {
     const e = indById('heavy-paper-2');
     const body: SetbackBox = { w: 40, d: 40, h: 13, yOffset: 0 };
-    const lotOf = (half: number): KitLot => ({
-      lot: { x0: -half, x1: half, z0: -half, z1: half },
-      curbCut: { x0: 0, x1: 4, z0: 20, z1: 21 },
-      walk: null,
-      frontWalk: null,
-      islands: [],
-      dock: null,
-      loadingFacing: null,
-      trailers: [],
-      hard: [],
-      lane: null,
-      taken: [],
-    });
     const placed = computePartPlacements(e, body, body, 'S', lotOf(60));
-    expect(placed.find((p) => p.part === 'chipPile')!.size).toEqual([25, 8, 25]);
+    expect(placed.find((p) => p.part === 'chipPile')!.size).toEqual([24, 12, 24]);
     expect(placed.filter((p) => p.part === 'stacker')).toHaveLength(1);
     for (const p of placed.filter((q) => q.part === 'chipPile' || q.part === 'stacker')) {
       const b = placementBounds(p);
@@ -1647,6 +1683,421 @@ describe('a chemical plant, a steelworks and a paper mill', () => {
     }
     const tight = computePartPlacements(e, body, body, 'S', lotOf(30));
     expect(tight.filter((p) => p.part === 'chipPile')).toEqual([]);
+  });
+});
+
+/** A square lot of `half` metres each way about the body, with its drive on the south edge and nothing else on it. */
+const lotOf = (half: number, over: Partial<KitLot> = {}): KitLot => ({
+  lot: { x0: -half, x1: half, z0: -half, z1: half },
+  curbCut: { x0: 0, x1: 4, z0: half - 1, z1: half },
+  walk: null,
+  frontWalk: null,
+  islands: [],
+  dock: null,
+  loadingFacing: null,
+  trailers: [],
+  hard: [],
+  lane: null,
+  taken: [],
+  ...over,
+});
+
+/** The identifying parts the art table names per industrial kind, each sized to read at 40 m. */
+const INDUSTRIAL_IDENTIFYING_PARTS: Readonly<Record<string, readonly BuildingPart[]>> = {
+  workshop: ['wainscot', 'rollUpDoors', 'glassFront'],
+  flex: ['glassFront', 'rollUpDoors', 'wainscot'],
+  warehouse: ['loadingDock', 'dockBumper', 'dockLight', 'dockTrailer', 'tiltBand', 'guardBooth'],
+  factory: ['baghouse', 'stack', 'silo', 'yardFence', 'monitorRoof'],
+  foodplant: ['condenser', 'penthouse', 'silo', 'loadingDock'],
+  chemical: ['tanks', 'bundWall', 'pipeRack', 'flare', 'coolingTower'],
+  metals: ['monitorRoof', 'ridgeVent', 'stack', 'scrapYard', 'gantry'],
+  paper: ['chipPile', 'monitorRoof', 'recoveryStack', 'tanks'],
+};
+
+describe('the second pass: what tells the industrial kinds apart at 40 m', () => {
+  it('maps every identifying part the art table names onto its kind', () => {
+    for (const [kind, parts] of Object.entries(INDUSTRIAL_IDENTIFYING_PARTS)) {
+      const e = industrial.find((c) => c.kind === kind && (c.level ?? 1) === 1)!;
+      for (const part of parts) expect(partsFor(e), `${kind} ${part}`).toContain(part);
+    }
+  });
+
+  it('sizes each identifying part to its art figure, none under 0.5 m', () => {
+    expect(WAINSCOT_HEIGHT_M).toBe(2.4);
+    expect(TILT_BAND_M).toBe(2.4);
+    expect(TRAILER_SIZE_M).toEqual([2.6, 4.1, 16]);
+    expect(TRAILER_DOOR_STEP).toBe(3);
+    expect(GUARD_BOOTH_SIZE_M).toEqual([1.2, 2.6, 1.8]);
+    expect(BAGHOUSE_HEIGHT_M).toBe(6);
+    expect(BAGHOUSE_SIZE_M[0]).toBe(3);
+    expect(STACK_HEIGHT_M).toBe(12);
+    expect(SILO_DIAMETER_M).toBe(4);
+    expect(FACTORY_SILO_HEIGHT_M).toBe(12);
+    expect(FOOD_SILO_HEIGHT_M).toBe(15);
+    expect(YARD_FENCE_M).toBe(1.8);
+    expect(CONDENSER_SIZE_M[1]).toBe(2.4);
+    expect(FOOD_PENTHOUSE_SIZE_M).toEqual([4, 3, 4]);
+    expect(RACK_CLEAR_M).toBe(5);
+    expect(FLARE_HEIGHT_M).toBe(30);
+    expect(FLARE_TIP_M).toBe(1.5);
+    expect(CHEM_COOLING_TOWER_SIZE_M).toEqual([11, 5.6, 7]);
+    expect(COOLING_FAN_M).toBe(2);
+    expect(MELT_RIDGE_VENT_M).toBe(1.5);
+    expect(MELT_STACK_HEIGHT_M).toBe(36);
+    expect(SCRAP_YARD_SIZE_M).toEqual([20, 12]);
+    expect(GANTRY_HEIGHT_M).toBe(10);
+    expect(CHIP_PILE_DIAMETER_M).toBe(24);
+    expect(CHIP_PILE_HEIGHT_M).toBe(12);
+    expect(RECOVERY_STACK_HEIGHT_M).toBe(60);
+    for (const m of [
+      WAINSCOT_HEIGHT_M,
+      TILT_BAND_M,
+      YARD_FENCE_M,
+      CONDENSER_SIZE_M[1],
+      FLARE_TIP_M,
+      MELT_RIDGE_VENT_M,
+      COOLING_FAN_M,
+    ]) {
+      expect(m).toBeGreaterThanOrEqual(0.5);
+    }
+  });
+
+  it('glazes a flex building’s office front two storeys on the street and a workshop’s one storey at the end its doors leave free, both lit', () => {
+    expect(LIT_PARTS.has('glassFront')).toBe(true);
+    const flex = southern(indById('ind-flex-1'));
+    const [front] = only(flex, 'glassFront');
+    expect(front!.size[1]).toBeCloseTo(Math.min(2 * FLOOR_HEIGHT_METERS, 6.4 - 0.4), 9);
+    expect(front!.offset[2]).toBeGreaterThan(flex.baseBox.d / 2 - 0.01);
+    expect(bottomOf(front!)).toBeCloseTo(0, 9);
+    const shop = southern(indById('ind-workshop-2'));
+    const [shopFront] = only(shop, 'glassFront');
+    expect(shopFront!.size[1]).toBeCloseTo(FLOOR_HEIGHT_METERS, 9);
+    expect(shopFront!.size[0]).toBeGreaterThanOrEqual(3);
+    for (const d of [...only(shop, 'rollUpDoors'), ...only(shop, 'walkDoor')]) {
+      expect(overlap(placementBounds(d), placementBounds(shopFront!))).toBe(false);
+    }
+    // The smallest workshop's doors fill its frontage, so it has no office front.
+    expect(only(southern(indById('ind-1')), 'glassFront')).toEqual([]);
+  });
+
+  it('gives a flex building one or two 3.05 m grade doors at the back, by the back wall’s span', () => {
+    const one = southern(indById('ind-flex-1'));
+    const two = southern(indById('ind-3'));
+    expect(only(one, 'rollUpDoors')).toHaveLength(1);
+    expect(only(two, 'rollUpDoors')).toHaveLength(2);
+    for (const d of [...only(one, 'rollUpDoors'), ...only(two, 'rollUpDoors')]) {
+      expect(d.size[0]).toBeCloseTo(3.05, 9);
+      expect(d.size[1]).toBeCloseTo(3.05, 9);
+      expect(d.offset[2]).toBeLessThan(0);
+      expect(bottomOf(d)).toBeCloseTo(0, 9);
+    }
+  });
+
+  it('bands a tilt-up warehouse 2.4 m in blue or red under its parapet band on every face', () => {
+    const plan = southern(indById('ind-warehouse-2'));
+    const bands = only(plan, 'tiltBand');
+    expect(bands).toHaveLength(4);
+    const liveries = bands.map((b) => accentNames(b.color));
+    for (const livery of liveries) expect(['tiltBandBlue', 'tiltBandRed']).toContain(livery);
+    expect(new Set(liveries).size).toBe(1);
+    // The band wraps the base tier under its parapet band; the upper rungs are massed in set-back tiers of a few metres each, so it sits in the top half of that tier.
+    const [parapet] = only(plan, 'parapetBand');
+    for (const b of bands) {
+      expect(b.size[1]).toBeCloseTo(TILT_BAND_M, 9);
+      expect(topOf(b)).toBeCloseTo(bottomOf(parapet!), 9);
+      expect(bottomOf(b)).toBeGreaterThan(0);
+      expect(topOf(b) + 1).toBeCloseTo(plan.baseBox.h, 9);
+    }
+    // Two warehouses of different ids may differ; across the catalog both liveries appear.
+    const seen = new Set(
+      [1, 2, 3, 4, 5, 6].map((id) =>
+        accentNames(
+          computePartPlacements(
+            indById('ind-warehouse-2'),
+            plan.baseBox,
+            plan.topBox,
+            'S',
+            null,
+            id,
+          ).find((p) => p.part === 'tiltBand')!.color,
+        ),
+      ),
+    );
+    expect(seen.size).toBe(2);
+  });
+
+  it('backs a 16 × 2.6 × 4.1 m dry van onto one dock door in three, square to the dock, where the court is deep enough: six doors stand two', () => {
+    const e = indById('ind-warehouse-1');
+    const body: SetbackBox = { w: 40.8, d: 40.8, h: e.height, yOffset: 0 };
+    const lot = lotOf(45, {
+      dock: { x: 0, z: -30 },
+      loadingFacing: { x: 0, z: -1 },
+      trailers: [{ x0: -20, x1: 20, z0: -40, z1: -23 }],
+    });
+    const placed = computePartPlacements(e, body, body, 'S', lot);
+    const doors = placed.filter((p) => p.part === 'rollUpDoors');
+    expect(doors).toHaveLength(6);
+    const vans = placed.filter((p) => p.part === 'dockTrailer' && p.size[1] > 2);
+    expect(vans).toHaveLength(2);
+    const axles = placed.filter((p) => p.part === 'trailerAxle');
+    expect(axles).toHaveLength(4);
+    for (const van of vans) {
+      expect(van.size[0]).toBeCloseTo(2.6, 9);
+      expect(van.size[2]).toBeCloseTo(16, 9);
+      expect(topOf(van)).toBeCloseTo(4.1, 9);
+      // Backed onto a door: the van's rear at the bumpers, its middle on the door's centre line.
+      const door = doors.find((d) => Math.abs(d.offset[0] - van.offset[0]) < 1e-6);
+      expect(door).toBeDefined();
+      expect(placementBounds(van).z1).toBeCloseTo(-20.4 - 2.6 - 0.11, 9);
+      // Both axles under the rear of the van, on the ground.
+      const under = axles.filter((a) => Math.abs(a.offset[0] - van.offset[0]) < 1e-6);
+      expect(under).toHaveLength(2);
+      for (const a of under) {
+        expect(bottomOf(a)).toBeCloseTo(0, 9);
+        expect(a.offset[2]).toBeGreaterThan(van.offset[2]);
+        expect(Math.abs((a.yaw ?? 0) % Math.PI)).toBeLessThan(1e-9);
+      }
+    }
+    // Doors one and four of six: the second and the fifth along the dock.
+    const at = doors.map((d) => d.offset[0]).sort((a, b) => a - b);
+    expect(vans.map((v) => v.offset[0]).sort((a, b) => a - b)).toEqual([at[1], at[4]]);
+    // No row striped, no van.
+    expect(
+      computePartPlacements(e, body, body, 'S', lotOf(45, { ...lot, trailers: [] })).filter(
+        (p) => p.part === 'dockTrailer',
+      ),
+    ).toEqual([]);
+  });
+
+  it('parks a van in one striped stall in three, the stall’s own way, on a shipped lot too shallow to back one in', () => {
+    const plan = southern(indById('ind-warehouse-2'));
+    const stalls = plan.lot!.trailers;
+    expect(stalls.length).toBeGreaterThan(0);
+    const vans = only(plan, 'dockTrailer').filter((p) => p.size[1] > 2);
+    expect(vans).toHaveLength(Math.ceil(stalls.length / TRAILER_DOOR_STEP));
+    for (const van of vans) {
+      const stall = stalls.find((s) => middleIn(placementBounds(van), s));
+      expect(stall).toBeDefined();
+      const b = placementBounds(van);
+      expect(b.x0).toBeGreaterThanOrEqual(stall!.x0 - 1e-6);
+      expect(b.x1).toBeLessThanOrEqual(stall!.x1 + 1e-6);
+      expect(b.z0).toBeGreaterThanOrEqual(stall!.z0 - 1e-6);
+      expect(b.z1).toBeLessThanOrEqual(stall!.z1 + 1e-6);
+    }
+    expect(only(plan, 'trailerAxle')).toHaveLength(2 * vans.length);
+  });
+
+  it('stands a guard booth 1.2 × 1.8 × 2.6 m beside the lot’s drive mouth', () => {
+    const plan = southern(indById('ind-warehouse-2'));
+    const [booth] = only(plan, 'guardBooth');
+    expect(booth!.size).toEqual([1.2, 2.6, 1.8]);
+    expect(bottomOf(booth!)).toBeCloseTo(0, 9);
+    const cut = plan.lot!.curbCut;
+    const b = placementBounds(booth!);
+    expect(Math.min(Math.abs(b.x1 - cut.x0), Math.abs(b.x0 - cut.x1))).toBeLessThan(2);
+    expect(b.z1).toBeLessThanOrEqual(plan.lot!.lot.z1 + 1e-6);
+  });
+
+  it('gives a factory a baghouse 6 m on four posts with a 12 m stack beside it, a 4 × 12 m silo and a 1.8 m fenced yard', () => {
+    for (const id of ['ind-factory-1', 'ind-2', 'ind-factory-3']) {
+      const plan = southern(indById(id));
+      const baghouse = only(plan, 'baghouse');
+      expect(baghouse, id).toHaveLength(5);
+      const box = baghouse.find((p) => p.size[0] === 3)!;
+      expect(topOf(box)).toBeCloseTo(6, 9);
+      expect(bottomOf(box)).toBeCloseTo(2, 9);
+      const posts = baghouse.filter((p) => p !== box);
+      for (const post of posts) {
+        expect(post.size[1]).toBeCloseTo(2, 9);
+        expect(bottomOf(post)).toBeCloseTo(0, 9);
+      }
+      const [stack] = only(plan, 'stack');
+      expect(stack!.size).toEqual([1.2, 12, 1.2]);
+      expect(bottomOf(stack!)).toBeCloseTo(0, 9);
+      expect(
+        Math.hypot(stack!.offset[0] - box.offset[0], stack!.offset[2] - box.offset[2]),
+      ).toBeCloseTo(2.1, 9);
+      const [silo] = only(plan, 'silo');
+      expect(silo!.size, id).toEqual([4, 12, 4]);
+      expect(bottomOf(silo!)).toBeCloseTo(0, 9);
+      expect(overlap(placementBounds(silo!), placementBounds(box))).toBe(false);
+      const fence = only(plan, 'yardFence');
+      for (const f of fence) expect(topOf(f)).toBeCloseTo(YARD_FENCE_M, 9);
+      // The yard lies behind the back wall, fenced where the lot leaves room there: the 4 × 3 lot parks in front and leaves 1.5 m.
+      for (const f of fence) expect(f.offset[2]).toBeLessThan(-plan.baseBox.d / 2);
+      if (id === 'ind-factory-3') {
+        expect(fence).toEqual([]);
+        continue;
+      }
+      const fencePosts = fence.filter((f) => f.size[0] === 0.1 && f.size[2] === 0.1);
+      const rails = fence.filter((f) => !fencePosts.includes(f));
+      expect(fencePosts.length).toBeGreaterThan(2);
+      expect(rails.length).toBeGreaterThan(0);
+      const at = fencePosts.map((p) => p.offset[0]).sort((a, b) => a - b);
+      for (let i = 1; i < at.length; i += 1)
+        expect(at[i]! - at[i - 1]!).toBeLessThanOrEqual(3 + 1e-9);
+    }
+  });
+
+  it('wears the monitor roof on the level 1 factory only, and moves the clerestory under the eaves above it', () => {
+    expect(only(southern(indById('ind-factory-1')), 'monitorRoof')).toHaveLength(1);
+    for (const id of ['ind-2', 'ind-factory-3']) {
+      const plan = southern(indById(id));
+      expect(only(plan, 'monitorRoof'), id).toEqual([]);
+      const bands = only(plan, 'clerestory');
+      expect(bands, id).toHaveLength(2);
+      for (const b of bands) {
+        expect(b.size[1]).toBeCloseTo(0.6, 9);
+        expect(topOf(b)).toBeLessThan(plan.baseBox.h);
+        expect(topOf(b)).toBeGreaterThan(plan.baseBox.h - 1.5);
+      }
+    }
+  });
+
+  it('puts a 4 × 4 × 3 m penthouse on a food plant’s roof and two 4 × 15 m silos beside its body', () => {
+    const e = indById('heavy-food-2');
+    const body: SetbackBox = { w: 54.4, d: 40.8, h: e.height, yOffset: 0 };
+    const placed = computePartPlacements(e, body, body, 'S', null);
+    const [penthouse] = placed.filter((p) => p.part === 'penthouse');
+    expect(penthouse!.size).toEqual([4, 3, 4]);
+    expect(bottomOf(penthouse!)).toBeCloseTo(e.height, 9);
+    const silos = placed.filter((p) => p.part === 'silo');
+    expect(silos).toHaveLength(2);
+    for (const s of silos) {
+      expect(s.size).toEqual([4, 15, 4]);
+      expect(bottomOf(s)).toBeCloseTo(0, 9);
+      // Beside the body: outside its plan, off one wall that is not the street face.
+      const b = placementBounds(s);
+      const outside = b.x0 >= 27.2 || b.x1 <= -27.2 || b.z1 <= -20.4;
+      expect(outside).toBe(true);
+    }
+    expect(
+      Math.hypot(
+        silos[0]!.offset[0] - silos[1]!.offset[0],
+        silos[0]!.offset[2] - silos[1]!.offset[2],
+      ),
+    ).toBeCloseTo(5, 9);
+  });
+
+  it('raises a 30 m flare with a lit 1.5 m tip and stands an 11 × 7 × 5.6 m cooling tower with two 2 m fans on a chemical plant', () => {
+    expect(LIT_PARTS.has('flareTip')).toBe(true);
+    const e = indById('heavy-chem-2');
+    const body: SetbackBox = { w: 40, d: 40, h: 12, yOffset: 0 };
+    for (const lot of [null, lotOf(60)]) {
+      const placed = computePartPlacements(e, body, body, 'S', lot);
+      const of = (part: BuildingPart): PartPlacement[] => placed.filter((p) => p.part === part);
+      const [flare] = of('flare');
+      expect(flare!.size).toEqual([0.6, 30, 0.6]);
+      expect(bottomOf(flare!)).toBeCloseTo(0, 9);
+      const [tip] = of('flareTip');
+      expect(tip!.size[1]).toBeCloseTo(1.5, 9);
+      expect(bottomOf(tip!)).toBeCloseTo(30, 9);
+      expect(tip!.offset[0]).toBeCloseTo(flare!.offset[0], 9);
+      expect(tip!.offset[2]).toBeCloseTo(flare!.offset[2], 9);
+      const [tower] = of('coolingTower');
+      expect([...tower!.size].sort((a, b) => a - b)).toEqual([5.6, 7, 11]);
+      expect(tower!.color).toEqual(materialUnit('concreteBlock'));
+      const fans = of('coolingFan');
+      expect(fans).toHaveLength(2);
+      for (const f of fans) {
+        expect(f.size[0]).toBeCloseTo(2, 9);
+        expect(bottomOf(f)).toBeCloseTo(5.6, 9);
+        expect(middleIn(placementBounds(f), placementBounds(tower!))).toBe(true);
+      }
+      // All of it behind the body, or beside it, never before the street face.
+      for (const p of [flare!, tower!, ...fans]) expect(p.offset[2]).toBeLessThan(20);
+    }
+  });
+
+  it('gives a steelworks a 1.5 m ridge vent along the monitor, a 36 m stack, and a 20 × 12 m scrap yard under a 10 m gantry where there is room', () => {
+    const e = indById('heavy-metals-2');
+    const body: SetbackBox = { w: 54, d: 40, h: 15, yOffset: 0 };
+    const placed = computePartPlacements(e, body, body, 'S', null, 7);
+    const of = (part: BuildingPart): PartPlacement[] => placed.filter((p) => p.part === part);
+    const [monitor] = of('monitorRoof');
+    const [vent] = of('ridgeVent');
+    expect(vent!.size[1]).toBeCloseTo(MELT_RIDGE_VENT_M, 9);
+    expect(bottomOf(vent!)).toBeCloseTo(topOf(monitor!), 9);
+    expect(Math.max(vent!.size[0], vent!.size[2])).toBeCloseTo(
+      Math.max(monitor!.size[0], monitor!.size[2]) - 1,
+      9,
+    );
+    expect(vent!.color).toEqual(materialUnit('darkPanel'));
+    const [stack] = of('stack');
+    expect(stack!.size).toEqual([1.8, 36, 1.8]);
+    expect(bottomOf(stack!)).toBeCloseTo(0, 9);
+    const scrap = of('scrapYard');
+    expect(scrap).toHaveLength(3);
+    const base = scrap.find((p) => Math.max(p.size[0], p.size[2]) === 20)!;
+    expect(Math.min(base.size[0], base.size[2])).toBe(12);
+    expect(bottomOf(base)).toBeCloseTo(0, 9);
+    const gantry = of('gantry');
+    expect(gantry).toHaveLength(3);
+    const legs = gantry.filter((g) => g.size[1] === GANTRY_HEIGHT_M);
+    expect(legs).toHaveLength(2);
+    for (const leg of legs) expect(leg.size[0]).toBeCloseTo(0.6, 9);
+    const beam = gantry.find((g) => g.size[1] !== GANTRY_HEIGHT_M)!;
+    expect(bottomOf(beam)).toBeCloseTo(GANTRY_HEIGHT_M, 9);
+    expect(middleIn(placementBounds(base), placementBounds(beam))).toBe(true);
+    // The furnace and its stoves are untouched, and nothing in the yard stands on another part.
+    expect(of('furnace')).toHaveLength(1);
+    expect(of('stove')).toHaveLength(3);
+    const ground = placed.filter(
+      (p) =>
+        p.part !== 'duct' &&
+        p.part !== 'skipBridge' &&
+        p.part !== 'gantry' &&
+        p.part !== 'monitorRoof' &&
+        p.part !== 'ridgeVent',
+    );
+    for (let i = 0; i < ground.length; i += 1) {
+      for (let j = i + 1; j < ground.length; j += 1) {
+        if (ground[i]!.part === 'scrapYard' && ground[j]!.part === 'scrapYard') continue;
+        expect(
+          overlap(placementBounds(ground[i]!), placementBounds(ground[j]!)),
+          `${ground[i]!.part} over ${ground[j]!.part}`,
+        ).toBe(false);
+      }
+    }
+  });
+
+  it('raises a paper mill’s 60 × 2.4 m recovery stack behind the body beside the tanks', () => {
+    const e = indById('heavy-paper-2');
+    const body: SetbackBox = { w: 40, d: 40, h: 13, yOffset: 0 };
+    for (const lot of [null, lotOf(60)]) {
+      const placed = computePartPlacements(e, body, body, 'S', lot);
+      const [stack] = placed.filter((p) => p.part === 'recoveryStack');
+      expect(stack!.size).toEqual([2.4, 60, 2.4]);
+      expect(bottomOf(stack!)).toBeCloseTo(0, 9);
+      expect(stack!.offset[2]).toBeLessThan(-20);
+      for (const t of placed.filter((p) => p.part === 'tanks')) {
+        expect(overlap(placementBounds(t), placementBounds(stack!))).toBe(false);
+      }
+    }
+    // The shipped lots are too tight for the pile, so the stack is what rises behind the mill there.
+    expect(only(southern(e), 'recoveryStack')).toHaveLength(1);
+  });
+
+  it('stands every identifying part that a shipped lot has room for on a south-fronting example of each kind', () => {
+    const examples: Record<string, string> = {
+      workshop: 'ind-workshop-2',
+      flex: 'ind-flex-1',
+      warehouse: 'ind-warehouse-2',
+      factory: 'ind-factory-1',
+      foodplant: 'heavy-food-2',
+      chemical: 'heavy-chem-2',
+      metals: 'heavy-metals-3',
+      paper: 'heavy-paper-2',
+    };
+    /** What the shipped lots leave no room for: a 24 m chip pile, and a 20 m scrap yard beside a furnace and three stoves. */
+    const tight: readonly BuildingPart[] = ['chipPile', 'scrapYard', 'gantry'];
+    for (const [kind, parts] of Object.entries(INDUSTRIAL_IDENTIFYING_PARTS)) {
+      const plan = southern(indById(examples[kind]!));
+      for (const part of parts) {
+        if (tight.includes(part)) continue;
+        expect(only(plan, part).length, `${examples[kind]} ${part}`).toBeGreaterThan(0);
+      }
+    }
   });
 });
 

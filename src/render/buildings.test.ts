@@ -29,6 +29,7 @@ import {
   BuildingInstance,
   BuildingState,
   CommercialKind,
+  IndustrialKind,
   Problem,
   ZoneType,
 } from '../shared/types';
@@ -794,6 +795,44 @@ describe('day facade (UI-SPEC §6.6 Stage 1) — extends the §6.5 material, no 
       updated: [],
     });
     expect(instancer.getPickables().length).toBe(kindCatalog.length);
+  });
+
+  it('constructs the kind-palette body and roof for every industrial kind at every level, the windowless food plant among them, without throwing', () => {
+    const kinds: IndustrialKind[] = [
+      'workshop',
+      'warehouse',
+      'factory',
+      'flex',
+      'foodplant',
+      'chemical',
+      'metals',
+      'paper',
+    ];
+    const heavy: readonly IndustrialKind[] = ['foodplant', 'chemical', 'metals', 'paper'];
+    const kindCatalog: BuildingCatalogEntry[] = kinds.flatMap((kind) =>
+      [1, 2, 3].map((level) => ({
+        ...INDUSTRIAL,
+        id: `${kind}-${level}`,
+        zone: heavy.includes(kind) ? ZoneType.IndHeavy : ZoneType.Industrial,
+        kind,
+        level,
+      })),
+    );
+    const instancer = new BuildingInstancer(new THREE.Scene(), kindCatalog, flatHeightAt);
+    instancer.apply({
+      added: kindCatalog.map((e, i) => instanceAt(i + 1, i * 4, 0, { catalogId: e.id })),
+      removed: [],
+      updated: [],
+    });
+    expect(instancer.getPickables().length).toBe(kindCatalog.length);
+    // The food plant's material still carries the night graph (the kit's
+    // storeys read its grid); its panes are dropped inside the shader.
+    const foodplant = instancer.getPickables().find((p) => p.catalogId === 'foodplant-1')
+      ?.mesh as THREE.InstancedMesh;
+    expect((foodplant.material as MeshStandardNodeMaterial).emissiveNode).not.toBeNull();
+    expect(windowGridSize(kindCatalog.find((e) => e.id === 'foodplant-1')!).cols).toBeGreaterThan(
+      0,
+    );
   });
 
   it('renders one instance per archetype with correct matrix/id bookkeeping and exactly one InstancedMesh per catalog entry (no draw-call growth)', () => {

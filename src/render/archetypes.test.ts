@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   archetypeFor,
   hasMansard,
+  hasMonitorRoof,
   hasPart,
   isApartmentEntry,
   isCleanIndustry,
@@ -210,12 +211,21 @@ describe('archetypeFor', () => {
     expect(partsFor(ind('workshop'))).toEqual([
       'rollUpDoors',
       'walkDoor',
+      'glassFront',
       'wainscot',
       'gutter',
       'downspout',
       'ridgeVent',
     ]);
-    expect(partsFor(ind('warehouse', 2, 0))).toEqual([...dockBank, 'panelReveal', 'parapetBand']);
+    expect(partsFor(ind('warehouse', 2, 0))).toEqual([
+      ...dockBank,
+      'panelReveal',
+      'tiltBand',
+      'parapetBand',
+      'dockTrailer',
+      'trailerAxle',
+      'guardBooth',
+    ]);
     expect(partsFor(ind('factory'))).toEqual([
       'monitorRoof',
       'clerestory',
@@ -224,24 +234,91 @@ describe('archetypeFor', () => {
       'wainscot',
       'gutter',
       'downspout',
+      'baghouse',
+      'stack',
+      'silo',
+      'yardFence',
     ]);
-    expect(partsFor(ind('flex', 1, 0))).toEqual(['roofArray', 'entryCanopy', 'wainscot']);
-    expect(partsFor(ind('foodplant'))).toEqual([...dockBank, 'condenser']);
+    expect(partsFor(ind('flex', 1, 0))).toEqual([
+      'roofArray',
+      'entryCanopy',
+      'glassFront',
+      'rollUpDoors',
+      'wainscot',
+    ]);
+    expect(partsFor(ind('foodplant'))).toEqual([...dockBank, 'condenser', 'penthouse', 'silo']);
     expect(partsFor(ind('chemical'))).toEqual([
       'tanks',
       'bundWall',
       'bullet',
       'pipeRack',
       'processColumn',
+      'flare',
+      'flareTip',
+      'coolingTower',
+      'coolingFan',
     ]);
     expect(partsFor(ind('metals'))).toEqual([
       'monitorRoof',
+      'ridgeVent',
       'furnace',
       'stove',
       'skipBridge',
       'duct',
+      'stack',
+      'scrapYard',
+      'gantry',
     ]);
-    expect(partsFor(ind('paper'))).toEqual(['monitorRoof', 'tanks', 'chipPile', 'stacker']);
+    expect(partsFor(ind('paper'))).toEqual([
+      'monitorRoof',
+      'tanks',
+      'chipPile',
+      'stacker',
+      'recoveryStack',
+    ]);
+  });
+
+  it('holds every part the art table names for each industrial kind', () => {
+    const named: Record<string, string[]> = {
+      workshop: ['wainscot', 'rollUpDoors', 'glassFront'],
+      flex: ['glassFront', 'rollUpDoors', 'wainscot'],
+      warehouse: [
+        'loadingDock',
+        'rollUpDoors',
+        'dockBumper',
+        'dockLight',
+        'dockTrailer',
+        'officeCorner',
+        'guardBooth',
+        'tiltBand',
+        'panelReveal',
+      ],
+      factory: ['baghouse', 'stack', 'silo', 'yardFence', 'monitorRoof'],
+      foodplant: ['condenser', 'penthouse', 'silo', 'loadingDock'],
+      chemical: ['tanks', 'bundWall', 'pipeRack', 'flare', 'coolingTower'],
+      metals: ['monitorRoof', 'ridgeVent', 'stack', 'scrapYard', 'gantry'],
+      paper: ['chipPile', 'monitorRoof', 'recoveryStack', 'tanks'],
+    };
+    for (const [kind, parts] of Object.entries(named)) {
+      const e = entry({ category: 'ind', kind: kind as BuildingKind, level: 1, pollution: 40 });
+      for (const part of parts) expect(partsFor(e), `${kind} ${part}`).toContain(part);
+    }
+  });
+
+  it('gives a factory the old plant’s monitor roof at level 1 only, keeping its clerestory above', () => {
+    const factory = (level: number) =>
+      entry({ category: 'ind', kind: 'factory', level, pollution: 40 });
+    expect(hasMonitorRoof(factory(1))).toBe(true);
+    expect(hasMonitorRoof(factory(2))).toBe(false);
+    expect(hasMonitorRoof(factory(3))).toBe(false);
+    expect(hasMonitorRoof(entry({ category: 'ind', kind: 'metals', level: 1 }))).toBe(false);
+    expect(hasPart(factory(1), 'monitorRoof')).toBe(true);
+    for (const level of [2, 3]) {
+      expect(hasPart(factory(level), 'monitorRoof')).toBe(false);
+      expect(hasPart(factory(level), 'clerestory')).toBe(true);
+      expect(hasPart(factory(level), 'baghouse')).toBe(true);
+    }
+    expect(hasPart(entry({ category: 'ind', kind: 'metals', level: 3 }), 'monitorRoof')).toBe(true);
   });
 
   it('leaves a kindless industrial building the plain parts of its archetype', () => {

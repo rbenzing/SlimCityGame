@@ -138,17 +138,33 @@ const PART_COLOR: Readonly<Record<BuildingPart, number>> = {
   clerestory: materialHex('whiteBrick'),
   entryCanopy: materialHex('whiteBrick'),
   condenser: GALVANISED,
-  bundWall: KIT_DARK,
+  bundWall: materialHex('concreteDike'),
   bullet: materialHex('whitePlaster'),
-  pipeRack: materialHex('metalPlates'),
+  pipeRack: materialHex('rackSteel'),
   processColumn: materialHex('whitePlaster'),
   // A dark rust: the chart's rusted metal read black at the lit side's own value, so it is lifted.
   furnace: RUST,
   stove: RUST,
   skipBridge: materialHex('metalPlates'),
   duct: materialHex('metalPlates'),
-  chipPile: materialHex('brightWood'),
+  chipPile: materialHex('woodChip'),
   stacker: materialHex('metalPlates'),
+  // The second pass's industrial parts: the yard plant in the chart's galvanised and clad steels.
+  tiltBand: rgb255ToHex(SATURATED.tiltBandBlue),
+  dockTrailer: materialHex('insulatedWhite'),
+  trailerAxle: KIT_DARK,
+  guardBooth: materialHex('whitePlaster'),
+  glassFront: materialHex('tintedGlass'),
+  baghouse: materialHex('galvanised'),
+  stack: materialHex('galvanised'),
+  silo: materialHex('aluminiumClad'),
+  yardFence: materialHex('galvanised'),
+  flare: materialHex('galvanised'),
+  flareTip: rgb255ToHex(SATURATED.yellow), // lit: a warm flame at the tip
+  coolingFan: materialHex('galvanised'),
+  scrapYard: materialHex('rustedMetal'),
+  gantry: materialHex('rackSteel'),
+  recoveryStack: materialHex('galvanised'),
   // The apartment kit: the hip and the hood take the building's own roof colour, the box bay its wall's.
   hipRoofBlock: KIT_DARK,
   mailKiosk: materialHex('metalPlates'),
@@ -195,6 +211,10 @@ const HOTEL_ACCENTS: readonly SaturatedName[] = ['navyAccent', 'greenAccent'];
 const AWNING_LIVERIES: readonly MaterialName[] = ['greenPlaster', 'redPlaster', 'darkWood'];
 /** An office's ribbon bands: grey or buff precast, by building id. */
 const PRECAST: readonly MaterialName[] = ['precastGrey', 'precastBuff'];
+/** A metal building's two-tone wainscot: rustic red, burnished slate or evergreen, by building id. */
+const WAINSCOT_LIVERIES: readonly MaterialName[] = ['ribbedRed', 'ribbedSlate', 'ribbedGreen'];
+/** A tilt-up warehouse's colour band: blue or red, by building id. */
+const TILT_BAND_LIVERIES: readonly SaturatedName[] = ['tiltBandBlue', 'tiltBandRed'];
 
 /** One of `names` by building id, salted so a strip's tenants differ from each other. */
 function pick<T>(names: readonly T[], buildingId: number, salt = 0): T {
@@ -210,8 +230,9 @@ const GLAZING_BLUE: RGB = (() => {
 /**
  * The parts that glow: sign bands, the pylon and price-sign faces, the
  * supermarket tower's glazing, the office lobby portal, a distribution
- * centre's glazed office corner and a factory's clerestory. They share the
- * kit's emissive material, which follows the night factor as a window does.
+ * centre's glazed office corner, a metal building's glazed office front, a
+ * factory's clerestory and the flare's tip. They share the kit's emissive
+ * material, which follows the night factor as a window does.
  */
 export const LIT_PARTS: ReadonlySet<BuildingPart> = new Set<BuildingPart>([
   'signageBand',
@@ -223,6 +244,8 @@ export const LIT_PARTS: ReadonlySet<BuildingPart> = new Set<BuildingPart>([
   'clerestory',
   'storefrontBand',
   'dockLight',
+  'glassFront',
+  'flareTip',
 ]);
 
 /** A lit cabinet is white by day on whichever side the sun is: its glow never falls below this share. */
@@ -305,6 +328,14 @@ const PART_GEOMETRY: Partial<Record<BuildingPart, () => THREE.BufferGeometry>> =
   chipPile: () => new THREE.ConeGeometry(0.5, 1, 16),
   hipRoofBlock: hipRoofBlockGeometry,
   entryHood: entryHoodGeometry,
+  stack: () => new THREE.CylinderGeometry(0.5, 0.5, 1, 12),
+  silo: () => new THREE.CylinderGeometry(0.5, 0.5, 1, 14),
+  flare: () => new THREE.CylinderGeometry(0.5, 0.5, 1, 10),
+  flareTip: () => new THREE.CylinderGeometry(0.5, 0.5, 1, 10),
+  coolingFan: () => new THREE.CylinderGeometry(0.5, 0.5, 1, 10),
+  recoveryStack: () => new THREE.CylinderGeometry(0.5, 0.5, 1, 12),
+  // An axle lies across the trailer: the cylinder's length runs along X, scaled by the part's width.
+  trailerAxle: () => new THREE.CylinderGeometry(0.5, 0.5, 1, 8).rotateZ(Math.PI / 2),
 };
 
 /**
@@ -513,9 +544,20 @@ export const TANK_SPACING_M = 7.5;
 
 // The industrial kit's parts, absolute metres.
 
-/** A metal building: a wainscot round every face, gutters along both eaves, downspouts, a ridge vent. */
-export const WAINSCOT_HEIGHT_M = 1;
+/** A metal building: a two-tone wainscot 2.4 m round every face, gutters along both eaves, downspouts, a ridge vent. */
+export const WAINSCOT_HEIGHT_M = 2.4;
 const WAINSCOT_PROUD_M = 0.08;
+/**
+ * The glazed office front of a metal building: a flex building's takes this
+ * share of the street face two storeys tall; a workshop's takes the end of the
+ * face its door row leaves free, one storey, where that end is at least the
+ * minimum wide.
+ */
+export const GLASS_FRONT_SHARE = 0.6;
+export const GLASS_FRONT_MIN_M = 3;
+const GLASS_FRONT_PROUD_M = 0.15;
+/** A flex building's grade doors at the back: two from this span of back wall, else one. */
+export const FLEX_TWO_DOOR_SPAN_M = 24;
 export const GUTTER_M = 0.2;
 export const DOWNSPOUT_M = 0.13;
 export const DOWNSPOUT_SPACING_M = 6;
@@ -547,20 +589,57 @@ export const OFFICE_CORNER_HEIGHT_M = 7.3;
 export const OFFICE_CORNER_PROUD_M = 4;
 export const OFFICE_CANOPY_SIZE_M: readonly [number, number, number] = [3, 0.2, 1.5];
 export const OFFICE_CANOPY_HEIGHT_M = 3;
-export const PANEL_REVEAL_SPACING_M = 7.6;
+export const PANEL_REVEAL_SPACING_M = 8;
 const PANEL_REVEAL_WIDTH_M = 0.1;
 const PANEL_REVEAL_PROUD_M = 0.05;
 export const PARAPET_BAND_HEIGHT_M = 1;
 const PARAPET_BAND_PROUD_M = 0.1;
+/** A tilt-up warehouse's colour band, under the parapet band, in the top third of every face. */
+export const TILT_BAND_M = 2.4;
+const TILT_BAND_PROUD_M = 0.1;
+/**
+ * A dry van backed onto one dock door in three: across, tall and long, its
+ * body on a chassis over two axles. It stands only where the lot stripes a
+ * trailer row before the dock, which is the truck court.
+ */
+export const TRAILER_SIZE_M: readonly [number, number, number] = [2.6, 4.1, 16];
+export const TRAILER_DOOR_STEP = 3;
+const TRAILER_WHEEL_M = 1;
+const TRAILER_CHASSIS_M = 0.4;
+const TRAILER_AXLE_LENGTH_M = 2.4;
+/** Where the two axles stand from the trailer's rear. */
+const TRAILER_AXLES_M: readonly [number, number] = [2.5, 3.8];
+/** A guard booth at the lot's drive mouth: wide, tall, deep. */
+export const GUARD_BOOTH_SIZE_M: readonly [number, number, number] = [1.2, 2.6, 1.8];
 /** A factory's clerestory: a lit band along both sides of the monitor. */
 export const CLERESTORY_HEIGHT_M = 0.6;
 const CLERESTORY_PROUD_M = 0.1;
 export const ENTRY_CANOPY_SIZE_M: readonly [number, number, number] = [3, 0.2, 1.5];
 export const ENTRY_CANOPY_HEIGHT_M = 3;
-/** A food plant's evaporative condensers, a 700-ton unit. */
-export const CONDENSER_SIZE_M: readonly [number, number, number] = [6, 3, 3.6];
-export const CONDENSER_COUNT = 2;
-/** The chemical plant's bund, bullet, pipe rack and process column. */
+/** A food plant's evaporative condensers, a 700-ton unit's plan 2.4 m tall, two to four by level. */
+export const CONDENSER_SIZE_M: readonly [number, number, number] = [6, 2.4, 3.6];
+export const CONDENSER_MAX = 4;
+/** The condensers a food plant of `level` carries: two, three or four. */
+export const condenserCount = (level: number): number => Math.min(CONDENSER_MAX, level + 1);
+/** A food plant's roof penthouse: wide, tall, deep. */
+export const FOOD_PENTHOUSE_SIZE_M: readonly [number, number, number] = [4, 3, 4];
+/** A silo is 4 m across: a factory's 12 m tall at the rear, a food plant's pair 15 m beside the body. */
+export const SILO_DIAMETER_M = 4;
+export const FACTORY_SILO_HEIGHT_M = 12;
+export const FOOD_SILO_HEIGHT_M = 15;
+export const FOOD_SILO_COUNT = 2;
+/** A factory's baghouse: a box on a frame of four posts, 6 m in all, with a 12 m stack beside it. */
+export const BAGHOUSE_SIZE_M: readonly [number, number, number] = [3, 4, 3];
+export const BAGHOUSE_FRAME_M = 2;
+export const BAGHOUSE_HEIGHT_M = BAGHOUSE_SIZE_M[1] + BAGHOUSE_FRAME_M;
+const BAGHOUSE_POST_M = 0.2;
+export const STACK_HEIGHT_M = 12;
+export const STACK_DIAMETER_M = 1.2;
+/** A factory's material yard, fenced behind the body: posts every 3 m under a top rail. */
+export const YARD_FENCE_M = 1.8;
+export const YARD_FENCE_POST_M = 0.1;
+export const YARD_FENCE_SPACING_M = 3;
+/** The chemical plant's bund, bullet, pipe rack, process column, flare and cooling tower. */
 export const BUND_HEIGHT_M = 1;
 export const BUND_MARGIN_M = 2;
 const BUND_THICKNESS_M = 0.3;
@@ -569,12 +648,37 @@ export const BULLET_LENGTH_M = 15;
 const BULLET_SADDLE_M = 0.8;
 export const RACK_WIDTH_M = 6;
 export const RACK_BENT_SPACING_M = 6;
-export const RACK_CLEAR_M = 5.5;
+export const RACK_CLEAR_M = 5;
 const RACK_TIER_GAP_M = 1.5;
 const RACK_BEAM_M = 0.4;
 const RACK_COLUMN_M = 0.3;
 export const COLUMN_DIAMETER_M = 3;
 export const COLUMN_RISE = 1.6;
+export const FLARE_HEIGHT_M = 30;
+export const FLARE_DIAMETER_M = 0.6;
+export const FLARE_TIP_M = 1.5;
+/** A chemical plant's cooling tower: wide, tall, deep, with two fan shrouds on top. */
+export const CHEM_COOLING_TOWER_SIZE_M: readonly [number, number, number] = [11, 5.6, 7];
+export const COOLING_FAN_M = 2;
+const COOLING_FAN_HEIGHT_M = 1;
+/** The steelworks' ridge vent, a raised strip the length of the melt shop's ridge, its baghouse stack, and the scrap yard under its gantry. */
+export const MELT_RIDGE_VENT_M = 1.5;
+const MELT_RIDGE_VENT_WIDTH_M = 2;
+export const MELT_STACK_HEIGHT_M = 36;
+export const MELT_STACK_DIAMETER_M = 1.8;
+export const SCRAP_YARD_SIZE_M: readonly [number, number] = [20, 12];
+/** The pile's three tiers, each as its share of the yard's plan and its height. */
+const SCRAP_TIERS: readonly (readonly [number, number])[] = [
+  [1, 1.5],
+  [0.7, 1.5],
+  [0.4, 1.2],
+];
+export const GANTRY_HEIGHT_M = 10;
+export const GANTRY_LEG_M = 0.6;
+const GANTRY_BEAM_M = 0.8;
+/** The paper mill's recovery boiler stack, the kit's tallest part. */
+export const RECOVERY_STACK_HEIGHT_M = 60;
+export const RECOVERY_STACK_DIAMETER_M = 2.4;
 /** The steelworks' blast furnace, stoves, skip bridge and duct. */
 export const FURNACE_DIAMETER_M = 8;
 export const FURNACE_RISE = 1.8;
@@ -586,8 +690,8 @@ export const SKIP_BRIDGE_M = 1.5;
 const SKIP_BRIDGE_PITCH = Math.PI / 3;
 export const DUCT_M = 1.5;
 /** The paper mill's wood chip pile and its stacker. */
-export const CHIP_PILE_DIAMETER_M = 25;
-export const CHIP_PILE_HEIGHT_M = 8;
+export const CHIP_PILE_DIAMETER_M = 24;
+export const CHIP_PILE_HEIGHT_M = 12;
 export const STACKER_M = 1.2;
 /** How far from the pile's crown the stacker's foot stands on the yard. */
 const STACKER_REACH_M = 15.5;
@@ -1390,14 +1494,15 @@ export function serviceDoorCount(kind: 'workshop' | 'factory', span: number): nu
   return Math.max(1, Math.min(SHOP_DOOR_MAX, Math.floor(span / SHOP_DOOR_SPACING_M), fitting));
 }
 
-/** A row of service doors across a frontage, centred, with a walk door at its end: the doors' centres and the walk door's. */
-function doorRow(span: number, count: number): { doors: number[]; walk: number } {
+/** A row of service doors across a frontage, centred, with a walk door at its end: the doors' centres, the walk door's, and the row's whole width. */
+function doorRow(span: number, count: number): { doors: number[]; walk: number; total: number } {
   const pitch = SHOP_DOOR_SPACING_M;
   const total = count * pitch + 2 * WALK_DOOR_GAP_M;
   const start = -total / 2;
   return {
     doors: Array.from({ length: count }, (_, i) => start + pitch / 2 + i * pitch),
     walk: Math.min(span / 2 - WALK_DOOR_WIDTH_M, start + count * pitch + WALK_DOOR_GAP_M),
+    total,
   };
 }
 
@@ -1521,6 +1626,12 @@ function chemicalYard(r: Rear): PartPlacement[] {
   }
   const columnTop = topTier + RACK_BEAM_M / 2;
   for (let bent = RACK_COLUMN_M * 1.2; bent < farmDepth; bent += RACK_BENT_SPACING_M) {
+    // Each bent is a portal: a cross beam at each tier between its two columns.
+    for (const y of [rackY, topTier]) {
+      out.push(
+        atRear(r, 'pipeRack', 0, bent, RACK_WIDTH_M + RACK_COLUMN_M, RACK_COLUMN_M, RACK_BEAM_M, y),
+      );
+    }
     for (const k of [-1, 1]) {
       out.push(
         atRear(
@@ -1597,6 +1708,293 @@ function chemicalYard(r: Rear): PartPlacement[] {
     clearOf(columnAt(k * columnAlong)),
   );
   if (columnSide) out.push(columnAt(columnSide * columnAlong));
+
+  // The flare at the lot's rear corner, or past the bund's corner where the lot is unbounded.
+  const span = facadeSpan(r.baseBox, r.back);
+  const flareIn = PLANT_GAP_M + FLARE_DIAMETER_M / 2;
+  const flareAt = (a: number, o: number): PartPlacement[] => [
+    atRear(
+      r,
+      'flare',
+      a,
+      o,
+      FLARE_DIAMETER_M,
+      FLARE_DIAMETER_M,
+      FLARE_HEIGHT_M,
+      FLARE_HEIGHT_M / 2,
+    ),
+    atRear(
+      r,
+      'flareTip',
+      a,
+      o,
+      FLARE_DIAMETER_M,
+      FLARE_DIAMETER_M,
+      FLARE_TIP_M,
+      FLARE_HEIGHT_M + FLARE_TIP_M / 2,
+    ),
+  ];
+  const flareSites: (readonly [number, number])[] = Number.isFinite(room.out)
+    ? sides.map((k) => [k * ((k > 0 ? room.high : room.low) - flareIn), room.out - flareIn])
+    : [[half + flareIn, farmDepth + margin + BUND_THICKNESS_M + flareIn]];
+  firstClear(
+    out,
+    r.lot,
+    flareSites.map(([a, o]) => flareAt(a, o)),
+  );
+
+  // The cooling tower: beyond the column along the back wall, or beside either end wall astride the back wall's plane.
+  const [ctw, cth, ctd] = CHEM_COOLING_TOWER_SIZE_M;
+  const towerAt = (a: number, o: number, alongWall: boolean): PartPlacement[] => {
+    const box = atRear(
+      r,
+      'coolingTower',
+      a,
+      o,
+      alongWall ? ctw : ctd,
+      alongWall ? ctd : ctw,
+      cth,
+      cth / 2,
+    );
+    const fans = [-1, 1].map((k) =>
+      atRear(
+        r,
+        'coolingFan',
+        a + (alongWall ? (k * ctw) / 4 : 0),
+        o + (alongWall ? 0 : (k * ctw) / 4),
+        COOLING_FAN_M,
+        COOLING_FAN_M,
+        COOLING_FAN_HEIGHT_M,
+        cth + COOLING_FAN_HEIGHT_M / 2,
+      ),
+    );
+    return [{ ...box, color: materialUnit('concreteBlock') }, ...fans];
+  };
+  const behindBund = farmDepth + margin + BUND_THICKNESS_M + PLANT_GAP_M + ctd / 2;
+  const towerSites: (readonly [number, number, boolean])[] = [
+    ...sides.flatMap((k): (readonly [number, number, boolean])[] => [
+      [k * (half + 2 * PLANT_GAP_M + COLUMN_DIAMETER_M + ctw / 2), PLANT_GAP_M + ctd / 2, true],
+      [k * (span / 2 + PLANT_GAP_M + ctd / 2), 0, false],
+    ]),
+    // Behind the bund, at the middle or toward either side of the farm.
+    [0, behindBund, true],
+    ...sides.map((k): readonly [number, number, boolean] => [
+      k * (half - ctw / 2),
+      behindBund,
+      true,
+    ]),
+  ];
+  firstClear(
+    out,
+    r.lot,
+    towerSites.map(([a, o, alongWall]) => towerAt(a, o, alongWall)),
+  );
+  return out;
+}
+
+/**
+ * Pushes the first group of parts that stands inside the lot, clear of its
+ * hard ground and of everything already in `out` on the ground; the duct and
+ * the stacker, up on the slant, block nothing. True when one was placed.
+ */
+function firstClear(
+  out: PartPlacement[],
+  lot: KitLot | null,
+  candidates: readonly (readonly PartPlacement[])[],
+): boolean {
+  const ground = out.filter((o) => o.part !== 'duct' && o.part !== 'stacker');
+  const clear = (ps: readonly PartPlacement[]): boolean =>
+    standsFree(ps, lot) &&
+    !ps.some((p) => ground.some((o) => rectsOverlap(placementBounds(o), placementBounds(p))));
+  const found = candidates.find(clear);
+  if (!found) return false;
+  out.push(...found);
+  return true;
+}
+
+/** A round plant stood behind the back wall: `along` it from the middle, `out` from it to the middle of the plant. */
+function roundAtRear(
+  r: Rear,
+  part: BuildingPart,
+  along: number,
+  out: number,
+  diameter: number,
+  height: number,
+): PartPlacement {
+  return atRear(r, part, along, out, diameter, diameter, height, height / 2);
+}
+
+/** A factory's material yard: the ground behind the back wall as deep as the lot allows, up to this, fenced on three sides. */
+const YARD_DEPTH_MAX_M = 20;
+const YARD_DEPTH_MIN_M = 4;
+const YARD_FENCE_INSET_M = 0.5;
+
+/**
+ * A factory's yard: the baghouse on its frame with the stack beside it, behind
+ * the back wall at either end or beside either end wall; a silo behind the
+ * wall where there is room; and the fence round the yard, each post and rail
+ * only where the ground is free.
+ */
+function factoryYard(r: Rear): PartPlacement[] {
+  const out: PartPlacement[] = [];
+  const span = facadeSpan(r.baseBox, r.back);
+  const [bw, bh, bd] = BAGHOUSE_SIZE_M;
+  const baghouseAt = (a: number, o: number, stackEnd: 1 | -1): PartPlacement[] => {
+    const pieces = [atRear(r, 'baghouse', a, o, bw, bd, bh, BAGHOUSE_FRAME_M + bh / 2)];
+    for (const i of [-1, 1]) {
+      for (const j of [-1, 1]) {
+        pieces.push(
+          atRear(
+            r,
+            'baghouse',
+            a + (i * (bw - BAGHOUSE_POST_M)) / 2,
+            o + (j * (bd - BAGHOUSE_POST_M)) / 2,
+            BAGHOUSE_POST_M,
+            BAGHOUSE_POST_M,
+            BAGHOUSE_FRAME_M,
+            BAGHOUSE_FRAME_M / 2,
+          ),
+        );
+      }
+    }
+    pieces.push(
+      roundAtRear(
+        r,
+        'stack',
+        a + stackEnd * (bw / 2 + STACK_DIAMETER_M / 2),
+        o,
+        STACK_DIAMETER_M,
+        STACK_HEIGHT_M,
+      ),
+    );
+    return pieces;
+  };
+  const o = PLANT_GAP_M + bd / 2;
+  const baghouseSites: (readonly [number, number, 1 | -1])[] = [];
+  for (const e of [1, -1] as const) {
+    baghouseSites.push([e * (span / 2 - bw / 2), o, -e as 1 | -1]);
+    baghouseSites.push([e * (span / 2 + PLANT_GAP_M + bw / 2), -o, e]);
+  }
+  firstClear(
+    out,
+    r.lot,
+    baghouseSites.map(([a, so, end]) => baghouseAt(a, so, end)),
+  );
+
+  // The silo behind the back wall, or beside either end wall, level with the back or further toward the street.
+  const siloR = SILO_DIAMETER_M / 2;
+  const siloOut = PLANT_GAP_M + siloR;
+  const siloSites: (readonly [number, number])[] = [
+    ...[0, span / 4, -span / 4, span / 2 - siloR, siloR - span / 2].map(
+      (a): readonly [number, number] => [a, siloOut],
+    ),
+    ...[1, -1].flatMap((e): (readonly [number, number])[] => [
+      [e * (span / 2 + siloOut), -siloOut],
+      [e * (span / 2 + siloOut), -siloOut - bd - 2 * PLANT_GAP_M],
+    ]),
+  ];
+  firstClear(
+    out,
+    r.lot,
+    siloSites.map(([a, so]) => [
+      roundAtRear(r, 'silo', a, so, SILO_DIAMETER_M, FACTORY_SILO_HEIGHT_M),
+    ]),
+  );
+
+  out.push(...yardFence(r, out));
+  return out;
+}
+
+/** The fence round a factory's yard: a rail at the top of posts every 3 m along the far side and the two returns from the body's corners. */
+function yardFence(r: Rear, standing: readonly PartPlacement[]): PartPlacement[] {
+  const span = facadeSpan(r.baseBox, r.back);
+  const depth = Math.min(YARD_DEPTH_MAX_M, rearRoom(r).out - YARD_FENCE_INSET_M);
+  if (depth < YARD_DEPTH_MIN_M) return [];
+  const out: PartPlacement[] = [];
+  const t = YARD_FENCE_POST_M;
+  // The returns run inside the body's corner lines, so the fence never reaches past the body into a drive aisle beside it.
+  const edge = span / 2 - t / 2;
+  const runs: {
+    from: readonly [number, number];
+    to: readonly [number, number];
+    closed: boolean;
+  }[] = [
+    { from: [-edge, depth], to: [edge, depth], closed: true },
+    { from: [-edge, YARD_FENCE_INSET_M], to: [-edge, depth], closed: false },
+    { from: [edge, YARD_FENCE_INSET_M], to: [edge, depth], closed: false },
+  ];
+  for (const run of runs) {
+    const da = run.to[0] - run.from[0];
+    const dout = run.to[1] - run.from[1];
+    const length = Math.hypot(da, dout);
+    const alongWall = Math.abs(dout) < 1e-9;
+    const rail = atRear(
+      r,
+      'yardFence',
+      (run.from[0] + run.to[0]) / 2,
+      (run.from[1] + run.to[1]) / 2,
+      alongWall ? length + t : t,
+      alongWall ? t : length,
+      t,
+      YARD_FENCE_M - t / 2,
+    );
+    if (standsFree(rail, r.lot)) out.push(rail);
+    // A return stops short of the far corner, which the far side's own end post takes.
+    const end = run.closed ? length + 1e-9 : length - 1e-9;
+    for (let at = 0; at <= end; at += YARD_FENCE_SPACING_M) {
+      const post = atRear(
+        r,
+        'yardFence',
+        run.from[0] + (da * at) / length,
+        run.from[1] + (dout * at) / length,
+        t,
+        t,
+        YARD_FENCE_M,
+        YARD_FENCE_M / 2,
+      );
+      if (
+        standsFree(post, r.lot) &&
+        !standing.some((s) => rectsOverlap(placementBounds(s), placementBounds(post)))
+      ) {
+        out.push(post);
+      }
+    }
+  }
+  return out;
+}
+
+/**
+ * A food plant's silos: a pair beside the body against a wall that is neither
+ * the street face nor the dock's, at the middle of that wall or toward
+ * either end, where the lot has room.
+ */
+function foodYard(r: Rear, bank: DockBank | null): PartPlacement[] {
+  const out: PartPlacement[] = [];
+  const walls = (['N', 'S', 'E', 'W'] as const).filter((w) => w !== r.side && w !== bank?.wall);
+  const siloR = SILO_DIAMETER_M / 2;
+  const pitch = SILO_DIAMETER_M + PLANT_GAP_M;
+  const sites: (readonly PartPlacement[])[] = [];
+  for (const wall of walls) {
+    const span = facadeSpan(r.baseBox, wall);
+    const outDist = halfDepthTo(r.baseBox, wall) + PLANT_GAP_M + siloR;
+    for (const centre of [0, span / 4, -span / 4]) {
+      sites.push(
+        [-1, 1].map((k) =>
+          onSide(
+            'silo',
+            wall,
+            centre + (k * pitch) / 2,
+            outDist,
+            SILO_DIAMETER_M,
+            SILO_DIAMETER_M,
+            FOOD_SILO_HEIGHT_M,
+            FOOD_SILO_HEIGHT_M / 2,
+          ),
+        ),
+      );
+    }
+  }
+  firstClear(out, r.lot, sites);
   return out;
 }
 
@@ -1659,9 +2057,14 @@ function steelworksYard(r: Rear, stack: { x: number; z: number } | null): PartPl
   const end = site.end;
   const furnace = round('furnace', ...site.furnace, FURNACE_DIAMETER_M, furnaceH);
   out.push(furnace);
+  /** How far the furnace and its stoves reach from the back wall's plane, toward the street, when they stand beside the body. */
+  let plantFront = site.furnace[1] - furnaceR;
   for (let i = 0; i < STOVE_COUNT; i += 1) {
     const stove = round('stove', ...site.stove(i), STOVE_DIAMETER_M, stoveH);
-    if (standsFree(stove, r.lot)) out.push(stove);
+    if (standsFree(stove, r.lot)) {
+      out.push(stove);
+      plantFront = Math.min(plantFront, site.stove(i)[1] - stoveR);
+    }
   }
 
   // The skip bridge rises to the furnace's far rim from the yard, steeper where the lot is short of room.
@@ -1718,6 +2121,82 @@ function steelworksYard(r: Rear, stack: { x: number; z: number } | null): PartPl
       pitch: Math.atan2(dy, run),
     });
   }
+
+  // The scrap yard under its gantry: toward the far end of the back wall from the furnace, along it or out from it, or beside that end wall.
+  const [sl, sw] = SCRAP_YARD_SIZE_M;
+  const legOut = sl / 2 + GANTRY_LEG_M;
+  const scrapAt = (a: number, o: number, alongWall: boolean): PartPlacement[] => {
+    const pieces: PartPlacement[] = [];
+    let y = 0;
+    for (const [share, h] of SCRAP_TIERS) {
+      const l = sl * share;
+      const w = sw * share;
+      pieces.push(atRear(r, 'scrapYard', a, o, alongWall ? l : w, alongWall ? w : l, h, y + h / 2));
+      y += h;
+    }
+    for (const k of [-1, 1]) {
+      pieces.push(
+        atRear(
+          r,
+          'gantry',
+          a + (alongWall ? k * legOut : 0),
+          o + (alongWall ? 0 : k * legOut),
+          GANTRY_LEG_M,
+          GANTRY_LEG_M,
+          GANTRY_HEIGHT_M,
+          GANTRY_HEIGHT_M / 2,
+        ),
+      );
+    }
+    const beam = 2 * legOut + GANTRY_LEG_M;
+    pieces.push(
+      atRear(
+        r,
+        'gantry',
+        a,
+        o,
+        alongWall ? beam : GANTRY_BEAM_M,
+        alongWall ? GANTRY_BEAM_M : beam,
+        GANTRY_BEAM_M,
+        GANTRY_HEIGHT_M + GANTRY_BEAM_M / 2,
+      ),
+    );
+    return pieces;
+  };
+  const reach = legOut + GANTRY_LEG_M / 2 + PLANT_GAP_M;
+  const beside = (e: number): number => e * (span / 2 + PLANT_GAP_M + sw / 2);
+  // Alongside the body, the yard runs toward the street from as far back as the lot's rear edge allows.
+  const alongside = Math.min(rearRoom(r).out - PLANT_GAP_M, reach) - reach;
+  const scrapSites: (readonly [number, number, boolean])[] = [
+    [-end * (span / 2 - reach), PLANT_GAP_M + sw / 2, true],
+    [0, PLANT_GAP_M + sw / 2, true],
+    [-end * (span / 2 - sw / 2 - PLANT_GAP_M), PLANT_GAP_M + reach, false],
+    [0, PLANT_GAP_M + reach, false],
+    [beside(-end), alongside, false],
+    [beside(end), plantFront - PLANT_GAP_M - reach, false],
+  ];
+  firstClear(
+    out,
+    r.lot,
+    scrapSites.map(([a, o, alongWall]) => scrapAt(a, o, alongWall)),
+  );
+
+  // The baghouse stack: at the far end of the back wall from the furnace, beside either end wall, outside the furnace, or behind the middle.
+  const stackR = MELT_STACK_DIAMETER_M / 2;
+  const stackSites: (readonly [number, number])[] = [
+    [-end * (span / 2 - stackR - PLANT_GAP_M), stackR + PLANT_GAP_M],
+    [-end * (span / 2 + stackR + PLANT_GAP_M), -(stackR + PLANT_GAP_M)],
+    [end * (span / 2 + 2 * PLANT_GAP_M + FURNACE_DIAMETER_M + stackR), site.furnace[1]],
+    [end * (span / 2 + stackR + PLANT_GAP_M), -(stackR + PLANT_GAP_M)],
+    [0, stackR + PLANT_GAP_M],
+  ];
+  firstClear(
+    out,
+    r.lot,
+    stackSites.map(([a, o]) => [
+      roundAtRear(r, 'stack', a, o, MELT_STACK_DIAMETER_M, MELT_STACK_HEIGHT_M),
+    ]),
+  );
   return out;
 }
 
@@ -1775,8 +2254,27 @@ function chipYard(r: Rear): PartPlacement[] {
     x: back.nx * (half + reach + PLANT_GAP_M),
     z: back.nz * (half + reach + PLANT_GAP_M),
   };
+  // The recovery boiler's stack behind the body beside the tank farm, on whichever side the lot leaves room.
+  const stack: PartPlacement[] = [];
+  const farmHalf = ((TANK_COUNT - 1) / 2) * TANK_SPACING_M + TANK_DIAMETER_M / 2;
+  const stackR = RECOVERY_STACK_DIAMETER_M / 2;
+  firstClear(
+    stack,
+    r.lot,
+    [1, -1].map((k) => [
+      roundAtRear(
+        r,
+        'recoveryStack',
+        k * (farmHalf + PLANT_GAP_M + stackR),
+        TANK_GAP_M + stackR,
+        RECOVERY_STACK_DIAMETER_M,
+        RECOVERY_STACK_HEIGHT_M,
+      ),
+    ]),
+  );
   const lot = r.lot;
-  if (!lot) return pieces(target.x, target.z);
+  if (!lot) return [...stack, ...pieces(target.x, target.z)];
+  const standing = [...tanks, ...stack].map(placementBounds);
   let best: { at: PartPlacement[]; cost: number } | null = null;
   for (let x = Math.ceil(lot.lot.x0 + radius); x <= lot.lot.x1 - radius; x += 1) {
     for (let z = Math.ceil(lot.lot.z0 + radius); z <= lot.lot.z1 - radius; z += 1) {
@@ -1786,12 +2284,134 @@ function chipYard(r: Rear): PartPlacement[] {
       const bounds = at.map(placementBounds);
       const pileBounds = bounds[0]!;
       if (bounds.some((b) => rectsOverlap(b, body))) continue;
-      if (tanks.some((t) => rectsOverlap(placementBounds(t), pileBounds))) continue;
+      if (standing.some((s) => rectsOverlap(s, pileBounds))) continue;
       if (!standsFree(at, lot)) continue;
       best = { at, cost };
     }
   }
-  return best?.at ?? [];
+  return [...stack, ...(best?.at ?? [])];
+}
+
+/** The monitor on a roof: along the body's long axis, a share of its width and length. */
+function monitorPlan(topBox: SetbackBox): { w: number; d: number; alongZ: boolean } {
+  const alongZ = topBox.d >= topBox.w;
+  return {
+    alongZ,
+    w: alongZ ? topBox.w * MONITOR_WIDTH_FRACTION : topBox.w * MONITOR_LENGTH_FRACTION,
+    d: alongZ ? topBox.d * MONITOR_LENGTH_FRACTION : topBox.d * MONITOR_WIDTH_FRACTION,
+  };
+}
+
+/**
+ * A metal building's glazed office front on the street face: a flex
+ * building's across the middle, two storeys; a workshop's at the end its door
+ * row leaves free, one storey, and none where that end is too narrow.
+ */
+function glassFrontOf(
+  entry: BuildingCatalogEntry,
+  baseBox: SetbackBox,
+  side: Side,
+  roofY: number,
+): PartPlacement | null {
+  const span = facadeSpan(baseBox, side);
+  const storeys = entry.kind === 'flex' ? 2 : 1;
+  const height = Math.min(storeys * FLOOR_HEIGHT_METERS, roofY - 0.4);
+  let along = 0;
+  let width = Math.max(GLASS_FRONT_MIN_M, span * GLASS_FRONT_SHARE);
+  if (entry.kind !== 'flex') {
+    const row = doorRow(span, serviceDoorCount('workshop', span)).total;
+    width = (span - row) / 2 - 2 * PLANT_GAP_M;
+    if (width < GLASS_FRONT_MIN_M) return null;
+    along = -(span / 2 + row / 2) / 2;
+  }
+  return againstFacade(
+    'glassFront',
+    baseBox,
+    side,
+    width,
+    GLASS_FRONT_PROUD_M,
+    height,
+    height / 2,
+    along,
+  );
+}
+
+/** The plan extent that holds every rectangle in `rects`. */
+function boundsUnion(rects: readonly LocalRect[]): LocalRect {
+  return {
+    x0: Math.min(...rects.map((r) => r.x0)),
+    x1: Math.max(...rects.map((r) => r.x1)),
+    z0: Math.min(...rects.map((r) => r.z0)),
+    z1: Math.max(...rects.map((r) => r.z1)),
+  };
+}
+
+/**
+ * A dry van with its middle at (cx, cz), its length along X or along Z: the
+ * body on a chassis over two axles at the rear end, which `rearSign` points
+ * to along the van's length.
+ */
+function trailerPieces(cx: number, cz: number, alongX: boolean, rearSign: 1 | -1): PartPlacement[] {
+  const [tw, th, tl] = TRAILER_SIZE_M;
+  const bodyBottom = TRAILER_WHEEL_M + TRAILER_CHASSIS_M - 0.1;
+  const box = (across: number, height: number, length: number, centerY: number): PartPlacement => ({
+    part: 'dockTrailer',
+    size: alongX ? [length, height, across] : [across, height, length],
+    offset: [cx, centerY, cz],
+  });
+  const pieces = [
+    box(tw, th - bodyBottom, tl, (th + bodyBottom) / 2),
+    box(tw - 0.4, TRAILER_CHASSIS_M, tl - 2, bodyBottom - TRAILER_CHASSIS_M / 2),
+  ];
+  for (const at of TRAILER_AXLES_M) {
+    const shift = rearSign * (tl / 2 - at);
+    pieces.push({
+      part: 'trailerAxle',
+      size: [TRAILER_AXLE_LENGTH_M, TRAILER_WHEEL_M, TRAILER_WHEEL_M],
+      offset: [cx + (alongX ? shift : 0), TRAILER_WHEEL_M / 2, cz + (alongX ? 0 : shift)],
+      // The axle's length runs along X unturned; a van along X carries it across, turned a quarter.
+      yaw: alongX ? Math.PI / 2 : 0,
+    });
+  }
+  return pieces;
+}
+
+/**
+ * The dry vans in a distribution centre's truck court: one backed onto every
+ * third dock door, square to the dock, where the trailer row the lot stripes
+ * is deep enough to hold it; else one parked in every third striped stall,
+ * the stall's own way, which is along the wall on a lot too shallow for a
+ * van to back in. None where the lot stripes no row.
+ */
+function dockTrailers(baseBox: SetbackBox, bank: DockBank, lot: KitLot): PartPlacement[] {
+  if (lot.trailers.length === 0) return [];
+  const row = boundsUnion(lot.trailers);
+  const [tw, , tl] = TRAILER_SIZE_M;
+  const { nx, nz } = sideNormal(bank.wall);
+  const wallAlongX = isAlongX(bank.wall);
+  const rear = halfDepthTo(baseBox, bank.wall) + DOCK_DEPTH_M + BUMPER_SIZE_M[2];
+  const out: PartPlacement[] = [];
+  for (let i = 1; i < bank.doors; i += TRAILER_DOOR_STEP) {
+    const along = bank.along + (i - (bank.doors - 1) / 2) * DOCK_DOOR_CENTRES_M;
+    const mid = rear + tl / 2;
+    const pieces = trailerPieces(
+      wallAlongX ? along : nx * mid,
+      wallAlongX ? nz * mid : along,
+      !wallAlongX,
+      (wallAlongX ? -nz : -nx) as 1 | -1,
+    );
+    if (rectInside(placementBounds(pieces[0]!), row)) out.push(...pieces);
+  }
+  if (out.length > 0) return out;
+  for (let i = 0; i < lot.trailers.length; i += TRAILER_DOOR_STEP) {
+    const stall = lot.trailers[i]!;
+    const w = stall.x1 - stall.x0;
+    const d = stall.z1 - stall.z0;
+    const alongX = w >= d;
+    if (Math.max(w, d) < tl || Math.min(w, d) < tw) continue;
+    out.push(...trailerPieces((stall.x0 + stall.x1) / 2, (stall.z0 + stall.z1) / 2, alongX, -1));
+  }
+  return out;
 }
 
 // --- the apartment kit --------------------------------------------------------
@@ -2418,6 +3038,8 @@ export function computePartPlacements(
         const stack = buildingId === null ? null : stackBase(entry, topBox, buildingId);
         yard = steelworksYard(rear, stack);
       } else if (entry.kind === 'paper') yard = chipYard(rear);
+      else if (entry.kind === 'factory') yard = factoryYard(rear);
+      else if (entry.kind === 'foodplant') yard = foodYard(rear, bank);
       else yard = [];
     }
     return yard.filter((p) => p.part === part);
@@ -2426,9 +3048,7 @@ export function computePartPlacements(
   for (const part of parts) {
     switch (part) {
       case 'monitorRoof': {
-        const alongZ = topBox.d >= topBox.w;
-        const w = alongZ ? topBox.w * MONITOR_WIDTH_FRACTION : topBox.w * MONITOR_LENGTH_FRACTION;
-        const d = alongZ ? topBox.d * MONITOR_LENGTH_FRACTION : topBox.d * MONITOR_WIDTH_FRACTION;
+        const { w, d } = monitorPlan(topBox);
         out.push({
           part,
           size: [w, MONITOR_HEIGHT_M, d],
@@ -2489,6 +3109,27 @@ export function computePartPlacements(
                 DOOR_THICKNESS_M,
                 DOCK_DOOR_HEIGHT_M,
                 DOCK_HEIGHT_M + DOCK_DOOR_HEIGHT_M / 2,
+                along,
+              ),
+            );
+          }
+          break;
+        }
+        if (entry.kind === 'flex') {
+          // Grade doors at the back: two from FLEX_TWO_DOOR_SPAN_M of back wall, else one.
+          const back = oppositeSide(side);
+          const backSpan = facadeSpan(baseBox, back);
+          const alongs = backSpan >= FLEX_TWO_DOOR_SPAN_M ? [-backSpan / 4, backSpan / 4] : [0];
+          for (const along of alongs) {
+            out.push(
+              againstFacade(
+                part,
+                baseBox,
+                back,
+                SHOP_DOOR_M,
+                DOOR_THICKNESS_M,
+                SHOP_DOOR_M,
+                SHOP_DOOR_M / 2,
                 along,
               ),
             );
@@ -3115,6 +3756,11 @@ export function computePartPlacements(
       }
       case 'roofScreen':
       case 'coolingTower': {
+        if (entry.kind === 'chemical') {
+          // A chemical plant's cooling tower stands in the yard, not on the roof.
+          out.push(...yardOf(part));
+          break;
+        }
         // The mechanical screen stands 2 m in from the street edge of the top tier, the cooling tower behind it.
         const roofSide = side ?? 'S';
         const halfOut = (isAlongX(roofSide) ? topBox.d : topBox.w) / 2;
@@ -3164,21 +3810,70 @@ export function computePartPlacements(
         break;
       case 'wainscot': {
         if (!side) break;
-        // A metal building's wainscot runs round every face, the end walls over the corners.
+        // A metal building's wainscot runs round every face, the end walls over the corners; a workshop's or a flex building's is the shed's second tone, by building id.
+        const twoTone = entry.kind === 'workshop' || entry.kind === 'flex';
+        const livery = twoTone ? materialUnit(pick(WAINSCOT_LIVERIES, id)) : undefined;
         for (const face of facesOf(baseBox)) {
           const corner = isAlongX(face.side) ? 2 * WAINSCOT_PROUD_M : 0;
-          out.push(
-            againstFacade(
+          const band = againstFacade(
+            part,
+            baseBox,
+            face.side,
+            face.span + corner,
+            WAINSCOT_PROUD_M,
+            WAINSCOT_HEIGHT_M,
+            WAINSCOT_HEIGHT_M / 2,
+          );
+          out.push(livery ? { ...band, color: livery } : band);
+        }
+        break;
+      }
+      case 'tiltBand': {
+        if (!side) break;
+        // The colour band under the parapet band, in the top third of every face, blue or red by building id.
+        const color = saturatedUnit(pick(TILT_BAND_LIVERIES, id));
+        for (const face of facesOf(baseBox)) {
+          const corner = isAlongX(face.side) ? 2 * TILT_BAND_PROUD_M : 0;
+          out.push({
+            ...againstFacade(
               part,
               baseBox,
               face.side,
               face.span + corner,
-              WAINSCOT_PROUD_M,
-              WAINSCOT_HEIGHT_M,
-              WAINSCOT_HEIGHT_M / 2,
+              TILT_BAND_PROUD_M,
+              TILT_BAND_M,
+              baseTop - PARAPET_BAND_HEIGHT_M - TILT_BAND_M / 2,
             ),
-          );
+            color,
+          });
         }
+        break;
+      }
+      case 'glassFront': {
+        if (!side) break;
+        const front = glassFrontOf(entry, baseBox, side, roofY);
+        if (front) out.push(front);
+        break;
+      }
+      case 'dockTrailer': {
+        if (!bank || !lot || !bank.loading) break;
+        out.push(...dockTrailers(baseBox, bank, lot));
+        break;
+      }
+      case 'trailerAxle':
+        // Axles are placed with the trailer they carry.
+        break;
+      case 'guardBooth': {
+        if (!side || !lot) break;
+        const [gw, gh, gd] = GUARD_BOOTH_SIZE_M;
+        const stand = signStand(side, lot, gw, gd);
+        if (stand) out.push(onSide(part, side, stand.along, stand.out, gw, gd, gh, gh / 2));
+        break;
+      }
+      case 'penthouse': {
+        // A food plant's roof penthouse at the middle of the roof.
+        const [pw, ph, pd] = FOOD_PENTHOUSE_SIZE_M;
+        out.push({ part, size: [pw, ph, pd], offset: [0, roofY + ph / 2, 0] });
         break;
       }
       case 'walkDoor': {
@@ -3251,6 +3946,20 @@ export function computePartPlacements(
         break;
       }
       case 'ridgeVent': {
+        if (entry.kind === 'metals') {
+          // The melt shop's ridge vent: a raised strip the length of the monitor's ridge, on top of it.
+          const m = monitorPlan(topBox);
+          const length = (m.alongZ ? m.d : m.w) - 1;
+          out.push({
+            part,
+            size: m.alongZ
+              ? [MELT_RIDGE_VENT_WIDTH_M, MELT_RIDGE_VENT_M, length]
+              : [length, MELT_RIDGE_VENT_M, MELT_RIDGE_VENT_WIDTH_M],
+            offset: [0, roofY + MONITOR_HEIGHT_M + MELT_RIDGE_VENT_M / 2, 0],
+            color: materialUnit('darkPanel'),
+          });
+          break;
+        }
         const alongZ = topBox.d > topBox.w;
         const length = (alongZ ? topBox.d : topBox.w) - 1;
         const width = RIDGE_VENT_THROAT_M + 2 * RIDGE_VENT_CAP_M;
@@ -3383,10 +4092,26 @@ export function computePartPlacements(
         break;
       }
       case 'clerestory': {
+        if (!parts.includes('monitorRoof')) {
+          if (!side) break;
+          // A flat-roofed plant's clerestory: a lit strip under the eave along both long walls.
+          for (const eave of eaveFaces(baseBox)) {
+            out.push(
+              againstFacade(
+                part,
+                baseBox,
+                eave,
+                facadeSpan(baseBox, eave) - 2 * PLANT_GAP_M,
+                CLERESTORY_PROUD_M,
+                CLERESTORY_HEIGHT_M,
+                baseTop - GUTTER_M - CLERESTORY_HEIGHT_M,
+              ),
+            );
+          }
+          break;
+        }
         // A lit band 0.6 m tall on each long side of the monitor, at the middle of its height.
-        const alongZ = topBox.d >= topBox.w;
-        const w = alongZ ? topBox.w * MONITOR_WIDTH_FRACTION : topBox.w * MONITOR_LENGTH_FRACTION;
-        const d = alongZ ? topBox.d * MONITOR_LENGTH_FRACTION : topBox.d * MONITOR_WIDTH_FRACTION;
+        const { w, d, alongZ } = monitorPlan(topBox);
         for (const k of [-1, 1]) {
           out.push({
             part,
@@ -3410,20 +4135,26 @@ export function computePartPlacements(
       }
       case 'condenser': {
         if (!bank) break;
-        // Two evaporative condensers on the roof by the dock side, 2 m in from the parapet.
+        // Two to four evaporative condensers in a row on the roof by the dock side, 2 m in from the parapet, as many as the roof holds.
         const [cw, ch, cd] = CONDENSER_SIZE_M;
         const alongX = isAlongX(bank.wall);
         const spanTop = alongX ? topBox.w : topBox.d;
-        const reach = spanTop / 2 - ROOF_INSET_M - cw - 0.5;
-        if (reach < 0) break;
+        const pitch = cw + PLANT_GAP_M;
+        let count = condenserCount(entry.level ?? 1);
+        let reach = spanTop / 2 - ROOF_INSET_M - (count * pitch - PLANT_GAP_M) / 2;
+        while (count > 0 && reach < 0) {
+          count -= 1;
+          reach += pitch / 2;
+        }
+        if (count === 0) break;
         const halfOut = (alongX ? topBox.d : topBox.w) / 2;
         const centre = Math.max(-reach, Math.min(reach, bank.along));
-        for (const k of [-1, 1]) {
+        for (let i = 0; i < count; i += 1) {
           out.push(
             onSide(
               part,
               bank.wall,
-              centre + k * (cw / 2 + 0.5),
+              centre + (i - (count - 1) / 2) * pitch,
               halfOut - ROOF_INSET_M - cd / 2,
               cw,
               cd,
@@ -3444,6 +4175,16 @@ export function computePartPlacements(
       case 'duct':
       case 'chipPile':
       case 'stacker':
+      case 'flare':
+      case 'flareTip':
+      case 'coolingFan':
+      case 'baghouse':
+      case 'stack':
+      case 'silo':
+      case 'yardFence':
+      case 'scrapYard':
+      case 'gantry':
+      case 'recoveryStack':
         out.push(...yardOf(part));
         break;
     }
@@ -3460,6 +4201,9 @@ const WALL_WRAP_PARTS: ReadonlySet<BuildingPart> = new Set<BuildingPart>([
   'downspout',
   'panelReveal',
   'parapetBand',
+  'tiltBand',
+  'glassFront',
+  'clerestory',
 ]);
 
 /**

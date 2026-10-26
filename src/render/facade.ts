@@ -13,7 +13,13 @@
  * from hashing the buildingId (and, for windows, the window index), per the
  * project's determinism rule.
  */
-import { BuildingCatalogEntry, BuildingKind, CommercialKind, ZoneType } from '../shared/types';
+import {
+  BuildingCatalogEntry,
+  BuildingKind,
+  CommercialKind,
+  IndustrialKind,
+  ZoneType,
+} from '../shared/types';
 import { TILE_METERS } from '../shared/constants';
 import { bodyMetresFor, FLOOR_HEIGHT_METERS } from '../shared/floorarea';
 import { isHouseKind } from '../shared/buildingkind';
@@ -43,6 +49,8 @@ export interface FacadeParams {
   windowInset: boolean;
   /** Visible horizontal spandrel bands every floor (masonry only). */
   spandrel: boolean;
+  /** The industrial accent stripe at 2/3 height: the sheds keep it; a kind whose colour band is a kit part does not. */
+  accentStripe: boolean;
 }
 
 interface HSL {
@@ -213,13 +221,13 @@ export const ROOF_PALETTE: readonly RGB[] = [
 /** Minimum RGB distance a roof color must clear from the wall color ("distinct from walls"). */
 export const MIN_ROOF_WALL_DISTANCE = 0.12;
 
-/** Palette: steel blue / sheet metal / pale brick walls (desaturated rules apply). */
+/** Palette for an industrial entry of no industrial kind (a farm, a kindless works): steel blue / sheet metal / pale brick walls. */
 export const INDUSTRIAL_WALL_PALETTE: readonly RGB[] = [
   materialUnit('bluePlaster'), // steel blue
   materialUnit('metalPlates'), // sheet metal
   materialUnit('whiteBrick'), // pale
 ];
-/** Grey roof plates — fixed, not rotated. */
+/** Grey roof plates for the same kindless entry — fixed, not rotated. */
 export const INDUSTRIAL_ROOF_COLOR: RGB = materialUnit('metalPlates');
 /** One accent stripe band (red or blue by id hash), at the chart's saturation. */
 export const ACCENT_RED: RGB = saturatedUnit('red');
@@ -228,10 +236,11 @@ export const ACCENT_BLUE: RGB = saturatedUnit('blue');
 export const INDUSTRIAL_ACCENT_HEIGHT_FRACTION = 2 / 3;
 
 // ---------------------------------------------------------------------------
-// The commercial kinds' bodies: a body takes one chart material of its kind's
-// short list by id hash, never the catalog entry's colour, under the kind's
-// own roof. The lists are the art table's; every name is a chart entry, so a
-// pick needs no saturation clamp. Houses and industry keep their own paths.
+// The commercial and industrial kinds' bodies: a body takes one chart
+// material of its kind's short list by id hash, never the catalog entry's
+// colour, under the kind's own roof. The lists are the art table's; every
+// name is a chart entry, so a pick needs no saturation clamp. Houses and a
+// kindless industrial entry keep their own paths.
 // ---------------------------------------------------------------------------
 
 /** The office level that stands as a 16-storey tower: a curtain wall, where the lower levels are precast bands. */
@@ -262,25 +271,100 @@ const COMMERCIAL_ROOF_PALETTES: Readonly<Record<CommercialKind, readonly Materia
 const OFFICE_GLASS: MaterialName = 'tintedGlass';
 const OFFICE_TOWER_GLASS: MaterialName = 'curtainWall';
 
+/** The metal-building two-tone of a shed: a workshop's, and the flex building's behind its glass front. */
+const SHED_BODY_PALETTE: readonly MaterialName[] = ['ribbedStone', 'ribbedAsh', 'ribbedWhite'];
+
+const INDUSTRIAL_BODY_PALETTES: Readonly<Record<IndustrialKind, readonly MaterialName[]>> = {
+  workshop: SHED_BODY_PALETTE,
+  flex: SHED_BODY_PALETTE,
+  warehouse: ['tiltUpWhite', 'tiltUpGrey'],
+  factory: ['ribbedBlue', 'concreteBlock'],
+  foodplant: ['insulatedWhite'],
+  chemical: ['insulatedWhite', 'concreteBlock'],
+  metals: ['oxideRed', 'darkPanel'],
+  paper: ['ribbedAsh', 'insulatedWhite'],
+};
+
+const INDUSTRIAL_ROOF_PALETTES: Readonly<Record<IndustrialKind, readonly MaterialName[]>> = {
+  workshop: ['galvanised'],
+  flex: ['galvanised'],
+  warehouse: ['whiteMembrane'],
+  factory: ['greyMembrane'],
+  foodplant: ['whiteMembrane'],
+  chemical: ['greyMembrane'],
+  metals: ['darkPanel'],
+  paper: ['greyMembrane'],
+};
+
+/**
+ * Which industrial kinds keep the facade's accent stripe at 2/3 height: the
+ * sheds. A warehouse's colour band is the kit's tilt-up band, and the heavy
+ * plants carry none, so the stripe would double up or lie on them.
+ */
+const INDUSTRIAL_ACCENT_STRIPE: Readonly<Record<IndustrialKind, boolean>> = {
+  workshop: true,
+  flex: true,
+  factory: true,
+  warehouse: false,
+  foodplant: false,
+  chemical: false,
+  metals: false,
+  paper: false,
+};
+
+/** The industrial kinds whose body is a flat insulated panel with no window at all. */
+const INDUSTRIAL_WINDOWLESS: Readonly<Record<IndustrialKind, boolean>> = {
+  workshop: false,
+  flex: false,
+  factory: false,
+  warehouse: false,
+  foodplant: true,
+  chemical: false,
+  metals: false,
+  paper: false,
+};
+
 function commercialKindOf(kind: BuildingKind | undefined): CommercialKind | null {
   return kind !== undefined && kind in COMMERCIAL_BODY_PALETTES ? (kind as CommercialKind) : null;
 }
 
-/** The chart materials a kind's body is drawn from, or null for a kind that keeps its own path (houses, industry, no kind). */
+function industrialKindOf(kind: BuildingKind | undefined): IndustrialKind | null {
+  return kind !== undefined && kind in INDUSTRIAL_BODY_PALETTES ? (kind as IndustrialKind) : null;
+}
+
+/** The chart materials a kind's body is drawn from, or null for a kind that keeps its own path (houses, farms, no kind). */
 export function bodyPaletteFor(
   kind: BuildingKind | undefined,
   level: number = 1,
 ): readonly MaterialName[] | null {
   const commercial = commercialKindOf(kind);
-  if (commercial === null) return null;
-  if (commercial === 'office' && level >= OFFICE_TOWER_LEVEL) return OFFICE_TOWER_BODY_PALETTE;
-  return COMMERCIAL_BODY_PALETTES[commercial];
+  if (commercial !== null) {
+    if (commercial === 'office' && level >= OFFICE_TOWER_LEVEL) return OFFICE_TOWER_BODY_PALETTE;
+    return COMMERCIAL_BODY_PALETTES[commercial];
+  }
+  const industrial = industrialKindOf(kind);
+  return industrial === null ? null : INDUSTRIAL_BODY_PALETTES[industrial];
 }
 
-/** The chart materials a kind's flat roof is drawn from, or null for the white/grey/tan rotation. */
+/** The chart materials a kind's flat roof is drawn from, or null for the white/grey/tan rotation (or the kindless industrial grey). */
 export function roofPaletteFor(kind: BuildingKind | undefined): readonly MaterialName[] | null {
   const commercial = commercialKindOf(kind);
-  return commercial === null ? null : COMMERCIAL_ROOF_PALETTES[commercial];
+  if (commercial !== null) return COMMERCIAL_ROOF_PALETTES[commercial];
+  const industrial = industrialKindOf(kind);
+  return industrial === null ? null : INDUSTRIAL_ROOF_PALETTES[industrial];
+}
+
+/** Does this industrial entry carry the facade's accent stripe? The sheds and a kindless works do; a kind whose band is a kit part does not. Never on another category. */
+export function industrialAccentStripe(entry: BuildingCatalogEntry): boolean {
+  if (entry.category !== 'ind') return false;
+  const industrial = industrialKindOf(entry.kind);
+  return industrial === null ? true : INDUSTRIAL_ACCENT_STRIPE[industrial];
+}
+
+/** Does this entry's body show no window at all? The material drops every pane; the grid itself still cuts the kit's storeys and bays. */
+export function windowlessBody(entry: BuildingCatalogEntry): boolean {
+  const industrial = industrialKindOf(entry.kind);
+  return industrial !== null && INDUSTRIAL_WINDOWLESS[industrial];
 }
 
 /** The chart glass a kind's window cells tint with, or null for the family's default pane. */
@@ -425,7 +509,7 @@ function deriveFamily(entry: BuildingCatalogEntry): FacadeFamily {
 // Wall / roof color derivation
 // ---------------------------------------------------------------------------
 
-/** Industrial wall base: a deterministic rotation among the steel-blue/light-grey/off-white palette, before hue jitter. */
+/** A kindless industrial entry's wall base: a deterministic rotation among the steel-blue/light-grey/off-white palette, before hue jitter. */
 export function industrialWallBase(buildingId: number): RGB {
   const index = Math.floor(
     facadeHash(buildingId, HASH_SLOT_INDUSTRIAL_WALL) * INDUSTRIAL_WALL_PALETTE.length,
@@ -442,15 +526,15 @@ export function kindWallBase(entry: BuildingCatalogEntry, buildingId: number): R
   return paletteAt(units, Math.min(index, units.length - 1));
 }
 
-/** The pre-jitter HSL base for a wall: industrial and the kinds with a palette draw a chart material unclamped; everything else desaturates+lightness-clamps the catalog color. */
+/** The pre-jitter HSL base for a wall: the kinds with a palette and a kindless industrial entry draw a chart material unclamped; everything else desaturates+lightness-clamps the catalog color. */
 function baseWallHsl(entry: BuildingCatalogEntry, buildingId: number): HSL {
-  if (entry.category === 'ind') {
-    const [r, g, b] = industrialWallBase(buildingId);
-    return rgbToHsl(r, g, b);
-  }
   const kindBase = kindWallBase(entry, buildingId);
   if (kindBase) {
     const [r, g, b] = kindBase;
+    return rgbToHsl(r, g, b);
+  }
+  if (entry.category === 'ind') {
+    const [r, g, b] = industrialWallBase(buildingId);
     return rgbToHsl(r, g, b);
   }
   const [r, g, b] = hexToRgb01(entry.color);
@@ -496,8 +580,10 @@ export function kindRoofColor(entry: BuildingCatalogEntry, buildingId: number): 
 }
 
 function deriveRoofColor(entry: BuildingCatalogEntry, buildingId: number, wallColor: RGB): RGB {
+  const kindRoof = kindRoofColor(entry, buildingId);
+  if (kindRoof) return kindRoof;
   if (entry.category === 'ind') return INDUSTRIAL_ROOF_COLOR;
-  return kindRoofColor(entry, buildingId) ?? rotateRoofColor(buildingId, wallColor);
+  return rotateRoofColor(buildingId, wallColor);
 }
 
 // ---------------------------------------------------------------------------
@@ -541,6 +627,7 @@ export function deriveFacadeParams(entry: BuildingCatalogEntry, buildingId: numb
     roofColor,
     windowInset,
     spandrel,
+    accentStripe: industrialAccentStripe(entry),
   };
 }
 
