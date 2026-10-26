@@ -557,6 +557,35 @@ breezeway one slot and its landings.
 
 The parts are specified under [the storefront kit's parts](#the-storefront-kits-parts).
 
+**What tells the kinds apart, at 40 m.** The second pass
+([rci-kits-second-pass.md](../game-design/features/rci-kits-second-pass.md),
+which carries the sources) gives each kind its own body material from the
+chart and sizes the one or two parts that identify it so they read at the
+reference distance, about 4 px a metre at the default pitch: an identifying
+part is never under 0.5 m. A body takes one material of its kind's list by
+id hash, never the catalog entry's colour; every material is a chart entry
+under the albedo ceiling, and the accents sit in the saturated block.
+
+| Kind            | Body materials (chart)                                        | Roof            | The parts that identify it, sized                                                                                                                                     |
+| --------------- | ------------------------------------------------------------- | --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Shop            | `redBrick`, `brownBrick`, `paintedMasonry` (bone)             | `brightBitumen` | the storefront a storey tall in 1.5 m bays on a 0.6 m bulkhead; a 1.2 m sign band in the tenant's accent; an awning per bay, dark green, burgundy or black; a cornice |
+| Shopping strip  | `eifsCream`, `eifsTan` over a 1.2 m `splitFaceGrey` base      | `brightBitumen` | a continuous 2.1 m canopy with a 0.9 m fascia in `canopyBronze`; tenant bands; the parapet stepping 1.2 m up at each entry; a 6 m pylon at the road                   |
+| Supermarket     | `eifsTan`, `eifsGrey` over a 2.4 m `splitFaceGrey` base       | `whiteMembrane` | an entry tower a storey over the parapet in the tenant's accent; two cart corrals in the car park; a 1.8 m screen wall at the dock; the sign band 1.2 m               |
+| Restaurant      | `eifsBeige`, `paintedMasonry`; one `darkFeatureWall` end      | `brightBitumen` | the drive-through lane with a 2.4 m menu board and a pickup window; a red-and-yellow accent band and a 6 m pylon; the old form's brown mansard on level 1             |
+| Filling station | `paintedMasonry`, `whiteBrick`                                | `whiteMembrane` | the canopy's fascia 0.76 m in the brand accent; a 6 m price pylon with lit digits                                                                                     |
+| Office          | `precastGrey`, `precastBuff` bands with `tintedGlass` ribbons | `greyMembrane`  | ribbon windows between 1.2 m precast bands on a 1.5 m mullion module; a glazed lobby two storeys tall; the tower a `curtainWall` of vision glass over `spandrelDark`  |
+| Hotel           | `eifsBeige` over a 1.2 m `stoneVeneer` base                   | `greyMembrane`  | the porte-cochère 6 × 6 m clearing 4.1 m on four columns; the sign band 1.2 m on the top floor in `navyAccent` or `greenAccent`                                       |
+
+The materials named here that the chart does not yet hold — `redBrick`,
+`brownBrick`, `paintedMasonry`, `eifsCream`, `eifsTan`, `eifsGrey`,
+`eifsBeige`, `splitFaceGrey`, `canopyBronze`, `darkFeatureWall`,
+`whiteMembrane`, `greyMembrane`, `precastGrey`, `precastBuff`,
+`tintedGlass`, `curtainWall`, `spandrelDark`, `stoneVeneer`, `navyAccent`,
+`greenAccent` — are measured from swatches and added under the chart's rules
+([texture-standards.md](texture-standards.md#the-real-texture-standard-the-calibrated-material-chart)),
+not picked by eye. No source gives a palette by tenant class; the accents
+are the game's own, except fast food's red and yellow.
+
 The fuel canopy stands 2 m off the kiosk's frontage wall and runs 10 m out
 over the forecourt and 90% of the way across it, on four 0.4 m posts inset
 at its corners; the two pump islands stand under it a quarter of its span
@@ -665,6 +694,33 @@ it; the roller doors of a workshop stand on the ground, where a warehouse's
 stand on its dock. The tall stack is 12 m to the kindless works' 6. Every
 other part is the shared kit's box, in the chart's colours: tanks in white
 plaster like the silos.
+
+**What tells the kinds apart, at 40 m.** The second pass
+([rci-kits-second-pass.md](../game-design/features/rci-kits-second-pass.md),
+sources there) gives each industrial kind its own body material and roof
+and the yard object that names it; the three-colour pale palette under one
+grey roof goes. The parts map carries every part listed here.
+
+| Kind           | Body materials (chart)                                                                                             | Roof            | The parts that identify it, sized                                                                                                                                                                   |
+| -------------- | ------------------------------------------------------------------------------------------------------------------ | --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Workshop       | `ribbedStone`, `ribbedAsh`, `ribbedWhite`; a 2.4 m wainscot in `ribbedRed`, `ribbedSlate` or `ribbedGreen`         | `galvanised`    | the two-tone shed; roll-up doors 3.05 m at grade; a glazed office front on the street                                                                                                               |
+| Flex / R&D     | as the workshop, the office front two storeys of `tintedGlass`                                                     | `galvanised`    | the glass front; one or two grade doors at the back                                                                                                                                                 |
+| Warehouse      | `tiltUpWhite`, `tiltUpGrey` with a 2.4 m `tiltBandBlue` or `tiltBandRed` at the top third, reveal joints every 8 m | `whiteMembrane` | the dock bank on 4 m centres with bumpers and a wall pack per door; a 16 m trailer at one door in three; a glazed office corner; the concrete apron pale, the court dark; a guard booth at the gate |
+| Factory        | `ribbedBlue`, `concreteBlock`                                                                                      | `greyMembrane`  | a baghouse 6 m on a frame and a 12 m stack in `galvanised`; a 4 m silo; a fenced material yard; a monitor roof only on level 1, the old plant                                                       |
+| Food plant     | `insulatedWhite`, flat, no windows                                                                                 | `whiteMembrane` | two to four 2.4 m condensers and a penthouse on the roof; two 4 × 15 m `aluminiumClad` silos beside it; the dock bank                                                                               |
+| Chemical plant | `insulatedWhite`, `concreteBlock`                                                                                  | `greyMembrane`  | the tank farm inside a 1 m `concreteDike`; a pipe rack 5 m up on 6 m portals in `rackSteel`; a 30 m flare; a cooling tower                                                                          |
+| Steelworks     | `oxideRed`, `darkPanel`                                                                                            | `darkPanel`     | the 30 m melt shop with a ridge vent; a 36 m baghouse stack; an open scrap yard under a 10 m gantry                                                                                                 |
+| Paper mill     | `ribbedAsh`, `insulatedWhite`                                                                                      | `greyMembrane`  | a chip pile 12 m high in `woodChip`; the monitor hall; a recovery boiler with a 90 m stack; tanks                                                                                                   |
+
+The new chart entries (`ribbedStone`, `ribbedAsh`, `ribbedWhite`,
+`ribbedRed`, `ribbedSlate`, `ribbedGreen`, `ribbedBlue`, `galvanised`,
+`tiltUpWhite`, `tiltUpGrey`, `tiltBandBlue`, `tiltBandRed`,
+`concreteBlock`, `insulatedWhite`, `aluminiumClad`, `concreteDike`,
+`rackSteel`, `oxideRed`, `darkPanel`, `woodChip`) are measured from swatches
+under the chart's rules; the metal-building names follow the makers'
+standard colours (polar white, light stone, ash grey, rustic red, burnished
+slate, evergreen, aztec blue). The steel and paper mills' colours have no
+source and are the game's own.
 
 ### The industrial kit's parts
 
