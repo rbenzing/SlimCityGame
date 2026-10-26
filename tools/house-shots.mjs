@@ -109,6 +109,17 @@ try {
       },
     ]);
   }
+  // A turbine at the east end of the first street powers them all: a lamp
+  // stands only on a powered street, so the night views show the lamps lit.
+  await send('Power', [
+    {
+      kind: 'placeBuilding',
+      catalogId: 'wind-turbine',
+      x: X + HOMES + 1,
+      z: roadRow(0) - 1,
+      rotation: 0,
+    },
+  ]);
   // One command each: a batch is atomic, and one refused tile would drop the street.
   for (const [s, street] of STREETS.entries()) {
     for (let i = 0; i < HOMES; i++) {
@@ -125,6 +136,7 @@ try {
   }
   await page.waitForTimeout(3000);
   const standing = await page.evaluate(() => window.__slimcity.readBuildings());
+  console.log('lamp poles', await page.evaluate(() => window.__slimcity.readLampPoles().length));
   console.log(
     'standing',
     JSON.stringify(

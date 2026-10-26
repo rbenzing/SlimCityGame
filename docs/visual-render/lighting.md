@@ -12,10 +12,20 @@ and the sky ([vegetation.md](vegetation.md)) all look at any given moment.
 A single keyframed ramp drives everything: day (a warm sun, a light-blue
 sky) → golden hour (a low warm sun, an orange horizon) → dusk (violet) →
 night (a deep navy `#0a1224`, star points on a static shader/point layer, a
-dim blue moon-directional light at ~8% intensity, fog colour following the
-sky). The hemisphere light and the shadow intensity both lerp along the same
-ramp, and the sky dome, sun/moon disc and cloud tinting in
-[vegetation.md](vegetation.md) all read from it too.
+blue moon-directional light, fog colour following the sky). The hemisphere
+light and the shadow intensity both lerp along the same ramp, and the sky
+dome, sun/moon disc and cloud tinting in [vegetation.md](vegetation.md) all
+read from it too. Once the sun is under the horizon the directional light is
+the moon, and over the dusk ramp it slews from where the sun set to the noon
+sun's own place overhead (`moonDirection`, `moonBlend` in `scene.ts`): lit
+from where noon lit them, a roof, a wall and a slope each keep the same share
+of their day value at night, whichever way a building faces. The night
+keyframe is the moon at `sunIntensity` 0.55 in `[0.6, 0.7, 1.0]` and the
+hemisphere at `hemiIntensity` 0.5 with sky `[0.49, 0.55, 0.78]` over ground
+`[0.06, 0.07, 0.1]`, shadows at 0.2; the dusk keyframe matches those
+strengths in a violet hue (sky `[0.56, 0.53, 0.73]`, shadows 0.3), because
+03:00 is lerped halfway from night toward dusk and a dusk darker than night
+would drag the small hours under the legibility floor below.
 
 ## Emissive building windows
 
@@ -26,25 +36,73 @@ each window's lit threshold, so roughly 40–70% of a building's windows are
 lit at once, warm `#ffd9a0` with the occasional cool `#cfe4ff`. Windows
 switch on progressively across dusk — the lit threshold sweeps with the
 night factor rather than popping all at once, so the whole city "wakes up"
-over roughly 20 seconds. `WINDOW_EMISSIVE_STRENGTH` (2.2) pushes this hard
-enough to drive the bloom pass below.
+over roughly 20 seconds. A lit pane keeps its colour: `WINDOW_EMISSIVE_STRENGTH`
+(1.5) is set so that a lit pane's pixel at full night reads warm, never
+clipped to white under the renderer's neutral tone mapping, and the bloom
+pass below gives it its halo rather than the strength doing so. A pane is
+window-sized against the art anchors — on a house 1 m wide and 1.5 m tall
+(`HOUSE_PANE_WIDTH_M`, `HOUSE_PANE_HEIGHT_M`), one to a bay every 2.4 m
+(`HOUSE_BAY_M`), its margins worked out in metres from the body the house
+kit sizes — so a lit window is a pane in a wall, never a slab across a
+storey; a house has no storefront band, its ground floor is cut like the
+floors above, and the kit's shutters stand on the same pane. A shop's
+storefront glazing is the exception to the hash: every bay of it is lit from
+inside, warm, from `STOREFRONT_LIT_FROM` (0.3) of the dusk sweep, with the
+floors above following the per-window hash, which is what tells a shop from
+an office at night. It is still glass, not a slab: the storefront is cut into
+bays of about 1.5 m (`STOREFRONT_BAY_M`) by 0.12 m dark mullions
+(`STOREFRONT_MULLION_M`) over a 0.6 m dark bulkhead (`STOREFRONT_BULKHEAD_M`,
+the same figure the kit's bulkhead part stands) under a 0.3 m head
+(`STOREFRONT_HEAD_M`) — `storefrontCut` in `facade.ts`, the parts
+[../art/buildings.md](../art/buildings.md) gives a storefront — so a lit
+shopfront at 40 m reads as a row of lit windows under a sign band, and the
+sign band glows in its own livery colour above it.
 
-A building's base wall colour also multiplies toward a dimmed, cool tint at
-night (`NIGHT_BODY_TINT`, roughly 34/38/46% of the daytime colour) — a
-shaded version of its true daytime colour, not black, so walls stay
-colour-legible after dark while the windows keep their own emissive glow
-independently of the wall tint. A farmhouse, drawn by the farm kit rather
-than on the facade material, lights its panes by the same hash and threshold
+**A building stays legible at night, and the night stays night.** A body at
+full night reads at 18 to 30% of its noon brightness, measured on a facade
+pixel in the harness — a shaded version of its true daytime colour, not
+black, and not a dull afternoon either. The night sky's hemisphere and moon
+light and one cool tint (`NIGHT_TINT` `[0.55, 0.6, 0.78]` in
+`src/render/nightlook.ts`) deliver that together and are tuned as one, since
+each on its own would dim the scene twice over. The tint is one shared
+constant that **every sunlit
+surface reads** — bodies and every kit part (walls, roof, garage, porch,
+dock, plant, prop) through `nightTintNode`/`nightBodyMaterial`, and the
+terrain, the roads, the lots' ground, the park plates and the trees alike —
+so the whole world dims on the one dial and the ground reads no brighter than
+the bodies: at full night the ground sits at 12 to 25% of its noon
+brightness, and the bright things are the lit panes, the lit parts and the
+lamps' pools. The sky dome stays the keyframe's navy and the fog follows it.
+`tools/nightlook-shots.mjs` is the measurement: a colonial and a shop shot
+from one pinned camera at noon, 03:00 and midnight, a wall, a shutter, a
+roof, a lawn and a road pixel read back from each, failing on a body outside
+18–30%, ground outside 12–25%, or a pane that clips or is not warm. The
+share is of the light on the surface — the pixel taken back through sRGB and
+the neutral tone mapping's toe — because the toe spreads one and the same
+share across display values by how dark the surface is (a navy wall shows
+9% where a lawn shows 33% of the same light); as tuned, a wall, a shutter
+and a shop wall keep 20–22% and a roof, a lawn and the road 18–19% at 03:00.
+Only window panes and the lit parts below glow; a garage door, a porch, a
+roof or a wall never does. A farmhouse, drawn by the farm kit rather than on
+the facade material, lights its panes by the same hash and threshold
 ([../engineering/features/farms.md](../engineering/features/farms.md)). An Abandoned building's windows stay dark
 regardless of the hour — a lit window is the one signal that a building is
 Active (see [../art/buildings.md](../art/buildings.md)). The whole system runs as one TSL
 node material plus an instance-index hash, one material per archetype
 family, at zero extra draw calls.
 
-The commercial kit's lit parts (sign bands, the pylon and price-sign faces, the
-supermarket tower's glazing and the office lobby portal) follow the window
-rule: they stand only on an Active building, and their emissive is driven by
-the night factor.
+The commercial kit's lit parts (sign bands and storefront bands, the pylon
+and price-sign faces, the supermarket tower's glazing and the office lobby
+portal) follow the window rule: they stand only on an Active building, their
+emissive is driven by the night factor, and like a pane they keep their
+colour rather than clipping to white — a lit part glows in its own livery
+colour, warm-shifted (`LIT_WARM_SHIFT` `[1, 0.88, 0.7]` times the instance
+colour), so a white band reads cream and a red one red, never a flat white
+slab. An industrial building lights few windows — the factory's clerestory
+and the warehouse's office corner — but carries a wall-pack over each dock
+door and each walk door (`dockLight`, on the lit material), the small warm
+block a real yard reads by at night. A car park has no lot lights to glow:
+the lot kit stands no poles.
 
 ## Street lamps
 

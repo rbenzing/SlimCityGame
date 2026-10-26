@@ -79,6 +79,7 @@
  * only this per-tile cosmetic paint/geometry curves.
  */
 import * as THREE from 'three';
+import { NIGHT_TINT } from './nightlook';
 import {
   flowDirection,
   isStreetTier,
@@ -233,13 +234,15 @@ const ROAD_QUAD_MAX_CELL_M = 2;
  * conforming band over it can never swap places.
  */
 const ROAD_QUAD_FLAT_EPSILON_M = 0.002;
-/** Global tint the unlit road surface dims to at full night, leaving lamp pools bright. */
-const ROAD_NIGHT_DIM = 0.34;
-
-/** The multiplier the road surface's lit colour takes at a night factor in [0, 1]. */
-export function roadNightDim(nightFactor: number): number {
+/**
+ * The multiplier the road surface's lit colour takes at a night factor in
+ * [0, 1]: the one night tint every sunlit surface reads, so the pavement
+ * dims with the terrain beside it and the lamp pools stay the bright spots.
+ */
+export function roadNightTint(nightFactor: number): [number, number, number] {
   const f = Math.min(1, Math.max(0, nightFactor));
-  return 1 - f * (1 - ROAD_NIGHT_DIM);
+  const [r, g, b] = NIGHT_TINT;
+  return [1 - f * (1 - r), 1 - f * (1 - g), 1 - f * (1 - b)];
 }
 /** Lane markings sit a hair above the road surface to avoid z-fighting. */
 export const MARK_Y_OFFSET = 0.16;
@@ -6492,14 +6495,14 @@ export class RoadMeshRenderer {
   }
 
   /**
-   * Extra night dim toward ROAD_NIGHT_DIM, on top of the Lambert lighting's own
-   * darkening. Scales material.color (a multiplier on lit vertex color), so it
-   * deepens the pavement at night without touching per-tile colors, keeping the
-   * lamp pools as the bright spots. At day (factor 0) it is 1 → the
-   * road shows its full lit color.
+   * The night tint, on top of the Lambert lighting's own darkening. Scales
+   * material.color (a multiplier on lit vertex color), so it deepens the
+   * pavement at night without touching per-tile colors, keeping the lamp
+   * pools as the bright spots. At day (factor 0) it is 1 → the road shows
+   * its full lit color.
    */
   setNightFactor(nightFactor: number): void {
-    this.material.color.setScalar(roadNightDim(nightFactor));
+    this.material.color.setRGB(...roadNightTint(nightFactor));
   }
 
   /** Adds to `dirty` every chunk with road in it that tile (x, z) can change the drawing of. */

@@ -11,6 +11,9 @@
  */
 
 import * as THREE from 'three';
+import { MeshStandardNodeMaterial, type MeshLambertNodeMaterial } from 'three/webgpu';
+import { uniform } from 'three/tsl';
+import { nightBodyMaterial, nightTintNode } from './nightlook';
 import type { MapData, TilePoint } from '../shared/types';
 import {
   CHUNK_TILES,
@@ -327,8 +330,10 @@ interface SkirtEntry {
 
 export class TerrainRenderer {
   private readonly scene: THREE.Scene;
-  private readonly material: THREE.MeshStandardMaterial;
-  private readonly skirtMaterial: THREE.MeshLambertMaterial;
+  private readonly material: MeshStandardNodeMaterial;
+  private readonly skirtMaterial: MeshLambertNodeMaterial;
+  /** 0 (day) .. 1 (night): what the ground's colour shades by. */
+  private readonly nightFactorUniform = uniform(0);
   private chunks: (ChunkEntry | null)[];
   private skirts: Record<SkirtSide, SkirtEntry | null>;
   private map: MapData | null = null;
@@ -342,17 +347,29 @@ export class TerrainRenderer {
     this.scene = scene;
     this.chunks = new Array<ChunkEntry | null>(CHUNKS_PER_SIDE * CHUNKS_PER_SIDE).fill(null);
     this.skirts = { west: null, east: null, north: null, south: null };
-    this.material = new THREE.MeshStandardMaterial({
+    // The ground carries the one night tint every sunlit surface does, so it
+    // reads no brighter than the bodies standing on it after dark.
+    this.material = new MeshStandardNodeMaterial({
       vertexColors: true,
       roughness: 1,
       metalness: 0,
     });
-    // Skirt: plain MeshLambertMaterial (no new shader). DoubleSide so the
-    // perimeter reads correctly regardless of which way the camera happens to be facing it from.
-    this.skirtMaterial = new THREE.MeshLambertMaterial({
+    this.material.colorNode = nightTintNode(this.nightFactorUniform);
+    // Skirt: DoubleSide so the perimeter reads correctly regardless of which
+    // way the camera happens to be facing it from.
+    this.skirtMaterial = nightBodyMaterial(this.nightFactorUniform, {
       vertexColors: true,
       side: THREE.DoubleSide,
     });
+  }
+
+  /** 0 (day) .. 1 (night): how far the ground shades toward the night tint. */
+  setNightFactor(nightFactor: number): void {
+    this.nightFactorUniform.value = Math.min(1, Math.max(0, nightFactor));
+  }
+
+  nightFactor(): number {
+    return this.nightFactorUniform.value;
   }
 
   build(map: MapData): void {
@@ -394,7 +411,10 @@ export class TerrainRenderer {
     const cx1 = clampInt(cornerIx, 0, size - 1);
     const cz0 = clampInt(cornerIz - 1, 0, size - 1);
     const cz1 = clampInt(cornerIz, 0, size - 1);
-    return 0.25 * (h[cz0 * size + cx0]! + h[cz0 * size + cx1]! + h[cz1 * size + cx0]! + h[cz1 * size + cx1]!);
+    return (
+      0.25 *
+      (h[cz0 * size + cx0]! + h[cz0 * size + cx1]! + h[cz1 * size + cx0]! + h[cz1 * size + cx1]!)
+    );
   }
 
   /**

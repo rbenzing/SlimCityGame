@@ -22,6 +22,8 @@
  * Zero per-frame work: everything happens inside apply(BuildingDelta).
  */
 import * as THREE from 'three';
+import { uniform } from 'three/tsl';
+import { nightBodyMaterial } from './nightlook';
 import { BuildingState } from '../shared/types';
 import type { BuildingCatalogEntry, BuildingDelta, BuildingInstance } from '../shared/types';
 import { CHUNK_TILES, CHUNKS_PER_SIDE, TILE_METERS } from '../shared/constants';
@@ -133,7 +135,9 @@ export class LotRenderer {
   private readonly dirtAt: (x: number, z: number) => boolean;
   /** The stalls the streets paint, which a car park's layout counts toward its code; none without it. */
   private readonly kerb: KerbSurroundings | null;
-  private readonly material = new THREE.MeshLambertMaterial({ vertexColors: true });
+  /** 0 (day) .. 1 (night): what the lots' ground shades by, the same tint as the terrain. */
+  private readonly nightFactorUniform = uniform(0);
+  private readonly material = nightBodyMaterial(this.nightFactorUniform, { vertexColors: true });
   /** One merged mesh per 16-tile chunk, keyed by the chunk of a lot's low corner. */
   private readonly chunks = new Map<number, LotChunk>();
   private readonly lotChunk = new Map<number, number>();
@@ -157,6 +161,15 @@ export class LotRenderer {
     this.street = street;
     this.dirtAt = dirtAt;
     this.kerb = kerb;
+  }
+
+  /** 0 (day) .. 1 (night): how far the lots' ground shades toward the night tint. */
+  setNightFactor(nightFactor: number): void {
+    this.nightFactorUniform.value = Math.min(1, Math.max(0, nightFactor));
+  }
+
+  nightFactor(): number {
+    return this.nightFactorUniform.value;
   }
 
   apply(delta: BuildingDelta): void {

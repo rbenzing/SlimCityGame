@@ -13,10 +13,11 @@
  * from hashing the buildingId (and, for windows, the window index), per the
  * project's determinism rule.
  */
-import { BuildingCatalogEntry, ZoneType } from '../shared/types';
+import { BuildingCatalogEntry, BuildingKind, CommercialKind, ZoneType } from '../shared/types';
 import { TILE_METERS } from '../shared/constants';
-import { FLOOR_HEIGHT_METERS } from '../shared/floorarea';
-import { materialUnit, saturatedUnit } from './palette';
+import { bodyMetresFor, FLOOR_HEIGHT_METERS } from '../shared/floorarea';
+import { isHouseKind } from '../shared/buildingkind';
+import { MaterialName, materialUnit, saturatedUnit } from './palette';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -34,9 +35,9 @@ export interface FacadeParams {
   bays: number;
   /** Archetype family, decided from category + zone + level. */
   family: FacadeFamily;
-  /** Desaturated + hue-jittered wall base color for this specific building instance. */
+  /** Hue-jittered wall base color for this specific building instance: a kind's chart material, the industrial palette, or the desaturated catalog colour. */
   wallColor: RGB;
-  /** White/grey/tan rotation (or the fixed industrial grey), always distinct from wallColor. */
+  /** The kind's own roof material, the fixed industrial grey, or the white/grey/tan rotation kept distinct from wallColor. */
   roofColor: RGB;
   /** Punched (inset) window openings vs. flush curtain-wall glazing. */
   windowInset: boolean;
@@ -82,6 +83,86 @@ export function isRowHouseArchetype(entry: BuildingCatalogEntry): boolean {
   return entry.kind === 'townhouse';
 }
 
+/** A house's window is a sash about 1 m wide and 1.5 m tall, one to a bay of HOUSE_BAY_M along the wall. */
+export const HOUSE_PANE_WIDTH_M = 1.0;
+export const HOUSE_PANE_HEIGHT_M = 1.5;
+export const HOUSE_BAY_M = 2.4;
+/** The most of a cell a house's margins may take on each side, so a cramped cell still shows a pane. */
+const HOUSE_MARGIN_MAX = 0.42;
+
+/** The inset of a pane from its grid cell's edge, as a fraction of the cell, across and up. */
+export interface PaneMargins {
+  x: number;
+  y: number;
+}
+
+/**
+ * A house's panes are window-sized in metres rather than a share of the
+ * cell: the margins that leave HOUSE_PANE_WIDTH_M x HOUSE_PANE_HEIGHT_M in
+ * the cell the grid cuts for this entry. Null for every other family, whose
+ * panes are the mullion-margin share of the cell. Pure.
+ */
+export function housePaneMargins(
+  entry: BuildingCatalogEntry,
+  tierHeight: number,
+): PaneMargins | null {
+  if (!isHouseKind(entry.kind)) return null;
+  const { cols, rows } = windowGrid(entry, tierHeight);
+  const body = bodyMetresFor(entry);
+  const cellW = (body.w + body.d) / 2 / cols;
+  const cellH = tierHeight / rows;
+  const inset = (cell: number, pane: number): number =>
+    Math.min(HOUSE_MARGIN_MAX, Math.max(0, (cell - pane) / 2 / cell));
+  return { x: inset(cellW, HOUSE_PANE_WIDTH_M), y: inset(cellH, HOUSE_PANE_HEIGHT_M) };
+}
+
+/** A storefront's glazing is cut into bays this wide by dark mullions. */
+export const STOREFRONT_BAY_M = 1.5;
+/** The dark mullion between two storefront bays. */
+export const STOREFRONT_MULLION_M = 0.12;
+/** The dark bulkhead the storefront glazing stands on. */
+export const STOREFRONT_BULKHEAD_M = 0.6;
+/** The dark head over the glazing, under the sign band. */
+export const STOREFRONT_HEAD_M = 0.3;
+
+/** How a commercial ground floor's glazing is cut: bays across the face, and the pane's sill and head as fractions of the tier. */
+export interface StorefrontCut {
+  bays: number;
+  /** The mullion's half, as a fraction of a bay, on each side of its pane. */
+  marginX: number;
+  sillFraction: number;
+  headFraction: number;
+}
+
+/**
+ * The storefront cut for a commercial entry — bays of about STOREFRONT_BAY_M
+ * over the bulkhead, under the head — so a lit shopfront reads as a row of
+ * windows under its sign band, never one slab. Null for any other category. Pure.
+ */
+export function storefrontCut(
+  entry: BuildingCatalogEntry,
+  tierHeight: number,
+): StorefrontCut | null {
+  if (entry.category !== 'com' || !(tierHeight > 0)) return null;
+  const body = bodyMetresFor(entry);
+  const faceM = (body.w + body.d) / 2;
+  const bays = Math.max(1, Math.round(faceM / STOREFRONT_BAY_M));
+  const bayM = faceM / bays;
+  const bandM = Math.min(tierHeight, GROUND_FLOOR_METERS);
+  return {
+    bays,
+    marginX: Math.min(0.4, STOREFRONT_MULLION_M / 2 / bayM),
+    sillFraction: STOREFRONT_BULKHEAD_M / tierHeight,
+    headFraction: Math.max(STOREFRONT_BULKHEAD_M, bandM - STOREFRONT_HEAD_M) / tierHeight,
+  };
+}
+
+/** How many window bays a house's body carries along an average face. */
+function houseBayCount(entry: BuildingCatalogEntry): number {
+  const body = bodyMetresFor(entry);
+  return (body.w + body.d) / 2 / HOUSE_BAY_M;
+}
+
 /**
  * The window grid every face of a building's body is cut into (columns across
  * a face, rows up one tier of `tierHeight` metres). The facade material draws
@@ -95,10 +176,13 @@ export function windowGrid(
   const colsPerTile = isRowHouseArchetype(entry)
     ? ROW_HOUSE_WINDOW_COLS_PER_TILE
     : WINDOW_COLS_PER_TILE;
-  const cols = Math.min(
-    MAX_WINDOW_COLS,
-    Math.max(MIN_WINDOW_COLS, Math.round(avgFootprintTiles * colsPerTile)),
-  );
+  // A detached house, a duplex or a fourplex has a bay every HOUSE_BAY_M of
+  // its body; a terrace keeps its per-unit rhythm above.
+  const wanted =
+    isHouseKind(entry.kind) && !isRowHouseArchetype(entry)
+      ? houseBayCount(entry)
+      : avgFootprintTiles * colsPerTile;
+  const cols = Math.min(MAX_WINDOW_COLS, Math.max(MIN_WINDOW_COLS, Math.round(wanted)));
   const rows = Math.min(
     MAX_WINDOW_ROWS,
     Math.max(MIN_WINDOW_ROWS, Math.round(tierHeight / FLOOR_HEIGHT_METERS)),
@@ -143,6 +227,73 @@ export const ACCENT_BLUE: RGB = saturatedUnit('blue');
 /** Accent stripe sits at 2/3 height. */
 export const INDUSTRIAL_ACCENT_HEIGHT_FRACTION = 2 / 3;
 
+// ---------------------------------------------------------------------------
+// The commercial kinds' bodies: a body takes one chart material of its kind's
+// short list by id hash, never the catalog entry's colour, under the kind's
+// own roof. The lists are the art table's; every name is a chart entry, so a
+// pick needs no saturation clamp. Houses and industry keep their own paths.
+// ---------------------------------------------------------------------------
+
+/** The office level that stands as a 16-storey tower: a curtain wall, where the lower levels are precast bands. */
+export const OFFICE_TOWER_LEVEL = 3;
+
+const COMMERCIAL_BODY_PALETTES: Readonly<Record<CommercialKind, readonly MaterialName[]>> = {
+  shop: ['redBrick', 'brownBrick', 'paintedMasonry'],
+  strip: ['eifsCream', 'eifsTan'],
+  supermarket: ['eifsTan', 'eifsGrey'],
+  restaurant: ['eifsBeige', 'paintedMasonry'],
+  fuel: ['paintedMasonry', 'whiteBrick'],
+  office: ['precastGrey', 'precastBuff'],
+  hotel: ['eifsBeige'],
+};
+const OFFICE_TOWER_BODY_PALETTE: readonly MaterialName[] = ['curtainWall'];
+
+const COMMERCIAL_ROOF_PALETTES: Readonly<Record<CommercialKind, readonly MaterialName[]>> = {
+  shop: ['brightBitumen'],
+  strip: ['brightBitumen'],
+  supermarket: ['whiteMembrane'],
+  restaurant: ['brightBitumen'],
+  fuel: ['whiteMembrane'],
+  office: ['greyMembrane'],
+  hotel: ['greyMembrane'],
+};
+
+/** An office's ribbons are tinted glass; the tower's cells are its curtain wall's vision glass. */
+const OFFICE_GLASS: MaterialName = 'tintedGlass';
+const OFFICE_TOWER_GLASS: MaterialName = 'curtainWall';
+
+function commercialKindOf(kind: BuildingKind | undefined): CommercialKind | null {
+  return kind !== undefined && kind in COMMERCIAL_BODY_PALETTES ? (kind as CommercialKind) : null;
+}
+
+/** The chart materials a kind's body is drawn from, or null for a kind that keeps its own path (houses, industry, no kind). */
+export function bodyPaletteFor(
+  kind: BuildingKind | undefined,
+  level: number = 1,
+): readonly MaterialName[] | null {
+  const commercial = commercialKindOf(kind);
+  if (commercial === null) return null;
+  if (commercial === 'office' && level >= OFFICE_TOWER_LEVEL) return OFFICE_TOWER_BODY_PALETTE;
+  return COMMERCIAL_BODY_PALETTES[commercial];
+}
+
+/** The chart materials a kind's flat roof is drawn from, or null for the white/grey/tan rotation. */
+export function roofPaletteFor(kind: BuildingKind | undefined): readonly MaterialName[] | null {
+  const commercial = commercialKindOf(kind);
+  return commercial === null ? null : COMMERCIAL_ROOF_PALETTES[commercial];
+}
+
+/** The chart glass a kind's window cells tint with, or null for the family's default pane. */
+export function glassTintFor(kind: BuildingKind | undefined, level: number = 1): RGB | null {
+  if (kind !== 'office') return null;
+  return materialUnit(level >= OFFICE_TOWER_LEVEL ? OFFICE_TOWER_GLASS : OFFICE_GLASS);
+}
+
+/** Chart names to the 0..1 tuples a palette pick and the shader's select cascade read. */
+export function paletteUnits(names: readonly MaterialName[]): readonly RGB[] {
+  return names.map((name) => materialUnit(name));
+}
+
 /**
  * Seed-slot scheme for combining (buildingId, drawSlot) into one hash input,
  * mirroring buildings.ts's existing WINDOW_SEED_SLOTS convention so every
@@ -156,6 +307,7 @@ export const HASH_SLOT_HUE_JITTER = 1;
 export const HASH_SLOT_ROOF_ROTATION = 2;
 export const HASH_SLOT_INDUSTRIAL_WALL = 3;
 export const HASH_SLOT_INDUSTRIAL_ACCENT = 4;
+export const HASH_SLOT_KIND_WALL = 5;
 
 // ---------------------------------------------------------------------------
 // Deterministic hashing (32-bit avalanche mix, "triple32", public domain —
@@ -281,10 +433,24 @@ export function industrialWallBase(buildingId: number): RGB {
   return paletteAt(INDUSTRIAL_WALL_PALETTE, Math.min(index, INDUSTRIAL_WALL_PALETTE.length - 1));
 }
 
-/** The pre-jitter HSL base for a wall: industrial draws from its own fixed palette; everything else desaturates+lightness-clamps the catalog color. */
+/** A kind's wall base: one of its chart materials by id hash, before hue jitter; null where the kind has no palette of its own. */
+export function kindWallBase(entry: BuildingCatalogEntry, buildingId: number): RGB | null {
+  const palette = bodyPaletteFor(entry.kind, entry.level);
+  if (!palette) return null;
+  const units = paletteUnits(palette);
+  const index = Math.floor(facadeHash(buildingId, HASH_SLOT_KIND_WALL) * units.length);
+  return paletteAt(units, Math.min(index, units.length - 1));
+}
+
+/** The pre-jitter HSL base for a wall: industrial and the kinds with a palette draw a chart material unclamped; everything else desaturates+lightness-clamps the catalog color. */
 function baseWallHsl(entry: BuildingCatalogEntry, buildingId: number): HSL {
   if (entry.category === 'ind') {
     const [r, g, b] = industrialWallBase(buildingId);
+    return rgbToHsl(r, g, b);
+  }
+  const kindBase = kindWallBase(entry, buildingId);
+  if (kindBase) {
+    const [r, g, b] = kindBase;
     return rgbToHsl(r, g, b);
   }
   const [r, g, b] = hexToRgb01(entry.color);
@@ -320,9 +486,18 @@ function rotateRoofColor(buildingId: number, wallColor: RGB): RGB {
   return paletteAt(ROOF_PALETTE, baseIndex % ROOF_PALETTE.length);
 }
 
+/** A kind's roof: one of its chart materials by id hash, chosen by the kind rather than by distance from the wall; null where the kind has no roof palette. */
+export function kindRoofColor(entry: BuildingCatalogEntry, buildingId: number): RGB | null {
+  const palette = roofPaletteFor(entry.kind);
+  if (!palette) return null;
+  const units = paletteUnits(palette);
+  const index = Math.floor(facadeHash(buildingId, HASH_SLOT_ROOF_ROTATION) * units.length);
+  return paletteAt(units, Math.min(index, units.length - 1));
+}
+
 function deriveRoofColor(entry: BuildingCatalogEntry, buildingId: number, wallColor: RGB): RGB {
   if (entry.category === 'ind') return INDUSTRIAL_ROOF_COLOR;
-  return rotateRoofColor(buildingId, wallColor);
+  return kindRoofColor(entry, buildingId) ?? rotateRoofColor(buildingId, wallColor);
 }
 
 // ---------------------------------------------------------------------------

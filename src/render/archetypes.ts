@@ -126,7 +126,14 @@ export type BuildingPart =
   | 'brickPier'
   | 'boxBay'
   | 'elevatorBulkhead'
-  | 'penthouse';
+  | 'penthouse'
+  | 'parapetStep'
+  | 'baseBand'
+  | 'dockScreen'
+  | 'featureWall'
+  | 'accentBand'
+  | 'mansardBand'
+  | 'ribbonBand';
 
 /**
  * Whether an industrial building is the CLEAN kind, taken from whether it
@@ -246,8 +253,8 @@ const PARTS: Readonly<Record<BuildingArchetype, readonly BuildingPart[]>> = {
     'rooftopUnit',
     'roofHatch',
   ],
-  office: ['lobbyPortal', 'rooftopUnit', 'roofHatch'],
-  hotel: ['porteCochere', 'signageBand', 'rooftopUnit', 'roofHatch'],
+  office: ['lobbyPortal', 'ribbonBand', 'rooftopUnit', 'roofHatch'],
+  hotel: ['porteCochere', 'baseBand', 'signageBand', 'rooftopUnit', 'roofHatch'],
   house: [],
   apartment: [],
   farm: [],
@@ -260,8 +267,10 @@ const STOREFRONT_PARTS: Readonly<Record<string, readonly BuildingPart[]>> = {
   strip: [
     'stripCanopy',
     'stripColumn',
+    'baseBand',
     'signageBand',
     'anchorParapet',
+    'parapetStep',
     'pylon',
     'signPole',
     'rooftopUnit',
@@ -271,25 +280,38 @@ const STOREFRONT_PARTS: Readonly<Record<string, readonly BuildingPart[]>> = {
     'entryTower',
     'towerGlazing',
     'anchorParapet',
-    'brickBase',
+    'baseBand',
     'cartCorral',
+    'dockScreen',
     'signPole',
     'signageBand',
     'rooftopUnit',
     'roofHatch',
   ],
   restaurant: [
+    'featureWall',
     'awning',
     'signageBand',
+    'accentBand',
+    'mansardBand',
     'menuBoard',
     'clearanceBar',
     'pickupCanopy',
     'dumpsterEnclosure',
+    'pylon',
     'signPole',
     'rooftopUnit',
     'roofHatch',
   ],
 };
+
+/** The old form's brown mansard dresses a restaurant at this level only; the levels above it have a flat parapet. */
+export const MANSARD_LEVEL = 1;
+
+/** Whether a restaurant wears the mansard band: its first level only. */
+export function hasMansard(entry: BuildingCatalogEntry): boolean {
+  return entry.kind === 'restaurant' && (entry.level ?? 1) === MANSARD_LEVEL;
+}
 
 /** The dock bank a distribution centre and a food plant share: doors on a platform, each framed, bumped and lit. */
 const DOCK_BANK_PARTS: readonly BuildingPart[] = [
@@ -364,6 +386,7 @@ const APARTMENT_PARTS: Readonly<Record<string, readonly BuildingPart[]>> = {
 /** An office tower, the third level, stands a screened cooling tower on its roof in place of rooftop units. */
 const OFFICE_TOWER_PARTS: readonly BuildingPart[] = [
   'lobbyPortal',
+  'ribbonBand',
   'roofScreen',
   'coolingTower',
   'roofHatch',
@@ -371,7 +394,12 @@ const OFFICE_TOWER_PARTS: readonly BuildingPart[] = [
 
 export function partsFor(entry: BuildingCatalogEntry): readonly BuildingPart[] {
   const archetype = archetypeFor(entry);
-  if (archetype === 'storefront') return STOREFRONT_PARTS[entry.kind ?? ''] ?? PARTS.storefront;
+  if (archetype === 'storefront') {
+    const parts = STOREFRONT_PARTS[entry.kind ?? ''] ?? PARTS.storefront;
+    return hasMansard(entry) || entry.kind !== 'restaurant'
+      ? parts
+      : parts.filter((p) => p !== 'mansardBand');
+  }
   if (entry.category === 'ind' && !isFarmEntry(entry)) {
     return INDUSTRY_PARTS[entry.kind ?? ''] ?? PARTS[archetype];
   }

@@ -1840,6 +1840,9 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
     parkedCars.setDayFraction(dayT);
     lastNightFactor = nightFactor;
     instancer.setNightFactor(nightFactor);
+    terrain.setNightFactor(nightFactor); // the ground carries the same tint as the bodies on it
+    trees.setNightFactor(nightFactor);
+    lots.setNightFactor(nightFactor);
     massing.setNightFactor(nightFactor);
     roofProps.setNightFactor(nightFactor);
     houseRoofs.setNightFactor(nightFactor);

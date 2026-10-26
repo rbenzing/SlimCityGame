@@ -21,7 +21,7 @@ import {
   type KitBox,
   type LotRect,
 } from './houselot';
-import { MULLION_MARGIN_PUNCHED, windowGrid } from './facade';
+import { housePaneMargins, windowGrid } from './facade';
 import { HOUSE_FRONT_YARD_M, frontageSetbackFor, tierHeightOf } from './massing';
 import type { StreetLookup } from './frontage';
 import { TILE_METERS } from '../shared/constants';
@@ -559,23 +559,28 @@ describe('planHouseLot — shutters stand on the facade’s own grid', () => {
 
   it('puts a pair either side of a window, centred on its bay, half a window wide and as tall as it', () => {
     for (const e of shuttered) {
-      const { cols, rows } = windowGrid(e, tierHeightOf(e));
+      const tier = tierHeightOf(e);
+      const { cols, rows } = windowGrid(e, tier);
+      // The window is the facade's own metre-sized pane.
+      const pane = housePaneMargins(e, tier)!;
+      expect(pane).not.toBeNull();
       for (const { kit, body } of streetOf(e, 12)) {
         expect(kit.shutters.length).toBeGreaterThan(0);
         const bayW = (body.u1 - body.u0) / cols;
         const bayH = kit.heightM / rows;
+        const windowW = bayW * (1 - 2 * pane.x);
         const byBay = new Map<string, number[]>();
         for (const s of kit.shutters) {
           near(s.rect.v1, body.v0);
           near(s.rect.v1 - s.rect.v0, SHUTTER_THICKNESS_M);
-          near(s.rect.u1 - s.rect.u0, bayW / 4); // half of a window, which is half its bay
-          near(s.y1 - s.y0, (1 - 2 * MULLION_MARGIN_PUNCHED) * bayH);
+          near(s.rect.u1 - s.rect.u0, windowW / 2); // half of a window
+          near(s.y1 - s.y0, (1 - 2 * pane.y) * bayH);
           const centre = (s.rect.u0 + s.rect.u1) / 2;
           const bay = Math.floor((centre - body.u0) / bayW);
           expect(bay).toBeGreaterThanOrEqual(0);
           expect(bay).toBeLessThan(cols);
           const bayCentre = body.u0 + (bay + 0.5) * bayW;
-          near(Math.abs(centre - bayCentre), (3 * bayW) / 8);
+          near(Math.abs(centre - bayCentre), (3 * windowW) / 4);
           const key = `${bay}:${s.y0.toFixed(4)}`;
           byBay.set(key, [...(byBay.get(key) ?? []), centre - bayCentre]);
         }

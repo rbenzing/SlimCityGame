@@ -28,13 +28,14 @@
  */
 import * as THREE from 'three';
 import { MeshStandardNodeMaterial } from 'three/webgpu';
-import { mix, uniform, vec3 } from 'three/tsl';
+import { uniform } from 'three/tsl';
 import {
   BuildingCatalogEntry,
   BuildingDelta,
   BuildingInstance,
   BuildingState,
 } from '../shared/types';
+import { nightTintNode } from './nightlook';
 import { TILE_METERS } from '../shared/constants';
 import { footprintForRotation } from '../shared/footprint';
 import {
@@ -481,8 +482,6 @@ const _color = new THREE.Color();
 const _yAxis = new THREE.Vector3(0, 1, 0);
 
 const INITIAL_MASSING_CAPACITY = 64;
-/** Night body-tint the massing block multiplies toward at full night. */
-const NIGHT_BODY_TINT: readonly [number, number, number] = [0.11, 0.13, 0.19];
 
 export class MassingRenderer {
   private readonly heightAt: (x: number, z: number) => number;
@@ -562,7 +561,7 @@ export class MassingRenderer {
     // the night mix on top of that (see buildings.ts's identical
     // `dayColorNode.mul(nightTint)` pattern, and NodeMaterial.js's
     // `colorNode = instanceColor.mul(colorNode)` wrapping).
-    material.colorNode = mix(vec3(1, 1, 1), vec3(...NIGHT_BODY_TINT), this.nightFactorUniform);
+    material.colorNode = nightTintNode(this.nightFactorUniform);
     return material;
   }
 

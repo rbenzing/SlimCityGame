@@ -279,7 +279,12 @@ above is read with that correction.
   its pylon, a supermarket from its car park, a drive-through restaurant
   from above, a filling station, an office and a hotel downtown, each at
   the default pitch beside the 4 m car; the same at night, where sign bands,
-  the pylon and the lobby glow and the rest does not.
+  the pylon and the lobby glow in their own warm-shifted livery, the
+  storefront glazing is lit from inside, and the rest does not glow.
+- `tools/nightlook-shots.mjs`: the night look measured — a colonial and a
+  shop from one pinned camera at noon, 03:00 and midnight, a wall, a shutter
+  and a roof pixel read back, failing outside the 30–50% body band or on a
+  pane that clips or is not warm ([lighting.md](../../visual-render/lighting.md)).
 - `tools/frame-budget.mjs` before and after.
 
 ### Industry and farms

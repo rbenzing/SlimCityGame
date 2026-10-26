@@ -9,6 +9,7 @@ import type { Node } from 'three/webgpu';
 import {
   abs,
   attribute,
+  bool,
   distance,
   float,
   floor,
@@ -45,6 +46,7 @@ import { NO_STREETS, type StreetLookup } from './frontage';
 import type { KerbSurroundings } from '../shared/kerblayout';
 import { maxHeightOverRect, maxHeightUnderBody, minHeightOverRect } from './footprint';
 import { isFarmEntry } from './archetypes';
+import { nightTintNode } from './nightlook';
 import { BARN_EAVE_SHARE, planFarm, type FarmRect } from './farmlot';
 import {
   ACCENT_BLUE,
@@ -53,22 +55,29 @@ import {
   HASH_SLOT_HUE_JITTER,
   HASH_SLOT_INDUSTRIAL_ACCENT,
   HASH_SLOT_INDUSTRIAL_WALL,
+  HASH_SLOT_KIND_WALL,
   HASH_SLOT_ROOF_ROTATION,
   HUE_JITTER_FRACTION,
   INDUSTRIAL_ACCENT_HEIGHT_FRACTION,
   INDUSTRIAL_ROOF_COLOR,
   INDUSTRIAL_WALL_PALETTE,
   FRAME_DARKEN,
+  housePaneMargins,
+  storefrontCut,
   MAX_WALL_SATURATION,
   MIN_ROOF_WALL_DISTANCE,
   MULLION_MARGIN_PUNCHED,
   ROOF_PALETTE,
   RGB,
+  bodyPaletteFor,
   deriveFacadeParams,
+  glassTintFor,
   groundFloorBand,
   isRowHouseArchetype,
+  paletteUnits,
   parapetBand,
   rgbToHsl,
+  roofPaletteFor,
   windowGrid,
 } from './facade';
 
@@ -122,15 +131,14 @@ const WINDOW_COOL_PROBABILITY = 0.18;
 export const WARM_WINDOW_COLOR = 0xffd9a0;
 export const COOL_WINDOW_COLOR = 0xcfe4ff;
 /**
- * Building base color multiplies toward this tint at night. Keeps a wall at
- * full night a clearly SHADED (dimmed, slightly cool — blue channel highest,
- * red lowest) version of its day color: relative luminance
- * (0.2126R+0.7152G+0.0722B) of this tint is ~0.377, comfortably above the
- * >0.3 floor that keeps facades recognizable, while still well under 1.0 so
- * night reads as dimmer + cooler than day.
+ * A lit pane's emissive at full night. Under the renderer's neutral tone
+ * mapping this keeps the warm pane's brightest channel under white, so a
+ * pane keeps its colour and the bloom pass, not the strength, gives it its
+ * halo.
  */
-export const NIGHT_BODY_TINT: readonly [number, number, number] = [0.34, 0.38, 0.46];
-export const WINDOW_EMISSIVE_STRENGTH = 2.2;
+export const WINDOW_EMISSIVE_STRENGTH = 1.5;
+/** The night factor from which a shop's storefront glazing is lit from inside: early in the dusk sweep, as shops light before homes do. */
+export const STOREFRONT_LIT_FROM = 0.3;
 
 /** Industrial ground floor: a row of wide roll-up loading doors per face. */
 const INDUSTRIAL_DOOR_BAYS = 3;
@@ -268,11 +276,12 @@ function selectFromPalette(indexNode: Node<'float'>, options: readonly RGB[]): N
 
 /**
  * Per-instance wall base color: industrial rotates among its own
- * steel-blue/light-grey/off-white palette; everything else
+ * steel-blue/light-grey/off-white palette; a kind with a body palette
+ * rotates among its chart materials, unclamped; everything else
  * desaturates the catalog color down to MAX_WALL_SATURATION (via three's own
  * `saturation()` color-adjustment node — a cheap, robust luminance-lerp
  * desaturation rather than a hand-rolled HSL round-trip in the shader).
- * Both paths finish with the same deterministic ±HUE_JITTER_FRACTION hue
+ * Every path finishes with the same deterministic ±HUE_JITTER_FRACTION hue
  * rotation (three's `hue()` node), mirroring facade.ts's deriveWallColor
  * formula.
  */
@@ -287,6 +296,7 @@ function buildWallColorNode(
     .sub(1)
     .mul(HUE_JITTER_FRACTION * Math.PI * 2);
 
+  const kindPalette = isIndustrial ? null : bodyPaletteFor(entry.kind, entry.level);
   let base: Node<'vec3'>;
   if (isIndustrial) {
     const rotationSeed = buildingIdAttr
@@ -294,6 +304,11 @@ function buildWallColorNode(
       .add(HASH_SLOT_INDUSTRIAL_WALL);
     const index = floor(hash(rotationSeed).mul(INDUSTRIAL_WALL_PALETTE.length));
     base = selectFromPalette(index, INDUSTRIAL_WALL_PALETTE);
+  } else if (kindPalette) {
+    const units = paletteUnits(kindPalette);
+    const kindSeed = buildingIdAttr.mul(FACADE_HASH_SLOT_MULTIPLIER).add(HASH_SLOT_KIND_WALL);
+    const index = floor(hash(kindSeed).mul(units.length));
+    base = selectFromPalette(index, units);
   } else {
     const catalogColor = new THREE.Color(entry.color);
     const { s: originalSaturation } = rgbToHsl(catalogColor.r, catalogColor.g, catalogColor.b);
@@ -311,9 +326,12 @@ function buildWallColorNode(
  * ("distinct from walls"). facade.ts's rotateRoofColor does the full
  * 3-attempt cycle for its CPU-tested reference; a single retry is enough
  * here since the 3 palette entries already sit >0.2 apart pairwise.
- * Industrial always gets the fixed grey roof plate instead.
+ * Industrial always gets the fixed grey roof plate instead, and a kind with
+ * a roof palette one of its own materials by the same hash, no distance
+ * check: the kind decides the roof, mirroring facade.ts's kindRoofColor.
  */
 function buildRoofColorNode(
+  entry: BuildingCatalogEntry,
   buildingIdAttr: Node<'float'>,
   wallColorNode: Node<'vec3'>,
   isIndustrial: boolean,
@@ -321,6 +339,12 @@ function buildRoofColorNode(
   if (isIndustrial) return vec3(...INDUSTRIAL_ROOF_COLOR);
 
   const rotationSeed = buildingIdAttr.mul(FACADE_HASH_SLOT_MULTIPLIER).add(HASH_SLOT_ROOF_ROTATION);
+  const kindPalette = roofPaletteFor(entry.kind);
+  if (kindPalette) {
+    const units = paletteUnits(kindPalette);
+    return selectFromPalette(floor(hash(rotationSeed).mul(units.length)), units);
+  }
+
   const baseIndex = floor(hash(rotationSeed).mul(ROOF_PALETTE.length));
   const nextIndex = baseIndex.add(1).mod(ROOF_PALETTE.length);
 
@@ -543,6 +567,9 @@ export class BuildingInstancer {
     const tierHeight = tierHeightOf(entry);
     const groundBandThreshold = groundFloorBand(tierHeight);
     const parapetThreshold = parapetBand(tierHeight);
+    // A house's panes are window-sized in metres, and a house has no
+    // storefront: its ground floor is cut like the floors above it.
+    const housePane = housePaneMargins(entry, tierHeight);
 
     const buildingIdAttr = attribute<'float'>('aBuildingId', 'float');
     const activeAttr = attribute<'float'>('aActive', 'float');
@@ -584,7 +611,9 @@ export class BuildingInstancer {
     // real windows. windowInset (punched vs curtain-wall) and the ground
     // floor's taller storefront glazing change the inset margin; industrial
     // additionally thins the pane population via an independently-salted hash.
-    const isGroundFloor = uvNode.y.lessThan(groundBandThreshold).and(isBaseTier);
+    const isGroundFloor = housePane
+      ? bool(false)
+      : uvNode.y.lessThan(groundBandThreshold).and(isBaseTier);
     const cellU = fract(uvNode.x.mul(cols));
     const cellV = fract(uvNode.y.mul(rows));
     const baseMargin = isIndustrial
@@ -593,9 +622,24 @@ export class BuildingInstancer {
         ? MULLION_MARGIN_PUNCHED
         : MULLION_MARGIN_CURTAIN;
     const margin = select(isGroundFloor, float(MULLION_MARGIN_GROUND_FLOOR), float(baseMargin));
-    const insidePaneX = cellU.greaterThan(margin).and(cellU.lessThan(float(1).sub(margin)));
-    const insidePaneY = cellV.greaterThan(margin).and(cellV.lessThan(float(1).sub(margin)));
+    const marginX = housePane ? float(housePane.x) : margin;
+    const marginY = housePane ? float(housePane.y) : margin;
+    const insidePaneX = cellU.greaterThan(marginX).and(cellU.lessThan(float(1).sub(marginX)));
+    const insidePaneY = cellV.greaterThan(marginY).and(cellV.lessThan(float(1).sub(marginY)));
     let isPane: Node<'bool'> = insidePaneX.and(insidePaneY);
+    // A commercial ground floor is a storefront: bays of glass between dark
+    // mullions over a dark bulkhead, so a lit shopfront is a row of windows.
+    const storefront = housePane ? null : storefrontCut(entry, tierHeight);
+    if (storefront) {
+      const bayU = fract(uvNode.x.mul(storefront.bays));
+      const inBayX = bayU
+        .greaterThan(storefront.marginX)
+        .and(bayU.lessThan(1 - storefront.marginX));
+      const inBayY = uvNode.y
+        .greaterThan(storefront.sillFraction)
+        .and(uvNode.y.lessThan(storefront.headFraction));
+      isPane = select(isGroundFloor, inBayX.and(inBayY), isPane);
+    }
     if (isIndustrial) {
       const existsSeed = windowSeed.mul(WINDOW_EXISTS_SALT_MUL).add(WINDOW_EXISTS_SALT_ADD);
       isPane = isPane.and(hash(existsSeed).lessThan(INDUSTRIAL_WINDOW_DENSITY));
@@ -603,13 +647,23 @@ export class BuildingInstancer {
 
     // --- night emissive: only the glass pane glows (a defined window, not a
     // full-cell rectangle) — same across residential/commercial/industrial ---
-    const gate = isWall.and(isLit).and(isPane).and(activeAttr.greaterThan(0.5));
-    const emissiveOn = windowColorNode.mul(this.nightFactorUniform).mul(WINDOW_EMISSIVE_STRENGTH);
+    // A shop's storefront glazing is lit from inside as one, warm, once the
+    // evening is in; its floors above follow the per-window hash like any
+    // other building, which is what tells a shop from an office at night.
+    const storefrontLit = entry.category === 'com' && family !== 'glass';
+    const isWindowLit = storefrontLit
+      ? select(isGroundFloor, this.nightFactorUniform.greaterThan(STOREFRONT_LIT_FROM), isLit)
+      : isLit;
+    const paneColorNode = storefrontLit
+      ? select(isGroundFloor, vec3(warmColor.r, warmColor.g, warmColor.b), windowColorNode)
+      : windowColorNode;
+    const gate = isWall.and(isWindowLit).and(isPane).and(activeAttr.greaterThan(0.5));
+    const emissiveOn = paneColorNode.mul(this.nightFactorUniform).mul(WINDOW_EMISSIVE_STRENGTH);
     material.emissiveNode = select(gate, emissiveOn, vec3(0, 0, 0));
 
     // --- day facade -------------------------------------------------------
     const wallColorNode = buildWallColorNode(entry, buildingIdAttr, isIndustrial);
-    const roofColorNode = buildRoofColorNode(buildingIdAttr, wallColorNode, isIndustrial);
+    const roofColorNode = buildRoofColorNode(entry, buildingIdAttr, wallColorNode, isIndustrial);
     const isParapet = uvNode.y.greaterThan(1 - parapetThreshold);
 
     // Solid wall base (the frame/mullion color where there is no pane):
@@ -632,7 +686,11 @@ export class BuildingInstancer {
       .mul(WINDOW_REFLECTANCE_SALT_MUL)
       .add(WINDOW_REFLECTANCE_SALT_ADD);
     const reflectance = hash(reflectanceSeed);
-    const glassBase = family === 'glass' ? GLASS_TINT_CURTAIN : GLASS_TINT_PUNCHED;
+    // An office's cells tint with the chart's glass for its level; every
+    // other kind keeps the family pane.
+    const glassBase =
+      glassTintFor(entry.kind, entry.level) ??
+      (family === 'glass' ? GLASS_TINT_CURTAIN : GLASS_TINT_PUNCHED);
     const glassColor = vec3(...glassBase).mul(
       mix(GLASS_REFLECTANCE_MIN, GLASS_REFLECTANCE_MAX, reflectance),
     );
@@ -703,8 +761,7 @@ export class BuildingInstancer {
     const wallExpression = select(isParapet, parapetColor, withEntrance);
 
     const dayColorNode = select(isWall, wallExpression, roofColorNode);
-    const nightTint = mix(vec3(1, 1, 1), vec3(...NIGHT_BODY_TINT), this.nightFactorUniform);
-    material.colorNode = dayColorNode.mul(nightTint);
+    material.colorNode = dayColorNode.mul(nightTintNode(this.nightFactorUniform));
 
     return material;
   }
@@ -732,8 +789,7 @@ export class BuildingInstancer {
       vec3(catalogColor.r, catalogColor.g, catalogColor.b),
       saturationAdjustment,
     );
-    const nightTint = mix(vec3(1, 1, 1), vec3(...NIGHT_BODY_TINT), this.nightFactorUniform);
-    material.colorNode = desaturated.mul(nightTint);
+    material.colorNode = desaturated.mul(nightTintNode(this.nightFactorUniform));
     return material;
   }
 

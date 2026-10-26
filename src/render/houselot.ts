@@ -24,7 +24,7 @@ import {
 } from './frontage';
 import { bodyMetresFor, frontageSetbackFor, tierHeightOf } from './massing';
 import { isHouseEntry } from './archetypes';
-import { MULLION_MARGIN_PUNCHED, windowGrid } from './facade';
+import { housePaneMargins, MULLION_MARGIN_PUNCHED, windowGrid } from './facade';
 import { homesAcrossFrontage } from '../shared/buildingkind';
 
 // Same avalanche hash every render/*.ts keeps a local copy of.
@@ -143,7 +143,7 @@ const CHIMNEY_ABOVE_RIDGE_GABLE_M = 0.6;
 const CHIMNEY_OUTSIDE_M = 0.33;
 const CHIMNEY_INSIDE_M = CHIMNEY_FLUE_M - CHIMNEY_OUTSIDE_M;
 export const SHUTTER_THICKNESS_M = 0.06;
-/** A shutter is half a window wide, one either side of it, and a window is half its bay. */
+/** A shutter is half a window wide, one either side of it; a house's window is the facade's metre-sized pane, any other's half its bay. */
 const WINDOW_SHARE_OF_BAY = 0.5;
 export const PARAPET_ABOVE_ROOF_M = 0.76;
 export const PARAPET_THICKNESS_M = 0.3;
@@ -977,15 +977,21 @@ function planShutters(
   heightM: number,
   keepClear: readonly [number, number][],
 ): KitBox[] {
-  const { cols, rows } = windowGrid(entry, tierHeightOf(entry));
+  const tierHeight = tierHeightOf(entry);
+  const { cols, rows } = windowGrid(entry, tierHeight);
+  const pane = housePaneMargins(entry, tierHeight) ?? {
+    x: (1 - WINDOW_SHARE_OF_BAY) / 2,
+    y: MULLION_MARGIN_PUNCHED,
+  };
   const bayW = (body.u1 - body.u0) / cols;
   const bayH = heightM / rows;
-  const shutterW = (bayW * WINDOW_SHARE_OF_BAY) / 2;
-  const reach = (bayW * WINDOW_SHARE_OF_BAY) / 2 + shutterW / 2;
+  const windowW = bayW * (1 - 2 * pane.x);
+  const shutterW = windowW / 2;
+  const reach = windowW / 2 + shutterW / 2;
   const out: KitBox[] = [];
   for (let row = 0; row < rows; row++) {
-    const y0 = (row + MULLION_MARGIN_PUNCHED) * bayH;
-    const y1 = (row + 1 - MULLION_MARGIN_PUNCHED) * bayH;
+    const y0 = (row + pane.y) * bayH;
+    const y1 = (row + 1 - pane.y) * bayH;
     for (let col = 0; col < cols; col++) {
       const centre = body.u0 + (col + 0.5) * bayW;
       for (const side of [-1, 1]) {

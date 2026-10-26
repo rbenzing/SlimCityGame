@@ -8,8 +8,8 @@ import {
   isRowHouseArchetype,
   isWindowCool,
   isWindowLit,
-  NIGHT_BODY_TINT,
   WARM_WINDOW_COLOR,
+  WINDOW_EMISSIVE_STRENGTH,
   windowGridSize,
   windowHash,
   windowLitFraction,
@@ -28,6 +28,7 @@ import {
   BuildingCatalogEntry,
   BuildingInstance,
   BuildingState,
+  CommercialKind,
   Problem,
   ZoneType,
 } from '../shared/types';
@@ -423,8 +424,16 @@ describe('night cycle (UI-SPEC §6.5)', () => {
     it('gives the row-house archetype a TIGHTER (>=) window-column grid than an identically-shaped non-row-house entry', () => {
       const rowHouseGrid = windowGridSize(ROW_HOUSE);
       const plainGrid = windowGridSize(SAME_SHAPE_NOT_ROW_HOUSE);
-      expect(rowHouseGrid.cols).toBeGreaterThan(plainGrid.cols);
+      // A detached house this long reaches the column clamp on its own bay rule, so the terrace can only match it there.
+      expect(rowHouseGrid.cols).toBeGreaterThanOrEqual(plainGrid.cols);
       expect(rowHouseGrid.rows).toBe(plainGrid.rows); // height-derived row count is untouched by the tweak
+      // Against a non-house of the same shape the terrace is strictly denser.
+      const shop: BuildingCatalogEntry = {
+        ...SAME_SHAPE_NOT_ROW_HOUSE,
+        category: 'com',
+        kind: undefined,
+      };
+      expect(rowHouseGrid.cols).toBeGreaterThan(windowGridSize(shop).cols);
     });
 
     it('stays within the existing MAX_WINDOW_COLS clamp, so the WINDOW_SEED_SLOTS budget invariant is untouched', () => {
@@ -543,28 +552,10 @@ describe('night cycle (UI-SPEC §6.5)', () => {
     expect(COOL_WINDOW_COLOR).toBe(0xcfe4ff);
   });
 
-  describe('NIGHT_BODY_TINT (UI-SPEC §6.18 #7 — night facades stay color-legible, not black)', () => {
-    // Rec. 709 relative luminance; day color is untinted (mix factor 0 -> [1,1,1],
-    // luminance 1), so this tint's own luminance IS the night/day retained fraction.
-    function relativeLuminance([r, g, b]: readonly [number, number, number]): number {
-      return 0.2126 * r + 0.7152 * g + 0.0722 * b;
-    }
-
-    it('retains a meaningful fraction (> 0.3) of day luminance at full night, rather than collapsing to near-black', () => {
-      const luminance = relativeLuminance(NIGHT_BODY_TINT);
-      expect(luminance).toBeGreaterThan(0.3);
-    });
-
-    it('is still clearly dimmer than day (every channel stays below 1)', () => {
-      for (const channel of NIGHT_BODY_TINT) {
-        expect(channel).toBeLessThan(1);
-      }
-    });
-
-    it('reads as cool (blue channel is the strongest, red the weakest) rather than a neutral grey dim', () => {
-      const [r, g, b] = NIGHT_BODY_TINT;
-      expect(b).toBeGreaterThan(g);
-      expect(g).toBeGreaterThan(r);
+  describe('WINDOW_EMISSIVE_STRENGTH — a lit pane keeps its colour', () => {
+    it('is above 1 (a pane outshines its wall and crosses the bloom threshold) and below 2 (a warm pane never tone-maps to white)', () => {
+      expect(WINDOW_EMISSIVE_STRENGTH).toBeGreaterThan(1);
+      expect(WINDOW_EMISSIVE_STRENGTH).toBeLessThan(2);
     });
   });
 
@@ -775,6 +766,34 @@ describe('day facade (UI-SPEC §6.6 Stage 1) — extends the §6.5 material, no 
     expect(
       () => new BuildingInstancer(new THREE.Scene(), FULL_CATALOG, flatHeightAt),
     ).not.toThrow();
+  });
+
+  it('constructs the kind-palette body, roof and glass for every commercial kind, the office at every level, without throwing', () => {
+    const kinds: CommercialKind[] = [
+      'shop',
+      'strip',
+      'supermarket',
+      'restaurant',
+      'fuel',
+      'office',
+      'hotel',
+    ];
+    const kindCatalog: BuildingCatalogEntry[] = kinds.flatMap((kind) =>
+      [1, 2, 3].map((level) => ({
+        ...MASONRY_COM,
+        id: `${kind}-${level}`,
+        zone: kind === 'office' || kind === 'hotel' ? ZoneType.ComHigh : ZoneType.ComLow,
+        kind,
+        level,
+      })),
+    );
+    const instancer = new BuildingInstancer(new THREE.Scene(), kindCatalog, flatHeightAt);
+    instancer.apply({
+      added: kindCatalog.map((e, i) => instanceAt(i + 1, i * 4, 0, { catalogId: e.id })),
+      removed: [],
+      updated: [],
+    });
+    expect(instancer.getPickables().length).toBe(kindCatalog.length);
   });
 
   it('renders one instance per archetype with correct matrix/id bookkeeping and exactly one InstancedMesh per catalog entry (no draw-call growth)', () => {

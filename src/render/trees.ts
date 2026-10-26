@@ -19,6 +19,9 @@
  * Math.random anywhere, and clearAt's tile-keyed bookkeeping is unaffected.
  */
 import * as THREE from 'three';
+import type { MeshLambertNodeMaterial } from 'three/webgpu';
+import { uniform } from 'three/tsl';
+import { nightBodyMaterial } from './nightlook';
 import { MapData, TilePoint } from '../shared/types';
 import { TILE_METERS } from '../shared/constants';
 import { setInstanceCount } from './groundquad';
@@ -721,7 +724,9 @@ export class TreeRenderer {
   private readonly scene: THREE.Scene;
   private readonly heightAt: (x: number, z: number) => number;
   private readonly geometries: SpeciesRecord<THREE.BufferGeometry>;
-  private readonly materials: SpeciesRecord<THREE.MeshLambertMaterial>;
+  private readonly materials: SpeciesRecord<MeshLambertNodeMaterial>;
+  /** 0 (day) .. 1 (night): what every species' colour shades by. */
+  private readonly nightFactorUniform = uniform(0);
   private readonly meshes: SpeciesRecord<THREE.InstancedMesh | null> = {
     broadleaf: null,
     pine: null,
@@ -740,12 +745,25 @@ export class TreeRenderer {
       poplar: buildPoplarGeometry(),
       shrub: buildShrubGeometry(),
     };
+    // Foliage carries the one night tint every sunlit surface does; the
+    // season still paints by material.color, which the tint node keeps live.
+    const foliage = (): MeshLambertNodeMaterial =>
+      nightBodyMaterial(this.nightFactorUniform, { vertexColors: true, flatShading: true });
     this.materials = {
-      broadleaf: new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }),
-      pine: new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }),
-      poplar: new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }),
-      shrub: new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }),
+      broadleaf: foliage(),
+      pine: foliage(),
+      poplar: foliage(),
+      shrub: foliage(),
     };
+  }
+
+  /** 0 (day) .. 1 (night): how far the foliage shades toward the night tint. */
+  setNightFactor(nightFactor: number): void {
+    this.nightFactorUniform.value = Math.min(1, Math.max(0, nightFactor));
+  }
+
+  nightFactor(): number {
+    return this.nightFactorUniform.value;
   }
 
   build(map: MapData, seed: number): void {
@@ -868,7 +886,7 @@ export class TreeRenderer {
   }
 
   /** This species' persistent material (survives rebuilds — see class doc). */
-  materialFor(species: TreeSpecies): THREE.MeshLambertMaterial {
+  materialFor(species: TreeSpecies): MeshLambertNodeMaterial {
     return this.materials[species];
   }
 
