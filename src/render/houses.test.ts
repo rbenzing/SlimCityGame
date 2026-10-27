@@ -25,9 +25,16 @@ import {
   planHouseLot,
   type HouseLotPlan,
 } from './houselot';
-import type { StreetLookup } from './frontage';
+import { frameAlongX, type StreetLookup } from './frontage';
 import { TILE_METERS } from '../shared/constants';
-import { BuildingCatalogEntry, BuildingInstance, BuildingState, ZoneType } from '../shared/types';
+import { toLocal } from '../shared/lotframe';
+import {
+  BuildingCatalogEntry,
+  BuildingInstance,
+  BuildingState,
+  ZoneType,
+  type ParcelFrame,
+} from '../shared/types';
 
 const flatHeightAt = (): number => 0;
 
@@ -591,7 +598,7 @@ describe('HouseRoofRenderer — the house kit', () => {
       const ridge = new THREE.Vector3(1, 0, 0).applyMatrix4(
         new THREE.Matrix4().extractRotation(matrixAt(r, 'roof', r.slotsFor(36, 'roof')[0]!)),
       );
-      expect(Math.abs(plan.frame.alongX ? ridge.x : ridge.z)).toBeCloseTo(1, 4);
+      expect(Math.abs(frameAlongX(plan.frame) ? ridge.x : ridge.z)).toBeCloseTo(1, 4);
       expect(roofScale.x).toBeGreaterThan(roofScale.z * 0.99);
     }
   });
@@ -776,6 +783,79 @@ describe('HouseRoofRenderer — the house kit', () => {
         expect(sa).toEqual(sb);
         for (const [i, slot] of sa.entries()) {
           expect(matrixAt(a, part, slot).equals(matrixAt(b, part, sb[i]!))).toBe(true);
+        }
+      }
+    }
+  });
+});
+
+describe('a house on a framed parcel', () => {
+  const parcel: ParcelFrame = { x: 212.5, z: 340.25, heading: 0.6 };
+  const catalog = [entry()];
+  const W = catalog[0]!.footprint.w * TILE_METERS;
+  const D = catalog[0]!.footprint.d * TILE_METERS;
+  const inside = (x: number, z: number, what: string): void => {
+    const p = toLocal(parcel, x, z);
+    expect(p.u, `${what} u`).toBeGreaterThanOrEqual(-1e-6);
+    expect(p.u, `${what} u`).toBeLessThanOrEqual(W + 1e-6);
+    expect(p.v, `${what} v`).toBeGreaterThanOrEqual(-1e-6);
+    expect(p.v, `${what} v`).toBeLessThanOrEqual(D + 1e-6);
+  };
+
+  it('stands its roof over the body inside the parcel, its ridge along the street', () => {
+    const r = new HouseRoofRenderer(new THREE.Scene(), flatHeightAt, catalog);
+    const home = instance({ id: 1, x: 10, z: 17, frame: parcel });
+    r.apply({ added: [home], updated: [], removed: [] });
+    const slot = r.slotsFor(1, 'roof')[0]!;
+    const m = new THREE.Matrix4();
+    r.getPartMatrix('roof', slot, m);
+    const pos = new THREE.Vector3().setFromMatrixPosition(m);
+    inside(pos.x, pos.z, 'roof');
+    const plan = planHouseLot(home, catalog[0]!, () => false, () => null)!;
+    const centre = lotToWorld(plan.frame, (plan.body.u0 + plan.body.u1) / 2, (plan.body.v0 + plan.body.v1) / 2);
+    expect(pos.x).toBeCloseTo(centre.x, 3);
+    expect(pos.z).toBeCloseTo(centre.z, 3);
+    const ridge = new THREE.Vector3(1, 0, 0).applyMatrix4(new THREE.Matrix4().extractRotation(m));
+    const along = ridge.x * Math.cos(parcel.heading) + ridge.z * Math.sin(parcel.heading);
+    expect(Math.abs(along)).toBeCloseTo(1, 4);
+  });
+
+  it('parks the resident’s car on the drive inside the parcel, nose into the lot', () => {
+    const r = new HouseRoofRenderer(new THREE.Scene(), flatHeightAt, catalog);
+    const home = instance({ id: 1, x: 10, z: 17, frame: parcel });
+    r.apply({ added: [home], updated: [], removed: [] });
+    const plan = planHouseLot(home, catalog[0]!, () => false, () => null)!;
+    expect(plan.drives.length).toBeGreaterThan(0);
+    expect(r.carSlotsFor(1)).toHaveLength(plan.drives.length);
+    const m = new THREE.Matrix4();
+    r.getCarMatrix(r.carSlotsFor(1)[0]!, m);
+    const car = new THREE.Vector3().setFromMatrixPosition(m);
+    inside(car.x, car.z, 'car');
+    const nose = new THREE.Vector3(0, 0, 1).applyMatrix4(new THREE.Matrix4().extractRotation(m));
+    expect(nose.x).toBeCloseTo(-Math.sin(parcel.heading), 4);
+    expect(nose.z).toBeCloseTo(Math.cos(parcel.heading), 4);
+  });
+
+  it('keeps every part and the car inside the parcel', () => {
+    const r = new HouseRoofRenderer(new THREE.Scene(), flatHeightAt, catalog);
+    const homes = Array.from({ length: 12 }, (_, i) =>
+      instance({ id: i + 1, x: 10, z: 17, frame: parcel }),
+    );
+    r.apply({ added: homes, updated: [], removed: [] });
+    const m = new THREE.Matrix4();
+    for (const home of homes) {
+      for (const part of EVERY_PART) {
+        for (const slot of r.slotsFor(home.id, part)) {
+          r.getPartMatrix(part, slot, m);
+          const pos = new THREE.Vector3().setFromMatrixPosition(m);
+          // A part's centre may hang off the lot by its own half size (an eave, a fence post), never more.
+          const scale = new THREE.Vector3().setFromMatrixScale(m);
+          const slack = Math.max(scale.x, scale.z) / 2 + 1e-6;
+          const p = toLocal(parcel, pos.x, pos.z);
+          expect(p.u, `${part} of ${home.id}`).toBeGreaterThanOrEqual(-slack);
+          expect(p.u, `${part} of ${home.id}`).toBeLessThanOrEqual(W + slack);
+          expect(p.v, `${part} of ${home.id}`).toBeGreaterThanOrEqual(-slack);
+          expect(p.v, `${part} of ${home.id}`).toBeLessThanOrEqual(D + slack);
         }
       }
     }

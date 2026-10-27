@@ -20,7 +20,7 @@
 import { TILE_METERS } from '../shared/constants';
 import type { BuildingCatalogEntry, BuildingInstance, FarmKind } from '../shared/types';
 import { farmKindOf } from '../shared/buildingkind';
-import { edgeFrameFor, frameToWorld, type EdgeFrame, type Side } from './frontage';
+import { edgeFrameFor, frameAlongX, frameToWorld, type EdgeFrame, type Side } from './frontage';
 
 /** An axis-aligned world rectangle, low corner first. */
 export interface FarmRect {
@@ -435,7 +435,7 @@ export function planFarm(
   const along = (side === 'N' || side === 'S' ? w : d) * TILE_METERS;
   const deep = (side === 'N' || side === 'S' ? d : w) * TILE_METERS;
   // Along the edge runs world X on a north or south gate, world Z on an east or west one.
-  const alongX = frame.alongX;
+  const alongX = frameAlongX(frame);
 
   const house = localRect(frame, HOUSE_U, HOUSE_V, HOUSE_U + HOUSE_W_M, HOUSE_V + HOUSE_D_M);
   const driveU = HOUSE_U + HOUSE_W_M + 3;

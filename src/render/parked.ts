@@ -41,6 +41,8 @@ import { isFarmEntry, isHouseEntry, isWalkUpEntry } from './archetypes';
 import {
   edgeFrameFor,
   findRoadFacingEdge,
+  frameAlongX,
+  frameDirection,
   frameToWorld,
   sidewalkDepthMeters,
   vergeDepthMeters,
@@ -114,12 +116,9 @@ export function curbCutTileFor(
   const plan = parkingPlanFor(entry, x, z, roadAt, rotation, kerb);
   if (!plan) return null;
   const { edge, frame, layout } = plan;
-  // The road tile across the edge from the middle of the driveway.
-  const mid = lotPointToWorld(frame, (layout.curbCut.u0 + layout.curbCut.u1) / 2, 0);
-  const alongTile = Math.floor((frame.alongX ? mid.x : mid.z) / TILE_METERS);
-  const tile = frame.alongX
-    ? { x: alongTile, z: edge.roadTileZ }
-    : { x: edge.roadTileX, z: alongTile };
+  // The road tile across the edge from the middle of the driveway: half a tile out from it.
+  const out = frameToWorld(frame, (layout.curbCut.u0 + layout.curbCut.u1) / 2, 0.5);
+  const tile = { x: Math.floor(out.x / TILE_METERS), z: Math.floor(out.z / TILE_METERS) };
   return roadAt(tile.x, tile.z) ? tile : { x: edge.roadTileX, z: edge.roadTileZ };
 }
 
@@ -419,8 +418,7 @@ const LONG_VEHICLE_NOSE_CLEARANCE_M = 0.2;
 
 /** A lot direction in world metres: `u` along the frame's edge, `v` into the lot. */
 function lotDirection(frame: EdgeFrame, du: number, dv: number): { x: number; z: number } {
-  const inward = -frame.outwardSign;
-  return frame.alongX ? { x: du, z: dv * inward } : { x: dv * inward, z: du };
+  return frameDirection(frame, du, dv);
 }
 
 /** The world yaw of a car whose nose points along a lot axis: `atan2(dx, dz)`, nose at +Z. */
@@ -626,7 +624,7 @@ export function computeMarkedStallPlacements(
   const length = edge.edgeTiles * TILE_METERS;
   const placements: StallPlacement[] = [];
   for (const stall of [...stalls].sort((a, b) => a.from - b.from)) {
-    const along = stall.centre - frame.edgeStart;
+    const along = stall.centre - (frameAlongX(frame) ? frame.x : frame.z);
     if (along < 0 || along >= length) continue;
     const { x: worldX, z: worldZ } = frameToWorld(frame, along, depth);
     if (

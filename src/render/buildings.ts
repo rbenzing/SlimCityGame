@@ -43,6 +43,7 @@ import {
   type SetbackBox,
 } from './massing';
 import { NO_STREETS, type StreetLookup } from './frontage';
+import { framedBodyPlacement } from './houselot';
 import type { KerbSurroundings } from '../shared/kerblayout';
 import { maxHeightOverRect, maxHeightUnderBody, minHeightOverRect } from './footprint';
 import { isFarmEntry } from './archetypes';
@@ -1050,7 +1051,20 @@ export class BuildingInstancer {
     entry: BuildingCatalogEntry,
     instance: BuildingInstance,
     base: SetbackBox,
-  ): { centerX: number; centerZ: number; groundY: number } {
+  ): { centerX: number; centerZ: number; groundY: number; yaw: number } {
+    if (instance.frame) {
+      // A body on a curve stands where its parcel's frame puts it, turned to its street.
+      const seat = framedBodyPlacement(instance.frame, entry, this.street);
+      const groundY = maxHeightUnderBody(
+        this.heightAt,
+        seat.x,
+        seat.z,
+        seat.boundsW,
+        seat.boundsD,
+        0,
+      );
+      return { centerX: seat.x, centerZ: seat.z, groundY, yaw: seat.yaw };
+    }
     const frontage = this.frontageOf(entry, instance);
     const lot = footprintForRotation(entry, instance.rotation);
     const centerX = (instance.x + lot.w / 2) * TILE_METERS + frontage.centerXM;
@@ -1063,7 +1077,7 @@ export class BuildingInstancer {
       base.d,
       instance.rotation,
     );
-    return { centerX, centerZ, groundY };
+    return { centerX, centerZ, groundY, yaw: instance.rotation * (Math.PI / 2) };
   }
 
   /** One tier of the body: a box of the stack, seated where the base tier stands. */
@@ -1074,12 +1088,12 @@ export class BuildingInstancer {
     box: SetbackBox,
     instance: BuildingInstance,
     heightScale: number,
-    seat: { centerX: number; centerZ: number; groundY: number },
+    seat: { centerX: number; centerZ: number; groundY: number; yaw: number },
   ): void {
-    const { centerX, centerZ, groundY } = seat;
+    const { centerX, centerZ, groundY, yaw } = seat;
     const h = box.h * heightScale;
     _position.set(centerX, groundY + box.yOffset * heightScale + h / 2, centerZ);
-    _quaternion.setFromAxisAngle(_yAxis, instance.rotation * (Math.PI / 2));
+    _quaternion.setFromAxisAngle(_yAxis, yaw);
     _scale.set(box.w, h, box.d);
     _matrix.compose(_position, _quaternion, _scale);
     bucket.mesh.setMatrixAt(slot, _matrix);

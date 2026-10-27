@@ -11,6 +11,10 @@ import {
 } from './lots';
 import { planFarm, type FarmRect } from './farmlot';
 import { TILE_METERS } from '../shared/constants';
+import { toLocal } from '../shared/lotframe';
+import { planHouseLot } from './houselot';
+import { sidewalkDepthMeters } from './frontage';
+import { RoadTier } from '../shared/types';
 import { CURB_CUT_Y_OFFSET } from './parked';
 import { lotPlanFor, lotPointToWorld } from './lotplan';
 import {
@@ -448,5 +452,46 @@ describe('lotBounds on a building turned a quarter', () => {
     expect(lotBounds(building({ rotation: 2 }), e)).toEqual(
       lotBounds(building({ rotation: 0 }), e),
     );
+  });
+});
+
+describe('a home’s lot on a framed parcel', () => {
+  const frame = { x: 212.5, z: 340.25, heading: 0.6 };
+  const house = entry({ category: 'res', zone: ZoneType.ResLow, kind: 'detached', height: 5 });
+
+  it('lays its pad and drive turned with the street, every vertex inside the parcel', () => {
+    const scene = new THREE.Scene();
+    const r = new LotRenderer(scene, flat, [house]);
+    const home = building({ x: 10, z: 17, frame });
+    r.apply(delta({ added: [home] }));
+    expect(r.lotCount()).toBe(1);
+    const plan = planHouseLot(home, house, () => false, () => null)!;
+    expect(plan.drives.length).toBeGreaterThan(0);
+    const mesh = scene.children[0] as THREE.Mesh;
+    const position = mesh.geometry.getAttribute('position');
+    expect(position.count).toBeGreaterThan(0);
+    // The attribute is float32: a tenth of a millimetre is the match. Only the
+    // drive's cut leaves the parcel, out across the road's footway.
+    const slack = 1e-4;
+    const walk = sidewalkDepthMeters(RoadTier.TwoLane);
+    for (let i = 0; i < position.count; i++) {
+      const p = toLocal(frame, position.getX(i), position.getZ(i));
+      expect(p.u, `vertex ${i}`).toBeGreaterThanOrEqual(-slack);
+      expect(p.u, `vertex ${i}`).toBeLessThanOrEqual(2 * TILE_METERS + slack);
+      expect(p.v, `vertex ${i}`).toBeGreaterThanOrEqual(-walk - slack);
+      expect(p.v, `vertex ${i}`).toBeLessThanOrEqual(2 * TILE_METERS + slack);
+    }
+  });
+
+  it('does not reach the tiles its origin names: the pad is the parcel, not the grid footprint', () => {
+    const scene = new THREE.Scene();
+    const r = new LotRenderer(scene, flat, [house]);
+    r.apply(delta({ added: [building({ x: 10, z: 17, frame })] }));
+    const mesh = scene.children[0] as THREE.Mesh;
+    const position = mesh.geometry.getAttribute('position');
+    let minX = Infinity;
+    for (let i = 0; i < position.count; i++) minX = Math.min(minX, position.getX(i));
+    // The parcel's westmost corner is its back-left one, turned by 0.6 rad from (212.5, 340.25).
+    expect(minX).toBeGreaterThan(frame.x - 40 * Math.sin(0.6) - 1e-6);
   });
 });

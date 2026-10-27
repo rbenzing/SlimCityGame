@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { MAP_SIZE, tileIndex } from '../shared/constants';
 import { BuildingState, RoadTier, ZoneType } from '../shared/types';
-import type { BuildingCatalogEntry, GridState } from '../shared/types';
+import type { BuildingCatalogEntry, GridState, ParcelFrame } from '../shared/types';
 import { footprintForRotation } from '../shared/footprint';
+import { claimedTiles } from '../shared/lotframe';
 import catalogData from '../data/catalog.json';
 import { BuildingRegistry, settleBuildingDelta } from './buildings';
 import { bordersUtilityNetwork } from './network';
@@ -508,5 +509,63 @@ describe('settleBuildingDelta', () => {
     const a = registry.place(g, house, 1, 1, 0)!;
     const delta = settleBuildingDelta([a], [], [], standingIn(registry));
     expect(delta.added[0]).not.toBe(a);
+  });
+});
+
+describe('a building on a framed parcel', () => {
+  // A normal lot, 20 by 40 m, turned 30 degrees with its front-left corner at (130, 110) m.
+  const frame: ParcelFrame = { x: 130, z: 110, heading: Math.PI / 6 };
+  const ranch: BuildingCatalogEntry = { ...house, id: 'ranch', footprint: { w: 1, d: 2 } };
+  const expectedTiles = (g: GridState) => claimedTiles(frame, 20, 40, g.size);
+
+  it('claims every tile its rectangle overlaps, stands at the min tile with rotation 0, and carries its frame', () => {
+    const g = makeGrid();
+    const registry = new BuildingRegistry([ranch]);
+    const inst = registry.place(g, ranch, 0, 0, 1, BuildingState.Active, frame)!;
+    const tiles = expectedTiles(g);
+    expect(tiles.length).toBeGreaterThan(2);
+    expect(inst).toMatchObject({ x: tiles[0]!.x, z: tiles[0]!.z, rotation: 0, frame });
+    for (const t of tiles) expect(g.buildingId[tileIndex(t.x, t.z)]).toBe(inst.id);
+    expect(Array.from(g.buildingId).filter((v) => v === inst.id)).toHaveLength(tiles.length);
+  });
+
+  it('refuses the parcel when any claimed tile is taken, leaving the grid untouched', () => {
+    const g = makeGrid();
+    const registry = new BuildingRegistry([ranch, house]);
+    const taken = expectedTiles(g)[2]!;
+    registry.place(g, house, taken.x, taken.z, 0);
+    const before = Array.from(g.buildingId);
+    expect(registry.place(g, ranch, 0, 0, 0, BuildingState.Active, frame)).toBeNull();
+    expect(Array.from(g.buildingId)).toEqual(before);
+  });
+
+  it('frees every claimed tile when removed', () => {
+    const g = makeGrid();
+    const registry = new BuildingRegistry([ranch]);
+    const inst = registry.place(g, ranch, 0, 0, 0, BuildingState.Active, frame)!;
+    registry.remove(g, inst.id);
+    expect(g.buildingId.every((v) => v === 0)).toBe(true);
+    expect(registry.all()).toEqual([]);
+  });
+
+  it('round-trips its frame through serialize/deserialize, and a save without one loads unframed', () => {
+    const g = makeGrid();
+    const registry = new BuildingRegistry([ranch]);
+    const framed = registry.place(g, ranch, 0, 0, 0, BuildingState.Active, frame)!;
+    const flat = registry.place(g, ranch, 40, 40, 0)!;
+    const data = registry.serialize();
+    expect(data.buildings.find((b) => b.id === framed.id)!.frame).toEqual(frame);
+    expect(data.buildings.find((b) => b.id === flat.id)!).not.toHaveProperty('frame');
+
+    const restored = BuildingRegistry.deserialize([ranch], data);
+    expect(restored.get(framed.id)!.frame).toEqual(frame);
+    expect(restored.get(flat.id)!.frame).toBeUndefined();
+    // The restored registry frees the claimed tiles, as the saving one would.
+    restored.remove(g, framed.id);
+    for (const t of expectedTiles(g)) expect(g.buildingId[tileIndex(t.x, t.z)]).toBe(0);
+
+    const older = { ...data, buildings: data.buildings.map(({ frame: _, ...b }) => b) };
+    const loaded = BuildingRegistry.deserialize([ranch], older);
+    expect(loaded.all().every((b) => b.frame === undefined)).toBe(true);
   });
 });

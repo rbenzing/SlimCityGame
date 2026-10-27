@@ -30,6 +30,8 @@ import {
   driveRoadTiles,
   garageBaysOf,
   houseStyleOf,
+  framedBodyPlacement,
+  lotToWorld,
   planHouseGround,
   planHouseLot,
   porchRolled,
@@ -40,13 +42,16 @@ import {
 } from './houselot';
 import { housePaneMargins, windowGrid } from './facade';
 import { HOUSE_FRONT_YARD_M, frontageSetbackFor, tierHeightOf } from './massing';
-import type { StreetLookup } from './frontage';
+import { sidewalkDepthMeters, type StreetLookup } from './frontage';
 import { TILE_METERS } from '../shared/constants';
+import { toLocal } from '../shared/lotframe';
 import {
   BuildingState,
+  RoadTier,
   ZoneType,
   type BuildingCatalogEntry,
   type BuildingInstance,
+  type ParcelFrame,
 } from '../shared/types';
 
 function entry(over: Partial<BuildingCatalogEntry> = {}): BuildingCatalogEntry {
@@ -1020,5 +1025,98 @@ describe('planHouseLot — the kit turns with the lot', () => {
         }
       }
     }
+  });
+});
+
+describe('a home on a framed parcel', () => {
+  const parcel: ParcelFrame = { x: 212.5, z: 340.25, heading: 0.6 };
+  const framed = (over: Partial<BuildingInstance> = {}): BuildingInstance =>
+    home({ x: 10, z: 17, frame: parcel, ...over });
+  const noStreets: StreetLookup = () => null;
+  const roadAt = (): boolean => false;
+  const W = small.footprint.w * TILE_METERS;
+  const D = small.footprint.d * TILE_METERS;
+  /** A lot point as the parcel measures it: u along the kerb, v in from the kerb line. */
+  const inParcel = (plan: HouseLotPlan, u: number, v: number): { u: number; v: number } => {
+    const p = lotToWorld(plan.frame, u, v);
+    return toLocal(parcel, p.x, p.z);
+  };
+  const insideParcel = (p: { u: number; v: number }, what: string): void => {
+    expect(p.u, `${what} u`).toBeGreaterThanOrEqual(-1e-6);
+    expect(p.u, `${what} u`).toBeLessThanOrEqual(W + 1e-6);
+    expect(p.v, `${what} v`).toBeGreaterThanOrEqual(-1e-6);
+    expect(p.v, `${what} v`).toBeLessThanOrEqual(D + 1e-6);
+  };
+
+  it('lays the lot as the parcel’s own frame, the body centred with its front yard behind the front line', () => {
+    const plan = planHouseLot(framed(), small, roadAt, noStreets)!;
+    expect(plan.edge).toBeNull();
+    expect(plan.edgeLenM).toBe(W);
+    expect(plan.lotDepthM).toBe(D);
+    const origin = inParcel(plan, 0, 0);
+    expect(origin.u).toBeCloseTo(0, 9);
+    expect(origin.v).toBeCloseTo(0, 9);
+    const centre = inParcel(plan, (plan.body.u0 + plan.body.u1) / 2, (plan.body.v0 + plan.body.v1) / 2);
+    expect(centre.u).toBeCloseTo(W / 2, 9);
+    const front = inParcel(plan, plan.body.u0, plan.body.v0);
+    expect(front.v).toBeCloseTo(HOUSE_FRONT_YARD_M, 9);
+    for (const [u, v] of [
+      [plan.body.u0, plan.body.v0],
+      [plan.body.u1, plan.body.v1],
+    ]) {
+      insideParcel(inParcel(plan, u!, v!), 'body');
+    }
+  });
+
+  it('runs its drive to the kerb line at the parcel’s v = 0, within 1.3 m of it, and its cut out across the footway', () => {
+    const walk = sidewalkDepthMeters(RoadTier.TwoLane);
+    let drives = 0;
+    for (let id = 1; id <= 40; id++) {
+      const plan = planHouseLot(framed({ id }), small, roadAt, noStreets)!;
+      for (const drive of plan.drives) {
+        drives++;
+        const kerbEnd = inParcel(plan, (drive.cut.u0 + drive.cut.u1) / 2, drive.rect.v0);
+        expect(Math.abs(kerbEnd.v)).toBeLessThanOrEqual(1.3);
+        expect(kerbEnd.v).toBeCloseTo(0, 9);
+        // The cut lies on the road band outside the parcel, from the front line to the carriageway.
+        expect(drive.cut.v1).toBeCloseTo(0, 9);
+        expect(drive.cut.v0).toBeCloseTo(-walk, 9);
+        for (const rect of [drive.rect, ...(drive.coverRect ? [drive.coverRect] : [])]) {
+          insideParcel(inParcel(plan, rect.u0, rect.v0), `drive ${id}`);
+          insideParcel(inParcel(plan, rect.u1, rect.v1), `drive ${id}`);
+        }
+        insideParcel(inParcel(plan, drive.car.u, drive.car.v), `car ${id}`);
+      }
+    }
+    expect(drives).toBeGreaterThan(0);
+  });
+
+  it('reads the footway’s depth from the street under its kerb when the grid holds one', () => {
+    // The street is read a metre out from the middle of the kerb frontage.
+    const kerbPoint = lotToWorld({ x: parcel.x, z: parcel.z, heading: parcel.heading, mirror: 1 }, W / 2, -1);
+    const street: StreetLookup = (x, z) =>
+      x === Math.floor(kerbPoint.x / TILE_METERS) && z === Math.floor(kerbPoint.z / TILE_METERS)
+        ? { vergeM: 4, sidewalkM: 3 }
+        : null;
+    const plan = planHouseLot(framed(), small, roadAt, street)!;
+    expect(inParcel(plan, 0, 0).v).toBeCloseTo(0, 9);
+    expect(plan.drives[0]!.cut.v0).toBeCloseTo(-3, 9);
+    expect(plan.drives[0]!.cut.v1).toBeCloseTo(0, 9);
+  });
+
+  it('seats the body where the lot planner puts it, turned to the street, through one placement', () => {
+    const plan = planHouseLot(framed(), small, roadAt, noStreets)!;
+    const seat = framedBodyPlacement(parcel, small, noStreets);
+    const centre = lotToWorld(plan.frame, (plan.body.u0 + plan.body.u1) / 2, (plan.body.v0 + plan.body.v1) / 2);
+    expect(seat.x).toBeCloseTo(centre.x, 9);
+    expect(seat.z).toBeCloseTo(centre.z, 9);
+    expect(seat.yaw).toBeCloseTo(-parcel.heading, 12);
+  });
+
+  it('keeps every grid lot exactly as it was: a framed plan never changes a grid plan', () => {
+    const { roadAt: gridRoad, street } = streetRow(8);
+    const grid = planHouseLot(home(), small, gridRoad, street)!;
+    expect(grid.edge).not.toBeNull();
+    expect(grid.frame).toEqual({ x: 80, z: 160, heading: 0, mirror: -1 });
   });
 });

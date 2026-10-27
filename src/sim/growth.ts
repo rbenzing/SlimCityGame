@@ -32,15 +32,19 @@ import type {
   BuildingInstance,
   DemandLevels,
   FarmKind,
+  FramedParcel,
   GridState,
   GrowthWaiting,
+  ParcelFrame,
   Sector,
   ZonedUnserved,
 } from '../shared/types';
 import { farmKindOf } from '../shared/buildingkind';
-import { LOT_STANDING_FLOOR, PLATTED_ZONES, platCandidates } from '../shared/lots';
+import { LOT_EXTENT, LOT_STANDING_FLOOR, PLATTED_ZONES, platCandidates } from '../shared/lots';
 import { footprintForRotation } from '../shared/footprint';
-import { BuildingRegistry, lotTiles } from './buildings';
+import { BuildingRegistry, lotTiles, standingTiles } from './buildings';
+import type { ProfileLookup } from '../world/freeroads';
+import { canPlaceTiles } from '../world/grid';
 import type { JobsBySector } from './economy';
 import {
   cityWaterUse,
@@ -52,6 +56,7 @@ import {
 } from './network';
 import { freeCellsOn, roadCellsOf } from '../world/roadnet';
 import {
+  framedParcelAt,
   platOf,
   platReaches,
   platSourceOf,
@@ -77,7 +82,7 @@ export interface Rng {
   fork(streamId: number): Rng;
 }
 
-const GROWTH_INTERVAL = 10;
+export const GROWTH_INTERVAL = 10;
 const CONSTRUCTION_TICKS = 100;
 /** Share of prime-land houses torn down for a plex in a game year. */
 const CONVERSION_PER_YEAR = 0.02;
@@ -257,6 +262,13 @@ function writeStamp(g: GridState, x: number, z: number, w: number, d: number, id
     for (let dx = 0; dx < w; dx++) {
       g.buildingId[tileIndex(x + dx, z + dz)] = id;
     }
+  }
+}
+
+/** Stamps a building back onto the ground it stood on: its rectangle, or the tiles its frame claims. */
+function restoreStamp(g: GridState, inst: BuildingInstance, w: number, d: number): void {
+  for (const t of standingTiles(g.size, inst.x, inst.z, w, d, inst.frame)) {
+    g.buildingId[tileIndex(t.x, t.z)] = inst.id;
   }
 }
 
@@ -520,8 +532,13 @@ function desirabilityFor(g: GridState, x: number, z: number, sector: Sector): nu
  * The plat of a zone, cut on first ask and kept for the pass, from the same
  * reading the lens draws.
  */
-function platCutter(g: GridState): PlatPass {
-  const source = platSourceOf(g, g.roads ? roadCellsOf(g) : null, g.fields[FieldId.LandValue]);
+function platCutter(g: GridState, profileOf: ProfileLookup): PlatPass {
+  const source = platSourceOf(
+    g,
+    g.roads ? roadCellsOf(g) : null,
+    g.fields[FieldId.LandValue],
+    profileOf,
+  );
   const plats = new Map<ZoneType, Plat>();
   return {
     streetAt: source.streetAt,
@@ -590,6 +607,8 @@ export class GrowthSystem {
   private readonly waterEntries: ReadonlyMap<ZoneType, BuildingCatalogEntry>;
   private readonly rng: Rng;
   private readonly canPlace: (g: GridState, x: number, z: number, w: number, d: number) => boolean;
+  /** The cross-section behind a road profile id, for the width of a road off the grid. */
+  private readonly profileOf: ProfileLookup;
 
   /** Building id -> construction ticks remaining. */
   private readonly constructing = new Map<number, number>();
@@ -613,8 +632,10 @@ export class GrowthSystem {
     catalog: BuildingCatalogEntry[],
     rng: Rng,
     canPlace: (g: GridState, x: number, z: number, w: number, d: number) => boolean,
+    profileOf: ProfileLookup = () => null,
   ) {
     this.catalog = catalog;
+    this.profileOf = profileOf;
     this.catalogIndex = new Map(catalog.map((entry) => [entry.id, entry]));
     const waterEntries = new Map<ZoneType, BuildingCatalogEntry>();
     for (const e of catalog) {
@@ -663,7 +684,7 @@ export class GrowthSystem {
         updated,
       );
       this.flagUnservedUtilities(g, registry, updated);
-      const plats = platCutter(g);
+      const plats = platCutter(g, this.profileOf);
       const parks = parkingCheckFor(g, kerb);
       this.runLevelUps(
         g,
@@ -1049,11 +1070,11 @@ export class GrowthSystem {
     if (power > spare.power || water > spare.water || sewer > spare.sewer) return false;
 
     registry.remove(g, inst.id);
-    const placed = registry.place(g, plex, x, z, rotation, BuildingState.Constructing);
+    const placed = registry.place(g, plex, x, z, rotation, BuildingState.Constructing, inst.frame);
     if (!placed) {
       // Unreachable: the plex stands on the footprint just cleared. Restore
       // rather than silently drop the tile.
-      writeStamp(g, x, z, footprint.w, footprint.d, inst.id);
+      restoreStamp(g, inst, footprint.w, footprint.d);
       return false;
     }
     spare.power -= power;
@@ -1120,24 +1141,31 @@ export class GrowthSystem {
     const { x, z, rotation } = inst;
     const oldFootprint = footprintForRotation(entry, rotation);
 
-    // Temporarily clear this building's own stamp so the (possibly larger)
-    // new footprint can be checked on a clean grid, then commit or roll back.
-    clearStamp(g, x, z, oldFootprint.w, oldFootprint.d, inst.id);
-    // Of the next level's footprints, smallest first, the first that stands
-    // here and meets its parking code. A building never gives up ground it
-    // stands on, so only those that hold its own lot are tried.
     let chosen: { next: BuildingCatalogEntry; nx: number; nz: number } | null = null;
-    for (const next of footprintsOf(this.catalog, nextKind)) {
-      if (next.footprint.w < entry.footprint.w || next.footprint.d < entry.footprint.d) continue;
-      const at = this.levelUpSite(g, plats, parks, inst, entry, next, zone, farm);
-      if (at) {
-        chosen = { next, ...at };
-        break;
+    if (inst.frame !== undefined) {
+      // A house on a curved parcel keeps its parcel: the next level of a
+      // lotted kind has the same footprint, stands in the same frame, and its
+      // drive still meets its own kerb.
+      chosen = { next: nextKind, nx: x, nz: z };
+    } else {
+      // Temporarily clear this building's own stamp so the (possibly larger)
+      // new footprint can be checked on a clean grid, then commit or roll back.
+      clearStamp(g, x, z, oldFootprint.w, oldFootprint.d, inst.id);
+      // Of the next level's footprints, smallest first, the first that stands
+      // here and meets its parking code. A building never gives up ground it
+      // stands on, so only those that hold its own lot are tried.
+      for (const next of footprintsOf(this.catalog, nextKind)) {
+        if (next.footprint.w < entry.footprint.w || next.footprint.d < entry.footprint.d) continue;
+        const at = this.levelUpSite(g, plats, parks, inst, entry, next, zone, farm);
+        if (at) {
+          chosen = { next, ...at };
+          break;
+        }
       }
-    }
-    if (chosen === null) {
-      writeStamp(g, x, z, oldFootprint.w, oldFootprint.d, inst.id);
-      return false;
+      if (chosen === null) {
+        writeStamp(g, x, z, oldFootprint.w, oldFootprint.d, inst.id);
+        return false;
+      }
     }
     const { next: nextEntry, nx, nz } = chosen;
     const newFootprint = footprintForRotation(nextEntry, rotation);
@@ -1153,16 +1181,24 @@ export class GrowthSystem {
       !this.suppliedFor(waitKey, [], pass, spare, power, water, sewer) ||
       (farm !== null && this.rng.next() >= demand.ind)
     ) {
-      writeStamp(g, x, z, oldFootprint.w, oldFootprint.d, inst.id);
+      if (inst.frame === undefined) writeStamp(g, x, z, oldFootprint.w, oldFootprint.d, inst.id);
       return false;
     }
 
     registry.remove(g, inst.id);
-    const placed = registry.place(g, nextEntry, nx, nz, rotation, BuildingState.Constructing);
+    const placed = registry.place(
+      g,
+      nextEntry,
+      nx,
+      nz,
+      rotation,
+      BuildingState.Constructing,
+      inst.frame,
+    );
     if (!placed) {
       // Unreachable: footprintFree + canPlace were just confirmed true with
       // no intervening mutation. Restore rather than silently drop the tile.
-      writeStamp(g, x, z, oldFootprint.w, oldFootprint.d, inst.id);
+      restoreStamp(g, inst, oldFootprint.w, oldFootprint.d);
       return false;
     }
     spare.power -= power;
@@ -1290,6 +1326,16 @@ export class GrowthSystem {
         this.trySpawnFarm(g, registry, demand, milestoneLevel, pass, spare, room, added, x, z);
         continue;
       }
+      // A parcel cut along a curved kerb fronts its road by construction and
+      // grows from its first tile alone, a house turned to its street; its
+      // other tiles are that parcel's ground.
+      const framed = framedParcelAt(plats.platFor(zone), x, z);
+      if (framed !== null) {
+        if (framed.tiles[0]!.x === x && framed.tiles[0]!.z === z) {
+          this.trySpawnFramed(g, registry, demand, milestoneLevel, pass, spare, room, added, framed);
+        }
+        continue;
+      }
       if (!hasNearbyRoad(g, x, z, ROAD_CHECK_RADIUS)) continue;
 
       // The lot picks its building: among the zone's kinds that fit here, on
@@ -1373,6 +1419,69 @@ export class GrowthSystem {
   }
 
   /**
+   * A house on a parcel cut along a curved kerb: of the zone's kinds on that
+   * lot size, upright, one drawn by share as on a grid lot, stood in the
+   * parcel's frame with the parcel's claimed tiles as its footprint. The
+   * parcel was cut on zoned, free ground, and its drive meets its own kerb,
+   * so only the ground, the services and the economy are asked.
+   */
+  private trySpawnFramed(
+    g: GridState,
+    registry: BuildingRegistry,
+    demand: DemandLevels,
+    milestoneLevel: number,
+    pass: number,
+    spare: Spare,
+    room: JobsBySector,
+    added: BuildingInstance[],
+    parcel: FramedParcel,
+  ): void {
+    const zone = readTile(g.zone, tileIndex(parcel.tiles[0]!.x, parcel.tiles[0]!.z)) as ZoneType;
+    const sector = zoneSector(zone);
+    if (!sector) return;
+    if (!canPlaceTiles(g, parcel.tiles)) return;
+    const { frontage, depth } = LOT_EXTENT[parcel.lot];
+    const fitting = spawnCandidates(
+      this.catalog,
+      zone,
+      milestoneLevel,
+      (e) => e.lot === parcel.lot && e.footprint.w === frontage && e.footprint.d === depth,
+    );
+    const candidates = withinRoom(fitting, sector, room);
+    if (candidates.length === 0) return;
+    const entry = drawKind(candidates, candidates.length > 1 ? this.rng.next() : 0);
+
+    const { x, z } = parcel.tiles[0]!;
+    const tiles = parcel.tiles.map((t) => tileIndex(t.x, t.z));
+    const served = (layer: Uint8Array): boolean => tiles.some((i) => readTile(layer, i) !== 0);
+    if (
+      !served(g.power) ||
+      (cityWaterUse(g, entry, x, z, frontage, depth) > 0 && !served(g.watered)) ||
+      (sewageOf(g, entry, x, z, frontage, depth, milestoneLevel) > 0 && !served(g.sewered))
+    ) {
+      return;
+    }
+    const demandForSector = demand[sector];
+    if (demandForSector <= 0) return;
+    this.spawnIfSupplied(
+      g,
+      registry,
+      entry,
+      x,
+      z,
+      0,
+      demandForSector * desirabilityFor(g, x, z, sector),
+      milestoneLevel,
+      pass,
+      spare,
+      room,
+      added,
+      parcel.frame,
+      tiles,
+    );
+  }
+
+  /**
    * A farm on the lot at (x, z): every tile of it Agriculture land a farm can
    * work, a dirt road within reach and power on it — never city water, which
    * a farm does without. Its soil decides the kind and how likely it is.
@@ -1440,6 +1549,8 @@ export class GrowthSystem {
     spare: Spare,
     room: JobsBySector,
     added: BuildingInstance[],
+    frame?: ParcelFrame,
+    claimed?: readonly number[],
   ): void {
     if (probability <= 0) return;
     const { w, d } = footprintForRotation(entry, rotation);
@@ -1447,11 +1558,11 @@ export class GrowthSystem {
     const power = utilityUnits(entry.powerUse);
     const water = utilityUnits(cityWaterUse(g, entry, x, z, w, d));
     const sewer = utilityUnits(sewageOf(g, entry, x, z, w, d, milestoneLevel));
-    const lot = lotTiles(x, z, w, d);
+    const lot = claimed ?? lotTiles(x, z, w, d);
     if (!this.suppliedFor(tileIndex(x, z), lot, pass, spare, power, water, sewer)) return;
     if (this.rng.next() >= probability) return;
 
-    const placed = registry.place(g, entry, x, z, rotation, BuildingState.Constructing);
+    const placed = registry.place(g, entry, x, z, rotation, BuildingState.Constructing, frame);
     if (!placed) return;
     spare.power -= power;
     spare.water -= water;

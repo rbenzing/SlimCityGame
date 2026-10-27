@@ -29,7 +29,7 @@ renderers, with the grid path untouched.
 | `src/shared/types.ts`                                                                    | 1     | `ParcelFrame`; `BuildingInstance.frame?`; `SAVE_VERSION` 17                                                                            |
 | `src/shared/lotframe.ts` (new)                                                           | 1     | `toWorld(frame, u, v)`, `toLocal`, `frameOfGridLot(parcel)` — the one transform every reader uses                                      |
 | `src/world/plat.ts`                                                                      | 1     | `streetAt` ignores cells of non-grid segments; `platAlongKerbs(net, src, zone)` cuts framed parcels along free segments; `Plat.framed` |
-| `src/world/roadgeom.ts`                                                                  | 1     | `kerbLine(g, side, halfWidthM)`: the centre samples offset square to the tangent; `headingAt(g, t)`                                    |
+| `src/shared/roadgeom.ts`                                                                 | 1     | `kerbLine(g, side, halfWidthM)`: the centre samples offset square to the tangent; `headingAt(g, t)`                                    |
 | `src/sim/growth.ts`                                                                      | 1     | a framed parcel spawns a building with `frame`, its claimed tiles as its footprint                                                     |
 | `src/world/grid.ts` / `src/sim/worker.entry.ts`                                          | 1     | place, bulldoze, flatten and overlap over a claimed tile set; registry serialises `frame`                                              |
 | `src/app/clientgrid.ts`                                                                  | 1     | the mirror keeps each framed building's claimed tiles and frame                                                                        |
@@ -78,17 +78,23 @@ free-form segments (`!isGridSegment(g)`), both sides, each side only where
 the zone lies within the zoning depth of that kerb. For each:
 
 1. **The kerb line** is the centre line sampled at `SAMPLE_STEP_M` and offset
-   square to the tangent by the road's half width (`kerbLine`); arc length
-   `s` runs along it.
+   square to the tangent by the road's half width, kerb to kerb including
+   its footways (`kerbLine`, `segmentHalfWidthM`), so it is the right-of-way
+   edge where a lot line sits; arc length `s` runs along it.
 2. **Clearance.** `s` starts at the node's junction half-width plus the
    drive's corner clearance, 6 m, and stops the same short of the far node.
 3. **Cutting.** At `s`, the parcel's size comes from the ladder on the land
    value under the tile at the kerb point (the grid plat's own rule); its
    frame is `{ kerb(s), heading(s + w/2) }`; its rectangle is `[0, w] ×
-[0, d]` in that frame. The parcel claims every tile its rectangle
-   overlaps (polygon-against-tile, exact, no sampling). It stands only if
-   every claimed tile is zoned `zone`, free of buildings, roads, water and
-   another parcel's claim, and its kerb chord — the distance between
+[0, d]` in that frame. The parcel claims every tile whose centre lies in
+   its rectangle (`claimedTiles`): centres partition the tiles between
+   rectangles that do not overlap, so parcels stand end to end at any angle,
+   where an exact overlap test would make every pair of neighbours share
+   the tiles their common side line crosses and leave half a street empty.
+   A parcel that holds no centre is not cut. It stands only if every
+   claimed tile is zoned `zone`, free of buildings, grid roads, other free
+   segments' footprints and water (its own segment's band always holds the
+   kerb tile) and another parcel's claim, and its kerb chord — the distance between
    `kerb(s)` and the kerb point nearest its front-right corner — is at least
    `MIN_KERB_FRONTAGE_M` (10.7). Otherwise `s` advances 2 m and the cut is
    tried again; a stretch that never fits is verge.
@@ -99,6 +105,9 @@ the zone lies within the zoning depth of that kerb. For each:
    non-grid segment's cells as street, so a tile beside a curve gets a grid
    parcel only from a grid street; the curved plat skips every tile
    `parcelAt` already holds. The result is deterministic in segment id order.
+   In slice 1 both hold for the low-density residential zone only: every
+   other zone plats and grows beside a curve exactly as it does today, and
+   slice 2 moves them over with their car parks.
 
 The grid `Plat` gains `framed: FramedParcel[]` (`frame`, `lot`, `w`, `d`,
 `tiles`), and `parcelAt` indexes them past the grid parcels, so the lens and
@@ -141,14 +150,25 @@ setback, so width is measured at the building line as the codes measure it.
   drawn on the grid path under a framed body. The guard is one helper every
   site calls and a test per converted renderer that a framed building's
   parts land within its rectangle.
-- **Tiles claimed on a bend's outside are more than the lot.** A 20×40 m
-  rectangle at 30° overlaps 5 to 6 tiles instead of 2; zoning, services and
-  land value read those tiles. Accepted in slice 1 and visible on the lens.
+- **A turned parcel's tiles are not its rectangle.** A 20×40 m rectangle at
+  30° holds one to three tile centres, and the tiles it claims stick out of
+  it or fall short of it; zoning, services and land value read those tiles,
+  and the readers keyed to a rectangle from the min tile (water use, service
+  coverage, the restamp) read a grid box there. Accepted in slice 1 and
+  visible on the lens.
 - **Saves.** A version-17 save on a version-16 build must refuse, not stand
   framed houses on the grid; the loader already refuses a newer version.
-- **Performance.** The curved plat is per segment and cached by segment id
-  and the zone's change counter, recomputed only when a segment or the zone
-  beside it changes; the polygon-tile claim is a few dozen tiles per parcel.
+- **Performance.** The grid plat is pure and recomputed per call today (the
+  spawner memoises it per zone for one pass, the client per road-network
+  version); the curved plat joins it under the same memo, and the client's
+  key must also turn over when zoning or buildings change beside a curve,
+  since a framed parcel depends on both. The centre claim tests a few dozen
+  tile centres per parcel.
+- **The grid's south and west frames are mirrored, not turned.** The house
+  renderers' edge frame maps "along" and "outward" by axis flags, so a lot
+  fronting south or west is the north layout reflected, not rotated. The
+  general frame keeps that reflection as a mirror sign for grid lots, so no
+  grid lot moves a pixel, and a framed parcel carries no mirror.
 
 ## Alternatives
 

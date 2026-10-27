@@ -133,9 +133,10 @@ type JunctionSnapshot = NonNullable<SimSnapshot['junctions']>[number];
 import { createRng } from '../core/rng';
 import { FixedTimestep } from '../core/loop';
 import type { CommandBatch } from '../core/commands';
-import type { RoadNet, SelectionInfo } from '../shared/types';
+import type { ParcelFrame, RoadNet, SelectionInfo } from '../shared/types';
 import {
   canPlaceFootprint,
+  canPlaceTiles,
   ARMS_PER_TILE,
   hasAdjacentRoad,
   hasAdjacentTier,
@@ -212,7 +213,7 @@ import {
 } from '../world/terraform';
 import { FieldSim } from './fields';
 import { footprintForRotation } from '../shared/footprint';
-import { BuildingRegistry, settleBuildingDelta } from './buildings';
+import { BuildingRegistry, settleBuildingDelta, standingTiles } from './buildings';
 import { computeDemand, jobRoom } from './demand';
 import { GrowthSystem, schoolsMissingAt, type GrowthSupply } from './growth';
 import { gridKerbSurroundings } from './kerbsurroundings';
@@ -659,7 +660,9 @@ class SimWorld implements WorkerSim {
     this.post = post;
     this.timestep = new FixedTimestep(TICK_MS, () => this.tick());
     const rng = createRng(0);
-    this.growth = new GrowthSystem(CATALOG, rng.fork(1), canPlaceFootprint);
+    this.growth = new GrowthSystem(CATALOG, rng.fork(1), canPlaceFootprint, (id) =>
+      this.profileForId(id),
+    );
     this.traffic = new TrafficSystem(rng.fork(2), this.network);
     this.transit = new TransitSystem(this.network, this.railNetwork, this.tramNetwork);
     this.dispatch = new DispatchSystem(CATALOG, rng.fork(3));
@@ -765,7 +768,9 @@ class SimWorld implements WorkerSim {
     soilGrades(this.grid, seed, this.grid.soil);
 
     const rng = createRng(seed);
-    this.growth = new GrowthSystem(CATALOG, rng.fork(1), canPlaceFootprint);
+    this.growth = new GrowthSystem(CATALOG, rng.fork(1), canPlaceFootprint, (id) =>
+      this.profileForId(id),
+    );
     this.network.rebuild(this.grid);
     this.railNetwork.rebuild(this.grid);
     this.tramNetwork.rebuild(this.grid);
@@ -1009,7 +1014,11 @@ class SimWorld implements WorkerSim {
         const entry = this.catalogById.get(inst.catalogId);
         if (!entry) continue;
         const { w, d } = footprintForRotation(entry, inst.rotation);
-        this.flattenFootprint(footprintTiles(inst.x, inst.z, w, d), false, []);
+        this.flattenFootprint(
+          standingTiles(this.grid.size, inst.x, inst.z, w, d, inst.frame),
+          false,
+          [],
+        );
       }
     }
 
@@ -2613,6 +2622,7 @@ class SimWorld implements WorkerSim {
           command.z,
           command.rotation,
           command.interments,
+          command.frame,
         );
       case 'setTaxRate': {
         const rate = Math.max(0, Math.min(MAX_TAX_RATE, command.rate));
@@ -3528,6 +3538,7 @@ class SimWorld implements WorkerSim {
         z: inst.z,
         rotation: inst.rotation,
         ...(interments > 0 ? { interments } : {}),
+        ...(inst.frame ? { frame: { ...inst.frame } } : {}),
       });
     }
 
@@ -3629,6 +3640,7 @@ class SimWorld implements WorkerSim {
     z: number,
     rotation: 0 | 1 | 2 | 3,
     interments = 0,
+    frame?: ParcelFrame,
   ): CommandResult {
     const entry = this.catalogById.get(catalogId);
     if (!entry) return { ok: false, cost: 0, inverse: [], reason: 'invalid' };
@@ -3643,7 +3655,14 @@ class SimWorld implements WorkerSim {
       return { ok: false, cost: 0, inverse: [], reason: 'funds' };
 
     const { w, d } = footprintForRotation(entry, rotation);
-    if (!canPlaceFootprint(this.grid, x, z, w, d)) {
+    // A building put back on its curved parcel claims the tiles its frame
+    // overlaps; everything else stands on its rectangle.
+    const footprint = standingTiles(this.grid.size, x, z, w, d, frame);
+    const placeable =
+      frame === undefined
+        ? canPlaceFootprint(this.grid, x, z, w, d)
+        : canPlaceTiles(this.grid, footprint);
+    if (!placeable) {
       return { ok: false, cost: 0, inverse: [], reason: 'invalid' };
     }
     // A station has to touch the track it serves; everything else goes anywhere
@@ -3671,7 +3690,7 @@ class SimWorld implements WorkerSim {
     if (entry.spacing !== undefined && this.crowdsItsKind(entry, x, z, w, d)) {
       return { ok: false, cost: 0, inverse: [], reason: 'invalid' };
     }
-    const inst = this.registry.place(this.grid, entry, x, z, rotation);
+    const inst = this.registry.place(this.grid, entry, x, z, rotation, BuildingState.Active, frame);
     if (!inst) return { ok: false, cost: 0, inverse: [], reason: 'invalid' };
 
     this.stats.funds -= price;
@@ -3679,7 +3698,6 @@ class SimWorld implements WorkerSim {
     this.buildingsAdded.push(inst);
     this.utilitiesDirty = true;
 
-    const footprint = footprintTiles(x, z, w, d);
     this.invalidateAround(footprint);
     const inverse: Command[] = [{ kind: 'bulldoze', tiles: footprint }];
     // Auto-flatten: the whole footprint, no apron. A draped park keeps the

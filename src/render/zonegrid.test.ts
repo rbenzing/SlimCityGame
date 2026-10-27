@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
-import { RoadTier, ZoneType, type ZonePatch } from '../shared/types';
+import { RoadTier, ZoneType, type FramedParcel, type ZonePatch } from '../shared/types';
+import { frameCorners, toLocal } from '../shared/lotframe';
 import {
   computeZonableTiles as computeZonableTilesFrontage,
   ZONE_DEPTH,
@@ -15,7 +16,9 @@ import {
   ZoneGridRenderer,
   zoneTintColor,
   type ZoneGridSource,
+  framedParcelCorners,
   parcelEdges,
+  PLAT_LINE_WIDTH_M,
 } from './zonegrid';
 
 const flatHeightAt = (): number => 0;
@@ -604,5 +607,42 @@ describe('ZoneGridRenderer.setParcels', () => {
     renderer.setVisible(true);
     expect(renderer.layers().plat.visible).toBe(true);
     expect(renderer.isVisible()).toBe(true);
+  });
+
+  describe('a parcel cut along a curved kerb', () => {
+    const framed: FramedParcel = {
+      frame: { x: 212.5, z: 340.25, heading: 0.6 },
+      lot: 'normal',
+      w: 20,
+      d: 40,
+      tiles: [],
+    };
+
+    it('outlines the parcel at the four corners its frame turns to', () => {
+      expect(framedParcelCorners(framed)).toEqual(frameCorners(framed.frame, 20, 40));
+    });
+
+    it('draws the outline turned with the street, every strip vertex on the rectangle’s edge', () => {
+      const renderer = new ZoneGridRenderer(new THREE.Scene(), flatHeightAt);
+      renderer.setParcels([], [framed]);
+      const { plat } = renderer.layers();
+      // Each side in half-tile lengths, two triangles a length: 2 + 4 + 2 + 4 lengths.
+      expect(vertexCount(plat)).toBe((2 + 4 + 2 + 4) * 6);
+      const position = plat.geometry.getAttribute('position');
+      // The attribute is float32: a tenth of a millimetre is the match.
+      const half = PLAT_LINE_WIDTH_M / 2 + 1e-4;
+      for (let i = 0; i < position.count; i++) {
+        const p = toLocal(framed.frame, position.getX(i), position.getZ(i));
+        const onU = Math.abs(p.u) <= half || Math.abs(p.u - 20) <= half;
+        const onV = Math.abs(p.v) <= half || Math.abs(p.v - 40) <= half;
+        expect(onU || onV, `vertex ${i} at (${p.u}, ${p.v})`).toBe(true);
+        expect(p.u).toBeGreaterThanOrEqual(-half);
+        expect(p.u).toBeLessThanOrEqual(20 + half);
+        expect(p.v).toBeGreaterThanOrEqual(-half);
+        expect(p.v).toBeLessThanOrEqual(40 + half);
+      }
+      renderer.setParcels([]);
+      expect(vertexCount(plat)).toBe(0);
+    });
   });
 });

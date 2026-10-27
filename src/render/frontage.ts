@@ -11,7 +11,7 @@
  * Pure: no three.js, no scene.
  */
 import { isStreetTier, RoadTier } from '../shared/types';
-import type { RoadProfile } from '../shared/types';
+import type { ParcelFrame, RoadProfile } from '../shared/types';
 import { TILE_METERS } from '../shared/constants';
 import { carriagewayHalfWidthOf, carriagewayShiftOf, kerbWidthOf } from '../shared/roadprofile';
 import { carriagewayHalfWidthMeters, curbWidthMeters } from './roadsmesh';
@@ -105,20 +105,55 @@ export function findStreetFacingEdge(
 }
 
 /**
- * A side's local coordinate frame: `edgeStart` is the along-edge world
- * origin, `buildingLine` is the perpendicular world coordinate of the
- * building's own footprint edge, and `outwardSign`/`alongX` describe how
- * (along, depthTiles) map onto world (x, z). depthTiles = 0 sits exactly on
- * the building's edge line; positive depthTiles moves outward, toward the
- * road side.
+ * A lot edge's local coordinate frame: its origin is the world point of the
+ * edge's start on the building's own footprint line, `heading` the direction
+ * `along` runs (radians about +Y, 0 = +X), and `mirror` which way depth
+ * leaves the edge: 1 turns outward a quarter left of `along`, as a parcel
+ * frame's −v does; −1 turns it right. (along, depthTiles) map onto world
+ * (x, z) from there. depthTiles = 0 sits exactly on the building's edge line;
+ * positive depthTiles moves outward, toward the road side.
  */
 export interface EdgeFrame {
-  edgeStart: number;
-  buildingLine: number;
-  outwardSign: 1 | -1;
-  alongX: boolean;
+  x: number;
+  z: number;
+  heading: number;
+  mirror: 1 | -1;
 }
 
+/** The frame's unit axes: `a` along the edge, `o` outward across it. A quarter turn's cos and sin are exact. */
+export function frameAxes(frame: EdgeFrame): { ax: number; az: number; ox: number; oz: number } {
+  const ax = snap(Math.cos(frame.heading));
+  const az = snap(Math.sin(frame.heading));
+  return { ax, az, ox: frame.mirror * az, oz: frame.mirror * -ax };
+}
+
+/** A cos or sin within rounding of 0 or ±1 is that, so a grid frame's axes are exact. */
+function snap(t: number): number {
+  if (Math.abs(t) < AXIS_EPSILON) return 0;
+  if (Math.abs(t - 1) < AXIS_EPSILON) return 1;
+  if (Math.abs(t + 1) < AXIS_EPSILON) return -1;
+  return t;
+}
+
+const AXIS_EPSILON = 1e-9;
+
+/** Does the frame run on a grid axis — a quarter turn, so a box in it is drawn axis-aligned. */
+export function isAxisAligned(frame: EdgeFrame): boolean {
+  const { ax, az } = frameAxes(frame);
+  return ax === 0 || az === 0;
+}
+
+/** On an axis-aligned frame, does `along` run on world X (else on world Z). */
+export function frameAlongX(frame: EdgeFrame): boolean {
+  return frameAxes(frame).az === 0;
+}
+
+/**
+ * The frame of a grid lot's side: a north or south side runs east with its
+ * origin at the lot's west corner, an east or west side runs south from the
+ * lot's north corner; south and west mirror north and east, so a lot's
+ * layout is the same picture on every side.
+ */
 export function edgeFrameFor(side: Side, x: number, z: number, w: number, d: number): EdgeFrame {
   const westX = x * TILE_METERS;
   const eastX = (x + w) * TILE_METERS;
@@ -126,16 +161,21 @@ export function edgeFrameFor(side: Side, x: number, z: number, w: number, d: num
   const southZ = (z + d) * TILE_METERS;
   switch (side) {
     case 'N':
-      return { edgeStart: westX, buildingLine: northZ, outwardSign: -1, alongX: true };
+      return { x: westX, z: northZ, heading: 0, mirror: 1 };
     case 'S':
-      return { edgeStart: westX, buildingLine: southZ, outwardSign: 1, alongX: true };
+      return { x: westX, z: southZ, heading: 0, mirror: -1 };
     case 'E':
-      return { edgeStart: northZ, buildingLine: eastX, outwardSign: 1, alongX: false };
+      return { x: eastX, z: northZ, heading: Math.PI / 2, mirror: 1 };
     case 'W':
-      return { edgeStart: northZ, buildingLine: westX, outwardSign: -1, alongX: false };
+      return { x: westX, z: northZ, heading: Math.PI / 2, mirror: -1 };
     default:
       throw new RangeError(`edgeFrameFor: unknown side ${side as string}`);
   }
+}
+
+/** The lot frame of a parcel turned to its street: `along` is the parcel's u, depth outward its −v. */
+export function edgeFrameOfParcel(frame: ParcelFrame): EdgeFrame {
+  return { x: frame.x, z: frame.z, heading: frame.heading, mirror: 1 };
 }
 
 export function frameToWorld(
@@ -143,8 +183,40 @@ export function frameToWorld(
   along: number,
   depthTiles: number,
 ): { x: number; z: number } {
-  const perp = frame.buildingLine + frame.outwardSign * depthTiles * TILE_METERS;
-  return frame.alongX
-    ? { x: frame.edgeStart + along, z: perp }
-    : { x: perp, z: frame.edgeStart + along };
+  const { ax, az, ox, oz } = frameAxes(frame);
+  const depth = depthTiles * TILE_METERS;
+  return { x: frame.x + along * ax + depth * ox, z: frame.z + along * az + depth * oz };
+}
+
+/** The inverse of `frameToWorld`, in metres: how far along the edge and how far outward across it a world point lies. */
+export function frameToLocal(
+  frame: EdgeFrame,
+  x: number,
+  z: number,
+): { along: number; outwardM: number } {
+  const { ax, az, ox, oz } = frameAxes(frame);
+  const dx = x - frame.x;
+  const dz = z - frame.z;
+  return { along: dx * ax + dz * az, outwardM: dx * ox + dz * oz };
+}
+
+/** A lot direction turned into the world: `du` along the edge, `dv` inward, away from the street. */
+export function frameDirection(
+  frame: EdgeFrame,
+  du: number,
+  dv: number,
+): { x: number; z: number } {
+  const { ax, az, ox, oz } = frameAxes(frame);
+  return { x: du * ax - dv * ox, z: du * az - dv * oz };
+}
+
+/** The yaw that points a part's front (+Z) into the lot, away from the street. */
+export function inwardYaw(frame: EdgeFrame): number {
+  const { ox, oz } = frameAxes(frame);
+  return Math.atan2(0 - ox, 0 - oz);
+}
+
+/** The yaw that points a part's front (+Z) out to the street. */
+export function outwardYaw(frame: EdgeFrame): number {
+  return inwardYaw(frame) + Math.PI;
 }

@@ -3,8 +3,9 @@
  * placed/grown BuildingInstances and stamps/clears their footprint onto
  * GridState.buildingId. Pure bookkeeping — no three.js/DOM, no randomness.
  */
-import { inBounds, tileIndex } from '../shared/constants';
+import { inBounds, TILE_METERS, tileIndex } from '../shared/constants';
 import { footprintForRotation, type Footprint } from '../shared/footprint';
+import { claimedTiles, frameCorners } from '../shared/lotframe';
 import { clampedVacancies, occupiedResidents } from '../shared/occupancy';
 import { BuildingState } from '../shared/types';
 import type {
@@ -13,6 +14,8 @@ import type {
   BuildingDelta,
   BuildingInstance,
   GridState,
+  ParcelFrame,
+  TilePoint,
 } from '../shared/types';
 
 /** Every in-bounds tile index of the w×d lot at (x, z). */
@@ -22,6 +25,28 @@ export function lotTiles(x: number, z: number, w: number, d: number): number[] {
     for (let dx = 0; dx < w; dx++) {
       if (inBounds(x + dx, z + dz)) tiles.push(tileIndex(x + dx, z + dz));
     }
+  }
+  return tiles;
+}
+
+/**
+ * The tiles a building of `w` by `d` stands on: its rectangle from (x, z),
+ * or, framed, every tile its turned parcel overlaps. The one reading the
+ * registry, the worker and the growth pass share, so they stamp, level and
+ * free the same ground.
+ */
+export function standingTiles(
+  size: number,
+  x: number,
+  z: number,
+  w: number,
+  d: number,
+  frame: ParcelFrame | undefined,
+): TilePoint[] {
+  if (frame !== undefined) return claimedTiles(frame, w * TILE_METERS, d * TILE_METERS, size);
+  const tiles: TilePoint[] = [];
+  for (let dz = 0; dz < d; dz++) {
+    for (let dx = 0; dx < w; dx++) tiles.push({ x: x + dx, z: z + dz });
   }
   return tiles;
 }
@@ -82,6 +107,8 @@ export interface SerializedBuildingInstance {
   vacancies?: number;
   w: number;
   d: number;
+  /** The parcel's frame where the building stands on a curved street; absent on a grid lot. */
+  frame?: ParcelFrame;
 }
 
 /** Plain-data (JSON/ArrayBuffer friendly) snapshot of a BuildingRegistry. */
@@ -113,7 +140,12 @@ export class BuildingRegistry {
     z: number,
     rotation: 0 | 1 | 2 | 3,
     state: BuildingState = BuildingState.Active,
+    frame?: ParcelFrame,
   ): BuildingInstance | null {
+    // A framed building is the upright kind turned by its frame, never by a quarter turn.
+    if (frame !== undefined) {
+      return this.placeFramed(g, entry, frame, entry.footprint.w, entry.footprint.d, state);
+    }
     const { w, d } = footprintForRotation(entry, rotation);
 
     for (let dz = 0; dz < d; dz++) {
@@ -147,21 +179,67 @@ export class BuildingRegistry {
     return instance;
   }
 
+  /**
+   * The tile-set form of `place`: a building on a turned parcel claims every
+   * tile its rectangle in the frame overlaps, stands at the min tile of
+   * them, and keeps rotation 0. Null, with the grid untouched, if the
+   * rectangle leaves the map or any claimed tile is occupied.
+   */
+  private placeFramed(
+    g: GridState,
+    entry: BuildingCatalogEntry,
+    frame: ParcelFrame,
+    w: number,
+    d: number,
+    state: BuildingState,
+  ): BuildingInstance | null {
+    const extent = g.size * TILE_METERS;
+    const onMap = (p: { x: number; z: number }): boolean =>
+      p.x >= 0 && p.z >= 0 && p.x <= extent && p.z <= extent;
+    if (!frameCorners(frame, w * TILE_METERS, d * TILE_METERS).every(onMap)) return null;
+    const tiles = standingTiles(g.size, 0, 0, w, d, frame);
+    if (tiles.length === 0) return null;
+    for (const t of tiles) {
+      if (!inBounds(t.x, t.z) || readU32(g.buildingId, tileIndex(t.x, t.z)) !== 0) return null;
+    }
+
+    const id = this.nextId++;
+    for (const t of tiles) g.buildingId[tileIndex(t.x, t.z)] = id;
+    const instance: BuildingInstance = {
+      id,
+      catalogId: entry.id,
+      x: tiles[0]!.x,
+      z: tiles[0]!.z,
+      rotation: 0,
+      level: entry.level ?? 1,
+      state,
+      problems: 0,
+      frame: { x: frame.x, z: frame.z, heading: frame.heading },
+    };
+    this.instances.set(id, instance);
+    this.footprints.set(id, { w, d });
+    return instance;
+  }
+
   /** Clears the stamped tiles for `id` and forgets the instance. */
   remove(g: GridState, id: number): BuildingInstance | null {
     const instance = this.instances.get(id);
     if (!instance) return null;
 
     const footprint = this.footprints.get(id) ?? { w: 1, d: 1 };
-    for (let dz = 0; dz < footprint.d; dz++) {
-      for (let dx = 0; dx < footprint.w; dx++) {
-        const tx = instance.x + dx;
-        const tz = instance.z + dz;
-        if (!inBounds(tx, tz)) continue;
-        const idx = tileIndex(tx, tz);
-        if (readU32(g.buildingId, idx) === id) {
-          g.buildingId[idx] = 0;
-        }
+    const tiles = standingTiles(
+      g.size,
+      instance.x,
+      instance.z,
+      footprint.w,
+      footprint.d,
+      instance.frame,
+    );
+    for (const { x: tx, z: tz } of tiles) {
+      if (!inBounds(tx, tz)) continue;
+      const idx = tileIndex(tx, tz);
+      if (readU32(g.buildingId, idx) === id) {
+        g.buildingId[idx] = 0;
       }
     }
 
@@ -218,6 +296,7 @@ export class BuildingRegistry {
         ...(inst.vacancies ? { vacancies: inst.vacancies } : {}),
         w: footprint.w,
         d: footprint.d,
+        ...(inst.frame ? { frame: { ...inst.frame } } : {}),
       });
     }
     return { nextId: this.nextId, buildings };
@@ -243,6 +322,8 @@ export class BuildingRegistry {
       const spec = registry.catalogIndex.get(b.catalogId);
       const vacancies = spec ? clampedVacancies(spec, b.vacancies) : 0;
       if (vacancies > 0) instance.vacancies = vacancies;
+      // A save from before frames carries none, and every building stands on the grid.
+      if (b.frame) instance.frame = { x: b.frame.x, z: b.frame.z, heading: b.frame.heading };
       registry.instances.set(b.id, instance);
       registry.footprints.set(b.id, { w: b.w, d: b.d });
     }

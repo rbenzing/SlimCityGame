@@ -60,6 +60,8 @@ import {
   POST_M,
   RISER_M,
   TRAMPOLINE_RADIUS_M,
+  boxYaw,
+  frontageYaw,
   inwardYaw,
   lotToWorld,
   outwardYaw,
@@ -454,18 +456,47 @@ interface HouseSlots {
   cars: number[];
 }
 
-/** A frame rectangle as a world-space, axis-aligned box: its centre and its X and Z extents. */
+/** A frame rectangle as a world-space box: its centre, the yaw it turns by and its extents along its own X and Z. */
 function worldBox(
   plan: HouseLotPlan,
   r: LotRect,
-): { x: number; z: number; sx: number; sz: number } {
+): { x: number; z: number; yaw: number; sx: number; sz: number } {
   const a = lotToWorld(plan.frame, r.u0, r.v0);
   const b = lotToWorld(plan.frame, r.u1, r.v1);
+  const yaw = boxYaw(plan.frame);
+  // On a grid frame the box stays axis-aligned and its extents swap with the
+  // frame; on a curve it turns whole, its extents the rectangle's own.
+  const turned = yaw !== 0;
   return {
     x: (a.x + b.x) / 2,
     z: (a.z + b.z) / 2,
-    sx: Math.abs(a.x - b.x),
-    sz: Math.abs(a.z - b.z),
+    yaw,
+    sx: turned ? r.u1 - r.u0 : Math.abs(a.x - b.x),
+    sz: turned ? r.v1 - r.v0 : Math.abs(a.z - b.z),
+  };
+}
+
+/** A gable's prism over a frame rectangle: its ridge along the frontage or across it, `length` under the ridge and `span` across it. */
+function ridgeBox(
+  plan: HouseLotPlan,
+  r: LotRect,
+  ridgeAlongU: boolean,
+): { x: number; z: number; yaw: number; length: number; span: number } {
+  const g = worldBox(plan, r);
+  const yaw = frontageYaw(plan.frame) + (ridgeAlongU ? 0 : Math.PI / 2);
+  if (g.yaw !== 0) {
+    const u = r.u1 - r.u0;
+    const v = r.v1 - r.v0;
+    return { x: g.x, z: g.z, yaw, length: ridgeAlongU ? u : v, span: ridgeAlongU ? v : u };
+  }
+  // Axis-aligned: the ridge runs on world X at yaw 0 or a half turn, on world Z at a quarter.
+  const alongX = yaw % Math.PI === 0;
+  return {
+    x: g.x,
+    z: g.z,
+    yaw: alongX ? 0 : Math.PI / 2,
+    length: alongX ? g.sx : g.sz,
+    span: alongX ? g.sz : g.sx,
   };
 }
 
@@ -612,13 +643,18 @@ export class HouseRoofRenderer {
       building.state === BuildingState.Constructing ? CONSTRUCTING_MASSING_HEIGHT_SCALE : 1;
     // The body's own base: the highest ground under the body itself, which is
     // where BuildingInstancer seats it; the lot around it follows the ground.
-    const bodyRect = worldBox(plan, plan.body);
+    const corners = [
+      lotToWorld(plan.frame, plan.body.u0, plan.body.v0),
+      lotToWorld(plan.frame, plan.body.u1, plan.body.v0),
+      lotToWorld(plan.frame, plan.body.u1, plan.body.v1),
+      lotToWorld(plan.frame, plan.body.u0, plan.body.v1),
+    ];
     const bodyGround = maxHeightOverRect(
       this.heightAt,
-      bodyRect.x - bodyRect.sx / 2,
-      bodyRect.z - bodyRect.sz / 2,
-      bodyRect.x + bodyRect.sx / 2,
-      bodyRect.z + bodyRect.sz / 2,
+      Math.min(...corners.map((c) => c.x)),
+      Math.min(...corners.map((c) => c.z)),
+      Math.max(...corners.map((c) => c.x)),
+      Math.max(...corners.map((c) => c.z)),
     );
 
     const put = (
@@ -665,7 +701,18 @@ export class HouseRoofRenderer {
       colour: number | readonly [number, number, number],
     ): void => {
       const b = worldBox(plan, box.rect);
-      put(part, b.x, up(box.y0), b.z, 0, b.sx, (box.y1 - box.y0) * heightScale, b.sz, colour, true);
+      put(
+        part,
+        b.x,
+        up(box.y0),
+        b.z,
+        b.yaw,
+        b.sx,
+        (box.y1 - box.y0) * heightScale,
+        b.sz,
+        colour,
+        true,
+      );
     };
     // A gable roof over `rect` at `slope`, its ridge along the frontage or across it, passing through `wallTop` at the wall line.
     const gable = (
@@ -675,23 +722,10 @@ export class HouseRoofRenderer {
       eave: number,
       slope: number,
     ): void => {
-      const g = worldBox(plan, rect);
-      const alongX = ridgeAlongU === plan.frame.alongX;
-      const span = alongX ? g.sz : g.sx;
+      const g = ridgeBox(plan, rect, ridgeAlongU);
       const y = up(wallTop - eave * slope);
-      const rise = (span / 2) * slope * heightScale;
-      put(
-        'roof',
-        g.x,
-        y,
-        g.z,
-        alongX ? 0 : Math.PI / 2,
-        alongX ? g.sx : g.sz,
-        rise,
-        span,
-        roofColour,
-        true,
-      );
+      const rise = (g.span / 2) * slope * heightScale;
+      put('roof', g.x, y, g.z, g.yaw, g.length, rise, g.span, roofColour, true);
     };
     const { roof } = kit;
     // A gable along the frontage over `rect` from the wall top, with a fascia board along each eave.
@@ -773,22 +807,9 @@ export class HouseRoofRenderer {
     // and over that the roof's own gable section, stood in the wall's plane.
     for (const parapet of kit.parapets) {
       boxOf('parapet', parapet, wall);
-      const g = worldBox(plan, parapet.rect);
-      const alongX = plan.frame.alongX;
-      const span = alongX ? g.sz : g.sx;
+      const g = ridgeBox(plan, parapet.rect, true);
       const rise = roof.riseM * heightScale;
-      put(
-        'parapetGable',
-        g.x,
-        up(parapet.y1),
-        g.z,
-        alongX ? 0 : Math.PI / 2,
-        alongX ? g.sx : g.sz,
-        rise,
-        span,
-        wall,
-        true,
-      );
+      put('parapetGable', g.x, up(parapet.y1), g.z, g.yaw, g.length, rise, g.span, wall, true);
     }
 
     // --- doors, and what each drive ends at ---------------------------------
@@ -799,9 +820,9 @@ export class HouseRoofRenderer {
         v0: door.v - PANEL_DEPTH_M,
         v1: door.v,
       });
-      put('door', b.x, bodyGround, b.z, 0, b.sx, DOOR_HEIGHT_M, b.sz, trim, true);
+      put('door', b.x, bodyGround, b.z, b.yaw, b.sx, DOOR_HEIGHT_M, b.sz, trim, true);
     }
-    const carportYaw = plan.frame.alongX ? 0 : Math.PI / 2;
+    const carportYaw = frontageYaw(plan.frame);
     for (const drive of plan.drives) {
       let doorGround = bodyGround;
       if (drive.coverRect && (drive.cover === 'garage' || drive.cover === 'detachedGarage')) {
@@ -812,7 +833,7 @@ export class HouseRoofRenderer {
           g.x,
           doorGround,
           g.z,
-          0,
+          g.yaw,
           g.sx,
           GARAGE_HEIGHT_M,
           g.sz,
@@ -826,7 +847,7 @@ export class HouseRoofRenderer {
       // Each leaf at its own width — a row's 8 ft single, a house's 9 ft single or 16 ft double — proud of the face.
       for (const d of drive.garageDoors) {
         const b = worldBox(plan, { u0: d.u0, u1: d.u1, v0: d.v - GARAGE_LEAF_DEPTH_M, v1: d.v });
-        put('garageLeaf', b.x, doorGround, b.z, 0, b.sx, GARAGE_LEAF_HEIGHT_M, b.sz, trim, true);
+        put('garageLeaf', b.x, doorGround, b.z, b.yaw, b.sx, GARAGE_LEAF_HEIGHT_M, b.sz, trim, true);
       }
     }
 
@@ -879,7 +900,7 @@ export class HouseRoofRenderer {
           f.x,
           this.heightAt(f.x, f.z),
           f.z,
-          0,
+          f.yaw,
           f.sx,
           FENCE_HEIGHT_M,
           f.sz,
@@ -888,6 +909,7 @@ export class HouseRoofRenderer {
         );
       }
     }
+    const yardYaw = boxYaw(plan.frame);
     const stand = (part: HousePart, u: number, v: number, scale: number, lift = 0): void => {
       const at = lotToWorld(plan.frame, u, v);
       put(
@@ -895,7 +917,7 @@ export class HouseRoofRenderer {
         at.x,
         this.heightAt(at.x, at.z) + lift,
         at.z,
-        0,
+        yardYaw,
         scale,
         scale,
         scale,

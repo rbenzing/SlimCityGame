@@ -14,6 +14,7 @@ import {
 import {
   BYTES_PER_TILE_BY_VERSION,
   canPlaceFootprint,
+  canPlaceTiles,
   clearTiles,
   createGrid,
   deserializeGrid,
@@ -248,8 +249,9 @@ describe('serializeGrid / deserializeGrid', () => {
     fillDeterministic(g);
     g.waterPipe[3] = 1;
     const current = saveGrid(g, createRoadNetwork());
-    expect(new DataView(current).getUint32(0, true)).toBe(16);
+    expect(new DataView(current).getUint32(0, true)).toBe(SAVE_VERSION);
     expect(BYTES_PER_TILE_BY_VERSION[16]).toBe(BYTES_PER_TILE_BY_VERSION[15]! + 3);
+    expect(BYTES_PER_TILE_BY_VERSION[SAVE_VERSION]).toBe(BYTES_PER_TILE_BY_VERSION[16]);
 
     const back = loadGrid(current).grid;
     expect(back.fields.length).toBe(FIELD_COUNT);
@@ -911,5 +913,47 @@ describe('the over-road layers', () => {
     expect(back.overTier.every((v) => v === 0)).toBe(true);
     expect(back.overElevation.every((v) => v === 0)).toBe(true);
     expect(Array.from(back.junctionLaneTurns)).toEqual(Array.from(g.junctionLaneTurns));
+  });
+});
+
+describe('canPlaceTiles', () => {
+  const idx = (x: number, z: number, size = 6) => z * size + x;
+  const tiles = [
+    { x: 1, z: 1 },
+    { x: 2, z: 1 },
+    { x: 2, z: 2 },
+  ];
+
+  it('accepts a clear flat set of tiles and rejects an empty one', () => {
+    const g = createGrid(6);
+    g.height.fill(10);
+    expect(canPlaceTiles(g, tiles)).toBe(true);
+    expect(canPlaceTiles(g, [])).toBe(false);
+  });
+
+  it('rejects water, a grid road or a building on any tile, and a tile off the map', () => {
+    const water = createGrid(6);
+    water.height.fill(10);
+    water.water[idx(2, 2)] = 1;
+    expect(canPlaceTiles(water, tiles)).toBe(false);
+    const road = createGrid(6);
+    road.height.fill(10);
+    road.roadTier[idx(2, 1)] = RoadTier.TwoLane;
+    expect(canPlaceTiles(road, tiles)).toBe(false);
+    const built = createGrid(6);
+    built.height.fill(10);
+    built.buildingId[idx(1, 1)] = 9;
+    expect(canPlaceTiles(built, tiles)).toBe(false);
+    const edge = createGrid(6);
+    edge.height.fill(10);
+    expect(canPlaceTiles(edge, [...tiles, { x: 6, z: 1 }])).toBe(false);
+  });
+
+  it('does not read the free-road footprint layer: a parcel fronts its own kerb from inside that band', () => {
+    const g = createGrid(6);
+    g.height.fill(10);
+    g.roadFootprint[idx(1, 1)] = 1;
+    expect(canPlaceTiles(g, tiles)).toBe(true);
+    expect(canPlaceFootprint(g, 1, 1, 2, 2)).toBe(false);
   });
 });

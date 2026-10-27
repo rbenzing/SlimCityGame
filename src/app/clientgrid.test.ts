@@ -6,6 +6,7 @@
  */
 import { beforeEach, describe, expect, it } from 'vitest';
 import { TILE_METERS } from '../shared/constants';
+import { claimedTiles } from '../shared/lotframe';
 import { RoadFlow, RoadTier, storedFlow, ZoneType } from '../shared/types';
 import type { BuildingCatalogEntry, BuildingInstance, MapData } from '../shared/types';
 import { ClientGridMirror } from './clientgrid';
@@ -926,5 +927,21 @@ describe('ClientGridMirror — what a car on a crossing tile drives on', () => {
     const cz = (9 + 0.5) * TILE_METERS;
     expect(mirror.vehicleSurfaceAt(cx, cz, true)).toBeCloseTo(3 + 7, 6); // along x: the overpass
     expect(mirror.vehicleSurfaceAt(cx, cz, false) ?? 3).toBeCloseTo(3, 6); // along z: the motorway
+  });
+});
+
+describe('ClientGridMirror — a building on a framed parcel', () => {
+  it('stamps the tiles its frame claims, as the worker did, and clears them all on remove', () => {
+    const mirror = new ClientGridMirror(makeMap());
+    const frame = { x: 210, z: 190, heading: Math.PI / 6 };
+    const tiles = claimedTiles(frame, 2 * TILE_METERS, TILE_METERS, SIZE);
+    expect(tiles.length).toBeGreaterThan(2);
+    const framed = { ...instance(5, tiles[0]!.x, tiles[0]!.z, 0), frame };
+    mirror.applyBuildingDelta({ added: [framed], removed: [], updated: [] }, entryFor);
+    for (const t of tiles) expect(mirror.buildingId[t.z * SIZE + t.x]).toBe(5);
+    expect(Array.from(mirror.buildingId).filter((v) => v === 5)).toHaveLength(tiles.length);
+
+    mirror.applyBuildingDelta({ added: [], removed: [5], updated: [] }, entryFor);
+    expect(mirror.buildingId.every((v) => v === 0)).toBe(true);
   });
 });

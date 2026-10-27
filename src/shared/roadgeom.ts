@@ -4,9 +4,11 @@
  * world, which decides what may be built, and later by the tool and the
  * renderer, so every one of them reads the same centre line.
  *
- * Points are stored in whole centimetres and worked in metres. Nothing here
- * calls a trigonometric function: angles are compared by their cosines, so a
- * decision about a curve comes out the same on every machine.
+ * Points are stored in whole centimetres and worked in metres. No decision
+ * here calls a trigonometric function: angles are compared by their cosines,
+ * so a decision about a curve comes out the same on every machine. The one
+ * angle that is produced rather than judged is a heading, for a parcel to be
+ * turned by.
  */
 
 import { ROAD_MAX_SLOPE, TILE_METERS } from './constants';
@@ -174,6 +176,47 @@ export function leavingDirection(g: SegmentGeom, end: 'a' | 'b'): MPoint {
   const d = derivativeAt(g, 1);
   const v = lengthOf(d) === 0 ? derivativeAt(g, 0.5) : d;
   return unit({ x: -v.x, z: -v.z });
+}
+
+/**
+ * The road's direction at t, radians about +Y: 0 is +X, with z the second
+ * axis. Where the tangent vanishes (a control point on an end) the direction
+ * at the middle stands in, as it does for `leavingDirection`.
+ */
+export function headingAt(g: SegmentGeom, t: number): number {
+  const d = derivativeAt(g, t);
+  const v = lengthOf(d) === 0 ? derivativeAt(g, 0.5) : d;
+  return Math.atan2(v.z, v.x);
+}
+
+/** A sample of a kerb line: where it is, how far along the kerb, and the road's heading there. */
+export interface KerbSample extends MPoint {
+  /** Distance from the first end along the kerb, metres. */
+  s: number;
+  heading: number;
+}
+
+/**
+ * One kerb of the road: the centre samples offset square to the tangent by
+ * `halfWidthM`, to the left of the direction of travel for side 1 and to the
+ * right for side -1. Arc length runs along the kerb itself, so an outer kerb
+ * is longer than the centre line and an inner one shorter.
+ */
+export function kerbLine(g: SegmentGeom, side: 1 | -1, halfWidthM: number): KerbSample[] {
+  const out: KerbSample[] = [];
+  let s = 0;
+  let prev: MPoint | null = null;
+  for (const c of sampleCentreLine(g)) {
+    const heading = headingAt(g, c.t);
+    const p = {
+      x: c.x - side * halfWidthM * Math.sin(heading),
+      z: c.z + side * halfWidthM * Math.cos(heading),
+    };
+    if (prev !== null) s += lengthOf({ x: p.x - prev.x, z: p.z - prev.z });
+    out.push({ x: p.x, z: p.z, s, heading });
+    prev = p;
+  }
+  return out;
 }
 
 /**
