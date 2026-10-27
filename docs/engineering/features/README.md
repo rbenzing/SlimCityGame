@@ -87,6 +87,7 @@ Outside the programme:
 | [tramways.md](tramways.md)                         | no          | no              |
 | [curved-parcels.md](curved-parcels.md)             | yes (17)    | additive        |
 | [rci-kits-second-pass.md](rci-kits-second-pass.md) | no          | no              |
+| [civic-access-and-bus-stops.md](civic-access-and-bus-stops.md) | no          | additive        |
 
 Farms add a zone and derive the soil it grows on, so neither contract moves.
 An interchange is a batch of the road commands that already exist. A compact
