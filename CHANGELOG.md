@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.76.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.75.0...slimcity-v1.76.0) (2026-10-27)
+
+
+### Features
+
+* **render:** houses and blocks built the way the US builds them, by … ([704bc4b](https://github.com/rbenzing/SlimCityGame/commit/704bc4b7f7df85d24136121e3f59d8126eae93e3))
+* **render:** houses and blocks built the way the US builds them, by share ([2d70094](https://github.com/rbenzing/SlimCityGame/commit/2d70094a05f918b81c166777c3bfd27cf56df05c))
+
 ## [1.75.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.74.1...slimcity-v1.75.0) (2026-10-26)
 
 
