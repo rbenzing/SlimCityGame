@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.78.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.77.0...slimcity-v1.78.0) (2026-10-27)
+
+
+### Features
+
+* **world:** every zone and its car parks stand square to a curve (curved parcels, slice 2) ([5ffbd51](https://github.com/rbenzing/SlimCityGame/commit/5ffbd51438137e99d749650d4417abdb91c243eb))
+
 ## [1.77.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.76.0...slimcity-v1.77.0) (2026-10-27)
 
 
