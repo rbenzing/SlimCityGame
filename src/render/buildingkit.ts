@@ -55,6 +55,7 @@ import { computeCornerOffset, hasSmokestack, smokestackCorner } from './props';
 import {
   deriveFacadeParams,
   FLOOR_HEIGHT_METERS,
+  residentialBodyMaterial,
   STOREFRONT_BULKHEAD_M,
   windowGrid,
   type RGB,
@@ -165,7 +166,7 @@ const PART_COLOR: Readonly<Record<BuildingPart, number>> = {
   scrapYard: materialHex('rustedMetal'),
   gantry: materialHex('rackSteel'),
   recoveryStack: materialHex('galvanised'),
-  // The apartment kit: the hip and the hood take the building's own roof colour, the box bay its wall's.
+  // The apartment kit: the hip and the hood take the building's own roof colour, the box bay a panel field's.
   hipRoofBlock: KIT_DARK,
   mailKiosk: materialHex('metalPlates'),
   stoop: materialHex('stainedConcrete'),
@@ -754,9 +755,16 @@ export const BRICK_PIER_M = 0.6;
 const BRICK_PIER_PROUD_M = 0.1;
 /** A band piece narrower than this, left beside the lobby portal, is not drawn. */
 const MIN_BAND_PIECE_M = 0.6;
-/** A box bay, 2 ft proud, in the wall's own colour darkened. */
+/** A box bay, 2 ft proud. A mid-rise's box bays are its colour-blocked panel fields: two or three materials by seed, the body's own only ever as the third. */
 export const BOX_BAY_PROUD_M = 0.6;
-export const BOX_BAY_DARKEN = 0.78;
+export const MIDRISE_PANEL_MATERIALS: readonly MaterialName[] = [
+  'sidingLightGrey',
+  'sidingOffWhite',
+  'darkPanel',
+];
+/** A garden walk-up is colour-blocked by stack: the body in one of its two materials, every other stack panelled 0.1 m proud in the other, from the brick base to the eave. */
+export const GARDEN_STACK_MATERIALS: readonly MaterialName[] = ['sidingLightGrey', 'redBrick'];
+export const GARDEN_STACK_PANEL_PROUD_M = 0.1;
 /** An apartment block's parapet band, 30 in. */
 export const BLOCK_PARAPET_M = 0.76;
 /** The elevator bulkhead (along the street, tall, deep) and the mechanical penthouse, each this far back from the street face. */
@@ -2451,6 +2459,19 @@ function rgbOf(hex: number): RGB {
   return [c.r, c.g, c.b];
 }
 
+/** The material a garden walk-up's alternate stacks are panelled in: the one of its two its body is not. */
+export function gardenStackPanelMaterial(buildingId: number): MaterialName {
+  const body = residentialBodyMaterial('garden', buildingId);
+  return GARDEN_STACK_MATERIALS.find((m) => m !== body) ?? GARDEN_STACK_MATERIALS[0]!;
+}
+
+/** A mid-rise's panel fields by seed: the two materials its body is not, or those two and its own as a third. */
+export function midrisePanelFields(buildingId: number): readonly MaterialName[] {
+  const body = residentialBodyMaterial('midrise', buildingId);
+  const others = MIDRISE_PANEL_MATERIALS.filter((m) => m !== body);
+  return pick([2, 3], buildingId) === 2 || body === null ? others : [...others, body];
+}
+
 /** The two faces a tower's balconies run along: the longer pair, or the street's and its back on a square plan. */
 function longFaces(box: SetbackBox, side: Side): readonly Side[] {
   if (box.w > box.d + 1e-9) return ['N', 'S'];
@@ -2679,9 +2700,9 @@ function wrapFaces(
 
 /**
  * The apartment kit, placed: a walk-up's hip, base and kiosk with the
- * multiplex's stoop and hood or the garden's breezeways, stairs, balconies
- * and patios; a mid-rise's storefront podium, box bays, balconies, parapet,
- * bulkhead and units; a tower's lobby, storefront podium, continuous
+ * multiplex's stoop and hood or the garden's breezeways, stairs, balconies,
+ * patios and stack panels; a mid-rise's storefront podium, panel-field box
+ * bays, balconies, parapet, bulkhead and units; a tower's lobby, storefront podium, continuous
  * balconies, parapet and penthouse. Everything on the street face is skipped
  * where the block fronts no street. Pure.
  */
@@ -2772,6 +2793,7 @@ function apartmentParts(b: Block): PartPlacement[] {
   }
 
   if (entry.kind === 'garden') {
+    const panelRgb: RGB = materialUnit(gardenStackPanelMaterial(buildingId));
     // The flight stands on one side of the street slot by seed, and on the other side of the rear one.
     const seedSide: 1 | -1 = buildingId % 2 === 0 ? 1 : -1;
     const faces: { face: Side; flight: 1 | -1 }[] = [
@@ -2844,9 +2866,27 @@ function apartmentParts(b: Block): PartPlacement[] {
       // A patio and a balcony per upper floor in every bay clear of the slot and the flight.
       const { count, width } = windowBays(entry, span);
       const stairBounds = stair ? placementBounds(stair) : null;
+      let stack = 0;
       for (let i = 0; i < count; i += 1) {
         const c = bayCentre(span, count, i);
         if (Math.abs(c) - width / 2 < BREEZEWAY_WIDTH_M / 2) continue;
+        // Every other stack clear of the slot is panelled in the material the body is not, from the brick base to the eave.
+        if (stack % 2 === 0) {
+          out.push({
+            ...againstFacade(
+              'boxBay',
+              baseBox,
+              face,
+              width,
+              GARDEN_STACK_PANEL_PROUD_M,
+              baseTop - WALK_UP_BRICK_BASE_HEIGHT_M,
+              (baseTop + WALK_UP_BRICK_BASE_HEIGHT_M) / 2,
+              c,
+            ),
+            color: panelRgb,
+          });
+        }
+        stack += 1;
         const bay = width - BALCONY_BAY_INSET_M;
         const patio = onSide(
           'patio',
@@ -2884,16 +2924,14 @@ function apartmentParts(b: Block): PartPlacement[] {
   };
 
   if (entry.kind === 'midrise') {
-    const dark: RGB = [
-      wallColor[0] * BOX_BAY_DARKEN,
-      wallColor[1] * BOX_BAY_DARKEN,
-      wallColor[2] * BOX_BAY_DARKEN,
-    ];
+    // The box bays along a face cycle through the panel fields, so the storeys read as two or three colour blocks.
+    const fields = midrisePanelFields(buildingId).map((m): RGB => materialUnit(m));
     const bayTop = baseTop - BLOCK_PARAPET_M;
     for (const face of [side, oppositeSide(side)]) {
       const span = facadeSpan(baseBox, face);
       const { count, width } = windowBays(entry, span);
       const bay = width - BALCONY_BAY_INSET_M;
+      let field = 0;
       for (let i = 0; i < count; i += 1) {
         const c = bayCentre(span, count, i);
         if (i % 2 === 0) {
@@ -2908,8 +2946,9 @@ function apartmentParts(b: Block): PartPlacement[] {
               (podiumTop + bayTop) / 2,
               c,
             ),
-            color: dark,
+            color: fields[field % fields.length]!,
           });
+          field += 1;
         } else {
           for (const y of upperFloors()) {
             out.push(...balcony(baseBox, face, c, bay, y, BLOCK_BALCONY_SLAB_M, true, railRgb));

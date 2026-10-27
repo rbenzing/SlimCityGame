@@ -17,6 +17,12 @@ import {
 import { decodeId } from './picking';
 import { BARN_EAVE_SHARE, planFarm } from './farmlot';
 import {
+  pickByShare,
+  residentialBodyMaterial,
+  residentialBodyShares,
+  shareThresholds,
+} from './facade';
+import {
   computeSetbacks,
   frontageSetbackFor,
   DEFAULT_BODY_M_PER_TILE,
@@ -620,6 +626,74 @@ describe('night cycle (UI-SPEC §6.5)', () => {
       expect(instancer.activeAt('does-not-exist', 0)).toBeNull();
       expect(instancer.activeAt('house', 5)).toBeNull();
     });
+  });
+});
+
+describe('a residential body’s shader pick walks the same share table as the CPU pick', () => {
+  // The TSL cascade cannot run without a GPU; it is built by walking
+  // shareThresholds in order and taking the first run the hash draw falls
+  // under, which is what this walks on the CPU against pickByShare and the
+  // id-hashed residentialBodyMaterial the kits and trim read.
+  const kinds = ['detached', 'townhouse', 'multiplex', 'garden', 'midrise', 'tower'] as const;
+  const walk = (
+    thresholds: ReturnType<typeof shareThresholds>,
+    u: number,
+  ): string => thresholds.find((t) => u < t.upTo)?.material ?? thresholds.at(-1)!.material;
+
+  it('lands every draw on the material pickByShare gives, and ends at one', () => {
+    for (const kind of kinds) {
+      const shares = residentialBodyShares(kind)!;
+      const thresholds = shareThresholds(shares);
+      expect(thresholds.at(-1)!.upTo).toBeCloseTo(1, 9);
+      for (let i = 1; i < thresholds.length; i++) {
+        expect(thresholds[i]!.upTo).toBeGreaterThan(thresholds[i - 1]!.upTo);
+      }
+      for (let k = 0; k < 500; k++) {
+        const u = k / 500;
+        expect(walk(thresholds, u), `${kind} u=${u}`).toBe(pickByShare(shares, u));
+      }
+    }
+  });
+
+  it('agrees with residentialBodyMaterial for a sample of ids on every residential kind', () => {
+    for (const kind of kinds) {
+      const shares = residentialBodyShares(kind)!;
+      const thresholds = shareThresholds(shares);
+      for (let id = 1; id <= 200; id++) {
+        const material = residentialBodyMaterial(kind, id)!;
+        const u = thresholds.findIndex((t) => t.material === material);
+        expect(u, `${kind} id=${id}`).toBeGreaterThanOrEqual(0);
+        // The CPU pick is the walk at the same draw: the run holding it is the first whose top exceeds it.
+        const low = u === 0 ? 0 : thresholds[u - 1]!.upTo;
+        expect(walk(thresholds, (low + thresholds[u]!.upTo) / 2)).toBe(material);
+      }
+    }
+  });
+
+  it('builds the day material for every residential kind in the shipped catalog', () => {
+    const scene = new THREE.Scene();
+    const entries = (catalogData as { buildings: BuildingCatalogEntry[] }).buildings.filter(
+      (e) => e.category === 'res' && residentialBodyShares(e.kind) !== null,
+    );
+    expect(entries.length).toBeGreaterThan(0);
+    const instancer = new BuildingInstancer(scene, entries, flatHeightAt);
+    instancer.apply({
+      added: entries.map((e, i) => ({
+        id: i + 1,
+        catalogId: e.id,
+        x: (i % 8) * 4,
+        z: Math.floor(i / 8) * 4,
+        rotation: 0,
+        level: e.level ?? 1,
+        state: BuildingState.Active,
+        problems: 0,
+      })),
+      removed: [],
+      updated: [],
+    });
+    for (const m of scene.children.flatMap((c) => (c as THREE.Mesh).material ?? [])) {
+      expect(m).toBeInstanceOf(MeshStandardNodeMaterial);
+    }
   });
 });
 

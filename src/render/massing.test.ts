@@ -22,7 +22,8 @@ import {
 } from './massing';
 import { lotPlanFor, lotPointToWorld } from './lotplan';
 import { bodyPlateM2 } from '../shared/floorarea';
-import { deriveFacadeParams, FLOOR_HEIGHT_METERS } from './facade';
+import { deriveFacadeParams, FLOOR_HEIGHT_METERS, windowGrid } from './facade';
+import { materialUnit } from './palette';
 import {
   BuildingCatalogEntry,
   BuildingDelta,
@@ -579,6 +580,21 @@ describe('MassingRenderer', () => {
     expect(c.b).toBeCloseTo(wallColor[2], 4);
   });
 
+  it('colours a mid-rise’s podium brick, whatever its wall colour', () => {
+    const scene = new THREE.Scene();
+    const e = tower({ kind: 'midrise', level: 2, height: 25.6, color: 0x336699 });
+    const renderer = new MassingRenderer(scene, flatHeightAt, [e]);
+    renderer.apply(deltaAdd(building({ level: 2, id: 9 })));
+    const slot = renderer.upperBoxSlotsFor(9)[0]!;
+    const c = new THREE.Color();
+    renderer.getBoxColor(slot, c);
+    const brick = materialUnit('redBrick');
+    expect(c.r).toBeCloseTo(brick[0], 4);
+    expect(c.g).toBeCloseTo(brick[1], 4);
+    expect(c.b).toBeCloseTo(brick[2], 4);
+    expect([c.r, c.g, c.b]).not.toEqual([...deriveFacadeParams(e, 9).wallColor]);
+  });
+
   it('scales Constructing buildings height (and yOffset) by 0.25 and tints grey', () => {
     const scene = new THREE.Scene();
     const e = tower({ color: 0xffffff });
@@ -985,15 +1001,16 @@ describe('a tower stands on a podium', () => {
       height: 38.4,
     }) as BuildingCatalogEntry;
 
-  it('adds a two-storey tier at ground that fills the lot to the ceiling, under the slab', () => {
+  it('adds a tier two of the tower’s own floors tall at ground that fills the lot to the ceiling, under the slab', () => {
     const { boxes, podium } = computeSetbacks(tower(1), 7);
     expect(boxes).toHaveLength(1);
-    expect(podium).toEqual({
-      w: 2 * TILE_METERS * MAX_FOOTPRINT_FILL,
-      d: 2 * TILE_METERS * MAX_FOOTPRINT_FILL,
-      h: 2 * FLOOR_HEIGHT_METERS,
-      yOffset: 0,
-    });
+    // 38.4 m cuts into eleven floors of 3.6 m, so the podium's top is the second floor line.
+    const floor = 38.4 / windowGrid(tower(1), 38.4).rows;
+    expect(floor).toBeCloseTo(38.4 / 11, 9);
+    expect(podium!.w).toBe(2 * TILE_METERS * MAX_FOOTPRINT_FILL);
+    expect(podium!.d).toBe(2 * TILE_METERS * MAX_FOOTPRINT_FILL);
+    expect(podium!.h).toBeCloseTo(2 * floor, 9);
+    expect(podium!.yOffset).toBe(0);
     expect(podium!.w).toBeGreaterThan(boxes[0]!.w);
   });
 
@@ -1014,7 +1031,8 @@ describe('a tower stands on a podium', () => {
     });
     expect(MIDRISE_PODIUM_M).toBe(4.6);
     expect(podiumHeightOf({ ...tower(1), kind: 'midrise' })).toBe(MIDRISE_PODIUM_M);
-    expect(podiumHeightOf(tower(1))).toBe(PODIUM_STOREYS * FLOOR_HEIGHT_METERS);
+    expect(podiumHeightOf(tower(1))).toBeCloseTo((PODIUM_STOREYS * 38.4) / 11, 9);
+    expect(podiumHeightOf(tower(1))).not.toBeCloseTo(PODIUM_STOREYS * FLOOR_HEIGHT_METERS, 3);
   });
 
   it('gives no podium to a walk-up, which stands on the ground under its hip', () => {

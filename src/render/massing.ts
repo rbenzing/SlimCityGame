@@ -45,7 +45,8 @@ import {
   MAX_FOOTPRINT_FILL,
   RES_LOW_BODY_M_PER_TILE,
 } from '../shared/floorarea';
-import { deriveFacadeParams, FLOOR_HEIGHT_METERS } from './facade';
+import { deriveFacadeParams, windowGrid } from './facade';
+import { materialUnit } from './palette';
 import { maxHeightUnderBody } from './footprint';
 import { findStreetFacingEdge, NO_STREETS, type StreetLookup } from './frontage';
 import { lotPlanFor, lotPointToWorld } from './lotplan';
@@ -112,14 +113,19 @@ export function bodyFillFor(entry: BuildingCatalogEntry): { x: number; z: number
   };
 }
 
-/** A tower stands on a podium this many storeys tall that fills its lot. */
+/** A tower stands on a podium this many of its own floors tall that fills its lot. */
 export const PODIUM_STOREYS = 2;
 /** A mid-rise stands on a one-storey podium of the 15 ft a retail ground floor is zoned to. */
 export const MIDRISE_PODIUM_M = 4.6;
+/** A mid-rise's podium is brick under its clad storeys. */
+const MIDRISE_PODIUM_COLOR = materialUnit('redBrick');
 
-/** How tall a podium a block stands on, in metres; null for a block that stands on the ground. */
+/** How tall a podium a block stands on, in metres; null for a block that stands on the ground. A tower's is two of the floors its slab is cut into, so its top is a floor line. */
 export function podiumHeightOf(entry: BuildingCatalogEntry): number | null {
-  if (entry.kind === 'tower') return PODIUM_STOREYS * FLOOR_HEIGHT_METERS;
+  if (entry.kind === 'tower') {
+    const { rows } = windowGrid(entry, entry.height);
+    return PODIUM_STOREYS * (entry.height / rows);
+  }
   if (entry.kind === 'midrise') return MIDRISE_PODIUM_M;
   return null;
 }
@@ -591,6 +597,7 @@ export class MassingRenderer {
       building.state === BuildingState.Constructing ? CONSTRUCTING_MASSING_HEIGHT_SCALE : 1;
     const tint = massingLifecycleTint(building.state);
     const { wallColor } = deriveFacadeParams(entry, building.id);
+    const podiumColor = entry.kind === 'midrise' ? MIDRISE_PODIUM_COLOR : wallColor;
 
     const lot = footprintForRotation(entry, building.rotation);
     const centerX = (building.x + lot.w / 2) * TILE_METERS + frontage.centerXM;
@@ -618,7 +625,11 @@ export class MassingRenderer {
       _matrix.compose(_position, _quaternion, _scale);
       this.pool.setMatrixAt(slot, _matrix);
 
-      _color.setRGB(wallColor[0] * tint[0], wallColor[1] * tint[1], wallColor[2] * tint[2]);
+      _color.setRGB(
+        podiumColor[0] * tint[0],
+        podiumColor[1] * tint[1],
+        podiumColor[2] * tint[2],
+      );
       this.pool.setColorAt(slot, _color);
 
       slots.push(slot);

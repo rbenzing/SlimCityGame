@@ -31,7 +31,17 @@ import {
   STOREFRONT_BULKHEAD_M,
   STOREFRONT_HEAD_M,
   STOREFRONT_MULLION_M,
+  TOWER_FLOOR_M,
+  WINDOW_SEED_SLOTS,
+  HOUSE_BODY_SHARES,
+  GARDEN_BODY_SHARES,
+  MIDRISE_BODY_SHARES,
+  TOWER_BODY_SHARES,
   bodyPaletteFor,
+  pickByShare,
+  residentialBodyMaterial,
+  residentialBodyShares,
+  residentialWallBase,
   storefrontCut,
   deriveFacadeParams,
   glassTintFor,
@@ -219,6 +229,30 @@ describe('windowGrid: the bays and storeys the material draws', () => {
     expect(cut.headFraction).toBeGreaterThan(cut.sillFraction);
     expect(storefrontCut(entry({ footprint: { w: 1, d: 2 }, kind: 'detached' }), 6.5)).toBeNull();
     expect(storefrontCut(entry({ footprint: { w: 2, d: 2 }, category: 'ind' }), 8)).toBeNull();
+  });
+
+  it('cuts a tower into floors of 3.6 m, each landing inside 3.3–3.9 m, and every other body into 3.2 m storeys', () => {
+    expect(TOWER_FLOOR_M).toBe(3.6);
+    const tower = entry({ footprint: { w: 2, d: 2 }, kind: 'tower' });
+    const wide = entry({ footprint: { w: 3, d: 3 }, kind: 'tower' });
+    // A tower's rows run past the fifteen-row cap to what the window seed slot leaves its columns: the 80 m slab's six columns take 21 of the 22 it wants.
+    for (const [e, height, rows] of [
+      [tower, 38.4, 11],
+      [tower, 57.6, 16],
+      [wide, 80, 21],
+    ] as const) {
+      const grid = windowGrid(e, height);
+      expect(grid.rows).toBe(rows);
+      expect(grid.cols * grid.rows).toBeLessThan(WINDOW_SEED_SLOTS - 1);
+      const pitch = height / rows;
+      expect(pitch).toBeGreaterThanOrEqual(3.3);
+      expect(pitch).toBeLessThanOrEqual(3.9);
+    }
+    expect(windowGrid(wide, 400).cols * windowGrid(wide, 400).rows).toBeLessThan(
+      WINDOW_SEED_SLOTS - 1,
+    );
+    expect(windowGrid(entry({ footprint: { w: 2, d: 2 }, kind: 'midrise' }), 38.4).rows).toBe(12);
+    expect(windowGrid(entry({ footprint: { w: 2, d: 2 } }), 38.4).rows).toBe(12);
   });
 
   it('stays inside its clamps, so the window seed slots hold', () => {
@@ -573,7 +607,7 @@ describe('deriveFacadeParams: a commercial body takes its kind palette by id has
     }
   });
 
-  it('still clamps a non-commercial masonry entry to the catalog saturation rule', () => {
+  it('still clamps a kindless masonry entry to the catalog saturation rule', () => {
     const e = entry({ category: 'res', zone: ZoneType.ResHigh, level: 1, color: 0xff0000 });
     expect(kindWallBase(e, 1)).toBeNull();
     for (let id = 0; id < 15; id++) {
@@ -581,6 +615,86 @@ describe('deriveFacadeParams: a commercial body takes its kind palette by id has
         MAX_WALL_SATURATION + 1e-9,
       );
     }
+  });
+
+  it('draws a residential body by the share the US builds, by id hash, from chart entries only', () => {
+    const houseKinds: BuildingKind[] = ['detached', 'duplex', 'fourplex', 'townhouse', 'multiplex'];
+    for (const kind of houseKinds) expect(residentialBodyShares(kind)).toBe(HOUSE_BODY_SHARES);
+    expect(residentialBodyShares('garden')).toBe(GARDEN_BODY_SHARES);
+    expect(residentialBodyShares('midrise')).toBe(MIDRISE_BODY_SHARES);
+    expect(residentialBodyShares('tower')).toBe(TOWER_BODY_SHARES);
+    for (const kind of [undefined, 'crops', 'orchard', 'pasture', 'shop', 'factory'] as const) {
+      expect(residentialBodyShares(kind), `${kind}`).toBeNull();
+      expect(residentialBodyMaterial(kind, 3), `${kind}`).toBeNull();
+    }
+    for (const shares of [HOUSE_BODY_SHARES, GARDEN_BODY_SHARES, MIDRISE_BODY_SHARES, TOWER_BODY_SHARES]) {
+      expect(shares.reduce((sum, s) => sum + s.share, 0)).toBeCloseTo(1, 9);
+      for (const { material, share } of shares) {
+        expect(share).toBeGreaterThan(0);
+        expect(MATERIALS, `${material} is not in the chart`).toHaveProperty(material);
+      }
+    }
+  });
+
+  it('weights a house’s cladding by the 2024 starts and its siding colour by the sales survey', () => {
+    const share = (name: MaterialName): number =>
+      HOUSE_BODY_SHARES.filter((s) => s.material === name).reduce((sum, s) => sum + s.share, 0);
+    const sidings: MaterialName[] = [
+      'sidingOffWhite',
+      'sidingWhite',
+      'sidingLightBrown',
+      'sidingLightGrey',
+      'sidingBlue',
+    ];
+    expect(sidings.reduce((sum, n) => sum + share(n), 0)).toBeCloseTo(0.26 + 0.23, 9);
+    expect(share('sidingOffWhite')).toBeCloseTo((0.49 * 18) / 66, 9);
+    expect(share('sidingBlue')).toBeCloseTo((0.49 * 8) / 66, 9);
+    expect(share('whitePlaster')).toBeCloseTo(0.25, 9);
+    expect(share('redBrick')).toBeCloseTo(0.16, 9);
+    expect(share('brightWood')).toBeCloseTo(0.06, 9);
+    expect(share('yellowPlaster') + share('greenPlaster')).toBeCloseTo(0.04, 9);
+    // The pick lands on each material about its share of the time.
+    const seen = new Map<MaterialName, number>();
+    const ids = 6000;
+    for (let id = 1; id <= ids; id++) {
+      const m = residentialBodyMaterial('detached', id)!;
+      seen.set(m, (seen.get(m) ?? 0) + 1);
+    }
+    for (const { material, share: expected } of HOUSE_BODY_SHARES) {
+      expect(Math.abs((seen.get(material) ?? 0) / ids - expected), material).toBeLessThan(0.03);
+    }
+    expect(pickByShare(HOUSE_BODY_SHARES, 0)).toBe('sidingOffWhite');
+    expect(pickByShare(HOUSE_BODY_SHARES, 0.999999)).toBe('greenPlaster');
+  });
+
+  it('is deterministic per id, the same house material whatever house-scale kind, and hue-jittered but never clamped', () => {
+    for (let id = 0; id < 40; id++) {
+      const detached = residentialBodyMaterial('detached', id);
+      for (const kind of ['duplex', 'fourplex', 'townhouse', 'multiplex'] as const) {
+        expect(residentialBodyMaterial(kind, id)).toBe(detached);
+      }
+      expect(['sidingLightGrey', 'redBrick']).toContain(residentialBodyMaterial('garden', id));
+      expect(['sidingLightGrey', 'sidingOffWhite']).toContain(
+        residentialBodyMaterial('midrise', id),
+      );
+      expect(residentialBodyMaterial('tower', id)).toBe('curtainWall');
+      for (const kind of ['detached', 'garden', 'midrise', 'tower'] as const) {
+        const e = entry({ kind, zone: ZoneType.ResLow, color: 0xff00ff });
+        const base = residentialWallBase(kind, id)!;
+        expect(base).toEqual(materialUnit(residentialBodyMaterial(kind, id)!));
+        expect(kindWallBase(e, id)).toEqual(base);
+        const baseHsl = rgbToHsl(...base);
+        const wallHsl = rgbToHsl(...deriveFacadeParams(e, id).wallColor);
+        expect(circularHueDiff(wallHsl.h, baseHsl.h)).toBeLessThanOrEqual(
+          HUE_JITTER_FRACTION + 1e-6,
+        );
+        expect(wallHsl.s).toBeCloseTo(baseHsl.s, 6);
+        expect(wallHsl.l).toBeCloseTo(baseHsl.l, 6);
+      }
+    }
+    const gardens = new Set<string>();
+    for (let id = 0; id < 40; id++) gardens.add(residentialBodyMaterial('garden', id)!);
+    expect(gardens.size).toBe(2);
   });
 
   it('roofs a commercial kind with its own material and leaves the rotation to the rest', () => {

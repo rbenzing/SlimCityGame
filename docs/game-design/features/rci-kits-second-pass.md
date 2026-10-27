@@ -1,6 +1,6 @@
 # The RCI kits, second pass — design
 
-- **Status:** Agreed 2026-10-23
+- **Status:** Built 2026-10-27 (agreed 2026-10-23)
 - **Date:** 2026-10-23
 
 The building-detail programme ([building-detail.md](building-detail.md), complete

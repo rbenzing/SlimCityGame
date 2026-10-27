@@ -76,10 +76,14 @@ import {
   isRowHouseArchetype,
   paletteUnits,
   parapetBand,
+  residentialBodyShares,
   rgbToHsl,
   roofPaletteFor,
+  shareThresholds,
+  WINDOW_SEED_SLOTS,
   windowGrid,
   windowlessBody,
+  type MaterialShare,
 } from './facade';
 
 const INITIAL_CAPACITY = 64;
@@ -118,14 +122,7 @@ function tintFor(state: BuildingState): readonly [number, number, number] {
 // windows are an Active-state signal.
 // ---------------------------------------------------------------------------
 
-/**
- * Per-building seed multiplier for combining (buildingId, windowIndex) into
- * one hash seed. Keeps `buildingId * WINDOW_SEED_SLOTS` exactly representable
- * in float32 (the shader's native precision) up to buildingId ~131,072 —
- * enormous headroom for this game's building counts.
- */
-const WINDOW_SEED_SLOTS = 128;
-/** Reserved seed slot (never a real grid cell — grids are clamped below this) used to derive a building's own lit fraction. */
+/** Reserved seed slot (never a real grid cell — facade.ts clamps every grid below this) used to derive a building's own lit fraction. */
 const WINDOW_FRACTION_SLOT = WINDOW_SEED_SLOTS - 1;
 /** Fraction of a building's windows that are the occasional cool tone rather than warm. */
 const WINDOW_COOL_PROBABILITY = 0.18;
@@ -276,7 +273,26 @@ function selectFromPalette(indexNode: Node<'float'>, options: readonly RGB[]): N
 }
 
 /**
- * Per-instance wall base color: a kind with a body palette rotates among
+ * Builds a `select` cascade that picks a chart material by the run of the
+ * cumulative shares a runtime draw `u` in [0, 1) lands in, walking the same
+ * thresholds facade.ts's pickByShare walks on the CPU.
+ */
+function selectByShare(uNode: Node<'float'>, shares: readonly MaterialShare[]): Node<'vec3'> {
+  const thresholds = shareThresholds(shares);
+  const units = paletteUnits(thresholds.map((t) => t.material));
+  function build(i: number): Node<'vec3'> {
+    const color = units[i];
+    if (!color) throw new RangeError(`selectByShare: empty share table at index ${i}`);
+    if (i === thresholds.length - 1) return vec3(...color);
+    return select(uNode.lessThan(thresholds[i]!.upTo), vec3(...color), build(i + 1));
+  }
+  return build(0);
+}
+
+/**
+ * Per-instance wall base color: a residential kind draws a chart material by
+ * the share the US builds in it (facade.ts's residentialBodyShares), a kind
+ * with a body palette rotates among
  * its chart materials, unclamped; a kindless industrial entry rotates
  * among the steel-blue/light-grey/off-white palette; everything else
  * desaturates the catalog color down to MAX_WALL_SATURATION (via three's own
@@ -297,11 +313,14 @@ function buildWallColorNode(
     .sub(1)
     .mul(HUE_JITTER_FRACTION * Math.PI * 2);
 
+  const kindSeed = buildingIdAttr.mul(FACADE_HASH_SLOT_MULTIPLIER).add(HASH_SLOT_KIND_WALL);
+  const residentialShares = residentialBodyShares(entry.kind);
   const kindPalette = bodyPaletteFor(entry.kind, entry.level);
   let base: Node<'vec3'>;
-  if (kindPalette) {
+  if (residentialShares) {
+    base = selectByShare(hash(kindSeed), residentialShares);
+  } else if (kindPalette) {
     const units = paletteUnits(kindPalette);
-    const kindSeed = buildingIdAttr.mul(FACADE_HASH_SLOT_MULTIPLIER).add(HASH_SLOT_KIND_WALL);
     const index = floor(hash(kindSeed).mul(units.length));
     base = selectFromPalette(index, units);
   } else if (isIndustrial) {

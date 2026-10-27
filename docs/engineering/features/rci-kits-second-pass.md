@@ -1,6 +1,6 @@
 # The RCI kits, second pass — technical design
 
-- **Status:** Agreed 2026-10-23
+- **Status:** Built 2026-10-27 (agreed 2026-10-23)
 - **Date:** 2026-10-23
 - **Author:** Claude Fable 5.1
 
@@ -33,7 +33,8 @@ and triangle budget.
 | `src/render/archetypes.ts`                                            | 1, 2    | Parts map completed: the parts the spec names for every kind                                                                              |
 | `src/render/buildingkit.ts`                                           | 1, 2, 3 | New part geometries and recipes (below); sizes of the identifying parts raised to read at 40 m                                            |
 | `src/render/servicevehicles.ts` or kit                                | 2       | A docked trailer part (53 ft dry van) at a share of a warehouse's dock doors                                                              |
-| `src/render/houses.ts`, `houselot.ts`                                 | 3       | Siding and roof palettes by share; porch, garage and chimney shares; the craftsman porch                                                  |
+| `src/render/houses.ts`, `houselot.ts`                                 | 3       | Roof shingles by share; porch, garage and chimney shares; the craftsman and split-level forms of the one-storey house, chosen by seed     |
+| `src/render/massing.ts`, `palette.ts`                                 | 3       | The 5-over-1's brick podium; nine siding and shingle chart entries; the tower's window rows capped per kind inside the seed slot          |
 | `docs/art/buildings.md`                                               | each    | Per-kind rows rewritten to the design's tables, with sizes                                                                                |
 | `tools/storefront-shots.mjs`, `industry-shots.mjs`, `house-shots.mjs` | each    | A "line-up" shot per family at the 40 m reference distance, one of each kind in a row                                                     |
 
