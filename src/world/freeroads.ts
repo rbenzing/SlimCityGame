@@ -102,6 +102,11 @@ function profileOf(id: number, lookup: ProfileLookup): RoadProfile {
   return lookup(id) ?? presetProfileForTier(id as RoadTier);
 }
 
+/** Half of a live segment's whole cross-section, footways included, metres. */
+export function segmentHalfWidthM(net: RoadNet, seg: number, lookup: ProfileLookup): number {
+  return halfWidthOf(profileOf(net.segProfile[seg]!, lookup));
+}
+
 /** From a point in centimetres to one in metres, metres. */
 function distanceM(p: CmPoint, q: MPoint): number {
   const dx = p.x / 100 - q.x;

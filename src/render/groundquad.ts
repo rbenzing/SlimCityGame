@@ -98,6 +98,50 @@ export function pushConformingQuad(
   }
 }
 
+/**
+ * Appends a rectangle laid in a turned frame — `toWorld` maps its local
+ * (u, v) metres onto the map — as terrain-conforming cells. The cells are
+ * cut in the rectangle's own axes, so they cannot follow the terrain's
+ * diagonal; at CONFORM_MAX_CELL_M they sit well inside a tile, where the
+ * surface has no curve left to cut under them.
+ */
+export function pushConformingTurnedQuad(
+  positions: number[],
+  colors: number[],
+  toWorld: (u: number, v: number) => { x: number; z: number },
+  u0: number,
+  v0: number,
+  u1: number,
+  v1: number,
+  yOffset: number,
+  color: readonly [number, number, number],
+  heightAt: (x: number, z: number) => number,
+  maxCellM: number = CONFORM_MAX_CELL_M,
+): void {
+  const nu = Math.max(1, Math.ceil((u1 - u0) / maxCellM));
+  const nv = Math.max(1, Math.ceil((v1 - v0) / maxCellM));
+  const stepU = (u1 - u0) / nu;
+  const stepV = (v1 - v0) / nv;
+  const corner = (u: number, v: number): [number, number, number] => {
+    const p = toWorld(u, v);
+    return [p.x, heightAt(p.x, p.z) + yOffset, p.z];
+  };
+  for (let iv = 0; iv < nv; iv++) {
+    for (let iu = 0; iu < nu; iu++) {
+      const cu0 = u0 + iu * stepU;
+      const cv0 = v0 + iv * stepV;
+      const a = corner(cu0, cv0);
+      const b = corner(cu0, cv0 + stepV);
+      const c = corner(cu0 + stepU, cv0);
+      const d = corner(cu0 + stepU, cv0 + stepV);
+      // The same winding as pushCell: (u0,v0) (u0,v1) (u1,v0), then (u0,v1) (u1,v1) (u1,v0).
+      positions.push(...a, ...b, ...c);
+      positions.push(...b, ...d, ...c);
+      for (let i = 0; i < 6; i++) colors.push(color[0], color[1], color[2]);
+    }
+  }
+}
+
 /** Vertices a conforming quad of this size will produce — for budgeting a merged mesh. */
 export function conformingQuadVertexCount(
   x0: number,

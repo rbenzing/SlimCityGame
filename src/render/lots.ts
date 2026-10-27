@@ -28,7 +28,11 @@ import { BuildingState } from '../shared/types';
 import type { BuildingCatalogEntry, BuildingDelta, BuildingInstance } from '../shared/types';
 import { CHUNK_TILES, CHUNKS_PER_SIDE, TILE_METERS } from '../shared/constants';
 import { footprintForRotation } from '../shared/footprint';
-import { pushConformingQuad, conformingQuadVertexCount } from './groundquad';
+import {
+  pushConformingQuad,
+  pushConformingTurnedQuad,
+  conformingQuadVertexCount,
+} from './groundquad';
 import { materialUnit, type MaterialName } from './palette';
 import { massingLifecycleTint } from './massing';
 import { isFarmEntry, isHouseEntry, isWalkUpEntry } from './archetypes';
@@ -249,6 +253,32 @@ export class LotRenderer {
 
     const surface = lotSurfaceFor(entry);
     if (surface === null) return;
+    const plan = planHouseLot(building, entry, this.roadAt, this.street);
+    if (building.frame && plan) {
+      // A home on a curve: its pad is its lot turned with its street, and
+      // every strip on it is laid in the same frame.
+      const framed = plan;
+      const toWorld = (u: number, v: number): { x: number; z: number } =>
+        lotToWorld(framed.frame, u, v);
+      const lay = (rect: LotRect, y: number, name: MaterialName): void => {
+        pushConformingTurnedQuad(
+          positions,
+          colors,
+          toWorld,
+          rect.u0,
+          rect.v0,
+          rect.u1,
+          rect.v1,
+          y,
+          tinted(name),
+          this.heightAt,
+        );
+      };
+      lay({ u0: 0, u1: framed.edgeLenM, v0: 0, v1: framed.lotDepthM }, LOT_Y_OFFSET, surface);
+      this.layHouseLot(framed, surface, lay);
+      this.store(building, positions, colors);
+      return;
+    }
     const bounds = lotBounds(building, entry);
     const carPark = lotPlanFor(
       entry,
@@ -276,7 +306,6 @@ export class LotRenderer {
       return;
     }
 
-    const plan = planHouseLot(building, entry, this.roadAt, this.street);
     if (plan) {
       const lay = (rect: LotRect, y: number, name: MaterialName): void => {
         const a = lotToWorld(plan.frame, rect.u0, rect.v0);
@@ -293,18 +322,27 @@ export class LotRenderer {
           this.heightAt,
         );
       };
-      for (const strip of plan.vergeLawn) lay(strip, LOT_Y_OFFSET, surface);
-      for (const path of plan.paths) lay(path, DRIVE_Y_OFFSET, 'cleanConcrete');
-      for (const patio of plan.yard.patios)
-        lay(patio, DRIVE_Y_OFFSET, PATIO_SURFACE[plan.yard.patioStone]);
-      for (const drive of plan.drives) {
-        lay(drive.rect, DRIVE_Y_OFFSET, DRIVE_SURFACE[plan.surface]);
-        // Across the footway the drive is always paved: the kerb is dropped
-        // and the paving carried through, dirt drive or not.
-        if (drive.cut.v1 > drive.cut.v0) lay(drive.cut, CURB_CUT_Y_OFFSET, 'cleanConcrete');
-      }
+      this.layHouseLot(plan, surface, lay);
     }
     this.store(building, positions, colors);
+  }
+
+  /** What a home's lot paves over its lawn: the verge strips, the walks, the patios, the drives and their cuts across the footway. */
+  private layHouseLot(
+    plan: HouseLotPlan,
+    surface: MaterialName,
+    lay: (rect: LotRect, y: number, name: MaterialName) => void,
+  ): void {
+    for (const strip of plan.vergeLawn) lay(strip, LOT_Y_OFFSET, surface);
+    for (const path of plan.paths) lay(path, DRIVE_Y_OFFSET, 'cleanConcrete');
+    for (const patio of plan.yard.patios)
+      lay(patio, DRIVE_Y_OFFSET, PATIO_SURFACE[plan.yard.patioStone]);
+    for (const drive of plan.drives) {
+      lay(drive.rect, DRIVE_Y_OFFSET, DRIVE_SURFACE[plan.surface]);
+      // Across the footway the drive is always paved: the kerb is dropped
+      // and the paving carried through, dirt drive or not.
+      if (drive.cut.v1 > drive.cut.v0) lay(drive.cut, CURB_CUT_Y_OFFSET, 'cleanConcrete');
+    }
   }
 
   /**

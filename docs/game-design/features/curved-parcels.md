@@ -110,9 +110,13 @@ the parcel's frontage.
 
 ### The grid keeps its books
 
-A curved parcel claims every tile its rectangle touches, so the world's one
-rule — a tile holds one building — holds unchanged, and power, water,
+A curved parcel claims every tile whose centre lies inside its rectangle, so
+two parcels end to end never claim one tile between them and the world's
+one rule — a tile holds one building — holds unchanged, while power, water,
 services and the lot's road frontage walk the tiles as they do now. The
+parcel's front line is the edge of the road's right of way, the back of its
+footway, where a plat draws a lot line; the drive crosses the footway to
+the carriageway as it does from a grid lot. The
 zoning lens draws the parcel outline turned, as the plat is, so the player
 sees the lots before anything grows on them.
 

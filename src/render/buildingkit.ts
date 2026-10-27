@@ -34,6 +34,7 @@ import { TILE_METERS } from '../shared/constants';
 import { footprintForRotation } from '../shared/footprint';
 import { maxHeightUnderBody } from './footprint';
 import { findRoadFacingEdge, localSideOf, NO_STREETS, type Side } from './frontage';
+import { framedBodyPlacement } from './houselot';
 import {
   materialHex,
   materialUnit,
@@ -4383,7 +4384,11 @@ function islandPart(
 
 /** Rotates a local footprint-frame offset by rotation*90°, matching props.ts. */
 function rotateLocal(x: number, z: number, rotation: 0 | 1 | 2 | 3): { x: number; z: number } {
-  const theta = rotation * (Math.PI / 2);
+  return rotateByYaw(x, z, rotation * (Math.PI / 2));
+}
+
+/** Rotates a local footprint-frame offset by a yaw about +Y, as the instance quaternion turns the part. */
+function rotateByYaw(x: number, z: number, theta: number): { x: number; z: number } {
   const cos = Math.cos(theta);
   const sin = Math.sin(theta);
   return { x: x * cos + z * sin, z: -x * sin + z * cos };
@@ -4710,6 +4715,44 @@ export class BuildingKitRenderer {
     this.buildingSlots.delete(id);
   }
 
+  /**
+   * Where the kit's parts are measured from: the body's centre, its yaw, and
+   * the ground under the base tier as the instancer seats it, so a dock or a
+   * pump never hangs over the downhill side of a lot its body is level on.
+   * A body on a curve stands where its parcel's frame puts it.
+   */
+  private kitSeat(
+    entry: BuildingCatalogEntry,
+    building: BuildingInstance,
+    frontage: FrontageSetback,
+    baseBox: SetbackBox,
+  ): { x: number; z: number; yaw: number; groundY: number } {
+    if (building.frame) {
+      const seat = framedBodyPlacement(building.frame, entry, NO_STREETS);
+      const groundY = maxHeightUnderBody(
+        this.heightAt,
+        seat.x,
+        seat.z,
+        seat.boundsW,
+        seat.boundsD,
+        0,
+      );
+      return { x: seat.x, z: seat.z, yaw: seat.yaw, groundY };
+    }
+    const lot = footprintForRotation(entry, building.rotation);
+    const x = (building.x + lot.w / 2) * TILE_METERS + frontage.centerXM;
+    const z = (building.z + lot.d / 2) * TILE_METERS + frontage.centerZM;
+    const groundY = maxHeightUnderBody(
+      this.heightAt,
+      x,
+      z,
+      baseBox.w,
+      baseBox.d,
+      building.rotation,
+    );
+    return { x, z, yaw: building.rotation * (Math.PI / 2), groundY };
+  }
+
   private place(building: BuildingInstance): void {
     const entry = this.catalogById.get(building.catalogId);
     if (!entry) return;
@@ -4719,20 +4762,7 @@ export class BuildingKitRenderer {
     if (!kit || kit.placements.length === 0) return;
     const { placements, frontage, baseBox } = kit;
 
-    const lot = footprintForRotation(entry, building.rotation);
-    const centerX = (building.x + lot.w / 2) * TILE_METERS;
-    const centerZ = (building.z + lot.d / 2) * TILE_METERS;
-    // The kit stands where the body stands: on the ground under the base
-    // tier, as the instancer seats it, so a dock or a pump never hangs over
-    // the downhill side of a lot its body is level on.
-    const groundY = maxHeightUnderBody(
-      this.heightAt,
-      centerX + frontage.centerXM,
-      centerZ + frontage.centerZM,
-      baseBox.w,
-      baseBox.d,
-      building.rotation,
-    );
+    const seat = this.kitSeat(entry, building, frontage, baseBox);
     // Kit only goes on finished buildings — a loading dock on a quarter-built
     // shell reads as debris — so the lifecycle tint is always the Active one.
     const held: { part: BuildingPart; slot: number }[] = [];
@@ -4740,15 +4770,11 @@ export class BuildingKitRenderer {
       const pool = this.poolFor(p.part);
       const slot = pool.allocate();
 
-      // The offset rotates with the footprint; the size does not, because the
+      // The offset turns with the body; the size does not, because the
       // instance quaternion already turns the box itself.
-      const rotated = rotateLocal(p.offset[0], p.offset[2], building.rotation);
-      _position.set(
-        centerX + frontage.centerXM + rotated.x,
-        groundY + p.offset[1],
-        centerZ + frontage.centerZM + rotated.z,
-      );
-      _quaternion.setFromAxisAngle(_yAxis, building.rotation * (Math.PI / 2) + (p.yaw ?? 0));
+      const rotated = rotateByYaw(p.offset[0], p.offset[2], seat.yaw);
+      _position.set(seat.x + rotated.x, seat.groundY + p.offset[1], seat.z + rotated.z);
+      _quaternion.setFromAxisAngle(_yAxis, seat.yaw + (p.yaw ?? 0));
       if (p.pitch) _quaternion.multiply(_pitch.setFromAxisAngle(_xAxis, -p.pitch));
       _scale.set(p.size[0], p.size[1], p.size[2]);
       _matrix.compose(_position, _quaternion, _scale);

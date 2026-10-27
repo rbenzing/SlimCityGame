@@ -40,6 +40,9 @@ import {
   ZoneType,
 } from '../shared/types';
 import { NIGHT_WINDOW_LIT_MAX, NIGHT_WINDOW_LIT_MIN, TILE_METERS } from '../shared/constants';
+import { toLocal } from '../shared/lotframe';
+import { NO_STREETS } from './frontage';
+import { framedBodyPlacement } from './houselot';
 import catalogData from '../data/catalog.json';
 
 const flatHeightAt = (): number => 0;
@@ -1609,5 +1612,32 @@ describe('a building turned a quarter stands on the tiles it was stamped on', ()
     const shift = frontageSetbackFor(STRIP, 5, 7, westRoad, undefined, 1);
     expect(fronted.x).toBeCloseTo(bare.x + shift.centerXM, 4);
     expect(fronted.z).toBeCloseTo(bare.z + shift.centerZM, 4);
+  });
+});
+
+describe('a body on a framed parcel', () => {
+  const frame = { x: 212.5, z: 340.25, heading: 0.6 };
+
+  it('stands where its parcel’s frame puts it, turned to the street by the road’s heading', () => {
+    const instancer = new BuildingInstancer(new THREE.Scene(), CATALOG, flatHeightAt);
+    instancer.apply({
+      added: [instanceAt(1, 10, 17, { frame })],
+      updated: [],
+      removed: [],
+    });
+    const mesh = instancer.getPickables()[0]?.mesh as THREE.InstancedMesh;
+    const { pos, quat } = decomposeAt(mesh, 0);
+    const seat = framedBodyPlacement(frame, HOUSE, NO_STREETS);
+    expect(pos.x).toBeCloseTo(seat.x, 3);
+    expect(pos.z).toBeCloseTo(seat.z, 3);
+    // Its catalogue X runs along the street.
+    const along = new THREE.Vector3(1, 0, 0).applyQuaternion(quat);
+    expect(along.x).toBeCloseTo(Math.cos(0.6), 4);
+    expect(along.z).toBeCloseTo(Math.sin(0.6), 4);
+    // And it stands inside the parcel, not on the grid tiles its origin names.
+    const p = toLocal(frame, pos.x, pos.z);
+    expect(p.u).toBeCloseTo(TILE_METERS / 2, 3);
+    expect(p.v).toBeGreaterThan(0);
+    expect(p.v).toBeLessThan(TILE_METERS);
   });
 });

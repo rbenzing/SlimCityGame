@@ -11,6 +11,7 @@
  */
 import { SEA_LEVEL, TILE_METERS, worldToTile } from '../shared/constants';
 import { footprintForRotation } from '../shared/footprint';
+import { claimedTiles } from '../shared/lotframe';
 import { regradeSoil, soilGrades } from '../shared/soil';
 import { corridorHalfOf, flowDirection, RoadFlow, RoadTier } from '../shared/types';
 import { approachZoneTiles, armSlot } from '../shared/approach';
@@ -855,15 +856,19 @@ export class ClientGridMirror {
     if (!entry) return;
     const { w, d } = footprintForRotation(entry, inst.rotation);
     const indices: number[] = [];
-    for (let dz = 0; dz < d; dz++) {
-      for (let dx = 0; dx < w; dx++) {
-        const x = inst.x + dx;
-        const z = inst.z + dz;
-        if (!this.inBounds(x, z)) continue;
-        const i = this.idx(x, z);
-        this.buildingId[i] = inst.id;
-        indices.push(i);
-      }
+    // A building on a curved parcel stands on the tiles its frame claims,
+    // exactly as the worker stamped it; everything else on its rectangle.
+    const tiles = inst.frame
+      ? claimedTiles(inst.frame, w * TILE_METERS, d * TILE_METERS, this.size)
+      : Array.from({ length: w * d }, (_, k) => ({
+          x: inst.x + (k % w),
+          z: inst.z + Math.floor(k / w),
+        }));
+    for (const { x, z } of tiles) {
+      if (!this.inBounds(x, z)) continue;
+      const i = this.idx(x, z);
+      this.buildingId[i] = inst.id;
+      indices.push(i);
     }
     this.footprints.set(inst.id, indices);
   }

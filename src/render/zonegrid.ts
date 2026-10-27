@@ -37,8 +37,9 @@
  *    any number of rebuilds/patches while a non-zone tool is in hand.
  */
 import * as THREE from 'three';
-import { ZoneType, type ZonePatch } from '../shared/types';
+import { ZoneType, type FramedParcel, type ZonePatch } from '../shared/types';
 import { TILE_METERS } from '../shared/constants';
+import { frameCorners } from '../shared/lotframe';
 import type { Parcel } from '../world/plat';
 import {
   computeZonableTiles as computeZonableTilesFrontage,
@@ -306,6 +307,51 @@ function pushEdgeStrip(
   }
 }
 
+/** The strip a turned parcel's side is drawn as, from `a` to `b`, in lengths this long so it tracks the terrain. */
+const PLAT_SIDE_STEP_M = TILE_METERS / 2;
+const STEP_EPSILON = 1e-9;
+
+/** A thin conforming strip along the line from `a` to `b`, `width` wide, cut into lengths that follow the terrain. */
+function pushLineStrip(
+  positions: number[],
+  heightAt: HeightSampler,
+  a: { x: number; z: number },
+  b: { x: number; z: number },
+  width: number,
+  yOffset: number,
+): void {
+  const dx = b.x - a.x;
+  const dz = b.z - a.z;
+  const length = Math.hypot(dx, dz);
+  if (length === 0) return;
+  const half = width / 2;
+  // The strip's normal, half a width to each side of the line.
+  const nx = (-dz / length) * half;
+  const nz = (dx / length) * half;
+  // A side turned by its frame measures a rounding over its true length; that never adds a length.
+  const steps = Math.max(1, Math.ceil(length / PLAT_SIDE_STEP_M - STEP_EPSILON));
+  const at = (t: number, side: number): [number, number, number] => {
+    const x = a.x + dx * t + nx * side;
+    const z = a.z + dz * t + nz * side;
+    return [x, heightAt(x, z) + yOffset, z];
+  };
+  for (let i = 0; i < steps; i++) {
+    const t0 = i / steps;
+    const t1 = (i + 1) / steps;
+    const p00 = at(t0, -1);
+    const p01 = at(t0, 1);
+    const p10 = at(t1, -1);
+    const p11 = at(t1, 1);
+    positions.push(...p00, ...p01, ...p10);
+    positions.push(...p01, ...p11, ...p10);
+  }
+}
+
+/** The four world corners of a framed parcel's outline — front-left first, clockwise from the street. Pure and exported for tests. */
+export function framedParcelCorners(p: FramedParcel): { x: number; z: number }[] {
+  return frameCorners(p.frame, p.w, p.d);
+}
+
 export class ZoneGridRenderer {
   private readonly heightAt: HeightSampler;
 
@@ -470,13 +516,22 @@ export class ZoneGridRenderer {
   /**
    * Draws the plat: the outline of every parcel, so the player sees how a
    * block will cut before anything grows. The parcels come from the caller,
-   * cut by the same function the spawner reads.
+   * cut by the same function the spawner reads; a parcel cut along a curved
+   * kerb is outlined turned with its street.
    */
-  setParcels(parcels: readonly Parcel[]): void {
+  setParcels(parcels: readonly Parcel[], framed: readonly FramedParcel[] = []): void {
     const positions: number[] = [];
     for (const p of parcels) {
       for (const edge of parcelEdges(p))
         pushEdgeStrip(positions, this.heightAt, edge, PLAT_LINE_WIDTH_M, PLAT_Y_OFFSET);
+    }
+    for (const p of framed) {
+      const corners = framedParcelCorners(p);
+      for (let i = 0; i < corners.length; i++) {
+        const a = corners[i]!;
+        const b = corners[(i + 1) % corners.length]!;
+        pushLineStrip(positions, this.heightAt, a, b, PLAT_LINE_WIDTH_M, PLAT_Y_OFFSET);
+      }
     }
     this.setGeometry(this.platMesh, positions);
   }

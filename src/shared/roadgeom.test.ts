@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest';
 import {
   SAMPLE_STEP_M,
   footprintTiles,
+  headingAt,
   isGridSegment,
+  kerbLine,
   leavingDirection,
   sampleCentreLine,
   segmentLengthM,
@@ -115,5 +117,60 @@ describe('road geometry', () => {
     const g: SegmentGeom = { a: { x: 0, z: 0 }, b: { x: m(100), z: 0 }, control: null };
     expect(tooSteep(g, (x) => x * 0.4)).toBe(false);
     expect(tooSteep(g, (x) => x * 0.6)).toBe(true);
+  });
+});
+
+describe('a kerb line', () => {
+  const curve: SegmentGeom = {
+    a: { x: 0, z: 0 },
+    b: { x: m(100), z: m(0) },
+    control: { x: m(50), z: m(60) },
+  };
+  const straight: SegmentGeom = {
+    a: { x: 0, z: 0 },
+    b: { x: m(80), z: m(60) },
+    control: null,
+  };
+
+  it('offsets every sample square to its tangent by the half width', () => {
+    for (const g of [curve, straight]) {
+      const centre = sampleCentreLine(g);
+      for (const side of [1, -1] as const) {
+        const kerb = kerbLine(g, side, 6);
+        expect(kerb).toHaveLength(centre.length);
+        kerb.forEach((k, i) => {
+          const c = centre[i]!;
+          const off = { x: k.x - c.x, z: k.z - c.z };
+          expect(Math.hypot(off.x, off.z)).toBeCloseTo(6, 6);
+          const t = { x: Math.cos(k.heading), z: Math.sin(k.heading) };
+          expect(off.x * t.x + off.z * t.z).toBeCloseTo(0, 6);
+          // Side 1 is the left of the direction of travel, side -1 the right.
+          expect(Math.sign(t.x * off.z - t.z * off.x)).toBe(side);
+        });
+      }
+    }
+  });
+
+  it('runs its arc length along the kerb, so the outer kerb of a bend is the longer', () => {
+    // The hump bows toward +z, so its centre of curvature lies to the right of travel.
+    const outer = kerbLine(curve, 1, 6);
+    const inner = kerbLine(curve, -1, 6);
+    const centreLength = sampleCentreLine(curve).at(-1)!.s;
+    expect(outer.at(-1)!.s).toBeGreaterThan(centreLength);
+    expect(inner.at(-1)!.s).toBeLessThan(centreLength);
+    expect(outer[0]!.s).toBe(0);
+    for (let i = 1; i < outer.length; i++) expect(outer[i]!.s).toBeGreaterThan(outer[i - 1]!.s);
+  });
+
+  it('reads the heading that leavingDirection gives at both ends', () => {
+    for (const g of [curve, straight]) {
+      const a = leavingDirection(g, 'a');
+      expect(Math.cos(headingAt(g, 0))).toBeCloseTo(a.x, 9);
+      expect(Math.sin(headingAt(g, 0))).toBeCloseTo(a.z, 9);
+      const b = leavingDirection(g, 'b');
+      expect(Math.cos(headingAt(g, 1))).toBeCloseTo(-b.x, 9);
+      expect(Math.sin(headingAt(g, 1))).toBeCloseTo(-b.z, 9);
+    }
+    expect(headingAt(straight, 0.5)).toBeCloseTo(Math.atan2(60, 80), 12);
   });
 });

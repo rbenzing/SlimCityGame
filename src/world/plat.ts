@@ -18,10 +18,32 @@
  * Pure: no sim, no three.js. The caller says what a street is, so grid roads
  * and roads off the grid front lots alike.
  */
-import { inBounds, tileIndex } from '../shared/constants';
+import { inBounds, TILE_METERS, tileIndex } from '../shared/constants';
+import { claimedTiles, frameCorners, toWorld, type WorldPoint } from '../shared/lotframe';
 import { LOT_EXTENT, LOT_SIZES, lotsOfZone, warrantedLot } from '../shared/lots';
-import { isStreetTier, type LotSize, type ZoneType } from '../shared/types';
-import { freeCellsOn, type RoadCells } from './roadnet';
+import {
+  footprintTiles,
+  kerbLine,
+  type KerbSample,
+  type SegmentGeom,
+} from '../shared/roadgeom';
+import {
+  isStreetTier,
+  ZoneType,
+  type FramedParcel,
+  type LotSize,
+  type ParcelFrame,
+  type RoadNet,
+} from '../shared/types';
+import { segmentHalfWidthM, type ProfileLookup } from './freeroads';
+import {
+  freeCellsOn,
+  isFreeSegment,
+  liveSegments,
+  segmentGeom,
+  segmentsAt,
+  type RoadCells,
+} from './roadnet';
 
 /** The grid layers the plat reads: the sim's grid and the render mirror both have them. */
 export interface PlatGrid {
@@ -30,6 +52,8 @@ export interface PlatGrid {
   buildingId: Uint32Array;
   roadTier: Uint8Array;
   roadElevation: Float32Array;
+  water: Uint8Array;
+  roads?: RoadNet;
 }
 
 /**
@@ -42,19 +66,36 @@ export function platSourceOf(
   g: PlatGrid,
   cells: RoadCells | null,
   landValue: Uint8Array | undefined,
+  profileOf: ProfileLookup = () => null,
 ): PlatSource {
+  const gridStreetAt = (x: number, z: number): boolean => {
+    if (!inBounds(x, z)) return false;
+    const idx = tileIndex(x, z);
+    return (g.roadElevation[idx] ?? 0) <= 0 && isStreetTier(g.roadTier[idx] ?? 0);
+  };
+  const net = g.roads;
   return {
     size: g.size,
     zone: g.zone,
     buildingId: g.buildingId,
     landValue,
     streetAt: (x, z) => {
-      if (!inBounds(x, z)) return false;
+      if (gridStreetAt(x, z)) return true;
+      if (!inBounds(x, z) || (g.roadElevation[tileIndex(x, z)] ?? 0) > 0) return false;
       const idx = tileIndex(x, z);
-      if ((g.roadElevation[idx] ?? 0) > 0) return false;
-      if (isStreetTier(g.roadTier[idx] ?? 0)) return true;
       return cells !== null && freeCellsOn(cells, idx).some((c) => isStreetTier(cells.tier[c]!));
     },
+    gridStreetAt,
+    kerbs: net
+      ? {
+          net,
+          halfWidthM: (seg) => segmentHalfWidthM(net, seg, profileOf),
+          blocked: (x, z) => {
+            const idx = tileIndex(x, z);
+            return (g.roadTier[idx] ?? 0) !== 0 || (g.water[idx] ?? 0) !== 0;
+          },
+        }
+      : undefined,
   };
 }
 
@@ -70,6 +111,19 @@ export interface PlatSource {
   landValue?: Uint8Array;
   /** Whether the tile is a street a lot can front: not a railway, not a deck overhead. */
   streetAt(x: number, z: number): boolean;
+  /** `streetAt` counting only the roads on the grid, for a zone whose lots along a curve are framed. */
+  gridStreetAt?(x: number, z: number): boolean;
+  /** The roads off the grid and the ground beside them, for the plat along their kerbs. */
+  kerbs?: KerbSource;
+}
+
+/** What the plat along a kerb reads beyond the grid: the network and the ground a parcel may never claim. */
+export interface KerbSource {
+  net: RoadNet;
+  /** Half of a segment's whole cross-section, metres. */
+  halfWidthM(seg: number): number;
+  /** Whether the tile carries a grid road or water. */
+  blocked(x: number, z: number): boolean;
 }
 
 /** A lot of the plat, in world tiles: its min corner and its footprint. */
@@ -264,8 +318,26 @@ export interface Plat {
   byAnchor: Map<number, Parcel[]>;
   /** 1 where a run fronts the tile or lies within the lot depth behind it: the plat reaches it. */
   reached: Uint8Array;
-  /** The index into `parcels` of the parcel on each tile, -1 where none stands. */
+  /**
+   * The parcel on each tile, -1 where none stands: an index into `parcels`,
+   * or past its length an index into `framed`.
+   */
   parcelAt: Int32Array;
+  /** The parcels cut along the kerbs of the roads off the grid. */
+  framed: FramedParcel[];
+}
+
+/** The grid parcel on the tile, or null where none or a framed one stands. */
+function gridParcelAt(plat: Plat, x: number, z: number): Parcel | null {
+  const n = plat.parcelAt[tileIndex(x, z)] ?? -1;
+  return n < 0 ? null : (plat.parcels[n] ?? null);
+}
+
+/** The framed parcel on the tile, or null where none or a grid one stands. */
+export function framedParcelAt(plat: Plat, x: number, z: number): FramedParcel | null {
+  if (!inBounds(x, z)) return null;
+  const n = plat.parcelAt[tileIndex(x, z)] ?? -1;
+  return n < plat.parcels.length ? null : (plat.framed[n - plat.parcels.length] ?? null);
 }
 
 /**
@@ -274,7 +346,15 @@ export interface Plat {
  * no two parcels share a tile: a run cut later steps over what an earlier
  * one claimed. The spawner and the lens read the same plat.
  */
-export function platOf(src: PlatSource, zone: ZoneType): Plat {
+export function platOf(source: PlatSource, zone: ZoneType): Plat {
+  // Low density is framed along a curve, so a tile beside one takes a grid
+  // parcel only from a grid street; every other zone still plats against the
+  // tiles the curve crosses.
+  const alongKerbs = zone === ZoneType.ResLow && source.kerbs !== undefined;
+  const src =
+    alongKerbs && source.gridStreetAt !== undefined
+      ? { ...source, streetAt: source.gridStreetAt }
+      : source;
   const parcels: Parcel[] = [];
   const claimed = new Uint8Array(src.size * src.size);
   const reached = new Uint8Array(src.size * src.size);
@@ -310,7 +390,223 @@ export function platOf(src: PlatSource, zone: ZoneType): Plat {
       for (let dx = 0; dx < p.w; dx++) parcelAt[tileIndex(p.x + dx, p.z + dz)] = n;
     }
   });
-  return { parcels, byAnchor, reached, parcelAt };
+  const plat: Plat = { parcels, byAnchor, reached, parcelAt, framed: [] };
+  if (alongKerbs) platAlongKerbs(src.kerbs!, src, zone, plat);
+  return plat;
+}
+
+/** The corner clearance a drive keeps from a junction, metres. */
+const DRIVE_CORNER_CLEARANCE_M = 6;
+/** The least frontage a parcel has at the kerb, metres: 35 ft. */
+export const MIN_KERB_FRONTAGE_M = 10.7;
+/** How far the cut advances along the kerb when no parcel stands, metres. */
+const KERB_CUT_STEP_M = 2;
+/** The furthest a framed parcel reaches from a kerb, so the farthest a tile the curve plats lies from it. */
+const KERB_REACH_M = MAX_DEPTH * TILE_METERS;
+
+/** The kerb at arc length `s`: the samples either side blended, with the nearer one's heading. */
+function kerbAt(kerb: readonly KerbSample[], s: number): KerbSample {
+  let hi = 1;
+  while (hi < kerb.length - 1 && kerb[hi]!.s < s) hi++;
+  const a = kerb[hi - 1]!;
+  const b = kerb[hi]!;
+  const span = b.s - a.s;
+  const f = span <= 0 ? 0 : Math.max(0, Math.min(1, (s - a.s) / span));
+  return {
+    x: a.x + (b.x - a.x) * f,
+    z: a.z + (b.z - a.z) * f,
+    s,
+    heading: f < 0.5 ? a.heading : b.heading,
+  };
+}
+
+/** The kerb sample nearest a world point. */
+function nearestKerb(kerb: readonly KerbSample[], p: WorldPoint): KerbSample {
+  let best = kerb[0]!;
+  let bestD = Infinity;
+  for (const k of kerb) {
+    const d = (k.x - p.x) ** 2 + (k.z - p.z) ** 2;
+    if (d < bestD) {
+      bestD = d;
+      best = k;
+    }
+  }
+  return best;
+}
+
+/** The chord a parcel has at the kerb: between the kerb points nearest its two front corners, metres. */
+export function kerbChordM(kerb: readonly KerbSample[], frame: ParcelFrame, w: number): number {
+  const left = nearestKerb(kerb, toWorld(frame, 0, 0));
+  const right = nearestKerb(kerb, toWorld(frame, w, 0));
+  return Math.hypot(right.x - left.x, right.z - left.z);
+}
+
+/** Whether two convex polygons overlap by more than a shared edge: the separating axis test. */
+function polygonsOverlap(p: readonly WorldPoint[], q: readonly WorldPoint[]): boolean {
+  const axes: WorldPoint[] = [];
+  for (const shape of [p, q]) {
+    for (let i = 0; i < shape.length; i++) {
+      const a = shape[i]!;
+      const b = shape[(i + 1) % shape.length]!;
+      axes.push({ x: -(b.z - a.z), z: b.x - a.x });
+    }
+  }
+  const project = (shape: readonly WorldPoint[], axis: WorldPoint): [number, number] => {
+    let lo = Infinity;
+    let hi = -Infinity;
+    for (const v of shape) {
+      const t = v.x * axis.x + v.z * axis.z;
+      if (t < lo) lo = t;
+      if (t > hi) hi = t;
+    }
+    return [lo, hi];
+  };
+  for (const axis of axes) {
+    const len = Math.hypot(axis.x, axis.z);
+    if (len === 0) continue;
+    const [a0, a1] = project(p, axis);
+    const [b0, b1] = project(q, axis);
+    if (a1 - b0 <= 1e-3 * len || b1 - a0 <= 1e-3 * len) return false;
+  }
+  return true;
+}
+
+/** The half width of the widest road at a node: how far its junction reaches along each arm. */
+function junctionHalfWidthM(kerbs: KerbSource, node: number): number {
+  let half = 0;
+  for (const seg of segmentsAt(kerbs.net, node)) half = Math.max(half, kerbs.halfWidthM(seg));
+  return half;
+}
+
+/**
+ * The frame of a parcel `w` metres wide fronting the kerb from `s`: its
+ * front-left corner as seen from the street, turned to the road's heading at
+ * the frontage's middle and facing away from the road.
+ */
+function frameOnKerb(
+  kerb: readonly KerbSample[],
+  side: 1 | -1,
+  s: number,
+  w: number,
+): ParcelFrame {
+  const heading = kerbAt(kerb, s + w / 2).heading;
+  const from = kerbAt(kerb, s);
+  // Local v runs to the left of the heading, which on the left kerb is away
+  // from the road. On the right kerb it would run back over the kerb into the
+  // road, so the frame is turned about and anchored at the frontage's far end,
+  // where its front-left corner then is.
+  if (side === 1) return { x: from.x, z: from.z, heading };
+  const far = kerbAt(kerb, s + w);
+  return { x: far.x, z: far.z, heading: heading + Math.PI };
+}
+
+/**
+ * Cuts framed parcels along both kerbs of every road off the grid into
+ * `plat`, after the grid plat. Each kerb is walked from one junction's
+ * clearance to the other's; at each stop the ladder is tried from the lot the
+ * land under the kerb warrants down, and a parcel stands where every tile its
+ * rectangle overlaps is zoned, free of buildings, roads and water, claimed by
+ * no other parcel, and its kerb chord is at least the frontage floor. Where
+ * none stands the cut steps on two metres; after one stands the next begins
+ * where it ends, and further until the rectangles no longer overlap. Segments
+ * are taken in slot order, so the result is the same every time.
+ */
+export function platAlongKerbs(
+  kerbs: KerbSource,
+  src: PlatSource,
+  zone: ZoneType,
+  plat: Plat,
+): void {
+  const { net } = kerbs;
+  const extentM = src.size * TILE_METERS;
+  const allowed = lotsOfZone(zone);
+  const onMap = (p: WorldPoint): boolean =>
+    p.x >= 0 && p.z >= 0 && p.x <= extentM && p.z <= extentM;
+  // A parcel fronts its own road from the kerb, so the tile under the kerb is
+  // its to claim; the ground under any other road off the grid is not.
+  const free = liveSegments(net).filter((seg) => isFreeSegment(net, seg));
+  const roadOn = new Map<number, number[]>();
+  for (const seg of free) {
+    for (const idx of footprintTiles(segmentGeom(net, seg), kerbs.halfWidthM(seg), src.size)) {
+      const on = roadOn.get(idx);
+      if (on) on.push(seg);
+      else roadOn.set(idx, [seg]);
+    }
+  }
+  // The kerb is cut as if nothing stood on it, and a parcel a building stands
+  // in is then stepped over, its ground still its own, so a built parcel
+  // never moves and never moves the parcels after it.
+  const taken = new Uint8Array(src.size * src.size);
+  const freeFor = (seg: number, t: { x: number; z: number }): boolean =>
+    inBounds(t.x, t.z) &&
+    src.zone[tileIndex(t.x, t.z)] === zone &&
+    !kerbs.blocked(t.x, t.z) &&
+    !src.streetAt(t.x, t.z) &&
+    plat.parcelAt[tileIndex(t.x, t.z)] === -1 &&
+    taken[tileIndex(t.x, t.z)] === 0 &&
+    !(roadOn.get(tileIndex(t.x, t.z)) ?? []).some((other) => other !== seg);
+
+  // Every rectangle cut so far, the grid parcels first and then either kerb
+  // of any road: a tile belongs to the parcel its centre lies in, so two
+  // turned rectangles can overlap in area without sharing a tile, and only
+  // the rectangles themselves say so.
+  const standing: WorldPoint[][] = plat.parcels.map((p) => [
+    { x: p.x * TILE_METERS, z: p.z * TILE_METERS },
+    { x: (p.x + p.w) * TILE_METERS, z: p.z * TILE_METERS },
+    { x: (p.x + p.w) * TILE_METERS, z: (p.z + p.d) * TILE_METERS },
+    { x: p.x * TILE_METERS, z: (p.z + p.d) * TILE_METERS },
+  ]);
+  for (const seg of free) {
+    const geom: SegmentGeom = segmentGeom(net, seg);
+    const half = kerbs.halfWidthM(seg);
+    const clearA = junctionHalfWidthM(kerbs, net.segA[seg]!) + DRIVE_CORNER_CLEARANCE_M;
+    const clearB = junctionHalfWidthM(kerbs, net.segB[seg]!) + DRIVE_CORNER_CLEARANCE_M;
+    // The ground a framed parcel could reach is the curve's to plat: a lot
+    // there grows only in a framed parcel, never wherever a box happens to fit.
+    for (const idx of footprintTiles(geom, half + KERB_REACH_M, src.size)) plat.reached[idx] = 1;
+    for (const side of [1, -1] as const) {
+      const kerb = kerbLine(geom, side, half);
+      const end = kerb[kerb.length - 1]!.s - clearB;
+      let s = clearA;
+      while (s + MIN_KERB_FRONTAGE_M <= end) {
+        const at = kerbAt(kerb, s);
+        const tx = Math.floor(at.x / TILE_METERS);
+        const tz = Math.floor(at.z / TILE_METERS);
+        const value = inBounds(tx, tz) ? (src.landValue?.[tileIndex(tx, tz)] ?? 0) : 0;
+        const warranted = LOT_SIZES.indexOf(warrantedLot(zone, value));
+        let cut: FramedParcel | null = null;
+        for (let n = warranted; n >= 0 && cut === null; n--) {
+          const lot = LOT_SIZES[n]!;
+          if (!allowed.includes(lot)) continue;
+          const w = LOT_EXTENT[lot].frontage * TILE_METERS;
+          const d = LOT_EXTENT[lot].depth * TILE_METERS;
+          if (s + w > end) continue;
+          const frame = frameOnKerb(kerb, side, s, w);
+          const corners = frameCorners(frame, w, d);
+          if (!corners.every(onMap)) continue;
+          if (kerbChordM(kerb, frame, w) + 1e-9 < MIN_KERB_FRONTAGE_M) continue;
+          if (standing.some((q) => polygonsOverlap(corners, q))) continue;
+          const tiles = claimedTiles(frame, w, d, src.size);
+          if (tiles.length === 0 || !tiles.every((t) => freeFor(seg, t))) continue;
+          cut = { frame, lot, w, d, tiles };
+        }
+        if (cut === null) {
+          s += KERB_CUT_STEP_M;
+          continue;
+        }
+        const built = cut.tiles.some((t) => src.buildingId[tileIndex(t.x, t.z)] !== 0);
+        if (built) {
+          for (const t of cut.tiles) taken[tileIndex(t.x, t.z)] = 1;
+        } else {
+          const index = plat.parcels.length + plat.framed.length;
+          for (const t of cut.tiles) plat.parcelAt[tileIndex(t.x, t.z)] = index;
+          plat.framed.push(cut);
+        }
+        standing.push(frameCorners(cut.frame, cut.w, cut.d));
+        s += cut.w;
+      }
+    }
+  }
 }
 
 /** Whether the plat reaches the tile: a street within the lot depth fronts it. */
@@ -335,9 +631,8 @@ export function takesWholeParcels(
   let front: Front | null = null;
   for (let dz = 0; dz < d; dz++) {
     for (let dx = 0; dx < w; dx++) {
-      const n = plat.parcelAt[tileIndex(x + dx, z + dz)]!;
-      if (n < 0) return false;
-      const p = plat.parcels[n]!;
+      const p = gridParcelAt(plat, x + dx, z + dz);
+      if (p === null) return false;
       if (p.lot !== lot || (front !== null && p.front !== front)) return false;
       if (p.x < x || p.z < z || p.x + p.w > x + w || p.z + p.d > z + d) return false;
       front = p.front;
@@ -373,8 +668,10 @@ export function takesFrontageLots(
     for (let dx = 0; dx < w; dx++) {
       const n = plat.parcelAt[tileIndex(x + dx, z + dz)]!;
       if (n < 0) continue;
+      // A framed parcel is no grid building's frontage.
+      const p = plat.parcels[n];
+      if (p === undefined) return false;
       touched = true;
-      const p = plat.parcels[n]!;
       if (seen !== null && p.front !== seen) return false;
       seen = p.front;
       const alongInside =

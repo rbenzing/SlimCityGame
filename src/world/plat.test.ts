@@ -219,6 +219,7 @@ describe('platSourceOf', () => {
       buildingId: new Uint32Array(size * size),
       roadTier: new Uint8Array(size * size),
       roadElevation: new Float32Array(size * size),
+      water: new Uint8Array(size * size),
     };
     g.roadTier[tileIndex(5, 5)] = RoadTier.TwoLane;
     g.roadTier[tileIndex(6, 5)] = RoadTier.TwoLane;

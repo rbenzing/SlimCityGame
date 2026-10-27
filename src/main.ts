@@ -15,6 +15,7 @@ import {
   VISUAL_DAY_TICKS,
   inBounds,
   tickToDate,
+  tileIndex,
   tileToWorld,
   worldToTile,
 } from './shared/constants';
@@ -25,7 +26,10 @@ import type {
   Command,
   CommandAck,
   DeathCareReport,
+  FramedParcel,
   GrowthWaiting,
+  ParcelFrame,
+  RoadProfile,
   Incident,
   ZonedUnserved,
   LensId,
@@ -52,7 +56,12 @@ import {
 } from './shared/types';
 import { footprintForRotation } from './shared/footprint';
 import { PLATTED_ZONES } from './shared/lots';
-import { carriagewayWidth, profilesEqual } from './shared/roadprofile';
+import {
+  carriagewayHalfWidthOf,
+  carriagewayWidth,
+  kerbWidthOf,
+  profilesEqual,
+} from './shared/roadprofile';
 import { laneMovementsFor, pocketLaneMovements } from './shared/approach';
 import catalogData from './data/catalog.json';
 import roadsData from './data/roads.json';
@@ -61,14 +70,16 @@ import { generateProceduralMap } from './world/maps';
 import {
   gridRunRefusalAfter,
   nearestRoadEnd,
+  nearestRoadPoint,
   planWithSplits,
   roadEndDirection,
+  segmentHalfWidthM,
   snapRoadEnd,
 } from './world/freeroads';
 import { solveElevationProfile } from './world/bridges';
 import { isRoadBuildable } from './world/grid';
 import { roundaboutGroundOf } from './world/roundabouts';
-import { platOf, platSourceOf } from './world/plat';
+import { platOf, platSourceOf, type Parcel } from './world/plat';
 import { buildRoadCells, type RoadCells } from './world/roadnet';
 import { ROUNDABOUT_CODE } from './shared/roundabout';
 import { createRenderer, createWorldScene, timeOfDayColors } from './render/scene';
@@ -361,14 +372,20 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
    * same function the spawner reads, so the lines show exactly what will
    * grow. The land value it cuts by is asked of the worker while a zone tool
    * is in hand, on the lens cadence, and the cut is redone whenever the
-   * zone, the roads, the buildings or the land value move.
+   * zone, the roads, the buildings or the land value move. A ploppable in
+   * hand shows the plat of every platted zone at once, so a station or a
+   * depot is never set down over lots the player has painted unseen.
    */
   let latestLandValue: Uint8Array | undefined;
   let platCells: { version: number; cells: RoadCells } | null = null;
-  const rebuildPlat = (): void => {
-    const tool = store.getState().selectedTool;
+  const plattedZonesFor = (tool: ToolId): readonly ZoneType[] => {
+    if (tool.startsWith('plop.')) return PLATTED_ZONES;
     const zone = ZONE_TOOL_TO_TYPE[tool];
-    if (zone === undefined || !PLATTED_ZONES.includes(zone) || !zoneGrid.isVisible()) {
+    return zone !== undefined && PLATTED_ZONES.includes(zone) ? [zone] : [];
+  };
+  const rebuildPlat = (): void => {
+    const zones = plattedZonesFor(store.getState().selectedTool);
+    if (zones.length === 0 || !zoneGrid.isVisible()) {
       zoneGrid.setParcels([]);
       return;
     }
@@ -376,8 +393,17 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
     if (net && (platCells === null || platCells.version !== net.version)) {
       platCells = { version: net.version, cells: buildRoadCells(net, clientGrid.size) };
     }
-    const src = platSourceOf(clientGrid, net ? platCells!.cells : null, latestLandValue);
-    zoneGrid.setParcels(platOf(src, zone).parcels);
+    const src = platSourceOf(clientGrid, net ? platCells!.cells : null, latestLandValue, (id) =>
+      clientGrid.profileById(id),
+    );
+    const parcels: Parcel[] = [];
+    const framed: FramedParcel[] = [];
+    for (const zone of zones) {
+      const plat = platOf(src, zone);
+      parcels.push(...plat.parcels);
+      framed.push(...plat.framed);
+    }
+    zoneGrid.setParcels(parcels, framed);
   };
 
   // Landfill facility: dumping-ground tint + trash piles + the entrance office
@@ -753,13 +779,100 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
         if (zone === undefined || !PLATTED_ZONES.includes(zone)) return [];
         const net = clientGrid.roads;
         const cells = net ? buildRoadCells(net, clientGrid.size) : null;
-        return platOf(platSourceOf(clientGrid, cells, latestLandValue), zone).parcels.map((p) => ({
+        const src = platSourceOf(clientGrid, cells, latestLandValue, (id) =>
+          clientGrid.profileById(id),
+        );
+        return platOf(src, zone).parcels.map((p) => ({
           x: p.x,
           z: p.z,
           w: p.w,
           d: p.d,
           lot: p.lot,
         }));
+      },
+      // The parcels the plat cut along curved kerbs for the zone in hand.
+      readFramedPlat: (): FramedParcel[] => {
+        const zone = ZONE_TOOL_TO_TYPE[store.getState().selectedTool];
+        if (zone === undefined || !PLATTED_ZONES.includes(zone)) return [];
+        const net = clientGrid.roads;
+        const cells = net ? buildRoadCells(net, clientGrid.size) : null;
+        const src = platSourceOf(clientGrid, cells, latestLandValue, (id) =>
+          clientGrid.profileById(id),
+        );
+        return platOf(src, zone).framed;
+      },
+      // Each kerb parcel of the zone in hand against the drawn road: how far its
+      // origin stands off the nearest centre line, the road's half width there,
+      // and the land value the lens cut it by.
+      readFramedPlatFit: (): {
+        landValueKnown: boolean;
+        parcels: {
+          x: number;
+          z: number;
+          heading: number;
+          w: number;
+          d: number;
+          tiles: number;
+          centreLineM: number | null;
+          halfWidthM: number | null;
+          /** Half of what the road mesh draws there: the carriageway and its kerb strip. */
+          drawnHalfM: number | null;
+          /** The nearest centre-line sample, and the kerb point the half width out from it toward the parcel, metres. */
+          nearX: number | null;
+          nearZ: number | null;
+          kerbX: number | null;
+          kerbZ: number | null;
+          landValue: number;
+        }[];
+      } => {
+        const zone = ZONE_TOOL_TO_TYPE[store.getState().selectedTool];
+        const net = clientGrid.roads;
+        if (zone === undefined || !PLATTED_ZONES.includes(zone) || !net) {
+          return { landValueKnown: latestLandValue !== undefined, parcels: [] };
+        }
+        const cells = buildRoadCells(net, clientGrid.size);
+        const src = platSourceOf(clientGrid, cells, latestLandValue, (id) =>
+          clientGrid.profileById(id),
+        );
+        const lookup = (id: number): RoadProfile | null => clientGrid.profileById(id);
+        const parcels = platOf(src, zone).framed.map((p) => {
+          const near = nearestRoadPoint(
+            net,
+            { x: Math.round(p.frame.x * 100), z: Math.round(p.frame.z * 100) },
+            3 * TILE_METERS,
+          );
+          const first = p.tiles[0];
+          const profile = near ? lookup(net.segProfile[near.seg]!) : null;
+          const nearM = near ? { x: near.at.x / 100, z: near.at.z / 100 } : null;
+          const halfM = near ? segmentHalfWidthM(net, near.seg, lookup) : null;
+          const toOrigin = nearM
+            ? Math.hypot(p.frame.x - nearM.x, p.frame.z - nearM.z)
+            : null;
+          const kerb =
+            nearM && halfM !== null && toOrigin
+              ? {
+                  x: nearM.x + ((p.frame.x - nearM.x) / toOrigin) * halfM,
+                  z: nearM.z + ((p.frame.z - nearM.z) / toOrigin) * halfM,
+                }
+              : null;
+          return {
+            drawnHalfM: profile ? carriagewayHalfWidthOf(profile) + kerbWidthOf(profile) : null,
+            nearX: nearM?.x ?? null,
+            nearZ: nearM?.z ?? null,
+            kerbX: kerb?.x ?? null,
+            kerbZ: kerb?.z ?? null,
+            x: p.frame.x,
+            z: p.frame.z,
+            heading: p.frame.heading,
+            w: p.w,
+            d: p.d,
+            tiles: p.tiles.length,
+            centreLineM: near ? Math.hypot(near.at.x / 100 - p.frame.x, near.at.z / 100 - p.frame.z) : null,
+            halfWidthM: near ? segmentHalfWidthM(net, near.seg, lookup) : null,
+            landValue: first ? (latestLandValue?.[tileIndex(first.x, first.z)] ?? 0) : 0,
+          };
+        });
+        return { landValueKnown: latestLandValue !== undefined, parcels };
       },
       readUnderground: (): {
         active: boolean;
@@ -1030,6 +1143,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
         z: number;
         state: number;
         problems: number;
+        frame?: ParcelFrame;
       }> =>
         Array.from(knownBuildings.values()).map((b) => ({
           id: b.id,
@@ -1038,6 +1152,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
           z: b.z,
           state: b.state,
           problems: b.problems,
+          frame: b.frame,
         })),
     };
   }
@@ -2301,11 +2416,14 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
     if (state.selectedTool !== prev.selectedTool) {
       toolManager.setTool(state.selectedTool);
       audio.play('click');
-      // Zoning grid layer while a zone tool is in hand — and for the landfill
-      // brush, which paints into the same road-frontage grid.
+      // Zoning grid layer while a zone tool is in hand — for the landfill
+      // brush, which paints into the same road-frontage grid — and for a
+      // ploppable, so the painted lots show before a building is set on them.
       zoneGrid.setPaintZone(ZONE_TOOL_TO_TYPE[state.selectedTool] ?? ZoneType.None, clientGrid);
       zoneGrid.setVisible(
-        state.selectedTool.startsWith('zone.') || state.selectedTool === 'landfill.paint',
+        state.selectedTool.startsWith('zone.') ||
+          state.selectedTool === 'landfill.paint' ||
+          state.selectedTool.startsWith('plop.'),
       );
       rebuildPlat();
       if (zoneGrid.isVisible()) requestField(FieldId.LandValue);

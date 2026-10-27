@@ -165,6 +165,8 @@ export const BYTES_PER_TILE_BY_VERSION: readonly number[] = [
   // v15 changes no layer: it is the v14 layout.
   BYTES_PER_TILE,
   BYTES_PER_TILE_V16,
+  // v17 changes no layer: it is the v16 layout, with parcel frames in the registry.
+  BYTES_PER_TILE_V16,
 ];
 
 function bufferBytesFor(size: number, bytesPerTile: number = BYTES_PER_TILE_V16): number {
@@ -610,16 +612,29 @@ export function canPlaceFootprint(
 
   for (let dz = 0; dz < d; dz++) {
     for (let dx = 0; dx < w; dx++) {
-      const tx = x + dx;
-      const tz = z + dz;
-      if (!isBuildable(g, tx, tz)) return false;
-      const i = indexOf(g.size, tx, tz); // in bounds: isBuildable already confirmed it
-      if (g.roadTier[i] !== RoadTier.None) return false;
-      if (g.roadFootprint[i] === 1) return false; // a road off the grid covers it
-      if (g.buildingId[i] !== 0) return false;
+      if (!tilePlaceable(g, x + dx, z + dz)) return false;
     }
   }
   return true;
+}
+
+/**
+ * The tile-set form of `canPlaceFootprint`, for a building that claims the
+ * tiles its turned parcel overlaps: every tile buildable, with no grid road
+ * and no building. The tile under the kerb always lies in its own road's
+ * footprint band, and the plat kept the parcel off every other road off the
+ * grid, so that layer is not read here.
+ */
+export function canPlaceTiles(g: GridState, tiles: readonly TilePoint[]): boolean {
+  return tiles.length > 0 && tiles.every((t) => tilePlaceable(g, t.x, t.z, false));
+}
+
+function tilePlaceable(g: GridState, x: number, z: number, offFreeRoads = true): boolean {
+  if (!isBuildable(g, x, z)) return false;
+  const i = indexOf(g.size, x, z); // in bounds: isBuildable already confirmed it
+  if (g.roadTier[i] !== RoadTier.None) return false;
+  if (offFreeRoads && g.roadFootprint[i] === 1) return false; // a road off the grid covers it
+  return g.buildingId[i] === 0;
 }
 
 /**

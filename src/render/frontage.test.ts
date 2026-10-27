@@ -1,16 +1,133 @@
 import { describe, expect, it } from 'vitest';
 import {
+  edgeFrameFor,
+  edgeFrameOfParcel,
   findRoadFacingEdge,
   findStreetFacingEdge,
+  frameDirection,
+  frameToLocal,
+  frameToWorld,
+  inwardYaw,
+  isAxisAligned,
+  frameAlongX,
   localSideOf,
+  outwardYaw,
   sidewalkDepthMeters,
   streetLookupOf,
   vergeDepthMeters,
+  type Side,
 } from './frontage';
 import { RoadTier } from '../shared/types';
-import type { RoadProfile } from '../shared/types';
+import type { ParcelFrame, RoadProfile } from '../shared/types';
 import { TILE_METERS } from '../shared/constants';
 import { corridorHalfProfile } from '../shared/roadprofile';
+import { toWorld } from '../shared/lotframe';
+
+describe('edgeFrameFor', () => {
+  // A 2 × 3 lot at tile (4, 6): west 80, east 120, north 120, south 180.
+  const sides: Record<Side, (along: number, depthM: number) => { x: number; z: number }> = {
+    N: (a, p) => ({ x: 80 + a, z: 120 - p }),
+    S: (a, p) => ({ x: 80 + a, z: 180 + p }),
+    E: (a, p) => ({ x: 120 + p, z: 120 + a }),
+    W: (a, p) => ({ x: 80 - p, z: 120 + a }),
+  };
+  const samples: [number, number][] = [
+    [0, 0],
+    [7.5, 0.25],
+    [33.3, -0.4375],
+    [12.125, 1],
+  ];
+
+  it('maps (along, depth) onto the map exactly as each grid side always has', () => {
+    for (const side of ['N', 'S', 'E', 'W'] as const) {
+      const frame = edgeFrameFor(side, 4, 6, 2, 3);
+      for (const [along, depthTiles] of samples) {
+        const want = sides[side](along, depthTiles * TILE_METERS);
+        const got = frameToWorld(frame, along, depthTiles);
+        expect(got.x, `${side} x`).toBe(want.x);
+        expect(got.z, `${side} z`).toBe(want.z);
+      }
+    }
+  });
+
+  it('inverts on every grid side', () => {
+    for (const side of ['N', 'S', 'E', 'W'] as const) {
+      const frame = edgeFrameFor(side, 4, 6, 2, 3);
+      for (const [along, depthTiles] of samples) {
+        const p = frameToWorld(frame, along, depthTiles);
+        const back = frameToLocal(frame, p.x, p.z);
+        expect(back.along).toBeCloseTo(along, 9);
+        expect(back.outwardM).toBeCloseTo(depthTiles * TILE_METERS, 9);
+      }
+    }
+  });
+
+  it('keeps the yaws each side always had and runs along X on the north and south sides', () => {
+    expect(inwardYaw(edgeFrameFor('N', 0, 0, 1, 1))).toBe(0);
+    expect(inwardYaw(edgeFrameFor('S', 0, 0, 1, 1))).toBe(Math.PI);
+    expect(inwardYaw(edgeFrameFor('E', 0, 0, 1, 1))).toBe(-Math.PI / 2);
+    expect(inwardYaw(edgeFrameFor('W', 0, 0, 1, 1))).toBe(Math.PI / 2);
+    expect(outwardYaw(edgeFrameFor('N', 0, 0, 1, 1))).toBe(Math.PI);
+    expect(frameAlongX(edgeFrameFor('N', 0, 0, 1, 1))).toBe(true);
+    expect(frameAlongX(edgeFrameFor('S', 0, 0, 1, 1))).toBe(true);
+    expect(frameAlongX(edgeFrameFor('E', 0, 0, 1, 1))).toBe(false);
+    expect(frameAlongX(edgeFrameFor('W', 0, 0, 1, 1))).toBe(false);
+    for (const side of ['N', 'S', 'E', 'W'] as const) {
+      expect(isAxisAligned(edgeFrameFor(side, 0, 0, 1, 1))).toBe(true);
+    }
+  });
+
+  it('turns a lot direction exactly on every grid side', () => {
+    expect(frameDirection(edgeFrameFor('N', 0, 0, 1, 1), 1, 0)).toEqual({ x: 1, z: 0 });
+    expect(frameDirection(edgeFrameFor('N', 0, 0, 1, 1), 0, 1)).toEqual({ x: 0, z: 1 });
+    expect(frameDirection(edgeFrameFor('S', 0, 0, 1, 1), 0, 1)).toEqual({ x: 0, z: -1 });
+    expect(frameDirection(edgeFrameFor('E', 0, 0, 1, 1), 1, 0)).toEqual({ x: 0, z: 1 });
+    expect(frameDirection(edgeFrameFor('E', 0, 0, 1, 1), 0, 1)).toEqual({ x: -1, z: 0 });
+    expect(frameDirection(edgeFrameFor('W', 0, 0, 1, 1), 0, 1)).toEqual({ x: 1, z: 0 });
+  });
+});
+
+describe('edgeFrameOfParcel', () => {
+  const parcel: ParcelFrame = { x: 212.5, z: -40.25, heading: 0.83 };
+  const frame = edgeFrameOfParcel(parcel);
+
+  it('runs along the parcel’s u with depth outward its −v, the one transform the parcel uses', () => {
+    for (const [u, v] of [
+      [0, 0],
+      [11, 29],
+      [40, -1.875],
+    ]) {
+      const want = toWorld(parcel, u!, v!);
+      const got = frameToWorld(frame, u!, -v! / TILE_METERS);
+      expect(got.x).toBeCloseTo(want.x, 9);
+      expect(got.z).toBeCloseTo(want.z, 9);
+    }
+    expect(isAxisAligned(frame)).toBe(false);
+  });
+
+  it('turns a part’s +Z into the lot by the road’s heading, so +X runs along the street', () => {
+    const yaw = inwardYaw(frame);
+    expect(yaw).toBeCloseTo(-parcel.heading, 12);
+    // three.js turns +X by yaw to (cos yaw, −sin yaw): the street's direction.
+    expect(Math.cos(yaw)).toBeCloseTo(Math.cos(parcel.heading), 12);
+    expect(-Math.sin(yaw)).toBeCloseTo(Math.sin(parcel.heading), 12);
+    const inward = frameDirection(frame, 0, 1);
+    expect(inward.x).toBeCloseTo(-Math.sin(parcel.heading), 12);
+    expect(inward.z).toBeCloseTo(Math.cos(parcel.heading), 12);
+  });
+
+  it('is the north frame on a north-fronting grid lot', () => {
+    const grid = edgeFrameOfParcel({ x: 80, z: 120, heading: 0 });
+    for (const [along, depth] of [
+      [3, 0.25],
+      [17.5, -1],
+    ]) {
+      expect(frameToWorld(grid, along!, depth!)).toEqual(
+        frameToWorld(edgeFrameFor('N', 4, 6, 2, 3), along!, depth!),
+      );
+    }
+  });
+});
 
 describe('streetLookupOf', () => {
   const tierAt = (x: number): RoadTier =>

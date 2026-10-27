@@ -25,7 +25,7 @@ current behavior only and carry no dates of their own._
 
 ## Status (2026-09-29)
 
-**Test suite:** 7,115 tests passing across 200 test files, run 2026-10-27.
+**Test suite:** 7,177 tests passing across 202 test files, run 2026-10-27.
 This is the only test count in the documentation set. When the suite changes
 again, update the figure here and nowhere else.
 
@@ -119,6 +119,11 @@ not a test to fix.
   The kit omits what does not fit and parks the vans in the lot's trailer
   stalls. The real fix is deeper lots for the heavy kinds in the lot layout
   (truck courts run 120–135 ft), a lots-and-land change.
+- A house on a curved parcel is read as a grid box by the readers keyed to
+  a rectangle from its min tile (water use, service coverage, the restamp
+  on load), and a street lamp is not kept off its drive mouth, since the
+  lamp spacing reads a grid edge the parcel has none of. Slice 2 of the
+  curved parcels moves those readers onto the claimed tiles.
 - The split-level's two-storey block is a wall-colour box: the facade's
   window grid covers the house body only, so the block's upper storey has no
   panes and reads blank up close and dark at night. Panes drawn by the house
@@ -387,6 +392,38 @@ roads, and pinning the Three.js version. See [adr/](engineering/adr/README.md).
 ---
 
 ## 10. History (newest first)
+
+### Houses on a curved street stand square to it (slice 1 of the curved parcels, built 2026-10-27)
+
+The first slice of [curved-parcels.md](game-design/features/curved-parcels.md):
+the reported case, houses at 30° to the bend they front with no drive, is
+gone, and a ploppable in hand shows the lots it would cover.
+
+- **The plat walks the kerb.** Beside a free-form street the low-density
+  plat cuts parcels along the right-of-way edge, each a rectangle of the lot
+  ladder stood square to the road at the point it fronts, cut only where the
+  kerb chord clears the 35 ft frontage floor and the junction's clearance,
+  checked against every parcel on any kerb so none overlap. A parcel claims
+  the tiles whose centres lie in its rectangle, so neighbours partition the
+  tiles and a 30° street cuts eight lots a side, the most its length holds.
+- **A house stands in its frame.** The parcel's frame — its front-left
+  corner on the kerb and the road's heading — rides on the building and in
+  the save (version 17); the spawner, placement, bulldoze and flatten work
+  over the claimed tiles; the house renderers compose body, parts, roof,
+  lot, drive and car from one frame transform, and a grid lot does not move
+  a pixel, its south and west layouts kept as the mirrors they were. The
+  zoning lens draws the parcels turned.
+- **A ploppable in hand shows the plat.** Any service, transport, utility or
+  park building in hand shows the zoning grid, the painted tint and every
+  platted zone's lots together, so nothing is set down over painted land
+  unseen.
+- Checked in the browser: an S-bend zoned both sides from above, close on a
+  drive meeting the footway flush, the bend through the lens with every
+  outline on the kerb by measurement, the grid street beside it unchanged,
+  and a police station in hand over the bend.
+- **Open, logged below:** the rectangle-keyed readers and the lamp spacing
+  read a grid box for a framed house. Every other zone plats beside a curve
+  as before until slice 2.
 
 ### Houses and blocks built the way the US builds them, by share (slice 3 of the kits' second pass, built 2026-10-27)
 

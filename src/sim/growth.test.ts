@@ -14,6 +14,7 @@ import { SoilGrade } from '../shared/soil';
 import { BuildingRegistry } from './buildings';
 import {
   CONVERSION_CHANCE_PER_PASS,
+  GROWTH_INTERVAL,
   GrowthSystem,
   UNLIMITED_ROOM,
   UNMETERED_SUPPLY,
@@ -36,6 +37,10 @@ import {
 } from '../shared/roadprofile';
 import type { ParkingStyle, RoadProfile } from '../shared/types';
 import { createGrid, setZones } from '../world/grid';
+import { deriveRoadFootprint } from '../world/freeroads';
+import { addNode, addSegment, createRoadNetwork } from '../world/roadnet';
+import { claimedTiles } from '../shared/lotframe';
+import { TILE_METERS } from '../shared/constants';
 import {
   parcelsAnchoredAt,
   platOf,
@@ -3171,5 +3176,83 @@ describe('farmKindFor', () => {
     expect(farmKindFor(SoilGrade.Fertile)).toBe('orchard');
     expect(farmKindFor(SoilGrade.Marginal)).toBe('pasture');
     expect(farmKindFor(SoilGrade.Unfit)).toBeNull();
+  });
+});
+
+describe('a house on a parcel cut along a curved street', () => {
+  const cottage: BuildingCatalogEntry = { ...resL1, id: 'cottage', lot: 'half', share: 1 };
+  const ranch: BuildingCatalogEntry = {
+    ...resL1,
+    id: 'ranch',
+    lot: 'normal',
+    footprint: { w: 1, d: 2 },
+    share: 1,
+  };
+  const turned: BuildingCatalogEntry = { ...ranch, id: 'ranch-t', footprint: { w: 2, d: 1 } };
+  const kinds = [cottage, ranch, turned];
+  const wantsHomes: DemandLevels = { res: 1, com: 0, ind: 0 };
+
+  /** A served ResLow block with one road off the grid, at 30 degrees, laid across it. */
+  function zonedAlongACurve(): GridState {
+    const g = makeGrid();
+    for (let z = 0; z < 20; z++) {
+      for (let x = 0; x < 20; x++) {
+        const i = tileIndex(x, z);
+        g.zone[i] = ZoneType.ResLow;
+        g.power[i] = 1;
+        g.watered[i] = 1;
+        g.sewered[i] = 1;
+      }
+    }
+    g.fields[FieldId.LandValue]!.fill(119);
+    const net = createRoadNetwork();
+    const facts = { tier: RoadTier.TwoLane, profile: RoadTier.TwoLane, flow: 0 };
+    const a = addNode(net, { ...facts, x: 6000, z: 16000, height: 0 });
+    const b = addNode(net, {
+      ...facts,
+      x: Math.round(6000 + 20000 * Math.cos(Math.PI / 6)),
+      z: Math.round(16000 + 20000 * Math.sin(Math.PI / 6)),
+      height: 0,
+    });
+    addSegment(net, { ...facts, a, b, h0: 0, h1: 0, control: null });
+    g.roads = net;
+    deriveRoadFootprint(g, net, () => null);
+    return g;
+  }
+
+  const grow = (g: GridState, registry: BuildingRegistry): void => {
+    const growth = new GrowthSystem(kinds, constantRng(0), alwaysTrue);
+    // The scan strides over the map, so every tile is reached once in 32 passes.
+    for (let pass = 0; pass < 32; pass++) {
+      growth.tick(g, registry, wantsHomes, 0, pass * GROWTH_INTERVAL);
+    }
+  };
+
+  it('stands the upright house of the lot in the parcel frame, rotation 0, on the parcel tiles', () => {
+    const g = zonedAlongACurve();
+    const registry = new BuildingRegistry(kinds);
+    grow(g, registry);
+    const grown = registry.all();
+    expect(grown.length).toBeGreaterThan(1);
+    for (const inst of grown) {
+      expect(inst.catalogId).toBe('ranch');
+      expect(inst.rotation).toBe(0);
+      expect(inst.frame).toBeDefined();
+      const tiles = claimedTiles(inst.frame!, TILE_METERS, 2 * TILE_METERS, g.size);
+      expect({ x: inst.x, z: inst.z }).toEqual(tiles[0]);
+      for (const t of tiles) expect(g.buildingId[tileIndex(t.x, t.z)]).toBe(inst.id);
+      expect(Array.from(g.buildingId).filter((v) => v === inst.id)).toHaveLength(tiles.length);
+    }
+  });
+
+  it('frees every claimed tile when the house is bulldozed', () => {
+    const g = zonedAlongACurve();
+    const registry = new BuildingRegistry(kinds);
+    grow(g, registry);
+    const inst = registry.all()[0]!;
+    const tiles = claimedTiles(inst.frame!, TILE_METERS, 2 * TILE_METERS, g.size);
+    registry.remove(g, inst.id);
+    for (const t of tiles) expect(g.buildingId[tileIndex(t.x, t.z)]).toBe(0);
+    expect(registry.get(inst.id)).toBeUndefined();
   });
 });

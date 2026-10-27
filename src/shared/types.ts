@@ -683,6 +683,11 @@ export type Command =
        * interments sends it.
        */
       interments?: number;
+      /**
+       * The parcel frame of a building that stood on a curved street. Only
+       * the undo of demolishing one sends it, so it stands back where it was.
+       */
+      frame?: ParcelFrame;
     }
   | { kind: 'setTaxRate'; sector: Sector; rate: number } // 0..0.3
   | { kind: 'setServiceFunding'; service: FundingKey; funding: number } // 0..1.5
@@ -812,6 +817,30 @@ export const Problem = {
   NeedsSchool: 1024,
 } as const;
 
+/**
+ * A parcel turned to its street: a grid lot fronting north, moved and turned.
+ * Local `u` runs along the street from the front-left corner, local `v` runs
+ * into the lot from the kerb line; `toWorld` in lotframe.ts is the one
+ * transform every reader uses.
+ */
+export interface ParcelFrame {
+  /** World metres: the parcel's front-left corner on the kerb line. */
+  x: number;
+  z: number;
+  /** Radians about +Y: the road's direction at the frontage's middle; 0 is +X. */
+  heading: number;
+}
+
+/** A parcel the plat cut along a curved kerb: its frame, the ladder size it took, its rectangle in metres and the tiles it claims. */
+export interface FramedParcel {
+  frame: ParcelFrame;
+  lot: LotSize;
+  /** Width along the street and depth into the lot, metres. */
+  w: number;
+  d: number;
+  tiles: TilePoint[];
+}
+
 export interface BuildingInstance {
   id: number; // stable, never reused within a session
   catalogId: string;
@@ -823,6 +852,12 @@ export interface BuildingInstance {
   problems: number; // Problem bit-flags
   /** Residents the building has lost and not had replaced, 0..catalog residents; absent is 0 (full). */
   vacancies?: number;
+  /**
+   * The parcel's frame where the building stands on a curved street; absent
+   * on a grid lot. A framed building has rotation 0, and `x, z` is the min
+   * tile of the tiles its parcel claims.
+   */
+  frame?: ParcelFrame;
 }
 
 export interface BuildingDelta {
@@ -1812,9 +1847,11 @@ export interface ReversibleEdit {
  * is the v14 byte layout, the version whose landfill fill is counted in 0.25 kg
  * trash units (older saves counted a tile as 600), rescaled on load; v16
  * appends the middle, high and college education planes after the pipe layer,
- * which an older save loads zero.
+ * which an older save loads zero; v17 is the v16 byte layout, the version
+ * whose building registry may carry a parcel frame, which a build without
+ * frames would stand on the grid wrongly.
  */
-export const SAVE_VERSION = 16;
+export const SAVE_VERSION = 17;
 /** The first save version whose landfill fill is in 0.25 kg trash units. */
 export const TRASH_UNIT_SAVE_VERSION = 15;
 

@@ -993,7 +993,10 @@ MUTCD citations below use 11th-edition section numbers.
   ever share a tile: a run cut later steps over what an earlier one claimed.
   The zone lens draws that same plat — the one function, over the render
   mirror and the land value asked of the worker — so the lines the player
-  sees are exactly the lots that will grow. The plat is re-cut every growth
+  sees are exactly the lots that will grow. A ploppable in hand — any
+  service, transport, utility or park building — shows the same zoning grid,
+  the painted tint and the plat of every platted zone at once, so nothing is
+  ever placed over painted land unseen. The plat is re-cut every growth
   pass and never stored, and it re-cuts only empty ground: a built parcel
   never moves when the land value rises or falls, and painting a zone never
   changes a built tile, so a rezone leaves the standing houses on the lots
@@ -1004,6 +1007,24 @@ MUTCD citations below use 11th-edition section numbers.
   `platOf`, `parcelsAnchoredAt` in `src/world/plat.ts`, `setParcels` in
   `src/render/zonegrid.ts`, `cmdPaintZone` in `src/sim/worker.entry.ts`,
   `lotLine` in `src/ui/format.ts`
+- Beside a free-form street a parcel has a frame: a north-fronting grid lot
+  moved to the kerb and turned to the road's heading, its front line on the
+  right-of-way edge. A building on it carries `frame` and rotation 0, its
+  `x, z` the min tile of the tiles whose centres lie in its rectangle; those
+  tiles are its footprint for placing, bulldozing, flattening and every
+  tile-keyed reader, and claiming by centre is what lets two parcels stand
+  end to end at any angle without sharing a tile. Every renderer composes a
+  framed building through the one frame transform, never its own centre and
+  quarter turn; a grid lot's frame is the identity, and the south and west
+  grid layouts stay the mirrors they always were. A building with no frame
+  is a grid building and nothing about it changes. —
+  [curved-parcels.md](game-design/features/curved-parcels.md),
+  [engineering/features/curved-parcels.md](engineering/features/curved-parcels.md);
+  `src/shared/lotframe.ts`, `platAlongKerbs` in `src/world/plat.ts`,
+  `edgeFrameOfParcel` in `src/render/frontage.ts`
+- A ploppable in hand shows the zoning grid, the painted tint and the plat
+  of every platted zone, so nothing is placed over painted land unseen. —
+  [hud.md](ux/hud.md); `rebuildPlat` in `src/main.ts`
 - A commercial or dense building (a catalog entry with no `lot`) takes whole
   lots along its frontage and never half of one: every lot it touches fronts
   the same street, lies wholly within its width and starts at its front edge;

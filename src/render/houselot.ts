@@ -12,17 +12,29 @@
  *
  * Pure: a function of (building, catalog entry, streets). No three.js.
  */
-import type { BuildingCatalogEntry, BuildingInstance } from '../shared/types';
+import type { BuildingCatalogEntry, BuildingInstance, ParcelFrame } from '../shared/types';
 import { TILE_METERS } from '../shared/constants';
 import {
   edgeFrameFor,
+  edgeFrameOfParcel,
   findStreetFacingEdge,
+  frameAlongX,
+  frameToLocal,
   frameToWorld,
+  inwardYaw,
+  isAxisAligned,
+  sidewalkDepthMeters,
   type EdgeFrame,
   type RoadFacingEdge,
   type StreetLookup,
 } from './frontage';
-import { bodyMetresFor, frontageSetbackFor, tierHeightOf } from './massing';
+import { RoadTier } from '../shared/types';
+import {
+  bodyMetresFor,
+  frontageSetbackFor,
+  HOUSE_FRONT_YARD_M,
+  tierHeightOf,
+} from './massing';
 import { isHouseEntry } from './archetypes';
 import { housePaneMargins, MULLION_MARGIN_PUNCHED, windowGrid } from './facade';
 import { homesAcrossFrontage } from '../shared/buildingkind';
@@ -398,27 +410,26 @@ export function lotToWorld(frame: EdgeFrame, u: number, v: number): { x: number;
   return frameToWorld(frame, u, -v / TILE_METERS);
 }
 
-/** The frame yaw that points a vehicle's nose (+Z) into the lot, away from the street. */
-export function inwardYaw(frame: EdgeFrame): number {
-  // Inward is -outward: along world Z for a frame running along X, else X.
-  return frame.alongX
-    ? frame.outwardSign === -1
-      ? 0
-      : Math.PI
-    : frame.outwardSign === 1
-      ? -Math.PI / 2
-      : Math.PI / 2;
+export { inwardYaw, outwardYaw } from './frontage';
+
+/**
+ * The yaw a box laid in the frame's axes turns by: 0 on a grid frame, whose
+ * boxes are drawn axis-aligned with their extents swapped instead, and the
+ * frame's own turn on a curve.
+ */
+export function boxYaw(frame: EdgeFrame): number {
+  return isAxisAligned(frame) ? 0 : inwardYaw(frame);
 }
 
-/** The frame yaw that points a part's front (+Z) out to the street. */
-export function outwardYaw(frame: EdgeFrame): number {
-  return inwardYaw(frame) + Math.PI;
+/** The yaw that lays a part's length along the frontage: 0 or a quarter turn on a grid frame, the frame's own turn on a curve. */
+export function frontageYaw(frame: EdgeFrame): number {
+  if (!isAxisAligned(frame)) return inwardYaw(frame);
+  return frameAlongX(frame) ? 0 : Math.PI / 2;
 }
 
 function worldToLot(frame: EdgeFrame, x: number, z: number): LotPoint {
-  const along = frame.alongX ? x : z;
-  const perp = frame.alongX ? z : x;
-  return { u: along - frame.edgeStart, v: (frame.buildingLine - perp) * frame.outwardSign };
+  const p = frameToLocal(frame, x, z);
+  return { u: p.along, v: 0 - p.outwardM };
 }
 
 /** The body's footprint in the frame — read from the same placement the body renderers draw. */
@@ -444,6 +455,59 @@ function bodyRect(
   };
 }
 
+/** Where a framed building's body stands and which way it turns. */
+export interface FramedBodyPlacement {
+  /** The body's centre, world metres. */
+  x: number;
+  z: number;
+  /** The yaw that turns the body's catalogue axes along the parcel's u and v. */
+  yaw: number;
+  /** The axis-aligned extents the turned body spans on the map. */
+  boundsW: number;
+  boundsD: number;
+}
+
+/**
+ * The one composition every body renderer uses for a building on a curve:
+ * the body centred across the lot with its front yard behind the footway,
+ * turned to the parcel's street. A kind the lot planner does not lay stands
+ * in the middle of its parcel.
+ */
+export function framedBodyPlacement(
+  parcel: ParcelFrame,
+  entry: BuildingCatalogEntry,
+  street: StreetLookup,
+): FramedBodyPlacement {
+  const bodyM = bodyMetresFor(entry);
+  const kerb = edgeFrameOfParcel(parcel);
+  const yaw = inwardYaw(kerb);
+  const centre = isHouseEntry(entry)
+    ? framedBodyCentre(parcel, entry, street)
+    : lotToWorld(
+        kerb,
+        (entry.footprint.w * TILE_METERS) / 2,
+        (entry.footprint.d * TILE_METERS) / 2,
+      );
+  const c = Math.abs(Math.cos(parcel.heading));
+  const s = Math.abs(Math.sin(parcel.heading));
+  return {
+    x: centre.x,
+    z: centre.z,
+    yaw,
+    boundsW: bodyM.w * c + bodyM.d * s,
+    boundsD: bodyM.w * s + bodyM.d * c,
+  };
+}
+
+function framedBodyCentre(
+  parcel: ParcelFrame,
+  entry: BuildingCatalogEntry,
+  street: StreetLookup,
+): { x: number; z: number } {
+  const { frame, body } = framedGround(parcel, entry, street);
+  return lotToWorld(frame, (body.u0 + body.u1) / 2, (body.v0 + body.v1) / 2);
+}
+
 /** The road tile across the frontage from the lot tile at along-index `i`. */
 function roadTileAcross(
   edge: RoadFacingEdge,
@@ -466,7 +530,6 @@ function roadTileAcross(
 }
 
 interface Streets {
-  edge: RoadFacingEdge;
   /** The verge and sidewalk beyond each frontage tile, or null where no street is. */
   across: ({ vergeM: number; sidewalkM: number; straight: boolean } | null)[];
 }
@@ -492,7 +555,72 @@ function streetsAcross(
     const alongZ = roadAt(t.x, t.z - 1) || roadAt(t.x, t.z + 1);
     across.push({ ...s, straight: !(alongX && alongZ) });
   }
-  return { edge, across };
+  return { across };
+}
+
+/** The lot a home is laid out on: its frame, the street edge it fronts, its size in the frame, its body and the streets across its frontage. */
+interface LotGround {
+  frame: EdgeFrame;
+  edge: RoadFacingEdge | null;
+  edgeLenM: number;
+  lotDepthM: number;
+  body: LotRect;
+  streets: Streets | null;
+}
+
+/** A grid lot: laid out from the side its street is on, or from its north side when it fronts none. */
+function gridGround(
+  building: BuildingInstance,
+  entry: BuildingCatalogEntry,
+  roadAt: (x: number, z: number) => boolean,
+  street: StreetLookup,
+): LotGround {
+  const { w, d } = entry.footprint;
+  const edge = findStreetFacingEdge(building.x, building.z, w, d, street);
+  const frame = edgeFrameFor(edge?.side ?? 'N', building.x, building.z, w, d);
+  const alongTiles = edge ? edge.edgeTiles : w;
+  const edgeLenM = alongTiles * TILE_METERS;
+  const lotDepthM = (edge && (edge.side === 'E' || edge.side === 'W') ? w : d) * TILE_METERS;
+  const body = bodyRect(building, entry, frame, street);
+  const streets = edge ? streetsAcross(building, entry, edge, roadAt, street) : null;
+  return { frame, edge, edgeLenM, lotDepthM, body, streets };
+}
+
+/** How far into the road the street under a parcel's kerb is read, metres. */
+const KERB_PROBE_M = 1;
+
+/** The footway's depth along a parcel's kerb: the street's own where the grid holds it under the kerb, else a two-lane street's. */
+function framedSidewalkM(parcel: ParcelFrame, edgeLenM: number, street: StreetLookup): number {
+  const kerb = edgeFrameOfParcel(parcel);
+  const p = frameToWorld(kerb, edgeLenM / 2, KERB_PROBE_M / TILE_METERS);
+  const s = street(Math.floor(p.x / TILE_METERS), Math.floor(p.z / TILE_METERS));
+  return s ? s.sidewalkM : sidewalkDepthMeters(RoadTier.TwoLane);
+}
+
+/**
+ * A parcel on a curve. Its front line is the road's right-of-way edge at the
+ * back of the footway, so the lot frame is the parcel's own: the lot is the
+ * parcel's rectangle, the body centred across it with the house's front yard
+ * behind the front line, every frontage tile has the street straight across
+ * it, and the drive's cut runs out from v = 0 across the free road's footway
+ * to its carriageway, as a grid lot's cut crosses the road tile's footway.
+ */
+function framedGround(
+  parcel: ParcelFrame,
+  entry: BuildingCatalogEntry,
+  street: StreetLookup,
+): LotGround {
+  const { w, d } = entry.footprint;
+  const edgeLenM = w * TILE_METERS;
+  const sidewalkM = framedSidewalkM(parcel, edgeLenM, street);
+  const frame = edgeFrameOfParcel(parcel);
+  const lotDepthM = d * TILE_METERS;
+  const bodyM = bodyMetresFor(entry);
+  const u0 = (edgeLenM - bodyM.w) / 2;
+  const v0 = Math.min(lotDepthM - bodyM.d, HOUSE_FRONT_YARD_M);
+  const body = { u0, u1: u0 + bodyM.w, v0, v1: v0 + bodyM.d };
+  const across = Array.from({ length: w }, () => ({ vergeM: 0, sidewalkM, straight: true }));
+  return { frame, edge: null, edgeLenM, lotDepthM, body, streets: { across } };
 }
 
 /**
@@ -838,8 +966,8 @@ function frontPad(
  * to hold a pad and a door per home falls back to the one-home layout with a
  * side drive.
  */
-function homesAlongFrontage(entry: BuildingCatalogEntry, edge: RoadFacingEdge | null): number {
-  if (!edge) return 1;
+function homesAlongFrontage(entry: BuildingCatalogEntry, frontsStreet: boolean): number {
+  if (!frontsStreet) return 1;
   return homesAcrossFrontage(entry.kind);
 }
 
@@ -1460,16 +1588,11 @@ export function planHouseGround(
   street: StreetLookup,
 ): HouseGroundPlan | null {
   if (!isHouseEntry(entry)) return null;
-  const { w, d } = entry.footprint;
-  const edge = findStreetFacingEdge(building.x, building.z, w, d, street);
-  const frame = edgeFrameFor(edge?.side ?? 'N', building.x, building.z, w, d);
-  const alongTiles = edge ? edge.edgeTiles : w;
-  const edgeLenM = alongTiles * TILE_METERS;
-  const lotDepthM = (edge && (edge.side === 'E' || edge.side === 'W') ? w : d) * TILE_METERS;
-  const body = bodyRect(building, entry, frame, street);
+  const { frame, edge, edgeLenM, lotDepthM, body, streets } = building.frame
+    ? framedGround(building.frame, entry, street)
+    : gridGround(building, entry, roadAt, street);
   const surface: DriveSurface = roll(building.id, SLOT_SURFACE) < 0.4 ? 'dirt' : 'concrete';
 
-  const streets = edge ? streetsAcross(building, entry, edge, roadAt, street) : null;
   const vergeLawn: LotRect[] = [];
   if (streets) {
     streets.across.forEach((s, i) => {
@@ -1490,7 +1613,7 @@ export function planHouseGround(
     paths.push({ u0: u - PATH_WIDTH_M / 2, u1: u + PATH_WIDTH_M / 2, v0: -s.vergeM, v1: body.v0 });
   };
 
-  const homes = homesAlongFrontage(entry, edge);
+  const homes = homesAlongFrontage(entry, streets !== null);
   if (homes > 1 && (body.u1 - body.u0) / homes >= FRONT_HOME_MIN_WIDTH_M) {
     const units = homes;
     const unitW = (body.u1 - body.u0) / units;
