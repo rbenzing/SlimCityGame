@@ -34,8 +34,12 @@ import {
   BALCONY_DEPTH_M,
   BLOCK_BALCONY_SLAB_M,
   BLOCK_PARAPET_M,
-  BOX_BAY_DARKEN,
   BOX_BAY_PROUD_M,
+  GARDEN_STACK_MATERIALS,
+  GARDEN_STACK_PANEL_PROUD_M,
+  gardenStackPanelMaterial,
+  MIDRISE_PANEL_MATERIALS,
+  midrisePanelFields,
   BREEZEWAY_PROUD_M,
   BREEZEWAY_WIDTH_M,
   BRICK_PIER_M,
@@ -112,7 +116,12 @@ import {
 import { computeSetbacks, type SetbackBox } from './massing';
 import { bodyMetresFor } from '../shared/floorarea';
 import { WALK_UP_REAR_YARD_M } from '../shared/parkingcode';
-import { deriveFacadeParams, FLOOR_HEIGHT_METERS, type RGB } from './facade';
+import {
+  deriveFacadeParams,
+  FLOOR_HEIGHT_METERS,
+  residentialBodyMaterial,
+  type RGB,
+} from './facade';
 import {
   materialUnit,
   SATURATED,
@@ -2325,22 +2334,28 @@ describe('the apartment kit: where every part stands', () => {
     for (const b of bulkheads) expect(bottom(b)).toBeCloseTo(0, 9);
   });
 
-  it('stands box bays 0.6 m proud on alternate bays of a mid-rise from the podium to the parapet, in the wall colour darkened, with balconies in the bays between', () => {
+  it('stands box bays 0.6 m proud on alternate bays of a mid-rise from the podium to the parapet, cycling its panel fields along each face, with balconies in the bays between', () => {
     const e = aptById('res-high-2');
     const parts = placed(e);
     const body = bodyOf(e);
     const { count, width } = windowBays(e, body.w);
     const boxes = ofKind(parts, 'boxBay');
     expect(boxes).toHaveLength(2 * Math.ceil(count / 2));
-    const { wallColor } = deriveFacadeParams(e, 1);
+    const fields = midrisePanelFields(1).map((m) => materialUnit(m));
     for (const b of boxes) {
       expect(b.size[0]).toBeCloseTo(width - 1, 9);
       expect(Math.min(b.size[0], b.size[2])).toBe(BOX_BAY_PROUD_M);
       expect(bottom(b)).toBeCloseTo(4.6, 9);
       expect(b.offset[1] + b.size[1] / 2).toBeCloseTo(e.height - BLOCK_PARAPET_M, 9);
-      expect(b.color![0]).toBeCloseTo(wallColor[0] * BOX_BAY_DARKEN, 9);
-      expect(b.color![2]).toBeCloseTo(wallColor[2] * BOX_BAY_DARKEN, 9);
+      expect(fields).toContainEqual(b.color);
     }
+    for (const sign of [-1, 1]) {
+      const face = boxes
+        .filter((b) => Math.sign(b.offset[2]) === sign)
+        .sort((a, b) => a.offset[0] - b.offset[0]);
+      face.forEach((b, i) => expect(b.color).toEqual(fields[i % fields.length]));
+    }
+    const { wallColor } = deriveFacadeParams(e, 1);
     const slabs = ofKind(parts, 'balconySlab');
     const { rows, pitch } = storeysOf(e, body);
     const upper = Array.from({ length: rows - 1 }, (_, i) => (i + 1) * pitch).filter(
@@ -2357,6 +2372,48 @@ describe('the apartment kit: where every part stands', () => {
     const rail = new THREE.Color(trimColor(1, wallColor));
     for (const g of ofKind(parts, 'balconyGuard')) {
       expect(g.color).toEqual([rail.r, rail.g, rail.b]);
+    }
+  });
+
+  it('colour-blocks a mid-rise in two or three panel fields by seed, never its body’s material unless as the third', () => {
+    const counts = new Set<number>();
+    for (let id = 0; id < 24; id++) {
+      const body = residentialBodyMaterial('midrise', id)!;
+      const fields = midrisePanelFields(id);
+      counts.add(fields.length);
+      expect([2, 3]).toContain(fields.length);
+      expect(new Set(fields).size).toBe(fields.length);
+      for (const f of fields) expect(MIDRISE_PANEL_MATERIALS).toContain(f);
+      expect(fields.slice(0, 2)).not.toContain(body);
+      if (fields.length === 3) expect(fields[2]).toBe(body);
+    }
+    expect(counts).toEqual(new Set([2, 3]));
+  });
+
+  it('panels every other stack of a garden walk-up 0.1 m proud from the brick base to the eave, in the material its body is not', () => {
+    const e = aptById('res-medium-2');
+    for (const id of [1, 2]) {
+      const parts = placed(e, 'S', null, id);
+      const body = bodyOf(e);
+      const { width } = windowBays(e, body.w);
+      const panels = ofKind(parts, 'boxBay');
+      // Four bays a face, the middle two on the breezeway: one clear stack in two is panelled.
+      expect(panels).toHaveLength(2);
+      expect(panels.map((p) => Math.sign(p.offset[2])).sort()).toEqual([-1, 1]);
+      const bodyMaterial = residentialBodyMaterial('garden', id)!;
+      const panelMaterial = gardenStackPanelMaterial(id);
+      expect(GARDEN_STACK_MATERIALS).toContain(bodyMaterial);
+      expect(GARDEN_STACK_MATERIALS).toContain(panelMaterial);
+      expect(panelMaterial).not.toBe(bodyMaterial);
+      for (const p of panels) {
+        expect(p.size[0]).toBeCloseTo(width, 9);
+        expect(p.size[2]).toBe(GARDEN_STACK_PANEL_PROUD_M);
+        expect(bottom(p)).toBeCloseTo(WALK_UP_BRICK_BASE_HEIGHT_M, 9);
+        expect(p.offset[1] + p.size[1] / 2).toBeCloseTo(e.height, 9);
+        expect(Math.abs(p.offset[2]) - p.size[2] / 2).toBeCloseTo(body.d / 2, 9);
+        expect(p.color).toEqual(materialUnit(panelMaterial));
+        for (const slot of ofKind(parts, 'breezeway')) expect(overlaps(p, slot)).toBe(false);
+      }
     }
   });
 
@@ -2393,13 +2450,17 @@ describe('the apartment kit: where every part stands', () => {
     const parts = placed(e);
     const body = bodyOf(e);
     const podium = podiumOf(e)!;
-    expect(podium.h).toBeCloseTo(6.4, 9);
     const { rows, pitch } = storeysOf(e, body);
+    // 38.4 m is eleven floors of about 3.5 m (3.6 m rounded into the height); the podium is two of them.
+    expect(rows).toBe(11);
+    expect(pitch).toBeGreaterThanOrEqual(3.3);
+    expect(pitch).toBeLessThanOrEqual(3.9);
+    expect(podium.h).toBeCloseTo(2 * pitch, 9);
     // The floor whose level is the podium's top is the first above it.
     const upper = Array.from({ length: rows - 1 }, (_, i) => (i + 1) * pitch).filter(
-      (y) => y >= 6.4 - 1e-9,
+      (y) => y >= podium.h - 1e-9,
     );
-    expect(upper).toHaveLength(10);
+    expect(upper).toHaveLength(9);
     const slabs = ofKind(parts, 'balconySlab');
     expect(slabs).toHaveLength(2 * upper.length);
     expect(slabs.map((s) => Math.sign(s.offset[2])).filter((s) => s > 0)).toHaveLength(

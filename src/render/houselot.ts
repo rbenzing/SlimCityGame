@@ -56,6 +56,10 @@ const SLOT_BUSHES = 12;
 const SLOT_CHIMNEY = 13;
 const SLOT_ENTRY = 14;
 const SLOT_CHIMNEY_AT = 15;
+const SLOT_COVER_NONE = 16;
+const SLOT_COVER_PLACE = 17;
+const SLOT_CHIMNEY_BOTH = 18;
+const SLOT_FORM = 19;
 /** Per-home rolls in a row start here, one block of four per home. */
 const SLOT_UNIT_BASE = 40;
 
@@ -75,10 +79,27 @@ export const CARPORT_DEPTH_M = 6;
 export const GARAGE_DEPTH_M = 6;
 /** How far an attached garage's door stands behind the house front. */
 const ATTACHED_GARAGE_SETBACK_M = 1;
-export const DETACHED_GARAGE_WIDTH_M = 4;
 /** Lawn between the house's back wall and a detached garage. */
 const DETACHED_GARAGE_GAP_M = 3;
-export const GARAGE_DOOR_WIDTH_M = 2.6;
+
+/** NAHB, 2024 single-family completions: 65% a two-car garage, 15% three or more, 9% one-car; the rest none. */
+export const GARAGE_TWO_CAR_SHARE = 0.65;
+export const GARAGE_THREE_CAR_SHARE = 0.15;
+export const GARAGE_ONE_CAR_SHARE = 0.09;
+/** NAHB, 2025: 67% of new single-family homes have a porch. */
+export const PORCH_SHARE = 0.67;
+/** Census characteristics of new housing: over 60% of new houses have no fireplace, so under 40% carry a chimney. */
+export const CHIMNEY_SHARE = 0.4;
+/** How many cars a house's garage holds; none is a spot or a carport. */
+export type GarageBays = 0 | 1 | 2 | 3;
+/** A garage door is 9 ft wide single, 16 ft double; a row home's is 8 ft. */
+export const GARAGE_DOOR_SINGLE_M = 2.7;
+export const GARAGE_DOOR_DOUBLE_M = 4.9;
+export const GARAGE_LEAF_ROW_WIDTH_M = 2.44;
+/** A garage is 12 ft wide for one car, 20 ft for two and 30 ft for three. */
+export const GARAGE_WIDTH_M: Readonly<Record<1 | 2 | 3, number>> = { 1: 3.7, 2: 6.1, 3: 9.1 };
+/** Wall left either side of a garage door in its face. */
+const GARAGE_DOOR_MARGIN_M = 0.3;
 
 export const PATH_WIDTH_M = 1.2;
 export const DOOR_WIDTH_M = 1;
@@ -116,8 +137,15 @@ export const PORTICO_DEPTH_M = 1.2;
 /** The portico's hood stands this high over the landing's ground, clear of the door and the window above. */
 export const PORTICO_HOOD_M = 2.45;
 export const POST_M = 0.25;
-export const PORCH_DEPTH_M = 1.8;
+/** A porch is 8 ft deep by the form-based codes. */
+export const PORCH_DEPTH_M = 2.4;
 export const PORCH_FLOOR_M = 0.6;
+/** A craftsman's tapered column, drawn as a square post on a square stone pier. */
+export const CRAFTSMAN_COLUMN_M = 0.4;
+export const CRAFTSMAN_PIER_M = 0.6;
+export const CRAFTSMAN_PIER_HEIGHT_M = 0.9;
+/** A porch stops this short of a drive that runs past its end. */
+const PORCH_DRIVE_GAP_M = 0.3;
 /** Posts stand 2.4 m off the porch floor; its shed roof leaves the wall 2.9 m off it. */
 export const PORCH_POST_HEIGHT_M = 2.4;
 export const PORCH_ROOF_WALL_RISE_M = 2.9;
@@ -147,28 +175,64 @@ export const SHUTTER_THICKNESS_M = 0.06;
 const WINDOW_SHARE_OF_BAY = 0.5;
 export const PARAPET_ABOVE_ROOF_M = 0.76;
 export const PARAPET_THICKNESS_M = 0.3;
-export const GARAGE_LEAF_WIDTH_M = 2.74;
-export const GARAGE_LEAF_ROW_WIDTH_M = 2.44;
 export const GARAGE_LEAF_HEIGHT_M = 2.13;
 export const GARAGE_LEAF_DEPTH_M = 0.05;
+/** The split-level's two-storey block takes this much of the frontage, the one-storey wing the rest. */
+const SPLIT_BLOCK_SHARE = 0.55;
+/** The block's upper storey: it stands two storeys, as tall as the colonial's 6.5 m body. */
+export const SPLIT_UPPER_STOREY_M = 2.5;
 
 /**
- * Which house a home is: a detached house is a ranch, a Cape or a colonial by
- * level; a duplex and a fourplex are colonials with a stoop at each door; a
- * townhouse is a row.
+ * Which house a home is: a one-storey detached house is a ranch, a craftsman
+ * or a split-level by seed, a Cape at level 2 and a colonial at level 3; a
+ * duplex and a fourplex are colonials with a stoop at each door; a townhouse
+ * is a row.
  */
-export type HouseStyle = 'ranch' | 'cape' | 'colonial' | 'attached' | 'row';
+export type HouseStyle =
+  | 'ranch'
+  | 'craftsman'
+  | 'splitLevel'
+  | 'cape'
+  | 'colonial'
+  | 'attached'
+  | 'row';
 
-export function houseStyleOf(entry: BuildingCatalogEntry): HouseStyle {
+const ONE_STOREY_FORMS: readonly HouseStyle[] = ['ranch', 'craftsman', 'splitLevel'];
+
+export function houseStyleOf(entry: BuildingCatalogEntry, buildingId: number): HouseStyle {
   if (entry.kind === 'duplex' || entry.kind === 'fourplex') return 'attached';
   if (entry.kind === 'townhouse') return 'row';
   const level = entry.level ?? 1;
-  return level <= 1 ? 'ranch' : level === 2 ? 'cape' : 'colonial';
+  if (level >= 3) return 'colonial';
+  if (level === 2) return 'cape';
+  const form = Math.min(ONE_STOREY_FORMS.length - 1, Math.floor(roll(buildingId, SLOT_FORM) * 3));
+  return ONE_STOREY_FORMS[form]!;
+}
+
+/** Which garage the seed gives a house, by the completion shares. */
+export function garageBaysOf(buildingId: number): GarageBays {
+  const r = roll(buildingId, SLOT_COVER);
+  if (r < GARAGE_TWO_CAR_SHARE) return 2;
+  if (r < GARAGE_TWO_CAR_SHARE + GARAGE_THREE_CAR_SHARE) return 3;
+  if (r < GARAGE_TWO_CAR_SHARE + GARAGE_THREE_CAR_SHARE + GARAGE_ONE_CAR_SHARE) return 1;
+  return 0;
+}
+
+/** Whether the seed gives a house a porch; the lot still has to fit it. */
+export function porchRolled(buildingId: number): boolean {
+  return roll(buildingId, SLOT_ENTRY) < PORCH_SHARE;
+}
+
+/** Whether the seed gives a house a chimney; where it stands is the form's rule. */
+export function chimneyRolled(buildingId: number): boolean {
+  return roll(buildingId, SLOT_CHIMNEY) < CHIMNEY_SHARE;
 }
 
 /** Rise per metre of run (5:12 low, 8:12 steep) and how far the roof overhangs its walls, eaves and rakes. */
 const ROOFS: Record<HouseStyle, { slope: number; eaveM: number; rakeM: number }> = {
   ranch: { slope: 5 / 12, eaveM: 0.46, rakeM: 0.46 },
+  craftsman: { slope: 5 / 12, eaveM: 0.6, rakeM: 0.6 },
+  splitLevel: { slope: 5 / 12, eaveM: 0.46, rakeM: 0.46 },
   cape: { slope: 8 / 12, eaveM: 0.2, rakeM: 0.2 },
   colonial: { slope: 8 / 12, eaveM: 0.46, rakeM: 0.2 },
   attached: { slope: 8 / 12, eaveM: 0.46, rakeM: 0.2 },
@@ -202,6 +266,13 @@ export type DriveSurface = 'dirt' | 'concrete';
 export type DriveCover =
   'spot' | 'carport' | 'garage' | 'detachedGarage' | 'pad' | 'integralGarage';
 
+/** A garage door on the face toward the street: its span along the frontage, at depth `v`. */
+export interface GarageDoor {
+  u0: number;
+  u1: number;
+  v: number;
+}
+
 export interface HomeDrive {
   /** The drive on the ground, from the lot's edge (out across the verge) to where it ends. */
   rect: LotRect;
@@ -210,8 +281,8 @@ export interface HomeDrive {
   cover: DriveCover;
   /** The carport's or garage's footprint; null for a spot or a pad. */
   coverRect: LotRect | null;
-  /** A garage door, on the face toward the street: its span along the frontage, at depth `v`. */
-  garageDoor: { u0: number; u1: number; v: number } | null;
+  /** The garage's doors, each drawn at its own width: none for a spot, a carport or a pad. */
+  garageDoors: GarageDoor[];
   /** Where the car's centre stands. It points into the lot, nose to the house. */
   car: LotPoint;
 }
@@ -246,6 +317,8 @@ export interface HouseGroundPlan {
   body: LotRect;
   /** How many homes the lot holds: one, or three per frontage tile for a row along its street. */
   homes: number;
+  /** A split-level's one-storey wing, the garage in its face; null for every other house. */
+  wing: LotRect | null;
   /** Where each home's front door stands on the front wall. */
   doors: LotPoint[];
   paths: LotRect[];
@@ -273,6 +346,8 @@ export interface PorchPlan {
   floor: KitBox;
   steps: KitBox[];
   posts: KitBox[];
+  /** The stone piers a craftsman's columns stand on; none under plain posts. */
+  piers: KitBox[];
   /** The shed roof over it: its footprint, the height of its low edge, and of its high edge on the wall. */
   roof: { rect: LotRect; lowM: number; wallM: number };
 }
@@ -299,6 +374,8 @@ export interface HouseKitPlan {
     /** The ridge's height over the eaves. */
     riseM: number;
   };
+  /** A split-level's second storey over its block, under a gable of its own; null for every other house. */
+  upper: { box: KitBox; roof: { rect: LotRect } } | null;
   chimneys: KitBox[];
   /** The landings and treads at each door, and a ranch's slab. */
   stoops: KitBox[];
@@ -445,79 +522,238 @@ function cutFor(u0: number, u1: number, reach: { vergeM: number; sidewalkM: numb
   return { u0, u1, v0: -(reach.vergeM + reach.sidewalkM), v1: -reach.vergeM };
 }
 
-/** The four covers a side drive may end at, and how often each is chosen. */
-const SIDE_COVERS: readonly { cover: DriveCover; weight: number }[] = [
-  { cover: 'spot', weight: 0.2 },
-  { cover: 'carport', weight: 0.25 },
-  { cover: 'garage', weight: 0.3 },
-  { cover: 'detachedGarage', weight: 0.25 },
+/** Where a house's garage may stand, and how often each is taken among the places its lot fits. */
+const GARAGE_PLACES: readonly { place: 'attached' | 'integral' | 'detached'; weight: number }[] = [
+  { place: 'attached', weight: 0.5 },
+  { place: 'integral', weight: 0.3 },
+  { place: 'detached', weight: 0.2 },
 ];
 
-function sideDrive(
+/** A drive and the door it leaves the front wall at: the door moves aside for a garage in the facade. */
+interface DrivePlan {
+  drive: HomeDrive | null;
+  doorU: number;
+  /** The split-level's wing, when the drive is its pad. */
+  wing?: LotRect;
+}
+
+interface Reach {
+  vergeM: number;
+  sidewalkM: number;
+}
+
+/** A lane `widthM` wide beside the body on `side`, a gap of lawn kept, or null where the lot or the street has no room. */
+function sideLane(
+  body: LotRect,
+  edgeLenM: number,
+  side: number,
+  widthM: number,
+  streets: Streets,
+): { u0: number; u1: number; reach: Reach } | null {
+  const room = side > 0 ? edgeLenM - body.u1 : body.u0;
+  if (room + 1e-6 < widthM + DRIVE_MIN_GAP_M) return null;
+  const gap = Math.max(DRIVE_MIN_GAP_M, Math.min(DRIVE_GAP_M, room - widthM));
+  const u0 = side > 0 ? body.u1 + gap : body.u0 - gap - widthM;
+  const u1 = u0 + widthM;
+  const reach = driveReach(streets, u0, u1);
+  return reach ? { u0, u1, reach } : null;
+}
+
+/**
+ * A detached house's drive. The seed draws the garage's size by the completion
+ * shares, then the garage stands attached beside the house, in its facade or
+ * behind it, by seed among the places the lot fits; a three-car garage the lot
+ * has no room for falls back to two. A house with none keeps a spot or a
+ * carport on a side drive, or a pad before the door.
+ */
+function planDrive(
   building: BuildingInstance,
   body: LotRect,
   edgeLenM: number,
   lotDepthM: number,
   streets: Streets,
-): HomeDrive | null {
-  const first = roll(building.id, SLOT_DRIVE_SIDE) < 0.5 ? 1 : -1;
-  for (const side of [first, -first]) {
-    const room = side > 0 ? edgeLenM - body.u1 : body.u0;
-    if (room + 1e-6 < DRIVE_WIDTH_M + DRIVE_MIN_GAP_M) continue;
-    const gap = Math.max(DRIVE_MIN_GAP_M, Math.min(DRIVE_GAP_M, room - DRIVE_WIDTH_M));
-    const u0 = side > 0 ? body.u1 + gap : body.u0 - gap - DRIVE_WIDTH_M;
-    const u1 = u0 + DRIVE_WIDTH_M;
-    const reach = driveReach(streets, u0, u1);
-    if (!reach) continue;
-    return coverDrive(building, body, lotDepthM, edgeLenM, side, u0, u1, reach);
+): DrivePlan {
+  const id = building.id;
+  const first = roll(id, SLOT_DRIVE_SIDE) < 0.5 ? 1 : -1;
+  const centreU = (body.u0 + body.u1) / 2;
+  const rolled = garageBaysOf(id);
+  const sizes: (1 | 2 | 3)[] = rolled === 3 ? [3, 2] : rolled === 0 ? [] : [rolled];
+  for (const bays of sizes) {
+    const fits = garagePlacements(body, edgeLenM, lotDepthM, streets, first, bays);
+    if (fits.length === 0) continue;
+    const total = fits.reduce((sum, f) => sum + f.weight, 0);
+    let pick = roll(id, SLOT_COVER_PLACE) * total;
+    for (const f of fits) {
+      if (pick < f.weight) return f.plan;
+      pick -= f.weight;
+    }
+    return fits[fits.length - 1]!.plan;
   }
-  return null;
+  const cover: DriveCover = roll(id, SLOT_COVER_NONE) < 0.5 ? 'spot' : 'carport';
+  for (const side of [first, -first]) {
+    const lane = sideLane(body, edgeLenM, side, DRIVE_WIDTH_M, streets);
+    if (lane) return { drive: openDrive(cover, body, edgeLenM, lane), doorU: centreU };
+  }
+  return {
+    drive: frontPad(centreU + 1, centreU + 1 + DRIVE_WIDTH_M, body, streets, []),
+    doorU: centreU,
+  };
 }
 
-function coverDrive(
-  building: BuildingInstance,
+/** Every place a garage of `bays` fits on the lot, each with its drive planned and its weight. */
+function garagePlacements(
   body: LotRect,
+  edgeLenM: number,
   lotDepthM: number,
+  streets: Streets,
+  first: number,
+  bays: 1 | 2 | 3,
+): { weight: number; plan: DrivePlan }[] {
+  const out: { weight: number; plan: DrivePlan }[] = [];
+  const centreU = (body.u0 + body.u1) / 2;
+  for (const { place, weight } of GARAGE_PLACES) {
+    for (const side of [first, -first]) {
+      const drive =
+        place === 'attached'
+          ? attachedGarage(body, edgeLenM, side, bays, streets)
+          : place === 'detached'
+            ? detachedGarage(body, edgeLenM, lotDepthM, side, bays, streets)
+            : null;
+      if (drive) {
+        out.push({ weight, plan: { drive, doorU: centreU } });
+        break;
+      }
+      if (place === 'integral' && bays !== 3) {
+        const integral = integralGarage(body, side, bays, streets);
+        if (integral) {
+          out.push({ weight, plan: integral });
+          break;
+        }
+      }
+    }
+  }
+  return out;
+}
+
+/** The drive under a garage's doors: their whole span, and never narrower than a one-car drive. */
+function laneUnder(doors: readonly GarageDoor[]): { u0: number; u1: number } {
+  const u0 = Math.min(...doors.map((d) => d.u0));
+  const u1 = Math.max(...doors.map((d) => d.u1));
+  const pad = Math.max(0, (DRIVE_WIDTH_M - (u1 - u0)) / 2);
+  return { u0: u0 - pad, u1: u1 + pad };
+}
+
+function widestDoorCentre(doors: readonly GarageDoor[]): number {
+  const widest = doors.reduce((w, d) => (d.u1 - d.u0 > w.u1 - w.u0 ? d : w));
+  return (widest.u0 + widest.u1) / 2;
+}
+
+/** An attached garage on `side` of the house, its doors toward the street and the drive straight to them. */
+function attachedGarage(
+  body: LotRect,
   edgeLenM: number,
   side: number,
-  u0: number,
-  u1: number,
-  reach: { vergeM: number; sidewalkM: number },
-): HomeDrive {
-  const detachedFits = body.v1 + DETACHED_GARAGE_GAP_M + GARAGE_DEPTH_M <= lotDepthM - 1;
-  const choices = SIDE_COVERS.filter((c) => c.cover !== 'detachedGarage' || detachedFits);
-  const total = choices.reduce((sum, c) => sum + c.weight, 0);
-  let pick = roll(building.id, SLOT_COVER) * total;
-  let cover: DriveCover = choices[choices.length - 1]!.cover;
-  for (const c of choices) {
-    if (pick < c.weight) {
-      cover = c.cover;
-      break;
-    }
-    pick -= c.weight;
-  }
+  bays: 1 | 2 | 3,
+  streets: Streets,
+): HomeDrive | null {
+  const widthM = GARAGE_WIDTH_M[bays];
+  const room = side > 0 ? edgeLenM - body.u1 : body.u0;
+  if (room + 1e-6 < widthM + DRIVE_MIN_GAP_M) return null;
+  // Attached: it fills the lawn strip too, so it meets the house wall.
+  const coverRect = {
+    u0: side > 0 ? body.u1 : body.u0 - widthM,
+    u1: side > 0 ? body.u1 + widthM : body.u0,
+    v0: body.v0 + ATTACHED_GARAGE_SETBACK_M,
+    v1: body.v0 + ATTACHED_GARAGE_SETBACK_M + GARAGE_DEPTH_M,
+  };
+  const garageDoors = garageDoorsAcross(coverRect, coverRect.v0, bays, side);
+  const lane = laneUnder(garageDoors);
+  const reach = driveReach(streets, lane.u0, lane.u1);
+  if (!reach) return null;
+  return {
+    rect: { u0: lane.u0, u1: lane.u1, v0: -reach.vergeM, v1: coverRect.v0 },
+    cut: cutFor(lane.u0, lane.u1, reach),
+    cover: 'garage',
+    coverRect,
+    garageDoors,
+    car: {
+      u: widestDoorCentre(garageDoors),
+      v: coverRect.v0 - CAR_NOSE_GAP_M - CAR_HALF_LENGTH_M,
+    },
+  };
+}
 
+/** A garage behind the house, reached down a side lane that meets its widest door as nearly as the lot allows. */
+function detachedGarage(
+  body: LotRect,
+  edgeLenM: number,
+  lotDepthM: number,
+  side: number,
+  bays: 1 | 2 | 3,
+  streets: Streets,
+): HomeDrive | null {
+  if (body.v1 + DETACHED_GARAGE_GAP_M + GARAGE_DEPTH_M > lotDepthM - 1) return null;
+  const lane = sideLane(body, edgeLenM, side, DRIVE_WIDTH_M, streets);
+  if (!lane) return null;
+  const widthM = GARAGE_WIDTH_M[bays];
+  const half = widthM / 2;
+  const uc = (lane.u0 + lane.u1) / 2;
+  // A three-car garage's double door stands at the lane's end of it.
+  const doorOffset = bays === 3 ? half - GARAGE_DOOR_MARGIN_M - GARAGE_DOOR_DOUBLE_M / 2 : 0;
+  const gu = Math.min(
+    edgeLenM - half - DRIVE_MIN_GAP_M,
+    Math.max(half + DRIVE_MIN_GAP_M, uc - side * doorOffset),
+  );
+  const coverRect = {
+    u0: gu - half,
+    u1: gu + half,
+    v0: body.v1 + DETACHED_GARAGE_GAP_M,
+    v1: body.v1 + DETACHED_GARAGE_GAP_M + GARAGE_DEPTH_M,
+  };
+  return {
+    rect: { u0: lane.u0, u1: lane.u1, v0: -lane.reach.vergeM, v1: coverRect.v0 },
+    cut: cutFor(lane.u0, lane.u1, lane.reach),
+    cover: 'detachedGarage',
+    coverRect,
+    garageDoors: garageDoorsAcross(coverRect, coverRect.v0, bays, side),
+    car: { u: uc, v: coverRect.v0 - CAR_NOSE_GAP_M - CAR_HALF_LENGTH_M },
+  };
+}
+
+/** A garage door in the facade, the pad before it, and the front door moved to the far side of the frontage. */
+function integralGarage(
+  body: LotRect,
+  side: number,
+  bays: 1 | 2,
+  streets: Streets,
+): DrivePlan | null {
+  const doorW = bays === 2 ? GARAGE_DOOR_DOUBLE_M : GARAGE_DOOR_SINGLE_M;
+  if (body.u1 - body.u0 < FRONT_PAD_INSET_M + doorW + 1 + DOOR_WIDTH_M + 0.5) return null;
+  const padW = Math.max(DRIVE_WIDTH_M, doorW);
+  const padU0 = side > 0 ? body.u1 - FRONT_PAD_INSET_M - padW : body.u0 + FRONT_PAD_INSET_M;
+  const dc = padU0 + padW / 2;
+  const drive = frontPad(padU0, padU0 + padW, body, streets, [
+    { u0: dc - doorW / 2, u1: dc + doorW / 2, v: body.v0 },
+  ]);
+  if (!drive) return null;
+  return {
+    drive,
+    doorU: side > 0 ? body.u0 + FRONT_DOOR_INSET_M : body.u1 - FRONT_DOOR_INSET_M,
+  };
+}
+
+/** A side lane ending at a spot beside the house or under a carport. */
+function openDrive(
+  cover: 'spot' | 'carport',
+  body: LotRect,
+  edgeLenM: number,
+  lane: { u0: number; u1: number; reach: Reach },
+): HomeDrive {
+  const { u0, u1, reach } = lane;
   const uc = (u0 + u1) / 2;
   const start = -reach.vergeM;
   const cut = cutFor(u0, u1, reach);
   switch (cover) {
-    case 'garage': {
-      // Attached: it fills the lawn strip too, so it meets the house wall.
-      const coverRect = {
-        u0: side > 0 ? body.u1 : u0,
-        u1: side > 0 ? u1 : body.u0,
-        v0: body.v0 + ATTACHED_GARAGE_SETBACK_M,
-        v1: body.v0 + ATTACHED_GARAGE_SETBACK_M + GARAGE_DEPTH_M,
-      };
-      return {
-        rect: { u0, u1, v0: start, v1: coverRect.v0 },
-        cut,
-        cover,
-        coverRect,
-        garageDoor: doorAcross(coverRect, coverRect.v0),
-        car: { u: uc, v: coverRect.v0 - CAR_NOSE_GAP_M - CAR_HALF_LENGTH_M },
-      };
-    }
     case 'carport': {
       const cu = Math.min(edgeLenM - CARPORT_WIDTH_M / 2, Math.max(CARPORT_WIDTH_M / 2, uc));
       const coverRect = {
@@ -531,26 +767,8 @@ function coverDrive(
         cut,
         cover,
         coverRect,
-        garageDoor: null,
+        garageDoors: [],
         car: { u: uc, v: (coverRect.v0 + coverRect.v1) / 2 },
-      };
-    }
-    case 'detachedGarage': {
-      const half = DETACHED_GARAGE_WIDTH_M / 2;
-      const gu = Math.min(edgeLenM - half - DRIVE_MIN_GAP_M, Math.max(half + DRIVE_MIN_GAP_M, uc));
-      const coverRect = {
-        u0: gu - half,
-        u1: gu + half,
-        v0: body.v1 + DETACHED_GARAGE_GAP_M,
-        v1: body.v1 + DETACHED_GARAGE_GAP_M + GARAGE_DEPTH_M,
-      };
-      return {
-        rect: { u0, u1, v0: start, v1: coverRect.v0 },
-        cut,
-        cover,
-        coverRect,
-        garageDoor: doorAcross(coverRect, coverRect.v0),
-        car: { u: uc, v: coverRect.v0 - CAR_NOSE_GAP_M - CAR_HALF_LENGTH_M },
       };
     }
     default: {
@@ -561,26 +779,44 @@ function coverDrive(
         cut,
         cover: 'spot',
         coverRect: null,
-        garageDoor: null,
+        garageDoors: [],
         car: { u: uc, v: carV },
       };
     }
   }
 }
 
-function doorAcross(rect: LotRect, v: number): { u0: number; u1: number; v: number } {
+/**
+ * The doors across a garage's street face at depth `v`: one, centred, or for
+ * three bays a double beside a single, the double at the `side` end where the
+ * drive meets it.
+ */
+function garageDoorsAcross(rect: LotRect, v: number, bays: 1 | 2 | 3, side: number): GarageDoor[] {
+  const m = GARAGE_DOOR_MARGIN_M;
+  if (bays === 3) {
+    const double =
+      side > 0
+        ? { u0: rect.u1 - m - GARAGE_DOOR_DOUBLE_M, u1: rect.u1 - m, v }
+        : { u0: rect.u0 + m, u1: rect.u0 + m + GARAGE_DOOR_DOUBLE_M, v };
+    const single =
+      side > 0
+        ? { u0: rect.u0 + m, u1: rect.u0 + m + GARAGE_DOOR_SINGLE_M, v }
+        : { u0: rect.u1 - m - GARAGE_DOOR_SINGLE_M, u1: rect.u1 - m, v };
+    return side > 0 ? [single, double] : [double, single];
+  }
   const uc = (rect.u0 + rect.u1) / 2;
-  const half = Math.min(GARAGE_DOOR_WIDTH_M, rect.u1 - rect.u0 - 0.6) / 2;
-  return { u0: uc - half, u1: uc + half, v };
+  const wanted = bays === 2 ? GARAGE_DOOR_DOUBLE_M : GARAGE_DOOR_SINGLE_M;
+  const half = Math.min(wanted, rect.u1 - rect.u0 - 2 * m) / 2;
+  return [{ u0: uc - half, u1: uc + half, v }];
 }
 
-/** A pad in front of the facade at `u0..u1`, the car nose-in to the wall. */
+/** A pad in front of the facade at `u0..u1`, the car nose-in to the wall, with the garage doors in the wall behind it if any. */
 function frontPad(
   u0: number,
   u1: number,
   body: LotRect,
   streets: Streets,
-  integral: boolean,
+  garageDoors: GarageDoor[],
 ): HomeDrive | null {
   const reach = driveReach(streets, u0, u1);
   if (!reach) return null;
@@ -588,11 +824,9 @@ function frontPad(
   return {
     rect: { u0, u1, v0: -reach.vergeM, v1: body.v0 },
     cut: cutFor(u0, u1, reach),
-    cover: integral ? 'integralGarage' : 'pad',
+    cover: garageDoors.length > 0 ? 'integralGarage' : 'pad',
     coverRect: null,
-    garageDoor: integral
-      ? { u0: uc - GARAGE_DOOR_WIDTH_M / 2, u1: uc + GARAGE_DOOR_WIDTH_M / 2, v: body.v0 }
-      : null,
+    garageDoors,
     car: { u: uc, v: body.v0 - CAR_NOSE_GAP_M - CAR_HALF_LENGTH_M },
   };
 }
@@ -902,34 +1136,64 @@ function hull(boxes: readonly KitBox[]): LotRect {
   };
 }
 
-/** A porch across the frontage, or null where a drive stands in its way. */
-function planPorch(body: LotRect, door: LotPoint, drives: readonly HomeDrive[]): PorchPlan | null {
-  const u0 = body.u0 + PORCH_INSET_M;
-  const u1 = body.u1 - PORCH_INSET_M;
+/**
+ * A porch across `face`, a metre in from each end, or the whole width on a
+ * craftsman, whose columns stand on stone piers. A drive running past an end
+ * cuts the porch short there; null where the lot has no depth for it or the
+ * door is left no room.
+ */
+function planPorch(
+  face: LotRect,
+  door: LotPoint,
+  drives: readonly HomeDrive[],
+  craftsman: boolean,
+  frontLimitV: number,
+): PorchPlan | null {
+  const inset = craftsman ? 0 : PORCH_INSET_M;
+  let u0 = face.u0 + inset;
+  let u1 = face.u1 - inset;
   const v = door.v;
   const frontV = v - PORCH_DEPTH_M;
-  const stepped = threeRiserStoop(door.u, frontV, STOOP_WIDTH_M, 0);
-  const steps = stepped.slice(1);
-  const footprint = hull([...steps, { rect: { u0, u1, v0: frontV, v1: v }, y0: 0, y1: 0 }]);
-  if (u1 - u0 < STOOP_WIDTH_M || drives.some((d) => overlaps(d.rect, footprint))) return null;
+  const stepV = frontV - 2 * TREAD_M;
+  if (stepV < frontLimitV) return null;
+  for (const d of drives) {
+    if (d.rect.v1 <= stepV || d.rect.v0 >= v) continue;
+    if (d.rect.u1 <= door.u) u0 = Math.max(u0, d.rect.u1 + PORCH_DRIVE_GAP_M);
+    else if (d.rect.u0 >= door.u) u1 = Math.min(u1, d.rect.u0 - PORCH_DRIVE_GAP_M);
+    else return null;
+  }
+  if (door.u - STOOP_WIDTH_M / 2 < u0 || door.u + STOOP_WIDTH_M / 2 > u1) return null;
+  const steps = threeRiserStoop(door.u, frontV, STOOP_WIDTH_M, 0).slice(1);
   // Posts every three metres or so, in an even number so none stands in front of the door.
   let count = Math.ceil((u1 - u0) / PORCH_POST_SPACING_M) + 1;
   if (count % 2 === 1) count += 1;
-  const half = POST_M / 2;
-  const postsAt = Array.from(
-    { length: count },
-    (_, i) => u0 + half + (i / (count - 1)) * (u1 - u0 - POST_M),
-  );
-  const postV = frontV + POST_M;
+  const postW = craftsman ? CRAFTSMAN_COLUMN_M : POST_M;
+  const half = postW / 2;
+  // A post that would still crowd the door's stoop steps aside from it.
+  const clear = STOOP_WIDTH_M / 2 + half + 0.05;
+  const postsAt = Array.from({ length: count }, (_, i) => {
+    const u = u0 + half + (i / (count - 1)) * (u1 - u0 - postW);
+    if (Math.abs(u - door.u) >= clear) return u;
+    return u < door.u ? door.u - clear : door.u + clear;
+  });
+  const postV = frontV + (craftsman ? CRAFTSMAN_PIER_M / 2 : POST_M);
   const top = PORCH_FLOOR_M + PORCH_POST_HEIGHT_M;
+  const pierHalf = CRAFTSMAN_PIER_M / 2;
   return {
     floor: { rect: { u0, u1, v0: frontV, v1: v }, y0: 0, y1: PORCH_FLOOR_M },
     steps,
     posts: postsAt.map((u) => ({
       rect: { u0: u - half, u1: u + half, v0: postV - half, v1: postV + half },
-      y0: PORCH_FLOOR_M,
+      y0: craftsman ? CRAFTSMAN_PIER_HEIGHT_M : PORCH_FLOOR_M,
       y1: top,
     })),
+    piers: craftsman
+      ? postsAt.map((u) => ({
+          rect: { u0: u - pierHalf, u1: u + pierHalf, v0: postV - pierHalf, v1: postV + pierHalf },
+          y0: 0,
+          y1: CRAFTSMAN_PIER_HEIGHT_M,
+        }))
+      : [],
     roof: {
       rect: {
         u0: u0 - PORCH_ROOF_OVERHANG_M,
@@ -961,7 +1225,7 @@ function chimneyEnds(
     (rect) =>
       !drives.some((d) => overlaps(d.rect, rect) || (d.coverRect && overlaps(d.coverRect, rect))),
   );
-  const both = roll(id, SLOT_CHIMNEY) < 0.4;
+  const both = roll(id, SLOT_CHIMNEY_BOTH) < 0.4;
   const pick = roll(id, SLOT_CHIMNEY_AT) < 0.5 ? 0 : ends.length - 1;
   return (both ? ends : ends.slice(pick, pick + 1)).map((rect) => ({ rect, y0: 0, y1: top }));
 }
@@ -1016,22 +1280,41 @@ function planKit(
   entry: BuildingCatalogEntry,
   ground: HouseGroundPlan,
 ): HouseKitPlan {
-  const { body, doors, drives, homes } = ground;
+  const { body, doors, drives, homes, wing } = ground;
   const id = building.id;
-  const style = houseStyleOf(entry);
+  const style = houseStyleOf(entry, id);
   const spec = ROOFS[style];
   const heightM = entry.height;
   const depth = body.v1 - body.v0;
   const riseM = computeRoofRise(depth, spec.slope);
   const slope = riseM / (depth / 2);
   const mid = (body.v0 + body.v1) / 2;
+  // The split-level's two-storey block beside its wing; the whole body for every other house.
+  const block = wing
+    ? wing.u0 > body.u0 + 1e-6
+      ? { ...body, u1: wing.u0 }
+      : { ...body, u0: wing.u1 }
+    : body;
+  const blockTop = wing ? heightM + SPLIT_UPPER_STOREY_M : heightM;
+  const detachedHouse = style !== 'attached' && style !== 'row';
 
   const stoops: KitBox[] = [];
   const porticos: PorticoPlan[] = [];
   let porch: PorchPlan | null = null;
   const entries: LotRect[] = [];
   for (const door of doors) {
-    if (style === 'ranch') {
+    // A craftsman's porch is its form; any other house gets one by the porch
+    // share, where the yard fits it: the verge counts toward the yard, and
+    // the sidewalk beyond it is the limit.
+    const verge = ground.vergeLawn.find((s) => door.u >= s.u0 && door.u < s.u1);
+    porch =
+      detachedHouse && (style === 'craftsman' || porchRolled(id))
+        ? planPorch(block, door, drives, style === 'craftsman', verge ? verge.v0 : 0)
+        : null;
+    if (porch) {
+      stoops.push(...porch.steps);
+      entries.push(hull([porch.floor, ...porch.steps]));
+    } else if (style === 'ranch' || style === 'craftsman') {
       const slab = {
         rect: {
           u0: door.u - RANCH_STOOP_WIDTH_M / 2,
@@ -1045,17 +1328,10 @@ function planKit(
       stoops.push(slab);
       entries.push(slab.rect);
     } else if (style === 'cape' || style === 'colonial') {
-      porch =
-        style === 'colonial' && roll(id, SLOT_ENTRY) < 0.5 ? planPorch(body, door, drives) : null;
-      if (porch) {
-        stoops.push(...porch.steps);
-        entries.push(hull([porch.floor, ...porch.steps]));
-      } else {
-        const steps = threeRiserStoop(door.u, door.v, PORTICO_WIDTH_M, PORTICO_DEPTH_M);
-        stoops.push(...steps);
-        porticos.push({ u: door.u, v: door.v });
-        entries.push(hull(steps));
-      }
+      const steps = threeRiserStoop(door.u, door.v, PORTICO_WIDTH_M, PORTICO_DEPTH_M);
+      stoops.push(...steps);
+      porticos.push({ u: door.u, v: door.v });
+      entries.push(hull(steps));
     } else {
       const steps = threeRiserStoop(door.u, door.v, STOOP_WIDTH_M, STOOP_LANDING_M);
       stoops.push(...steps);
@@ -1064,24 +1340,26 @@ function planKit(
   }
 
   let chimneys: KitBox[] = [];
-  if (style === 'ranch' || style === 'cape') {
-    const bodyW = body.u1 - body.u0;
-    const at = style === 'cape' ? 0.5 : roll(id, SLOT_CHIMNEY) < 0.5 ? 0.3 : 0.7;
-    const u = body.u0 + at * bodyW;
-    chimneys = [
-      {
-        rect: {
-          u0: u - CHIMNEY_FLUE_M / 2,
-          u1: u + CHIMNEY_FLUE_M / 2,
-          v0: mid - CHIMNEY_FLUE_M / 2,
-          v1: mid + CHIMNEY_FLUE_M / 2,
+  if (chimneyRolled(id) && style !== 'row') {
+    if (style === 'colonial' || style === 'attached') {
+      chimneys = chimneyEnds(id, body, drives, heightM, riseM);
+    } else {
+      // Through the ridge: central on a Cape, off-centre on the one-storey forms, on the split-level's block.
+      const at = style === 'cape' ? 0.5 : roll(id, SLOT_CHIMNEY_AT) < 0.5 ? 0.3 : 0.7;
+      const u = block.u0 + at * (block.u1 - block.u0);
+      chimneys = [
+        {
+          rect: {
+            u0: u - CHIMNEY_FLUE_M / 2,
+            u1: u + CHIMNEY_FLUE_M / 2,
+            v0: mid - CHIMNEY_FLUE_M / 2,
+            v1: mid + CHIMNEY_FLUE_M / 2,
+          },
+          y0: blockTop,
+          y1: blockTop + riseM + CHIMNEY_ABOVE_RIDGE_INTERIOR_M,
         },
-        y0: heightM,
-        y1: heightM + riseM + CHIMNEY_ABOVE_RIDGE_INTERIOR_M,
-      },
-    ];
-  } else if (style !== 'row') {
-    chimneys = chimneyEnds(id, body, drives, heightM, riseM);
+      ];
+    }
   }
 
   const dormers: DormerPlan[] = [];
@@ -1102,14 +1380,10 @@ function planKit(
 
   const keepClear: [number, number][] = [
     ...doors.map((d): [number, number] => [d.u - PORTICO_WIDTH_M / 2, d.u + PORTICO_WIDTH_M / 2]),
-    ...drives
-      .filter((d) => d.cover === 'integralGarage' && d.garageDoor)
-      .map((d): [number, number] => {
-        const c = (d.garageDoor!.u0 + d.garageDoor!.u1) / 2;
-        return [c - GARAGE_LEAF_ROW_WIDTH_M / 2, c + GARAGE_LEAF_ROW_WIDTH_M / 2];
-      }),
+    ...drives.flatMap((d) => d.garageDoors.map((g): [number, number] => [g.u0, g.u1])),
   ];
-  const shutters = style === 'ranch' ? [] : planShutters(entry, body, heightM, keepClear);
+  const shuttered = style === 'cape' || style === 'colonial' || !detachedHouse;
+  const shutters = shuttered ? planShutters(entry, body, heightM, keepClear) : [];
 
   const parapets: KitBox[] = [];
   if (style === 'row' && homes > 1) {
@@ -1129,21 +1403,27 @@ function planKit(
     }
   }
 
+  // A roof overhangs the body's own ends; where the wing meets the block it stops at the wall.
+  const overhung = (part: LotRect): LotRect => ({
+    u0: part.u0 - (Math.abs(part.u0 - body.u0) < 1e-6 ? spec.rakeM : 0),
+    u1: part.u1 + (Math.abs(part.u1 - body.u1) < 1e-6 ? spec.rakeM : 0),
+    v0: part.v0 - spec.eaveM,
+    v1: part.v1 + spec.eaveM,
+  });
+
   return {
     style,
     heightM,
     roof: {
-      rect: {
-        u0: body.u0 - spec.rakeM,
-        u1: body.u1 + spec.rakeM,
-        v0: body.v0 - spec.eaveM,
-        v1: body.v1 + spec.eaveM,
-      },
+      rect: overhung(wing ?? body),
       eaveM: spec.eaveM,
       rakeM: spec.rakeM,
       slope,
       riseM,
     },
+    upper: wing
+      ? { box: { rect: block, y0: heightM, y1: blockTop }, roof: { rect: overhung(block) } }
+      : null,
     chimneys,
     stoops,
     porticos,
@@ -1220,8 +1500,21 @@ export function planHouseGround(
       const padU0 = unitU0 + FRONT_PAD_INSET_M;
       const door = { u: unitU0 + unitW - FRONT_DOOR_INSET_M, v: body.v0 };
       doors.push(door);
-      const integral = roll(building.id, SLOT_UNIT_BASE + 4 * k) < 0.5;
-      const pad = streets ? frontPad(padU0, padU0 + DRIVE_WIDTH_M, body, streets, integral) : null;
+      // A row home's garage door is the 8 ft single, in the facade behind its pad.
+      const padC = padU0 + DRIVE_WIDTH_M / 2;
+      const garageDoors =
+        roll(building.id, SLOT_UNIT_BASE + 4 * k) < 0.5
+          ? [
+              {
+                u0: padC - GARAGE_LEAF_ROW_WIDTH_M / 2,
+                u1: padC + GARAGE_LEAF_ROW_WIDTH_M / 2,
+                v: body.v0,
+              },
+            ]
+          : [];
+      const pad = streets
+        ? frontPad(padU0, padU0 + DRIVE_WIDTH_M, body, streets, garageDoors)
+        : null;
       if (pad) drives.push(pad);
       pathTo(door.u);
     }
@@ -1232,6 +1525,7 @@ export function planHouseGround(
       lotDepthM,
       body,
       homes: units,
+      wing: null,
       doors,
       paths,
       vergeLawn,
@@ -1240,15 +1534,24 @@ export function planHouseGround(
     };
   }
 
-  const door = { u: (body.u0 + body.u1) / 2, v: body.v0 };
-  doors.push(door);
+  const style = houseStyleOf(entry, building.id);
+  let wing: LotRect | null = null;
+  let doorU = (body.u0 + body.u1) / 2;
   if (streets) {
-    const drive =
-      sideDrive(building, body, edgeLenM, lotDepthM, streets) ??
-      frontPad(door.u + 1, door.u + 1 + DRIVE_WIDTH_M, body, streets, false);
-    if (drive) drives.push(drive);
-    pathTo(door.u);
+    const planned =
+      style === 'splitLevel'
+        ? splitLevelDrive(building, body, streets)
+        : planDrive(building, body, edgeLenM, lotDepthM, streets);
+    if (planned.drive) drives.push(planned.drive);
+    doorU = planned.doorU;
+    wing = planned.wing ?? null;
+  } else if (style === 'splitLevel') {
+    wing = splitWing(building, body, 0);
+    doorU = blockCentre(body, wing);
   }
+  const door = { u: doorU, v: body.v0 };
+  doors.push(door);
+  if (streets) pathTo(door.u);
   return {
     frame,
     edge,
@@ -1256,12 +1559,51 @@ export function planHouseGround(
     lotDepthM,
     body,
     homes: 1,
+    wing,
     doors,
     paths,
     vergeLawn,
     drives,
     surface,
   };
+}
+
+/** The split-level's one-storey wing, on the seed's side of the body and wide enough for a `doorW` garage door. */
+function splitWing(building: BuildingInstance, body: LotRect, doorW: number): LotRect {
+  const side = roll(building.id, SLOT_DRIVE_SIDE) < 0.5 ? 1 : -1;
+  const bodyW = body.u1 - body.u0;
+  const wingW = Math.max((1 - SPLIT_BLOCK_SHARE) * bodyW, doorW + 2 * GARAGE_DOOR_MARGIN_M);
+  return side > 0 ? { ...body, u0: body.u1 - wingW } : { ...body, u1: body.u0 + wingW };
+}
+
+/** The middle of the split-level's two-storey block, the part of the body its wing leaves. */
+function blockCentre(body: LotRect, wing: LotRect): number {
+  return wing.u0 > body.u0 + 1e-6 ? (body.u0 + wing.u0) / 2 : (wing.u1 + body.u1) / 2;
+}
+
+/**
+ * A split-level's drive: a pad before its wing with the garage door in the
+ * wing's face, the front door on the block beside it. The wing holds two bays
+ * at most, so a three-car garage falls back to two.
+ */
+function splitLevelDrive(
+  building: BuildingInstance,
+  body: LotRect,
+  streets: Streets,
+): DrivePlan & { wing: LotRect } {
+  const bays = Math.min(2, garageBaysOf(building.id));
+  const doorW = bays === 2 ? GARAGE_DOOR_DOUBLE_M : bays === 1 ? GARAGE_DOOR_SINGLE_M : 0;
+  const wing = splitWing(building, body, doorW);
+  const wc = (wing.u0 + wing.u1) / 2;
+  const padW = Math.max(DRIVE_WIDTH_M, doorW);
+  const drive = frontPad(
+    wc - padW / 2,
+    wc + padW / 2,
+    body,
+    streets,
+    doorW > 0 ? [{ u0: wc - doorW / 2, u1: wc + doorW / 2, v: body.v0 }] : [],
+  );
+  return { drive, doorU: blockCentre(body, wing), wing };
 }
 
 /** The road tiles a home's drives cross — where a lamp must not stand. */

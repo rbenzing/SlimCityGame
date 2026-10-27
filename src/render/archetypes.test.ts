@@ -473,6 +473,7 @@ describe('the apartment kit', () => {
       'balconySlab',
       'balconyGuard',
       'patio',
+      'boxBay',
     ]);
     expect(partsFor(res('midrise', ZoneType.ResHigh))).toEqual([
       'bulkhead',

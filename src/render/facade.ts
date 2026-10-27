@@ -65,6 +65,13 @@ interface HSL {
 
 /** "floors = height/3.2m"; also the window-row floor height. */
 export { FLOOR_HEIGHT_METERS };
+/** A residential tower's floor to floor, inside the 3.3–3.9 m a flat-plate slab is built to. */
+export const TOWER_FLOOR_M = 3.6;
+
+/** The floor to floor a kind's body is cut into rows by: a tower's own, every other body's storey. */
+export function floorToFloorOf(kind: BuildingKind | undefined): number {
+  return kind === 'tower' ? TOWER_FLOOR_M : FLOOR_HEIGHT_METERS;
+}
 /** "bays from footprint" — a ~2.6m structural bay width. */
 export const BAY_WIDTH_METERS = 2.6;
 /** Each punched window leaves this share of its grid cell as wall on every side. */
@@ -73,10 +80,23 @@ export const MULLION_MARGIN_PUNCHED = 0.22;
 /** Upper-floor mullion/frame colour: the wall colour darkened, which is most of what a wall shows. */
 export const FRAME_DARKEN = 0.55;
 
+/**
+ * Per-building seed multiplier for combining (buildingId, windowIndex) into
+ * one window hash seed; its last slot is reserved for the building's own lit
+ * fraction, so a tier's cells (cols × rows) must stay below it. A power of
+ * two keeps `buildingId * WINDOW_SEED_SLOTS` exactly representable in the
+ * shader's float32 up to buildingId ~131,072.
+ */
+export const WINDOW_SEED_SLOTS = 128;
 const MIN_WINDOW_COLS = 2;
 const MAX_WINDOW_COLS = 8;
 const MIN_WINDOW_ROWS = 1;
 const MAX_WINDOW_ROWS = 15; // MAX_WINDOW_COLS * MAX_WINDOW_ROWS stays under the window seed's fraction slot
+
+/** The most rows a tower may carry over `cols` columns: its floors are its own pitch, so it takes every cell the seed slot leaves below the fraction slot. */
+function towerMaxRows(cols: number): number {
+  return Math.floor((WINDOW_SEED_SLOTS - 1) / cols);
+}
 const WINDOW_COLS_PER_TILE = 2;
 /**
  * Row-house massing: a terrace's narrow attached footprints are one stretched
@@ -191,9 +211,10 @@ export function windowGrid(
       ? houseBayCount(entry)
       : avgFootprintTiles * colsPerTile;
   const cols = Math.min(MAX_WINDOW_COLS, Math.max(MIN_WINDOW_COLS, Math.round(wanted)));
+  const maxRows = entry.kind === 'tower' ? towerMaxRows(cols) : MAX_WINDOW_ROWS;
   const rows = Math.min(
-    MAX_WINDOW_ROWS,
-    Math.max(MIN_WINDOW_ROWS, Math.round(tierHeight / FLOOR_HEIGHT_METERS)),
+    maxRows,
+    Math.max(MIN_WINDOW_ROWS, Math.round(tierHeight / floorToFloorOf(entry.kind))),
   );
   return { cols, rows };
 }
@@ -296,6 +317,133 @@ const INDUSTRIAL_ROOF_PALETTES: Readonly<Record<IndustrialKind, readonly Materia
   paper: ['greyMembrane'],
 };
 
+// ---------------------------------------------------------------------------
+// The residential kinds' bodies: a house takes a cladding by the share of
+// new US houses built in it and a siding its colour by the share sold; each
+// apartment block takes one of its own short list. Every share is a constant
+// with its source beside it; the pick is by id hash under HASH_SLOT_KIND_WALL
+// as a commercial body's is, and every name is a chart entry, so it is never
+// clamped.
+// ---------------------------------------------------------------------------
+
+/** A chart material and the share of a kind's bodies drawn in it. */
+export interface MaterialShare {
+  readonly material: MaterialName;
+  readonly share: number;
+}
+
+/** Principal exterior wall of 2024 single-family starts (NAHB on the Census Survey of Construction): vinyl 26%, stucco 25%, fibre cement 23%, brick 16%, wood 6%. */
+const VINYL_SIDING_SHARE = 0.26;
+const STUCCO_SHARE = 0.25;
+const FIBRE_CEMENT_SIDING_SHARE = 0.23;
+const BRICK_SHARE = 0.16;
+const WOOD_SHARE = 0.06;
+/** Vinyl and fibre cement both read as lap siding at 40 m. */
+const LAP_SIDING_SHARE = VINYL_SIDING_SHARE + FIBRE_CEMENT_SIDING_SHARE;
+/** What the five claddings leave (stone, block and the rest), drawn as the chart's coloured plasters in equal parts. */
+const OTHER_CLADDING_SHARE = 1 - LAP_SIDING_SHARE - STUCCO_SHARE - BRICK_SHARE - WOOD_SHARE;
+const OTHER_CLADDING_MATERIALS: readonly MaterialName[] = ['yellowPlaster', 'greenPlaster'];
+
+/** Siding colours sold (Alside's 2025 survey): off-white 18%, white 16%, light brown 13%, light grey 11%, medium blue 8%, normalised over the lap siding share. */
+const SIDING_COLOUR_WEIGHTS: readonly MaterialShare[] = [
+  { material: 'sidingOffWhite', share: 18 },
+  { material: 'sidingWhite', share: 16 },
+  { material: 'sidingLightBrown', share: 13 },
+  { material: 'sidingLightGrey', share: 11 },
+  { material: 'sidingBlue', share: 8 },
+];
+
+/** `weights` scaled so they sum to `total`. */
+function scaledToShare(
+  weights: readonly MaterialShare[],
+  total: number,
+): readonly MaterialShare[] {
+  const sum = weights.reduce((acc, w) => acc + w.share, 0);
+  return weights.map((w) => ({ material: w.material, share: (total * w.share) / sum }));
+}
+
+/** `materials` in equal shares summing to one. */
+function evenShares(materials: readonly MaterialName[]): readonly MaterialShare[] {
+  return materials.map((material) => ({ material, share: 1 / materials.length }));
+}
+
+/** A house's body: lap siding by colour, stucco, brick, wood and the rest. The duplex, fourplex, townhouse and multiplex are a house's form and take the same. */
+export const HOUSE_BODY_SHARES: readonly MaterialShare[] = [
+  ...scaledToShare(SIDING_COLOUR_WEIGHTS, LAP_SIDING_SHARE),
+  { material: 'whitePlaster', share: STUCCO_SHARE },
+  { material: 'redBrick', share: BRICK_SHARE },
+  { material: 'brightWood', share: WOOD_SHARE },
+  ...scaledToShare(evenShares(OTHER_CLADDING_MATERIALS), OTHER_CLADDING_SHARE),
+];
+/** A garden walk-up is fibre cement and brick colour-blocked: the body in one, its alternate stacks in the other. */
+export const GARDEN_BODY_SHARES: readonly MaterialShare[] = evenShares([
+  'sidingLightGrey',
+  'redBrick',
+]);
+/** A 5-over-1's storeys are fibre cement panels over the brick podium. */
+export const MIDRISE_BODY_SHARES: readonly MaterialShare[] = evenShares([
+  'sidingLightGrey',
+  'sidingOffWhite',
+]);
+/** A tower is a curtain wall. */
+export const TOWER_BODY_SHARES: readonly MaterialShare[] = evenShares(['curtainWall']);
+
+/** The shares a residential kind's body is drawn by, or null for anything that is not one. */
+export function residentialBodyShares(
+  kind: BuildingKind | undefined,
+): readonly MaterialShare[] | null {
+  switch (kind) {
+    case 'garden':
+      return GARDEN_BODY_SHARES;
+    case 'midrise':
+      return MIDRISE_BODY_SHARES;
+    case 'tower':
+      return TOWER_BODY_SHARES;
+    default:
+      return kind === 'multiplex' || isHouseKind(kind) ? HOUSE_BODY_SHARES : null;
+  }
+}
+
+/** A material and the top of its run of the cumulative shares: a draw `u` below `upTo` (and above the previous entry's) lands on it. */
+export interface ShareThreshold {
+  readonly material: MaterialName;
+  readonly upTo: number;
+}
+
+/** The cumulative runs of `shares`, in order, which the CPU pick and the shader's select cascade both walk. */
+export function shareThresholds(shares: readonly MaterialShare[]): readonly ShareThreshold[] {
+  let acc = 0;
+  return shares.map((s) => {
+    acc += s.share;
+    return { material: s.material, upTo: acc };
+  });
+}
+
+/** The material whose run of the cumulative shares `u` in [0, 1) lands in; the last one past any rounding. */
+export function pickByShare(shares: readonly MaterialShare[], u: number): MaterialName {
+  const thresholds = shareThresholds(shares);
+  for (const t of thresholds) if (u < t.upTo) return t.material;
+  return thresholds[thresholds.length - 1]!.material;
+}
+
+/** A residential kind's body material by id hash, or null for any other kind. */
+export function residentialBodyMaterial(
+  kind: BuildingKind | undefined,
+  buildingId: number,
+): MaterialName | null {
+  const shares = residentialBodyShares(kind);
+  return shares ? pickByShare(shares, facadeHash(buildingId, HASH_SLOT_KIND_WALL)) : null;
+}
+
+/** A residential kind's wall base: its body material's chart colour, before hue jitter; null for any other kind. */
+export function residentialWallBase(
+  kind: BuildingKind | undefined,
+  buildingId: number,
+): RGB | null {
+  const material = residentialBodyMaterial(kind, buildingId);
+  return material ? materialUnit(material) : null;
+}
+
 /**
  * Which industrial kinds keep the facade's accent stripe at 2/3 height: the
  * sheds. A warehouse's colour band is the kit's tilt-up band, and the heavy
@@ -332,7 +480,7 @@ function industrialKindOf(kind: BuildingKind | undefined): IndustrialKind | null
   return kind !== undefined && kind in INDUSTRIAL_BODY_PALETTES ? (kind as IndustrialKind) : null;
 }
 
-/** The chart materials a kind's body is drawn from, or null for a kind that keeps its own path (houses, farms, no kind). */
+/** The chart materials a commercial or industrial kind's body rotates among evenly, or null for a kind that keeps its own path (the residential kinds, which draw by share; farms; no kind). */
 export function bodyPaletteFor(
   kind: BuildingKind | undefined,
   level: number = 1,
@@ -517,8 +665,10 @@ export function industrialWallBase(buildingId: number): RGB {
   return paletteAt(INDUSTRIAL_WALL_PALETTE, Math.min(index, INDUSTRIAL_WALL_PALETTE.length - 1));
 }
 
-/** A kind's wall base: one of its chart materials by id hash, before hue jitter; null where the kind has no palette of its own. */
+/** A kind's wall base, before hue jitter: a residential kind's by share, a commercial or industrial kind's one of its chart materials by id hash; null where the kind has no palette of its own. */
 export function kindWallBase(entry: BuildingCatalogEntry, buildingId: number): RGB | null {
+  const residential = residentialWallBase(entry.kind, buildingId);
+  if (residential) return residential;
   const palette = bodyPaletteFor(entry.kind, entry.level);
   if (!palette) return null;
   const units = paletteUnits(palette);

@@ -308,31 +308,32 @@ sources there) draws houses and blocks in the materials and colours the
 Census Survey of Construction and the trade's own sales rankings give, each
 share a constant with its source beside it, chosen by id hash:
 
-| What                | Share or rule                                                                                                                    | Chart materials                                                                                                                         |
-| ------------------- | -------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
-| Siding              | vinyl 26%, stucco 25%, fibre cement 23%, brick 16%, wood 6% (2024 starts); vinyl and fibre cement read as lap siding             | `sidingOffWhite`, `sidingWhite`, `sidingLightBrown`, `sidingLightGrey`, `sidingBlue`, `whitePlaster` (stucco), `redBrick`, `brightWood` |
-| Siding colour       | off-white 18%, white 16%, light brown 13%, light grey 11%, medium blue 8%; the rest spread over the chart's plasters             | as above                                                                                                                                |
-| Roof                | laminated asphalt shingle on two thirds; charcoal, weathered wood, pewter grey, barkwood by sales rank; tile 13% in the Sun Belt | `shingleCharcoal`, `shingleWeathered`, `shinglePewter`, `shingleBarkwood`, `clayRoof`                                                   |
-| Storeys             | 52% two or more (ranch and cape one, colonial two)                                                                               |                                                                                                                                         |
-| Garage              | two-car 65% (4.9 m door), three-car 15% (two doors), one-car 9% (2.7 m door); the rest none                                      | `whitePlaster` door                                                                                                                     |
-| Porch               | 67% of houses, 2.4 m deep; the craftsman's the full width on 0.4 m tapered columns on `stoneBrick` piers                         |                                                                                                                                         |
-| Chimney             | under 40% (over 60% of new houses have no fireplace)                                                                             | `redBrick`                                                                                                                              |
-| Windows             | 1 × 1.5 m panes on a 2.4 m bay (the night rule's), shutters on the colonial and the cape                                         |                                                                                                                                         |
-| Townhouse           | units 4.9, 6.1 or 7.3 m wide (16, 20, 24 ft); colour by unit from the siding list                                                |                                                                                                                                         |
-| Garden apartment    | balconies 1.8 m deep, a stair tower and breezeway per pair of stacks                                                             | `sidingLightGrey`, `redBrick` colour-blocked by stack                                                                                   |
-| 5-over-1 (mid-rise) | the podium 4.6 m in `redBrick`; the storeys above in two or three colour-blocked panel fields                                    | `sidingLightGrey`, `sidingOffWhite`, `darkPanel`                                                                                        |
-| Tower               | 3.6 m a floor; the rooftop plant inside a screen the plant's height                                                              | `curtainWall`, `spandrelDark`                                                                                                           |
+| What                | Share or rule                                                                                                                                              | Chart materials                                                                                                                         |
+| ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| Siding              | vinyl 26%, stucco 25%, fibre cement 23%, brick 16%, wood 6% (2024 starts); vinyl and fibre cement read as lap siding                                       | `sidingOffWhite`, `sidingWhite`, `sidingLightBrown`, `sidingLightGrey`, `sidingBlue`, `whitePlaster` (stucco), `redBrick`, `brightWood` |
+| Siding colour       | off-white 18%, white 16%, light brown 13%, light grey 11%, medium blue 8%; the rest spread over the chart's plasters                                       | as above                                                                                                                                |
+| Roof                | laminated asphalt shingle on two thirds; charcoal, weathered wood, pewter grey, barkwood by sales rank; tile 13% in the Sun Belt                           | `shingleCharcoal`, `shingleWeathered`, `shinglePewter`, `shingleBarkwood`, `clayRoof`                                                   |
+| Storeys             | 52% two or more (ranch and cape one, colonial two)                                                                                                         |                                                                                                                                         |
+| Garage              | two-car 65% (4.9 m door), three-car 15% (two doors), one-car 9% (2.7 m door); the rest none                                                                | `whitePlaster` door                                                                                                                     |
+| Porch               | 67% of houses, 2.4 m deep; the craftsman's the full width on 0.4 m tapered columns on `stoneBrick` piers                                                   |                                                                                                                                         |
+| Chimney             | under 40% (over 60% of new houses have no fireplace)                                                                                                       | `redBrick`                                                                                                                              |
+| Windows             | 1 × 1.5 m panes on a 2.4 m bay (the night rule's), shutters on the colonial and the cape                                                                   |                                                                                                                                         |
+| Townhouse           | units 4.9, 6.1 or 7.3 m wide (16, 20, 24 ft); colour by unit from the siding list                                                                          |                                                                                                                                         |
+| Garden apartment    | balconies 1.8 m deep, a stair tower and breezeway per pair of stacks                                                                                       | `sidingLightGrey`, `redBrick` colour-blocked by stack                                                                                   |
+| 5-over-1 (mid-rise) | the podium 4.6 m in `redBrick`; the storeys above in two or three colour-blocked panel fields                                                              | `sidingLightGrey`, `sidingOffWhite`, `darkPanel`                                                                                        |
+| Tower               | 3.3–3.9 m a floor cut from its height (11, 16 and 21 floors by level, where the sim counts 3.2 m storeys); its lift penthouse is the one thing on its roof | `curtainWall`, `spandrelDark`                                                                                                           |
 
 The new chart entries — `sidingOffWhite`, `sidingWhite`, `sidingLightBrown`,
 `sidingLightGrey`, `sidingBlue`, `shingleCharcoal`, `shingleWeathered`,
 `shinglePewter`, `shingleBarkwood` — are measured under the chart's rules;
 siding "white" sits at the ceiling, never above it. The shares are the
-house kit's dials and the only place a share is read; a house's kind (ranch,
-cape, colonial, craftsman, split-level) keeps its own silhouette rules
-above, with the craftsman and the split-level added to the kinds it draws:
-the craftsman a low gable with wide eaves and the deep porch; the
-split-level a two-storey block beside a one-storey wing with the garage on
-the low level.
+house kit's dials and the only place a share is read; a house's form keeps
+its own silhouette rules above. The one-storey house takes one of three
+forms by seed, no catalog entry changing: the ranch; the craftsman, a low
+gable with wide eaves and the deep porch on tapered columns; the
+split-level, a two-storey block beside a one-storey wing with the garage on
+the low level. The cape and the colonial stand at the levels above as they
+do now.
 
 ### The house kit's parts
 

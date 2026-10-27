@@ -4,10 +4,11 @@
  * each body box with its facade shader; this stands up everything else that
  * makes a home read as a home, on the lot plan houselot.ts lays out from the
  * street the home fronts:
- *   - a pitched GABLE ROOF over the body, by the house it is (a ranch, a Cape,
+ *   - a pitched GABLE ROOF over the body, by the house it is (a ranch, a
+ *     craftsman, a split-level with its second storey over the block, a Cape,
  *     a colonial, a row), with its fascia, chimney and dormers;
  *   - what each drive ends at — a carport, an attached or detached garage, a
- *     garage door in a row's facade — and the resident's car on the drive;
+ *     garage door in the facade — and the resident's car on the drive;
  *   - a front door on the street-facing wall, its stoop, portico or porch,
  *     and shutters on the street face's windows;
  *   - the yard: fence, above-ground pool, trampoline, grill, bushes and trees.
@@ -52,8 +53,6 @@ import {
   DORMER_WIDTH_M,
   GARAGE_LEAF_DEPTH_M,
   GARAGE_LEAF_HEIGHT_M,
-  GARAGE_LEAF_ROW_WIDTH_M,
-  GARAGE_LEAF_WIDTH_M,
   POOL_RADIUS_M,
   PORTICO_DEPTH_M,
   PORTICO_HOOD_M,
@@ -97,17 +96,28 @@ const HASH_SLOT_TRIM = 75;
 const INITIAL_KIT_CAPACITY = 64;
 
 /**
- * Roof-tile palette, spread across the calibrated range rather than bunched at
- * its dark end: pale, mid, warm, cool, dark. The ceiling is a ceiling, not a
- * target — five roofs all picked from 47..75 turn a street of houses into one
- * dark mass, which is a worse picture than the over-bright one it replaced.
+ * What a house's roof is covered in, by the share of new single-family roofs
+ * (Home Innovation): laminated asphalt shingle on two thirds and tile on 13%,
+ * metal and the rest folded into the shingle share so the two sum to one.
+ * GAF gives its 2025 shingle colours by sales rank only — charcoal, weathered
+ * wood, pewter grey, barkwood — so each takes a descending rank weight,
+ * 4:3:2:1, of the shingle share.
  */
-const ROOF_PALETTE: readonly number[] = [
-  materialHex('whiteBrick'), // pale
-  materialHex('stoneBrick'), // mid
-  materialHex('clayRoof'), // warm
-  materialHex('metalPlates'), // cool
-  materialHex('slateRoof'), // dark
+const TILE_ROOF_SHARE = 0.13;
+const SHINGLE_ROOF_SHARE = 1 - TILE_ROOF_SHARE;
+const SHINGLE_RANK_WEIGHTS: readonly (readonly [number, number])[] = [
+  [materialHex('shingleCharcoal'), 4],
+  [materialHex('shingleWeathered'), 3],
+  [materialHex('shinglePewter'), 2],
+  [materialHex('shingleBarkwood'), 1],
+];
+const SHINGLE_RANK_WEIGHT_SUM = SHINGLE_RANK_WEIGHTS.reduce((sum, [, weight]) => sum + weight, 0);
+/** Each roof material's hex and the share of houses under it, summing to one. */
+export const HOUSE_ROOF_SHARES: readonly (readonly [number, number])[] = [
+  ...SHINGLE_RANK_WEIGHTS.map(
+    ([hex, weight]) => [hex, (SHINGLE_ROOF_SHARE * weight) / SHINGLE_RANK_WEIGHT_SUM] as const,
+  ),
+  [materialHex('clayRoof'), TILE_ROOF_SHARE],
 ];
 /** Garage wall — plaster, distinct from the roof. */
 const GARAGE_WALL_COLOR = materialHex('whitePlaster');
@@ -151,11 +161,19 @@ const YARD_TREE_SCALE = 0.8;
 /** A resident's car is painted from the same list as every other car. */
 const CAR_PALETTE: readonly number[] = VEHICLE_PALETTE_HEX;
 
-/** Deterministic roof color hex for a building. Pure. */
+/** A house's roof colour by id: the material whose run of the cumulative shares the id's hash lands in. Pure. */
 export function roofColorHex(buildingId: number): number {
-  const i = Math.floor(hash1(buildingId + HASH_SLOT_ROOF_COLOR) * ROOF_PALETTE.length);
-  return ROOF_PALETTE[Math.min(ROOF_PALETTE.length - 1, i)]!;
+  const u = hash1(buildingId + HASH_SLOT_ROOF_COLOR);
+  let acc = 0;
+  for (const [hex, share] of HOUSE_ROOF_SHARES) {
+    acc += share;
+    if (u < acc) return hex;
+  }
+  return HOUSE_ROOF_SHARES[HOUSE_ROOF_SHARES.length - 1]![0];
 }
+
+/** A craftsman's porch piers. */
+const PIER_COLOR = materialHex('stoneBrick');
 
 /** Relative luminance of a wall as it is mostly drawn, in its darkened frame colour. */
 export function wallLuminance(wall: readonly [number, number, number]): number {
@@ -676,11 +694,20 @@ export class HouseRoofRenderer {
       );
     };
     const { roof } = kit;
-    gable(roof.rect, true, kit.heightM, roof.eaveM, roof.slope);
-    const edgeY = kit.heightM - roof.eaveM * roof.slope;
-    for (const v0 of [roof.rect.v0, roof.rect.v1 - FASCIA_THICKNESS_M]) {
-      const rect = { u0: roof.rect.u0, u1: roof.rect.u1, v0, v1: v0 + FASCIA_THICKNESS_M };
-      boxOf('fascia', { rect, y0: edgeY - FASCIA_DEPTH_M, y1: edgeY }, trim);
+    // A gable along the frontage over `rect` from the wall top, with a fascia board along each eave.
+    const mainRoof = (rect: LotRect, wallTop: number): void => {
+      gable(rect, true, wallTop, roof.eaveM, roof.slope);
+      const edgeY = wallTop - roof.eaveM * roof.slope;
+      for (const v0 of [rect.v0, rect.v1 - FASCIA_THICKNESS_M]) {
+        const band = { u0: rect.u0, u1: rect.u1, v0, v1: v0 + FASCIA_THICKNESS_M };
+        boxOf('fascia', { rect: band, y0: edgeY - FASCIA_DEPTH_M, y1: edgeY }, trim);
+      }
+    };
+    mainRoof(roof.rect, kit.heightM);
+    if (kit.upper) {
+      // The split-level's second storey, in the body's wall, under a gable of its own.
+      boxOf('garage', kit.upper.box, wall);
+      mainRoof(kit.upper.roof.rect, kit.upper.box.y1);
     }
     for (const chimney of kit.chimneys) boxOf('chimney', chimney, CHIMNEY_COLOR);
     for (const dormer of kit.dormers) {
@@ -724,6 +751,7 @@ export class HouseRoofRenderer {
     }
     if (kit.porch) {
       boxOf('porch', kit.porch.floor, PORCH_FLOOR_COLOR);
+      for (const pier of kit.porch.piers) boxOf('porch', pier, PIER_COLOR);
       for (const post of kit.porch.posts) boxOf('porch', post, trim);
       const { rect, lowM, wallM } = kit.porch.roof;
       const at = lotToWorld(plan.frame, (rect.u0 + rect.u1) / 2, rect.v1);
@@ -795,18 +823,9 @@ export class HouseRoofRenderer {
         const c = worldBox(plan, drive.coverRect);
         put('carport', c.x, this.heightAt(c.x, c.z), c.z, carportYaw, 1, 1, 1, CARPORT_COLOR, true);
       }
-      if (drive.garageDoor) {
-        // A row's single door is 8 ft wide, a house's 9 ft; both stand proud of the garage face.
-        const d = drive.garageDoor;
-        const centre = (d.u0 + d.u1) / 2;
-        const half =
-          (drive.cover === 'integralGarage' ? GARAGE_LEAF_ROW_WIDTH_M : GARAGE_LEAF_WIDTH_M) / 2;
-        const b = worldBox(plan, {
-          u0: centre - half,
-          u1: centre + half,
-          v0: d.v - GARAGE_LEAF_DEPTH_M,
-          v1: d.v,
-        });
+      // Each leaf at its own width — a row's 8 ft single, a house's 9 ft single or 16 ft double — proud of the face.
+      for (const d of drive.garageDoors) {
+        const b = worldBox(plan, { u0: d.u0, u1: d.u1, v0: d.v - GARAGE_LEAF_DEPTH_M, v1: d.v });
         put('garageLeaf', b.x, doorGround, b.z, 0, b.sx, GARAGE_LEAF_HEIGHT_M, b.sz, trim, true);
       }
     }

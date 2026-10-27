@@ -131,6 +131,21 @@ export const MATERIALS = {
   oxideRed: [88, 42, 32],
   darkPanel: [44, 45, 47],
   woodChip: [112, 92, 62],
+
+  // Houses: lap siding in the five colours the trade sells most, white at
+  // the ceiling and never above it, blue as the chart's blue plaster lifted
+  // to a medium; laminated asphalt shingle in its four best-selling colours,
+  // charcoal near coal, weathered wood as dark wood greyed, pewter as metal
+  // plates, barkwood as darkest wood warmed.
+  sidingOffWhite: [132, 128, 118],
+  sidingWhite: [138, 138, 136],
+  sidingLightBrown: [112, 96, 78],
+  sidingLightGrey: [112, 112, 110],
+  sidingBlue: [58, 76, 98],
+  shingleCharcoal: [40, 40, 41],
+  shingleWeathered: [66, 58, 50],
+  shinglePewter: [74, 76, 78],
+  shingleBarkwood: [58, 48, 40],
 } as const satisfies Record<string, RGB255>;
 
 export type MaterialName = keyof typeof MATERIALS;

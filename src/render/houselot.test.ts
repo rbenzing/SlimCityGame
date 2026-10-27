@@ -2,22 +2,39 @@ import { describe, expect, it } from 'vitest';
 import {
   CAR_HALF_LENGTH_M,
   CHIMNEY_FLUE_M,
+  CHIMNEY_SHARE,
   CHIMNEY_STACK_M,
+  CRAFTSMAN_COLUMN_M,
+  CRAFTSMAN_PIER_HEIGHT_M,
+  CRAFTSMAN_PIER_M,
   DOOR_WIDTH_M,
   DORMER_WIDTH_M,
   DRIVE_WIDTH_M,
+  GARAGE_DOOR_DOUBLE_M,
+  GARAGE_DOOR_SINGLE_M,
+  GARAGE_LEAF_ROW_WIDTH_M,
+  GARAGE_ONE_CAR_SHARE,
+  GARAGE_THREE_CAR_SHARE,
+  GARAGE_TWO_CAR_SHARE,
+  GARAGE_WIDTH_M,
   PARAPET_ABOVE_ROOF_M,
   PARAPET_THICKNESS_M,
   POOL_RADIUS_M,
   PORCH_DEPTH_M,
+  PORCH_SHARE,
   POST_M,
   SHUTTER_THICKNESS_M,
+  SPLIT_UPPER_STOREY_M,
   TRAMPOLINE_RADIUS_M,
+  chimneyRolled,
   driveRoadTiles,
+  garageBaysOf,
   houseStyleOf,
   planHouseGround,
   planHouseLot,
+  porchRolled,
   type HouseLotPlan,
+  type HouseStyle,
   type KitBox,
   type LotRect,
 } from './houselot';
@@ -178,7 +195,14 @@ describe('planHouseLot — the drive', () => {
     for (const plan of streetOf(small)) {
       expect(plan.drives).toHaveLength(1);
       const drive = plan.drives[0]!;
-      expect(drive.rect.u1 - drive.rect.u0).toBeCloseTo(DRIVE_WIDTH_M, 6);
+      // One car wide, or as wide as the garage doors it runs up to.
+      const doorsW =
+        drive.garageDoors.length > 0
+          ? Math.max(...drive.garageDoors.map((d) => d.u1)) -
+            Math.min(...drive.garageDoors.map((d) => d.u0))
+          : 0;
+      const expectedW = drive.cover === 'detachedGarage' ? DRIVE_WIDTH_M : Math.max(DRIVE_WIDTH_M, doorsW);
+      expect(drive.rect.u1 - drive.rect.u0).toBeCloseTo(expectedW, 6);
       expect(drive.rect.v0).toBeCloseTo(-VERGE, 6);
       expect(drive.cut).toEqual({
         u0: drive.rect.u0,
@@ -223,9 +247,17 @@ describe('planHouseLot — the drive', () => {
   });
 
   it('ends at every kind of cover along a street, a detached garage only where the lot is deep enough', () => {
-    const plans = streetOf(villa);
+    // The first three homes the seed leaves without a garage and with a carport are split-levels, whose drive is a pad; 160 ids reach a ranch's.
+    const plans = streetOf(villa, 160);
     const covers = new Set(plans.flatMap((p) => p.drives.map((d) => d.cover)));
-    expect([...covers].sort()).toEqual(['carport', 'detachedGarage', 'garage', 'spot']);
+    expect([...covers].sort()).toEqual([
+      'carport',
+      'detachedGarage',
+      'garage',
+      'integralGarage',
+      'pad',
+      'spot',
+    ]);
     for (const plan of plans) {
       for (const drive of plan.drives) {
         if (drive.cover !== 'detachedGarage') continue;
@@ -241,7 +273,7 @@ describe('planHouseLot — the drive', () => {
     const g = drive.coverRect!;
     const touches = Math.abs(g.u0 - plan.body.u1) < 1e-6 || Math.abs(g.u1 - plan.body.u0) < 1e-6;
     expect(touches).toBe(true);
-    expect(drive.garageDoor!.v).toBeCloseTo(g.v0, 6);
+    for (const door of drive.garageDoors) expect(door.v).toBeCloseTo(g.v0, 6);
   });
 
   it('names the road tiles its drives cross, so a lamp keeps out of them', () => {
@@ -402,67 +434,94 @@ const kitFourplex = entry({ kind: 'fourplex', footprint: { w: 1, d: 2 }, height:
 
 const near = (a: number, b: number, digits = 6): void => expect(a).toBeCloseTo(b, digits);
 
+/** The plans along a street with the id each was seeded by. */
+const seededStreet = (e: BuildingCatalogEntry, count = 60): { id: number; plan: HouseLotPlan }[] =>
+  streetOf(e, count).map((plan, i) => ({ id: i + 1, plan }));
+
 describe('planHouseLot — the house kit by level', () => {
-  it('reads a detached house as a ranch, a Cape or a colonial by level, and the attached kinds by kind', () => {
-    expect(houseStyleOf(kitRanch)).toBe('ranch');
-    expect(houseStyleOf(kitCape)).toBe('cape');
-    expect(houseStyleOf(kitColonial)).toBe('colonial');
-    expect(houseStyleOf(kitDuplex)).toBe('attached');
-    expect(houseStyleOf(kitFourplex)).toBe('attached');
-    expect(houseStyleOf(terrace)).toBe('row');
+  it('reads a one-storey house as a ranch, a craftsman or a split-level by seed, a Cape and a colonial by level, and the attached kinds by kind', () => {
+    // Ids 1, 2 and 3 happen to draw the three forms in turn.
+    expect(houseStyleOf(kitRanch, 1)).toBe('ranch');
+    expect(houseStyleOf(kitRanch, 2)).toBe('craftsman');
+    expect(houseStyleOf(kitRanch, 3)).toBe('splitLevel');
+    for (let id = 1; id <= 50; id++) {
+      expect(houseStyleOf(kitCape, id)).toBe('cape');
+      expect(houseStyleOf(kitColonial, id)).toBe('colonial');
+      expect(houseStyleOf(kitDuplex, id)).toBe('attached');
+      expect(houseStyleOf(kitFourplex, id)).toBe('attached');
+      expect(houseStyleOf(terrace, id)).toBe('row');
+    }
   });
 
-  it('gives a ranch a 5:12 roof with 0.46 m eaves all round, an interior chimney and a stoop, and no shutters', () => {
-    for (const { kit, body } of streetOf(kitRanch, 20)) {
-      expect(kit.style).toBe('ranch');
+  it('gives a ranch a 5:12 roof with 0.46 m eaves all round, an interior chimney by the share, a stoop or a porch, and no shutters', () => {
+    const ranches = seededStreet(kitRanch).filter(({ plan }) => plan.kit.style === 'ranch');
+    expect(ranches.length).toBeGreaterThan(5);
+    for (const { id, plan } of ranches) {
+      const { kit, body } = plan;
       near(kit.roof.slope, 5 / 12);
       near(kit.roof.rect.u0, body.u0 - 0.46);
       near(kit.roof.rect.u1, body.u1 + 0.46);
       near(kit.roof.rect.v0, body.v0 - 0.46);
       near(kit.roof.rect.v1, body.v1 + 0.46);
+      expect(kit.upper).toBeNull();
 
-      expect(kit.chimneys).toHaveLength(1);
-      const chimney = kit.chimneys[0]!;
-      near(chimney.rect.u1 - chimney.rect.u0, CHIMNEY_FLUE_M);
-      near(chimney.rect.v1 - chimney.rect.v0, CHIMNEY_FLUE_M);
-      near((chimney.rect.v0 + chimney.rect.v1) / 2, (body.v0 + body.v1) / 2); // through the ridge
-      near(chimney.y1, 4 + kit.roof.riseM + 0.9);
+      expect(kit.chimneys).toHaveLength(chimneyRolled(id) ? 1 : 0);
+      for (const chimney of kit.chimneys) {
+        near(chimney.rect.u1 - chimney.rect.u0, CHIMNEY_FLUE_M);
+        near(chimney.rect.v1 - chimney.rect.v0, CHIMNEY_FLUE_M);
+        near((chimney.rect.v0 + chimney.rect.v1) / 2, (body.v0 + body.v1) / 2); // through the ridge
+        near(chimney.y1, 4 + kit.roof.riseM + 0.9);
+      }
 
-      expect(kit.stoops).toHaveLength(1);
-      const stoop = kit.stoops[0]!;
-      near(stoop.rect.u1 - stoop.rect.u0, 1.2);
-      near(stoop.rect.v1 - stoop.rect.v0, 1.5);
-      near(stoop.y1, 0.2);
+      if (kit.porch) {
+        expect(porchRolled(id)).toBe(true);
+        expect(kit.porch.piers).toEqual([]);
+      } else {
+        expect(kit.stoops).toHaveLength(1);
+        const stoop = kit.stoops[0]!;
+        near(stoop.rect.u1 - stoop.rect.u0, 1.2);
+        near(stoop.rect.v1 - stoop.rect.v0, 1.5);
+        near(stoop.y1, 0.2);
+      }
 
       expect(kit.shutters).toEqual([]);
       expect(kit.dormers).toEqual([]);
       expect(kit.porticos).toEqual([]);
-      expect(kit.porch).toBeNull();
     }
+    expect(ranches.some(({ plan }) => plan.kit.porch)).toBe(true);
+    expect(ranches.some(({ plan }) => plan.kit.chimneys.length === 0)).toBe(true);
   });
 
-  it('gives a Cape an 8:12 roof with 0.2 m eaves, a central chimney, a portico on a three-riser stoop and two dormers', () => {
-    for (const { kit, body } of streetOf(kitCape, 20)) {
+  it('gives a Cape an 8:12 roof with 0.2 m eaves, a central chimney by the share, a portico on a three-riser stoop or a porch, and two dormers', () => {
+    for (const { id, plan } of seededStreet(kitCape, 20)) {
+      const { kit, body } = plan;
       expect(kit.style).toBe('cape');
       near(kit.roof.slope, 8 / 12);
       near(kit.roof.eaveM, 0.2);
       near(kit.roof.rakeM, 0.2);
       near(kit.roof.rect.v0, body.v0 - 0.2);
 
-      expect(kit.chimneys).toHaveLength(1);
-      const c = kit.chimneys[0]!.rect;
-      near((c.u0 + c.u1) / 2, (body.u0 + body.u1) / 2);
-      near(kit.chimneys[0]!.y1, 5 + kit.roof.riseM + 0.9);
+      expect(kit.chimneys).toHaveLength(chimneyRolled(id) ? 1 : 0);
+      for (const chimney of kit.chimneys) {
+        const c = chimney.rect;
+        near((c.u0 + c.u1) / 2, (body.u0 + body.u1) / 2);
+        near(chimney.y1, 5 + kit.roof.riseM + 0.9);
+      }
 
-      expect(kit.porticos).toHaveLength(1);
-      expect(kit.stoops).toHaveLength(3);
-      const [landing, tread2, tread1] = kit.stoops as [KitBox, KitBox, KitBox];
-      near(landing.y1, 0.6);
-      expect(landing.rect.v1 - landing.rect.v0).toBeGreaterThanOrEqual(0.9);
-      near(tread2.rect.v1 - tread2.rect.v0, 0.25);
-      near(tread1.rect.v1 - tread1.rect.v0, 0.25);
-      near(tread2.y1, 0.4);
-      near(tread1.y1, 0.2);
+      if (kit.porch) {
+        expect(porchRolled(id)).toBe(true);
+        expect(kit.porticos).toEqual([]);
+      } else {
+        expect(kit.porticos).toHaveLength(1);
+        expect(kit.stoops).toHaveLength(3);
+        const [landing, tread2, tread1] = kit.stoops as [KitBox, KitBox, KitBox];
+        near(landing.y1, 0.6);
+        expect(landing.rect.v1 - landing.rect.v0).toBeGreaterThanOrEqual(0.9);
+        near(tread2.rect.v1 - tread2.rect.v0, 0.25);
+        near(tread1.rect.v1 - tread1.rect.v0, 0.25);
+        near(tread2.y1, 0.4);
+        near(tread1.y1, 0.2);
+      }
 
       // Two dormers, evenly spaced, each 1.4 m wide and 0.75 m or more in from an end wall.
       expect(kit.dormers).toHaveLength(2);
@@ -484,15 +543,18 @@ describe('planHouseLot — the house kit by level', () => {
   });
 
   it('gives a colonial a boxed eave, a chimney at a gable end that clears the ridge by 0.6 m, and an entry', () => {
-    const plans = streetOf(kitColonial, 80);
+    const seeded = seededStreet(kitColonial, 80);
+    const plans = seeded.map((s) => s.plan);
     const ends = new Set<string>();
     const counts = new Set<number>();
-    for (const { kit, body, drives } of plans) {
+    for (const { id, plan } of seeded) {
+      const { kit, body, drives } = plan;
       expect(kit.style).toBe('colonial');
       near(kit.roof.slope, 8 / 12);
       near(kit.roof.eaveM, 0.46);
       near(kit.roof.rakeM, 0.2);
-      counts.add(kit.chimneys.length);
+      if (!chimneyRolled(id)) expect(kit.chimneys).toEqual([]);
+      else counts.add(kit.chimneys.length);
       for (const { rect, y0, y1 } of kit.chimneys) {
         near(rect.u1 - rect.u0, CHIMNEY_FLUE_M);
         near(rect.v1 - rect.v0, CHIMNEY_STACK_M);
@@ -518,14 +580,28 @@ describe('planHouseLot — the house kit by level', () => {
     for (const { kit } of plans) expect(Boolean(kit.porch) !== kit.porticos.length > 0).toBe(true);
   });
 
-  it('builds a porch 1.8 m deep across the frontage less a metre each side, 0.6 m up on three risers', () => {
+  it('builds a porch 2.4 m deep across the frontage less a metre each side, cut short of a pad before the wall, 0.6 m up on three risers', () => {
+    expect(PORCH_DEPTH_M).toBe(2.4);
     const porches = streetOf(kitColonial, 80).filter((p) => p.kit.porch);
     expect(porches.length).toBeGreaterThan(0);
-    for (const { kit, body, doors } of porches) {
+    let whole = 0;
+    for (const { kit, body, doors, drives } of porches) {
       const porch = kit.porch!;
       near(porch.floor.rect.v1 - porch.floor.rect.v0, PORCH_DEPTH_M);
-      near(porch.floor.rect.u0, body.u0 + 1);
-      near(porch.floor.rect.u1, body.u1 - 1);
+      expect(porch.floor.rect.u0).toBeGreaterThanOrEqual(body.u0 + 1 - 1e-9);
+      expect(porch.floor.rect.u1).toBeLessThanOrEqual(body.u1 - 1 + 1e-9);
+      const pads = drives.filter((d) => d.rect.u0 < body.u1 && d.rect.u1 > body.u0);
+      if (pads.length === 0) {
+        near(porch.floor.rect.u0, body.u0 + 1);
+        near(porch.floor.rect.u1, body.u1 - 1);
+        whole++;
+      } else {
+        for (const pad of pads) {
+          expect(porch.floor.rect.u1 <= pad.rect.u0 || porch.floor.rect.u0 >= pad.rect.u1).toBe(
+            true,
+          );
+        }
+      }
       near(porch.floor.y1, 0.6);
       // Two treads below the floor make the third riser.
       expect(porch.steps.map((s) => s.y1.toFixed(2))).toEqual(['0.40', '0.20']);
@@ -541,6 +617,7 @@ describe('planHouseLot — the house kit by level', () => {
       near(porch.roof.wallM - porch.floor.y1, 2.9);
       near(porch.roof.lowM, porch.posts[0]!.y1);
     }
+    expect(whole).toBeGreaterThan(0);
   });
 
   it('never builds a porch where a drive would run through it', () => {
@@ -550,6 +627,221 @@ describe('planHouseLot — the house kit by level', () => {
       if (!plan.kit.porch) continue;
       const footprint = plan.kit.entries[0]!;
       for (const d of plan.drives) expect(overlaps(footprint, d.rect)).toBe(false);
+    }
+  });
+});
+
+describe('planHouseLot — the shares the seed draws', () => {
+  const IDS = 2000;
+  const share = (hit: (id: number) => boolean): number => {
+    let n = 0;
+    for (let id = 1; id <= IDS; id++) if (hit(id)) n++;
+    return n / IDS;
+  };
+
+  it('draws each garage size by the completion shares, within 0.02 over 2,000 ids', () => {
+    const within = (bays: number, target: number): void =>
+      expect(Math.abs(share((id) => garageBaysOf(id) === bays) - target)).toBeLessThan(0.02);
+    within(2, GARAGE_TWO_CAR_SHARE);
+    within(3, GARAGE_THREE_CAR_SHARE);
+    within(1, GARAGE_ONE_CAR_SHARE);
+    within(0, 1 - GARAGE_TWO_CAR_SHARE - GARAGE_THREE_CAR_SHARE - GARAGE_ONE_CAR_SHARE);
+  });
+
+  it('gives a porch to 67% and a chimney to under 40%, within 0.02, the same for an id every time', () => {
+    expect(Math.abs(share(porchRolled) - PORCH_SHARE)).toBeLessThan(0.02);
+    expect(Math.abs(share(chimneyRolled) - CHIMNEY_SHARE)).toBeLessThan(0.02);
+    for (let id = 1; id <= 50; id++) {
+      expect(porchRolled(id)).toBe(porchRolled(id));
+      expect(garageBaysOf(id)).toBe(garageBaysOf(id));
+    }
+  });
+
+  it('picks the one-storey form with equal weight, by the id alone', () => {
+    for (const form of ['ranch', 'craftsman', 'splitLevel'] as const) {
+      expect(Math.abs(share((id) => houseStyleOf(kitRanch, id) === form) - 1 / 3)).toBeLessThan(
+        0.02,
+      );
+    }
+    const wider = entry({ footprint: { w: 3, d: 3 }, height: 4, level: 1 });
+    for (let id = 1; id <= 50; id++) expect(houseStyleOf(wider, id)).toBe(houseStyleOf(kitRanch, id));
+  });
+});
+
+describe('planHouseLot — the garage by size and by what the lot fits', () => {
+  const doorWidths = (plan: HouseLotPlan): number[] =>
+    plan.drives.flatMap((d) => d.garageDoors.map((g) => +(g.u1 - g.u0).toFixed(3)));
+  const garageWidth = (plan: HouseLotPlan): number | null => {
+    const d = plan.drives.find((x) => x.coverRect && x.cover !== 'carport');
+    return d ? +(d.coverRect!.u1 - d.coverRect!.u0).toFixed(3) : null;
+  };
+  /** Only a drive's bays are a garage's: a pad's door in the facade has no cover rect. */
+  const baysBuilt = (plan: HouseLotPlan): number => {
+    const doors = doorWidths(plan);
+    return doors.reduce((n, w) => n + (w > 4 ? 2 : 1), 0);
+  };
+
+  it('a two-car garage is 6.1 m wide behind one 4.9 m door, a three-car 9.1 m behind a double and a single, a one-car 3.7 m behind a 2.7 m door', () => {
+    const seen = new Set<number>();
+    for (const { id, plan } of seededStreet(villa, 120)) {
+      if (plan.kit.style === 'splitLevel') continue;
+      const bays = garageBaysOf(id);
+      const width = garageWidth(plan);
+      if (bays === 0) {
+        expect(doorWidths(plan)).toEqual([]);
+        expect(['spot', 'carport', 'pad']).toContain(plan.drives[0]?.cover ?? 'pad');
+        continue;
+      }
+      // The villa's 60 m frontage fits every size, so no three-car falls back here.
+      expect(baysBuilt(plan)).toBe(bays);
+      seen.add(bays);
+      if (width !== null) {
+        near(width, GARAGE_WIDTH_M[bays]);
+        if (bays === 3) {
+          expect(doorWidths(plan).sort()).toEqual([GARAGE_DOOR_SINGLE_M, GARAGE_DOOR_DOUBLE_M]);
+        }
+      }
+      for (const w of doorWidths(plan)) expect([GARAGE_DOOR_SINGLE_M, GARAGE_DOOR_DOUBLE_M]).toContain(w);
+      // The drive runs under the doors it leads to, and the car stands on it.
+      for (const d of plan.drives) {
+        if (d.cover === 'detachedGarage' || d.garageDoors.length === 0) continue;
+        const u0 = Math.min(...d.garageDoors.map((g) => g.u0));
+        const u1 = Math.max(...d.garageDoors.map((g) => g.u1));
+        expect(d.rect.u0).toBeLessThanOrEqual(u0 + 1e-9);
+        expect(d.rect.u1).toBeGreaterThanOrEqual(u1 - 1e-9);
+      }
+    }
+    expect([...seen].sort()).toEqual([1, 2, 3]);
+  });
+
+  it('on a 20 m frontage a two-car garage stands in the facade or behind the house, never beside it', () => {
+    for (const { id, plan } of seededStreet(kitRanch, 120)) {
+      const bays = garageBaysOf(id);
+      if (bays === 0 || plan.drives.length === 0) continue;
+      // A split-level's wing holds two bays at most.
+      expect(baysBuilt(plan)).toBe(plan.kit.style === 'splitLevel' ? Math.min(2, bays) : bays);
+      for (const d of plan.drives) {
+        if (d.cover === 'garage') expect(d.coverRect!.u1 - d.coverRect!.u0).toBeLessThanOrEqual(5.25);
+      }
+    }
+  });
+
+  it('on a half lot, too narrow beside and too shallow behind, a three-car garage falls back to two in the facade', () => {
+    const half = entry({ footprint: { w: 1, d: 1 }, height: 4, level: 1 });
+    let fellBack = 0;
+    for (const { id, plan } of seededStreet(half, 120)) {
+      const bays = garageBaysOf(id);
+      if (bays === 0 || plan.drives.length === 0) continue;
+      const built = baysBuilt(plan);
+      if (bays === 3) {
+        expect(built).toBe(2);
+        fellBack++;
+      } else {
+        expect(built).toBe(bays);
+      }
+      for (const d of plan.drives) expect(d.cover).not.toBe('detachedGarage');
+    }
+    expect(fellBack).toBeGreaterThan(0);
+  });
+
+  it('keeps a row home’s 2.44 m single door', () => {
+    for (const plan of streetOf(terrace, 20)) {
+      for (const w of doorWidths(plan)) near(w, GARAGE_LEAF_ROW_WIDTH_M);
+    }
+  });
+});
+
+describe('planHouseLot — the craftsman and the split-level', () => {
+  const formOf = (style: HouseStyle, count = 120): { id: number; plan: HouseLotPlan }[] =>
+    seededStreet(kitRanch, count).filter(({ plan }) => plan.kit.style === style);
+
+  it('a craftsman has a 5:12 roof with 0.6 m eaves and rakes and a full-width 2.4 m porch on 0.4 m columns on 0.6 m stone piers 0.9 m tall, 3 m apart', () => {
+    const craftsmen = formOf('craftsman');
+    expect(craftsmen.length).toBeGreaterThan(10);
+    for (const { plan } of craftsmen) {
+      const { kit, body, doors } = plan;
+      near(kit.roof.slope, 5 / 12);
+      near(kit.roof.eaveM, 0.6);
+      near(kit.roof.rakeM, 0.6);
+      near(kit.roof.rect.u0, body.u0 - 0.6);
+      near(kit.roof.rect.v0, body.v0 - 0.6);
+      expect(kit.upper).toBeNull();
+      expect(kit.shutters).toEqual([]);
+      const porch = kit.porch!;
+      expect(porch).not.toBeNull();
+      near(porch.floor.rect.v1 - porch.floor.rect.v0, PORCH_DEPTH_M);
+      // Full width, less only what a pad before the wall takes.
+      const pads = plan.drives.filter((d) => d.rect.v1 > body.v0 - 1e-6);
+      if (pads.length === 0) {
+        near(porch.floor.rect.u0, body.u0);
+        near(porch.floor.rect.u1, body.u1);
+      }
+      expect(porch.posts.length).toBe(porch.piers.length);
+      expect(porch.posts.length % 2).toBe(0);
+      const spacing =
+        (porch.floor.rect.u1 - porch.floor.rect.u0 - CRAFTSMAN_COLUMN_M) / (porch.posts.length - 1);
+      expect(spacing).toBeLessThanOrEqual(3 + 1e-9);
+      porch.posts.forEach((post, i) => {
+        const pier = porch.piers[i]!;
+        near(post.rect.u1 - post.rect.u0, CRAFTSMAN_COLUMN_M);
+        near(post.y0, CRAFTSMAN_PIER_HEIGHT_M);
+        near(post.y1, 0.6 + 2.4);
+        near(pier.rect.u1 - pier.rect.u0, CRAFTSMAN_PIER_M);
+        near(pier.rect.v1 - pier.rect.v0, CRAFTSMAN_PIER_M);
+        expect(pier.y0).toBe(0);
+        near(pier.y1, CRAFTSMAN_PIER_HEIGHT_M);
+        near((pier.rect.u0 + pier.rect.u1) / 2, (post.rect.u0 + post.rect.u1) / 2);
+        expect(post.rect.u1 < doors[0]!.u - 0.8 || post.rect.u0 > doors[0]!.u + 0.8).toBe(true);
+      });
+      near(porch.roof.lowM, porch.posts[0]!.y1);
+    }
+  });
+
+  it('a split-level is a two-storey block on about 55% of the frontage beside a one-storey wing with the garage door in its face, each under its own gable', () => {
+    const splits = formOf('splitLevel');
+    expect(splits.length).toBeGreaterThan(10);
+    for (const { id, plan } of splits) {
+      const { kit, body, doors, drives, wing } = plan;
+      expect(wing).not.toBeNull();
+      const bodyW = body.u1 - body.u0;
+      const wingW = wing!.u1 - wing!.u0;
+      const block = wing!.u0 > body.u0 + 1e-6 ? { u0: body.u0, u1: wing!.u0 } : { u0: wing!.u1, u1: body.u1 };
+      // The block takes 55% unless the wing has to widen for its door.
+      expect(wingW / bodyW).toBeGreaterThanOrEqual(0.45 - 1e-9);
+      expect(wingW / bodyW).toBeLessThan(0.6);
+      // The upper storey stands on the block under a gable of its own; the main roof covers the wing only.
+      const upper = kit.upper!;
+      expect(upper).not.toBeNull();
+      near(upper.box.rect.u0, block.u0);
+      near(upper.box.rect.u1, block.u1);
+      near(upper.box.y0, 4);
+      near(upper.box.y1, 4 + SPLIT_UPPER_STOREY_M);
+      near(kit.roof.rect.v0, body.v0 - 0.46);
+      expect(kit.roof.rect.u0).toBeLessThanOrEqual(wing!.u0 + 1e-9);
+      expect(kit.roof.rect.u1).toBeGreaterThanOrEqual(wing!.u1 - 1e-9);
+      expect(kit.roof.rect.u1 - kit.roof.rect.u0).toBeLessThan(wingW + 0.5);
+      expect(upper.roof.rect.u1 - upper.roof.rect.u0).toBeLessThan(block.u1 - block.u0 + 0.5);
+      // The front door on the block, the garage door in the wing's face, at the shares' size.
+      near(doors[0]!.u, (block.u0 + block.u1) / 2);
+      const bays = Math.min(2, garageBaysOf(id));
+      for (const d of drives) {
+        expect(d.cover).toBe(bays > 0 ? 'integralGarage' : 'pad');
+        expect(d.garageDoors).toHaveLength(bays > 0 ? 1 : 0);
+        for (const g of d.garageDoors) {
+          near(g.u1 - g.u0, bays === 2 ? GARAGE_DOOR_DOUBLE_M : GARAGE_DOOR_SINGLE_M);
+          expect(g.u0).toBeGreaterThanOrEqual(wing!.u0 - 1e-9);
+          expect(g.u1).toBeLessThanOrEqual(wing!.u1 + 1e-9);
+          near(g.v, body.v0);
+        }
+      }
+      // A chimney stands on the block, over its ridge.
+      for (const c of kit.chimneys) {
+        expect(c.rect.u0).toBeGreaterThanOrEqual(block.u0);
+        expect(c.rect.u1).toBeLessThanOrEqual(block.u1);
+        near(c.y0, upper.box.y1);
+      }
+      expect(kit.shutters).toEqual([]);
+      expect(kit.dormers).toEqual([]);
     }
   });
 });
@@ -611,7 +903,8 @@ describe('planHouseLot — shutters stand on the facade’s own grid', () => {
 describe('planHouseLot — attached homes and rows', () => {
   it('gives a duplex and a fourplex the colonial’s parts: a stoop at each door, shutters, a gable-end chimney, no porch', () => {
     for (const e of [kitDuplex, kitFourplex]) {
-      for (const { kit, body, doors } of streetOf(e, 30)) {
+      for (const { id, plan } of seededStreet(e, 30)) {
+        const { kit, body, doors } = plan;
         expect(kit.style).toBe('attached');
         expect(doors).toHaveLength(2);
         expect(kit.stoops).toHaveLength(6);
@@ -619,7 +912,7 @@ describe('planHouseLot — attached homes and rows', () => {
         expect(kit.porticos).toEqual([]);
         expect(kit.dormers).toEqual([]);
         expect(kit.shutters.length).toBeGreaterThan(0);
-        expect(kit.chimneys.length).toBeGreaterThan(0);
+        expect(kit.chimneys.length > 0).toBe(chimneyRolled(id));
         for (const c of kit.chimneys) {
           expect(c.y0).toBe(0);
           near(c.y1, e.height + kit.roof.riseM + 0.6);
@@ -660,7 +953,9 @@ describe('planHouseLot — attached homes and rows', () => {
     for (const { kit, drives } of streetOf(terrace, 30)) {
       for (const d of drives) {
         if (d.cover !== 'integralGarage') continue;
-        const c = (d.garageDoor!.u0 + d.garageDoor!.u1) / 2;
+        expect(d.garageDoors).toHaveLength(1);
+        near(d.garageDoors[0]!.u1 - d.garageDoors[0]!.u0, GARAGE_LEAF_ROW_WIDTH_M);
+        const c = (d.garageDoors[0]!.u0 + d.garageDoors[0]!.u1) / 2;
         for (const s of kit.shutters) {
           if (s.y0 >= 2.13) continue;
           expect(s.rect.u1 <= c - 1.22 + 1e-9 || s.rect.u0 >= c + 1.22 - 1e-9).toBe(true);

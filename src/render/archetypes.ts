@@ -430,6 +430,7 @@ const APARTMENT_PARTS: Readonly<Record<string, readonly BuildingPart[]>> = {
     'balconySlab',
     'balconyGuard',
     'patio',
+    'boxBay',
   ],
   midrise: [
     ...PODIUM_BAND_PARTS,

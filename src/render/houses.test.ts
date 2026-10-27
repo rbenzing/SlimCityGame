@@ -10,10 +10,12 @@ import {
   buildPorticoGeometry,
   buildShedRoofGeometry,
   buildTrampolineGeometry,
+  HOUSE_ROOF_SHARES,
   roofColorHex,
   trimColor,
   type HousePart,
 } from './houses';
+import { materialHex } from './palette';
 import { isHouseEntry } from './archetypes';
 import { deriveFacadeParams } from './facade';
 import {
@@ -189,6 +191,32 @@ describe('houses — deterministic pure helpers', () => {
     expect(roofColorHex(7)).toBe(roofColorHex(7));
     expect(typeof roofColorHex(7)).toBe('number');
   });
+
+  it('roofs houses in the four shingle colours by sales rank over 87% and tile over 13%, every roof one of those', () => {
+    const hexes = HOUSE_ROOF_SHARES.map(([hex]) => hex);
+    expect(hexes).toEqual([
+      materialHex('shingleCharcoal'),
+      materialHex('shingleWeathered'),
+      materialHex('shinglePewter'),
+      materialHex('shingleBarkwood'),
+      materialHex('clayRoof'),
+    ]);
+    expect(HOUSE_ROOF_SHARES.reduce((sum, [, share]) => sum + share, 0)).toBeCloseTo(1, 9);
+    const shares = HOUSE_ROOF_SHARES.map(([, share]) => share);
+    expect(shares[4]).toBeCloseTo(0.13, 9);
+    expect(shares[0]).toBeCloseTo(0.87 * 0.4, 9);
+    expect(shares[3]).toBeCloseTo(0.87 * 0.1, 9);
+    const seen = new Map<number, number>();
+    const ids = 6000;
+    for (let id = 1; id <= ids; id++) {
+      const hex = roofColorHex(id);
+      expect(hexes).toContain(hex);
+      seen.set(hex, (seen.get(hex) ?? 0) + 1);
+    }
+    for (const [hex, share] of HOUSE_ROOF_SHARES) {
+      expect(Math.abs((seen.get(hex) ?? 0) / ids - share)).toBeLessThan(0.03);
+    }
+  });
 });
 
 describe('HouseRoofRenderer', () => {
@@ -289,7 +317,8 @@ describe('HouseRoofRenderer', () => {
 
   it('across a street of homes, every kind of cover turns up', () => {
     const r = new HouseRoofRenderer(new THREE.Scene(), flatHeightAt, catalog, roadAt, street);
-    const homes = Array.from({ length: 40 }, (_, i) =>
+    // 160 ids: the first carport rolls land on split-levels, whose drive is a pad.
+    const homes = Array.from({ length: 160 }, (_, i) =>
       instance({ id: i + 1, catalogId: 'res-low-3', x: i * 3, z: -1 }),
     );
     r.apply({ added: homes, updated: [], removed: [] });
@@ -299,7 +328,14 @@ describe('HouseRoofRenderer', () => {
         covers.add(drive.cover);
       }
     }
-    expect([...covers].sort()).toEqual(['carport', 'detachedGarage', 'garage', 'spot']);
+    expect([...covers].sort()).toEqual([
+      'carport',
+      'detachedGarage',
+      'garage',
+      'integralGarage',
+      'pad',
+      'spot',
+    ]);
     expect(r.partCount('garage')).toBeGreaterThan(0);
     expect(r.partCount('carport')).toBeGreaterThan(0);
     expect(r.carCount()).toBe(homes.length);
@@ -324,7 +360,13 @@ describe('HouseRoofRenderer', () => {
       expect(active[part], `active ${part}`).toBeGreaterThan(0);
       expect(building[part], `constructing ${part}`).toBe(0);
     }
-    expect(building.roof).toBe(homes.length);
+    // One roof a home, and a second over a split-level's block.
+    const roofs = homes.reduce(
+      (n, h) => n + 1 + (planHouseLot(h, catalog[1]!, roadAt, street)!.kit.upper ? 1 : 0),
+      0,
+    );
+    expect(roofs).toBeGreaterThan(homes.length);
+    expect(building.roof).toBe(roofs);
     expect(building.car).toBe(0);
 
     for (const part of ['fence', 'bush', 'tree']) expect(abandoned[part]).toBe(active[part]);
@@ -463,11 +505,13 @@ describe('HouseRoofRenderer — the house kit', () => {
     r.slotsFor(id, part).length;
 
   it('carries the three houses’ parts: a ranch no shutters or dormers, a Cape two dormers and a portico', () => {
+    // Id 1 is a ranch the seed gives a chimney and no porch; 36 a Cape with a chimney and no porch.
     const ranch = home('ranch', 1);
-    const cape = home('cape', 2);
+    const cape = home('cape', 36);
     const colonial = home('colonial', 3);
     const r = build([ranch, cape, colonial]);
 
+    expect(planOf(ranch).kit.style).toBe('ranch');
     expect(count(r, 1, 'roof')).toBe(1);
     expect(count(r, 1, 'fascia')).toBe(2);
     expect(count(r, 1, 'chimney')).toBe(1);
@@ -477,13 +521,13 @@ describe('HouseRoofRenderer — the house kit', () => {
     }
 
     // A Cape's two dormers each carry their own gable roof beside the main one.
-    expect(count(r, 2, 'dormer')).toBe(2);
-    expect(count(r, 2, 'roof')).toBe(3);
-    expect(count(r, 2, 'portico')).toBe(1);
-    expect(count(r, 2, 'stoop')).toBe(3);
-    expect(count(r, 2, 'chimney')).toBe(1);
-    expect(count(r, 2, 'shutter')).toBe(planOf(cape).kit.shutters.length);
-    expect(count(r, 2, 'shutter')).toBeGreaterThan(0);
+    expect(count(r, 36, 'dormer')).toBe(2);
+    expect(count(r, 36, 'roof')).toBe(3);
+    expect(count(r, 36, 'portico')).toBe(1);
+    expect(count(r, 36, 'stoop')).toBe(3);
+    expect(count(r, 36, 'chimney')).toBe(1);
+    expect(count(r, 36, 'shutter')).toBe(planOf(cape).kit.shutters.length);
+    expect(count(r, 36, 'shutter')).toBeGreaterThan(0);
 
     const kit = planOf(colonial).kit;
     expect(count(r, 3, 'dormer')).toBe(0);
@@ -526,25 +570,26 @@ describe('HouseRoofRenderer — the house kit', () => {
       const at = streets[side];
       const lookup: StreetLookup = (x, z) =>
         at(x, z) ? { vergeM: 4.375, sidewalkM: 1.875 } : null;
-      const b = instance({ id: 2, catalogId: 'cape', x: 4, z: 6 });
+      // Id 36: a Cape the seed gives a portico, not a porch.
+      const b = instance({ id: 36, catalogId: 'cape', x: 4, z: 6 });
       const r = new HouseRoofRenderer(new THREE.Scene(), flatHeightAt, kitCatalog, at, lookup);
       r.apply({ added: [b], updated: [], removed: [] });
       const plan = planHouseLot(b, catalogOf('cape'), at, lookup)!;
       expect(plan.edge?.side).toBe(side);
-      const porticoAt = positionAt(r, 'portico', r.slotsFor(2, 'portico')[0]!);
+      const porticoAt = positionAt(r, 'portico', r.slotsFor(36, 'portico')[0]!);
       const door = lotToWorld(plan.frame, plan.doors[0]!.u, plan.doors[0]!.v);
       expect(porticoAt.x).toBeCloseTo(door.x, 4);
       expect(porticoAt.z).toBeCloseTo(door.z, 4);
       const out = new THREE.Vector3(0, 0, 1).applyMatrix4(
-        new THREE.Matrix4().extractRotation(matrixAt(r, 'portico', r.slotsFor(2, 'portico')[0]!)),
+        new THREE.Matrix4().extractRotation(matrixAt(r, 'portico', r.slotsFor(36, 'portico')[0]!)),
       );
       const toStreet = lotToWorld(plan.frame, plan.doors[0]!.u, plan.doors[0]!.v - 1);
       expect(out.x).toBeCloseTo(toStreet.x - door.x, 4);
       expect(out.z).toBeCloseTo(toStreet.z - door.z, 4);
       // The ridge runs along the frontage: the roof's long axis is the street's.
-      const roofScale = scaleAt(r, 'roof', r.slotsFor(2, 'roof')[0]!);
+      const roofScale = scaleAt(r, 'roof', r.slotsFor(36, 'roof')[0]!);
       const ridge = new THREE.Vector3(1, 0, 0).applyMatrix4(
-        new THREE.Matrix4().extractRotation(matrixAt(r, 'roof', r.slotsFor(2, 'roof')[0]!)),
+        new THREE.Matrix4().extractRotation(matrixAt(r, 'roof', r.slotsFor(36, 'roof')[0]!)),
       );
       expect(Math.abs(plan.frame.alongX ? ridge.x : ridge.z)).toBeCloseTo(1, 4);
       expect(roofScale.x).toBeGreaterThan(roofScale.z * 0.99);
@@ -563,7 +608,7 @@ describe('HouseRoofRenderer — the house kit', () => {
     }
   });
 
-  it('puts a porch floor 0.6 m up and 1.8 m deep, and its shed roof off the wall at 2.9 m over it', () => {
+  it('puts a porch floor 0.6 m up and 2.4 m deep, and its shed roof off the wall at 2.9 m over it', () => {
     const porched = Array.from({ length: 60 }, (_, i) => home('colonial', i + 1)).find(
       (b) => planOf(b).kit.porch,
     )!;
@@ -572,29 +617,33 @@ describe('HouseRoofRenderer — the house kit', () => {
     const [floor] = r.slotsFor(porched.id, 'porch');
     const size = scaleAt(r, 'porch', floor!);
     expect(size.y).toBeCloseTo(0.6, 4);
-    expect([size.x, size.z].map((v) => +v.toFixed(3)).sort((a, b) => a - b)[0]).toBeCloseTo(1.8, 3);
+    expect([size.x, size.z].map((v) => +v.toFixed(3)).sort((a, b) => a - b)[0]).toBeCloseTo(2.4, 3);
     const [roofSlot] = r.slotsFor(porched.id, 'porchRoof');
     const roofSize = scaleAt(r, 'porchRoof', roofSlot!);
     expect(positionAt(r, 'porchRoof', roofSlot!).y).toBeCloseTo(kit.porch!.roof.lowM, 4);
     expect(roofSize.y).toBeCloseTo(kit.porch!.roof.wallM - kit.porch!.roof.lowM, 4);
   });
 
-  it('stands a garage leaf 2.74 × 2.13 m, 0.05 m proud of the garage face, and a row’s 2.44 m', () => {
+  it('stands each garage leaf at its door’s width — 4.9 m double, 2.7 m single — 2.13 m tall and 0.05 m proud of the face, and a row’s 2.44 m', () => {
     const dims = (r: HouseRoofRenderer, id: number): number[] => {
       const [slot] = r.slotsFor(id, 'garageLeaf');
       const s = scaleAt(r, 'garageLeaf', slot!);
       return [s.x, s.y, s.z].map((v) => +v.toFixed(3)).sort((a, b) => a - b);
     };
-    let found = 0;
-    for (let n = 1; n <= 40 && found < 1; n++) {
+    const widths = new Set<number>();
+    for (let n = 1; n <= 40; n++) {
       const b = home('colonial', n);
       const plan = planOf(b);
-      if (!plan.drives.some((d) => d.garageDoor)) continue;
+      const doors = plan.drives.flatMap((d) => d.garageDoors);
+      if (doors.length === 0) continue;
       const r = build([b]);
-      expect(dims(r, n)).toEqual([0.05, 2.13, 2.74]);
-      found++;
+      expect(r.slotsFor(n, 'garageLeaf')).toHaveLength(doors.length);
+      const w = +(doors[0]!.u1 - doors[0]!.u0).toFixed(3);
+      expect([2.7, 4.9]).toContain(w);
+      expect(dims(r, n)).toEqual([0.05, 2.13, w]);
+      widths.add(w);
     }
-    expect(found).toBe(1);
+    expect([...widths].sort()).toEqual([2.7, 4.9]);
     for (let n = 1; n <= 40; n++) {
       const b = home('terrace', n, { x: n * 4 });
       const plan = planOf(b);

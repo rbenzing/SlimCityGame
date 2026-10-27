@@ -25,7 +25,7 @@ current behavior only and carry no dates of their own._
 
 ## Status (2026-09-29)
 
-**Test suite:** 7,095 tests passing across 200 test files, run 2026-10-26.
+**Test suite:** 7,115 tests passing across 200 test files, run 2026-10-27.
 This is the only test count in the documentation set. When the suite changes
 again, update the figure here and nowhere else.
 
@@ -119,6 +119,10 @@ not a test to fix.
   The kit omits what does not fit and parks the vans in the lot's trailer
   stalls. The real fix is deeper lots for the heavy kinds in the lot layout
   (truck courts run 120–135 ft), a lots-and-land change.
+- The split-level's two-storey block is a wall-colour box: the facade's
+  window grid covers the house body only, so the block's upper storey has no
+  panes and reads blank up close and dark at night. Panes drawn by the house
+  kit on the block are the follow-up.
 - The incinerator's pollution of 120, now what it emits at its burn ceiling,
   and its 2 kL of water are dials: municipal waste-to-energy plants do not
   report to the Toxics Release Inventory, so there is no like-for-like
@@ -383,6 +387,39 @@ roads, and pinning the Three.js version. See [adr/](engineering/adr/README.md).
 ---
 
 ## 10. History (newest first)
+
+### Houses and blocks built the way the US builds them, by share (slice 3 of the kits' second pass, built 2026-10-27)
+
+The last slice of [rci-kits-second-pass.md](game-design/features/rci-kits-second-pass.md):
+a house's cladding, roof, garage, porch and chimney come from the shares the
+Census and the trade report, and the one-storey house takes three forms.
+
+- **A house's body by share:** lap siding on 49% of houses in the five
+  colours the trade sells most (off-white, white, light brown, light grey,
+  medium blue by their survey shares), stucco on 25%, brick on 16%, wood on
+  6%; its roof in the four best-selling shingle colours by sales rank, tile
+  on 13%. Every share is a named constant with its source beside it, picked
+  by id hash on the CPU and by the same cumulative table in the body shader,
+  so the house and its kit parts agree. Nine chart entries were added for the
+  siding and shingle colours, white at the ceiling and never above it.
+- **Its parts by share:** a two-car garage on 65% with the real 4.9 m door,
+  three-car on 15% with a double and a single where the lot has room,
+  one-car on 9%, none on the rest; a porch 2.4 m deep on 67%; a chimney on
+  fewer than 40%. The drive planner draws the garage size first and then
+  sets it attached, in the facade or detached by what the lot fits.
+- **Three one-storey forms by seed:** the ranch; the craftsman, a low gable
+  with 0.6 m eaves and a full-width porch on tapered columns on stone
+  piers; the split-level, a two-storey block beside a one-storey wing with
+  the garage door in the wing. The cape and the colonial stand at the levels
+  above as before; no catalog entry changed.
+- **The blocks:** the garden walk-up colour-blocked by stack with its 1.8 m
+  balconies, the 5-over-1 on a brick podium under two or three colour-blocked
+  panel fields, the tower at 3.3–3.9 m a floor (11, 16 and 21 floors by
+  level; its window rows were capped at 15 by the seed slot, now capped per
+  kind) with its lift penthouse on the roof.
+- Checked in the browser: a line-up of the seven house forms along one
+  street by day and at 22:00, and the garden, 5-over-1 and tower shots.
+- **Open, logged below:** the split-level's block has no window panes yet.
 
 ### The industrial kinds told apart at 40 m (slice 2 of the kits' second pass, built 2026-10-26)
 
