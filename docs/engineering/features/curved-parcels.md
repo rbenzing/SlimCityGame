@@ -1,6 +1,6 @@
 # Parcels follow the street — technical design
 
-- **Status:** Agreed 2026-10-23
+- **Status:** Built 2026-10-27 (agreed 2026-10-23)
 - **Date:** 2026-10-23
 - **Author:** Claude Fable 5.1
 
@@ -38,7 +38,9 @@ renderers, with the grid path untouched.
 | `src/render/parked.ts`, `pedestrians.ts`                                                 | 1     | the car on the drive and the walker's home anchor read the frame                                                                       |
 | `src/render/zonegrid.ts`                                                                 | 1     | the lens draws a framed parcel's outline turned                                                                                        |
 | `tools/curve-shots.mjs` (new)                                                            | 1     | an S-bend zoned both sides, shot from above, close on a drive, and through the lens                                                    |
-| `src/shared/lotparking.ts`, `lotlayout.ts`, kit renderers for the other kinds            | 2     | car park, curb cut, aisles and berths in the frame; kerb credit from the free road's section along the frontage                        |
+| `src/world/plat.ts`, `src/sim/growth.ts`                                                 | 2     | the kerb plat for every zone; `FramedRun`, `runsAlongKerbs`; the lot-less spawn branch                                                 |
+| `src/shared/lotparking.ts`, `kerblayout.ts`, `src/render/buildingkit.ts`, `parked.ts`     | 2     | car park, curb cut, aisles and berths placed through the frame; kerb credit from the free road's section along the frontage            |
+| `src/sim/network.ts`, `growth.ts`, `src/render/houselot.ts`                              | 2     | water, sewage and service readers over standing tiles; the lamp set over a framed drive's cut                                          |
 
 ## The design
 
@@ -105,9 +107,9 @@ the zone lies within the zoning depth of that kerb. For each:
    non-grid segment's cells as street, so a tile beside a curve gets a grid
    parcel only from a grid street; the curved plat skips every tile
    `parcelAt` already holds. The result is deterministic in segment id order.
-   In slice 1 both hold for the low-density residential zone only: every
-   other zone plats and grows beside a curve exactly as it does today, and
-   slice 2 moves them over with their car parks.
+   Slice 1 held both for the low-density residential zone only; slice 2
+   holds them for every platted zone and both industrial zones, farmland
+   aside.
 
 The grid `Plat` gains `framed: FramedParcel[]` (`frame`, `lot`, `w`, `d`,
 `tiles`), and `parcelAt` indexes them past the grid parcels, so the lens and
@@ -128,9 +130,9 @@ wider on the ground than their rectangle; slice 1 accepts that).
 Every renderer that today computes `centerX = (x + w/2)·20` and turns by
 `rotation·π/2` composes, for a framed building, `T(frame) · R_y(−heading) ·
 T(local)` through `toWorld`. Seventeen such sites across twenty render files
-turn on `rotation` today; slice 1 converts the ones on the low-density
-house's path (body, parts, roof, lot, drive, car, walker) and leaves the rest
-on the grid path, since no other kind is platted on a curve until slice 2.
+turn on `rotation` today; slice 1 converted the ones on the low-density
+house's path (body, parts, roof, lot, drive, car, walker) and slice 2 the
+lot plan, car park, curb cut and stall cars of every other kind.
 The facade material's window grid is computed in the body's local axes, so
 it needs nothing. Picking raycasts instance matrices, so it needs nothing.
 The lens draws a framed parcel's four corners through `toWorld`.
@@ -208,7 +210,105 @@ setback, so width is measured at the building line as the codes measure it.
    road, none crossing another.
 4. A grid street beside the bend: its lots exactly as before.
 
+## Slice 2: the rest of the ladder and the car parks
+
+### The plat for every zone
+
+`platOf` runs the kerb plat for every zone in `PLATTED_ZONES` and for the
+two industrial zones, each by its own `lotsOfZone` ladder, and swaps
+`gridStreetAt` in for all of them, so no zone plats a grid parcel against a
+curve's crossed tiles any more. Farmland is untouched.
+
+### A run of parcels
+
+```ts
+/** Consecutive framed parcels on one kerb a wide kind takes as one lot. */
+export interface FramedRun {
+  frame: ParcelFrame; // the first parcel's corner, the heading at the run's middle
+  parcels: readonly number[]; // indices into Plat.framed, in kerb order
+  w: number; // frontage, metres: the parcels' widths summed
+  d: number; // the shallowest parcel's depth, metres
+  tiles: TilePoint[]; // the union of the parcels' claims
+}
+```
+
+`FramedParcel` gains `seg`, `side` and `s` (the kerb and arc length it was
+cut at), so `runsAlongKerbs(plat, wM)` can walk each kerb's parcels in
+order and return every run whose parcels abut end to end or stand at most
+`MAX_RUN_GAP_M` (4 m, two cut steps, the gap an inner bend's no-overlap
+spacing leaves) apart, whose widths sum to `wM` and whose first and last
+headings differ by at most `MAX_RUN_BEND_RAD` (8°). A building on a run stands in the run's frame and
+claims `claimedTiles(run.frame, wM, dM)`, the tiles of its own rectangle,
+as every framed building does (the registry, the worker and the mirror
+derive a framed building's tiles from its frame and footprint, never from
+a list); `run.tiles`, the union of the parcels' claims, is the set the
+spawner checks is free, and a tile of the rectangle outside the run must
+be zoned, unparcelled and placeable, which is how a kind deeper than its
+lots runs into the ground behind.
+
+### The spawner
+
+`trySpawnFramed` gains the lot-less branch: for a framed parcel in a zone
+whose kinds have no `lot`, the candidates are the zone's kinds whose
+unturned frontage `footprint.w` × 20 equals the parcel's width (one-parcel
+kinds) or is met by a run starting at that parcel, drawn by the same
+`share` as on the grid; a kind is placed with `frame` = the run's frame,
+rotation 0, `x, z` = the min tile of the claimed set, and the claimed set
+as its footprint. The dense residential kinds take their lots the same way.
+The parking gate for a framed lot reads `lotLayoutFor(entry, 0, true,
+kerbCredit)` with the credit below; it has a frontage by construction.
+
+### Car parks in the frame
+
+`lotPlanFor` (the kit renderer's lot plan) and the curb cut, aisles and
+berths it draws are already computed for a north-fronting lot in local
+metres; for a framed building the renderer places them through
+`edgeFrameOfParcel(building.frame)` instead of the building's tile corner
+and quarter turn, the one helper `framedBodyPlacement` already uses.
+`parked.ts` reads the same frame for the cars in the stalls.
+
+### The kerb credit from a free road
+
+`kerbCreditFor` today counts painted kerb stalls on the grid road along the
+lot. For a framed lot `kerbCreditAlongFrame(net, frame, wM, profileOf)` in
+`src/world/kerbcredit.ts` finds the segment under the frame's kerb and the
+side of travel the lot lies on, and `kerbCreditOnSection` in
+`kerblayout.ts` credits `floor(wM / PARKING_STALL_LENGTH_M)` stalls where
+that side's profile carries a parking lane (`parkingLaneOffset`), zero
+where none does. The helper lives in `src/world` because it reads the road
+network; `src/shared` imports nothing above it.
+
+### The readers
+
+`cityWaterUse`, `sewageOf` and `footprintServed` take the building's
+standing tiles (`standingTiles`) instead of `x, z, w, d`; the dirt-road
+well rule reads "a main beside any standing tile". `restampShrunkPloppables`
+never touches a framed building (ploppables are never framed).
+`driveRoadTiles` on a framed home returns the road tiles under its drive's
+cut, found by `toWorld` on the cut's rectangle, so the lamp set keeps a
+lamp off the drive mouth.
+
+### How we will know it works
+
+- `platOf` cuts framed parcels for every platted zone and both industrial
+  zones beside a curve, and cuts no grid parcel against a curve's cells.
+- `runsAlongKerbs` on a 30° straight returns runs of two and three normal
+  lots end to end; on a 40 m bend returns none wider than one lot.
+- A 2×2 strip mall spawns on a run with `frame`, rotation 0 and the union
+  of its parcels' tiles; its car park's curb cut lies on the kerb line.
+- A framed lot beside a free road with a parking lane earns the stall
+  credit its frontage holds; beside one without, none.
+- `cityWaterUse` over a framed house's standing tiles equals the grid
+  figure for the same entry; a framed house beside a dirt main is on the
+  main.
+- The lamp placements skip the tiles under a framed drive's cut.
+
+**In the browser** (`tools/curve-shots.mjs`, extended): the S-bend zoned
+low commercial on one side and medium residential on the other, grown: a
+shop with its car park and curb cut square to the road, a strip on a run,
+a walk-up; the bend through the lens with runs' parcels outlined; a street
+lamp beside a framed drive standing clear of it.
+
 ## Out of scope
 
-Slice 2 (the rest of the ladder and the car parks), cul-de-sac bulbs,
-wedge-shaped parcels, and parcels on grid streets.
+Cul-de-sac bulbs, wedge-shaped parcels, and parcels on grid streets.

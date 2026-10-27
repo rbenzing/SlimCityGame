@@ -33,8 +33,15 @@ import {
 import { TILE_METERS } from '../shared/constants';
 import { footprintForRotation } from '../shared/footprint';
 import { maxHeightUnderBody } from './footprint';
-import { findRoadFacingEdge, localSideOf, NO_STREETS, type Side } from './frontage';
+import {
+  edgeFrameOfParcel,
+  findRoadFacingEdge,
+  localSideOf,
+  NO_STREETS,
+  type Side,
+} from './frontage';
 import { framedBodyPlacement } from './houselot';
+import type { ParcelFrame } from '../shared/types';
 import {
   materialHex,
   materialUnit,
@@ -66,10 +73,12 @@ import { buildGableRoofGeometry, roofColorHex, trimColor } from './houses';
 import {
   FUEL_CANOPY_DEPTH_M,
   FUEL_CANOPY_GAP_M,
+  framedLotPlanFor,
   lotPlanFor,
   lotPointToWorld,
   TANK_DIAMETER_M,
   TANK_GAP_M,
+  type KerbCreditOf,
   type LotPlan,
 } from './lotplan';
 import { DRIVE_THROUGH_LANE_M, DRIVE_THROUGH_STACK_M, type LotRect } from '../shared/lotlayout';
@@ -4395,21 +4404,36 @@ function rotateByYaw(x: number, z: number, theta: number): { x: number; z: numbe
 }
 
 /**
+ * Carries a world offset back into a body's own frame, undoing the yaw the
+ * instance turns it by: the exact quarter turn for a body on the grid, so a
+ * grid lot's parts land where they always have, the inverse yaw for one on
+ * a curve.
+ */
+function unturn(x: number, z: number, yaw: number): LocalPoint {
+  const quarters = yaw / (Math.PI / 2);
+  const q = Math.round(quarters);
+  if (Math.abs(quarters - q) < 1e-9) {
+    return rotateLocal(x, z, ((((4 - q) % 4) + 4) % 4) as 0 | 1 | 2 | 3);
+  }
+  return rotateByYaw(x, z, -yaw);
+}
+
+/**
  * The lot plan carried into the building's own frame: every rectangle and
  * point on the plan as metres from `centre`, the body's middle, in the
- * building's unrotated footprint frame. `rearYardFree` leaves the rear yard
- * out of the taken ground: a walk-up's is the lawn its patios stand on.
+ * building's unturned footprint frame, `yaw` being the turn the instance
+ * gives it. `rearYardFree` leaves the rear yard out of the taken ground: a
+ * walk-up's is the lawn its patios stand on.
  */
 export function kitLotOf(
   plan: LotPlan,
   centre: LocalPoint,
-  rotation: 0 | 1 | 2 | 3,
+  yaw: number,
   rearYardFree = false,
 ): KitLot {
-  const back = ((4 - rotation) % 4) as 0 | 1 | 2 | 3;
   const toLocal = (u: number, v: number): LocalPoint => {
     const world = lotPointToWorld(plan.frame, u, v);
-    return rotateLocal(world.x - centre.x, world.z - centre.z, back);
+    return unturn(world.x - centre.x, world.z - centre.z, yaw);
   };
   const rect = (r: LotRect): LocalRect => {
     const a = toLocal(r.u0, r.v0);
@@ -4530,10 +4554,68 @@ export interface KitPlan {
  */
 export function kitPlanFor(
   entry: BuildingCatalogEntry,
-  building: Pick<BuildingInstance, 'id' | 'x' | 'z' | 'rotation'>,
+  building: Pick<BuildingInstance, 'id' | 'x' | 'z' | 'rotation' | 'frame'>,
   roadAt: (x: number, z: number) => boolean,
   kerb: KerbSurroundings | null = null,
+  kerbCreditOf: KerbCreditOf | null = null,
 ): KitPlan | null {
+  const site = building.frame
+    ? framedKitSite(entry, building.frame, kerbCreditOf)
+    : gridKitSite(entry, building, roadAt, kerb);
+  const { boxes, podium } = computeSetbacks(entry, building.id, site.frontage);
+  const baseBox = boxes[0];
+  const topBox = boxes[boxes.length - 1];
+  if (!baseBox || !topBox) return null;
+
+  const kitLot = site.plan ? kitLotOf(site.plan, site.centre, site.yaw, isWalkUpEntry(entry)) : null;
+  const placements = computePartPlacements(
+    entry,
+    baseBox,
+    topBox,
+    site.side,
+    kitLot,
+    building.id,
+    podium ?? null,
+    boxes,
+  );
+  return {
+    placements,
+    frontage: site.frontage,
+    baseBox,
+    topBox,
+    side: site.side,
+    lot: kitLot,
+    tiles: site.tiles,
+  };
+}
+
+/** Where a kit is measured from: the body's centre and yaw, its street side, its lot plan and its footprint in its own frame. */
+interface KitSite {
+  frontage: FrontageSetback;
+  centre: LocalPoint;
+  yaw: number;
+  side: Side | null;
+  plan: LotPlan | null;
+  tiles: LocalRect;
+}
+
+/** The rectangle two opposite corners span, in the body's frame. */
+function localRectOf(a: LocalPoint, b: LocalPoint): LocalRect {
+  return {
+    x0: Math.min(a.x, b.x),
+    x1: Math.max(a.x, b.x),
+    z0: Math.min(a.z, b.z),
+    z1: Math.max(a.z, b.z),
+  };
+}
+
+/** A building on the grid: the edge is found on the map; the parts sit in the building's own frame. */
+function gridKitSite(
+  entry: BuildingCatalogEntry,
+  building: Pick<BuildingInstance, 'x' | 'z' | 'rotation'>,
+  roadAt: (x: number, z: number) => boolean,
+  kerb: KerbSurroundings | null,
+): KitSite {
   const frontage = frontageSetbackFor(
     entry,
     building.x,
@@ -4543,15 +4625,9 @@ export function kitPlanFor(
     building.rotation,
     kerb,
   );
-  const { boxes, podium } = computeSetbacks(entry, building.id, frontage);
-  const baseBox = boxes[0];
-  const topBox = boxes[boxes.length - 1];
-  if (!baseBox || !topBox) return null;
-
-  // The edge is found on the map; the parts sit in the building's own frame.
   const lot = footprintForRotation(entry, building.rotation);
   const edge = findRoadFacingEdge(building.x, building.z, lot.w, lot.d, roadAt);
-  const localSide = edge ? localSideOf(edge.side, building.rotation) : null;
+  const side = edge ? localSideOf(edge.side, building.rotation) : null;
   const plan = edge
     ? lotPlanFor(entry, building.x, building.z, roadAt, building.rotation, kerb)
     : null;
@@ -4559,30 +4635,42 @@ export function kitPlanFor(
     x: (building.x + lot.w / 2) * TILE_METERS + frontage.centerXM,
     z: (building.z + lot.d / 2) * TILE_METERS + frontage.centerZM,
   };
-  const kitLot = plan ? kitLotOf(plan, centre, building.rotation, isWalkUpEntry(entry)) : null;
-  const placements = computePartPlacements(
-    entry,
-    baseBox,
-    topBox,
-    localSide,
-    kitLot,
-    building.id,
-    podium ?? null,
-    boxes,
-  );
-
-  const back = ((4 - building.rotation) % 4) as 0 | 1 | 2 | 3;
+  const yaw = building.rotation * (Math.PI / 2);
   const corner = (tx: number, tz: number): LocalPoint =>
-    rotateLocal(tx * TILE_METERS - centre.x, tz * TILE_METERS - centre.z, back);
-  const a = corner(building.x, building.z);
-  const b = corner(building.x + lot.w, building.z + lot.d);
-  const tiles = {
-    x0: Math.min(a.x, b.x),
-    x1: Math.max(a.x, b.x),
-    z0: Math.min(a.z, b.z),
-    z1: Math.max(a.z, b.z),
+    unturn(tx * TILE_METERS - centre.x, tz * TILE_METERS - centre.z, yaw);
+  const tiles = localRectOf(
+    corner(building.x, building.z),
+    corner(building.x + lot.w, building.z + lot.d),
+  );
+  return { frontage, centre, yaw, side, plan, tiles };
+}
+
+/** A body on the grid stands centred on its lot but for what its lot plan or front yard moves it; a framed body's seat is its own. */
+const CENTRED_FRONTAGE: FrontageSetback = { spanXM: 0, spanZM: 0, centerXM: 0, centerZM: 0 };
+
+/**
+ * A building on a curve: its body stands where its parcel's frame puts it,
+ * its street on the parcel's kerb side, and its lot plan laid in that frame,
+ * so the parts and the car park turn with the road together.
+ */
+function framedKitSite(
+  entry: BuildingCatalogEntry,
+  parcel: ParcelFrame,
+  kerbCreditOf: KerbCreditOf | null,
+): KitSite {
+  const seat = framedBodyPlacement(parcel, entry, NO_STREETS, kerbCreditOf);
+  const centre = { x: seat.x, z: seat.z };
+  const plan = framedLotPlanFor(entry, parcel, kerbCreditOf);
+  const frame = edgeFrameOfParcel(parcel);
+  const corner = (u: number, v: number): LocalPoint => {
+    const p = lotPointToWorld(frame, u, v);
+    return unturn(p.x - centre.x, p.z - centre.z, seat.yaw);
   };
-  return { placements, frontage, baseBox, topBox, side: localSide, lot: kitLot, tiles };
+  const tiles = localRectOf(
+    corner(0, 0),
+    corner(entry.footprint.w * TILE_METERS, entry.footprint.d * TILE_METERS),
+  );
+  return { frontage: CENTRED_FRONTAGE, centre, yaw: seat.yaw, side: 'N', plan, tiles };
 }
 
 const _matrix = new THREE.Matrix4();
@@ -4606,6 +4694,8 @@ export class BuildingKitRenderer {
   private readonly roadAt: (x: number, z: number) => boolean;
   /** The stalls the streets paint, which a car park counts toward its code; null credits none. */
   private readonly kerb: KerbSurroundings | null;
+  /** The kerb stalls a framed lot's frontage earns from its free road; null credits none. */
+  private readonly kerbCreditOf: KerbCreditOf | null;
   private readonly pools = new Map<BuildingPart, InstancedSlotPool>();
   private readonly buildingSlots = new Map<number, { part: BuildingPart; slot: number }[]>();
   private readonly nightFactorUniform = uniform(0);
@@ -4622,12 +4712,14 @@ export class BuildingKitRenderer {
     catalog: readonly BuildingCatalogEntry[],
     roadAt: (x: number, z: number) => boolean,
     kerb: KerbSurroundings | null = null,
+    kerbCreditOf: KerbCreditOf | null = null,
   ) {
     this.scene = scene;
     this.heightAt = heightAt;
     this.catalogById = new Map(catalog.map((e) => [e.id, e]));
     this.roadAt = roadAt;
     this.kerb = kerb;
+    this.kerbCreditOf = kerbCreditOf;
   }
 
   /**
@@ -4728,7 +4820,7 @@ export class BuildingKitRenderer {
     baseBox: SetbackBox,
   ): { x: number; z: number; yaw: number; groundY: number } {
     if (building.frame) {
-      const seat = framedBodyPlacement(building.frame, entry, NO_STREETS);
+      const seat = framedBodyPlacement(building.frame, entry, NO_STREETS, this.kerbCreditOf);
       const groundY = maxHeightUnderBody(
         this.heightAt,
         seat.x,
@@ -4758,7 +4850,7 @@ export class BuildingKitRenderer {
     if (!entry) return;
     if (building.state !== BuildingState.Active) return;
 
-    const kit = kitPlanFor(entry, building, this.roadAt, this.kerb);
+    const kit = kitPlanFor(entry, building, this.roadAt, this.kerb, this.kerbCreditOf);
     if (!kit || kit.placements.length === 0) return;
     const { placements, frontage, baseBox } = kit;
 

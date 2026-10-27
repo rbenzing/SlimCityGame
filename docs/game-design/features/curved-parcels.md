@@ -1,6 +1,6 @@
 # Parcels follow the street — design
 
-- **Status:** Agreed 2026-10-23
+- **Status:** Built 2026-10-27 (agreed 2026-10-23)
 - **Date:** 2026-10-23
 
 The free-form roads ADR left lots on the grid: "a road at an angle fronts grid
@@ -150,6 +150,44 @@ curb cut on the kerb. Nothing on a grid street changes.
   along the road; the sizes come from the ladder and are not re-tuned here.
 - The junction clearance a parcel keeps from a node is the drive's 20 ft
   corner clearance, 6 m.
+- A run of parcels may bend by 8° end to end: at that bend a 60 m frontage
+  leaves its parcels by one metre at most, the width of a verge strip.
+
+### The rest of the ladder takes the same kerb
+
+A shop, a plant, a walk-up or a tower on a curve stands in a framed parcel
+as a house does, and the rule a grid street already has — a building with
+no lot of its own takes whole lots along its frontage, never half of one —
+carries over with one addition for the bend. The kerb plat cuts every zone
+but farmland by the zone's own ladder (normal lots in the dense and
+commercial zones, a corner shop's half lot in low commercial, every size by
+land value elsewhere). A kind one lot wide stands in one parcel. A kind
+wider than a lot takes a **run** of consecutive parcels on one kerb, cut
+one after another, whose frontages add up to its width, and stands in the
+run's one frame: the first parcel's corner and the heading at the run's
+middle. On an inner bend the plat spaces parcels a cut step or two apart
+so their backs never overlap, and a run bridges that gap, up to 4 m, the
+way a strip's frontage runs over the verge strip between two lots; the
+ground under the gap is checked as the lot behind is. The run is allowed only where the road between its ends bends by
+8° or less, so the one rectangle it stands in never leaves its parcels by
+more than a metre; on a tighter bend only the kinds one lot wide grow,
+which is what a tight bend holds in a real town. Where the kind is deeper
+than its lots it runs into unparcelled zoned ground behind, as on the grid,
+and where it is shallower the rest is its yard.
+
+Its car park, curb cut, drive aisles and loading berths are laid in the
+run's frame exactly as parking-to-code lays them on a grid lot, so the curb
+cut meets the kerb square to the road. The kerb credit a lot earns from
+on-street parking along its frontage is read from the free road's own
+cross-section: a kerb parking lane along the frontage credits one stall
+per stall length of frontage, and a section with no parking lane credits
+none.
+
+### What the house readers still read as a box
+
+Water use, service coverage and the restamp on load read a framed house's
+tiles, the ones its parcel claims, as every other tile-keyed reader does;
+a street lamp keeps off its drive mouth as it keeps off a grid drive.
 
 ## What it is not
 
@@ -169,5 +207,7 @@ curb cut on the kerb. Nothing on a grid street changes.
    low-density house with its drive, the lens outline, saves. The reported
    case fixed.
 2. **The rest of the ladder and the car parks.** Medium and high residential,
-   commercial and industrial parcels on a curve, their car parks and curb cuts
-   square to the road, the kerb credit from the free road's section.
+   commercial and industrial parcels on a curve, a wide kind's run of
+   parcels where the road is near straight, their car parks and curb cuts
+   square to the road, the kerb credit from the free road's section, and the
+   house readers moved onto the claimed tiles.

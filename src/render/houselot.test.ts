@@ -1120,3 +1120,32 @@ describe('a home on a framed parcel', () => {
     expect(grid.frame).toEqual({ x: 80, z: 160, heading: 0, mirror: -1 });
   });
 });
+
+describe('a framed home’s drive tiles', () => {
+  const parcel: ParcelFrame = { x: 212.5, z: 340.25, heading: 0.6 };
+
+  it('names the tiles under the drive’s cut, on the road band across the kerb line, each once', () => {
+    const building = home({ x: 10, z: 17, frame: parcel });
+    const plan = planHouseGround(building, small, () => false, () => null)!;
+    expect(plan.drives.length).toBeGreaterThan(0);
+    const tiles = driveRoadTiles(building, small, plan);
+    expect(tiles.length).toBeGreaterThan(0);
+    expect(new Set(tiles.map((t) => `${t.x},${t.z}`)).size).toBe(tiles.length);
+    const walk = sidewalkDepthMeters(RoadTier.TwoLane);
+    const u0 = Math.min(...plan.drives.map((d) => d.cut.u0));
+    const u1 = Math.max(...plan.drives.map((d) => d.cut.u1));
+    for (const t of tiles) {
+      const c = toLocal(parcel, (t.x + 0.5) * TILE_METERS, (t.z + 0.5) * TILE_METERS);
+      expect(c.v).toBeGreaterThan(-walk - TILE_METERS);
+      expect(c.v).toBeLessThan(TILE_METERS);
+      expect(c.u).toBeGreaterThan(u0 - TILE_METERS);
+      expect(c.u).toBeLessThan(u1 + TILE_METERS);
+    }
+  });
+
+  it('is empty for a grid home that fronts no street, as before', () => {
+    const building = home({ x: 10, z: 17 });
+    const plan = planHouseGround(building, small, () => false, () => null)!;
+    expect(driveRoadTiles(building, small, plan)).toEqual([]);
+  });
+});

@@ -16,6 +16,7 @@ import {
   type TilePoint,
 } from '../shared/types';
 import { zonableMaskFor } from './zonable';
+import type { ProfileLookup } from './freeroads';
 
 // ---------------------------------------------------------------------------
 // Indexing helpers. Deliberately NOT the fixed-MAP_SIZE helpers from
@@ -733,11 +734,13 @@ export function setZones(
   tiles: TilePoint[],
   zone: ZoneType,
   restore = false,
+  profileOf?: ProfileLookup,
 ): TilePoint[] {
   const applied: TilePoint[] = [];
   // Putting back what a command took away asks only what the tile holds, not
   // whether the zone could be painted there now.
-  const zonable = zone === ZoneType.None || restore ? null : zonableMaskFor(g, zone);
+  const zonable =
+    zone === ZoneType.None || restore ? null : zonableMaskFor(g, zone, profileOf);
 
   for (const t of tiles) {
     const { x, z } = t;
@@ -745,7 +748,7 @@ export function setZones(
 
     const i = indexOf(g.size, x, z);
     if (g.roadTier[i] !== RoadTier.None) continue;
-    if (g.roadFootprint[i] === 1 && zone !== ZoneType.None) continue;
+    if (g.roadFootprint[i] === 1 && zone !== ZoneType.None && !zonable) continue;
     if (g.buildingId[i] !== 0 && zone !== ZoneType.None) continue;
     if (zonable && zonable[i] !== 1) continue;
 

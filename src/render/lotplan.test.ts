@@ -37,7 +37,9 @@ import {
 import { lotYardsFor } from '../shared/lotparking';
 import { hasPart } from './archetypes';
 import type { EdgeFrame } from './frontage';
-import { lotLayoutFor, lotPlanFor, lotPointToWorld } from './lotplan';
+import { framedLotPlanFor, lotLayoutFor, lotPlanAt, lotPlanFor, lotPointToWorld } from './lotplan';
+import { toLocal } from '../shared/lotframe';
+import type { ParcelFrame } from '../shared/types';
 import { DRIVE_Y_OFFSET, LANE_Y_OFFSET, LOT_Y_OFFSET, LotRenderer, WALK_Y_OFFSET } from './lots';
 import { materialUnit } from './palette';
 import { computeSetbacks, frontageSetbackFor } from './massing';
@@ -810,5 +812,90 @@ describe('a restaurant’s drive-through lane', () => {
       for (let k = 0; k < 3; k += 1) expect(colors[i + k]).toBeCloseTo(dark[k]!, 5);
     }
     expect(laneVertices).toBeGreaterThan(0);
+  });
+});
+
+describe('a lot plan on a framed parcel', () => {
+  const parcel: ParcelFrame = { x: 212.5, z: 340.25, heading: 0.6 };
+  const shop = suburban.find(
+    (e) =>
+      e.category === 'com' &&
+      e.footprint.w === 2 &&
+      e.footprint.d === 2 &&
+      onStreet(e).provided > 0,
+  )!;
+  const W = 2 * TILE_METERS;
+  const D = 2 * TILE_METERS;
+  /** A lot point as the parcel measures it: u along the kerb, v in from the kerb line. */
+  const inParcel = (frame: EdgeFrame, u: number, v: number): { u: number; v: number } => {
+    const p = lotPointToWorld(frame, u, v);
+    return toLocal(parcel, p.x, p.z);
+  };
+
+  it('lays the north-fronting layout in the parcel’s frame, its curb cut on the kerb line inside the frontage', () => {
+    expect(shop).toBeDefined();
+    const plan = framedLotPlanFor(shop, parcel, null)!;
+    expect(plan).not.toBeNull();
+    expect(plan.kerbCredit).toBe(0);
+    expect(plan.layout).toEqual(onStreet(shop));
+    const cut = plan.layout.curbCut;
+    const centre = inParcel(plan.frame, (cut.u0 + cut.u1) / 2, 0);
+    expect(Math.abs(centre.v)).toBeLessThan(1.3);
+    expect(centre.u).toBeGreaterThan(0);
+    expect(centre.u).toBeLessThan(W);
+    const rects: LotRect[] = [
+      plan.layout.lot,
+      plan.layout.body,
+      ...plan.layout.stalls.map((s) => s.rect),
+      ...plan.layout.aisles,
+    ];
+    for (const r of rects) {
+      for (const [u, v] of [
+        [r.u0, r.v0],
+        [r.u1, r.v1],
+      ]) {
+        const p = inParcel(plan.frame, u!, v!);
+        expect(p.u).toBeGreaterThanOrEqual(-EPS);
+        expect(p.u).toBeLessThanOrEqual(W + EPS);
+        expect(p.v).toBeGreaterThanOrEqual(-EPS);
+        expect(p.v).toBeLessThanOrEqual(D + EPS);
+      }
+    }
+  });
+
+  it('credits the stalls its free road gives the frontage, and lays the rest on site', () => {
+    const asked: [ParcelFrame, number][] = [];
+    const credited = framedLotPlanFor(shop, parcel, (f, wM) => {
+      asked.push([f, wM]);
+      return 2;
+    })!;
+    expect(asked).toEqual([[parcel, W]]);
+    expect(credited.kerbCredit).toBe(2);
+    expect(credited.layout).toEqual(lotLayoutFor(shop, 0, true, 2));
+  });
+
+  it('names the road tile across the middle of its frontage', () => {
+    const plan = framedLotPlanFor(shop, parcel, null)!;
+    const out = lotPointToWorld(plan.frame, W / 2, -TILE_METERS / 2);
+    expect(plan.edge).toEqual({
+      side: 'N',
+      edgeTiles: 2,
+      roadTileX: Math.floor(out.x / TILE_METERS),
+      roadTileZ: Math.floor(out.z / TILE_METERS),
+    });
+  });
+
+  it('is null for a kind that parks no lot to code', () => {
+    const tower = catalog.find((e) => lotParkingRequirement(e) === null && e.category === 'com')!;
+    expect(framedLotPlanFor(tower, parcel, null)).toBeNull();
+  });
+
+  it('is the plan every site reads: the parcel’s frame on a curve, the grid’s elsewhere', () => {
+    const framed = lotPlanAt(shop, { x: 10, z: 17, rotation: 0, frame: parcel }, () => false, null, null)!;
+    expect(framed.frame).toEqual({ x: parcel.x, z: parcel.z, heading: 0.6, mirror: 1 });
+    const roadAt = (x: number, z: number): boolean => z === 9 && x >= 10 && x < 12;
+    expect(lotPlanAt(shop, { x: 10, z: 10, rotation: 0 }, roadAt, null, null)).toEqual(
+      lotPlanFor(shop, 10, 10, roadAt, 0, null),
+    );
   });
 });

@@ -67,13 +67,13 @@ export function connectedDepots(
     if (!entry || !depot) continue;
     if (b.state !== BuildingState.Active) continue;
     const { w, d } = footprintForRotation(entry, b.rotation);
-    // Powered as growth judges it: the power layer reaches a tile of the lot.
-    if (!footprintServed(g.power, b.x, b.z, w, d)) continue;
-    if (!hasAdjacentRoad(g, b.x, b.z, w, d, (i) => onNetworkOf(depot.mode, g, i, custom))) continue;
     const tiles: TilePoint[] = [];
     for (let dz = 0; dz < d; dz++) {
       for (let dx = 0; dx < w; dx++) tiles.push({ x: b.x + dx, z: b.z + dz });
     }
+    // Powered as growth judges it: the power layer reaches a tile of the lot.
+    if (!footprintServed(g.power, tiles)) continue;
+    if (!hasAdjacentRoad(g, b.x, b.z, w, d, (i) => onNetworkOf(depot.mode, g, i, custom))) continue;
     depots.push({
       id: b.id,
       mode: depot.mode,

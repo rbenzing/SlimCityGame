@@ -616,6 +616,9 @@ describe('ZoneGridRenderer.setParcels', () => {
       w: 20,
       d: 40,
       tiles: [],
+      seg: 0,
+      side: 1,
+      s: 0,
     };
 
     it('outlines the parcel at the four corners its frame turns to', () => {

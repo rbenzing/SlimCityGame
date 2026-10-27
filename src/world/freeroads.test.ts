@@ -687,14 +687,19 @@ describe('roads off the grid: the land reads them', () => {
     return g;
   }
 
-  it('fronts lots on both sides, out to the zoning depth, and none on its own footprint', () => {
+  it('fronts lots on both sides, out to the zoning depth, and none on its own right-of-way', () => {
     const g = street();
     const mask = computeZonableMask(g);
-    // Its footprint is never zonable.
-    for (let i = 0; i < mask.length; i++) if (g.roadFootprint[i]) expect(mask[i]).toBe(0);
+    const line = (x: number): number => 300 + ((x - 100) * 100) / 600;
+    // A tile whose centre is on the road's pavement is never zonable.
+    for (let tz = 0; tz < SIZE; tz++) {
+      for (let tx = 6; tx < 34; tx++) {
+        const offLine = Math.abs((tz + 0.5) * 20 - line((tx + 0.5) * 20)) * Math.cos(Math.atan(1 / 6));
+        if (offLine <= 4) expect(mask[tz * SIZE + tx]).toBe(0);
+      }
+    }
     // A tile just beside the road, on either side, is; one far off is not.
     const at20 = (x: number, z: number): number => Math.floor(z / 20) * SIZE + Math.floor(x / 20);
-    const line = (x: number): number => 300 + ((x - 100) * 100) / 600;
     expect(mask[at20(400, line(400) - 30)]).toBe(1);
     expect(mask[at20(400, line(400) + 30)]).toBe(1);
     expect(mask[at20(400, line(400) + 150)]).toBe(0);
@@ -732,9 +737,10 @@ describe('roads off the grid: the land reads them', () => {
 
   it('keeps buildings and zones off its footprint, and zones the lots it fronts', () => {
     const g = street();
-    const covered = Array.from(g.roadFootprint).findIndex((v) => v === 1);
-    const cx = covered % SIZE;
-    const cz = Math.floor(covered / SIZE);
+    // The tile whose centre lies on the road's centre line.
+    const cx = 20;
+    const cz = 17;
+    expect(g.roadFootprint[cz * SIZE + cx]).toBe(1);
     expect(canPlaceFootprint(g, cx, cz, 1, 1)).toBe(false);
     expect(setZones(g, [{ x: cx, z: cz }], ZoneType.ResLow)).toEqual([]);
     const mask = computeZonableMask(g);

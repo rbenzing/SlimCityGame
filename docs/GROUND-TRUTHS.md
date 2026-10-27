@@ -848,8 +848,16 @@ MUTCD citations below use 11th-edition section numbers.
   thread reads roads off the grid from the network the worker sends, never
   from its road tiles. A road off the grid fronts lots square to its centre
   line from its kerb, out to the zoning depth, and nothing is zoned or built on
-  its footprint. The zoning depth IS that distance (`ZONE_DEPTH` =
+  a tile whose centre lies inside its right of way (a tile its footprint
+  band only touches, centred on the lot side of the kerb, is lot). The
+  zoning depth IS that distance (`ZONE_DEPTH` =
   `ROAD_CHECK_RADIUS` = 3): the brush never paints land no lot can stand on.
+  Beside a road off the grid that depth is measured square to the road, from
+  the tile's centre to the kerb line, never marched tile by tile from the
+  cells the road crosses: a diagonal street zones a band three tiles deep
+  along its whole length, not a staircase, which is what a framed parcel
+  forty metres deep needs under it. —
+  `zonableTiles` in `src/world/zonable.ts`
   The utilities reach one tile off the road and a lot grows when they reach
   any tile of it, so a lot's first row touches the row beside the street and
   the deepest lot in the catalogue, three, reaches the depth; a fourth row

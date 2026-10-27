@@ -831,13 +831,33 @@ export interface ParcelFrame {
   heading: number;
 }
 
-/** A parcel the plat cut along a curved kerb: its frame, the ladder size it took, its rectangle in metres and the tiles it claims. */
+/** A parcel the plat cut along a curved kerb: its frame, the ladder size it took, its rectangle in metres, the tiles it claims and the kerb it was cut on. */
 export interface FramedParcel {
   frame: ParcelFrame;
   lot: LotSize;
   /** Width along the street and depth into the lot, metres. */
   w: number;
   d: number;
+  tiles: TilePoint[];
+  /** The road segment whose kerb the parcel fronts. */
+  seg: number;
+  /** Which kerb of it: 1 for the side local v runs to, -1 for the other. */
+  side: 1 | -1;
+  /** Arc length along that kerb where the parcel's frontage begins, metres. */
+  s: number;
+}
+
+/** Consecutive framed parcels on one kerb a wide kind takes as one lot. */
+export interface FramedRun {
+  /** The first parcel's corner, the heading at the run's middle. */
+  frame: ParcelFrame;
+  /** Indices into `Plat.framed`, in kerb order. */
+  parcels: readonly number[];
+  /** Frontage, metres: the parcels' widths summed. */
+  w: number;
+  /** The shallowest parcel's depth, metres. */
+  d: number;
+  /** The union of the parcels' claims. */
   tiles: TilePoint[];
 }
 

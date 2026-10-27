@@ -40,6 +40,7 @@ import * as THREE from 'three';
 import { ZoneType, type FramedParcel, type ZonePatch } from '../shared/types';
 import { TILE_METERS } from '../shared/constants';
 import { frameCorners } from '../shared/lotframe';
+import type { ProfileLookup } from '../world/freeroads';
 import type { Parcel } from '../world/plat';
 import {
   computeZonableTiles as computeZonableTilesFrontage,
@@ -371,8 +372,11 @@ export class ZoneGridRenderer {
   /** The zone the tool in hand paints, whose land the grid shows. */
   private paintZone: ZoneType = ZoneType.None;
 
-  constructor(scene: THREE.Scene, heightAt: HeightSampler) {
+  private readonly profileOf: ProfileLookup;
+
+  constructor(scene: THREE.Scene, heightAt: HeightSampler, profileOf: ProfileLookup = () => null) {
     this.heightAt = heightAt;
+    this.profileOf = profileOf;
 
     this.fillMaterial = new THREE.MeshBasicMaterial({
       transparent: true,
@@ -434,7 +438,7 @@ export class ZoneGridRenderer {
     }
     this.gridSize = grid.size;
 
-    const tiles = zonableTilesFor(grid, this.paintZone);
+    const tiles = zonableTilesFor(grid, this.paintZone, this.profileOf);
 
     const fillPositions: number[] = [];
     for (const tile of tiles) {
