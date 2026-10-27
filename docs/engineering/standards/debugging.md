@@ -67,8 +67,8 @@ never are.
 There is one harness per feature area — `archetype-shots.mjs`,
 `bridge-shots.mjs`, `corridor-shots.mjs`, `junction-shots.mjs`,
 `lamppower-shots.mjs`, `oneway-shots.mjs`, `powerline-shots.mjs`,
-`roadslope-shots.mjs`, `tram-shots.mjs`, `transition-shots.mjs`, and about
-a dozen more — rather than one generic harness with flags, matching the
+`roadclip-shots.mjs`, `tramway-shots.mjs`, `transition-shots.mjs`, and about
+two dozen more — rather than one generic harness with flags, matching the
 one-system-per-file convention in `src/render/`.
 
 **Using one to debug a render issue:** run the matching harness (or write a

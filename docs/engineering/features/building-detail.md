@@ -216,7 +216,7 @@ that rather than opening `buildingparts.ts`, which waits for the blocks:
   parts follow the body through construction (hidden at the construction
   scale as the roof is), abandonment (kept) and removal (freed); every part
   inside the lot at all four street sides; determinism.
-- Shots, `tools/yard-shots.mjs` extended: a street of ranches, a street of
+- Shots, `tools/house-shots.mjs` extended: a street of ranches, a street of
   Capes, a street of colonials, each at the default pitch beside the 4 m
   car; a duplex, a fourplex and a townhouse row; the same at night; a close
   shot of a porch and a stoop beside a person-height reference (the 1.75 m
