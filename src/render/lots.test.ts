@@ -16,7 +16,7 @@ import { planHouseLot } from './houselot';
 import { sidewalkDepthMeters } from './frontage';
 import { RoadTier } from '../shared/types';
 import { CURB_CUT_Y_OFFSET } from './parked';
-import { lotPlanFor, lotPointToWorld } from './lotplan';
+import { framedLotPlanFor, lotPlanFor, lotPointToWorld } from './lotplan';
 import {
   BuildingState,
   ZoneType,
@@ -493,5 +493,49 @@ describe('a home’s lot on a framed parcel', () => {
     for (let i = 0; i < position.count; i++) minX = Math.min(minX, position.getX(i));
     // The parcel's westmost corner is its back-left one, turned by 0.6 rad from (212.5, 340.25).
     expect(minX).toBeGreaterThan(frame.x - 40 * Math.sin(0.6) - 1e-6);
+  });
+});
+
+describe('a car park on a framed parcel', () => {
+  const frame = { x: 212.5, z: 340.25, heading: 0.6 };
+  const shop = entry();
+
+  it('lays its pad and every paved rectangle turned with the street, inside the parcel', () => {
+    expect(framedLotPlanFor(shop, frame, null)).not.toBeNull();
+    const scene = new THREE.Scene();
+    const r = new LotRenderer(scene, flat, [shop]);
+    r.apply(delta({ added: [building({ x: 10, z: 17, frame })] }));
+    expect(r.lotCount()).toBe(1);
+    const mesh = scene.children[0] as THREE.Mesh;
+    const position = mesh.geometry.getAttribute('position');
+    // More than the pad alone: the car park's paving is laid on it.
+    expect(position.count).toBeGreaterThan(6);
+    const slack = 1e-4;
+    for (let i = 0; i < position.count; i++) {
+      const p = toLocal(frame, position.getX(i), position.getZ(i));
+      expect(p.u, `vertex ${i}`).toBeGreaterThanOrEqual(-slack);
+      expect(p.u, `vertex ${i}`).toBeLessThanOrEqual(2 * TILE_METERS + slack);
+      expect(p.v, `vertex ${i}`).toBeGreaterThanOrEqual(-slack);
+      expect(p.v, `vertex ${i}`).toBeLessThanOrEqual(2 * TILE_METERS + slack);
+    }
+  });
+
+  it('keeps a grid lot axis-aligned on its own tiles', () => {
+    const roadAt = (x: number, z: number): boolean => z === 5 && x >= 4 && x < 6;
+    const grid = (): number[] => {
+      const scene = new THREE.Scene();
+      const r = new LotRenderer(scene, flat, [shop], roadAt);
+      r.apply(delta({ added: [building({ x: 4, z: 6 })] }));
+      const mesh = scene.children[0] as THREE.Mesh;
+      return Array.from(mesh.geometry.getAttribute('position').array as Float32Array);
+    };
+    const laid = grid();
+    expect(laid.length).toBeGreaterThan(0);
+    expect(lotPlanFor(shop, 4, 6, roadAt)).not.toBeNull();
+    // Every vertex on the lot's tiles or the verge its drive crosses, axis-aligned.
+    for (let i = 0; i < laid.length; i += 3) {
+      expect(laid[i]!).toBeGreaterThanOrEqual(4 * TILE_METERS - 1e-4);
+      expect(laid[i]!).toBeLessThanOrEqual(6 * TILE_METERS + 1e-4);
+    }
   });
 });

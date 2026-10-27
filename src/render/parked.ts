@@ -22,6 +22,7 @@ import {
   BuildingDelta,
   BuildingInstance,
   BuildingState,
+  isStreetTier,
   RoadSpec,
   RoadTier,
   VehicleKind,
@@ -33,7 +34,13 @@ import { footprintForRotation } from '../shared/footprint';
 import { ACCESSIBLE_SYMBOL_M, accessibilitySymbolPaint, ROAD_Y_OFFSET } from './roadsmesh';
 import { clearOfNoParking, type KerbStall, type ParkingSetbacks } from '../shared/kerbstalls';
 import type { LotRect, LotStall, StallNose } from '../shared/lotlayout';
-import { lotPlanFor, lotPointToWorld, type LotPlan } from './lotplan';
+import {
+  lotPlanAt,
+  lotPointToWorld,
+  type KerbCreditOf,
+  type LotPlan,
+  type LotSite,
+} from './lotplan';
 import { InstancedSlotPool } from './massing';
 import { buildBroadleafGeometry } from './trees';
 import { parkingLaneOffset } from '../shared/roadprofile';
@@ -44,6 +51,7 @@ import {
   frameAlongX,
   frameDirection,
   frameToWorld,
+  isAxisAligned,
   sidewalkDepthMeters,
   vergeDepthMeters,
   type EdgeFrame,
@@ -53,7 +61,7 @@ import { kerbSideFacing, type KerbSide, type Side } from '../shared/roadedge';
 import type { KerbSurroundings } from '../shared/kerblayout';
 import { sizeForKind, variantScaleForKind, VehicleKitPool, VEHICLE_PALETTE_HEX } from './vehicles';
 import { materialUnit } from './palette';
-import { pushConformingQuad } from './groundquad';
+import { pushConformingQuad, pushConformingTurnedQuad } from './groundquad';
 
 // ---------------------------------------------------------------------------
 // Tunables
@@ -107,18 +115,19 @@ export function kerbAllowance(
  */
 export function curbCutTileFor(
   entry: BuildingCatalogEntry,
-  x: number,
-  z: number,
+  site: LotSite,
   roadAt: (tileX: number, tileZ: number) => boolean,
-  rotation: 0 | 1 | 2 | 3 = 0,
   kerb: KerbSurroundings | null = null,
+  kerbCreditOf: KerbCreditOf | null = null,
 ): { x: number; z: number } | null {
-  const plan = parkingPlanFor(entry, x, z, roadAt, rotation, kerb);
+  const plan = parkingPlanFor(entry, site, roadAt, kerb, kerbCreditOf);
   if (!plan) return null;
   const { edge, frame, layout } = plan;
   // The road tile across the edge from the middle of the driveway: half a tile out from it.
   const out = frameToWorld(frame, (layout.curbCut.u0 + layout.curbCut.u1) / 2, 0.5);
   const tile = { x: Math.floor(out.x / TILE_METERS), z: Math.floor(out.z / TILE_METERS) };
+  // A framed lot's cut opens onto its free road, whose tiles the grid's roadAt need not name.
+  if (site.frame) return tile;
   return roadAt(tile.x, tile.z) ? tile : { x: edge.roadTileX, z: edge.roadTileZ };
 }
 
@@ -134,14 +143,13 @@ function laysCarPark(entry: BuildingCatalogEntry): boolean {
  */
 function parkingPlanFor(
   entry: BuildingCatalogEntry,
-  x: number,
-  z: number,
+  site: LotSite,
   roadAt: (tileX: number, tileZ: number) => boolean,
-  rotation: 0 | 1 | 2 | 3,
   kerb: KerbSurroundings | null,
+  kerbCreditOf: KerbCreditOf | null,
 ): LotPlan | null {
   if (!laysCarPark(entry)) return null;
-  const plan = lotPlanFor(entry, x, z, roadAt, rotation, kerb);
+  const plan = lotPlanAt(entry, site, roadAt, kerb, kerbCreditOf);
   return plan && plan.layout.provided > 0 ? plan : null;
 }
 
@@ -169,7 +177,9 @@ export function hasOwnLotParking(
   kerb: KerbSurroundings | null = null,
 ): boolean {
   if (isFarmEntry(entry)) return false;
-  if (laysCarPark(entry)) return parkingPlanFor(entry, x, z, roadAt, rotation, kerb) !== null;
+  if (laysCarPark(entry)) {
+    return parkingPlanFor(entry, { x, z, rotation }, roadAt, kerb, null) !== null;
+  }
   return isHouseEntry(entry);
 }
 
@@ -680,6 +690,24 @@ function pushLotRect(
   color: readonly [number, number, number],
   heightAt: (x: number, z: number) => number,
 ): void {
+  if (!isAxisAligned(frame)) {
+    // A lot on a curve: the rectangle turned with its frame, not its bounding box.
+    const toWorld = (u: number, v: number): { x: number; z: number } =>
+      lotPointToWorld(frame, u, v);
+    pushConformingTurnedQuad(
+      positions,
+      colors,
+      toWorld,
+      r.u0,
+      r.v0,
+      r.u1,
+      r.v1,
+      yOffset,
+      color,
+      heightAt,
+    );
+    return;
+  }
   const a = lotPointToWorld(frame, r.u0, r.v0);
   const b = lotPointToWorld(frame, r.u1, r.v1);
   const x0 = Math.min(a.x, b.x);
@@ -818,6 +846,8 @@ export class ParkedCarRenderer {
   private readonly kerbParking: KerbParking | null;
   /** The roads a car park's kerb credit is counted from; null credits none. */
   private readonly kerb: KerbSurroundings | null;
+  /** The kerb stalls a framed lot's frontage earns from its free road; null credits none. */
+  private readonly kerbCreditOf: KerbCreditOf | null;
 
   private readonly pools = new Map<number, VehicleKitPool>();
   private readonly buildingSlots = new Map<number, LotRecord>();
@@ -853,6 +883,8 @@ export class ParkedCarRenderer {
      * for a caller with no road mesh to ask.
      */
     kerbParking: KerbParking | null = null,
+    /** The kerb stalls a framed lot's frontage earns from its free road; omitted, none. */
+    kerbCreditOf: KerbCreditOf | null = null,
   ) {
     this.scene = scene;
     this.heightAt = heightAt;
@@ -862,6 +894,7 @@ export class ParkedCarRenderer {
     this.junctionAt = junctionAt;
     this.kerbParking = kerbParking;
     this.kerb = kerbParking?.kerbSurroundings?.() ?? null;
+    this.kerbCreditOf = kerbCreditOf;
     this.catalogById = new Map(catalog.map((entry) => [entry.id, entry]));
     this.treePool = new InstancedSlotPool(
       scene,
@@ -1014,14 +1047,7 @@ export class ParkedCarRenderer {
     // A downtown building, one that fronts no road, or one its kerb credit or
     // the small-use exemption leaves nothing to hold, parks at the kerb if
     // anywhere; a suburban lot parks in the car park its code lays out.
-    const plan = parkingPlanFor(
-      entry,
-      building.x,
-      building.z,
-      this.roadAt,
-      building.rotation,
-      this.kerb,
-    );
+    const plan = parkingPlanFor(entry, building, this.roadAt, this.kerb, this.kerbCreditOf);
     if (!plan) {
       this.applyRoadside(building, entry);
       return;
@@ -1261,10 +1287,13 @@ export class ParkedCarRenderer {
     };
 
     // The driveway crosses the sidewalk at the curb cut; the lot's own ground
-    // paves the verge between them (lots.ts).
-    const tier = this.roadTierAt(edge.roadTileX, edge.roadTileZ);
+    // paves the verge between them (lots.ts). A framed parcel's front line is
+    // the back of its free road's footway, so its cut starts at the kerb line
+    // and crosses that footway, a two-lane street's where the grid names no tier.
+    const tileTier = this.roadTierAt(edge.roadTileX, edge.roadTileZ);
+    const tier = building.frame && !isStreetTier(tileTier) ? RoadTier.TwoLane : tileTier;
     const streetProfile = this.drawnProfileAt(edge.roadTileX, edge.roadTileZ) ?? undefined;
-    const verge = vergeDepthMeters(tier, streetProfile);
+    const verge = building.frame ? 0 : vergeDepthMeters(tier, streetProfile);
     const sidewalk = sidewalkDepthMeters(tier, streetProfile);
     const cut = layout.curbCut;
     if (sidewalk > 0) {

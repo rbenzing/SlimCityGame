@@ -60,7 +60,9 @@ import {
   withTurnPocket,
 } from '../shared/roadprofile';
 import { CURB_CUT_M, STALL_LENGTH_M, STALL_WIDTH_M } from '../shared/parkingcode';
-import { lotPlanFor, type LotPlan } from './lotplan';
+import { lotPlanAt, lotPlanFor, lotPointToWorld, type LotPlan } from './lotplan';
+import { toLocal } from '../shared/lotframe';
+import type { ParcelFrame } from '../shared/types';
 
 const flatHeightAt = (): number => 0;
 const noRoad = (): boolean => false;
@@ -1828,8 +1830,11 @@ describe('a building turned a quarter parks on the lot it stands on', () => {
   });
 
   it('puts the curb cut on the road tile beside the turned footprint', () => {
-    expect(curbCutTileFor(shop, 5, 5, roadAboveSecondTile, 0)).toBeNull();
-    expect(curbCutTileFor(shop, 5, 5, roadAboveSecondTile, 1)).toEqual({ x: 6, z: 4 });
+    expect(curbCutTileFor(shop, { x: 5, z: 5, rotation: 0 }, roadAboveSecondTile)).toBeNull();
+    expect(curbCutTileFor(shop, { x: 5, z: 5, rotation: 1 }, roadAboveSecondTile)).toEqual({
+      x: 6,
+      z: 4,
+    });
   });
 });
 
@@ -1964,5 +1969,64 @@ describe('kerb-parked cars read the drawn section', () => {
     for (let i = 0; i < own.length; i++) {
       expect(lotEdge - drawn[i]!.z).toBeGreaterThan(lotEdge - own[i]!.z);
     }
+  });
+});
+
+describe('a car park on a framed parcel', () => {
+  const parcel: ParcelFrame = { x: 212.5, z: 340.25, heading: 0.6 };
+  const shop = makeCatalogEntry({ id: 'shop', footprint: { w: 2, d: 2 }, level: 9 });
+  const site = { x: 10, z: 17, rotation: 0 as const, frame: parcel };
+
+  it('stands every car in its stall inside the parcel, placed through its frame', () => {
+    const scene = new THREE.Scene();
+    const renderer = new ParkedCarRenderer(scene, flatHeightAt, [shop], noRoad);
+    renderer.apply(deltaAdd(makeBuilding({ id: 1, catalogId: 'shop', ...site })));
+    const refs = renderer.stallSlotsFor(1);
+    expect(refs.length).toBeGreaterThan(0);
+    const m = new THREE.Matrix4();
+    const p = new THREE.Vector3();
+    const q = new THREE.Quaternion();
+    const s = new THREE.Vector3();
+    for (const ref of refs) {
+      renderer.getCarMatrix(ref, m);
+      m.decompose(p, q, s);
+      const at = toLocal(parcel, p.x, p.z);
+      expect(at.u).toBeGreaterThan(0);
+      expect(at.u).toBeLessThan(2 * TILE_METERS);
+      expect(at.v).toBeGreaterThan(0);
+      expect(at.v).toBeLessThan(2 * TILE_METERS);
+    }
+  });
+
+  it('paints its stripes and its curb cut turned with the frame, the cut across the footway from the kerb line', () => {
+    const scene = new THREE.Scene();
+    const renderer = new ParkedCarRenderer(scene, flatHeightAt, [shop], noRoad);
+    renderer.apply(deltaAdd(makeBuilding({ id: 1, catalogId: 'shop', ...site })));
+    const stripes = scene.children.find(
+      (c) => c instanceof THREE.Mesh && !(c instanceof THREE.InstancedMesh),
+    ) as THREE.Mesh;
+    expect(stripes).toBeDefined();
+    const position = stripes.geometry.getAttribute('position');
+    const walk = sidewalkDepthMeters(RoadTier.TwoLane);
+    let onFootway = 0;
+    for (let i = 0; i < position.count; i++) {
+      const at = toLocal(parcel, position.getX(i), position.getZ(i));
+      expect(at.u, `vertex ${i}`).toBeGreaterThanOrEqual(-1e-3);
+      expect(at.u, `vertex ${i}`).toBeLessThanOrEqual(2 * TILE_METERS + 1e-3);
+      expect(at.v, `vertex ${i}`).toBeGreaterThanOrEqual(-walk - 1e-3);
+      expect(at.v, `vertex ${i}`).toBeLessThanOrEqual(2 * TILE_METERS + 1e-3);
+      if (at.v < -1e-3) onFootway += 1;
+    }
+    expect(onFootway).toBeGreaterThan(0);
+  });
+
+  it('keeps the kerb furniture off the tile its curb cut opens onto', () => {
+    const plan = lotPlanAt(shop, site, noRoad, null, null)!;
+    const cut = plan.layout.curbCut;
+    const out = lotPointToWorld(plan.frame, (cut.u0 + cut.u1) / 2, -TILE_METERS / 2);
+    expect(curbCutTileFor(shop, site, noRoad)).toEqual({
+      x: Math.floor(out.x / TILE_METERS),
+      z: Math.floor(out.z / TILE_METERS),
+    });
   });
 });

@@ -17,12 +17,15 @@ import {
   ROAD_CHECK_RADIUS,
   SEWER_MILESTONE,
   TICKS_PER_YEAR,
+  TILE_METERS,
   inBounds,
   tileIndex,
 } from '../shared/constants';
 import { BuildingState, FieldId, Problem, RoadTier, ZoneType, isStreetTier } from '../shared/types';
 import type { KerbSurroundings } from '../shared/kerblayout';
-import { holdsLotParkingAt } from '../shared/lotparking';
+import { kerbCreditAlongFrame } from '../world/kerbcredit';
+import { claimedTiles, frameCorners } from '../shared/lotframe';
+import { holdsLotParkingAt, lotLayoutFor } from '../shared/lotparking';
 import { drawsLotParking } from '../shared/parkingcode';
 import { missingSchooling, type EducationRung } from '../shared/schooling';
 import { SoilGrade, isFarmable } from '../shared/soil';
@@ -32,11 +35,12 @@ import type {
   BuildingInstance,
   DemandLevels,
   FarmKind,
-  FramedParcel,
+  FramedRun,
   GridState,
   GrowthWaiting,
   ParcelFrame,
   Sector,
+  TilePoint,
   ZonedUnserved,
 } from '../shared/types';
 import { farmKindOf } from '../shared/buildingkind';
@@ -49,6 +53,7 @@ import type { JobsBySector } from './economy';
 import {
   cityWaterUse,
   dirtRoadWithinReach,
+  dirtRoadWithinReachOf,
   sewageOf,
   utilityCanDeliver,
   utilityUnits,
@@ -56,10 +61,10 @@ import {
 } from './network';
 import { freeCellsOn, roadCellsOf } from '../world/roadnet';
 import {
-  framedParcelAt,
   platOf,
   platReaches,
   platSourceOf,
+  runsAlongKerbs,
   takesFrontageLots,
   takesWholeParcels,
   type Front,
@@ -273,7 +278,7 @@ function restoreStamp(g: GridState, inst: BuildingInstance, w: number, d: number
 }
 
 /**
- * True when ANY tile of the w*d footprint at (x, z) is served by `layer`.
+ * True when ANY of a building's standing `tiles` is served by `layer`.
  *
  * Power and water only reach one tile beyond a road, while a footprint always
  * extends from its origin corner towards +x/+z. Testing the origin alone
@@ -283,20 +288,10 @@ function restoreStamp(g: GridState, inst: BuildingInstance, w: number, d: number
  * footprint into the road, and the row that fits was out of reach. A lot is
  * connected as soon as one of its tiles is.
  */
-export function footprintServed(
-  layer: Uint8Array,
-  x: number,
-  z: number,
-  w: number,
-  d: number,
-): boolean {
-  for (let dz = 0; dz < d; dz++) {
-    for (let dx = 0; dx < w; dx++) {
-      const tx = x + dx;
-      const tz = z + dz;
-      if (!inBounds(tx, tz)) continue;
-      if (readTile(layer, tileIndex(tx, tz))) return true;
-    }
+export function footprintServed(layer: Uint8Array, tiles: readonly TilePoint[]): boolean {
+  for (const t of tiles) {
+    if (!inBounds(t.x, t.z)) continue;
+    if (readTile(layer, tileIndex(t.x, t.z))) return true;
   }
   return false;
 }
@@ -365,24 +360,20 @@ function computeProblems(
   entry: BuildingCatalogEntry,
   demandForSector: number,
   milestoneLevel: number,
-  w = 1,
-  d = 1,
+  tiles: readonly TilePoint[] = [{ x, z }],
 ): number {
   const idx = tileIndex(x, z);
   const sector = entry.zone === undefined ? null : zoneSector(entry.zone);
   const reached =
     farmKindOf(entry) !== null
-      ? dirtRoadWithinReach(g, x, z, w, d)
+      ? dirtRoadWithinReachOf(g, tiles)
       : hasNearbyRoad(g, x, z, ROAD_CHECK_RADIUS);
   let problems = 0;
-  if (!footprintServed(g.power, x, z, w, d)) problems |= Problem.NoPower;
-  if (cityWaterUse(g, entry, x, z, w, d) > 0 && !footprintServed(g.watered, x, z, w, d)) {
+  if (!footprintServed(g.power, tiles)) problems |= Problem.NoPower;
+  if (cityWaterUse(g, entry, tiles) > 0 && !footprintServed(g.watered, tiles)) {
     problems |= Problem.NoWater;
   }
-  if (
-    sewageOf(g, entry, x, z, w, d, milestoneLevel) > 0 &&
-    !footprintServed(g.sewered, x, z, w, d)
-  ) {
+  if (sewageOf(g, entry, tiles, milestoneLevel) > 0 && !footprintServed(g.sewered, tiles)) {
     problems |= Problem.NoSewer;
   }
   if (!reached) problems |= Problem.NoRoad;
@@ -540,23 +531,46 @@ function platCutter(g: GridState, profileOf: ProfileLookup): PlatPass {
     profileOf,
   );
   const plats = new Map<ZoneType, Plat>();
+  const runs = new Map<string, FramedRun[]>();
+  const platFor = (zone: ZoneType): Plat => {
+    let plat = plats.get(zone);
+    if (!plat) {
+      plat = platOf(source, zone);
+      plats.set(zone, plat);
+    }
+    return plat;
+  };
   return {
     streetAt: source.streetAt,
-    platFor: (zone) => {
-      let plat = plats.get(zone);
-      if (!plat) {
-        plat = platOf(source, zone);
-        plats.set(zone, plat);
+    platFor,
+    runsFor: (zone, wM) => {
+      const key = `${zone}:${wM}`;
+      let found = runs.get(key);
+      if (!found) {
+        found = runsAlongKerbs(platFor(zone), wM);
+        runs.set(key, found);
       }
-      return plat;
+      return found;
     },
   };
 }
 
-/** The plat of the pass: a zone's cut, and the streets it was cut from. */
+/** The plat of the pass: a zone's cut, the runs of its framed parcels by frontage, and the streets it was cut from. */
 interface PlatPass {
   platFor: (zone: ZoneType) => Plat;
+  runsFor: (zone: ZoneType, wM: number) => readonly FramedRun[];
   streetAt: (x: number, z: number) => boolean;
+}
+
+/** Whether the w×d rectangle at (x, z) covers a tile of a parcel cut along a curved kerb: that ground grows only in the parcel's frame, never under a box that happens to fit. */
+function coversFramedParcel(plat: Plat, x: number, z: number, w: number, d: number): boolean {
+  for (let dz = 0; dz < d; dz++) {
+    for (let dx = 0; dx < w; dx++) {
+      if (!inBounds(x + dx, z + dz)) continue;
+      if ((plat.parcelAt[tileIndex(x + dx, z + dz)] ?? -1) >= plat.parcels.length) return true;
+    }
+  }
+  return false;
 }
 
 /** Where a building with no lot stands, and turned how. */
@@ -564,6 +578,13 @@ interface Placement {
   x: number;
   z: number;
   rotation: 0 | 1;
+}
+
+/** Where a kind stands on a curved kerb: its footprint, the run's frame and the tiles its rectangle there claims. */
+interface FramedSite {
+  entry: BuildingCatalogEntry;
+  frame: ParcelFrame;
+  tiles: TilePoint[];
 }
 
 /**
@@ -783,7 +804,7 @@ export class GrowthSystem {
           continue;
         }
         // A tile a house would stand on a well on wants neither water nor a sewer.
-        const onMains = drinks !== undefined && cityWaterUse(g, drinks, x, z, 1, 1) > 0;
+        const onMains = drinks !== undefined && cityWaterUse(g, drinks, [{ x, z }]) > 0;
         if (lacksPower) {
           out.power += 1;
           out.powerAt ??= { x, z };
@@ -881,8 +902,7 @@ export class GrowthSystem {
           entry,
           demandForSector,
           milestoneLevel,
-          footprint.w,
-          footprint.d,
+          standingTiles(g.size, inst.x, inst.z, footprint.w, footprint.d, inst.frame),
         ) |
         shortageOf(supply, inst.id) |
         (inst.level === 2 && heldBySchooling(g, inst.x, inst.z, entry.zone)
@@ -1002,23 +1022,23 @@ export class GrowthSystem {
   }
 
   /**
-   * The power, water and sewer, in utility units, that standing `to` at
-   * (`toX`, `toZ`) draws over `from` at (`fromX`, `fromZ`).
+   * The power, water and sewer, in utility units, that `to` standing on its
+   * tiles draws over `from` standing on its.
    */
   private utilityDelta(
     g: GridState,
     milestoneLevel: number,
-    from: { entry: BuildingCatalogEntry; x: number; z: number; w: number; d: number },
-    to: { entry: BuildingCatalogEntry; x: number; z: number; w: number; d: number },
+    from: { entry: BuildingCatalogEntry; tiles: readonly TilePoint[] },
+    to: { entry: BuildingCatalogEntry; tiles: readonly TilePoint[] },
   ): { power: number; water: number; sewer: number } {
     return {
       power: utilityUnits(to.entry.powerUse) - utilityUnits(from.entry.powerUse),
       water:
-        utilityUnits(cityWaterUse(g, to.entry, to.x, to.z, to.w, to.d)) -
-        utilityUnits(cityWaterUse(g, from.entry, from.x, from.z, from.w, from.d)),
+        utilityUnits(cityWaterUse(g, to.entry, to.tiles)) -
+        utilityUnits(cityWaterUse(g, from.entry, from.tiles)),
       sewer:
-        utilityUnits(sewageOf(g, to.entry, to.x, to.z, to.w, to.d, milestoneLevel)) -
-        utilityUnits(sewageOf(g, from.entry, from.x, from.z, from.w, from.d, milestoneLevel)),
+        utilityUnits(sewageOf(g, to.entry, to.tiles, milestoneLevel)) -
+        utilityUnits(sewageOf(g, from.entry, from.tiles, milestoneLevel)),
     };
   }
 
@@ -1058,12 +1078,12 @@ export class GrowthSystem {
 
     const { x, z, rotation } = inst;
     const footprint = footprintForRotation(entry, rotation);
-    const at = { x, z, w: footprint.w, d: footprint.d };
+    const tiles = standingTiles(g.size, x, z, footprint.w, footprint.d, inst.frame);
     const { power, water, sewer } = this.utilityDelta(
       g,
       milestoneLevel,
-      { entry, ...at },
-      { entry: plex, ...at },
+      { entry, tiles },
+      { entry: plex, tiles },
     );
     // A teardown the grid cannot carry does not happen; unlike a lot, it is
     // not waiting to grow.
@@ -1134,6 +1154,15 @@ export class GrowthSystem {
           (e.footprint.w === entry.footprint.w && e.footprint.d === entry.footprint.d)),
     );
     if (!nextKind || nextKind.unlockMilestone > milestoneLevel) return false;
+    // A building on a curved parcel improves in place only: a next level that
+    // grows its footprint would claim ground its frame has never been checked
+    // over, so it waits.
+    if (
+      inst.frame !== undefined &&
+      (nextKind.footprint.w !== entry.footprint.w || nextKind.footprint.d !== entry.footprint.d)
+    ) {
+      return false;
+    }
     // A business grows only where the town has room for the jobs it adds.
     const jobsAdded = (nextKind.jobs ?? 0) - (entry.jobs ?? 0);
     if (sector !== 'res' && farm === null && jobsAdded > room[sector]) return false;
@@ -1174,8 +1203,11 @@ export class GrowthSystem {
     const { power, water, sewer } = this.utilityDelta(
       g,
       milestoneLevel,
-      { entry, x, z, w: oldFootprint.w, d: oldFootprint.d },
-      { entry: nextEntry, x: nx, z: nz, w: newFootprint.w, d: newFootprint.d },
+      { entry, tiles: standingTiles(g.size, x, z, oldFootprint.w, oldFootprint.d, inst.frame) },
+      {
+        entry: nextEntry,
+        tiles: standingTiles(g.size, nx, nz, newFootprint.w, newFootprint.d, inst.frame),
+      },
     );
     if (
       !this.suppliedFor(waitKey, [], pass, spare, power, water, sewer) ||
@@ -1327,12 +1359,26 @@ export class GrowthSystem {
         continue;
       }
       // A parcel cut along a curved kerb fronts its road by construction and
-      // grows from its first tile alone, a house turned to its street; its
+      // grows from its first tile alone, a building turned to its street; its
       // other tiles are that parcel's ground.
-      const framed = framedParcelAt(plats.platFor(zone), x, z);
-      if (framed !== null) {
-        if (framed.tiles[0]!.x === x && framed.tiles[0]!.z === z) {
-          this.trySpawnFramed(g, registry, demand, milestoneLevel, pass, spare, room, added, framed);
+      const plat = plats.platFor(zone);
+      const framedIndex = (plat.parcelAt[flat] ?? -1) - plat.parcels.length;
+      if (framedIndex >= 0) {
+        const first = plat.framed[framedIndex]!.tiles[0]!;
+        if (first.x === x && first.z === z) {
+          this.trySpawnFramed(
+            g,
+            registry,
+            demand,
+            milestoneLevel,
+            pass,
+            spare,
+            room,
+            plats,
+            added,
+            zone,
+            framedIndex,
+          );
         }
         continue;
       }
@@ -1346,7 +1392,6 @@ export class GrowthSystem {
       // only at a street-row tile of one, wherever its min corner then falls.
       // A kind that parks to code stands on the smallest of its footprints
       // whose lot meets its code there, the kerb's stalls along it counted.
-      const plat = plats.platFor(zone);
       const frontageZone = PLATTED_ZONES.includes(zone) && platReaches(plat, x, z);
       const placements = new Map<
         BuildingCatalogEntry,
@@ -1360,7 +1405,11 @@ export class GrowthSystem {
               : ({ x, z, rotation: 0 } as const);
           if (at === null) continue;
           const { w, d } = footprintForRotation(e, at.rotation);
-          if (!isZonedLot(g, zone, at.x, at.z, w, d) || !this.canPlace(g, at.x, at.z, w, d)) {
+          if (
+            !isZonedLot(g, zone, at.x, at.z, w, d) ||
+            !this.canPlace(g, at.x, at.z, w, d) ||
+            coversFramedParcel(plat, at.x, at.z, w, d)
+          ) {
             continue;
           }
           if (!parks(e, at.x, at.z, at.rotation)) continue;
@@ -1389,12 +1438,7 @@ export class GrowthSystem {
       // side of the building the street happens to sit (see footprintServed).
       // Once the town is off septic tanks, a lot a drain does not reach grows
       // nothing: its sewage would have nowhere to go.
-      if (
-        !footprintServed(g.power, ax, az, w, d) ||
-        (cityWaterUse(g, entry, ax, az, w, d) > 0 && !footprintServed(g.watered, ax, az, w, d)) ||
-        (sewageOf(g, entry, ax, az, w, d, milestoneLevel) > 0 &&
-          !footprintServed(g.sewered, ax, az, w, d))
-      ) {
+      if (!this.servedOn(g, entry, standingTiles(g.size, ax, az, w, d, undefined), milestoneLevel)) {
         continue;
       }
 
@@ -1419,11 +1463,18 @@ export class GrowthSystem {
   }
 
   /**
-   * A house on a parcel cut along a curved kerb: of the zone's kinds on that
-   * lot size, upright, one drawn by share as on a grid lot, stood in the
-   * parcel's frame with the parcel's claimed tiles as its footprint. The
-   * parcel was cut on zoned, free ground, and its drive meets its own kerb,
-   * so only the ground, the services and the economy are asked.
+   * A building on a parcel cut along a curved kerb. A kind one parcel wide
+   * stands in the parcel; a wider one takes the run of parcels its unturned
+   * frontage meets starting here, and each run is walked from its first
+   * parcel only, so it grows once. A lotted kind takes parcels of its own lot
+   * at their depth; a kind with no lot takes any, and where it is deeper than
+   * them runs into the zoned, free, unparcelled ground behind. Every kind
+   * claims the tiles its rectangle in the run's frame holds, as the registry
+   * will stamp them, and one is drawn by share as on a grid lot. A kind that
+   * parks to code holds its code on that lot, the kerb's lane along the
+   * frontage credited. The parcels were cut on zoned, free ground and front
+   * their own kerb, so only the ground, the services and the economy are
+   * asked.
    */
   private trySpawnFramed(
     g: GridState,
@@ -1433,36 +1484,74 @@ export class GrowthSystem {
     pass: number,
     spare: Spare,
     room: JobsBySector,
+    plats: PlatPass,
     added: BuildingInstance[],
-    parcel: FramedParcel,
+    zone: ZoneType,
+    index: number,
   ): void {
-    const zone = readTile(g.zone, tileIndex(parcel.tiles[0]!.x, parcel.tiles[0]!.z)) as ZoneType;
+    const plat = plats.platFor(zone);
+    const parcel = plat.framed[index]!;
     const sector = zoneSector(zone);
     if (!sector) return;
     if (!canPlaceTiles(g, parcel.tiles)) return;
-    const { frontage, depth } = LOT_EXTENT[parcel.lot];
-    const fitting = spawnCandidates(
-      this.catalog,
-      zone,
-      milestoneLevel,
-      (e) => e.lot === parcel.lot && e.footprint.w === frontage && e.footprint.d === depth,
-    );
+    const extent = g.size * TILE_METERS;
+    const onMap = (p: { x: number; z: number }): boolean =>
+      p.x >= 0 && p.z >= 0 && p.x <= extent && p.z <= extent;
+    const credits = new Map<number, number>();
+    const kerbCredit = (frame: ParcelFrame, wM: number): number => {
+      let credit = credits.get(wM);
+      if (credit === undefined) {
+        credit = g.roads ? kerbCreditAlongFrame(g.roads, frame, wM, this.profileOf) : 0;
+        credits.set(wM, credit);
+      }
+      return credit;
+    };
+    const siteFor = (e: BuildingCatalogEntry): FramedSite | null => {
+      const wM = e.footprint.w * TILE_METERS;
+      const dM = e.footprint.d * TILE_METERS;
+      if (e.lot !== undefined && (e.lot !== parcel.lot || e.footprint.d !== LOT_EXTENT[e.lot].depth)) {
+        return null;
+      }
+      const run = plats.runsFor(zone, wM).find((r) => r.parcels[0] === index);
+      if (run === undefined) return null;
+      if (e.lot !== undefined && !run.parcels.every((n) => plat.framed[n]!.lot === e.lot)) {
+        return null;
+      }
+      if (!frameCorners(run.frame, wM, dM).every(onMap)) return null;
+      const inRun = new Set(run.tiles.map((t) => tileIndex(t.x, t.z)));
+      const tiles = claimedTiles(run.frame, wM, dM, g.size);
+      if (tiles.length === 0 || !canPlaceTiles(g, tiles)) return null;
+      for (const t of tiles) {
+        const i = tileIndex(t.x, t.z);
+        if (inRun.has(i)) continue;
+        if (readTile(g.zone, i) !== zone || plat.parcelAt[i] !== -1) return null;
+      }
+      if (
+        drawsLotParking(e) &&
+        !(lotLayoutFor(e, 0, true, kerbCredit(run.frame, wM))?.fits ?? true)
+      ) {
+        return null;
+      }
+      return { entry: e, frame: run.frame, tiles };
+    };
+    const sites = new Map<BuildingCatalogEntry, FramedSite>();
+    const fitting = spawnCandidates(this.catalog, zone, milestoneLevel, (kind) => {
+      for (const e of footprintsOf(this.catalog, kind)) {
+        const site = siteFor(e);
+        if (site === null) continue;
+        sites.set(kind, site);
+        return true;
+      }
+      return false;
+    });
     const candidates = withinRoom(fitting, sector, room);
     if (candidates.length === 0) return;
-    const entry = drawKind(candidates, candidates.length > 1 ? this.rng.next() : 0);
-
-    const { x, z } = parcel.tiles[0]!;
-    const tiles = parcel.tiles.map((t) => tileIndex(t.x, t.z));
-    const served = (layer: Uint8Array): boolean => tiles.some((i) => readTile(layer, i) !== 0);
-    if (
-      !served(g.power) ||
-      (cityWaterUse(g, entry, x, z, frontage, depth) > 0 && !served(g.watered)) ||
-      (sewageOf(g, entry, x, z, frontage, depth, milestoneLevel) > 0 && !served(g.sewered))
-    ) {
-      return;
-    }
+    const kind = drawKind(candidates, candidates.length > 1 ? this.rng.next() : 0);
+    const { entry, frame, tiles } = sites.get(kind)!;
+    if (!this.servedOn(g, entry, tiles, milestoneLevel)) return;
     const demandForSector = demand[sector];
     if (demandForSector <= 0) return;
+    const { x, z } = tiles[0]!;
     this.spawnIfSupplied(
       g,
       registry,
@@ -1476,8 +1565,27 @@ export class GrowthSystem {
       spare,
       room,
       added,
-      parcel.frame,
+      frame,
       tiles,
+    );
+  }
+
+  /**
+   * Whether the grid serves a building of `entry` standing on `tiles`: power
+   * on one of them, water where it draws any, and once the town is off septic
+   * tanks a drain where it sends any, since its sewage would otherwise have
+   * nowhere to go.
+   */
+  private servedOn(
+    g: GridState,
+    entry: BuildingCatalogEntry,
+    tiles: readonly TilePoint[],
+    milestoneLevel: number,
+  ): boolean {
+    return (
+      footprintServed(g.power, tiles) &&
+      (cityWaterUse(g, entry, tiles) <= 0 || footprintServed(g.watered, tiles)) &&
+      (sewageOf(g, entry, tiles, milestoneLevel) <= 0 || footprintServed(g.sewered, tiles))
     );
   }
 
@@ -1507,7 +1615,7 @@ export class GrowthSystem {
     const { w, d } = footprintForRotation(first, 0);
     if (!isFarmLot(g, x, z, w, d) || !this.canPlace(g, x, z, w, d)) return;
     if (!dirtRoadWithinReach(g, x, z, w, d)) return;
-    if (!footprintServed(g.power, x, z, w, d)) return;
+    if (!footprintServed(g.power, standingTiles(g.size, x, z, w, d, undefined))) return;
 
     const grade = lotGrade(g, x, z, w, d);
     const kind = farmKindFor(grade);
@@ -1550,15 +1658,16 @@ export class GrowthSystem {
     room: JobsBySector,
     added: BuildingInstance[],
     frame?: ParcelFrame,
-    claimed?: readonly number[],
+    claimed?: readonly TilePoint[],
   ): void {
     if (probability <= 0) return;
     const { w, d } = footprintForRotation(entry, rotation);
     // Nobody moves into a home the grid cannot light, water or drain.
+    const tiles = claimed ?? standingTiles(g.size, x, z, w, d, undefined);
     const power = utilityUnits(entry.powerUse);
-    const water = utilityUnits(cityWaterUse(g, entry, x, z, w, d));
-    const sewer = utilityUnits(sewageOf(g, entry, x, z, w, d, milestoneLevel));
-    const lot = claimed ?? lotTiles(x, z, w, d);
+    const water = utilityUnits(cityWaterUse(g, entry, tiles));
+    const sewer = utilityUnits(sewageOf(g, entry, tiles, milestoneLevel));
+    const lot = claimed ? claimed.map((t) => tileIndex(t.x, t.z)) : lotTiles(x, z, w, d);
     if (!this.suppliedFor(tileIndex(x, z), lot, pass, spare, power, water, sewer)) return;
     if (this.rng.next() >= probability) return;
 

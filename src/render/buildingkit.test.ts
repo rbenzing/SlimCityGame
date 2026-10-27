@@ -130,7 +130,11 @@ import {
   type SaturatedName,
 } from './palette';
 import { trimColor } from './houses';
-import type { Side } from './frontage';
+import { NO_STREETS, type Side } from './frontage';
+import { framedBodyPlacement } from './houselot';
+import { toLocal } from '../shared/lotframe';
+import { TILE_METERS } from '../shared/constants';
+import type { ParcelFrame } from '../shared/types';
 import {
   BuildingState,
   ZoneType,
@@ -2609,5 +2613,62 @@ describe('the apartment kit on the map', () => {
     const stoop = plan.placements.filter((p) => p.part === 'stoop');
     expect(stoop.length).toBe(2);
     for (const s of stoop) expect(s.offset[0]).toBe(0);
+  });
+});
+
+describe('a kit on a framed parcel', () => {
+  const parcel: ParcelFrame = { x: 212.5, z: 340.25, heading: 0.6 };
+  const e = shop;
+  const W = e.footprint.w * TILE_METERS;
+  const D = e.footprint.d * TILE_METERS;
+  /** A point in the body's frame carried to the parcel's: seated and turned as the instancer places it. */
+  const inParcel = (x: number, z: number): { u: number; v: number } => {
+    const seat = framedBodyPlacement(parcel, e, NO_STREETS);
+    const cos = Math.cos(seat.yaw);
+    const sin = Math.sin(seat.yaw);
+    return toLocal(parcel, seat.x + x * cos + z * sin, seat.z - x * sin + z * cos);
+  };
+
+  it('lays its car park in the parcel’s frame: the street on its local north, the curb cut on the kerb line, the lot inside the parcel', () => {
+    const plan = kitPlanFor(e, { id: 7, x: 10, z: 17, rotation: 0, frame: parcel }, () => false)!;
+    expect(plan.side).toBe('N');
+    expect(plan.lot).not.toBeNull();
+    const { curbCut, lot } = plan.lot!;
+    const cut = inParcel((curbCut.x0 + curbCut.x1) / 2, curbCut.z0);
+    expect(Math.abs(cut.v)).toBeLessThan(1.3);
+    expect(cut.u).toBeGreaterThan(0);
+    expect(cut.u).toBeLessThan(W);
+    for (const [x, z] of [
+      [lot.x0, lot.z0],
+      [lot.x1, lot.z1],
+    ]) {
+      const p = inParcel(x!, z!);
+      expect(p.u).toBeGreaterThanOrEqual(-1e-6);
+      expect(p.u).toBeLessThanOrEqual(W + 1e-6);
+      expect(p.v).toBeGreaterThanOrEqual(-1e-6);
+      expect(p.v).toBeLessThanOrEqual(D + 1e-6);
+    }
+    // The footprint in the body's frame is the parcel, not the grid tiles its origin names.
+    const a = inParcel(plan.tiles.x0, plan.tiles.z0);
+    const b = inParcel(plan.tiles.x1, plan.tiles.z1);
+    expect(Math.min(a.u, b.u)).toBeCloseTo(0, 6);
+    expect(Math.max(a.u, b.u)).toBeCloseTo(W, 6);
+    expect(Math.min(a.v, b.v)).toBeCloseTo(0, 6);
+    expect(Math.max(a.v, b.v)).toBeCloseTo(D, 6);
+  });
+
+  it('stands its body where the car park leaves it room, as a grid lot does', () => {
+    const grid = kitPlanFor(e, { id: 7, x: 10, z: 10, rotation: 0 }, streetOn('N', 3, 3))!;
+    const framed = kitPlanFor(e, { id: 7, x: 10, z: 17, rotation: 0, frame: parcel }, () => false)!;
+    // The same north-fronting layout, so the same lot in the body's frame.
+    const same = (a: Rect, b: Rect): void => {
+      expect(a.x0).toBeCloseTo(b.x0, 6);
+      expect(a.x1).toBeCloseTo(b.x1, 6);
+      expect(a.z0).toBeCloseTo(b.z0, 6);
+      expect(a.z1).toBeCloseTo(b.z1, 6);
+    };
+    same(framed.lot!.lot, grid.lot!.lot);
+    same(framed.lot!.curbCut, grid.lot!.curbCut);
+    expect(framed.placements.map((p) => p.part)).toEqual(grid.placements.map((p) => p.part));
   });
 });

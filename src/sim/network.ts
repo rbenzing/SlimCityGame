@@ -33,6 +33,7 @@ import type {
   GridState,
   RoadClassSpec,
   RoadSpec,
+  TilePoint,
   UtilitySpec,
 } from '../shared/types';
 import { BuildingState, RoadTier, ZoneType, isStreetTier } from '../shared/types';
@@ -48,7 +49,7 @@ import {
 } from '../shared/constants';
 import { averageOutputMW } from '../shared/power';
 import { footprintForRotation } from '../shared/footprint';
-import { lotTiles } from './buildings';
+import { standingTiles } from './buildings';
 import { roadStep } from '../world/roads';
 import { cellTile, freeCellsOn, neighbours, roadCellsOf } from '../world/roadnet';
 import type { RoadCells } from '../world/roadnet';
@@ -378,17 +379,23 @@ export function dirtRoadWithinReach(
   w: number,
   d: number,
 ): boolean {
+  return dirtRoadWithinReachOf(g, standingTiles(g.size, x, z, w, d, undefined));
+}
+
+/** A dirt road, on the grid or off it, within ROAD_CHECK_RADIUS (as the crow walks the grid) of any of `tiles`. */
+export function dirtRoadWithinReachOf(g: GridState, tiles: readonly TilePoint[]): boolean {
   const cells = g.roads ? roadCellsOf(g) : null;
   const r = ROAD_CHECK_RADIUS;
-  for (let tz = z - r; tz < z + d + r; tz++) {
-    for (let tx = x - r; tx < x + w + r; tx++) {
-      if (!inBounds(tx, tz)) continue;
-      const out = Math.max(x - tx, 0, tx - (x + w - 1)) + Math.max(z - tz, 0, tz - (z + d - 1));
-      if (out > r) continue;
-      const idx = tileIndex(tx, tz);
-      if (g.roadTier[idx] === RoadTier.Gravel) return true;
-      if (cells && freeCellsOn(cells, idx).some((c) => cells.tier[c] === RoadTier.Gravel)) {
-        return true;
+  const dirtAt = (tx: number, tz: number): boolean => {
+    if (!inBounds(tx, tz)) return false;
+    const idx = tileIndex(tx, tz);
+    if (g.roadTier[idx] === RoadTier.Gravel) return true;
+    return cells !== null && freeCellsOn(cells, idx).some((c) => cells.tier[c] === RoadTier.Gravel);
+  };
+  for (const t of tiles) {
+    for (let dz = -r; dz <= r; dz++) {
+      for (let dx = -r + Math.abs(dz); dx <= r - Math.abs(dz); dx++) {
+        if (dirtAt(t.x + dx, t.z + dz)) return true;
       }
     }
   }
@@ -396,42 +403,38 @@ export function dirtRoadWithinReach(
 }
 
 /**
- * What a w×d building at (x, z) draws from the city's water, in kL. A
- * low-density house that a dirt road serves and no main runs beside is on a
- * private well and draws nothing, as a farm does. Only the roads decide, never
- * the supply, so a shortage never moves a house onto a well.
+ * What a building standing on `tiles` draws from the city's water, in kL. A
+ * low-density house that a dirt road serves and no main runs beside any of
+ * its tiles is on a private well and draws nothing, as a farm does. Only the
+ * roads decide, never the supply, so a shortage never moves a house onto a
+ * well.
  */
 export function cityWaterUse(
   g: GridState,
   entry: BuildingCatalogEntry,
-  x: number,
-  z: number,
-  w: number,
-  d: number,
+  tiles: readonly TilePoint[],
 ): number {
   if (entry.waterUse <= 0 || entry.zone !== ZoneType.ResLow) return entry.waterUse;
-  if (mainBeside(g, lotTiles(x, z, w, d))) return entry.waterUse;
-  return dirtRoadWithinReach(g, x, z, w, d) ? 0 : entry.waterUse;
+  const onMap = tiles.filter((t) => inBounds(t.x, t.z));
+  if (mainBeside(g, onMap.map((t) => tileIndex(t.x, t.z)))) return entry.waterUse;
+  return dirtRoadWithinReachOf(g, onMap) ? 0 : entry.waterUse;
 }
 
 /**
- * The sewage a w×d building at (x, z) sends to the city's drains, in kL a
- * day: the return-to-sewer share of the city water it draws. A house on a
- * well is on a septic tank and sends none; a farm sends none; and until the
+ * The sewage a building standing on `tiles` sends to the city's drains, in
+ * kL a day: the return-to-sewer share of the city water it draws. A house on
+ * a well is on a septic tank and sends none; a farm sends none; and until the
  * city reaches SEWER_MILESTONE the whole town is on septic tanks and sends
  * none, so a small town grows on power and water alone.
  */
 export function sewageOf(
   g: GridState,
   entry: BuildingCatalogEntry,
-  x: number,
-  z: number,
-  w: number,
-  d: number,
+  tiles: readonly TilePoint[],
   milestoneLevel: number,
 ): number {
   if (milestoneLevel < SEWER_MILESTONE) return 0;
-  return cityWaterUse(g, entry, x, z, w, d) * SEWAGE_RETURN_FRACTION;
+  return cityWaterUse(g, entry, tiles) * SEWAGE_RETURN_FRACTION;
 }
 
 /** The water tiles orthogonally beside a footprint: what a shore building draws from or empties into. */
@@ -688,7 +691,7 @@ export function recomputeUtilities(
     sewerSupply,
     (s, b) => {
       const { w, d } = footprintForRotation(s, b.rotation);
-      return sewageOf(g, s, b.x, b.z, w, d, milestoneLevel);
+      return sewageOf(g, s, standingTiles(g.size, b.x, b.z, w, d, b.frame), milestoneLevel);
     },
   );
 
@@ -737,7 +740,7 @@ export function recomputeUtilities(
     waterSupply,
     (s, b) => {
       const { w, d } = footprintForRotation(s, b.rotation);
-      return cityWaterUse(g, s, b.x, b.z, w, d);
+      return cityWaterUse(g, s, standingTiles(g.size, b.x, b.z, w, d, b.frame));
     },
   );
 

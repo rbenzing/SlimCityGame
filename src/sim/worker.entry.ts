@@ -1052,8 +1052,12 @@ class SimWorld implements WorkerSim {
         if (entry && (inst.problems & Problem.NoSewer) !== 0) {
           const { w, d } = footprintForRotation(entry, inst.rotation);
           const stink = Math.ceil(
-            sewageOf(g, entry, inst.x, inst.z, w, d, this.stats.milestoneLevel) *
-              SEWAGE_POLLUTION_PER_KL,
+            sewageOf(
+              g,
+              entry,
+              standingTiles(this.grid.size, inst.x, inst.z, w, d, inst.frame),
+              this.stats.milestoneLevel,
+            ) * SEWAGE_POLLUTION_PER_KL,
           );
           if (stink > 0) this.fieldSim.emit(g, FieldId.Pollution, inst.x, inst.z, stink);
         }
@@ -3577,7 +3581,7 @@ class SimWorld implements WorkerSim {
       prevZones.set(idx, g.zone[idx] ?? 0);
     }
 
-    const applied = setZones(g, tiles, zone, restore);
+    const applied = setZones(g, tiles, zone, restore, (id) => this.profileForId(id));
     if (applied.length === 0) {
       // A zone changes only empty land: a building keeps the zone it grew on
       // for life. A repaint over a built-up block changes nothing, and says so

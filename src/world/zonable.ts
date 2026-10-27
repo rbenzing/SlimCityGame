@@ -31,8 +31,8 @@ import type { RoadNet } from '../shared/types';
 import { isFarmable } from '../shared/soil';
 import { MAX_BUILD_SLOPE, ROAD_CHECK_RADIUS, TILE_METERS } from '../shared/constants';
 import { isGridSegment, sampleCentreLine } from '../shared/roadgeom';
-import type { SegmentGeom } from '../shared/roadgeom';
-import { presetProfileForTier, profileWidth } from '../shared/roadprofile';
+import type { MPoint, SegmentGeom } from '../shared/roadgeom';
+import { segmentHalfWidthM, type ProfileLookup } from './freeroads';
 
 /**
  * Perpendicular frontage depth: cells marched out from a road side. It is
@@ -118,13 +118,13 @@ function frontageDirs(connected: readonly number[]): number[] {
  * the module stays sim-free): in bounds, not water, no road, no building, and
  * the slope to every existing orthogonal neighbour within MAX_BUILD_SLOPE.
  */
-function isBuildableCell(g: ZonableGridSource, x: number, z: number): boolean {
+function isBuildableCell(g: ZonableGridSource, x: number, z: number, onFootprint = false): boolean {
   const { size } = g;
   if (x < 0 || z < 0 || x >= size || z >= size) return false;
   const i = z * size + x;
   if (g.water[i]) return false;
   if (g.roadTier[i] !== RoadTier.None) return false;
-  if (g.roadFootprint?.[i]) return false;
+  if (!onFootprint && g.roadFootprint?.[i]) return false;
   if (g.buildingId[i] !== 0) return false;
 
   const h = g.height[i]!;
@@ -143,9 +143,16 @@ function isBuildableCell(g: ZonableGridSource, x: number, z: number): boolean {
  * (e.g. setZones gating a paint batch) should build the mask once and index it
  * directly rather than calling {@link isZonable} per tile. O(tiles + roads·depth).
  */
-export function computeZonableMask(g: ZonableGridSource, depth = ZONE_DEPTH): Uint8Array {
-  return marchFrontage(g, isStreetTier, () => true, depth);
+export function computeZonableMask(
+  g: ZonableGridSource,
+  depth = ZONE_DEPTH,
+  profileOf: ProfileLookup = noProfiles,
+): Uint8Array {
+  return marchFrontage(g, isStreetTier, () => true, depth, profileOf);
 }
+
+/** The lookup of a caller with no composed profiles: every road is its tier's preset. */
+const noProfiles: ProfileLookup = () => null;
 
 /**
  * The land a farm may be zoned on: the same march, from dirt roads only and
@@ -154,15 +161,24 @@ export function computeZonableMask(g: ZonableGridSource, depth = ZONE_DEPTH): Ui
  * any lot does. A paved road fronts no farmland, though a field may run up to
  * it. O(tiles + roads·depth).
  */
-export function computeFarmableMask(g: ZonableGridSource): Uint8Array {
+export function computeFarmableMask(
+  g: ZonableGridSource,
+  profileOf: ProfileLookup = noProfiles,
+): Uint8Array {
   const soil = g.soil;
   if (!soil) return new Uint8Array(g.size * g.size);
-  return marchFrontage(g, frontsFarmland, (i) => isFarmable(soil[i]!), FARM_DEPTH);
+  return marchFrontage(g, frontsFarmland, (i) => isFarmable(soil[i]!), FARM_DEPTH, profileOf);
 }
 
 /** The mask that gates painting `zone`: farmland for Agriculture, road frontage for the rest. */
-export function zonableMaskFor(g: ZonableGridSource, zone: ZoneType): Uint8Array {
-  return zone === ZoneType.Agriculture ? computeFarmableMask(g) : computeZonableMask(g);
+export function zonableMaskFor(
+  g: ZonableGridSource,
+  zone: ZoneType,
+  profileOf: ProfileLookup = noProfiles,
+): Uint8Array {
+  return zone === ZoneType.Agriculture
+    ? computeFarmableMask(g, profileOf)
+    : computeZonableMask(g, ZONE_DEPTH, profileOf);
 }
 
 /**
@@ -175,6 +191,7 @@ function marchFrontage(
   fronts: (tier: RoadTier) => boolean,
   marks: (i: number) => boolean,
   depth: number,
+  profileOf: ProfileLookup,
 ): Uint8Array {
   const { size } = g;
   const mask = new Uint8Array(size * size);
@@ -209,20 +226,51 @@ function marchFrontage(
       }
     }
   }
-  if (g.roads) markFreeFrontage(g, g.roads, mask, fronts, marks, depth);
+  if (g.roads) markFreeFrontage(g, g.roads, mask, fronts, marks, depth, profileOf);
   return mask;
 }
 
-/** How finely the march out from a free road's kerb steps, metres. */
-const FRONTAGE_STEP_M = 5;
+/** Distance from (px, pz) to the segment p-q, metres. */
+function distanceToSegment(px: number, pz: number, p: MPoint, q: MPoint): number {
+  const dx = q.x - p.x;
+  const dz = q.z - p.z;
+  const len2 = dx * dx + dz * dz;
+  const t = len2 === 0 ? 0 : Math.max(0, Math.min(1, ((px - p.x) * dx + (pz - p.z) * dz) / len2));
+  return Math.hypot(px - (p.x + dx * t), pz - (p.z + dz * t));
+}
+
+/** Calls `visit` on every tile whose centre is within `reachM` of the centre line `samples`. */
+function visitTilesWithin(
+  size: number,
+  samples: readonly MPoint[],
+  reachM: number,
+  visit: (x: number, z: number) => void,
+): void {
+  for (let i = 1; i < samples.length; i++) {
+    const p = samples[i - 1]!;
+    const q = samples[i]!;
+    const x0 = Math.max(0, Math.floor((Math.min(p.x, q.x) - reachM) / TILE_METERS));
+    const x1 = Math.min(size - 1, Math.floor((Math.max(p.x, q.x) + reachM) / TILE_METERS));
+    const z0 = Math.max(0, Math.floor((Math.min(p.z, q.z) - reachM) / TILE_METERS));
+    const z1 = Math.min(size - 1, Math.floor((Math.max(p.z, q.z) + reachM) / TILE_METERS));
+    for (let z = z0; z <= z1; z++) {
+      for (let x = x0; x <= x1; x++) {
+        const cx = (x + 0.5) * TILE_METERS;
+        const cz = (z + 0.5) * TILE_METERS;
+        if (distanceToSegment(cx, cz, p, q) <= reachM) visit(x, z);
+      }
+    }
+  }
+}
 
 /**
- * The lots a road off the grid fronts: from every metre of its centre line,
- * straight out square to it on both sides, from its kerb to `depth` tiles
- * beyond, marking each buildable cell and stopping at the first that is not.
- * The first tile out may be the road's own verge, which is passed over rather
- * than stopped at. The width is its tier's preset's, which a composed
- * profile of that tier shares closely enough to find its lots.
+ * The lots a road off the grid fronts: every buildable tile whose centre lies
+ * no farther from the road's centre line than half its width plus `depth`
+ * tiles, which is the depth a grid street's frontage runs, measured square to
+ * the road from its kerb. The width is the road's own profile's. A tile the
+ * road's footprint band touches is still zonable when its centre is off the
+ * right-of-way, which is where a parcel standing on the kerb claims it; a tile
+ * whose centre is on any road's right-of-way is never zonable.
  */
 function markFreeFrontage(
   g: ZonableGridSource,
@@ -231,10 +279,12 @@ function markFreeFrontage(
   fronts: (tier: RoadTier) => boolean,
   marks: (i: number) => boolean,
   depth: number,
+  profileOf: ProfileLookup,
 ): void {
   const { size } = g;
+  const free: Array<{ s: number; half: number; samples: MPoint[] }> = [];
   for (let s = 0; s < net.segSlots; s++) {
-    if (net.segLive[s] !== 1 || !fronts(net.segTier[s]! as RoadTier)) continue;
+    if (net.segLive[s] !== 1) continue;
     const a = net.segA[s]!;
     const b = net.segB[s]!;
     const geom: SegmentGeom = {
@@ -243,34 +293,19 @@ function markFreeFrontage(
       control: net.segCurved[s] === 1 ? { x: net.segCX[s]!, z: net.segCZ[s]! } : null,
     };
     if (isGridSegment(geom)) continue;
-    const half = profileWidth(presetProfileForTier(net.segTier[s] as RoadTier)) / 2;
-    const samples = sampleCentreLine(geom);
-    for (let i = 0; i < samples.length; i++) {
-      const before = samples[Math.max(0, i - 1)]!;
-      const after = samples[Math.min(samples.length - 1, i + 1)]!;
-      const tx = after.x - before.x;
-      const tz = after.z - before.z;
-      const len = Math.sqrt(tx * tx + tz * tz);
-      if (len === 0) continue;
-      const p = samples[i]!;
-      for (const side of [1, -1]) {
-        const nx = (-tz / len) * side;
-        const nz = (tx / len) * side;
-        for (
-          let d = half + FRONTAGE_STEP_M;
-          d <= half + depth * TILE_METERS;
-          d += FRONTAGE_STEP_M
-        ) {
-          const cx = Math.floor((p.x + nx * d) / TILE_METERS);
-          const cz = Math.floor((p.z + nz * d) / TILE_METERS);
-          if (cx < 0 || cz < 0 || cx >= size || cz >= size) break;
-          const i2 = cz * size + cx;
-          if (g.roadFootprint?.[i2] && d < half + TILE_METERS) continue;
-          if (!isBuildableCell(g, cx, cz)) break;
-          if (marks(i2)) mask[i2] = 1;
-        }
-      }
-    }
+    free.push({ s, half: segmentHalfWidthM(net, s, profileOf), samples: sampleCentreLine(geom) });
+  }
+  for (const { s, half, samples } of free) {
+    if (!fronts(net.segTier[s]! as RoadTier)) continue;
+    visitTilesWithin(size, samples, half + depth * TILE_METERS, (x, z) => {
+      const at = z * size + x;
+      if (marks(at) && isBuildableCell(g, x, z, true)) mask[at] = 1;
+    });
+  }
+  for (const { half, samples } of free) {
+    visitTilesWithin(size, samples, half, (x, z) => {
+      mask[z * size + x] = 0;
+    });
   }
 }
 
@@ -281,16 +316,18 @@ function markFreeFrontage(
 export function computeZonableTiles(
   g: ZonableGridSource,
   depth = ZONE_DEPTH,
+  profileOf: ProfileLookup = noProfiles,
 ): Array<{ x: number; z: number }> {
-  return tilesOf(computeZonableMask(g, depth), g.size);
+  return tilesOf(computeZonableMask(g, depth, profileOf), g.size);
 }
 
 /** Every tile `zone` may be painted on, row-major. */
 export function zonableTilesFor(
   g: ZonableGridSource,
   zone: ZoneType,
+  profileOf: ProfileLookup = noProfiles,
 ): Array<{ x: number; z: number }> {
-  return tilesOf(zonableMaskFor(g, zone), g.size);
+  return tilesOf(zonableMaskFor(g, zone, profileOf), g.size);
 }
 
 function tilesOf(mask: Uint8Array, size: number): Array<{ x: number; z: number }> {

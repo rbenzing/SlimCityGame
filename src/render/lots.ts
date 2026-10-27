@@ -37,7 +37,7 @@ import { materialUnit, type MaterialName } from './palette';
 import { massingLifecycleTint } from './massing';
 import { isFarmEntry, isHouseEntry, isWalkUpEntry } from './archetypes';
 import { cropBands, planFarm, type FarmPlan, type FarmRect } from './farmlot';
-import { NO_STREETS, type StreetLookup } from './frontage';
+import { edgeFrameOfParcel, NO_STREETS, type StreetLookup } from './frontage';
 import { lotToWorld, planHouseLot, type HouseLotPlan, type LotRect } from './houselot';
 import {
   CURB_CUT_Y_OFFSET,
@@ -47,7 +47,13 @@ import {
 } from './parked';
 import type { KerbSurroundings } from '../shared/kerblayout';
 import { lotPaving } from '../shared/lotlayout';
-import { lotPlanFor, lotPointToWorld, type LotPlan } from './lotplan';
+import {
+  framedLotPlanFor,
+  lotPlanFor,
+  lotPointToWorld,
+  type KerbCreditOf,
+  type LotPlan,
+} from './lotplan';
 
 /**
  * Pads ride just above the terrain overlays and BELOW everything that sits on
@@ -139,6 +145,8 @@ export class LotRenderer {
   private readonly dirtAt: (x: number, z: number) => boolean;
   /** The stalls the streets paint, which a car park's layout counts toward its code; none without it. */
   private readonly kerb: KerbSurroundings | null;
+  /** The kerb stalls a framed lot's frontage earns from its free road; null credits none. */
+  private readonly kerbCreditOf: KerbCreditOf | null;
   /** 0 (day) .. 1 (night): what the lots' ground shades by, the same tint as the terrain. */
   private readonly nightFactorUniform = uniform(0);
   private readonly material = nightBodyMaterial(this.nightFactorUniform, { vertexColors: true });
@@ -157,6 +165,7 @@ export class LotRenderer {
     street: StreetLookup = NO_STREETS,
     dirtAt: (x: number, z: number) => boolean = () => false,
     kerb: KerbSurroundings | null = null,
+    kerbCreditOf: KerbCreditOf | null = null,
   ) {
     this.scene = scene;
     this.heightAt = heightAt;
@@ -165,6 +174,7 @@ export class LotRenderer {
     this.street = street;
     this.dirtAt = dirtAt;
     this.kerb = kerb;
+    this.kerbCreditOf = kerbCreditOf;
   }
 
   /** 0 (day) .. 1 (night): how far the lots' ground shades toward the night tint. */
@@ -279,6 +289,42 @@ export class LotRenderer {
       this.store(building, positions, colors);
       return;
     }
+    if (building.frame) {
+      // A lot on a curve: its pad is its parcel turned with its street, and its
+      // car park is laid in the parcel's frame, the one every renderer places it by.
+      const carPark = framedLotPlanFor(entry, building.frame, this.kerbCreditOf);
+      const frame = edgeFrameOfParcel(building.frame);
+      const toWorld = (u: number, v: number): { x: number; z: number } =>
+        lotPointToWorld(frame, u, v);
+      const layColor = (rect: LotRect, y: number, color: readonly [number, number, number]): void =>
+        pushConformingTurnedQuad(
+          positions,
+          colors,
+          toWorld,
+          rect.u0,
+          rect.v0,
+          rect.u1,
+          rect.v1,
+          y,
+          color,
+          this.heightAt,
+        );
+      const lay = (rect: LotRect, y: number, name: MaterialName): void =>
+        layColor(rect, y, tinted(name));
+      const { w, d } = entry.footprint;
+      lay(
+        { u0: 0, u1: w * TILE_METERS, v0: 0, v1: d * TILE_METERS },
+        LOT_Y_OFFSET,
+        carPark || isWalkUpEntry(entry) ? 'mownLawn' : surface,
+      );
+      if (carPark) {
+        this.layCarPark(carPark, entry, surface, lay, (r) =>
+          layColor(r, STRIPE_LINE_Y_OFFSET, NEAR_WHITE_STRIPE_COLOR),
+        );
+      }
+      this.store(building, positions, colors);
+      return;
+    }
     const bounds = lotBounds(building, entry);
     const carPark = lotPlanFor(
       entry,
@@ -301,7 +347,27 @@ export class LotRenderer {
       this.heightAt,
     );
     if (carPark) {
-      this.layCarPark(carPark, entry, surface, tinted, positions, colors);
+      const layColor = (r: LotRect, y: number, color: readonly [number, number, number]): void => {
+        const a = lotPointToWorld(carPark.frame, r.u0, r.v0);
+        const b = lotPointToWorld(carPark.frame, r.u1, r.v1);
+        pushConformingQuad(
+          positions,
+          colors,
+          Math.min(a.x, b.x),
+          Math.min(a.z, b.z),
+          Math.max(a.x, b.x),
+          Math.max(a.z, b.z),
+          y,
+          color,
+          this.heightAt,
+        );
+      };
+      const lay = (r: LotRect, y: number, name: MaterialName): void =>
+        layColor(r, y, tinted(name));
+      this.layCarPark(carPark, entry, surface, lay, (r) =>
+        layColor(r, STRIPE_LINE_Y_OFFSET, NEAR_WHITE_STRIPE_COLOR),
+      );
+      this.layVergeCrossing(carPark, surface, lay);
       this.store(building, positions, colors);
       return;
     }
@@ -355,26 +421,10 @@ export class LotRenderer {
     plan: LotPlan,
     entry: BuildingCatalogEntry,
     surface: MaterialName,
-    tinted: (name: MaterialName) => readonly [number, number, number],
-    positions: number[],
-    colors: number[],
+    lay: (rect: LotRect, y: number, name: MaterialName) => void,
+    stripe: (rect: LotRect) => void,
   ): void {
-    const lay = (r: LotRect, y: number, name: MaterialName): void => {
-      const a = lotPointToWorld(plan.frame, r.u0, r.v0);
-      const b = lotPointToWorld(plan.frame, r.u1, r.v1);
-      pushConformingQuad(
-        positions,
-        colors,
-        Math.min(a.x, b.x),
-        Math.min(a.z, b.z),
-        Math.max(a.x, b.x),
-        Math.max(a.z, b.z),
-        y,
-        tinted(name),
-        this.heightAt,
-      );
-    };
-    const { layout, edge } = plan;
+    const { layout } = plan;
     const paving = lotPaving(layout);
     // A walk-up's rear yard is the lawn its balconies open onto, never paved.
     const yard = isWalkUpEntry(entry)
@@ -383,21 +433,20 @@ export class LotRenderer {
     for (const r of yard) lay(r, DRIVE_Y_OFFSET, surface);
     for (const r of paving.concrete) lay(r, WALK_Y_OFFSET, 'cleanConcrete');
     for (const r of paving.lane) lay(r, LANE_Y_OFFSET, 'darkAsphalt');
-    for (const r of trailerStripes(layout.trailerStalls)) {
-      const a = lotPointToWorld(plan.frame, r.u0, r.v0);
-      const b = lotPointToWorld(plan.frame, r.u1, r.v1);
-      pushConformingQuad(
-        positions,
-        colors,
-        Math.min(a.x, b.x),
-        Math.min(a.z, b.z),
-        Math.max(a.x, b.x),
-        Math.max(a.z, b.z),
-        STRIPE_LINE_Y_OFFSET,
-        NEAR_WHITE_STRIPE_COLOR,
-        this.heightAt,
-      );
-    }
+    for (const r of trailerStripes(layout.trailerStalls)) stripe(r);
+  }
+
+  /**
+   * A grid lot's drive and entrance walk carried out across the road tile's
+   * verge to its footway. A framed parcel's front line is the back of the
+   * footway, so it has no verge to cross.
+   */
+  private layVergeCrossing(
+    plan: LotPlan,
+    surface: MaterialName,
+    lay: (rect: LotRect, y: number, name: MaterialName) => void,
+  ): void {
+    const { layout, edge } = plan;
     const verge = this.street(edge.roadTileX, edge.roadTileZ)?.vergeM ?? 0;
     if (verge <= 0) return;
     if (layout.aisles.length > 0) {

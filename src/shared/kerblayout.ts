@@ -23,13 +23,14 @@ import {
   downstreamBeside,
   kerbOrientation,
   layKerbFace,
+  PARKING_STALL_LENGTH_M,
   parkingTickPositions,
   type KerbFace,
   type KerbStall,
   type ParkingSetbacks,
 } from './kerbstalls';
 import { axisOfFlow } from './overpass';
-import { kerbSideFacing, type Side } from './roadedge';
+import { kerbSideFacing, type KerbSide, type Side } from './roadedge';
 import {
   carriagewayHalfWidthOf,
   corridorHalfProfile,
@@ -37,6 +38,7 @@ import {
   isParkingLane,
   kerbWidthOf,
   PARKING_STYLES,
+  parkingLaneOffset,
   parkingStyleOn,
   presetProfileForTier,
   worldOrderedProfile,
@@ -48,7 +50,12 @@ import {
   type CarriagewaySpan,
 } from './travellanes';
 import { corridorHalfOf, flowDirection, RoadFlow, RoadTier } from './types';
-import type { ParkingStyle, RoadProfile, RoadTileDelta, TilePoint } from './types';
+import type {
+  ParkingStyle,
+  RoadProfile,
+  RoadTileDelta,
+  TilePoint,
+} from './types';
 
 const TILE_HALF = TILE_METERS / 2;
 const NORTH = 1;
@@ -665,3 +672,15 @@ export function kerbCreditFor(s: KerbSurroundings, lot: LotTiles, side: Side): n
     side: kerbSideFacing(side),
   }).length;
 }
+
+/**
+ * The kerb credit a frontage `wM` metres long earns from one road section:
+ * where the section carries a parking lane on `side`, one stall for every
+ * stall length of frontage, the length the kerb paints a parallel stall at;
+ * a section with no lane on that side credits none.
+ */
+export function kerbCreditOnSection(profile: RoadProfile, side: KerbSide, wM: number): number {
+  if (parkingLaneOffset(profile, side) === null) return 0;
+  return Math.floor(wM / PARKING_STALL_LENGTH_M);
+}
+

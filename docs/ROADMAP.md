@@ -25,7 +25,7 @@ current behavior only and carry no dates of their own._
 
 ## Status (2026-09-29)
 
-**Test suite:** 7,177 tests passing across 202 test files, run 2026-10-27.
+**Test suite:** 7,227 tests passing across 203 test files, run 2026-10-27.
 This is the only test count in the documentation set. When the suite changes
 again, update the figure here and nowhere else.
 
@@ -119,11 +119,11 @@ not a test to fix.
   The kit omits what does not fit and parks the vans in the lot's trailer
   stalls. The real fix is deeper lots for the heavy kinds in the lot layout
   (truck courts run 120–135 ft), a lots-and-land change.
-- A house on a curved parcel is read as a grid box by the readers keyed to
-  a rectangle from its min tile (water use, service coverage, the restamp
-  on load), and a street lamp is not kept off its drive mouth, since the
-  lamp spacing reads a grid edge the parcel has none of. Slice 2 of the
-  curved parcels moves those readers onto the claimed tiles.
+- Beside a curve an industrial box can still grow on verge tiles outside
+  any framed parcel, since industry has no frontage rule on the grid; a
+  framed building never levels up into a larger footprint; and a framed lot
+  that lays no car park still reads its kerbside allowance from grid edges.
+  All three are curved-parcels follow-ups.
 - The split-level's two-storey block is a wall-colour box: the facade's
   window grid covers the house body only, so the block's upper storey has no
   panes and reads blank up close and dark at night. Panes drawn by the house
@@ -392,6 +392,44 @@ roads, and pinning the Three.js version. See [adr/](engineering/adr/README.md).
 ---
 
 ## 10. History (newest first)
+
+### The rest of the ladder and the car parks on a curve (slice 2 of the curved parcels, built 2026-10-27)
+
+The second slice of [curved-parcels.md](game-design/features/curved-parcels.md):
+every zone plats along a curve, and the shops, works and walk-ups stand
+square to it with their car parks.
+
+- **Every zone takes the kerb.** The kerb plat runs for every platted zone
+  and both industrial zones by each zone's own ladder, so no zone plats a
+  grid box against a curve's crossed tiles any more.
+- **A wide kind takes a run.** Consecutive parcels on one kerb whose
+  frontages add up to the kind's width merge into one frame where the road
+  bends 8° or less end to end, the bend at which a 60 m frontage leaves
+  its parcels by a metre; on a tighter bend only one-lot kinds grow. A
+  building on a run claims its own rectangle's tiles, the run's parcels
+  being the free set it is checked against.
+- **Car parks in the frame.** The lot plan, car park, curb cut, aisles,
+  berths and stall cars of every kind are placed through the parcel frame
+  by one helper, the curb cut on the kerb line across the footway; the
+  kerb credit a framed lot earns is read from the free road's own section
+  on its side, one stall per stall length where a parking lane runs.
+- **The readers.** Water use, sewage and service reach read a building's
+  standing tiles, framed or grid, with the grid figures unchanged; a lamp
+  keeps off a framed drive's mouth and a framed lot's curb cut.
+- **The brush beside a curve.** The zoning depth beside a road off the
+  grid is now measured square to the road from the kerb, as the ground
+  truth always said, where the mask marched tile by tile from the crossed
+  cells and left a diagonal street a staircase of zonable tiles; the
+  staircase starved the framed parcels and left them 22 m apart, so no
+  wide kind ever found a run.
+- Checked in the browser: the S-bend with a shop's car park, a strip on a
+  run, a walk-up with its striped lot, the lens over the commercial side
+  and a lamp standing clear of a framed drive; the test town needed local
+  industry for its shops and the Busy Township milestone for its walk-ups,
+  as the rules say.
+- **Open, logged below:** industrial boxes on verge beside a curve, framed
+  level-ups into a larger footprint, kerbside allowance for a framed lot
+  without a car park.
 
 ### Houses on a curved street stand square to it (slice 1 of the curved parcels, built 2026-10-27)
 

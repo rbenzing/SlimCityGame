@@ -20,6 +20,8 @@ import {
   waterBeside,
 } from './network';
 import { createGrid } from '../world/grid';
+import { claimedTiles } from '../shared/lotframe';
+import { standingTiles } from './buildings';
 import { tileCentreCm } from '../shared/roadgeom';
 import { applyRoad, settleArms } from '../world/roads';
 import { networkFromGrid, reconcileRoads } from '../world/roadnet';
@@ -336,9 +338,39 @@ describe('recomputeUtilities: water pipes', () => {
     // A dirt road within reach, and only a pipe beside the lot.
     paintRoad(g, 1, 1, RoadTier.Gravel);
     g.waterPipe[tileIndex(2, 3)] = 1;
-    expect(cityWaterUse(g, house, 2, 2, 1, 1)).toBe(house.waterUse);
+    expect(cityWaterUse(g, house, [{ x: 2, z: 2 }])).toBe(house.waterUse);
     g.waterPipe[tileIndex(2, 3)] = 0;
-    expect(cityWaterUse(g, house, 2, 2, 1, 1)).toBe(0);
+    expect(cityWaterUse(g, house, [{ x: 2, z: 2 }])).toBe(0);
+  });
+
+  it('reads a lot by its standing tiles: the same figure as the rectangle, a dirt road three tiles off any of them making a well', () => {
+    const g = makeGrid();
+    const home = { ...house, footprint: { w: 2, d: 2 } };
+    const lot = standingTiles(g.size, 2, 2, 2, 2, undefined);
+    expect(lot).toHaveLength(4);
+    // Three tiles east of the lot's east column: within reach of it, and of
+    // no tile of the rectangle any further than the old reading counted.
+    paintRoad(g, 6, 2, RoadTier.Gravel);
+    expect(cityWaterUse(g, home, lot)).toBe(0);
+    g.roadTier[tileIndex(6, 2)] = RoadTier.None;
+    paintRoad(g, 7, 2, RoadTier.Gravel);
+    expect(cityWaterUse(g, home, lot)).toBe(home.waterUse);
+    // The figure never depends on the order the tiles come in.
+    paintRoad(g, 6, 2, RoadTier.Gravel);
+    expect(cityWaterUse(g, home, [...lot].reverse())).toBe(0);
+  });
+
+  it('puts a framed house on the main that runs beside any of its claimed tiles', () => {
+    const g = makeGrid();
+    const frame = { x: 100, z: 100, heading: Math.PI / 6 };
+    const tiles = claimedTiles(frame, 20, 40, g.size);
+    expect(tiles.length).toBeGreaterThan(0);
+    // A dirt lane within reach, so the house is on a well unless a main runs beside it.
+    paintRoad(g, tiles[0]!.x - 2, tiles[0]!.z, RoadTier.Gravel);
+    expect(cityWaterUse(g, house, tiles)).toBe(0);
+    const last = tiles[tiles.length - 1]!;
+    g.waterPipe[tileIndex(last.x + 1, last.z)] = 1;
+    expect(cityWaterUse(g, house, tiles)).toBe(house.waterUse);
   });
 
   it('is a way out for a water tower, so one on a pipe alone is not stranded', () => {
@@ -367,23 +399,24 @@ describe('recomputeUtilities: the sewer', () => {
   const sewered = [...catalog, drain];
   /** A house makes SEWAGE_RETURN_FRACTION of the 2 kL it draws. */
   const houseSewage = house.waterUse * SEWAGE_RETURN_FRACTION;
+  const at22: TilePoint[] = [{ x: 2, z: 2 }];
 
   it('a building makes sewage from the city water it draws, and none on a well or a farm', () => {
     const g = makeGrid();
     paintRoad(g, 2, 1);
-    expect(sewageOf(g, house, 2, 2, 1, 1, SEWER_MILESTONE)).toBeCloseTo(houseSewage, 9);
+    expect(sewageOf(g, house, at22, SEWER_MILESTONE)).toBeCloseTo(houseSewage, 9);
     // The same house down a dirt road is on a well and a septic tank.
     const lane = makeGrid();
     paintRoad(lane, 1, 1, RoadTier.Gravel);
-    expect(sewageOf(lane, house, 2, 2, 1, 1, SEWER_MILESTONE)).toBe(0);
-    expect(sewageOf(g, { ...house, waterUse: 0 }, 2, 2, 1, 1, SEWER_MILESTONE)).toBe(0);
+    expect(sewageOf(lane, house, at22, SEWER_MILESTONE)).toBe(0);
+    expect(sewageOf(g, { ...house, waterUse: 0 }, at22, SEWER_MILESTONE)).toBe(0);
   });
 
   it('a whole town below the sewer milestone is on septic tanks and makes no sewage for a drain', () => {
     const g = makeGrid();
     paintRoad(g, 2, 1);
-    expect(sewageOf(g, house, 2, 2, 1, 1, SEWER_MILESTONE - 1)).toBe(0);
-    expect(sewageOf(g, house, 2, 2, 1, 1, 0)).toBe(0);
+    expect(sewageOf(g, house, at22, SEWER_MILESTONE - 1)).toBe(0);
+    expect(sewageOf(g, house, at22, 0)).toBe(0);
     const buildings: BuildingInstance[] = [];
     placeBuilding(g, buildings, 1, 'drain', 5, 1, 1, 1);
     placeBuilding(g, buildings, 2, 'house', 2, 2, 1, 1);

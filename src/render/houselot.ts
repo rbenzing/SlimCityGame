@@ -36,6 +36,7 @@ import {
   tierHeightOf,
 } from './massing';
 import { isHouseEntry } from './archetypes';
+import { framedLotPlanFor, type KerbCreditOf } from './lotplan';
 import { housePaneMargins, MULLION_MARGIN_PUNCHED, windowGrid } from './facade';
 import { homesAcrossFrontage } from '../shared/buildingkind';
 
@@ -470,24 +471,23 @@ export interface FramedBodyPlacement {
 /**
  * The one composition every body renderer uses for a building on a curve:
  * the body centred across the lot with its front yard behind the footway,
- * turned to the parcel's street. A kind the lot planner does not lay stands
- * in the middle of its parcel.
+ * turned to the parcel's street. A kind that parks a lot to code stands where
+ * its car park, laid in the parcel's frame with the kerb credit `kerbCreditOf`
+ * reads, leaves it room; a kind the lot planner does not lay stands in the
+ * middle of its parcel.
  */
 export function framedBodyPlacement(
   parcel: ParcelFrame,
   entry: BuildingCatalogEntry,
   street: StreetLookup,
+  kerbCreditOf: KerbCreditOf | null = null,
 ): FramedBodyPlacement {
   const bodyM = bodyMetresFor(entry);
   const kerb = edgeFrameOfParcel(parcel);
   const yaw = inwardYaw(kerb);
   const centre = isHouseEntry(entry)
     ? framedBodyCentre(parcel, entry, street)
-    : lotToWorld(
-        kerb,
-        (entry.footprint.w * TILE_METERS) / 2,
-        (entry.footprint.d * TILE_METERS) / 2,
-      );
+    : framedLotBodyCentre(parcel, entry, kerbCreditOf);
   const c = Math.abs(Math.cos(parcel.heading));
   const s = Math.abs(Math.sin(parcel.heading));
   return {
@@ -506,6 +506,25 @@ function framedBodyCentre(
 ): { x: number; z: number } {
   const { frame, body } = framedGround(parcel, entry, street);
   return lotToWorld(frame, (body.u0 + body.u1) / 2, (body.v0 + body.v1) / 2);
+}
+
+/** Where a framed lot's body stands: the middle of the body its car park leaves room for, else the middle of the parcel. */
+function framedLotBodyCentre(
+  parcel: ParcelFrame,
+  entry: BuildingCatalogEntry,
+  kerbCreditOf: KerbCreditOf | null,
+): { x: number; z: number } {
+  const kerb = edgeFrameOfParcel(parcel);
+  const plan = framedLotPlanFor(entry, parcel, kerbCreditOf);
+  if (!plan) {
+    return lotToWorld(
+      kerb,
+      (entry.footprint.w * TILE_METERS) / 2,
+      (entry.footprint.d * TILE_METERS) / 2,
+    );
+  }
+  const { body } = plan.layout;
+  return lotToWorld(kerb, (body.u0 + body.u1) / 2, (body.v0 + body.v1) / 2);
 }
 
 /** The road tile across the frontage from the lot tile at along-index `i`. */
@@ -1735,6 +1754,7 @@ export function driveRoadTiles(
   entry: BuildingCatalogEntry,
   plan: HouseGroundPlan,
 ): { x: number; z: number }[] {
+  if (building.frame) return framedDriveRoadTiles(plan);
   if (!plan.edge) return [];
   const out: { x: number; z: number }[] = [];
   const seen = new Set<number>();
@@ -1747,6 +1767,31 @@ export function driveRoadTiles(
       out.push(
         roadTileAcross(plan.edge, building.x, building.z, entry.footprint.w, entry.footprint.d, i),
       );
+    }
+  }
+  return out;
+}
+
+/** The tiles under a framed home's drive cuts: each cut's corners and centre, carried out through the lot frame. */
+function framedDriveRoadTiles(plan: HouseGroundPlan): { x: number; z: number }[] {
+  const out: { x: number; z: number }[] = [];
+  const seen = new Set<number>();
+  for (const { cut } of plan.drives) {
+    const uc = (cut.u0 + cut.u1) / 2;
+    const vc = (cut.v0 + cut.v1) / 2;
+    for (const [u, v] of [
+      [cut.u0, cut.v0],
+      [cut.u1, cut.v0],
+      [cut.u0, cut.v1],
+      [cut.u1, cut.v1],
+      [uc, vc],
+    ] as const) {
+      const p = lotToWorld(plan.frame, u, v);
+      const tile = { x: Math.floor(p.x / TILE_METERS), z: Math.floor(p.z / TILE_METERS) };
+      const key = tile.x * 100_000 + tile.z;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(tile);
     }
   }
   return out;

@@ -57,8 +57,9 @@ Outside the programme:
 | [underground-view.md](underground-view.md)         | Pipes are buried: the city goes underground while the player works on the water, and shows the whole system beneath a glass surface (built)                                              |
 | [building-detail.md](building-detail.md)           | Every zoned building and ploppable drawn as the US type it is, from a sourced reference library, inside a measured triangle budget (built)                                               |
 | [tramways.md](tramways.md)                         | A street tramway drawn as a street cars share, and a tram reservation lifted onto an elevated guideway with raised stations; every tram lane routable (built)                            |
-| [curved-parcels.md](curved-parcels.md)             | Lots platted square to a free-form road, side lines radial, houses facing the curve with drives to the kerb; the aligned lots the roads ADR deferred (agreed, after the kit pass)        |
-| [rci-kits-second-pass.md](rci-kits-second-pass.md) | Every zoned kind told apart at 40 m by its body material, its sized identifying parts and its yard, from sources; commercial, industrial and residential slices (commercial in progress) |
+| [curved-parcels.md](curved-parcels.md)             | Lots platted square to a free-form road, every zone's ladder and the car parks in the parcel's frame, wide kinds on runs where the road is near straight; the aligned lots the roads ADR deferred (built 2026-10-27) |
+| [rci-kits-second-pass.md](rci-kits-second-pass.md) | Every zoned kind told apart at 40 m by its body material, its sized identifying parts and its yard, from sources; commercial, industrial and residential slices (built 2026-10-27) |
+| [civic-access-and-bus-stops.md](civic-access-and-bus-stops.md) | Bus stops as footway furniture, a ₵2 sign or a ₵150 shelter that earns ad income when 25 board a day; every civic lot with a drive, apron or bus loop to the kerb (agreed 2026-10-27) |
 
 The features built before this folder existed have no design document; their
 behaviour is described in the specs and their delivery in

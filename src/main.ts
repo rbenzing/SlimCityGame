@@ -94,6 +94,7 @@ import { MassingRenderer } from './render/massing';
 import { RoofPropRenderer } from './render/props';
 import { HouseRoofRenderer } from './render/houses';
 import { frontDoorOf } from './render/houselot';
+import { kerbCreditAlongFrame } from './world/kerbcredit';
 import {
   curbCutTileFor,
   kerbAllowance,
@@ -306,6 +307,12 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
   // park counts those along its frontage toward its code, so every renderer
   // that stands a body on its lot lays the lot out with the same credit.
   const kerb = roadsMesh.kerbSurroundings();
+  // A lot on a curve reads its kerb credit off the free road under its kerb
+  // line: a parking lane along the frontage credits a stall per stall length.
+  const kerbCreditOf = (frame: ParcelFrame, wM: number): number =>
+    clientGrid.roads
+      ? kerbCreditAlongFrame(clientGrid.roads, frame, wM, (id) => clientGrid.profileById(id))
+      : 0;
   const instancer = new BuildingInstancer(
     world.scene,
     catalog,
@@ -315,6 +322,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
     street,
     dirtAt,
     kerb,
+    kerbCreditOf,
   );
   // Roads off the grid lie on the ground, so they sit on the terrain.
   const freeRoads = new FreeRoadRenderer(world.scene, heightAt, (id) => clientGrid.profileById(id));
@@ -353,7 +361,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
 
   // World feedback & selection FX.
   const ghosts = new GhostRenderer(world.scene, heightAt);
-  const zoneGrid = new ZoneGridRenderer(world.scene, heightAt);
+  const zoneGrid = new ZoneGridRenderer(world.scene, heightAt, (id) => clientGrid.profileById(id));
   const lamps = new LampRenderer(world.scene, roadSurfaceAt);
   const powerLines = new PowerLineRenderer(world.scene, heightAt);
   const pipes = new PipeOverlayRenderer(world.scene, heightAt);
@@ -419,7 +427,16 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
   // Lot pads go down before anything that stands on them: the building mass,
   // the parking apron, a driveway. They claim the whole footprint so a block of
   // lots meets edge to edge instead of leaving grass between properties.
-  const lots = new LotRenderer(world.scene, heightAt, catalog, roadAt, street, dirtAt, kerb);
+  const lots = new LotRenderer(
+    world.scene,
+    heightAt,
+    catalog,
+    roadAt,
+    street,
+    dirtAt,
+    kerb,
+    kerbCreditOf,
+  );
   // A farm's barn roof, farmhouse, silos, bins, orchard, fence and herd.
   const farms = new FarmRenderer(world.scene, heightAt, catalog, dirtAt);
   const massing = new MassingRenderer(world.scene, heightAt, catalog, roadAt, street);
@@ -427,7 +444,14 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
   // Archetype kit: the parts that make a warehouse, a factory, a green works
   // and a shopfront read as different things rather than as boxes of different
   // heights — docks and doors, a monitor roof, a roof array, a canopy and a sign.
-  const buildingKit = new BuildingKitRenderer(world.scene, heightAt, catalog, roadAt, kerb);
+  const buildingKit = new BuildingKitRenderer(
+    world.scene,
+    heightAt,
+    catalog,
+    roadAt,
+    kerb,
+    kerbCreditOf,
+  );
   const parkedCars = new ParkedCarRenderer(
     world.scene,
     heightAt,
@@ -446,6 +470,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
     // The junctions' no-parking zones and the marked stalls, both read off
     // what the road mesh paints.
     roadsMesh,
+    kerbCreditOf,
   );
   // Residential house kit: the roof, what each drive ends at, the car, the
   // front door and the yard, stood on the lot plan laid out from the street the
@@ -2091,7 +2116,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       for (const inst of knownBuildings.values()) {
         const entry = catalogById.get(inst.catalogId);
         if (!entry) continue;
-        const cut = curbCutTileFor(entry, inst.x, inst.z, roadAt, inst.rotation, kerb);
+        const cut = curbCutTileFor(entry, inst, roadAt, kerb, kerbCreditOf);
         if (cut) nextDriveways.add(cut.x * 100_000 + cut.z);
         const home = planHouseGround(inst, entry, roadAt, street);
         if (!home) continue;

@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { RoadTier, ZoneType } from '../shared/types';
-import { MAX_BUILD_SLOPE, ROAD_CHECK_RADIUS } from '../shared/constants';
+import { RoadTier, ZoneType, type GridState } from '../shared/types';
+import { MAX_BUILD_SLOPE, ROAD_CHECK_RADIUS, TILE_METERS } from '../shared/constants';
+import { presetProfileForTier } from '../shared/roadprofile';
+import { deriveRoadFootprint, halfWidthOf } from './freeroads';
+import { createGrid } from './grid';
+import { addNode, addSegment, createRoadNetwork, segmentGeom } from './roadnet';
 import { SoilGrade } from '../shared/soil';
 import {
   FARM_DEPTH,
@@ -394,5 +398,80 @@ describe('farmland', () => {
     expect(Array.from(zonableMaskFor(g, ZoneType.ResLow))).toEqual(
       Array.from(computeZonableMask(g)),
     );
+  });
+});
+
+describe('computeZonableMask — beside a road off the grid', () => {
+  const a = { x: 60, z: 160 };
+  const b = { x: a.x + 200 * Math.cos(Math.PI / 6), z: a.z + 200 * Math.sin(Math.PI / 6) };
+  const cm = (m: number): number => Math.round(m * 100);
+  const half = halfWidthOf(presetProfileForTier(RoadTier.TwoLane));
+
+  function freeWorld(): GridState {
+    const g = createGrid();
+    const net = createRoadNetwork();
+    const facts = { tier: RoadTier.TwoLane, profile: RoadTier.TwoLane, flow: 0 };
+    const na = addNode(net, { ...facts, x: cm(a.x), z: cm(a.z), height: 0 });
+    const nb = addNode(net, { ...facts, x: cm(b.x), z: cm(b.z), height: 0 });
+    addSegment(net, { ...facts, a: na, b: nb, h0: 0, h1: 0, control: null });
+    g.roads = net;
+    deriveRoadFootprint(g, net, () => null);
+    return g;
+  }
+
+  /** Metres from a tile's centre to the laid centre line. */
+  function distanceToRoad(g: GridState, x: number, z: number): number {
+    const geom = segmentGeom(g.roads!, 0);
+    const p = { x: geom.a.x / 100, z: geom.a.z / 100 };
+    const q = { x: geom.b.x / 100, z: geom.b.z / 100 };
+    const cx = (x + 0.5) * TILE_METERS;
+    const cz = (z + 0.5) * TILE_METERS;
+    const dx = q.x - p.x;
+    const dz = q.z - p.z;
+    const t = Math.max(0, Math.min(1, ((cx - p.x) * dx + (cz - p.z) * dz) / (dx * dx + dz * dz)));
+    return Math.hypot(cx - (p.x + dx * t), cz - (p.z + dz * t));
+  }
+
+  it('zones every tile off the road within half its width plus the grid depth of the centre line, and none farther', () => {
+    const g = freeWorld();
+    const mask = computeZonableMask(g);
+    const reach = half + ROAD_CHECK_RADIUS * TILE_METERS;
+    let within = 0;
+    let beyond = 0;
+    for (let z = 0; z < g.size; z++) {
+      for (let x = 0; x < g.size; x++) {
+        const i = z * g.size + x;
+        const near = distanceToRoad(g, x, z) <= reach;
+        const onRoad = distanceToRoad(g, x, z) <= half;
+        expect(mask[i], `${x},${z}`).toBe(near && !onRoad ? 1 : 0);
+        if (near && !onRoad) within++;
+        else if (!near) beyond++;
+      }
+    }
+    expect(within).toBeGreaterThan(40);
+    expect(beyond).toBeGreaterThan(0);
+  });
+
+  it('zones a tile the footprint band touches when its centre is off the right-of-way, and none on it', () => {
+    const g = freeWorld();
+    const mask = computeZonableMask(g);
+    let touched = 0;
+    for (let z = 0; z < g.size; z++) {
+      for (let x = 0; x < g.size; x++) {
+        const i = z * g.size + x;
+        if (g.roadFootprint[i] !== 1) continue;
+        if (distanceToRoad(g, x, z) > half) touched++;
+        else expect(mask[i]).toBe(0);
+      }
+    }
+    expect(touched).toBeGreaterThan(0);
+  });
+
+  it('leaves a grid street’s zonable set as it was, whatever net the source carries', () => {
+    const plain = createGrid();
+    for (let x = 10; x < 20; x++) plain.roadTier[idx(plain.size, x, 10)] = RoadTier.TwoLane;
+    const before = Array.from(computeZonableMask(plain));
+    plain.roads = createRoadNetwork();
+    expect(Array.from(computeZonableMask(plain))).toEqual(before);
   });
 });

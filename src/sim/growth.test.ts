@@ -9,6 +9,7 @@ import type {
   DemandLevels,
   FarmKind,
   GridState,
+  ParcelFrame,
 } from '../shared/types';
 import { SoilGrade } from '../shared/soil';
 import { BuildingRegistry } from './buildings';
@@ -45,6 +46,7 @@ import {
   parcelsAnchoredAt,
   platOf,
   platSourceOf,
+  runsAlongKerbs,
   takesFrontageLots,
   takesWholeParcels,
 } from '../world/plat';
@@ -3179,6 +3181,34 @@ describe('farmKindFor', () => {
   });
 });
 
+/** A served block of `zone` with one road off the grid, at 30 degrees, laid across it. */
+function zonedAlongACurve(zone: ZoneType = ZoneType.ResLow): GridState {
+  const g = makeGrid();
+  for (let z = 0; z < 20; z++) {
+    for (let x = 0; x < 20; x++) {
+      const i = tileIndex(x, z);
+      g.zone[i] = zone;
+      g.power[i] = 1;
+      g.watered[i] = 1;
+      g.sewered[i] = 1;
+    }
+  }
+  g.fields[FieldId.LandValue]!.fill(119);
+  const net = createRoadNetwork();
+  const facts = { tier: RoadTier.TwoLane, profile: RoadTier.TwoLane, flow: 0 };
+  const a = addNode(net, { ...facts, x: 6000, z: 16000, height: 0 });
+  const b = addNode(net, {
+    ...facts,
+    x: Math.round(6000 + 20000 * Math.cos(Math.PI / 6)),
+    z: Math.round(16000 + 20000 * Math.sin(Math.PI / 6)),
+    height: 0,
+  });
+  addSegment(net, { ...facts, a, b, h0: 0, h1: 0, control: null });
+  g.roads = net;
+  deriveRoadFootprint(g, net, () => null);
+  return g;
+}
+
 describe('a house on a parcel cut along a curved street', () => {
   const cottage: BuildingCatalogEntry = { ...resL1, id: 'cottage', lot: 'half', share: 1 };
   const ranch: BuildingCatalogEntry = {
@@ -3191,34 +3221,6 @@ describe('a house on a parcel cut along a curved street', () => {
   const turned: BuildingCatalogEntry = { ...ranch, id: 'ranch-t', footprint: { w: 2, d: 1 } };
   const kinds = [cottage, ranch, turned];
   const wantsHomes: DemandLevels = { res: 1, com: 0, ind: 0 };
-
-  /** A served ResLow block with one road off the grid, at 30 degrees, laid across it. */
-  function zonedAlongACurve(): GridState {
-    const g = makeGrid();
-    for (let z = 0; z < 20; z++) {
-      for (let x = 0; x < 20; x++) {
-        const i = tileIndex(x, z);
-        g.zone[i] = ZoneType.ResLow;
-        g.power[i] = 1;
-        g.watered[i] = 1;
-        g.sewered[i] = 1;
-      }
-    }
-    g.fields[FieldId.LandValue]!.fill(119);
-    const net = createRoadNetwork();
-    const facts = { tier: RoadTier.TwoLane, profile: RoadTier.TwoLane, flow: 0 };
-    const a = addNode(net, { ...facts, x: 6000, z: 16000, height: 0 });
-    const b = addNode(net, {
-      ...facts,
-      x: Math.round(6000 + 20000 * Math.cos(Math.PI / 6)),
-      z: Math.round(16000 + 20000 * Math.sin(Math.PI / 6)),
-      height: 0,
-    });
-    addSegment(net, { ...facts, a, b, h0: 0, h1: 0, control: null });
-    g.roads = net;
-    deriveRoadFootprint(g, net, () => null);
-    return g;
-  }
 
   const grow = (g: GridState, registry: BuildingRegistry): void => {
     const growth = new GrowthSystem(kinds, constantRng(0), alwaysTrue);
@@ -3254,5 +3256,131 @@ describe('a house on a parcel cut along a curved street', () => {
     registry.remove(g, inst.id);
     for (const t of tiles) expect(g.buildingId[tileIndex(t.x, t.z)]).toBe(0);
     expect(registry.get(inst.id)).toBeUndefined();
+  });
+});
+
+describe('the rest of the ladder on parcels cut along a curved street', () => {
+  const shipped = (catalogData as { buildings: BuildingCatalogEntry[] }).buildings;
+  const byId = (id: string): BuildingCatalogEntry => shipped.find((e) => e.id === id)!;
+  /** A kind's entry and the larger lots the catalog holds for its building at that level. */
+  const withLots = (id: string): BuildingCatalogEntry[] => {
+    const kind = byId(id);
+    return shipped.filter(
+      (e) =>
+        e === kind ||
+        (e.bodyFootprint !== undefined && e.kind === kind.kind && e.level === kind.level),
+    );
+  };
+
+  /** Grows `catalog` on the block for a whole sweep of the scan at `milestoneLevel`. */
+  const grow = (
+    g: GridState,
+    catalog: BuildingCatalogEntry[],
+    demand: DemandLevels,
+    milestoneLevel: number,
+  ): BuildingRegistry => {
+    const registry = new BuildingRegistry(catalog);
+    const growth = new GrowthSystem(catalog, constantRng(0), alwaysTrue);
+    for (let pass = 0; pass < 32; pass++) {
+      growth.tick(g, registry, demand, milestoneLevel, pass * GROWTH_INTERVAL);
+    }
+    return registry;
+  };
+
+  /** The block's plat and, by frontage in lots, the frames of every run on it, before anything grew. */
+  const platted = (
+    g: GridState,
+    zone: ZoneType,
+  ): { framedTiles: Set<number>; frames: Map<number, ParcelFrame[]> } => {
+    const plat = platOf(platSourceOf(g, null, g.fields[FieldId.LandValue]), zone);
+    const framedTiles = new Set(plat.framed.flatMap((p) => p.tiles.map((t) => tileIndex(t.x, t.z))));
+    const frames = new Map<number, ParcelFrame[]>();
+    for (const lots of [1, 2, 3, 4, 5]) {
+      frames.set(lots, runsAlongKerbs(plat, lots * TILE_METERS).map((r) => r.frame));
+    }
+    return { framedTiles, frames };
+  };
+
+  /**
+   * Every framed building among the grown is one of `ids`, stands in a run's
+   * frame of its own width, rotation 0, on exactly the tiles its rectangle
+   * there claims; and no unframed one stands on a framed parcel's ground.
+   */
+  const standOnRuns = (
+    g: GridState,
+    registry: BuildingRegistry,
+    ids: string[],
+    before: { framedTiles: Set<number>; frames: Map<number, ParcelFrame[]> },
+  ): BuildingInstance[] => {
+    const grown = registry.all();
+    const framed = grown.filter((inst) => inst.frame !== undefined);
+    expect(framed.length).toBeGreaterThan(0);
+    for (const inst of framed) {
+      expect(ids).toContain(inst.catalogId);
+      expect(inst.rotation).toBe(0);
+      const entry = byId(inst.catalogId);
+      expect(before.frames.get(entry.footprint.w)).toContainEqual(inst.frame);
+      const tiles = claimedTiles(
+        inst.frame!,
+        entry.footprint.w * TILE_METERS,
+        entry.footprint.d * TILE_METERS,
+        g.size,
+      );
+      expect({ x: inst.x, z: inst.z }).toEqual(tiles[0]);
+      for (const t of tiles) expect(g.buildingId[tileIndex(t.x, t.z)]).toBe(inst.id);
+      expect(Array.from(g.buildingId).filter((v) => v === inst.id)).toHaveLength(tiles.length);
+    }
+    for (const inst of grown) {
+      if (inst.frame !== undefined) continue;
+      const entry = byId(inst.catalogId);
+      const { w, d } = entry.footprint;
+      for (let dz = 0; dz < d; dz++) {
+        for (let dx = 0; dx < w; dx++) {
+          expect(before.framedTiles.has(tileIndex(inst.x + dx, inst.z + dz))).toBe(false);
+        }
+      }
+    }
+    return framed;
+  };
+
+  it('stands a strip mall on the run of normal lots its car park needs, in the run’s frame', () => {
+    const g = zonedAlongACurve(ZoneType.ComLow);
+    const before = platted(g, ZoneType.ComLow);
+    const lots = withLots('com-strip-1');
+    const registry = grow(g, lots, { res: 0, com: 1, ind: 0 }, 1);
+    const framed = standOnRuns(
+      g,
+      registry,
+      lots.map((e) => e.id),
+      before,
+    );
+    // Every strip is framed: a strip in a platted zone grows nowhere but on parcels.
+    expect(framed).toHaveLength(registry.all().length);
+    // With no kerb parking the first level's code takes five lots, as on the grid.
+    for (const inst of framed) expect(inst.catalogId).toBe('com-strip-1-lot5x2');
+    expect(framed.length).toBeGreaterThan(1);
+  });
+
+  it('stands a corner shop one lot wide in its own parcel', () => {
+    const g = zonedAlongACurve(ZoneType.ComLow);
+    const before = platted(g, ZoneType.ComLow);
+    const registry = grow(g, [byId('com-low-1')], { res: 0, com: 1, ind: 0 }, 0);
+    const framed = standOnRuns(g, registry, ['com-low-1'], before);
+    expect(framed).toHaveLength(registry.all().length);
+  });
+
+  it('stands a walk-up on a run of two normal lots of its own lot size', () => {
+    const g = zonedAlongACurve(ZoneType.ResMedium);
+    const before = platted(g, ZoneType.ResMedium);
+    const registry = grow(g, [byId('res-multiplex-1')], { res: 1, com: 0, ind: 0 }, 2);
+    const framed = standOnRuns(g, registry, ['res-multiplex-1'], before);
+    expect(framed).toHaveLength(registry.all().length);
+  });
+
+  it('stands a works on a run of industrial parcels, and never a box on a parcel’s ground', () => {
+    const g = zonedAlongACurve(ZoneType.Industrial);
+    const before = platted(g, ZoneType.Industrial);
+    const registry = grow(g, [byId('ind-1')], { res: 0, com: 0, ind: 1 }, 0);
+    standOnRuns(g, registry, ['ind-1'], before);
   });
 });

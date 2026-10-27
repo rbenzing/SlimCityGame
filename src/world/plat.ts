@@ -20,7 +20,7 @@
  */
 import { inBounds, TILE_METERS, tileIndex } from '../shared/constants';
 import { claimedTiles, frameCorners, toWorld, type WorldPoint } from '../shared/lotframe';
-import { LOT_EXTENT, LOT_SIZES, lotsOfZone, warrantedLot } from '../shared/lots';
+import { LOT_EXTENT, LOT_SIZES, lotsOfZone, PLATTED_ZONES, warrantedLot } from '../shared/lots';
 import {
   footprintTiles,
   kerbLine,
@@ -31,9 +31,11 @@ import {
   isStreetTier,
   ZoneType,
   type FramedParcel,
+  type FramedRun,
   type LotSize,
   type ParcelFrame,
   type RoadNet,
+  type TilePoint,
 } from '../shared/types';
 import { segmentHalfWidthM, type ProfileLookup } from './freeroads';
 import {
@@ -347,10 +349,10 @@ export function framedParcelAt(plat: Plat, x: number, z: number): FramedParcel |
  * one claimed. The spawner and the lens read the same plat.
  */
 export function platOf(source: PlatSource, zone: ZoneType): Plat {
-  // Low density is framed along a curve, so a tile beside one takes a grid
-  // parcel only from a grid street; every other zone still plats against the
+  // Every zone but farmland is framed along a curve, so a tile beside one
+  // takes a grid parcel only from a grid street, never one cut against the
   // tiles the curve crosses.
-  const alongKerbs = zone === ZoneType.ResLow && source.kerbs !== undefined;
+  const alongKerbs = KERB_PLATTED_ZONES.includes(zone) && source.kerbs !== undefined;
   const src =
     alongKerbs && source.gridStreetAt !== undefined
       ? { ...source, streetAt: source.gridStreetAt }
@@ -394,6 +396,13 @@ export function platOf(source: PlatSource, zone: ZoneType): Plat {
   if (alongKerbs) platAlongKerbs(src.kerbs!, src, zone, plat);
   return plat;
 }
+
+/** The zones cut into framed parcels along a curved kerb: every platted zone and both industrial zones; farmland is not. */
+const KERB_PLATTED_ZONES: readonly ZoneType[] = [
+  ...PLATTED_ZONES,
+  ZoneType.Industrial,
+  ZoneType.IndHeavy,
+];
 
 /** The corner clearance a drive keeps from a junction, metres. */
 const DRIVE_CORNER_CLEARANCE_M = 6;
@@ -568,6 +577,7 @@ export function platAlongKerbs(
       const kerb = kerbLine(geom, side, half);
       const end = kerb[kerb.length - 1]!.s - clearB;
       let s = clearA;
+      let prevEnd = -Infinity;
       while (s + MIN_KERB_FRONTAGE_M <= end) {
         const at = kerbAt(kerb, s);
         const tx = Math.floor(at.x / TILE_METERS);
@@ -578,6 +588,10 @@ export function platAlongKerbs(
         for (let n = warranted; n >= 0 && cut === null; n--) {
           const lot = LOT_SIZES[n]!;
           if (!allowed.includes(lot)) continue;
+          // Within the verge an inner bend leaves after a parcel, only the
+          // warranted lot is tried: a shallower one clears the wedge sooner
+          // and would otherwise stand in the gap the warranted lot is owed.
+          if (n < warranted && s - prevEnd < MAX_RUN_GAP_M - 1e-9) continue;
           const w = LOT_EXTENT[lot].frontage * TILE_METERS;
           const d = LOT_EXTENT[lot].depth * TILE_METERS;
           if (s + w > end) continue;
@@ -588,7 +602,7 @@ export function platAlongKerbs(
           if (standing.some((q) => polygonsOverlap(corners, q))) continue;
           const tiles = claimedTiles(frame, w, d, src.size);
           if (tiles.length === 0 || !tiles.every((t) => freeFor(seg, t))) continue;
-          cut = { frame, lot, w, d, tiles };
+          cut = { frame, lot, w, d, tiles, seg, side, s };
         }
         if (cut === null) {
           s += KERB_CUT_STEP_M;
@@ -604,9 +618,110 @@ export function platAlongKerbs(
         }
         standing.push(frameCorners(cut.frame, cut.w, cut.d));
         s += cut.w;
+        prevEnd = s;
       }
     }
   }
+}
+
+/**
+ * The most the road may bend between a run's ends, radians: 8°. A three-lot
+ * run of 60 m on a road turning 8° over it lies on an arc of about 430 m
+ * radius, whose sagitta is a metre, so the one rectangle the run stands in
+ * never leaves its parcels by more than that; a tighter bend holds only the
+ * kinds one lot wide.
+ */
+export const MAX_RUN_BEND_RAD = (8 * Math.PI) / 180;
+
+/** The slack, metres, within which widths sum to a frontage and parcels meet end to end. */
+const RUN_EPS_M = 1e-6;
+
+/**
+ * The widest kerb gap between two parcels of one run, metres: an inner bend
+ * spaces parcels so none overlap, and the cut steps up to two strides to clear
+ * the wedge, leaving this much verge between them.
+ */
+const MAX_RUN_GAP_M = 2 * KERB_CUT_STEP_M;
+
+/** The signed turn from heading `a` to heading `b`, in (-π, π]. */
+function turnBetween(a: number, b: number): number {
+  let turn = (b - a) % (2 * Math.PI);
+  if (turn <= -Math.PI) turn += 2 * Math.PI;
+  if (turn > Math.PI) turn -= 2 * Math.PI;
+  return turn;
+}
+
+/**
+ * Every run of consecutive framed parcels on one kerb, met end to end along
+ * it, whose widths sum to `wM` and whose first and last headings differ by at
+ * most `MAX_RUN_BEND_RAD`. The run's frame is the corner of the parcel first
+ * in its frame's own order (the last in arc length on a kerb whose frame
+ * runs back along it) and the parcels' headings averaged by width, which on
+ * an arc is the heading at the run's middle; its depth is the shallowest
+ * parcel's, its tiles the union of theirs. A parcel as wide as `wM` is a run
+ * of one. Walked kerb by kerb in the order the parcels were cut.
+ */
+export function runsAlongKerbs(plat: Plat, wM: number): FramedRun[] {
+  const byKerb = new Map<string, number[]>();
+  plat.framed.forEach((p, i) => {
+    const key = `${p.seg}:${p.side}`;
+    const list = byKerb.get(key);
+    if (list) list.push(i);
+    else byKerb.set(key, [i]);
+  });
+  const runs: FramedRun[] = [];
+  for (const indices of byKerb.values()) {
+    indices.sort((a, b) => plat.framed[a]!.s - plat.framed[b]!.s);
+    for (let i = 0; i < indices.length; i++) {
+      let w = 0;
+      for (let j = i; j < indices.length && w < wM - RUN_EPS_M; j++) {
+        const p = plat.framed[indices[j]!]!;
+        if (j > i) {
+          const prev = plat.framed[indices[j - 1]!]!;
+          if (p.s - (prev.s + prev.w) > MAX_RUN_GAP_M + RUN_EPS_M) break;
+        }
+        w += p.w;
+        if (Math.abs(w - wM) <= RUN_EPS_M) {
+          const run = runOf(plat, indices.slice(i, j + 1), wM);
+          if (run !== null) runs.push(run);
+        }
+      }
+    }
+  }
+  return runs;
+}
+
+/** The run over `parcels` (in arc-length order), or null where the road bends too far between its ends. */
+function runOf(plat: Plat, parcels: readonly number[], wM: number): FramedRun | null {
+  const first = plat.framed[parcels[0]!]!;
+  const last = plat.framed[parcels[parcels.length - 1]!]!;
+  if (Math.abs(turnBetween(first.frame.heading, last.frame.heading)) > MAX_RUN_BEND_RAD) {
+    return null;
+  }
+  let turn = 0;
+  let d = Infinity;
+  const seen = new Set<number>();
+  const tiles: TilePoint[] = [];
+  for (const n of parcels) {
+    const p = plat.framed[n]!;
+    turn += (p.w / wM) * turnBetween(first.frame.heading, p.frame.heading);
+    d = Math.min(d, p.d);
+    for (const t of p.tiles) {
+      const idx = tileIndex(t.x, t.z);
+      if (seen.has(idx)) continue;
+      seen.add(idx);
+      tiles.push(t);
+    }
+  }
+  tiles.sort((a, b) => a.z - b.z || a.x - b.x);
+  const corner = first.side === 1 ? first.frame : last.frame;
+  return {
+    frame: { x: corner.x, z: corner.z, heading: first.frame.heading + turn },
+    parcels,
+    w: wM,
+    d,
+    tiles,
+  };
 }
 
 /** Whether the plat reaches the tile: a street within the lot depth fronts it. */

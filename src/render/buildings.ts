@@ -44,6 +44,7 @@ import {
 } from './massing';
 import { NO_STREETS, type StreetLookup } from './frontage';
 import { framedBodyPlacement } from './houselot';
+import type { KerbCreditOf } from './lotplan';
 import type { KerbSurroundings } from '../shared/kerblayout';
 import { maxHeightOverRect, maxHeightUnderBody, minHeightOverRect } from './footprint';
 import { isFarmEntry } from './archetypes';
@@ -433,6 +434,8 @@ export class BuildingInstancer {
   private readonly dirtAt: (x: number, z: number) => boolean;
   /** The stalls the streets paint, which a car park counts toward its code; null credits none. */
   private readonly kerb: KerbSurroundings | null;
+  /** The kerb stalls a framed lot's frontage earns from its free road; null credits none. */
+  private readonly kerbCreditOf: KerbCreditOf | null;
 
   constructor(
     scene: THREE.Scene,
@@ -443,6 +446,7 @@ export class BuildingInstancer {
     street: StreetLookup = NO_STREETS,
     dirtAt: (x: number, z: number) => boolean = () => false,
     kerb: KerbSurroundings | null = null,
+    kerbCreditOf: KerbCreditOf | null = null,
   ) {
     this.scene = scene;
     this.heightAt = heightAt;
@@ -451,6 +455,7 @@ export class BuildingInstancer {
     this.street = street;
     this.dirtAt = dirtAt;
     this.kerb = kerb;
+    this.kerbCreditOf = kerbCreditOf;
     for (const entry of catalog) {
       this.buckets.set(entry.id, this.createBucket(entry));
     }
@@ -1054,7 +1059,7 @@ export class BuildingInstancer {
   ): { centerX: number; centerZ: number; groundY: number; yaw: number } {
     if (instance.frame) {
       // A body on a curve stands where its parcel's frame puts it, turned to its street.
-      const seat = framedBodyPlacement(instance.frame, entry, this.street);
+      const seat = framedBodyPlacement(instance.frame, entry, this.street, this.kerbCreditOf);
       const groundY = maxHeightUnderBody(
         this.heightAt,
         seat.x,
