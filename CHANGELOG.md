@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.77.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.76.0...slimcity-v1.77.0) (2026-10-27)
+
+
+### Features
+
+* **world:** houses on a curved street stand square to it (curved par… ([27f62d2](https://github.com/rbenzing/SlimCityGame/commit/27f62d2e992d1becd84e0bfe8ce1d29ba831ecec))
+* **world:** houses on a curved street stand square to it (curved parcels, slice 1) ([41a6833](https://github.com/rbenzing/SlimCityGame/commit/41a6833401c4bfbdac107d69996aca2414010655))
+
 ## [1.76.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.75.0...slimcity-v1.76.0) (2026-10-27)
 
 
