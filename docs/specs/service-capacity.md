@@ -108,7 +108,7 @@ Two channels, because the panel and a selection ask different questions. No comm
 - Tiles supplied only by uncapped facilities are in neither figure.
 - `capped` counts capped facilities that contributed. `load` is zero both with no capped facility and with one reaching nobody, which want opposite reactions. So `capped === 0` reads `—` and anything else a real percentage, including `0%`.
 - Per facility, only when selected: a bare `serviceLoad?: number` on `SelectionInfo`, kept by `id` from the gather phase. Absent for anything that is not a capped facility with a reach; zero means nobody depends on it. Sending every facility's load every snapshot was rejected as `O(facilities)` for a number read one at a time.
-- The panel floats in the left slot the district and transit panels use ([HUD](../ux/hud.md)). The slider sends `setServiceFunding` and flips its local reading at once, as district policies do. A snapshot without `serviceLoad` leaves rows reading `—`.
+- The panel floats in the left slot the district and transit panels use ([HUD](../ux/hud/README.md)). The slider sends `setServiceFunding` and flips its local reading at once, as district policies do. A snapshot without `serviceLoad` leaves rows reading `—`.
 - Read the gauge as a percentage: `Health 138%` means clinics are asked for 38% more than they can give; "the school is at 180%" is a traceable decision. The funding slider sits beside it.
 - A save stores building instances by `catalogId`, never the catalog.
 - Parks read `—` because an uncapped service has no load, and the row is there so the funding slider is. Under 100% is not a problem and the gauge does not reward overbuilding.

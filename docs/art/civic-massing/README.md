@@ -6,7 +6,7 @@ at a size **we** pick, so that size has to come from somewhere other than
 taste.
 
 [buildings.md](../buildings/README.md) owns the facade and archetype language, and
-[props-and-vehicles.md](../props-and-vehicles.md) owns the silhouettes of the
+[props-and-vehicles.md](../props-and-vehicles/README.md) owns the silhouettes of the
 few ploppables that get their own detail kit. This page owns the one thing
 neither of them states: the arithmetic from a building's _purpose_ to its
 `footprint` and `height` in the catalog.

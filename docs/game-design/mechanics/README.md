@@ -19,7 +19,7 @@ player. If it can, it goes here.
 
 Most mechanics that already ship are documented inside the specs they belong
 to — the zoning frontage rule lives in
-[../simulation-rules.md](../simulation-rules.md), the junction control ladder
+[../simulation-rules.md](../simulation-rules/README.md), the junction control ladder
 in [../../world-sim/road-model.md](../../world-sim/road-model/README.md). That is
 correct and they should stay there: a rule read in the context of its system is
 easier to understand than one read alone.

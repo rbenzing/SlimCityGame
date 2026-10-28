@@ -129,7 +129,7 @@ The grass wears: past a catchment load of 1.0 the lawn reads scuffed and then ba
 
 ### Rendering
 
-These are the largest ground-level assets in the game and [the performance budget](../engineering/performance-budget.md) caps the frame at roughly 300 draw calls. The kits extend the pocket-park kit ([props and vehicles](../art/props-and-vehicles.md)).
+These are the largest ground-level assets in the game and [the performance budget](../engineering/performance-budget.md) caps the frame at roughly 300 draw calls. The kits extend the pocket-park kit ([props and vehicles](../art/props-and-vehicles/README.md)).
 
 - **One plate a park.** A flat rung merges its plate, paths and markings into one `BufferGeometry` sized from the footprint and instances it, one slot a park. A draped rung's heights are the terrain's under it, so it is one merged mesh of its own: a lattice at a vertex every 4 m (10 m on the district park, keeping its plate near 4k triangles) with each height read from the terrain, so lawn and paths lie on the hillside. A 400-tile district park is one draw call. The instancer's pick pad under a draped entry sinks below the lowest ground (`minHeightOverRect`), so the lawn hides it and a click still finds the park.
 - **Shared pools.** `parkTree` and `parkBench` do not depend on the footprint, so five kits share one pool each: 3 ground pools plus tree, bench, `pitchGoal`, `pavilionBlock`, `playFrame` is 8 draw calls plus one per draped park. Planters and the pitch fence merge into their plate.

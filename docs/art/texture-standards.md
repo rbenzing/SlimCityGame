@@ -71,4 +71,4 @@ these helpers. Vehicle paint (`src/render/vehicles.ts`) is the one
 deliberate exception to the whole palette: cars are a curated ~10-colour
 saturated list chosen to contrast against the deliberately desaturated
 city, not calibrated against the reference chart at all — see
-[props-and-vehicles.md](props-and-vehicles.md).
+[props-and-vehicles.md](props-and-vehicles/README.md).

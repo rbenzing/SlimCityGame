@@ -12,7 +12,7 @@ almost every duplication problem starts with getting it wrong:
 | Question                                  | Document                              |
 | ----------------------------------------- | ------------------------------------- |
 | What does the product do, from outside?   | [the specs](../../README.md)          |
-| How is the whole system put together?     | [architecture.md](../architecture.md) |
+| How is the whole system put together?     | [architecture.md](../architecture/README.md) |
 | How does _this one system_ work inside?   | here                                  |
 | What shape crosses this boundary?         | [interfaces.md](../interfaces/README.md)     |
 | What does the stored data look like?      | [data-model.md](../data-model/README.md)     |
@@ -32,7 +32,7 @@ If you find yourself restating a rule a spec already states, link to it.
 
 | System                   | Covers                                                                        |
 | ------------------------ | ----------------------------------------------------------------------------- |
-| [traffic.md](traffic.md) | The road graph, the assignment loop, congestion feedback, and where it breaks |
+| [traffic.md](traffic/README.md) | The road graph, the assignment loop, congestion feedback, and where it breaks |
 
 ## Writing one
 

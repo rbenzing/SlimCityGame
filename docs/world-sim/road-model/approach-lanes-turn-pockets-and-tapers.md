@@ -135,8 +135,8 @@ its own (§3B.12 ¶06), so it simply narrows away with the kerb. What is left
 of the width difference is travel lanes: the outermost travel lane on each
 side closes first, taking the wider side of an uneven road down to an even
 one, and then the two directions close together, so the centre line runs
-straight down the taper. A road whose lanes all run one way closes the
-driver's right-hand lane first. A lane drop never squeezes the lanes that
+straight down the taper. Which lane a one-way road closes first is
+[R-roads-063]. A lane drop never squeezes the lanes that
 remain, and footways and reserved transit lanes survive it untouched.
 
 **The paint follows the pavement.** Each tile of a taper bends its edge from

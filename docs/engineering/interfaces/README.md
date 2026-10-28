@@ -28,7 +28,7 @@ checks can inspect the running game without reimplementing its internals.
 | [Contents](contents.md) | 709 |
 | [1. Threads and direction](1-threads-and-direction.md) | 1387 |
 | [2. The worker envelope: `MainToWorker` / `WorkerToMain`](2-the-worker-envelope-maintoworker--workertomain.md) | 6857 |
-| [3. Commands](3-commands.md) | 21987 |
+| [3. Commands](3-commands/README.md) | 21987 |
 | [4. Turn and junction encoding](4-turn-and-junction-encoding.md) | 2448 |
 | [5. Road composition](5-road-composition.md) | 2787 |
 | [6. The world grid and persistence](6-the-world-grid-and-persistence.md) | 2102 |

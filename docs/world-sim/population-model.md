@@ -9,7 +9,7 @@ death and not yet re-let. This document describes how that number
 arises and how it moves; the demand formula and the spawn/growth/abandon
 mechanics that make buildings appear and disappear in the first place are
 the ruleset in
-[../game-design/simulation-rules.md](../game-design/simulation-rules.md) and
+[../game-design/simulation-rules.md](../game-design/simulation-rules/README.md) and
 are not repeated here beyond what is needed to explain the number itself.
 
 ## The number is an aggregate, not a running total
@@ -88,7 +88,7 @@ small enough to read as smooth growth on the stats panel:
   `DESPAWN_ABANDONED_PASSES = 10` further still-blocked passes, or returns
   to `Active` (re-adding its figure, vacancies intact) the moment its blocker
   clears. See
-  [../game-design/simulation-rules.md](../game-design/simulation-rules.md)
+  [../game-design/simulation-rules.md](../game-design/simulation-rules/README.md)
   for the level-up path, which replaces a building with a bigger one that
   passes through `Constructing` again exactly the same way.
 
@@ -106,7 +106,7 @@ returning three values in
 `-1..1` per sector (residential, commercial, industrial). The exact formula,
 and the spawn-probability roll that turns positive demand into an actual new
 building on a zoned tile, are documented in
-[../game-design/simulation-rules.md](../game-design/simulation-rules.md#demand-the-rci-model)
+[../game-design/simulation-rules.md](../game-design/simulation-rules/demand-the-rci-model.md)
 and are not restated here; the salient point for the population number is
 that demand only ever influences _whether a new Active building appears_
 (or an existing one's blocker tips it toward `LowDemand`, one of eight

@@ -1,7 +1,7 @@
 # Interaction philosophy
 
 The rules the rest of the UX documentation follows from. Behaviour, not
-layout — see [hud.md](hud.md) for what actually sits where.
+layout — see [hud.md](hud/README.md) for what actually sits where.
 
 ## The world is the surface; the DOM floats over it
 
@@ -21,7 +21,7 @@ stacked bars — build categories and sim controls — with only small utility
 buttons in the top corners. This is a deliberate, recognisable city-builder
 shape rather than an original layout: see
 [../engineering/adr/0014-genre-grammar-is-deliberate-originality-is-elsewhere.md](../engineering/adr/0014-genre-grammar-is-deliberate-originality-is-elsewhere.md).
-The full arrangement is [hud.md](hud.md); this page only states why it is
+The full arrangement is [hud.md](hud/README.md); this page only states why it is
 shaped that way.
 
 ## Rule zero: nothing renders that is not wired to real behaviour

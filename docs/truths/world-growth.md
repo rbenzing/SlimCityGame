@@ -64,7 +64,7 @@ Back to [the index](../GROUND-TRUTHS.md).
   crematorium costs about one cemetery; the trade is land and running cost, not
   the build price. A real nonzero emission registers as at least 1 on the
   pollution field, however small on the coal plant's scale. —
-  [balancing.md](../game-design/balancing.md#death-care)
+  [balancing.md](../game-design/balancing/death-care.md)
 
 - [R-world-014] The regional funeral service ends at Big Town, and it is the one rung, like
   septic: below `DEATH_CARE_MILESTONE` (the same `BIG_TOWN_MILESTONE` as
@@ -99,7 +99,7 @@ Back to [the index](../GROUND-TRUTHS.md).
   support (`BASE_MULTIPLIER` 1.81, from published multipliers), so a town
   with no industry supports no shops; and residents follow work, so a
   workforce with no jobs turns households away. Every demand figure cites
-  its source. — [simulation-rules.md](../game-design/simulation-rules.md#demand-the-rci-model);
+  its source. — [simulation-rules.md](../game-design/simulation-rules/demand-the-rci-model.md);
   `computeDemand` in `src/sim/demand.ts`
 
 - [R-world-025] Happiness is rewritten wholesale by `computeHappiness` every pass. No feature
@@ -121,7 +121,7 @@ Back to [the index](../GROUND-TRUTHS.md).
   player is warned of one rung before, never the first town. The frozen
   scenario in `tests/interaction/firsttown.test.ts` is the guard; a change
   that needs a step added to it has changed this rule and stops here first.
-  — [simulation-rules.md](../game-design/simulation-rules.md),
+  — [simulation-rules.md](../game-design/simulation-rules/README.md),
   [water-and-sewage.md](../specs/water-and-sewage.md)
 
 - [R-world-029] A zoned tile develops only when it is zoned, served with power and water
@@ -158,7 +158,7 @@ Back to [the index](../GROUND-TRUTHS.md).
   waits for it. A low-density house is on a private well and a septic tank,
   and needs no water or drain either, when a dirt road lies within 3 tiles
   of its lot and no main — a road that carries water, or a pipe — lies
-  beside any tile of it. — [simulation-rules.md](../game-design/simulation-rules.md)
+  beside any tile of it. — [simulation-rules.md](../game-design/simulation-rules/README.md)
 
 - [R-world-036] A zoned building has a `kind`, drawn when its lot grows: among the zone's
   level-1 catalog entries that are unlocked and whose footprint fits the lot,
@@ -170,7 +170,7 @@ Back to [the index](../GROUND-TRUTHS.md).
   kept through every level-up; a level-up looks for the same zone and kind at
   the next level. The player never picks a kind. —
   [building-types.md](../specs/building-types.md),
-  [simulation-rules.md](../game-design/simulation-rules.md#the-spawner-how-a-lot-is-chosen);
+  [simulation-rules.md](../game-design/simulation-rules/the-spawner-how-a-lot-is-chosen.md);
   `spawnCandidates`, `drawKind` in `src/sim/growth.ts`; `jobRoom` in
   `src/sim/demand.ts`
 
@@ -258,7 +258,7 @@ Back to [the index](../GROUND-TRUTHS.md).
 - [R-world-041] A building ploppable in hand shows the zoning grid, the painted tint and
   the plat of every platted zone, so nothing is placed over painted land
   unseen; a bus stop tool, which takes no land, shows none of it. —
-  [hud.md](../ux/hud.md); `rebuildPlat` in `src/main.ts`
+  [hud.md](../ux/hud/README.md); `rebuildPlat` in `src/main.ts`
 
 - [R-world-042] A commercial or dense building (a catalog entry with no `lot`) takes whole
   lots along its frontage and never half of one: every lot it touches fronts
@@ -285,7 +285,7 @@ Back to [the index](../GROUND-TRUTHS.md).
   `src/sim/growth.ts`
 
 - [R-world-043] Every zoned catalog figure is derived from a published source by the rules
-  in [balancing.md](../game-design/balancing.md#residential-kinds): residents are
+  in [balancing.md](../game-design/balancing/residential-kinds.md): residents are
   `round(units × household)`, a building's households are its `units`, and
   power and water are per-home survey figures. A number in `catalog.json`
   with no derivation is a bug. — [building-types.md](../specs/building-types.md)
@@ -303,7 +303,7 @@ Back to [the index](../GROUND-TRUTHS.md).
   heavy plant or a farm levels up while industrial demand is above zero and
   the town has room for the jobs it adds, and never reads land value, which
   pushes real industry out of town. Homes and shops keep the land-value
-  gate. — [simulation-rules.md](../game-design/simulation-rules.md#levels-construction-and-abandonment);
+  gate. — [simulation-rules.md](../game-design/simulation-rules/levels-construction-and-abandonment.md);
   `tryLevelUp` in `src/sim/growth.ts`
 
 - [R-world-046] Farmland is painted only where a dirt road's frontage reaches, up to
@@ -312,7 +312,7 @@ Back to [the index](../GROUND-TRUTHS.md).
   jobs, and its residents are population. The soil under the lot decides a
   farm's kind; a level-up keeps the kind, needs the kind's own grade and
   industrial demand, and never reads land value. —
-  [simulation-rules.md](../game-design/simulation-rules.md#frontage-and-zonability);
+  [simulation-rules.md](../game-design/simulation-rules/frontage-and-zonability.md);
   `computeFarmableMask` in `src/world/zonable.ts`, `trySpawnFarm` in
   `src/sim/growth.ts`
 
@@ -320,7 +320,7 @@ Back to [the index](../GROUND-TRUTHS.md).
   when the grid has spare power and water for what it will draw, counted down
   as the pass builds. A lot or building held back only by that is waiting for
   supply and is counted for the Advisor. A shortage never refuses the player's
-  own tools. — [simulation-rules.md](../game-design/simulation-rules.md);
+  own tools. — [simulation-rules.md](../game-design/simulation-rules/README.md);
   `runSpawnScan` and `tryLevelUp` in `src/sim/growth.ts`
 
 - [R-world-048] The player paints zones and never places a zoned building; growth runs on the

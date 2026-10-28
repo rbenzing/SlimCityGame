@@ -84,7 +84,7 @@ A park's coverage additionally adds a flat bonus directly to this field
 (quarter of coverage value, plus a one-time `landValueBonus` on the park's
 own footprint) — see [services-model.md](services-model.md#coverage-and-funding).
 **Readers:** growth's level-up thresholds (140 for level 2, 190 for level 3,
-[../game-design/simulation-rules.md](../game-design/simulation-rules.md)),
+[../game-design/simulation-rules.md](../game-design/simulation-rules/README.md)),
 growth's spawn desirability, the monthly tax `landValueFactor`
 (`0.75 + (avgLandValue / 255) × 0.5`, averaged over occupied tiles —
 [../game-design/economy.md](../game-design/economy.md)), a single building's
@@ -165,7 +165,7 @@ written saturating-additively per tile so a tile shared by two edges (an
 intersection) combines both rather than one overwriting the other. This
 `edge.tier × 800` capacity figure is a **separate, flatter model** from the
 profile-derived capacity that actually drives routing and junction delay
-(see [../engineering/systems/traffic.md](../engineering/systems/traffic.md)'s
+(see [../engineering/systems/traffic.md](../engineering/systems/traffic/README.md)'s
 "Where it breaks" — the two "percent full" readings are not on the same
 scale, and editing a cross-section changes one without the other). One tick
 after the bake, the field's own diffusion slot (period 4, offset 2) runs
@@ -204,7 +204,7 @@ existing value and new coverage), never additive — a second school over the
 same ground cannot double the field. No ambient growth or decay input
 beyond the standard 0.99/tick. **Readers:** growth's level-3 requirement
 (the field over 60, in addition to the land-value threshold —
-[../game-design/simulation-rules.md](../game-design/simulation-rules.md)),
+[../game-design/simulation-rules.md](../game-design/simulation-rules/README.md)),
 and the Happiness formula.
 
 The field is elementary school coverage. Middle, high and college schools each

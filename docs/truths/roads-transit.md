@@ -20,7 +20,7 @@ Back to [the index](../GROUND-TRUTHS.md).
   crosses and never meets one at grade. It ramps to grade over the five tiles
   next to a street tramway. Its trams ride the beams. The road below keeps its
   lanes and draws the reservation as a raised median. —
-  [streets.md](../art/streets.md); `computeGuideway` in `src/render/guideway.ts`,
+  [streets.md](../art/streets/README.md); `computeGuideway` in `src/render/guideway.ts`,
   `carriesGuideway` in `src/shared/roadprofile.ts`
 - [R-roads-011] A tram stop on a guideway tile at full height is a raised station: two side
   platforms at the trams' floor outside the beams, a canopy each, a stair and
@@ -31,7 +31,7 @@ Back to [the index](../GROUND-TRUTHS.md).
   lamp or pole on its tiles; its idlers stand on the platforms, never at the
   kerb where the shelter would be. A stop on a ramp tile, a junction box or
   a turn draws no station; the line serves it all the same. —
-  [streets.md](../art/streets.md); `computeTramStations` in
+  [streets.md](../art/streets/README.md); `computeTramStations` in
   `src/render/tramstations.ts`
 - [R-roads-012] No overpass crosses a guideway, and no guideway passes under an overpass:
   the beams stand 6 to 7.22 m up and an overpass deck 5 m up. The worker
@@ -43,7 +43,7 @@ Back to [the index](../GROUND-TRUTHS.md).
   stand at the kerb of a street whose trams share its lanes, one every 22 m
   phased from world-metre zero, never in a junction box or a driveway's
   mouth, and a street lamp within 2 m of one is not drawn. —
-  [streets.md](../art/streets.md); `emitStreetTrack` in
+  [streets.md](../art/streets/README.md); `emitStreetTrack` in
   `src/render/roadsmesh.ts`, `computeTramPolePlacements` in
   `src/render/roadfurniture.ts`
 - [R-roads-014] A tramway crosses a street straight over the junction. A straight run of one

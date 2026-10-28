@@ -153,7 +153,7 @@ escape hatch.
 **What it is:** today roads are stored on the tile grid, and every junction
 is one of the straight, corner, T, cross and end-cap pieces a neighbour
 bitmask selects. The road network of nodes and segments
-([road-network.md](../world-sim/road-network.md)) is replacing that store in
+([road-network.md](../world-sim/road-network/README.md)) is replacing that store in
 stages. Whichever holds a road, only one does: once the network lands, every
 road tile layer is derived from it and never written directly.
 

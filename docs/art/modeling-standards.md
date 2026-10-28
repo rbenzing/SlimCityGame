@@ -30,7 +30,7 @@ they govern every building kit:
 A building's budget is a **tier**, in triangles over **everything it stands
 with** — body, roof, parts, its paving and paint, its yard, its trees, its
 parked cars, its interments — held by a test; the city's budget is the
-**frame**, held by a measurement. The player chose both on 2026-10-15: the
+**frame**, held by a measurement. The player chose both: the
 tier counts the whole lot, because that is what the player sees and the
 frame pays for, and the tiers are set where the measurement found the
 buildings that ship.
@@ -62,7 +62,7 @@ they are, so a Metropolis's dozen or so of them may spend 4,000 each.
 
 ### What the measurement read
 
-Measured 2026-10-15 by `tools/frame-budget.mjs` on an Intel Arc Pro 140T
+Measured by `tools/frame-budget.mjs` on an Intel Arc Pro 140T
 (a laptop-class GPU) at 1280 × 800, headless, the browser's frame cap off:
 a synthetic Metropolis of 8,759 buildings in the catalog's real mix and one
 of every kit, placed by command on seed 7, the sim paused. The record is
@@ -79,7 +79,7 @@ The second reading, the same seed, views and flags after the performance
 slice (lots one mesh per chunk, the species and yard parts at their
 ceilings, the solar row and fence thinned; the record is
 `tools/shots-framebudget/result.md`, the first kept beside it as
-`result-2026-10-15-before.md`):
+the `-before` result):
 
 | View           | Frame, mean, before → after | Draw calls, before → after | Triangles, before → after |
 | -------------- | --------------------------- | -------------------------- | ------------------------- |
@@ -148,7 +148,7 @@ use. A chunk is rebuilt when a lot in it changes, as a road chunk is.
   count the tier allows. Nothing sculpts freeform geometry.
 - **Merged multi-part geometry where a single shape needs internal colour
   variation.** The vehicle kit (`src/render/vehicles.ts`, covered in
-  [props-and-vehicles.md](props-and-vehicles.md)) merges a body slab, a
+  [props-and-vehicles.md](props-and-vehicles/README.md)) merges a body slab, a
   darker cabin/window mass, and wheel cylinders into one `BufferGeometry`
   per kind, carrying a region-mask vertex attribute so the per-instance
   tint colours only the body vertices while windows and wheels keep their
@@ -165,7 +165,7 @@ use. A chunk is rebuilt when a lot in it changes, as a road chunk is.
 
 Archetype-specific proportions (how tall a monitor roof sits, how a
 warehouse's dock is sized against its frontage) belong to
-[buildings/README.md](buildings/README.md), [streets.md](streets.md), and
-[props-and-vehicles.md](props-and-vehicles.md), not here — this page is
+[buildings/README.md](buildings/README.md), [streets.md](streets/README.md), and
+[props-and-vehicles.md](props-and-vehicles/README.md), not here — this page is
 the budget and the topology rule those files' specifics have to satisfy,
 kept apart so it does not repeat with every new archetype.

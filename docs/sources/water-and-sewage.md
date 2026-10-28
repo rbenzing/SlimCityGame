@@ -1,6 +1,6 @@
 # Water and sewage — sources and derivations
 
-The rules are in [the spec](../specs/water-and-sewage.md). Every figure is derived from a published source and the 20 m tile; the settled values are in [balancing](../game-design/balancing.md#water-and-sewer).
+The rules are in [the spec](../specs/water-and-sewage.md). Every figure is derived from a published source and the 20 m tile; the settled values are in [balancing](../game-design/balancing/water-and-sewer.md).
 
 ## Return to sewer
 
@@ -10,7 +10,7 @@ Public supply consumes 12% of what it withdraws, 0.08 to 0.23 by region, the res
 
 Elevated tanks come in standard sizes from 50,000 to 2,000,000 gallons, 100,000 among them ([Caldwell Tanks](https://www.caldwelltanks.com/tank_types/multi-column-elevated-storage-tank-leg), [Phoenix Fabricators](https://phoenixtank.com/elevated-water-storage-tanks/standards-specifications/)), and the water-works standard sizes storage at one day's average consumption ([Recommended Standards for Water Works §7.0.1](https://www.mass.gov/doc/guidelines-for-public-water-systems-chapter-8-finished-water-storage-0/download)). A 100,000-gallon tank turned over once a day is **378.5 kL**: at 0.34 kL a person, about 1,100 people. Its borehole pumps draw a groundwater system's 1,800 kWh per million gallons ([EPA, energy at public water systems](https://www.epa.gov/sites/default/files/2015-04/documents/epa816f13004.pdf)): 180 kWh a day, **7.5 kW**.
 
-A 100,000-gallon multi-leg tank is 30 ft across on four columns, and its legs stand inside a 20 m square ([props and vehicles](../art/props-and-vehicles.md)), so it takes one tile.
+A 100,000-gallon multi-leg tank is 30 ft across on four columns, and its legs stand inside a 20 m square ([props and vehicles](../art/props-and-vehicles/README.md)), so it takes one tile.
 
 ## The pumping station
 

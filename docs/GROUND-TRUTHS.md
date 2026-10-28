@@ -7,7 +7,7 @@ How to use it:
 - Follow every rule of the areas you touch. If code disagrees with a rule,
   stop and flag the rule by id.
 - A truth is not tuning. Dials live in
-  [balancing.md](game-design/balancing.md) and the code it names.
+  [balancing.md](game-design/balancing/README.md) and the code it names.
 - Change a truth here and in its spec in the same commit.
 - Each rule ends with where it is decided; it has no line numbers.
 

@@ -27,7 +27,7 @@ exact-height undo for a road build, a building footprint flatten, and a
 terraform stroke, and `tests/interaction/town.test.ts` undoes every step of
 building the small town and requires the untouched map back, layer for layer.
 
-**Batch application is atomic.** See [§3](3-commands.md): a refused command
+**Batch application is atomic.** See [§3](3-commands/README.md): a refused command
 takes back the commands before it in the same batch, and the ones after it
 never run. `tests/interaction/commands.test.ts` pins it, funds and tiles both.
 

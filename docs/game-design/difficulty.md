@@ -23,7 +23,7 @@ that changes only how fast time passes, never the rules. See
 ## When this document gets written
 
 If difficulty levels are ever added. The dials already exist and are gathered
-in [balancing.md](balancing.md) — starting funds, tax rates, service upkeep,
+in [balancing.md](balancing/README.md) — starting funds, tax rates, service upkeep,
 demand weights, the abandonment thresholds — so the work would be choosing
 which of them a level is allowed to touch, not finding them.
 

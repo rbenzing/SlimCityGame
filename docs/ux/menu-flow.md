@@ -3,7 +3,7 @@
 How the game boots, pauses, saves, and quits — verified against
 `src/ui/MenuScreen.tsx`, `StartMenu.tsx`, `OptionsPanel.tsx`,
 `SaveBrowser.tsx`, and `src/app/session.ts`. What each screen looks like
-is covered in [hud.md](hud.md); this page is the flow between them.
+is covered in [hud.md](hud/README.md); this page is the flow between them.
 
 ## One component, two contexts
 
@@ -132,5 +132,5 @@ dragged in anywhere on the window for the current session only — those
 tracks are labelled `dropped`, and a Clear-dropped action appears once at
 least one exists. With no tracks at all, the transport and playlist give
 way to a line explaining where to put files; Rescan, Shuffle, Repeat, and
-the volume slider stay available either way. A playback error the browser
-reports surfaces as its own line beneath the drop zone.
+the volume slider stay available either way. How a playback error
+surfaces is in [the HUD doc](hud/README.md).

@@ -4,7 +4,7 @@ How the city pays for itself: the monthly settlement, tax income, upkeep,
 the budget, and loans. Milestones, districts and the Advisor — the other
 half of what used to be one "Economy and progression" section — are in
 [progression.md](progression.md); the constants named below are gathered
-with their code locations in [balancing.md](balancing.md).
+with their code locations in [balancing.md](balancing/README.md).
 
 ## Population, jobs, and the monthly cycle
 

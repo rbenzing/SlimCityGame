@@ -10,7 +10,7 @@ Police, fire, health, education and parks share one mechanism. Each active
 service building first finds every road tile within 2 orthogonal steps of
 its footprint, then walks outward from all of them at once by road-network
 hop count (not straight-line distance), following only the links where the
-road network joins one road to the next ([road-network.md](road-network.md)),
+road network joins one road to the next ([road-network.md](road-network/README.md)),
 capped at a range scaled by that service's funding. A building on a corner
 reaches down both its streets, and a park fronting four streets serves from
 all four; a building touching one road covers exactly what it did when the
@@ -46,7 +46,7 @@ Each of the five service kinds carries its own funding level, 0 to 1.5 (150%),
 set independently and defaulting to 1 (100%). Funding scales both the service's
 own range (floored) and the monthly upkeep every building of that kind costs
 the city — underfunding shrinks reach and saves money in the same stroke;
-overfunding costs more for a wider one. See [../ux/hud.md](../ux/hud.md)
+overfunding costs more for a wider one. See [../ux/hud.md](../ux/hud/README.md)
 for the funding sliders themselves.
 
 ## Garbage and waste management
@@ -175,7 +175,7 @@ its area is full; an incinerator uses its own catalog truck count (4 for the
 base incinerator). Trucks route depot → serviced building → depot over the road
 graph (a landfill truck also detours out to the dumping ground and back);
 routing is cosmetic and does not affect collection. See
-[../art/props-and-vehicles.md](../art/props-and-vehicles.md) for liveries.
+[../art/props-and-vehicles.md](../art/props-and-vehicles/README.md) for liveries.
 
 The per-tile uncollected-trash layer is runtime state, not part of the grid
 save, and rebuilds within a few ticks of a load — the same as traffic volume.
@@ -231,7 +231,7 @@ the kind's funding, never by straight line or by path cost; and only while it ha
 fewer calls in flight than its `responders` (a kind with none is unlimited). A
 call no station can answer still spawns, as an unanswered incident that takes no
 vehicle, retries each tick and lapses after 30 ticks. The figures are in
-[../game-design/balancing.md](../game-design/balancing.md#emergency-dispatch) and
+[../game-design/balancing.md](../game-design/balancing/emergency-dispatch.md) and
 the design in
 [../specs/emergency-services.md](../specs/emergency-services.md).
 
@@ -239,5 +239,5 @@ The system only reads Crime, FireRisk and Pollution and the building registry �
 it never writes back into service coverage or the economy. This is presentation
 on top of [Coverage and funding](#coverage-and-funding)'s real numbers, not a
 second copy of them. See
-[../art/props-and-vehicles.md](../art/props-and-vehicles.md) for liveries and
+[../art/props-and-vehicles.md](../art/props-and-vehicles/README.md) for liveries and
 the incident marker.

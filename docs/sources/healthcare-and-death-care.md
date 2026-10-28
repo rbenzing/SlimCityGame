@@ -1,6 +1,6 @@
 # Healthcare and death care: sources and derivations
 
-The research behind [the healthcare-and-death-care spec](../specs/healthcare-and-death-care.md): every capacity, rate, size and price, with the published figure each is built from. Every figure is derived from a published standard and the game's own scale, 20 m tiles, a 3.2 m storey, 6,000 ticks per game month, never picked to feel right. Settled values are in [balancing.md](../game-design/balancing.md); sizes follow [civic massing](../art/civic-massing/README.md) against the anchors in [the art README](../art/README.md).
+The research behind [the healthcare-and-death-care spec](../specs/healthcare-and-death-care.md): every capacity, rate, size and price, with the published figure each is built from. Every figure is derived from a published standard and the game's own scale, 20 m tiles, a 3.2 m storey, 6,000 ticks per game month, never picked to feel right. Settled values are in [balancing.md](../game-design/balancing/README.md); sizes follow [civic massing](../art/civic-massing/README.md) against the anchors in [the art README](../art/README.md).
 
 ## The death rate, and what a tick is
 
@@ -25,7 +25,7 @@ Crow Wing County, Minnesota, paid **$2,900** for an indigent immediate cremation
 
 Cremation was 62.8% of US dispositions in 2025 ([CANA 2026 report, via Kates-Boylston](https://www.kates-boylston.com/industry_news/cana-releases-2026-annual-cremation-statistics-report/article_ccaf21d4-a825-4050-8148-cfc549653411.html)). So the weighted cost of a body is 0.628 × $2,900 + 0.372 × $3,900 = **$3,272**.
 
-On the game's operating scale (¢800 a month stands for $8.65 million a year, [balancing.md](../game-design/balancing.md#power)), $901 to the ¢, that is **¢3.6**. Laramie County, Wyoming's flat $1,500 rotation rate in 2026 is the low cross-check, ¢1.7.
+On the game's operating scale (¢800 a month stands for $8.65 million a year, [balancing.md](../game-design/balancing/power.md)), $901 to the ¢, that is **¢3.6**. Laramie County, Wyoming's flat $1,500 rotation rate in 2026 is the low cross-check, ¢1.7.
 
 A city of 3,500 loses 31 residents a year and pays about ¢9 a month for them, less than one cemetery's ¢140 upkeep. The regional service is the cheap way to be a village, and the cemetery is what a town builds because it must.
 

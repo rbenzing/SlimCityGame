@@ -152,7 +152,7 @@ full release flow.
 | `Ctrl+Z` / `Ctrl+Y`        | Undo / redo (refund-accurate, worker-computed inverses)       |
 | `Ctrl+S` / `Ctrl+Shift+L`  | Save / load latest (IndexedDB; autosaves every 2 game-months) |
 
-New here? See the [Player Guide](docs/USERGUIDE.md).
+New here? See the [Player Guide](docs/userguide/README.md).
 
 ---
 
@@ -200,7 +200,7 @@ fact lives in exactly one place:
   only document that carries dates and delivery status.
 - **[docs/DESIGN.md](docs/DESIGN.md)** — what we are deliberately not building,
   with reasoning.
-- **[docs/USERGUIDE.md](docs/USERGUIDE.md)** — how to play: the gameplay loop,
+- **[docs/USERGUIDE.md](docs/userguide/README.md)** — how to play: the gameplay loop,
   tools, reading the city, and controls.
 - **[CONTRIBUTING.md](./CONTRIBUTING.md)** — quality gates, commit conventions,
   and how automated versioning + deployment work.

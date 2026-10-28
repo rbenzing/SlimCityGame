@@ -7,7 +7,7 @@ vegetation, materials, and level of detail. It is not about what things look
 like as design decisions (massing, facades, road paint, the vehicle kit) —
 that visual language lives in [art/](../art/README.md) — and it is not the
 whole application (the sim worker, the command protocol, the React overlay)
-— that map is [engineering/architecture.md](../engineering/architecture.md).
+— that map is [engineering/architecture.md](../engineering/architecture/README.md).
 Where a fact would overlap one of those, this folder links out rather than
 repeats it.
 

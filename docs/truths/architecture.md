@@ -17,7 +17,7 @@ Back to [the index](../GROUND-TRUTHS.md).
   [interfaces.md](../engineering/interfaces/README.md)
 - [R-architecture-003] The worker is authoritative and never touches the DOM or a `THREE.Scene`. It
   never originates a `Command`; every `Command` starts on the main thread (tool
-  commit, undo/redo, settings). — [architecture.md](../engineering/architecture.md),
+  commit, undo/redo, settings). — [architecture.md](../engineering/architecture/README.md),
   [interfaces.md](../engineering/interfaces/README.md)
 - [R-architecture-004] Player `Command`s are the only way the world mutates. The render thread and
   React never write grid or building state; they read `SimSnapshot` deltas into
@@ -41,7 +41,7 @@ Back to [the index](../GROUND-TRUTHS.md).
 - [R-architecture-007] Only `src/main.ts` imports from every directory and spawns the worker. A UI
   panel reaches the render thread only through a method on `BoundActions` in
   `src/ui/store.ts`, bound in `main.ts`. —
-  [architecture.md](../engineering/architecture.md),
+  [architecture.md](../engineering/architecture/README.md),
   [dependency-map.md](../engineering/dependency-map.md)
 - [R-architecture-008] Every `Command` kind has an `applyCommand` case that returns its literal, exact
   inverse (the prior values, not a re-derived approximation); undo replays that

@@ -1,6 +1,6 @@
 # Documentation strategy — short docs that agents can follow
 
-- **Status:** Agreed; migration in progress (see the table at the end and the history)
+- **Status:** Built
 - **Owner:** the docs set; `npm run lint:docs` enforces what it can
 
 ## The problem, measured
@@ -15,7 +15,23 @@
 | `engineering/interfaces.md`                     | 80 KB           | 20k      | every cross-thread task                                           |
 | A feature, as a design + engineering pair       | 25–45 KB a file | 6–11k    | both read on every slice of the feature                           |
 
-A roads task today costs an agent about 130k tokens of reading before it
+### After
+
+| What                                        | Size                | ≈ tokens |
+| ------------------------------------------- | ------------------- | -------- |
+| The whole set, 324 files                    | 2.28 MB             | 570k     |
+| Of which tier 3 (history and sources)       | 0.49 MB             | 123k     |
+| `GROUND-TRUTHS.md` index                    | 2.7 KB              | 0.7k     |
+| `ROADMAP.md` (test count, Open list, Next)  | 10.5 KB             | 2.6k     |
+| Largest truths file (`world-growth.md`)     | 22 KB               | 5.5k     |
+| Largest spec (`building-types.md`)          | 24.6 KB             | 6.1k     |
+
+The set shrank by a tenth overall, since nothing was deleted; what changed is
+where the bytes sit. A roads task's required reading fell from about 130k
+tokens to about 14k: this file's protocol, the index, one or two truths
+files of 7–22 KB, and a spec card.
+
+A roads task before the migration cost an agent about 130k tokens of reading before it
 writes a line: the truths whole, the road model whole, a feature pair, and
 the roadmap if it is asked what exists. Most of that is narrative, history
 and restatement. The rules and numbers inside it fit in a tenth of the space.
@@ -109,25 +125,29 @@ code pointer kept on the card.
    its why. It returns pointers: `file#anchor`, rule ids, `src/file:line`.
 3. A ticket cites rule ids and anchors, never "read the doc". A cook reads
    what the ticket cites.
-4. A reviewer reads the full spec of the area under review, once.
+4. A reviewer reads the whole spec of the area it reviews, one time.
 5. When code and a rule disagree, stop and flag the rule by id.
 6. A new rule is added as a truth with the next id and to the spec's card in
    the same change; a built slice adds one history entry and flips a status.
 
 ## Tooling (`npm run lint:docs`)
 
-- **Links resolve** — exists.
 - **Budgets** — a file over its tier's budget fails; tier is by path.
-  Enforced for `docs/truths/`, `docs/specs/` and `docs/world-sim/road-model/`.
+  Enforced everywhere except `docs/history/`, `docs/sources/`,
+  `docs/engineering/adr/`, `docs/Road Guides/` and `CHANGELOG.md`.
 - **Card present** — every file under `docs/specs/` begins with the six card
   lines in order. Enforced.
-- **No dated specs** — a date outside `docs/history/`, `ROADMAP.md` and
-  `engineering/adr/` fails.
+- **No dated specs** — a date outside `docs/history/`, `docs/sources/`,
+  `ROADMAP.md`, `DESIGN.md`, `CHANGELOG.md` and `engineering/adr/` fails.
+  Enforced.
 - **No restating** — a sentence of 12+ words appearing in two files fails,
-  with both locations.
+  with both locations; `docs/history/` is frozen and does not count.
+  Enforced.
 - **Ids unique** — `[R-<area>-<nnn>]` appears once as a definition; a cited
   id must exist. Enforced.
-- **Lossless move check** (run by the migrating agent, not CI) — every
+- **Links resolve** — enforced.
+- **Lossless move check** (run by the migrating agent, not CI) —
+  `tools/check-docs-move.mjs` stays for future moves: every
   number-with-unit, every `src/` pointer and every URL in the old files
   appears somewhere in the new set, or the PR says which and why.
 

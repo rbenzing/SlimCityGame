@@ -4,7 +4,7 @@ The night look is three deterministic layers — patterns seeded by building or
 instance id, zero per-frame randomness — plus the bloom pass that ties them
 together. This file is its own document because it cuts across every other
 one: it governs how buildings ([../art/buildings/README.md](../art/buildings/README.md)), streets and
-lamps ([../art/streets.md](../art/streets.md), [../art/props-and-vehicles.md](../art/props-and-vehicles.md))
+lamps ([../art/streets.md](../art/streets/README.md), [../art/props-and-vehicles.md](../art/props-and-vehicles/README.md))
 and the sky ([vegetation.md](vegetation.md)) all look at any given moment.
 
 ## Sky and light ramp
@@ -165,7 +165,7 @@ off at 07:00 — then off through the day.
 Cosmetic vehicles carry their own, much simpler night lights — warm
 headlight-emissive quads at the front and red taillights at the rear,
 switched on by the same night-factor threshold (see
-[../art/props-and-vehicles.md](../art/props-and-vehicles.md) for the vehicle kit itself).
+[../art/props-and-vehicles.md](../art/props-and-vehicles/README.md) for the vehicle kit itself).
 
 ## Clock and morning boot
 

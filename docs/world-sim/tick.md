@@ -36,7 +36,7 @@ Inside `tick()`, in exactly this order:
    problem/abandonment scan, level-up scan, and spawn scan only run when
    `tickNo % GROWTH_INTERVAL === 0` (`GROWTH_INTERVAL = 10`, defined in
    `growth.ts`). See
-   [../game-design/simulation-rules.md](../game-design/simulation-rules.md).
+   [../game-design/simulation-rules.md](../game-design/simulation-rules/README.md).
 5. **Building + road noise emission** — runs when
    `tickNo % EMIT_PERIOD === EMIT_OFFSET` (`EMIT_PERIOD = 4`,
    `EMIT_OFFSET = 3`): every Active building with a catalog `pollution` or
@@ -60,7 +60,7 @@ Inside `tick()`, in exactly this order:
    decays every edge's assigned volume once per sim day
    (`tickNo % TICKS_PER_DAY === 0`, `TICKS_PER_DAY = 200`), which also
    re-warrants every junction's control at that same cadence. See
-   [../engineering/systems/traffic.md](../engineering/systems/traffic.md) and
+   [../engineering/systems/traffic.md](../engineering/systems/traffic/README.md) and
    [traffic-model.md](traffic-model.md).
 9. **Transit** — `TransitSystem.tick()` (`src/sim/transit.ts`: route +
    ridership recompute, congestion relief) runs **every tick,

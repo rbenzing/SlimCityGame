@@ -120,7 +120,7 @@ Back to [the index](../GROUND-TRUTHS.md).
   commercial, and nothing for industry or farms. A building that clears land
   value and fails only its schooling carries `Problem.NeedsSchool`, which never
   counts toward abandonment. —
-  [simulation-rules.md](../game-design/simulation-rules.md);
+  [simulation-rules.md](../game-design/simulation-rules/README.md);
   `level3Schooling` in `src/shared/schooling.ts`
 - [R-services-018] Dispatch is read-only presentation: it reads Crime, FireRisk, Pollution and
   the registry, and never writes a field, a building, coverage or the economy.
@@ -138,7 +138,7 @@ Back to [the index](../GROUND-TRUTHS.md).
 - [R-services-021] Incidents spawn at real per-resident rates (fire 0.042, medical 0.085,
   police 0.45 a year) scaled by occupants and by field ÷ `FIELD_REFERENCE`,
   never at a flat chance per building. —
-  [balancing.md](../game-design/balancing.md#emergency-dispatch)
+  [balancing.md](../game-design/balancing/emergency-dispatch.md)
 - [R-services-022] Derived per-tick figures (service load, population in reach, provision) live
   on `SimSnapshot`, never in `CityStats` or the save. —
   [service-capacity.md](../specs/service-capacity.md)
@@ -146,7 +146,7 @@ Back to [the index](../GROUND-TRUTHS.md).
   are never collapsed into one. No capped facility of a kind reads `—`; a
   capped facility that reaches nobody reads `0%`. —
   [service-capacity.md](../specs/service-capacity.md),
-  [hud.md](../ux/hud.md); `ServiceLoad.capped` in `src/shared/types.ts`
+  [hud.md](../ux/hud/README.md); `ServiceLoad.capped` in `src/shared/types.ts`
 - [R-services-024] Landfill is a painted layer, not a ploppable; a connected area under
   `LANDFILL_MIN_AREA_TILES` (4) is rejected. —
   [services-model.md](../world-sim/services-model.md)

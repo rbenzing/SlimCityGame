@@ -185,7 +185,7 @@
 - **Overpasses** ([overpasses.md](../world-sim/overpasses.md)): see the refusal above.
 - **Transit** ([transit-model.md](../world-sim/transit-model.md)): the graph is built from the profile.
 - **Transport depots** ([transport-depots.md](transport-depots.md)): a depot touches any tram lane.
-- **Streets art** ([streets.md](../art/streets.md)): what the drawn result looks like.
+- **Streets art** ([streets.md](../art/streets/README.md)): what the drawn result looks like.
 - **Truths** ([roads](../truths/roads-transit.md)): the rules above.
 - **Saves and worker protocol:** neither changes; the profile already stores the tram choice per tile.
 - **Pillar:** city as a system ([gdd.md](../game-design/gdd.md)).

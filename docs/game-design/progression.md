@@ -4,7 +4,7 @@ Milestones, districts and policies, and the Advisor: how the city paces
 itself and how the player finds out what needs attention. The monthly
 money cycle these milestones run alongside is in [economy.md](economy.md);
 the population thresholds and policy multipliers below are named again,
-with their code locations, in [balancing.md](balancing.md).
+with their code locations, in [balancing.md](balancing/README.md).
 
 ## Milestones
 
@@ -87,7 +87,7 @@ the grid" with how much the city asks for against what it makes — build
 another plant (or water tower) — and is left out of the "without power"
 count, whose advice is to look for a gap in the network. When nothing is
 dark but growth is waiting for supply (see
-[the spawner](simulation-rules.md#the-spawner-how-a-lot-is-chosen)), a
+[the spawner](simulation-rules/the-spawner-how-a-lot-is-chosen.md)), a
 warning counts the lots and buildings waiting, from the snapshot's
 `growthWaiting`. Between them the shortage is on the list for as long as it
 holds anything back.
@@ -98,7 +98,7 @@ water, so the lots along them can never grow, and no building stands there
 yet to carry a flag. A warning counts every empty zoned tile that stands
 beside a road yet lacks a utility its zone needs (power for every zone;
 water for every zone but farmland, and never where a house would stand on
-[a well](simulation-rules.md#a-house-on-a-well)), from the snapshot's `zonedUnserved`, and
+[a well](simulation-rules/the-spawner-how-a-lot-is-chosen.md#a-house-on-a-well)), from the snapshot's `zonedUnserved`, and
 points at the first such tile. Ground zoned too deep to reach the road is not
 counted: the road is not what fails it.
 

@@ -3,7 +3,7 @@
 What the player actually does, minute to minute, and what the game does
 back. The full rules behind each step — the exact demand formulas, the
 spawner, levels and abandonment — are in
-[simulation-rules.md](simulation-rules.md); this document is the shape of
+[simulation-rules.md](simulation-rules/README.md); this document is the shape of
 the loop itself.
 
 ## Roads are the skeleton

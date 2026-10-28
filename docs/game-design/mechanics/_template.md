@@ -30,4 +30,4 @@ outlive this mechanic, that is an ADR — see
 ## Tuning
 
 Which numbers here are dials rather than rules, and where they are set. Dials
-belong in [../balancing.md](../balancing.md).
+belong in [../balancing.md](../balancing/README.md).

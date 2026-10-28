@@ -1,10 +1,11 @@
 /**
  * Checks the Markdown documentation. A relative link that points at a file
  * that is not there fails the run, and so does a rule id defined twice or
- * cited but never defined. So does a file over its size budget under
- * docs/truths/, docs/specs/ or docs/world-sim/road-model/, and a spec
- * without its card. Two further passes only warn: other files over budget,
- * dates written into a specification, and a sentence repeated in two files.
+ * cited but never defined. So does a file over its tier's size budget (the
+ * archive folders and CHANGELOG.md have none), a spec without its card, a
+ * date written into a specification, and a sentence of 12 or more words
+ * repeated in two files (the frozen docs/history/ does not count). Only a
+ * spec card longer than 40 lines is a warning.
  *
  * A documentation set rots quietly: a file is renamed, the links to it still
  * read fine, and nothing complains until someone follows one. This is the
@@ -107,7 +108,11 @@ const warn = (check, detail) => {
 /** Byte budget of a file by its path, or Infinity where it has none. */
 function budget(path) {
   if (['CLAUDE.md', 'docs/README.md', 'docs/GROUND-TRUTHS.md'].includes(path)) return 4096;
-  if (startsWithAny(path, ['docs/truths/', 'docs/specs/'])) return 24576;
+  // Tier 1 and 2, plus two reader documents whose sections have no subheadings to split at.
+  if (startsWithAny(path, ['docs/truths/', 'docs/specs/', 'docs/userguide/', 'docs/engineering/interfaces/'])) {
+    return 24576;
+  }
+  if (path === 'CHANGELOG.md') return Infinity;
   if (startsWithAny(path, ['docs/history/', 'docs/sources/', 'docs/engineering/adr/', 'docs/Road Guides/'])) {
     return Infinity;
   }
@@ -119,14 +124,9 @@ const over = docs
   .filter((d) => d.bytes > d.limit)
   .sort((a, b) => b.bytes - b.limit - (a.bytes - a.limit));
 let failures = 0;
-const STRICT = ['docs/truths/', 'docs/specs/', 'docs/world-sim/road-model/'];
-/** Strict paths whose own migration slice has not run yet; they warn until it does. */
-const PENDING = [];
 for (const d of over) {
-  if (startsWithAny(d.path, STRICT) && !PENDING.includes(d.path)) {
-    console.error(`over budget  ${d.path}  ${d.bytes} > ${d.limit}`);
-    failures++;
-  } else warn('size', `${d.path} ${d.bytes} bytes, budget ${d.limit}`);
+  console.error(`over budget  ${d.path}  ${d.bytes} > ${d.limit}`);
+  failures++;
 }
 console.log(`${over.length} file(s) over budget\n`);
 
@@ -159,17 +159,25 @@ for (const { path, text } of docs) {
   }
 }
 
-const DATED_OK = ['docs/history/', 'docs/ROADMAP.md', 'docs/engineering/adr/', 'docs/DESIGN.md', 'CHANGELOG.md'];
+const DATED_OK = ['docs/history/', 'docs/sources/', 'docs/ROADMAP.md', 'docs/roadmap/', 'docs/engineering/adr/', 'docs/DESIGN.md', 'CHANGELOG.md'];
 const dated = docs
   .filter(({ path }) => !startsWithAny(path, DATED_OK))
-  .map(({ path, text }) => ({ path, count: (text.match(/20\d\d-\d\d-\d\d/g) ?? []).length }))
+  // A date inside a URL is a citation, not a delivery note.
+  .map(({ path, text }) => ({
+    path,
+    count: (text.replace(/https?:\/\/\S+/g, '').match(/20\d\d-\d\d-\d\d/g) ?? []).length,
+  }))
   .filter((d) => d.count > 0);
-for (const d of dated) warn('dated', `${d.path} ${d.count} date(s)`);
-console.log(`${dated.length} dated-spec warning(s)\n`);
+for (const d of dated) {
+  console.error(`dated spec  ${d.path}  ${d.count} date(s)`);
+  failures++;
+}
+console.log(`${dated.length} dated spec(s)\n`);
 
-/** Sentences of 12 or more words, whitespace normalised, by the files that hold them. */
+/** Sentences of 12 or more words, whitespace normalised, by the files that hold them; the frozen history is not counted. */
 const sentences = new Map();
 for (const { path, text } of docs) {
+  if (path.startsWith('docs/history/')) continue;
   for (const raw of text.replace(/\s+/g, ' ').split(/(?<=[.?!]) /)) {
     const sentence = raw.trim();
     if (sentence.split(' ').length < 12) continue;
@@ -178,9 +186,10 @@ for (const { path, text } of docs) {
   }
 }
 const restated = [...sentences].filter(([, paths]) => paths.size > 1);
-for (const [sentence, paths] of restated.slice(0, 40)) {
-  warn('restated', `${[...paths].join(' and ')} — "${sentence.slice(0, 80)}"`);
+for (const [sentence, paths] of restated) {
+  console.error(`restated  ${[...paths].join(' and ')}  "${sentence.slice(0, 80)}"`);
+  failures++;
 }
-console.log(`${restated.length} restated-sentence warning(s)${restated.length > 40 ? ' (first 40 shown)' : ''}\n`);
-console.log(`${warnings} warning(s) shown in total; ${failures} failure(s) (budgets and cards under truths, specs and road-model).`);
+console.log(`${restated.length} restated sentence(s)\n`);
+console.log(`${warnings} warning(s); ${failures} failure(s).`);
 if (failures > 0) process.exit(1);

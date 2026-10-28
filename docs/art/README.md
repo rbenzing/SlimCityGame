@@ -37,7 +37,7 @@ more storeys rather than one stretched box (see
 [buildings/README.md](buildings/README.md)). Residential homes are re-proportioned against
 the same anchor: 1–2 storeys with a visible yard, sized against the narrower
 local-street sections below and the 4 m car parked on the driveway (see
-[buildings/README.md](buildings/README.md) and [props-and-vehicles.md](props-and-vehicles.md)).
+[buildings/README.md](buildings/README.md) and [props-and-vehicles.md](props-and-vehicles/README.md)).
 Whatever the carriageway does not use is footway and grass verge — the
 intended suburban look, not wasted space.
 
@@ -81,8 +81,8 @@ and capacity numbers are simulation facts, not art direction; they stay in
 | File                                           | Covers                                                                                                               |
 | ---------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
 | [buildings/README.md](buildings/README.md)                   | Massing, facades, windows, rooflines, archetype families, procedural houses, construction/abandoned states, lots.    |
-| [streets.md](streets.md)                       | Road surface and paint, medians and kerbs, junction and motorway signage, ground-cover transitions, the zoning grid. |
-| [props-and-vehicles.md](props-and-vehicles.md) | The vehicle kit, parked cars, utility and service silhouettes, landmark ploppables, street furniture and lamps.      |
+| [streets.md](streets/README.md)                       | Road surface and paint, medians and kerbs, junction and motorway signage, ground-cover transitions, the zoning grid. |
+| [props-and-vehicles.md](props-and-vehicles/README.md) | The vehicle kit, parked cars, utility and service silhouettes, landmark ploppables, street furniture and lamps.      |
 | [civic-massing/README.md](civic-massing/README.md)           | How a ploppable service or utility building gets its footprint and height from what it does.                         |
 
 These together are the environmental art guide. They are kept apart

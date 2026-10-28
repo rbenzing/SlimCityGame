@@ -67,7 +67,7 @@ breadth-first walk starts from every tile of the network (road, power line or
 pipe, see [Conducting roads, power lines and pipes](#conducting-roads-power-lines-and-pipes))
 orthogonally adjacent to a generator's footprint, crosses every connected
 tile that conducts — along a road, only where the road network joins one
-road to the next ([road-network.md](road-network.md)), so never across to a
+road to the next ([road-network.md](road-network/README.md)), so never across to a
 road that merely lies alongside or sits at another level; a line or a pipe
 hands supply to whatever stands beside it — and then radiates one further
 orthogonal step onto non-road tiles around each reached tile — which is how
@@ -83,7 +83,7 @@ set the dirt road, the highway and the ramp are excluded, so a paved street
 of any tier carries water and a dirt track or a motorway does not. A dirt
 road has no main under it, just as it has no cable, and the houses along one
 pump their own wells (see
-[a house on a well](../game-design/simulation-rules.md#a-house-on-a-well)).
+[a house on a well](../game-design/simulation-rules/the-spawner-how-a-lot-is-chosen.md#a-house-on-a-well)).
 A street's main is also its sewer — the manhole covers say so — so the sewage
 walk below runs over exactly the tiles the water walk does. A tile that fails
 to conduct is not merely unsupplied — it is not a bridge either, so the
@@ -244,4 +244,4 @@ A building that goes three consecutive growth passes without power, water,
 or road access while Active abandons; one without a sewer never does. Growth
 does not build into a shortage: a lot develops, and a building levels up,
 only when the grid has the spare supply — power, water and, from Big Town, drain — for it
-(see [the spawner](../game-design/simulation-rules.md#the-spawner-how-a-lot-is-chosen)).
+(see [the spawner](../game-design/simulation-rules/the-spawner-how-a-lot-is-chosen.md)).

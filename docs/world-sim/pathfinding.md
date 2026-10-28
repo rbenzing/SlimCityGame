@@ -10,14 +10,14 @@ rather than bare node — that everything else here exists to explain. It
 complements, and does not restate, two documents that already cover
 adjacent ground in full: [road-model.md](road-model/README.md) has the capacity,
 control-delay and warrant formulas this algorithm evaluates, and
-[../engineering/systems/traffic.md](../engineering/systems/traffic.md)
+[../engineering/systems/traffic.md](../engineering/systems/traffic/README.md)
 describes how the traffic system that is `findPath`'s heaviest caller is
 built.
 
 ## The graph
 
 A `RoadNetwork` does not put one node per tile. `buildGraph` walks the road
-network ([road-network.md](road-network.md)) — one cell per road per tile,
+network ([road-network.md](road-network/README.md)) — one cell per road per tile,
 linked only where the network joins them — and places a node only at a road
 that is an intersection, a dead end, an isolated road, or — even with exactly
 two linked neighbors — a road whose own

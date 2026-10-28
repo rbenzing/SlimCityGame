@@ -45,7 +45,7 @@ written directly, and exist for the systems that work on tiles: zoning,
 occupancy, terrain. A road on the grid is a network road whose segments happen
 to be axis-aligned. What the network holds, the rules on geometry and
 junctions, and how each system reads it are specified in
-[road-network.md](../../world-sim/road-network.md), including the order in
+[road-network.md](../../world-sim/road-network/README.md), including the order in
 which the existing systems move onto it.
 
 ## Consequences

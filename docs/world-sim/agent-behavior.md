@@ -34,7 +34,7 @@ following a route," down to near-identical code:
 - The route itself is **never re-solved or revalidated**. If the road under
   it is bulldozed mid-trip, the vehicle keeps walking the polyline it
   captured at spawn — nothing reroutes, removes, or teleports it (see
-  [../engineering/systems/traffic.md](../engineering/systems/traffic.md)'s
+  [../engineering/systems/traffic.md](../engineering/systems/traffic/README.md)'s
   "Where it breaks" for the traffic case; dispatch and garbage trucks share
   the same exposure).
 
