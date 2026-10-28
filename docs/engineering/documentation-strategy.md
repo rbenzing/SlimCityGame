@@ -92,7 +92,7 @@ code pointer kept on the card.
 
 | Today                                   | After                                                                                                            |
 | --------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| `GROUND-TRUTHS.md` (131 KB)             | A 4 KB index: the twelve broken most often, verbatim, and one line per area linking `docs/truths/<area>.md`       |
+| `GROUND-TRUTHS.md` (131 KB)             | A 4 KB index: one row per area linking `docs/truths/<area>.md` with its id range, and the ids broken most often (their text stays in `CLAUDE.md`) |
 | `ROADMAP.md` (248 KB)                   | Status, the Open list and milestones, ≤ 12 KB; history to `docs/history/<yyyy>-<mm>.md`, ≤ 8 lines an entry with a link to the spec that holds its rules |
 | Feature pairs, 25 + 24 files            | One spec a feature in `docs/specs/<feature>.md`, card first, ≤ 16 KB; sources appendix to `docs/sources/<feature>.md` |
 | `road-model.md`, `buildings.md`, `interfaces.md`, `data-model.md` | Folders with an index and one file a section, each ≤ 16 KB                                             |
