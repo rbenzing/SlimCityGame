@@ -7,6 +7,7 @@ folder will have the rest.
 | -------------------------------------- | ----------------------------------------- |
 | How do I play?                         | [USERGUIDE.md](USERGUIDE.md)              |
 | What is built, and what is next?       | [ROADMAP.md](ROADMAP.md)                  |
+| What was delivered, and when?          | [history/](history/README.md)             |
 | What are we deliberately not building? | [DESIGN.md](DESIGN.md)                    |
 | What must never be broken?             | [GROUND-TRUTHS.md](GROUND-TRUTHS.md)      |
 | How is it built, and why that way?     | [engineering/](engineering/README.md)     |
@@ -16,6 +17,7 @@ folder will have the rest.
 | What should an asset look like?        | [art/](art/README.md)                     |
 | How does the interface behave?         | [ux/](ux/README.md)                       |
 | How do I work on it?                   | [../CONTRIBUTING.md](../CONTRIBUTING.md)  |
+| How are the docs kept short enough to read? | [engineering/documentation-strategy.md](engineering/documentation-strategy.md) |
 
 ## The seven folders
 
