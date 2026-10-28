@@ -87,7 +87,7 @@ the surface itself, and a pumping station drinking from that stretch
 delivers less the browner it is. The **sewage treatment works** takes the
 same sewage at five times the price and fouls the water at a seventh of
 the rate. The figures and their sources are in
-[water-and-sewage.md](game-design/features/water-and-sewage.md).
+[water-and-sewage.md](specs/water-and-sewage.md).
 
 **Power is honest on both sides.** A generator counts for its nameplate times
 the published share of the year its kind runs: the wind turbine is the
@@ -97,8 +97,8 @@ plant keeps its 60 MW nameplate and its anchors and delivers 25.6 MW. Every
 civic ploppable's draw is now a surveyed figure too, floor area times the
 national building survey's intensity, so a police station draws 47 kW where
 it drew 600, and the airport 0.4 MW where it drew 8. The derivations are in
-[power-generation.md](game-design/features/power-generation.md#the-generators-re-derived)
-and [municipal-services.md](game-design/features/municipal-services.md#what-the-facilities-draw-derived-2026-10-05).
+[power-generation.md](specs/power-generation.md)
+and [municipal-services.md](specs/municipal-services.md).
 
 **A new town grows again.** Release 1.31.0 made the sewer a hard gate on
 growth from the first house, and both drains want a shore, so a new town on
@@ -197,7 +197,7 @@ under the streets, the laid pipes, a lead into every served lot, a riser on
 each water building and its run out to the pipe that joins it, blue and
 brown where the water and the drains reach, grey where they do not — and a
 pipe drag snaps onto the system and says what it joins
-([underground-view.md](game-design/features/underground-view.md)).
+([underground-view.md](specs/underground-view.md)).
 
 **Lots and land is complete**
 ([lots-and-land.md](specs/lots-and-land.md)): the detached
@@ -209,21 +209,21 @@ neighbours; the dense homes re-derived from the floor each block is drawn
 with; and a small house on prime land torn down for a plex.
 
 **Next:** garbage recovery
-([garbage-recovery.md](game-design/features/garbage-recovery.md)), the
+([garbage-recovery.md](specs/garbage-recovery.md)), the
 municipal-services epic the player chose, is complete: the garbage chain on
 one real unit, the kerbside recycling depot, the materials recovery facility
 and the transfer station. So is healthcare and death care
-([healthcare-and-death-care.md](game-design/features/healthcare-and-death-care.md)):
+([healthcare-and-death-care.md](specs/healthcare-and-death-care.md)):
 the clinic and hospital ladder, deaths that empty homes, a regional funeral
 service until Big Town, the cemetery, the hearse and the crematorium. So is
 emergency services
-([emergency-services.md](game-design/features/emergency-services.md)): road
+([emergency-services.md](specs/emergency-services.md)): road
 reach, crews, real call rates and a two-rung station ladder. So is the
 education ladder
-([education-ladder.md](game-design/features/education-ladder.md)): elementary,
+([education-ladder.md](specs/education-ladder.md)): elementary,
 middle and high schools, a college and a library, each gating level 3 for the
 zones that need it and drawn as a campus. So is power generation
-([power-generation.md](game-design/features/power-generation.md)): a solar
+([power-generation.md](specs/power-generation.md)): a solar
 farm, a gas turbine, a combined-cycle station and a reactor, each a real small
 unit sized to the game's cities. So is building detail, at the player's
 request (2026-10-14, complete 2026-10-16;
@@ -234,7 +234,7 @@ budget; eight slices, the budget measured first, then the performance
 slice, houses, storefronts, industry and farms, blocks and towers, the
 kitless ploppables, and the earliest kits redone. So is transport depots,
 at the player's choice (complete 2026-10-16;
-[transport-depots.md](game-design/features/transport-depots.md)): a depot
+[transport-depots.md](specs/transport-depots.md)): a depot
 fields a line's vehicles over its own network, a mode with no depot runs
 nothing, every vehicle in service is charged its operating cost, buses
 pull out at dawn and home at night, and the fleet at home stands on the
@@ -244,7 +244,7 @@ as a street cars share, a tram reservation lifted onto an elevated guideway
 in the Disney World monorail's form with raised stations, and every tram
 lane routable; complete 2026-10-23 with the raised stations. **The
 programme's last epic, parks and recreation, is complete (2026-10-23;
-[parks-and-recreation.md](game-design/features/parks-and-recreation.md))** —
+[parks-and-recreation.md](specs/parks-and-recreation.md))** —
 parks at the real sizes of the US park types, planned to a provision
 standard, capped like every other service, drawn as five kits that read
 apart and worn when full. **The municipal services programme is complete.**

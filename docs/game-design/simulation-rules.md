@@ -304,7 +304,7 @@ elementary field; medium and high-density housing, mixed use and local
 commercial the middle **and** the high school fields; high-density commercial
 the college field; industry, heavy industry and farms nothing. Level 2 is never
 gated by schooling. Each rung is its own field, so no rung stands in for another
-([education-ladder.md](features/education-ladder.md)). A building that clears the
+([education-ladder.md](../specs/education-ladder.md)). A building that clears the
 land value for level 3 and fails only its schooling carries `NeedsSchool`.
 Land value is
 earned, not waited for: bare clean ground settles at 119, under the first
@@ -338,7 +338,7 @@ passes): it is replaced, on the same footprint, by a level-1 duplex or
 fourplex of its zone and lot, drawn by share, unlocked at the current
 milestone, given spare supply for what it adds, and it enters Constructing.
 Any level converts; the lot never changes
-([features/lots-and-land.md](../specs/lots-and-land.md#a-small-house-on-prime-land-becomes-a-plex)).
+([specs/lots-and-land.md](../specs/lots-and-land.md#a-small-house-on-prime-land-becomes-a-plex)).
 
 A farm levels up by taking more land:
 

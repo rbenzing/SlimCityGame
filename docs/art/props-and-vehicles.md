@@ -41,7 +41,7 @@ above, built from the same body + cabin-band + wheel-box parts:
 - **Ambulance** — white body, the same red light-bar as fire, plus a small
   red-cross accent on the roof in front of the bar; a US Type III box on a
   van chassis, 6.9 × 2.5 × 2.7 m (the figure is derived in
-  [healthcare-and-death-care.md](../engineering/features/healthcare-and-death-care.md)).
+  [healthcare-and-death-care.md](../specs/healthcare-and-death-care.md)).
 - **Garbage** — municipal green body, no light-bar; instead a raised rear
   hopper/compactor box in a darker green over the back ~40% of the body, plus
   a small amber beacon.
@@ -187,7 +187,7 @@ of the generic building facade box:
   [civic-massing.md](civic-massing/reading-a-civic-building-at-a-glance/the-generators-solar-gas-combined-cycle-and-the-reactor.md).
 - **The parks** are five rungs that read apart at the default pitch without
   a label, each the real size of its type
-  ([parks-and-recreation.md](../game-design/features/parks-and-recreation.md)).
+  ([parks-and-recreation.md](../specs/parks-and-recreation.md)).
   Every rung's ground is one merged plate: a draped rung's is a lattice at a
   vertex every 4 m (every 10 m on the district park, whose 400 m of lawn
   would otherwise cost more triangles than its trees) whose heights are read

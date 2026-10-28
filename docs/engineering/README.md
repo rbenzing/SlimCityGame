@@ -30,7 +30,7 @@ data it stores, and the conventions the codebase holds itself to.
 | Folder                            | For                                                                      |
 | --------------------------------- | ------------------------------------------------------------------------ |
 | [systems/](systems/README.md)     | One document per system: how it works inside                             |
-| [features/](features/README.md)   | One document per feature, before it is built: how it will be implemented |
+| [specs/](../specs/README.md)      | One spec per feature, covering both its design and its build             |
 | [standards/](standards/README.md) | The conventions the codebase follows                                     |
 
 ## The two rules everything else rests on

@@ -81,7 +81,6 @@
 - `src/main.ts` — builds `hasStopBuilding` from the snapshot.
 - `UtilityKitRenderer` in `src/render/utilitykits.ts` — one `InstancedMesh` per part kind, the civic pattern.
 - `src/data/catalog.json`, `src/sim/`, `src/world/` — untouched; the catalog's `kind` already names the recipe, and the save holds no geometry.
-- `src/render/buildingparts.ts` — never built; its part pool is `houses.ts` and `buildingkit.ts`.
 
 **Tests:**
 

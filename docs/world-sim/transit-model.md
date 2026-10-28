@@ -151,7 +151,7 @@ takes the tile off every line. Each stop keeps its boardings a day, the
 sum over the lines calling at it; a shelter that 25 or more board a day is
 warranted and sells its ad panel for ₵7 a month against its ₵10 upkeep,
 while a sign costs and earns nothing
-([civic-access-and-bus-stops.md](../game-design/features/civic-access-and-bus-stops.md)).
+([civic-access-and-bus-stops.md](../specs/civic-access-and-bus-stops.md)).
 A rail station is a much larger
 ploppable (a 2×3 footprint) gated on standing adjacent to rail track rather
 than to a street — the first ploppable in the game whose placement rule is

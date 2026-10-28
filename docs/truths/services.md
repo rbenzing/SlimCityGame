@@ -30,7 +30,7 @@ Back to [the index](../GROUND-TRUTHS.md).
   every direction, read at placement by the worker; the turbine's three keep
   one rotor out of another's and nothing more, and no other entry carries
   one. —
-  [power-generation.md](../game-design/features/power-generation.md#the-generators-re-derived),
+  [power-generation.md](../specs/power-generation.md),
   [utilities-model.md](../world-sim/utilities-model.md#production-and-demand);
   `averageOutputMW` in `src/shared/power.ts`, `crowdsItsKind` in
   `src/sim/worker.entry.ts`
@@ -39,7 +39,7 @@ Back to [the index](../GROUND-TRUTHS.md).
   abandons districts rather than dimming them. A generator's pollution follows the
   energy it makes — emission intensity times the megawatts it delivers, on the coal
   plant's anchor of 140 — never its nameplate. —
-  [power-generation.md](../game-design/features/power-generation.md#tuning)
+  [power-generation.md](../specs/power-generation.md)
 - [R-services-005] Service range is a road-hop count in tiles, scaled by funding and floored. It
   is never called, drawn or computed as a radius. —
   [services-model.md](../world-sim/services-model.md)
@@ -59,7 +59,7 @@ Back to [the index](../GROUND-TRUTHS.md).
   supply back. Supply and use are summed in whole millionths (watts,
   millilitres), never as floats. —
   [utilities-model.md](../world-sim/utilities-model.md#brownouts),
-  [power-generation.md](../engineering/features/power-generation.md);
+  [power-generation.md](../specs/power-generation.md);
   `recomputeUtilities` in `src/sim/network.ts`
 - [R-services-008] A building a shortage cuts carries `PowerShortage` or `WaterShortage` beside
   `NoPower` or `NoWater`. The shortage flag only says why and never abandons a
@@ -78,27 +78,27 @@ Back to [the index](../GROUND-TRUTHS.md).
   `src/sim/network.ts`, `flagUnservedUtilities` in `src/sim/growth.ts`
 - [R-services-010] Exactly one road BFS runs per active facility per tick. Population in reach,
   collection and forwarding ride that traversal, never a second BFS or a grid
-  sweep. — [service-capacity.md](../engineering/features/service-capacity.md)
+  sweep. — [service-capacity.md](../specs/service-capacity.md)
 - [R-services-011] All per-facility iteration (coverage, collection, fleet allocation) runs in
   ascending building id with id tiebreaks, and the shortage cut breaks its
   distance ties by id, so two runs agree. — [services-model.md](../world-sim/services-model.md),
-  [service-capacity.md](../engineering/features/service-capacity.md)
+  [service-capacity.md](../specs/service-capacity.md)
 - [R-services-012] `ServiceSpec.capacity` is optional and absent means uncapped. Nobody in reach
   means uncapped (share is `Infinity`, never `0/0`). The field multiplier is
   `min(1, supply)` and never exceeds 1. Over capacity degrades smoothly (200%
   load halves the good); never a threshold, a queue, a waiting list or a
-  refusal. — [service-capacity.md](../engineering/features/service-capacity.md)
+  refusal. — [service-capacity.md](../specs/service-capacity.md)
 - [R-services-013] Facility contributions resolve per facility and are never pre-blended per
   kind, because `clamp255` rounds. A building in reach counts once and in full;
   only `Active` residents count; jobs never count. —
-  [service-capacity.md](../engineering/features/service-capacity.md)
+  [service-capacity.md](../specs/service-capacity.md)
 - [R-services-014] Capacity pools per tile, by proportional allocation: `supply[t]` is the sum
   over the facilities reaching `t` of capacity ÷ that facility's reach
   population. Facilities are never grouped into a shared pool by overlapping
   coverage — that grouping is transitive, so one chain of stations closes into
   a single map-wide pool and the worst district stops differing from the
   city average exactly when a player needs the two apart. —
-  [service-capacity.md](../engineering/features/service-capacity.md)
+  [service-capacity.md](../specs/service-capacity.md)
 - [R-services-015] Education and Health coverage blend as a maximum; police and fire subtract
   half from Crime and FireRisk; a park adds a quarter into LandValue. No kind
   switches to additive stacking, and LandValue is never floored at a park
@@ -111,8 +111,8 @@ Back to [the index](../GROUND-TRUTHS.md).
   field: it lifts the range of every school in its reach by up to a fifth,
   resolved before any school radiates, and does nothing where no school is. All
   rungs and the library share the one Education funding slider. —
-  [education-ladder.md](../game-design/features/education-ladder.md),
-  [education-ladder.md](../engineering/features/education-ladder.md);
+  [education-ladder.md](../specs/education-ladder.md),
+  [education-ladder.md](../specs/education-ladder.md);
   `src/shared/schooling.ts`, `ServiceSim.tick` in `src/sim/services.ts`
 - [R-services-017] Level 2 is never gated by schooling, at any density. Only level 3 asks for
   it, by zone: elementary for detached and row housing, middle and high both
@@ -125,27 +125,27 @@ Back to [the index](../GROUND-TRUTHS.md).
 - [R-services-018] Dispatch is read-only presentation: it reads Crime, FireRisk, Pollution and
   the registry, and never writes a field, a building, coverage or the economy.
   — [services-model.md](../world-sim/services-model.md),
-  [emergency-services.md](../engineering/features/emergency-services.md)
+  [emergency-services.md](../specs/emergency-services.md)
 - [R-services-019] A station answers only within its road reach, counted in path tiles
   (`path.points.length - 1`) and scaled by the kind's funding, never by
   straight line and never by `path.cost`, which is congestion-scaled time and
-  not a distance. — [emergency-services.md](../engineering/features/emergency-services.md)
+  not a distance. — [emergency-services.md](../specs/emergency-services.md)
 - [R-services-020] `ServiceSpec.responders` caps the calls a facility has in flight; absent is
   unlimited. A call no station can answer still spawns as unanswered
   (`answered: false`), takes no vehicle slot and lapses; unanswered calls are
   capped apart from the answered pool. —
-  [emergency-services.md](../engineering/features/emergency-services.md)
+  [emergency-services.md](../specs/emergency-services.md)
 - [R-services-021] Incidents spawn at real per-resident rates (fire 0.042, medical 0.085,
   police 0.45 a year) scaled by occupants and by field ÷ `FIELD_REFERENCE`,
   never at a flat chance per building. —
   [balancing.md](../game-design/balancing.md#emergency-dispatch)
 - [R-services-022] Derived per-tick figures (service load, population in reach, provision) live
   on `SimSnapshot`, never in `CityStats` or the save. —
-  [service-capacity.md](../engineering/features/service-capacity.md)
+  [service-capacity.md](../specs/service-capacity.md)
 - [R-services-023] A load reading of zero and no load reading at all are different answers and
   are never collapsed into one. No capped facility of a kind reads `—`; a
   capped facility that reaches nobody reads `0%`. —
-  [service-capacity.md](../engineering/features/service-capacity.md),
+  [service-capacity.md](../specs/service-capacity.md),
   [hud.md](../ux/hud.md); `ServiceLoad.capped` in `src/shared/types.ts`
 - [R-services-024] Landfill is a painted layer, not a ploppable; a connected area under
   `LANDFILL_MIN_AREA_TILES` (4) is rejected. —
@@ -175,7 +175,7 @@ Back to [the index](../GROUND-TRUTHS.md).
   never served. A depot is never a disposal
   facility and forwards nothing. Its credit is the disposal it avoids, derived
   from the landfill's own costs, booked once a month. —
-  [garbage-recovery.md](../game-design/features/garbage-recovery.md#the-kerbside-recycling-depot-built-2026-10-08);
+  [garbage-recovery.md](../specs/garbage-recovery.md);
   `src/sim/garbage.ts`
 - [R-services-028] A Materials Recovery Facility sorts recycling; it never takes rubbish. It
   sorts, up to its daily throughput, first the kerbside recycling of the
@@ -191,7 +191,7 @@ Back to [the index](../GROUND-TRUTHS.md).
   at any distance. With none that has room, the residue fills the MRF's own
   store, and a full store stops it sorting. A stopped MRF's round serves no
   one, and the depots' recycling goes regional again. —
-  [garbage-recovery.md](../game-design/features/garbage-recovery.md); `src/sim/garbage.ts`
+  [garbage-recovery.md](../specs/garbage-recovery.md); `src/sim/garbage.ts`
 - [R-services-029] A transfer station is never final and diverts nothing; it lends reach. It
   collects only after the incinerators and the landfill have collected, so
   it takes what no disposal site reaches, up to its daily throughput and the
@@ -200,7 +200,7 @@ Back to [the index](../GROUND-TRUTHS.md).
   at any distance; distance never reduces what arrives. The floor holds at
   most two days' throughput (the common 48-hour state limit), and a full
   floor stops it collecting. —
-  [garbage-recovery.md](../game-design/features/garbage-recovery.md); `src/sim/garbage.ts`
+  [garbage-recovery.md](../specs/garbage-recovery.md); `src/sim/garbage.ts`
 - [R-services-030] A facility's trucks leave from the street nearest any tile of its turned
   lot, never only its corner: a 2×3 depot or a 4×4 incinerator whose corner
   stands three tiles from its street still sends its fleet. —
@@ -209,13 +209,13 @@ Back to [the index](../GROUND-TRUTHS.md).
   surveyed intensity. The floor is the massing rule's (footprint × 185 m² a
   tile × storeys) unless the building's plan states one, and the hospital's
   does: 72 beds at 2,500 sf, because six of its fifteen tiles are a parking
-  deck. — [municipal-services.md](../game-design/features/municipal-services.md#what-the-facilities-draw-derived-2026-10-05);
+  deck. — [municipal-services.md](../specs/municipal-services.md);
   `src/shared/contracts.test.ts`
 - [R-services-032] Off-street parking is counted to code: a hospital holds 2 spaces a bed, and
   its accessible spaces follow ADA 2010 §208.2 over the spaces it provides,
   1 van space in 6. The kerbside table (PROWAG R211) is a different table and
   is never used for a lot or a deck. —
-  [healthcare-and-death-care.md](../game-design/features/healthcare-and-death-care.md#sizes-costs-and-the-ladder-rule);
+  [healthcare-and-death-care.md](../specs/healthcare-and-death-care.md);
   `adaAccessibleSpaces` in `src/shared/parkingcode.ts`
 - [R-services-033] A suburban commercial or industrial lot draws its code-minimum spaces (by
   kind, from its floor: the body's plate times its storeys), its ADA
@@ -266,5 +266,5 @@ Back to [the index](../GROUND-TRUTHS.md).
   plus the 20 m tile, never picked to feel right, and any override is stated.
   The smallest facility of a ladder must be affordable to a city that has just
   unlocked it, and that one rule overrides the derivation. —
-  [municipal-services.md](../game-design/features/municipal-services.md)
+  [municipal-services.md](../specs/municipal-services.md)
 

@@ -2,7 +2,7 @@
 
 Three vehicle-service kits, read by their **bay doors and the fleet on the
 apron** as the fire stations are, from the sizes derived in
-[transport-depots.md](../../../game-design/features/transport-depots.md#tuning):
+[transport-depots.md](../../../specs/transport-depots.md):
 every stall, aisle and bay there is a figure here. Each turns at the four
 rotations, stands on the highest ground under its lot, keeps its parts
 inside the lot and takes local +Z as the street side; the tram depot and the

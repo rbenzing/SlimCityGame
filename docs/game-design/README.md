@@ -30,7 +30,7 @@ demand curve makes for a good first hour is design.
 
 | Folder                            | For                                                            |
 | --------------------------------- | -------------------------------------------------------------- |
-| [features/](features/README.md)   | One document per gameplay feature: what it is for the player   |
+| [specs/](../specs/README.md)      | One spec per feature, covering both its design and its build   |
 | [mechanics/](mechanics/README.md) | One document per mechanic: the exact rules governing one thing |
 
 ## Where the dials are

@@ -113,7 +113,7 @@ Back to [the index](../GROUND-TRUTHS.md).
   A standing building nothing drains carries `NoSewer`, fouls the ground
   around it in proportion to its sewage, and is **never abandoned for it**,
   so a city saved before there were drains loads standing. —
-  [water-and-sewage.md](../game-design/features/water-and-sewage.md),
+  [water-and-sewage.md](../specs/water-and-sewage.md),
   [utilities-model.md](../world-sim/utilities-model.md#sewage); `recomputeUtilities`
   in `src/sim/network.ts`, `tryLevelUp` and `runSpawnScan` in `src/sim/growth.ts`
 
@@ -135,7 +135,7 @@ Back to [the index](../GROUND-TRUTHS.md).
   opacity, never a shader, and comes back exactly as it was. A pipe drag's
   ends snap onto the system a tile away, a run along a street lays nothing,
   and the cursor says what the run joins. —
-  [underground-view.md](../game-design/features/underground-view.md);
+  [underground-view.md](../specs/underground-view.md);
   `UndergroundView` in `src/render/underground.ts`, `PipeOverlayRenderer` in
   `src/render/pipes.ts`, `planPipeRun` in `src/tools/pipe.ts`
 
@@ -147,7 +147,7 @@ Back to [the index](../GROUND-TRUTHS.md).
   An intake yields its rating scaled by the worst fouling beside it; the
   tower is never scaled; the sewer pass runs before the water pass so the
   yield is known when the water is cut. There is no current and no
-  downstream. — [water-and-sewage.md](../game-design/features/water-and-sewage.md),
+  downstream. — [water-and-sewage.md](../specs/water-and-sewage.md),
   [utilities-model.md](../world-sim/utilities-model.md#the-fouled-water);
   `spreadFouling` and `recomputeUtilities` in `src/sim/network.ts`
 

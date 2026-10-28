@@ -92,7 +92,7 @@ Every figure is sourced in [specs/building-types.md](../specs/building-types.md#
 
 ## Water and sewer
 
-Every figure is sourced in [features/water-and-sewage.md](features/water-and-sewage.md#tuning).
+Every figure is sourced in [specs/water-and-sewage.md](../specs/water-and-sewage.md).
 
 | Constant                     | Value                                                                                         | Meaning                                                                                                                                         | File                      |
 | ---------------------------- | --------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------- |
@@ -113,7 +113,7 @@ Every figure is sourced in [features/water-and-sewage.md](features/water-and-sew
 
 ## Power
 
-Every figure is derived in [features/power-generation.md](features/power-generation.md#the-generators-re-derived).
+Every figure is derived in [specs/power-generation.md](../specs/power-generation.md).
 
 | Constant             | Value                                                              | Meaning                                                                                                                                                     | File                    |
 | -------------------- | ------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------- |
@@ -130,7 +130,7 @@ Every figure is derived in [features/power-generation.md](features/power-generat
 
 ## Civic draw
 
-Every figure is derived in [features/municipal-services.md](features/municipal-services.md#what-the-facilities-draw-derived-2026-10-05).
+Every figure is derived in [specs/municipal-services.md](../specs/municipal-services.md).
 
 | Building             | Power     | Water     | Meaning                                                                                                                      | File                    |
 | -------------------- | --------- | --------- | ---------------------------------------------------------------------------------------------------------------------------- | ----------------------- |
@@ -151,7 +151,7 @@ Every figure is derived in [features/municipal-services.md](features/municipal-s
 
 ## Service capacity
 
-Every figure is derived in [features/service-capacity.md](features/service-capacity.md#tuning).
+Every figure is derived in [specs/service-capacity.md](../specs/service-capacity.md).
 
 | Building       | Capacity | Meaning                                                                                                                                                                                          | File                    |
 | -------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------- |
@@ -169,7 +169,7 @@ Every figure is derived in [features/service-capacity.md](features/service-capac
 
 ## Education ladder
 
-Derived and argued in [features/education-ladder.md](features/education-ladder.md#tuning).
+Derived and argued in [specs/education-ladder.md](../specs/education-ladder.md).
 
 | Constant                    | Value                                                  | Meaning                                                                                                                                                                              | File                      |
 | --------------------------- | ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------- |
@@ -185,7 +185,7 @@ Derived and argued in [features/education-ladder.md](features/education-ladder.m
 
 ## Emergency dispatch
 
-Derived and argued in [features/emergency-services.md](features/emergency-services.md#tuning).
+Derived and argued in [specs/emergency-services.md](../specs/emergency-services.md).
 
 | Constant                       | Value                                  | Meaning                                                                                                                                                                                                       | File                      |
 | ------------------------------ | -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------- |
@@ -214,7 +214,7 @@ calls a year, 1.6 a day; a town of 25,000 makes about 11,250 police calls a year
 
 ## Hospital parking
 
-Every figure is derived in [features/healthcare-and-death-care.md](features/healthcare-and-death-care.md#sizes-costs-and-the-ladder-rule).
+Every figure is derived in [specs/healthcare-and-death-care.md](../specs/healthcare-and-death-care.md).
 
 | Constant          | Value                       | Meaning                                                                                                                                     | File                        |
 | ----------------- | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------- |
@@ -293,7 +293,7 @@ Every figure is sourced in [specs/farms.md](../specs/farms.md).
 
 ## Garbage
 
-Every figure is sourced in [features/garbage-recovery.md](features/garbage-recovery.md#what-a-trash-unit-is-and-what-the-existing-numbers-mean)
+Every figure is sourced in [specs/garbage-recovery.md](../specs/garbage-recovery.md)
 and [../world-sim/services-model.md](../world-sim/services-model.md#garbage-and-waste-management).
 
 | Constant                        | Value                           | Meaning                                                                                                                                 | File                      |
@@ -326,7 +326,7 @@ and [../world-sim/services-model.md](../world-sim/services-model.md#garbage-and-
 
 ## Deaths and re-lets
 
-Derived and argued in [features/healthcare-and-death-care.md](features/healthcare-and-death-care.md#the-death-rate-and-what-a-tick-is).
+Derived and argued in [specs/healthcare-and-death-care.md](../specs/healthcare-and-death-care.md).
 
 | Constant                           | Value       | Meaning                                                                                                                                                                                                                                                      | File                      |
 | ---------------------------------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------- |
@@ -336,7 +336,7 @@ Derived and argued in [features/healthcare-and-death-care.md](features/healthcar
 
 ## Death care
 
-Derived and argued in [features/healthcare-and-death-care.md](features/healthcare-and-death-care.md#death-care-and-what-happens-when-a-cemetery-fills).
+Derived and argued in [specs/healthcare-and-death-care.md](../specs/healthcare-and-death-care.md).
 
 | Constant                        | Value                             | Meaning                                                                                                                                                                                                                                                                                                                                                                                                                                                   | File                        |
 | ------------------------------- | --------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------- |
