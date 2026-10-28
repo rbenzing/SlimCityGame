@@ -61,7 +61,7 @@ MUTCD citations below use 11th-edition section numbers.
   catalog entry whose `ground` is `drape` is never levelled, and only paving
   and a pitch level theirs. Park coverage takes the best of overlapping parks
   and adds once to land value, never the sum. —
-  [parks-and-recreation.md](../game-design/features/parks-and-recreation.md);
+  [parks-and-recreation.md](../specs/parks-and-recreation.md);
   `src/data/catalog.json`, `src/sim/services.ts`
 - [R-roads-010] A facility's coverage walks the street network from every road tile within
   reach of its footprint, never from one nearest tile; a park on four streets

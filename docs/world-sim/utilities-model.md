@@ -15,7 +15,7 @@ pollution, ¢12,000 to build, ¢800/month upkeep), a wind turbine (1×1, a
 distributed-wind machine: 1 MW at 20%, so 0.2 MW, drawn at its 69 m hub and
 61 m rotor, no pollution, ¢190, ¢3/month, keeping three clear tiles from any
 other turbine so no rotor sweeps another's — every figure derived in
-[../game-design/features/power-generation.md](../game-design/features/power-generation.md#the-generators-re-derived)),
+[../specs/power-generation.md](../specs/power-generation.md)),
 a water tower (1×1, 378.5 kL — a 100,000-gallon tank on its
 borehole, turned over once a day — ¢2,500, ¢120/month), a water pumping
 station (2×2, 3,785 kL, the smallest one-million-gallon-a-day surface intake,
@@ -25,7 +25,7 @@ on a shore, from Small Town, ¢3,600, ¢180/month), a water drain pipe
 3,785 kL a day on a shore and discharging 15% of its load, 93 kW, 26
 pollution, from Busy Township, ¢9,000, ¢520/month); where each figure comes
 from is in
-[../game-design/features/water-and-sewage.md](../game-design/features/water-and-sewage.md).
+[../specs/water-and-sewage.md](../specs/water-and-sewage.md).
 Demand is the sum of the catalog `powerUse`/`waterUse` of every building the
 network reaches — abandoned ones included, since they keep their place in
 line (see [Brownouts](#brownouts)) — and of nothing it does not reach, which

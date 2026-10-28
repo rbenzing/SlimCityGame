@@ -33,20 +33,20 @@ Back to [the index](../GROUND-TRUTHS.md).
   `writeTiles` in `src/world/grid.ts`
 - [R-saves-005] `SAVE_VERSION` is taken as current + 1 at build time; no plan owns a number in
   advance. —
-  [municipal-services.md](../engineering/features/municipal-services.md)
+  [municipal-services.md](../specs/municipal-services.md)
 - [R-saves-006] Save changes are additive: a save written before a feature loads with the
   feature absent, never rejected and never rescaled into deficit on load. A
   missing field means the city never had it; a missing `catalogId` skips the
   building. —
-  [municipal-services.md](../engineering/features/municipal-services.md),
-  [power-generation.md](../engineering/features/power-generation.md)
+  [municipal-services.md](../specs/municipal-services.md),
+  [power-generation.md](../specs/power-generation.md)
 - [R-saves-007] Loading refuses `version < 1` or `version > SAVE_VERSION`. There is no
   downgrade path. — [interfaces.md](../engineering/interfaces/README.md);
   `deserializeGrid` in `src/world/grid.ts`
 - [R-saves-008] Resizing a shipped building's footprint is a save migration (re-stamp
   ploppables from the catalog on load), never a bare catalog edit. Height-only
   changes are exempt. —
-  [municipal-services.md](../engineering/features/municipal-services.md)
+  [municipal-services.md](../specs/municipal-services.md)
 - [R-saves-009] The `junctionControl` byte is read and written only through
   `codeForControl` and `controlFromCode`; the order of `CONTROL_BY_CODE` is
   save-format identity. — [interfaces.md](../engineering/interfaces/README.md)

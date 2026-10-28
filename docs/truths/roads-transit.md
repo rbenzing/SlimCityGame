@@ -70,7 +70,7 @@ Back to [the index](../GROUND-TRUTHS.md).
   day is warranted and earns its ad income; a sign costs and earns nothing.
   A point two or more tiles from any road is off the network. —
   [transit-model.md](../world-sim/transit-model.md),
-  [civic-access-and-bus-stops.md](../game-design/features/civic-access-and-bus-stops.md);
+  [civic-access-and-bus-stops.md](../specs/civic-access-and-bus-stops.md);
   `nearestNode` in `src/world/roadgraph.ts`, `src/sim/stops.ts`
 - [R-roads-038] A line's vehicles are fielded by a depot of its mode over the mode's own
   network, never from nowhere: a bus depot touching a street, a tram depot
@@ -82,7 +82,7 @@ Back to [the index](../GROUND-TRUTHS.md).
   its running cost beside the depot's upkeep. The renderer draws the sim's
   served count at the commercial speed, never a count of its own. —
   [transit-model.md](../world-sim/transit-model.md),
-  [transport-depots.md](../engineering/features/transport-depots.md);
+  [transport-depots.md](../specs/transport-depots.md);
   `connectedDepots` in `src/sim/depots.ts`, `allocate` in
   `src/shared/transitfleet.ts`
 - [R-roads-039] A line's vehicles come from the nearest depot of its mode by path cost
@@ -97,6 +97,6 @@ Back to [the index](../GROUND-TRUTHS.md).
   route, the depots or the graph under it change; a cached edge id is never
   trusted across a graph rebuild. —
   [transit-model.md](../world-sim/transit-model.md),
-  [transport-depots.md](../engineering/features/transport-depots.md);
+  [transport-depots.md](../specs/transport-depots.md);
   `assign` and `crossings` in `src/sim/transit.ts`, `src/sim/deadruns.ts`,
   `inServiceSpan` in `src/shared/transitfleet.ts`

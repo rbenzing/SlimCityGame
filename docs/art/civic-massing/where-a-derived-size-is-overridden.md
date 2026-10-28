@@ -13,5 +13,5 @@ says so rather than quietly rounding:
   This is a building's rule. Open space is ground, has no "up", and is the
   size the real thing is: a neighbourhood park is eight acres and a district
   park forty, and a city is laid out around them rather than fitting them in
-  ([../game-design/features/parks-and-recreation.md](../../game-design/features/parks-and-recreation.md)).
+  ([../specs/parks-and-recreation.md](../../specs/parks-and-recreation.md)).
 

@@ -74,5 +74,5 @@ Back to [the index](../GROUND-TRUTHS.md).
 - [R-design-017] A game-design document precedes the technical plan, which precedes the code.
   A shipped design document stays as a record of intent, and the behaviour moves
   to the specifications. —
-  [game-design/features/README.md](../game-design/features/README.md)
+  [game-design/features/README.md](../specs/README.md)
 

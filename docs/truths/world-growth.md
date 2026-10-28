@@ -24,7 +24,7 @@ Back to [the index](../GROUND-TRUTHS.md).
   progress toward the next. A shrinking city abandons nothing, since
   `LowDemand` stays toothless. —
   [population-model.md](../world-sim/population-model.md),
-  [healthcare-and-death-care.md](../engineering/features/healthcare-and-death-care.md);
+  [healthcare-and-death-care.md](../specs/healthcare-and-death-care.md);
   `EconomySystem.tick` in `src/sim/economy.ts`
 
 - [R-world-010] Deaths are accrued, never rolled: a city counter advances by population
@@ -33,7 +33,7 @@ Back to [the index](../GROUND-TRUTHS.md).
   order, so a run is identical across a save and reload and no RNG is drawn.
   A vacancy is re-let by the same method, at a fixed 41 days, only while
   residential demand is above zero, and never faster for a larger demand. —
-  [healthcare-and-death-care.md](../engineering/features/healthcare-and-death-care.md);
+  [healthcare-and-death-care.md](../specs/healthcare-and-death-care.md);
   `src/sim/deathcare.ts`
 
 - [R-world-011] Death care is collected along the road network, never by a straight-line
@@ -46,7 +46,7 @@ Back to [the index](../GROUND-TRUTHS.md).
   capped at one working day (`CREMATION_CREDIT_CAP`, 8), it has room for its
   whole credit, and each cremation spends one; it competes with cemeteries in the
   same order and draws no random number. —
-  [healthcare-and-death-care.md](../engineering/features/healthcare-and-death-care.md),
+  [healthcare-and-death-care.md](../specs/healthcare-and-death-care.md),
   [services-model.md](../world-sim/services-model.md#death-care);
   `DeathCareSystem.collect` in `src/sim/deathcare.ts`
 
@@ -56,7 +56,7 @@ Back to [the index](../GROUND-TRUTHS.md).
   top of the usual 50% refund of its build price. Its undo restores the cemetery
   with every interment and hands the charge back exactly; the bulldoze cursor
   quotes the charge before it is paid. An empty cemetery demolishes as before. —
-  [healthcare-and-death-care.md](../engineering/features/healthcare-and-death-care.md);
+  [healthcare-and-death-care.md](../specs/healthcare-and-death-care.md);
   `cmdBulldoze` and `cmdPlaceBuilding` in `src/sim/worker.entry.ts`
 
 - [R-world-013] Death-care capital prices are read on one scale, about $200 to the ¢, set by
@@ -72,20 +72,20 @@ Back to [the index](../GROUND-TRUTHS.md).
   tick it falls, with no penalty, and billed at the sourced `REGIONAL_FUNERAL_FEE`
   in the month's expenses; from Big Town it stops and a body stays where it
   fell. Never add a second rung or a prerequisite to first-town growth. —
-  [healthcare-and-death-care.md](../game-design/features/healthcare-and-death-care.md);
+  [healthcare-and-death-care.md](../specs/healthcare-and-death-care.md);
   `src/shared/constants.ts`
 
 - [R-world-015] Coverage precedes the penalty: the uncollected-body penalty is subtracted
   from the Health field after every kind's coverage has been written, in the
   same services pass, so a clinic placed on a penalised tile never erases it,
   in any placement order. —
-  [healthcare-and-death-care.md](../engineering/features/healthcare-and-death-care.md);
+  [healthcare-and-death-care.md](../specs/healthcare-and-death-care.md);
   `ServiceSim.tick` in `src/sim/services.ts`
 
 - [R-world-016] The body penalty never feeds the death rate. Deaths accrue from population
   alone; no field, backlog or health reading changes the rate, since a death
   spiral is a trap and not a lesson. The 32 points a body a month is a dial. —
-  [healthcare-and-death-care.md](../game-design/features/healthcare-and-death-care.md);
+  [healthcare-and-death-care.md](../specs/healthcare-and-death-care.md);
   `src/sim/deathcare.ts`
 
 - [R-world-017] The workforce is `floor(population × EMPLOYMENT_RATE)`, one constant in
@@ -106,7 +106,7 @@ Back to [the index](../GROUND-TRUTHS.md).
   writes to it, diffuses it or emits into it; services and recreation reach it
   only through the fields it reads. —
   [environmental-simulation.md](../world-sim/environmental-simulation.md),
-  [parks-and-recreation.md](../engineering/features/parks-and-recreation.md)
+  [parks-and-recreation.md](../specs/parks-and-recreation.md)
 
 - [R-world-026] Only `NoRoad`, `NoPower` or `NoWater` for three consecutive growth passes
   abandon an `Active` building. `LowDemand` is display-only and stays
@@ -122,7 +122,7 @@ Back to [the index](../GROUND-TRUTHS.md).
   scenario in `tests/interaction/firsttown.test.ts` is the guard; a change
   that needs a step added to it has changed this rule and stops here first.
   — [simulation-rules.md](../game-design/simulation-rules.md),
-  [water-and-sewage.md](../game-design/features/water-and-sewage.md)
+  [water-and-sewage.md](../specs/water-and-sewage.md)
 
 - [R-world-029] A zoned tile develops only when it is zoned, served with power and water
   on its footprint (and, from `SEWER_MILESTONE`, a drain), and within

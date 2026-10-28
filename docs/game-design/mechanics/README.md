@@ -6,7 +6,7 @@ interacts with, stated precisely enough to implement and to test.
 ## What is a mechanic, as opposed to a feature
 
 A **feature** is something a player can do — see
-[../features/](../features/README.md). A **mechanic** is a rule that governs
+[../../specs/](../../specs/README.md). A **mechanic** is a rule that governs
 how something behaves once it exists. Zoning is a feature; the rule that a road
 zones the four tiles perpendicular to it is a mechanic. Roads are a feature;
 the rule that a road refuses to become a smaller one unless Replace is on is a

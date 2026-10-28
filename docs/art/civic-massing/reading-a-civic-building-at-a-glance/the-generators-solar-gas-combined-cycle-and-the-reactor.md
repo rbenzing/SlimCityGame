@@ -5,7 +5,7 @@ rotations, stands on the highest ground under the lot, keeps its parts inside
 the lot, and takes local +Z as the street side; layout is a pure function of the
 footprint. None lights at night. Dimensions are the units' own where published,
 and stated as assumptions where not; the figures behind them are in
-[../game-design/features/power-generation.md](../../../game-design/features/power-generation.md).
+[../specs/power-generation.md](../../../specs/power-generation.md).
 
 - **Solar farm (6×6).** East–west rows of fixed-tilt panels, each row two 2.28 ×
   1.13 m modules high in portrait (4.56 m of panel), tilted 20° (the game's own),

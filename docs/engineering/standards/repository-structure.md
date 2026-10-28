@@ -43,8 +43,8 @@ docs/
 ├── engineering/          this tree — architecture, contracts, standards
 │   ├── adr/              numbered decision records, never rewritten
 │   ├── systems/          how one simulation system works inside
-│   ├── features/         one document per feature, before it is built
 │   └── standards/         this document and its siblings
+├── specs/                one spec per feature, design and build together
 ├── world-sim/            simulation model docs (traffic, transit, utilities, ...)
 ├── game-design/          gameplay loop, economy, progression, balancing
 ├── visual-render/        rendering architecture, shaders, lighting, materials

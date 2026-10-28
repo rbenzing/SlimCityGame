@@ -105,7 +105,7 @@ stated as the game's own where not; the reference rows are in
   size and gain their bridges, and the basins and digester stand with them.
 - **Recycling depot (2×3, 8 m).** A kerbside depot and drop-off, from the
   drivers its size was derived from in
-  [garbage-recovery.md](../../../engineering/features/garbage-recovery.md#building-sizes):
+  [garbage-recovery.md](../../../specs/garbage-recovery.md):
   six **30 yd³ roll-offs** 6.7 × 2.4 × 1.5 m in a row along the yard's back
   with a 7.3 m aisle and 12 m of hook-lift pull clearance in front of them
   (a 40 yd box is 22 × 8 × 8 ft, [ZTERS](https://www.zters.com/products/40-yd-roll-off-dumpster);

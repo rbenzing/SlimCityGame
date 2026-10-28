@@ -67,7 +67,7 @@
 - `src/sim/demand.ts` `jobRoom`, `COMMERCIAL_SPAN_JOBS`, `INDUSTRIAL_SPAN_JOBS`: the room a business needs.
 - `src/sim/network.ts`: supply and use in millionths.
 - `src/sim/worker.entry.ts` `selectionOccupancy`: households as `units`.
-- `src/shared/tools.ts` `ZONE_TOOL_TO_TYPE`, `zone.indHeavy`; `src/ui/categories.ts`: the heavy zone's tool and card; `zoneSector` answers `'ind'`.
+- `src/tools/tools.ts` `ZONE_TOOL_TO_TYPE`, `zone.indHeavy`; `src/ui/categories.ts`: the heavy zone's tool and card; `zoneSector` answers `'ind'`.
 - `src/world/plat.ts` `takesWholeParcels`, `takesFrontageLots`; `src/shared/lots.ts` `warrantedLot`, `lotsOfZone`, `PLATTED_ZONES`: what a kind may take; `platReaches`, `Plat.parcelAt` and the plat's `reached` mask bound the search.
 - `src/shared/floorarea.ts` `bodyMetresFor`: homes per block.
 - `src/render/massing.ts` `bodyMetresFor`, `footprintShrinkFor`, `computeSetbacks`, `BODY_RULES`: body per kind, tiers, podium.
@@ -84,7 +84,7 @@
 - `src/sim/growth.test.ts`, `tests/interaction/growth.test.ts` — only fitting unlocked kinds drawn; a narrow lot grows what fits; constant rng picks the first; level-up keeps the kind; farms unchanged; a heavy estate grows its four kinds and pollutes; a one-tile strip grows half and normal lots, duplexes and fourplexes.
 - `src/sim/network.test.ts` — a 1.4 kW house counts 1,400 W.
 - `src/render/archetypes.test.ts`, `buildingkit.test.ts`, `props.test.ts`, `massing.test.ts`, `houselot.test.ts` — archetypes, tank farm, doors at grade, stacks, silos, bodies, two homes on a duplex frontage, podium.
-- `src/ui/categories.test.ts`, `src/shared/tools.test.ts`, `src/render/zonegrid.test.ts` — the heavy zone's card, tool and tint.
+- `src/ui/categories.test.ts`, `src/tools/tools.test.ts`, `src/render/zonegrid.test.ts` — the heavy zone's card, tool and tint.
 
 **Open:**
 

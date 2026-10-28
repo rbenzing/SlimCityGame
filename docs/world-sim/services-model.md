@@ -22,7 +22,7 @@ one, receives coverage that fades linearly with hop distance:
 Education is four kinds, each writing its own field — elementary, middle, high
 and college — and a library writes none: its coverage is a per-road-tile
 uplift of up to a fifth on every school's range, resolved before any school
-radiates ([education-ladder.md](../game-design/features/education-ladder.md)).
+radiates ([education-ladder.md](../specs/education-ladder.md)).
 
 Coverage is blended into its field differently by kind: education and health
 take the higher of the field's existing value and the new one (a ceiling, not a
@@ -34,7 +34,7 @@ and spacing is the play — on top of a flat one-time `landValueBonus` applied
 to each park's own footprint tiles (40 for a pocket park, 100 for a district
 park). Parks carry a capacity like every other service, so a catchment with
 more people than its parks hold gives less, smoothly
-([parks-and-recreation.md](../game-design/features/parks-and-recreation.md)).
+([parks-and-recreation.md](../specs/parks-and-recreation.md)).
 
 Crime grows passively every tick on any zoned tile whose land value is below
 90, and fire risk grows on any tile carrying a building. A station's coverage
@@ -114,7 +114,7 @@ or else to a regional plant off the map. Either sorts 87% of them to market, and
 earns ¢0.00016, the landfill's own whole-life cost of a unit, booked as income
 at the month boundary; the regional plant buries its 13% residue out of town.
 Its trucks wear the recycling livery. The figures and sources are in
-[../game-design/features/garbage-recovery.md](../game-design/features/garbage-recovery.md#the-kerbside-recycling-depot-built-2026-10-08).
+[../specs/garbage-recovery.md](../specs/garbage-recovery.md).
 
 The **Materials Recovery Facility** is a catalog ploppable (5×6, 11 m, unlocks
 at Grand City, ¢24,000 to build, ¢1,750/month) that never collects rubbish. It
@@ -134,7 +134,7 @@ room it fills the plant's own store, a week of residue (165,110 units), and a
 full store stops the plant: its round serves no one and the depots' carts go
 regional again. It draws 0.0378 MW, 20 kWh a tonne over the day, and its four
 trucks wear the recycling livery. The figures and sources are in
-[../game-design/features/garbage-recovery.md](../game-design/features/garbage-recovery.md#the-materials-recovery-facility-built-2026-10-08).
+[../specs/garbage-recovery.md](../specs/garbage-recovery.md).
 
 The **transfer station** is a catalog ploppable (4×5, 11 m, unlocks at Small
 City, ¢7,500 to build, ¢540/month) that lends reach and diverts nothing. It
@@ -151,7 +151,7 @@ or pit; distance never reduces what arrives. With none that has room its floor
 fills, and a full floor stops it collecting. It draws 0.00945 MW, 5 kWh a
 tonne over the day, and its four trucks wear the refuse livery. The figures
 and sources are in
-[../game-design/features/garbage-recovery.md](../game-design/features/garbage-recovery.md#the-transfer-station-built-2026-10-08).
+[../specs/garbage-recovery.md](../specs/garbage-recovery.md#the-transfer-station).
 
 **Collection** reuses the same road-BFS mechanism a service building uses
 ([Coverage and funding](#coverage-and-funding)) and shares the load the way a
@@ -214,8 +214,7 @@ collection. The backlog, each cemetery's interments, each crematorium's credit
 and count, and the month's regional count persist in the save's `deathCare`
 block. Demolishing a cemetery that holds interments charges ¢14 each to exhume
 and reinter them, and its undo restores them. See
-[../game-design/features/healthcare-and-death-care.md](../game-design/features/healthcare-and-death-care.md)
-and [../engineering/features/healthcare-and-death-care.md](../engineering/features/healthcare-and-death-care.md).
+[../specs/healthcare-and-death-care.md](../specs/healthcare-and-death-care.md).
 
 ## Service dispatch
 
@@ -234,7 +233,7 @@ call no station can answer still spawns, as an unanswered incident that takes no
 vehicle, retries each tick and lapses after 30 ticks. The figures are in
 [../game-design/balancing.md](../game-design/balancing.md#emergency-dispatch) and
 the design in
-[../game-design/features/emergency-services.md](../game-design/features/emergency-services.md).
+[../specs/emergency-services.md](../specs/emergency-services.md).
 
 The system only reads Crime, FireRisk and Pollution and the building registry —
 it never writes back into service coverage or the economy. This is presentation
