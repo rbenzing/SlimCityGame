@@ -5,6 +5,7 @@ import {
   carriagewayHalfWidthOf,
   hasFootway,
   KERB_RESERVE_M,
+  kerbWidthOf,
   presetProfileForTier,
 } from '../shared/roadprofile';
 import { RoadFlow, RoadTier, type BusStop } from '../shared/types';
@@ -47,9 +48,11 @@ describe('busStopPlacement', () => {
     for (const side of [0, 1] as const) {
       const where = `lateral ${lateral}, side ${side}`;
 
-      it(`puts the pad on the kerb face, the pole 0.46 m out and the shelter's front 0.9 m out on a kerbed street (${where})`, () => {
+      it(`stands the pad at the footway's outer edge, the pole 0.46 m and the shelter's front 0.9 m beyond it on a kerbed street (${where})`, () => {
         const p = busStopPlacement(stopOn(side), RoadTier.TwoLane, kerbed, 0, lateral);
-        const kerb = carriagewayHalfWidthOf(kerbed);
+        const footway = kerbWidthOf(kerbed);
+        expect(footway).toBeGreaterThan(0);
+        const kerb = carriagewayHalfWidthOf(kerbed) + footway;
         expect(p.kerbOut).toBeCloseTo(kerb, 9);
         expect(p.pad.out0).toBeCloseTo(kerb, 9);
         expect(p.pad.out1 - p.pad.out0).toBeCloseTo(BUS_STOP_PAD.out, 9);

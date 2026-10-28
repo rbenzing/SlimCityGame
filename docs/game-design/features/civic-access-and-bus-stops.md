@@ -148,12 +148,12 @@ on it, for the difference.
 
 ### The stop on the street
 
-On a street with a footway the pad lies on the footway from the kerb face
-2.44 m back, which on a 1.8 m footway puts its back 0.6 m into the verge
-or the lot's edge; the pole stands 0.46 m from the kerb at the pad's
-leading end, the shelter along the back of the pad with its roof over the
-footway and 0.9 m of walk kept clear in front of it, the bin beside the
-shelter. On a street with no footway the pad lies at the shoulder, its
+On a street with a footway the whole stop stands at the outer edge of the
+footway, the footway itself kept clear for walking: the pad begins at the
+back of the footway and runs 2.44 m beyond it into the verge or the lot's
+edge, the pole stands at the pad's road-side edge at its leading end, the
+shelter along the back of the pad facing the road, the bin beside the
+shelter. On a street with no footway the pad comes up to the road, its
 near edge at the edge of the carriageway's kerb reserve, and the pole and
 shelter stand on it the same way. A one-tile street holds a stop on each
 side.

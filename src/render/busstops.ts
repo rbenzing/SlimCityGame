@@ -6,12 +6,14 @@
  * `busStopPlacement` is the ONE function that lays a stop; the committed
  * stops and the ghost both draw from it. Its frame is the tile's road frame:
  * `along` runs down the road, `out` runs from the road's centre line toward the
- * stop's side. The pad stands 2.44 m out from the kerb face and 3.66 m along;
- * the pole stands 0.46 m from the kerb at the pad's leading end, the end
- * traffic reaches first; the shelter stands at the back of the pad with its
- * front 0.9 m from the kerb; the bin stands at the pad's trailing end. A road
- * with no footway has no kerb face to stand on, so the same pad stands off the
- * edge of its pavement by the kerb reserve.
+ * stop's side. The footway is kept clear, so the stop stands at its outer
+ * edge: the pad's near edge is the kerb face plus the footway's depth, and the
+ * pad runs 2.44 m beyond that and 3.66 m along; the pole stands 0.46 m from
+ * the pad's road-side edge at its leading end, the end traffic reaches first;
+ * the shelter stands at the back of the pad with its front 0.9 m from that
+ * edge; the bin stands at the pad's trailing end. A road with no footway has
+ * nothing to keep clear, so the same pad stands off the edge of its pavement
+ * by the kerb reserve.
  *
  * Every part is one instanced pool; nothing here draws a stop per mesh.
  */
@@ -28,6 +30,7 @@ import {
 import { flowDirection, RoadFlow, RoadTier, type BusStop, type RoadProfile } from '../shared/types';
 import { box, BUS_SHELTER, buildBusShelterGeometry, painted } from './busshelter';
 import { lateralAxis, tileKey, type FurnitureAxis, type RoadTileIndex } from './roadfurniture';
+import { sidewalkDepthMeters } from './frontage';
 import { CURB_Y_OFFSET, ROAD_Y_OFFSET } from './roadsmesh';
 
 /** The boarding pad: 96 in out from the kerb, 12 ft along it, the shelter's length. */
@@ -75,7 +78,7 @@ export interface BusStopPlacement {
   yaw: number;
   /** Which way along the road, in world coordinate sign, traffic passing this kerb runs: the pad's leading end. */
   leading: 1 | -1;
-  /** The pad's near edge, metres out from the road's centre line: the kerb face, or the kerb reserve beyond a footless road. */
+  /** The pad's near edge, metres out from the road's centre line: the footway's outer edge, or the kerb reserve beyond a footless road's pavement. */
   kerbOut: number;
   pad: StopSpot & { out0: number; out1: number; along: number };
   pole: StopSpot;
@@ -118,7 +121,8 @@ export function busStopPlacement(
   // Half of a corridor nothing divides is pushed against the edge it shares
   // with the other half, and its kerbs go with it.
   const kerbFace = carriagewayHalfWidthOf(section) + side * carriagewayShiftOf(section);
-  const kerbOut = kerbFace + (onFootway ? 0 : KERB_RESERVE_M);
+  // The footway is kept clear: the stop stands beyond its outer edge.
+  const kerbOut = kerbFace + (onFootway ? sidewalkDepthMeters(tier, section) : KERB_RESERVE_M);
   const leading = leadingSign(lateral, side, flow);
   const cx = tileToWorld(stop.x);
   const cz = tileToWorld(stop.z);
