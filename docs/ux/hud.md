@@ -112,7 +112,7 @@ junction itself is gone (bulldozed away).
 
 - **Header**: the roads icon, `Junction · {x}, {z}`, and a close button.
 - **Gives way**: names the control the junction currently resolves to.
-  See [road-model.md](../world-sim/road-model.md) for how a junction is warranted and what each
+  See [road-model.md](../world-sim/road-model/README.md) for how a junction is warranted and what each
   control costs a driver.
 - **Control**: an `Automatic` chip, always first and labeled with what the
   warrant currently makes of the junction (e.g. "Signals as it stands") —
@@ -138,7 +138,7 @@ junction itself is gone (bulldozed away).
   - What a lane shows starts from what its real lane count derives by
     default (a dedicated left from three lanes on, a dedicated right from
     four on — see
-    [road-model.md](../world-sim/road-model.md#approach-lanes-turn-pockets-and-tapers))
+    [road-model.md](../world-sim/road-model/approach-lanes-turn-pockets-and-tapers.md))
     and then takes on
     whatever the player has explicitly set for that lane.
   - A lane can only ever narrow what its arm currently allows: the arm's
@@ -323,13 +323,13 @@ category or tool is active.
   disabled.
 
 - The **Roundabout** card in the Small tab lays a compact roundabout on a
-  street junction ([roundabouts](../game-design/features/roundabouts.md)).
+  street junction ([roundabouts](../specs/roundabouts.md)).
   Like the interchange it is placed, not drawn, and has no panel of its own:
   hovering a junction previews the 2×2 block on the quarter of its tile the
   pointer is nearest, with the cost of the corner tiles it lays on the cursor,
   or the reason it cannot go there. Its card carries no cost chip.
 - The **Interchange** card in the Highway tab lays a whole interchange on a
-  motorway ([interchanges](../game-design/features/interchanges.md)). It is
+  motorway ([interchanges](../specs/interchanges.md)). It is
   not drawn but placed, so none of a drawn road's panels apply; its own
   **Interchange** panel picks the **form** (Diamond, Partial cloverleaf,
   Cloverleaf) and the **crossing** road (Two-lane, Four-lane). Its card

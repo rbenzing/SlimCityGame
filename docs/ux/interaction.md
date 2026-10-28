@@ -134,7 +134,7 @@ falls back to `Straight`.
 the highway, and the ramp bends to run beside the highway the way its traffic
 goes and joins at its end. The player marks the two ends and the tool chooses
 the bend — it tries the L-path's two leg orders and keeps the one that joins
-([road-model.md](../world-sim/road-model.md#how-a-ramp-meets-a-motorway-alongside-never-head-on)) —
+([road-model.md](../world-sim/road-model/ramps-and-interchanges.md#how-a-ramp-meets-a-motorway-alongside-never-head-on)) —
 so dragging further along the highway than toward it lays the same ramp. A
 ramp flows the way it is drawn: from the street it is an on-ramp, from the
 highway an off-ramp, and its leg beside the highway has to run the way the
@@ -192,7 +192,7 @@ junction however it was drawn, and a crossing refused when on is refused when
 off. The separation is a fact of the world, not of the drag: it survives a
 save and a load, and traffic, utilities, services and the renderers all treat
 the two as separate roads (see
-[How roads meet](../world-sim/road-model.md#how-roads-meet-rank-replacement-and-transitions)).
+[How roads meet](../world-sim/road-model/how-roads-meet-rank-replacement-and-transitions.md)).
 
 **The preview says what the commit will do.** A grid drag that would run into
 a road off the grid anywhere but at a tile centre it meets is shown refused,

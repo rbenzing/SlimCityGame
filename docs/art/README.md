@@ -74,7 +74,7 @@ smaller. Local streets stay visibly narrower than arterials — the contrast is
 the point. Cosmetic-vehicle lane centers re-derive from the carriageway, so
 cars track their lanes at any width. Deep lane composition, junction control
 and capacity numbers are simulation facts, not art direction; they stay in
-[../world-sim/road-model.md](../world-sim/road-model.md).
+[../world-sim/road-model.md](../world-sim/road-model/README.md).
 
 ## Environmental art
 

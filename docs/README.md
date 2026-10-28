@@ -16,39 +16,32 @@ folder will have the rest.
 | How is the world rendered?             | [visual-render/](visual-render/README.md) |
 | What should an asset look like?        | [art/](art/README.md)                     |
 | How does the interface behave?         | [ux/](ux/README.md)                       |
+| What does a built feature decide?      | [specs/](specs/README.md)                 |
 | How do I work on it?                   | [../CONTRIBUTING.md](../CONTRIBUTING.md)  |
 | How are the docs kept short enough to read? | [engineering/documentation-strategy.md](engineering/documentation-strategy.md) |
 
 ## The seven folders
 
-**[engineering/](engineering/README.md)** — architecture, decision records,
-interface contracts, the data model, budgets, constraints, and the coding
-standards the repo holds itself to. Four documents there divide by how far in
-you are looking: `architecture.md` is the whole system at arm's length,
-`systems/` is one subsystem's internals, `interfaces.md` is the exact shapes
-crossing between them, and `data-model.md` is what survives being written to
-disk.
+**[engineering/](engineering/README.md)** — architecture, systems, interface
+contracts, the data model, decision records and coding standards.
 
-**[game-design/](game-design/README.md)** — the game design document, the core
-loop, the economy, progression, and every tuning constant gathered in one
-place.
+**[game-design/](game-design/README.md)** — the core loop, economy, progression
+and every tuning constant.
 
-**[world-sim/](world-sim/README.md)** — the rules of the simulated world: the
-grid, roads, traffic, transit, utilities, services, the fields, and what runs
-each tick. The largest area, because it is the largest part of the game.
+**[world-sim/](world-sim/README.md)** — the rules of the simulated world, the
+largest area: grid, roads, traffic, transit, utilities, services, fields, ticks.
 
 **[visual-render/](visual-render/README.md)** — the rendering pipeline,
 lighting, terrain, water and vegetation.
 
-**[art/](art/README.md)** — the art bible and the standards an asset is built
-to. The scale bible sits at the front, because everything else obeys it.
+**[art/](art/README.md)** — the art bible and asset standards, scale bible first.
 
-**[ux/](ux/README.md)** — how the interface behaves: every surface, the
-interaction rules, the bindings, accessibility.
+**[ux/](ux/README.md)** — every surface, the interaction rules, bindings,
+accessibility.
 
 **[ROADMAP.md](ROADMAP.md) and [DESIGN.md](DESIGN.md)** stay at the top level
-because they cut across all six: one is the only place delivery status and
-dates live, the other the only place a deliberate non-goal lives.
+because they cut across all six: one holds delivery status and dates, the other
+every deliberate non-goal.
 
 ## The rules that keep this working
 

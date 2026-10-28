@@ -170,7 +170,7 @@ Back to [the index](../GROUND-TRUTHS.md).
   daytime stays and nothing overnight; every other road takes none. No car
   stands inside a junction's no-parking setback. —
   [props-and-vehicles.md](../art/props-and-vehicles.md#parked-cars-and-lot-life),
-  [road-model.md](../world-sim/road-model.md#furniture-and-what-gates-it)
+  [road-model.md](../world-sim/road-model/furniture-and-what-gates-it.md)
 - [R-render-028] Nothing kerbside stands on a tile with road on both axes (manholes excepted);
   one prop per kerbside slot; everything beside a road measures from
   `curbWidthMeters`. A road-facing kit part is skipped when a building fronts
@@ -183,7 +183,7 @@ Back to [the index](../GROUND-TRUTHS.md).
 - [R-render-030] Road paint is true-world scale, and dash and sleeper phase are taken from
   global world coordinates, never the tile or the chunk; the line figures are
   in the roads section above. — [streets.md](../art/streets.md),
-  [road-model.md](../world-sim/road-model.md)
+  [road-model.md](../world-sim/road-model/README.md)
 - [R-render-031] Wherever visual time is derived, add `CLOCK_START_OFFSET_TICKS` (tick 0 is
   09:00) and run on `VISUAL_DAY_TICKS`, never the calendar day. —
   [lighting.md](../visual-render/lighting.md)

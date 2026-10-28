@@ -7,7 +7,7 @@ decision to store a second road on a tile is
 ## What an overpass is
 
 An overpass is an ordinary elevated road, built with the bridge machinery in
-[road-model.md](road-model.md), that passes over another road on the tiles
+[road-model.md](road-model/README.md), that passes over another road on the tiles
 where the two overlap. Only those **crossing tiles** hold two roads. Every
 other tile of the overpass, including the ramps up and down, is a normal
 elevated road tile holding one road.

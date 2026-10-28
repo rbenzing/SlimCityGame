@@ -31,7 +31,7 @@ asks of the player lives in [../game-design/](../game-design/README.md).
 
 | Document                                 | Covers                                                                                     |
 | ---------------------------------------- | ------------------------------------------------------------------------------------------ |
-| [road-model.md](road-model.md)           | Classes, profiles, junctions, ramps, markings, and the traffic-engineering formulas        |
+| [road-model.md](road-model/README.md)           | Classes, profiles, junctions, ramps, markings, and the traffic-engineering formulas        |
 | [overpasses.md](overpasses.md)           | A road crossing over another road or a railway: clearance, approaches, the second layer    |
 | [road-network.md](road-network.md)       | Roads as nodes and segments: curves, angled junctions, derived tiles, the migration stages |
 | [pathfinding.md](pathfinding.md)         | The graph, the A\* search, and the cost function                                           |

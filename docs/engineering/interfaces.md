@@ -226,7 +226,7 @@ and clears their turn and lane restrictions. `removeRoundabout` is refused
 unless a compact roundabout stands there, and writes `junctions` back, or
 clears the four tiles when it is absent. Bulldozing any corner takes the whole
 roundabout out first, and its inverse sends `buildRoundabout` after the road is
-laid back. See the [technical design](features/roundabouts.md).
+laid back. See the [spec](../specs/roundabouts.md).
 
 **`paintZone`** paints only where a player may: a buildable, road-free tile
 with road frontage (a de-zone needs no frontage). A zone can outlive the road

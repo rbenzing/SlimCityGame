@@ -42,7 +42,7 @@ become rather than what it currently is.
 Capacity comes from the cross-section, not the tier number alone.
 `roadprofile.ts`'s `profileCapacity` sums each lane piece's own capacity
 (`pieceCapacity`), derived from an HCM saturation flow calibrated to a fixed
-game-units constant — see [road-model.md](../../world-sim/road-model.md) for the per-class numbers.
+game-units constant — see [road-model.md](../../world-sim/road-model/README.md) for the per-class numbers.
 `pathfind.ts` precomputes `{ speed, capacity }` once per tier into
 `RATES_BY_TIER` at module load, so a per-edge cost lookup is a `Map` read, not
 a catalogue scan. `directionShare` scales that whole-road capacity down to
@@ -67,7 +67,7 @@ whether the movement is actually a motorway merge rather than a junction
 reads the arm's approach — its class, incoming lanes, and saturation
 (`armsAt`) — and prices the base wait with `controlDelaySeconds` (the
 yield/stop/all-way-stop/roundabout/signal formulas live in
-`shared/junction.ts`; see [road-model.md](../../world-sim/road-model.md) for their shape). That base
+`shared/junction.ts`; see [road-model.md](../../world-sim/road-model/README.md) for their shape). That base
 delay is per **arm**, not per movement, so the last step divides it by
 `movementDelayShare`, which reads the arm's actual per-lane movement sets
 (`resolveLaneMovements`, folding in a turn pocket via `pocketLaneMovements`

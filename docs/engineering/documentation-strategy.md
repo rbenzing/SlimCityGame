@@ -38,7 +38,7 @@ place that owns it, and the places that restated it link there instead.
 | ---- | -------------------------------------------------------------- | ----------------- | ---------------------------------------------------- |
 | 0    | `CLAUDE.md`, `docs/README.md`, `GROUND-TRUTHS.md` as an index  | 4 KB (1k tokens)  | every agent, every task                              |
 | 1    | `docs/truths/<area>.md`: the rules of one area                 | 24 KB (6k tokens) | an agent touching that area                          |
-| 2    | A spec: one feature or one system, card first                  | 16 KB (4k tokens) | the scout and the reviewer of a task on it; a cook reads the card and the section the ticket names |
+| 2    | A spec: one feature or one system, card first                  | 24 KB (6k tokens) | the scout and the reviewer of a task on it; a cook reads the card and the section the ticket names |
 | 3    | Archive: history, rationale, research digests, sources, ADRs   | none              | nobody by default; linked from the spec that used it |
 
 A file over its budget is split by section into a folder with an index, never
@@ -46,8 +46,10 @@ trimmed by dropping a rule or a number.
 
 ## The card
 
-Every tier 2 spec begins with a card of at most 40 lines, so a scout can stop
-after it and a ticket can cite its anchors:
+Every tier 2 spec begins with a card: the six lines below, in order, before
+the first section heading. Aim for 40 lines; a long Numbers table may run
+past that. A scout stops at the first section, and a ticket cites the card's
+anchors:
 
 ```markdown
 # <Feature or system>
@@ -94,7 +96,7 @@ code pointer kept on the card.
 | --------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
 | `GROUND-TRUTHS.md` (131 KB)             | A 4 KB index: one row per area linking `docs/truths/<area>.md` with its id range, and the ids broken most often (their text stays in `CLAUDE.md`) |
 | `ROADMAP.md` (248 KB)                   | Status, the Open list and milestones, ≤ 12 KB; history to `docs/history/<yyyy>-<mm>.md`, ≤ 8 lines an entry with a link to the spec that holds its rules |
-| Feature pairs, 25 + 24 files            | One spec a feature in `docs/specs/<feature>.md`, card first, ≤ 16 KB; sources appendix to `docs/sources/<feature>.md` |
+| Feature pairs, 25 + 24 files            | One spec a feature in `docs/specs/<feature>.md`, card first, ≤ 24 KB; sources appendix to `docs/sources/<feature>.md` |
 | `road-model.md`, `buildings.md`, `interfaces.md`, `data-model.md` | Folders with an index and one file a section, each ≤ 16 KB                                             |
 | `balancing.md`                          | Tables only: constant, value, source, code; one clause of rationale a row                                        |
 | `art/*.md`                              | Kept; each gains a card; anything restating a truth links it                                                     |
@@ -116,14 +118,15 @@ code pointer kept on the card.
 
 - **Links resolve** — exists.
 - **Budgets** — a file over its tier's budget fails; tier is by path.
+  Enforced for `docs/truths/`, `docs/specs/` and `docs/world-sim/road-model/`.
 - **Card present** — every file under `docs/specs/` begins with the six card
-  lines in order.
+  lines in order. Enforced.
 - **No dated specs** — a date outside `docs/history/`, `ROADMAP.md` and
   `engineering/adr/` fails.
 - **No restating** — a sentence of 12+ words appearing in two files fails,
   with both locations.
 - **Ids unique** — `[R-<area>-<nnn>]` appears once as a definition; a cited
-  id must exist.
+  id must exist. Enforced.
 - **Lossless move check** (run by the migrating agent, not CI) — every
   number-with-unit, every `src/` pointer and every URL in the old files
   appears somewhere in the new set, or the PR says which and why.
@@ -134,7 +137,7 @@ code pointer kept on the card.
 | -- | ------------------------------------------------------------------------------------------ | ------------------------------------------------- |
 | 1  | Tooling with budgets as warnings; `CLAUDE.md` protocol; `README.md` map; ROADMAP history split, entries untouched | every entry byte-identical, filed by the first date in its heading |
 | 2  | Truths split by area with ids; the index; cards on the twelve most-broken                 | 258 rules, 258 ids; every old pointer kept         |
-| 3+ | One area a PR: merge its built pairs into specs with cards, split its reference doc, trim history entries to 8 lines; the area's budgets switch from warn to fail | the number / pointer / URL script per area |
+| 3+ | One area a PR: merge its built pairs into specs with cards, split its reference doc; history entries stay untouched (tier 3 is never required reading); the area's budgets switch from warn to fail | the number / pointer / URL script per area |
 
 Order of areas by reading cost: roads, buildings and kits, services, sim and
 economy, render, UX. Each PR is cooked by a sonnet line-cook from a ticket

@@ -37,11 +37,11 @@ grep -n "left edge line" -i /tmp/part3.txt
 ```
 
 That is how §3B.09's yellow-left-edge rule was found and quoted into
-[road-model.md](../world-sim/road-model.md) after the motorway was shipped
+[road-model.md](../world-sim/road-model/README.md) after the motorway was shipped
 painted white on both sides.
 
 What each of these decides is written down in
-[road-model.md](../world-sim/road-model.md), with the figure and the clause it
+[road-model.md](../world-sim/road-model/README.md), with the figure and the clause it
 came from, so the code never has to be read against the standard to know why a
 number is what it is. The choice to derive the road model from published
 standards at all, and the one calibration constant that ties them to game units,
