@@ -191,19 +191,22 @@ population, so the city-wide rate matches the per-resident figure above.
 national average, and a **dial**: no source ties a field byte to a rate.
 
 Checks. A one-engine town of 14,000 at reference fields makes 14,000 × 0.042 =
-**588 non-medical fire calls a year, 1.6 a day**; at the existing on-scene time
+**588 non-medical fire calls a year, 1.6 a day**; at the fire on-scene time
 (below) that keeps its one engine busy about 16% of the time. A town of 25,000
-makes 25,000 × 0.45 = **11,250 police calls a year, 31 a day**; at an hour a call
-that is 11,250 car-hours of 6 × 8,760 = 52,560, **about 21% busy**.
+makes 25,000 × 0.45 = **11,250 police calls a year, 31 a day**; at 26.4 minutes a
+call that is 4,950 car-hours of 6 × 8,760 = 52,560, **about 9% busy**.
 
-**On-scene time is unchanged.** A call still takes 10 + severity × 20 ticks on
-scene, 1.2 to 3.6 game hours. That is longer than an average police call:
-Austin's assessment gives about 26 minutes for responsive calls. It is flagged
-for a later slice and not changed here; at the current figure the six police cars
-would be about half busy rather than a fifth.
+**On-scene time is set per kind.** A tick is 7.2 game minutes. Police take a mean
+of **26.4 minutes** a call, arrival to clear (CSG Justice Center, Assessment of
+Austin Police Calls for Service, 2021, average time spent on responsive calls).
+An ambulance is off the road **29 minutes**: a 16 minute median on scene plus a
+13 minute median transport (NEMSIS 2015-16 national chest-pain encounters, Duke);
+the sim returns it to its station rather than a hospital, so both count. Severity
+spreads each mean from 0.5× to 1.5×. Fire has no US on-scene figure found, so it
+keeps 10 + severity × 20 ticks, 1.2 to 3.6 game hours, as a **dial**.
 
 **The lapse.** An unanswered call lapses after **30 ticks**, the longest an
-answered call spends on scene (10 + 20). It is a **dial**: it makes an unanswered
+answered call spends on scene (fire at full severity, 10 + 20). It is a **dial**: it makes an unanswered
 call visible for as long as an answered one would have been. Unanswered calls are
 capped at 32, so they can never starve the pool the answered calls use.
 

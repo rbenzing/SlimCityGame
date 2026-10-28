@@ -44,6 +44,7 @@ import {
   LANE_GLYPH_PERIOD_TILES,
   SIDEWALK_WIDTH_M,
   roundaboutQuarterVertices,
+  chunksOver,
   type RingLeg,
 } from './roadsmesh';
 import {
@@ -2830,6 +2831,21 @@ describe('RoadMeshRenderer', () => {
 
     renderer.apply([makeDelta(0, 0, RoadTier.None)]);
     expect(scene.children.length).toBe(0);
+  });
+
+  it('answers the chunks it rebuilt, and only those', () => {
+    const renderer = new RoadMeshRenderer(new THREE.Scene(), flatHeightAt);
+    const far = 3 * CHUNK_TILES;
+    const first = renderer.apply([
+      makeDelta(0, 0, RoadTier.TwoLane),
+      makeDelta(far, 0, RoadTier.TwoLane),
+    ]);
+    expect(first.size).toBe(2);
+    expect(first.has(chunksOver(0, 0, 0, 0).values().next().value as number)).toBe(true);
+
+    const second = renderer.apply([makeDelta(far, 0, RoadTier.Highway)]);
+    expect(second).toEqual(chunksOver(far, 0, far, 0));
+    expect(renderer.apply([])).toEqual(new Set());
   });
 
   it('leaves alone a chunk the changed tile cannot reach', () => {

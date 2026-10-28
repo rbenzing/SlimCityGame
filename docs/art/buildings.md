@@ -866,7 +866,7 @@ a straight stretch of street: never a junction tile, never a tile the street
 leaves on both axes. The street is the one drawn: beside a turn bay, whose
 kerb and sidewalk stand further out, the drive, the path and the lawn meet
 the widened kerb, and they are laid again when a junction gains or loses its
-bay. The resident's car stands on the drive, nose to the
+bay, or when a road edit beside them redraws the street. The resident's car stands on the drive, nose to the
 house, while the home is Active. Where the drive and its cover go depends on
 the home:
 

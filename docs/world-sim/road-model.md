@@ -1510,7 +1510,11 @@ An elevated tile skips the ground rules a normal road tile enforces — the
 water rejection (that is the reason to elevate) and the slope ceiling (a
 deck is level regardless of the ground under it) — while bounds and the
 no-building-here check still apply, and the terrain underneath is never
-flattened. Dragging a road across water elevates the crossing tiles
+flattened. A tile the grade solver lifted less than 0.5 m
+(`GROUND_HUGGING_LIFT_M`) to close a step against its neighbour is not
+elevated in that sense: it lies on the ground and is levelled with the rest
+of the run, which is what keeps an arm drawn over a dead end's run-out from
+leaving a step beside it. Dragging a road across water elevates the crossing tiles
 automatically, at the higher bank's height plus 5 m of clearance over the
 water surface (`BRIDGE_CLEARANCE_M`); the approach on each bank ramps down
 to grade at no more than 2 m of deck height per tile (`BRIDGE_MAX_GRADE`),

@@ -6,6 +6,7 @@ import {
   UNANSWERED_LAPSE_TICKS,
   VEHICLE_KIND_FOR_INCIDENT,
   responseReach,
+  serviceTicksFor,
   type Rng,
 } from './dispatch';
 import type {
@@ -618,6 +619,31 @@ describe('DispatchSystem: a station runs only as many calls as it has responders
 // ---------------------------------------------------------------------------
 // Unanswered calls
 // ---------------------------------------------------------------------------
+
+describe('serviceTicksFor: on-scene time per kind', () => {
+  it('crime spreads the 26.4 minute mean 0.5x to 1.5x over 7.2 minute ticks', () => {
+    expect(serviceTicksFor('crime', 0)).toBe(2);
+    expect(serviceTicksFor('crime', 0.5)).toBe(4);
+    expect(serviceTicksFor('crime', 1)).toBe(6);
+  });
+
+  it('medical spreads the 29 minute scene plus transport time', () => {
+    expect(serviceTicksFor('medical', 0.5)).toBe(4);
+  });
+
+  it('fire keeps its base plus severity scale', () => {
+    expect(serviceTicksFor('fire', 0)).toBe(10);
+    expect(serviceTicksFor('fire', 0.5)).toBe(20);
+    expect(serviceTicksFor('fire', 1)).toBe(30);
+  });
+
+  it('an unanswered call lapses at the longest on-scene time of any kind', () => {
+    const longest = Math.max(
+      ...(['fire', 'crime', 'medical'] as const).map((k) => serviceTicksFor(k, 1)),
+    );
+    expect(UNANSWERED_LAPSE_TICKS).toBe(longest);
+  });
+});
 
 describe('DispatchSystem: a call nobody can answer', () => {
   it('spawns unanswered with no vehicle, stands for the lapse and then goes', () => {
