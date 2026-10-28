@@ -1,6 +1,7 @@
 /**
  * Checks the Markdown documentation. A relative link that points at a file
- * that is not there fails the run. Three further passes only warn (exit 0):
+ * that is not there fails the run, and so does a rule id defined twice or
+ * cited but never defined. Three further passes only warn (exit 0):
  * files over their size budget, dates written into a specification, and a
  * sentence repeated in two files.
  *
@@ -66,7 +67,32 @@ if (broken.length > 0) {
   process.exit(1);
 }
 
+/** A rule is defined once, as `- [R-<area>-<nnn>]` opening a line of docs/truths/*.md; every citation must name one. */
+const RULE_ID = /\[(R-[a-z]+-\d{3})\]/g;
+const DEFINITION = /^- \[(R-[a-z]+-\d{3})\]/gm;
+const bodies = files.map((file) => ({ file: relative(ROOT, file).split('\\').join('/'), body: readFileSync(file, 'utf8') }));
+const defined = new Set();
+const badIds = [];
+for (const { file, body } of bodies) {
+  if (!file.startsWith('docs/truths/')) continue;
+  for (const [, id] of body.matchAll(DEFINITION)) {
+    if (defined.has(id)) badIds.push({ file, id, why: 'duplicate' });
+    defined.add(id);
+  }
+}
+for (const { file, body } of bodies) {
+  for (const [, id] of body.matchAll(RULE_ID)) {
+    if (!defined.has(id)) badIds.push({ file, id, why: 'undefined' });
+  }
+}
+if (badIds.length > 0) {
+  for (const { file, id, why } of badIds) console.error(`bad rule id  ${file}  ${id}  (${why})`);
+  console.error(`\n${badIds.length} bad rule id(s); ${defined.size} rules defined.`);
+  process.exit(1);
+}
+
 console.log(`ok — every relative link resolves, across ${files.length} markdown files.`);
+console.log(`ok — ${defined.size} rule ids, each defined once, every citation resolves.`);
 
 const rel = (file) => relative(ROOT, file).split('\\').join('/');
 const docs = files.map((file) => ({ path: rel(file), text: readFileSync(file, 'utf8') }));
@@ -117,4 +143,4 @@ for (const [sentence, paths] of restated.slice(0, 40)) {
   warn('restated', `${[...paths].join(' and ')} — "${sentence.slice(0, 80)}"`);
 }
 console.log(`${restated.length} restated-sentence warning(s)${restated.length > 40 ? ' (first 40 shown)' : ''}\n`);
-console.log(`${warnings} warning(s) shown in total; links are the only failure.`);
+console.log(`${warnings} warning(s) shown in total; links and rule ids are the only failures.`);

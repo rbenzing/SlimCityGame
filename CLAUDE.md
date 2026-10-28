@@ -15,7 +15,7 @@ DON'T
 
 READING THE DOCS (docs/engineering/documentation-strategy.md decides this)
 
-- Read this file and docs/README.md on every task. Then read the section of docs/GROUND-TRUTHS.md for each area the task touches (roads, world and sim, utilities and services, saves, architecture, rendering and art, game design and UX, process) and nothing else of it.
+- Read this file and docs/README.md on every task. Then read docs/truths/<area>.md for each area the task touches (roads, world, services, saves, architecture, render, design, process; index: docs/GROUND-TRUTHS.md) and nothing else of the truths.
 - A scout reads a spec's card (its first 40 lines) and opens a section only when the ticket needs its why; it returns pointers (file#anchor, rule, src/file:line), never file dumps.
 - A ticket cites rules and anchors, never "read the doc". A cook reads what the ticket cites. A reviewer reads the full spec of the area under review, once.
 - Delivery history lives in docs/history/ (one file a month), never in a spec; docs/ROADMAP.md holds status, the Open list and the milestones. Read the Open list, not the history, to learn what exists.
@@ -24,9 +24,9 @@ READING THE DOCS (docs/engineering/documentation-strategy.md decides this)
 
 GROUND TRUTHS
 
-- Follow docs/GROUND-TRUTHS.md. It is the always/never rulebook for every part of the game; read the sections for the areas you touch, as above.
-- When code and a truth disagree, stop and flag it. Never silently pick one.
-- When you learn a new invariant (a bug a rule would have prevented, or a rule the user states), add it to docs/GROUND-TRUTHS.md and to the spec that decides it, in the same change.
+- Follow the truths in docs/truths/. Every rule has an id like [R-roads-012]; cite it in tickets, flags and commits.
+- When code and a truth disagree, stop and flag it by id. Never silently pick one.
+- When you learn a new invariant (a bug a rule would have prevented, or a rule the user states), add it to its area's truths file with the next id and to the spec that decides it, in the same change. Never reuse or renumber an id.
 - The ones broken most often:
   - A tile carries one road, or two only where one passes over the other at right angles (an overpass, on the over layers, clearing 5 m over road / 7 m over rail). The two never join; a road is identified by tile AND layer (`RoadKey`). Roads join only at one level.
   - Rail and street never share a tile at grade; a rail tile between two street tiles breaks the street, it does not cross it.
