@@ -200,7 +200,7 @@ pipe drag snaps onto the system and says what it joins
 ([underground-view.md](game-design/features/underground-view.md)).
 
 **Lots and land is complete**
-([lots-and-land.md](game-design/features/lots-and-land.md)): the detached
+([lots-and-land.md](specs/lots-and-land.md)): the detached
 house on the lot the land warrants, from a half lot to a 3×3 acre; the plat
 cut from the street and drawn on the zone lens; the duplex, fourplex, rows
 and medium density on their parcels; commercial and dense land cut into

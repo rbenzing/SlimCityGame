@@ -78,7 +78,7 @@ Advisor says what it lacks.
 `stringPowerLine` shape and inverse; two new optional snapshot channels,
 `waterPipes` (the pipe layer as `ZonePatch[]`, like `powerLines`) and
 `sewered` (coverage, like `watered`); two new stats. See
-[../interfaces.md](../interfaces.md).
+[../interfaces/README.md](../interfaces/README.md).
 
 ## The design
 

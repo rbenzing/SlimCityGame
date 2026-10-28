@@ -7,7 +7,7 @@ This document is the map of how those three are put together — what each
 owns, what crosses between them, and where the seams are. For _why_ a given
 split was chosen, follow the ADR links rather than re-deriving the argument
 here; for the exact shape of a message or a save file, see
-[interfaces.md](interfaces.md) and [data-model.md](data-model.md).
+[interfaces.md](interfaces/README.md) and [data-model.md](data-model/README.md).
 
 ## The three execution contexts
 
@@ -260,9 +260,9 @@ mutation, never a shared object.
 
 ## Where to look next
 
-- [interfaces.md](interfaces.md) — the exact shape of `Command`,
+- [interfaces.md](interfaces/README.md) — the exact shape of `Command`,
   `SimSnapshot`, `MainToWorker`/`WorkerToMain`, and the save payload.
-- [data-model.md](data-model.md) — what a save file contains and how it
+- [data-model.md](data-model/README.md) — what a save file contains and how it
   migrates across versions.
 - [systems/](systems/README.md) — how one simulation system (traffic,
   growth, garbage, …) works internally.

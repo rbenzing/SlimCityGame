@@ -54,6 +54,8 @@ for (const file of oldFiles) {
     for (const item of items) {
       total++;
       if (present[kind].has(item)) continue;
+      // A name still named anywhere, such as inside a `src/` pointer, is kept.
+      if (kind === 'identifier' && haystack.includes(item)) continue;
       missing++;
       console.log(`missing ${kind}  ${file}  ${item}`);
     }

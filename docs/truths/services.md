@@ -226,7 +226,7 @@ Back to [the index](../GROUND-TRUTHS.md).
   its code draws as many spaces as fit, and never a space without the
   accessible ones it owes. Downtown kinds (ComHigh's office and hotel, Mixed)
   draw no lot parking and park at the kerb. —
-  [parking-to-code.md](../game-design/features/parking-to-code.md);
+  [parking-to-code.md](../specs/parking-to-code.md);
   `src/shared/parkingcode.ts`, `src/shared/lotlayout.ts`, `src/shared/floorarea.ts`
 - [R-services-034] Such a lot is paved only where its layout uses the ground: the body and
   its walks, the drive, its throat and the aisles, the spaces and access
@@ -234,19 +234,19 @@ Back to [the index](../GROUND-TRUTHS.md).
   tank farm, all listed by the one layout the car park is drawn from. The
   rest of the lot is planted, and the verge is paved only where the drive
   and the walk cross it. Downtown and non-parking lots keep their pads. —
-  [parking-to-code.md](../game-design/features/parking-to-code.md#the-paved-ground);
+  [parking-to-code.md](../specs/parking-to-code.md#the-paved-ground);
   `lotPaving` in `src/shared/lotlayout.ts`, `src/render/lots.ts`
 - [R-services-035] The first 3,000 sq ft of a single-tenant shop's or restaurant's floor parks
   nothing and the rest parks at the full rate; a strip, a supermarket and
   industry get no exemption. So the corner shop owes no space and grows on a
-  strip one tile deep. — [parking-to-code.md](../game-design/features/parking-to-code.md#the-requirement);
+  strip one tile deep. — [parking-to-code.md](../specs/parking-to-code.md#the-requirement);
   `SMALL_USE_EXEMPT_SQ_FT` in `src/shared/parkingcode.ts`
 - [R-services-036] A lot's kerb credit is one space for every stall the street paints on the
   lot's own side whose middle lies along the lot's frontage: parallel, angled
   and head-in alike, accessible stalls included, no cap; the far kerb and the
   junctions' no-parking zones count nothing. The sim and the renderer count
   it with the one shared function over the same stalls. —
-  [parking-to-code.md](../game-design/features/parking-to-code.md#the-requirement);
+  [parking-to-code.md](../specs/parking-to-code.md#the-requirement);
   `kerbCreditFor` in `src/shared/kerblayout.ts`
 - [R-services-037] A lot's on-site requirement is its code requirement less its kerb credit,
   never below none, and the ADA accessible spaces it owes are counted within
@@ -259,7 +259,7 @@ Back to [the index](../GROUND-TRUTHS.md).
   draw, so a kind's share is counted once. A level-up never takes a smaller
   lot. A lot that stops meeting its code — the kerb parking painted out — is
   legal nonconforming: it is never abandoned for it, and only a level-up
-  must meet the code again. — [parking-to-code.md](../game-design/features/parking-to-code.md#larger-lots);
+  must meet the code again. — [parking-to-code.md](../specs/parking-to-code.md#which-kinds-fit-and-larger-lots);
   `holdsLotParkingAt` in `src/shared/lotparking.ts`, `footprintsOf`,
   `spawnCandidates`, `tryLevelUp` in `src/sim/growth.ts`
 - [R-services-038] Every figure in a service plan derives from a published municipal standard

@@ -188,11 +188,11 @@ depot with a drive to its car park and a curb cut on the kerb.
 - [../../world-sim/transit-model.md](../../world-sim/transit-model.md):
   a line's stop is a point on the street tile, not the kerb tile beside it;
   snapping already accepts a point on a run.
-- [parking-to-code.md](parking-to-code.md): the civic drive reuses the
+- [parking-to-code.md](../../specs/parking-to-code.md): the civic drive reuses the
   lot layout's drive and curb cut; the car park the kit draws is the kit's.
 - [transport-depots.md](transport-depots.md): the depots' yards get the
   drive to their gate.
-- [lots-and-land.md](lots-and-land.md): the civic drive keeps the 20 ft
+- [lots-and-land.md](../../specs/lots-and-land.md): the civic drive keeps the 20 ft
   corner clearance a house's drive keeps.
 - Saves: stops ride in the save as a list beside the lines; an older save's
   bus-stop buildings become shelters on the street tile they front, on the

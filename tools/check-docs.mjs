@@ -121,7 +121,7 @@ const over = docs
 let failures = 0;
 const STRICT = ['docs/truths/', 'docs/specs/', 'docs/world-sim/road-model/'];
 /** Strict paths whose own migration slice has not run yet; they warn until it does. */
-const PENDING = ['docs/truths/world.md'];
+const PENDING = [];
 for (const d of over) {
   if (startsWithAny(d.path, STRICT) && !PENDING.includes(d.path)) {
     console.error(`over budget  ${d.path}  ${d.bytes} > ${d.limit}`);

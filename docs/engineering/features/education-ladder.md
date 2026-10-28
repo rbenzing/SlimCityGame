@@ -42,7 +42,7 @@ built:** the five kits, and the screenshots that judge them
 **appended to the tile record, after `waterPipe` and before the road network**, and
 never inserted between the nine existing field planes, although in memory they
 are `FieldId` 9–11 beside them. A new grid layer goes last
-([../data-model.md](../data-model.md#save-version-and-per-tile-width)): an older
+([../data-model/the-save-format.md](../data-model/the-save-format.md#save-version-and-per-tile-width)): an older
 save's tile record is then a byte-for-byte prefix of the new one, and no byte
 that was in an old save moves. `SAVE_VERSION` goes 15 → 16 by exactly one,
 `BYTES_PER_TILE_BY_VERSION` gains v16 at three bytes more, and
@@ -58,7 +58,7 @@ load and no old save to migrate.
 **Worker protocol: yes, additively.** No new message: the field channel carries a
 `FieldId` already, `serviceLoad` is keyed by `ServiceKind` and so gains four keys,
 `Problem` rides `BuildingDelta`, and `SelectionInfo` gains an optional list of the
-schools a held building is missing. See [../interfaces.md](../interfaces.md).
+schools a held building is missing. See [../interfaces/README.md](../interfaces/README.md).
 
 ## The design
 

@@ -56,13 +56,13 @@ code and that document win:
 `responders` is catalog data, which ships with the build and has never been saved;
 a station's in-flight count and a waiting call are runtime state, rebuilt within a
 few ticks of a load like traffic volume and uncollected trash (see
-[../data-model.md](../data-model.md)). A save written before slice 1 loads after
+[../data-model/README.md](../data-model/README.md)). A save written before slice 1 loads after
 it and plays; the only visible change is the new call rate.
 
 **Worker protocol: yes, additively.** `Incident` gains an optional `answered`
 flag, and the snapshot gains an optional `responders` per-kind occupancy for the
 panel. Both are optional fields on existing messages, so a mirror that ignores
-them behaves as before. See [../interfaces.md](../interfaces.md).
+them behaves as before. See [../interfaces/README.md](../interfaces/README.md).
 
 ## The design
 

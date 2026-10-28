@@ -234,7 +234,7 @@ at 40 m, and the missing yard objects.
 - [../../visual-render/lighting.md](../../visual-render/lighting.md): a
   coloured sign band glows in its own colour; a wall pack over a dock door;
   a lit storefront is a row of bays.
-- [parking-to-code.md](parking-to-code.md): the car park, drive-through lane
+- [parking-to-code.md](../../specs/parking-to-code.md): the car park, drive-through lane
   and truck court are laid already; the pass dresses them (corrals, menu
   board, trailers at the dock, a guard booth).
 

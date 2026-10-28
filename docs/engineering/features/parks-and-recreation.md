@@ -51,8 +51,8 @@ a pre-epic save's `LandValue` array grew under the old additive blend. It is not
 rejected and not migrated; land value is recomputed and diffused every tick, so
 it re-settles — a balance correction for the release note, not a compatibility
 break. **Worker protocol: yes, additively** — one new optional member on
-`SimSnapshot`, see [../interfaces.md](../interfaces.md) and
-[../data-model.md](../data-model.md). No new commands; parks use the existing
+`SimSnapshot`, see [../interfaces/README.md](../interfaces/README.md) and
+[../data-model/README.md](../data-model/README.md). No new commands; parks use the existing
 ploppable path.
 
 ## The design

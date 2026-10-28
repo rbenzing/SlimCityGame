@@ -5,7 +5,7 @@ Nine scalar fields, one `Uint8Array` of `0..255` per tile each
 (`src/sim/fields.ts`). Eight of them emit, diffuse and decay; the ninth
 (Happiness) only recomputes. The schema — which byte is which field, and
 which single field (Traffic) is a save-time no-op — is
-[../engineering/data-model.md](../engineering/data-model.md#the-scalar-fields);
+[../engineering/data-model.md](../engineering/data-model/the-scalar-fields.md);
 this document is the simulation behavior that table explicitly defers to.
 
 ## The shared mechanism

@@ -149,7 +149,7 @@ MUTCD citations below use 11th-edition section numbers.
   `src/tools/tools.ts`
 - [R-roads-026] The `RoadTier` byte is a persisted, append-only preset id, not a hierarchy.
   Never use a tier number as rank. — [road-model.md](../world-sim/road-model/README.md),
-  [data-model.md](../engineering/data-model.md)
+  [data-model.md](../engineering/data-model/README.md)
 - [R-roads-027] A motorway (highway class) touches only a highway or a ramp. The rule is an
   accept-list, so a new class stays off the motorway until explicitly admitted.
   A ramp never joins dirt or alley. The worker refuses a `buildRoad` that
@@ -158,7 +158,7 @@ MUTCD citations below use 11th-edition section numbers.
   `src/shared/roadprofile.ts`, `joinRefusalAround` in `src/sim/worker.entry.ts`
 - [R-roads-028] A road tile's neighbour mask is derived, never trusted from a save: loading
   recomputes every mask from today's rules, so a rule change reaches old
-  cities. — [data-model.md](../engineering/data-model.md);
+  cities. — [data-model.md](../engineering/data-model/README.md);
   `recomputeRoadMasks` in `src/world/roads.ts`
 - [R-roads-040] Any grid edit invalidates the whole road graph and reassigns every node and
   edge id. Never persist an edge or node id across an edit. Tram-graph edge ids

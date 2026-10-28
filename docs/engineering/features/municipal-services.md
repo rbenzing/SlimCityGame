@@ -58,7 +58,7 @@ numbers and two can never collide. The other six move nothing, which is the
 point of the additive rule.
 
 **Worker protocol: yes.** New commands per epic, and the snapshot grows to carry
-per-service load. Both are additive; see [../interfaces.md](../interfaces.md).
+per-service load. Both are additive; see [../interfaces/README.md](../interfaces/README.md).
 
 ## The design
 
