@@ -178,6 +178,32 @@ const CATALOG: Record<string, BuildingCatalogEntry> = {
     upkeep: 10,
     unlockMilestone: 0,
   },
+  'bus-stop': {
+    id: 'bus-stop',
+    name: 'Bus shelter',
+    category: 'transit',
+    footprint: { w: 1, d: 1 },
+    height: 3,
+    color: 0x2f6f8f,
+    powerUse: 0,
+    waterUse: 0,
+    cost: 150,
+    upkeep: 10,
+    unlockMilestone: 1,
+  },
+  'bus-stop-sign': {
+    id: 'bus-stop-sign',
+    name: 'Bus stop sign',
+    category: 'transit',
+    footprint: { w: 1, d: 1 },
+    height: 3,
+    color: 0x2f6f8f,
+    powerUse: 0,
+    waterUse: 0,
+    cost: 2,
+    upkeep: 0,
+    unlockMilestone: 1,
+  },
   'police-station': {
     id: 'police-station',
     name: 'Police Station',
@@ -1958,6 +1984,157 @@ describe('transit line tools', () => {
     tm.setTool('transit.rail');
     tm.pointerDown(0, 0, 0);
     expect(previews.at(-1)?.label).toContain('Rail line');
+  });
+});
+
+describe('bus stop tools', () => {
+  /** East-west two-lane street along tile row 5 from x 0 to 10; pointer pixels are world metres. */
+  const STREET_Z = 5;
+  const EW = 2 | 8;
+  const NS = 1 | 4;
+  function stopEnv(
+    opts: {
+      mask?: (t: TilePoint) => number;
+      tier?: RoadTier;
+      held?: Record<string, 'sign' | 'shelter'>;
+    } = {},
+  ): ReturnType<typeof makeEnv> {
+    const made = makeEnv();
+    const tier = opts.tier ?? RoadTier.TwoLane;
+    const isRoad = (t: TilePoint): boolean => t.z === STREET_Z && t.x >= 0 && t.x <= 10;
+    Object.assign(made.env, {
+      screenToTile: (sx: number, sy: number) => ({
+        x: Math.floor(sx / TILE_METERS),
+        z: Math.floor(sy / TILE_METERS),
+      }),
+      worldPointAt: (sx: number, sy: number) => ({ x: sx, z: sy }),
+      roadProfileAt: (t: TilePoint) => (isRoad(t) ? presetProfileForTier(tier) : null),
+      roadMaskAt: (t: TilePoint) => (isRoad(t) ? (opts.mask?.(t) ?? EW) : 0),
+      stopAt: (x: number, z: number, side: 0 | 1) => opts.held?.[`${x},${z},${side}`] ?? null,
+    } satisfies Partial<ToolEnv>);
+    return made;
+  }
+  /** Metres to the centre of tile `t`. */
+  const centre = (t: number): number => (t + 0.5) * TILE_METERS;
+  const SOUTH_OF_AXIS = centre(STREET_Z) + 4;
+  const NORTH_OF_AXIS = centre(STREET_Z) - 4;
+
+  it('snaps to the street tile beside the pointer and the side the pointer is on', () => {
+    const { env, previews } = stopEnv();
+    const tm = new ToolManager(env);
+    tm.setTool('plop.bus-stop');
+    // The pointer stands on the verge tile above the street: the street's tile is within one.
+    tm.pointerMove(centre(4), centre(STREET_Z) - TILE_METERS * 0.9, -1);
+    expect(previews.at(-1)?.stop).toEqual({
+      stop: { x: 4, z: STREET_Z, side: 0, kind: 'shelter' },
+      lateral: 'z',
+    });
+    expect(previews.at(-1)?.valid).toBe(true);
+    tm.pointerMove(centre(4), SOUTH_OF_AXIS, -1);
+    expect(previews.at(-1)?.stop?.stop.side).toBe(1);
+    tm.pointerMove(centre(4), NORTH_OF_AXIS, -1);
+    expect(previews.at(-1)?.stop?.stop.side).toBe(0);
+  });
+
+  it('is red with no street within a tile of the pointer', () => {
+    const { env, previews } = stopEnv();
+    const tm = new ToolManager(env);
+    tm.setTool('plop.bus-stop-sign');
+    tm.pointerMove(centre(4), centre(STREET_Z + 4), -1);
+    expect(previews.at(-1)?.valid).toBe(false);
+    expect(previews.at(-1)?.stop).toBeUndefined();
+    expect(previews.at(-1)?.invalidReason).toMatch(/street/i);
+  });
+
+  it('refuses a junction tile', () => {
+    // Tiles 3 to 5 all meet a side street, so nothing within a tile of tile 4 can take a stop.
+    const { env, previews, sent } = stopEnv({
+      mask: (t) => (t.x >= 3 && t.x <= 5 ? EW | NS : EW),
+    });
+    const tm = new ToolManager(env);
+    tm.setTool('plop.bus-stop-sign');
+    tm.pointerMove(centre(4), SOUTH_OF_AXIS, -1);
+    expect(previews.at(-1)?.stop).toBeUndefined();
+    tm.pointerDown(centre(4), SOUTH_OF_AXIS, 0);
+    tm.pointerUp(centre(4), SOUTH_OF_AXIS, 0);
+    expect(sent).toEqual([]);
+  });
+
+  it('refuses a motorway and a rail track', () => {
+    for (const tier of [RoadTier.Highway, RoadTier.RailTrack]) {
+      const { env, previews } = stopEnv({ tier });
+      const tm = new ToolManager(env);
+      tm.setTool('plop.bus-stop');
+      tm.pointerMove(centre(4), SOUTH_OF_AXIS, -1);
+      expect(previews.at(-1)?.stop).toBeUndefined();
+    }
+  });
+
+  it('commits placeStop for the snapped side on click', () => {
+    const { env, sent } = stopEnv();
+    const tm = new ToolManager(env);
+    tm.setTool('plop.bus-stop-sign');
+    tm.pointerMove(centre(6), SOUTH_OF_AXIS, -1);
+    tm.pointerDown(centre(6), SOUTH_OF_AXIS, 0);
+    tm.pointerUp(centre(6), SOUTH_OF_AXIS, 0);
+    expect(sent).toEqual([
+      {
+        label: 'Bus stop sign',
+        commands: [{ kind: 'placeStop', stop: { x: 6, z: STREET_Z, side: 1, kind: 'sign' } }],
+      },
+    ]);
+  });
+
+  it('refuses a side that already holds that kind, and a sign under a shelter', () => {
+    const held = { [`6,${STREET_Z},1`]: 'shelter' as const };
+    for (const tool of ['plop.bus-stop', 'plop.bus-stop-sign'] as const) {
+      const { env, previews, sent } = stopEnv({ held });
+      const tm = new ToolManager(env);
+      tm.setTool(tool);
+      tm.pointerMove(centre(6), SOUTH_OF_AXIS, -1);
+      expect(previews.at(-1)?.valid).toBe(false);
+      tm.pointerDown(centre(6), SOUTH_OF_AXIS, 0);
+      tm.pointerUp(centre(6), SOUTH_OF_AXIS, 0);
+      expect(sent).toEqual([]);
+    }
+  });
+
+  it('lets a shelter go over a sign for the price difference', () => {
+    const { env, previews, sent } = stopEnv({ held: { [`6,${STREET_Z},1`]: 'sign' } });
+    const tm = new ToolManager(env);
+    tm.setTool('plop.bus-stop');
+    tm.pointerMove(centre(6), SOUTH_OF_AXIS, -1);
+    expect(previews.at(-1)?.valid).toBe(true);
+    expect(previews.at(-1)?.cost).toBe(148);
+    tm.pointerDown(centre(6), SOUTH_OF_AXIS, 0);
+    tm.pointerUp(centre(6), SOUTH_OF_AXIS, 0);
+    expect(sent[0]?.commands[0]).toMatchObject({ kind: 'placeStop', stop: { kind: 'shelter' } });
+  });
+
+  it('puts the other side of the same tile in play', () => {
+    const { env, previews } = stopEnv({ held: { [`6,${STREET_Z},1`]: 'shelter' } });
+    const tm = new ToolManager(env);
+    tm.setTool('plop.bus-stop');
+    tm.pointerMove(centre(6), NORTH_OF_AXIS, -1);
+    expect(previews.at(-1)?.valid).toBe(true);
+    expect(previews.at(-1)?.stop?.stop.side).toBe(0);
+  });
+
+  it('has a bus line call only where a stop stands', () => {
+    const { env, sent } = stopEnv({
+      held: { [`2,${STREET_Z},0`]: 'sign', [`8,${STREET_Z},1`]: 'shelter' },
+    });
+    const tm = new ToolManager(env);
+    tm.setTool('transit.line');
+    tm.pointerDown(centre(2), NORTH_OF_AXIS, 0);
+    tm.pointerDown(centre(5), NORTH_OF_AXIS, 0);
+    tm.pointerDown(centre(8), SOUTH_OF_AXIS, 0);
+    tm.pointerDown(0, 0, 2);
+    const line = (sent[0]!.commands[0] as { line: { stops: TilePoint[] } }).line;
+    expect(line.stops).toEqual([
+      { x: 2, z: STREET_Z },
+      { x: 8, z: STREET_Z },
+    ]);
   });
 });
 

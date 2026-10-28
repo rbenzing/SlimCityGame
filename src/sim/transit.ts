@@ -37,6 +37,7 @@ import {
 } from '../shared/transitfleet';
 import type { DeadRunStart } from './deadruns';
 import { dayHourFromTick } from './traffic';
+import type { StopRegistry } from './stops';
 
 // ---------------------------------------------------------------------------
 // Registry access (injected — this module never touches GridState/BuildingInstance
@@ -219,20 +220,38 @@ export function estimateRidership(
   route: TransitRoute | null,
   accessor: PopulationJobsAccessor,
 ): number {
-  if (!route || line.stops.length === 0) return 0;
+  return ridershipOf(ridershipTerms(line, route, accessor));
+}
 
+/** What a line's ridership is made of: each stop's nearby demand, and the factors that scale it. */
+interface RidershipTerms {
+  /** Nearby population + jobs at each stop, in stop order. */
+  demand: number[];
+  perDemandUnit: number;
+  lengthMultiplier: number;
+}
+
+function ridershipTerms(
+  line: TransitLine,
+  route: TransitRoute | null,
+  accessor: PopulationJobsAccessor,
+): RidershipTerms | null {
+  if (!route || line.stops.length === 0) return null;
   const rates = MODE_RATES[modeOf(line)];
-
-  let nearbyTotal = 0;
-  for (const stop of line.stops) {
-    nearbyTotal += accessor.nearbyPopulationJobs(stop.x, stop.z, rates.stopRadiusTiles);
-  }
-  if (nearbyTotal <= 0) return 0;
-
+  const demand = line.stops.map((stop) =>
+    accessor.nearbyPopulationJobs(stop.x, stop.z, rates.stopRadiusTiles),
+  );
   const lengthMultiplier =
     1 + Math.min(RIDERSHIP_LENGTH_BONUS_CAP, route.lengthTiles * RIDERSHIP_LENGTH_BONUS_PER_TILE);
+  return { demand, perDemandUnit: rates.perDemandUnit, lengthMultiplier };
+}
 
-  return nearbyTotal * rates.perDemandUnit * lengthMultiplier;
+function ridershipOf(terms: RidershipTerms | null): number {
+  if (!terms) return 0;
+  let nearbyTotal = 0;
+  for (const d of terms.demand) nearbyTotal += d;
+  if (nearbyTotal <= 0) return 0;
+  return nearbyTotal * terms.perDemandUnit * terms.lengthMultiplier;
 }
 
 // ---------------------------------------------------------------------------
@@ -383,6 +402,11 @@ export class TransitSystem {
    * which case a tram line has no route, exactly as for rail.
    */
   private readonly tramNetwork: RoadNetworkApi | null;
+  /**
+   * The bus stops standing. Null in a context with none (existing callers and
+   * tests), in which case a bus line's stops are unchecked points.
+   */
+  private readonly stops: StopRegistry | null;
   private readonly lines = new Map<number, TransitLine>();
   /** Each line's settled default fleet, by id — see settleDefault. */
   private readonly defaults = new Map<number, number>();
@@ -396,10 +420,12 @@ export class TransitSystem {
     network: RoadNetworkApi,
     railNetwork: RoadNetworkApi | null = null,
     tramNetwork: RoadNetworkApi | null = null,
+    stops: StopRegistry | null = null,
   ) {
     this.network = network;
     this.railNetwork = railNetwork;
     this.tramNetwork = tramNetwork;
+    this.stops = stops;
   }
 
   /** The network that carries a line: the streets, the track, or the tram track. */
@@ -473,10 +499,38 @@ export class TransitSystem {
     this.lastTick = null;
     let maxId = 0;
     for (const line of lines) {
-      this.lines.set(line.id, { ...line, stops: [...line.stops] });
+      // A bus line keeps only the stops that stand; the rest are dropped.
+      const stops = this.mustHoldStop(modeOf(line))
+        ? line.stops.filter((s) => this.stops!.hasStop(s.x, s.z))
+        : line.stops;
+      this.lines.set(line.id, { ...line, stops: [...stops] });
       maxId = Math.max(maxId, line.id);
     }
     this.nextId = maxId + 1;
+  }
+
+  /** Bus stops are street tiles holding a stop, where a registry is wired. */
+  private mustHoldStop(mode: TransitMode): boolean {
+    return mode === 'bus' && this.stops !== null;
+  }
+
+  /** Whether `stops` may carry a line of `mode`: a bus line names only tiles that hold a stop. */
+  acceptsStops(mode: TransitMode, stops: readonly TilePoint[]): boolean {
+    return !this.mustHoldStop(mode) || stops.every((s) => this.stops!.hasStop(s.x, s.z));
+  }
+
+  /**
+   * Takes the tile off every bus line that names it, for when its last stop is
+   * gone. Returns each edited line as it stood before, so the edit can be undone.
+   */
+  dropStopTile(x: number, z: number): TransitLine[] {
+    const before: TransitLine[] = [];
+    for (const line of this.lines.values()) {
+      if (modeOf(line) !== 'bus' || !line.stops.some((s) => s.x === x && s.z === z)) continue;
+      before.push({ ...line, stops: [...line.stops] });
+      line.stops = line.stops.filter((s) => s.x !== x || s.z !== z);
+    }
+    return before;
   }
 
   getLine(id: number): TransitLine | undefined {
@@ -524,11 +578,23 @@ export class TransitSystem {
     const routes: (TransitRoute | null)[] = [];
     const demand: number[] = [];
     const requested: number[] = [];
+    this.stops?.clearBoardings();
 
     for (const line of lines) {
       const network = this.networkFor(line);
       const route = network ? routeLine(network, line) : null;
-      const riders = estimateRidership(line, route, accessor);
+      const terms = ridershipTerms(line, route, accessor);
+      const riders = ridershipOf(terms);
+      // A bus stop's boardings are its own demand through the same rate and
+      // length bonus as the line's ridership, before the fleet's share is taken.
+      if (terms && this.stops && modeOf(line) === 'bus') {
+        line.stops.forEach((stop, k) => {
+          this.stops!.addBoardings(
+            stop,
+            terms.demand[k]! * terms.perDemandUnit * terms.lengthMultiplier,
+          );
+        });
+      }
       const lengthTiles = route?.lengthTiles ?? 0;
       const settled = settleDefault(
         this.defaults.get(line.id),

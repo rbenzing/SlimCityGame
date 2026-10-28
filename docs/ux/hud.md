@@ -493,10 +493,12 @@ active:
   also draws the **plat**: an amber outline round every lot the block
   will cut into (industrial and farm grids show none), by the same rule the spawner grows by, so the player sees the lots before a
   house stands on any of them; a standing house is its own lot and keeps no
-  outline. With a ploppable in hand — a service, transport, utility or park
-  building — the same grid, the painted tint and the plats of every platted
-  zone show together, so the player sees the lots a station or a depot would
-  stand on before placing it over them.
+  outline. With a building ploppable in hand — a service, transport, utility
+  or park building — the same grid, the painted tint and the plats of every
+  platted zone show together, so the player sees the lots a station or a
+  depot would stand on before placing it over them. A bus stop tool, which
+  takes no land, shows none of it: its ghost is the sign or shelter on the
+  footway of the street tile under the pointer, on the pointer's side.
 - **Selection highlight**: a selected building gets a green edge outline
   plus a floating map-pin sprite above its roof for as long as its info
   panel stays open.

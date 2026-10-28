@@ -72,6 +72,7 @@ import {
 import type {
   BuildingCatalogEntry,
   BuildingInstance,
+  BusStop,
   CityStats,
   Command,
   CommandAck,
@@ -95,9 +96,11 @@ import type {
   SimSpeed,
   TileArms,
   TilePoint,
+  TransitLine,
   WorkerToMain,
   ZonePatch,
 } from '../shared/types';
+import { findRoadFacingEdge } from '../shared/roadedge';
 import catalogData from '../data/catalog.json';
 import roadsData from '../data/roads.json';
 import {
@@ -229,6 +232,7 @@ import {
   type PopulationJobsAccessor,
   type TransitTickResult,
 } from './transit';
+import { StopRegistry, sideTowards } from './stops';
 import { connectedDepots, fleetPools, inServiceAt, type ConnectedDepot } from './depots';
 import { DispatchSystem, MAX_SERVICE_VEHICLES } from './dispatch';
 import { DeadRunSystem, MAX_DEAD_RUN_BUSES } from './deadruns';
@@ -286,6 +290,14 @@ function footprintTiles(x: number, z: number, w: number, d: number): TilePoint[]
 /** The zone brush's refusal when every tile under it already holds a building. */
 export const ZONE_UNDER_BUILDINGS =
   'Buildings stand on every tile. A zone changes only empty land; bulldoze first.';
+
+/** The building placer's refusal of a bus stop, which stands on a street tile and is placed as a stop. */
+export const BUS_STOP_NOT_A_BUILDING =
+  'A bus stop stands on a street, not on a lot; place it beside a street.';
+
+/** The refusal of a road edit that would remove or replace the street under a bus stop. */
+export const STOP_UNDER_ROAD_EDIT =
+  'A bus stop stands on that street; bulldoze the bus stop first.';
 
 /** Ticks between snapshots: 20 ticks/s over 10 snapshots/s = 2. */
 const SNAPSHOT_TICKS = Math.max(1, Math.round(TICK_RATE / SNAPSHOT_HZ));
@@ -547,6 +559,8 @@ class SimWorld implements WorkerSim {
   private traffic: TrafficSystem;
   // --- transit / dispatch / policies systems -------------------------------
   private transit: TransitSystem;
+  /** The bus stops standing; one object for the session, cleared on a new game or a load. */
+  private readonly stops = new StopRegistry();
   private dispatch: DispatchSystem;
   private policyStore = new PolicyStore();
   /** Latest transit tick result, attached to each snapshot. */
@@ -664,7 +678,7 @@ class SimWorld implements WorkerSim {
       this.profileForId(id),
     );
     this.traffic = new TrafficSystem(rng.fork(2), this.network);
-    this.transit = new TransitSystem(this.network, this.railNetwork, this.tramNetwork);
+    this.transit = new TransitSystem(this.network, this.railNetwork, this.tramNetwork, this.stops);
     this.dispatch = new DispatchSystem(CATALOG, rng.fork(3));
     // The save's own table of composed cross-sections, so the graph can read
     // how a run's lanes divide between its two directions. Presets resolve
@@ -777,7 +791,8 @@ class SimWorld implements WorkerSim {
     this.traffic = new TrafficSystem(rng.fork(2), this.network);
     // transit / dispatch / policy systems are stateful (lines / active incidents / policies)
     // and must reset per game session, mirroring how traffic is re-created.
-    this.transit = new TransitSystem(this.network, this.railNetwork, this.tramNetwork);
+    this.stops.clear();
+    this.transit = new TransitSystem(this.network, this.railNetwork, this.tramNetwork, this.stops);
     this.dispatch = new DispatchSystem(CATALOG, rng.fork(3));
     this.policyStore = new PolicyStore();
     this.transitResult = emptyTransitResult();
@@ -853,6 +868,9 @@ class SimWorld implements WorkerSim {
       if (inst.state === BuildingState.Constructing) inst.state = BuildingState.Active;
     }
 
+    this.stops.restore(payload.meta.busStops);
+    const savedLines = this.migrateBusStopBuildings(payload.meta.transitLines ?? []);
+
     this.network.rebuild(this.grid);
     this.railNetwork.rebuild(this.grid);
     this.tramNetwork.rebuild(this.grid);
@@ -880,10 +898,10 @@ class SimWorld implements WorkerSim {
     // grid serialize/deserialize, but the def registry + policies do not
     // (per-session state). Rebuild defs for whatever district ids the loaded
     // tile layer carries so the overlay tints and the UI lists them.
-    this.transit = new TransitSystem(this.network, this.railNetwork, this.tramNetwork);
+    this.transit = new TransitSystem(this.network, this.railNetwork, this.tramNetwork, this.stops);
     // Lines come back with the city. A save written before they persisted has
     // none, which is what loading always used to leave behind anyway.
-    this.transit.restore(payload.meta.transitLines ?? []);
+    this.transit.restore(savedLines);
     this.dispatch = new DispatchSystem(CATALOG, createRng(this.seed).fork(3));
     this.policyStore = new PolicyStore();
     this.transitResult = emptyTransitResult();
@@ -1265,6 +1283,7 @@ class SimWorld implements WorkerSim {
       takeRecoveredUnits: () => this.garbage.takeRecoveredThisMonth(),
       takeRegionalBodies: () => this.deathCare.takeRegionalThisMonth(),
       transitRunning: this.transitResult.runningCost.reduce((sum, c) => sum + c, 0),
+      stops: this.stops.states(),
     });
     Object.assign(this.stats, econ.statsPatch);
     this.occupancy = econ.occupancy;
@@ -1533,6 +1552,7 @@ class SimWorld implements WorkerSim {
       const slot = slotOf.get(id);
       return slot === undefined ? 0 : (values[slot] ?? 0);
     };
+    snap.stops = this.stops.states();
     const lines = this.transit.getLines();
     snap.transit = {
       lines: lines.map((l) => ({
@@ -1877,6 +1897,57 @@ class SimWorld implements WorkerSim {
     this.post({ type: 'field', field, data: data.slice() });
   }
 
+  /** Whether a bus stop may stand on the tile: a street that is not a junction, a motorway, a ramp or a tram reservation. */
+  private canHoldStop(x: number, z: number): boolean {
+    if (!inBounds(x, z)) return false;
+    const idx = tileIndex(x, z);
+    const tier = this.grid.roadTier[idx] ?? 0;
+    if (!isStreetTier(tier) || tier === RoadTier.Highway || tier === RoadTier.Ramp) return false;
+    if (isTramTile(this.grid, idx, (id) => this.customRoadProfiles.get(id) ?? null)) return false;
+    let arms = 0;
+    for (let bit = 1; bit <= 8; bit <<= 1) if (((this.grid.roadMask[idx] ?? 0) & bit) !== 0) arms++;
+    return arms < 3;
+  }
+
+  /**
+   * Older saves held a bus stop as a one-tile building. Each becomes a shelter
+   * stop on the street tile it fronted, on the side it stood, and frees its
+   * tile; `lines` come back naming the street tile instead of the old one. A
+   * stop with no street in reach is dropped and logged.
+   */
+  private migrateBusStopBuildings(lines: readonly TransitLine[]): TransitLine[] {
+    const moved = new Map<string, TilePoint>();
+    const old = this.registry.all().filter((b) => b.catalogId === 'bus-stop');
+    for (const b of old) {
+      this.registry.remove(this.grid, b.id);
+      const edge = findRoadFacingEdge(b.x, b.z, 1, 1, (x, z) => this.canHoldStop(x, z));
+      let street: TilePoint | null = edge ? { x: edge.roadTileX, z: edge.roadTileZ } : null;
+      if (!street) {
+        let best = Infinity;
+        for (let dz = -1; dz <= 1; dz++) {
+          for (let dx = -1; dx <= 1; dx++) {
+            const reach = Math.abs(dx) + Math.abs(dz);
+            if (reach < best && this.canHoldStop(b.x + dx, b.z + dz)) {
+              best = reach;
+              street = { x: b.x + dx, z: b.z + dz };
+            }
+          }
+        }
+      }
+      if (!street) {
+        console.warn(`loadSave: bus stop at ${b.x},${b.z} has no street in reach; dropped`);
+        continue;
+      }
+      const side = sideTowards(this.grid.roadMask[tileIndex(street.x, street.z)] ?? 0, street, b);
+      this.stops.place({ x: street.x, z: street.z, side, kind: 'shelter' });
+      moved.set(`${b.x},${b.z}`, street);
+    }
+    return lines.map((l) => ({
+      ...l,
+      stops: l.stops.map((s) => moved.get(`${s.x},${s.z}`) ?? s),
+    }));
+  }
+
   private postSave(): void {
     const data = encodeSave({
       header: {
@@ -1895,6 +1966,7 @@ class SimWorld implements WorkerSim {
         garbage: this.garbage.serializeState(),
         deathCare: this.deathCare.serializeState(),
         transitLines: this.transit.getLines().map((l) => ({ ...l, stops: [...l.stops] })),
+        busStops: this.stops.serialize(),
         roadProfiles: this.roadProfileTable(),
       },
     });
@@ -2573,7 +2645,54 @@ class SimWorld implements WorkerSim {
     }
   }
 
+  /** Set while a refused road edit is taken back, so its inverse's bulldoze leaves the stops standing. */
+  private keepStopsOnBulldoze = false;
+
+  /** The command kinds that can remove or replace a street other than the bulldozer, which takes stops with it. */
+  private static readonly ROAD_EDITS: ReadonlySet<Command['kind']> = new Set([
+    'buildRoad',
+    'buildSegment',
+    'removeSegment',
+    'splitSegment',
+    'joinSegments',
+    'moveSegmentEnd',
+    'buildRoundabout',
+    'removeRoundabout',
+  ]);
+
+  /** The road under every stop, so a change to it can be told. */
+  private stopStreetSignature(): string {
+    const g = this.grid;
+    return this.stops
+      .list()
+      .map((s) => {
+        const i = tileIndex(s.x, s.z);
+        return `${g.roadTier[i] ?? 0}:${g.roadProfile[i] ?? 0}`;
+      })
+      .join(',');
+  }
+
+  /**
+   * A road edit that would remove or replace the street under a bus stop is
+   * refused and taken back by its own inverse; only the bulldozer clears stops.
+   */
   private applyCommand(command: Command): CommandResult {
+    if (!SimWorld.ROAD_EDITS.has(command.kind) || this.stops.size === 0) {
+      return this.applyCommandUnguarded(command);
+    }
+    const before = this.stopStreetSignature();
+    const funds = this.stats.funds;
+    const result = this.applyCommandUnguarded(command);
+    if (!result.ok || this.stopStreetSignature() === before) return result;
+    // The inverse may clear tiles with a bulldoze; the stops stay, since the street returns.
+    this.keepStopsOnBulldoze = true;
+    for (const inverse of result.inverse) this.applyCommandUnguarded(inverse);
+    this.keepStopsOnBulldoze = false;
+    this.stats.funds = funds;
+    return { ok: false, cost: 0, inverse: [], reason: STOP_UNDER_ROAD_EDIT };
+  }
+
+  private applyCommandUnguarded(command: Command): CommandResult {
     switch (command.kind) {
       case 'buildRoad':
         return this.cmdBuildRoad(
@@ -2655,6 +2774,9 @@ class SimWorld implements WorkerSim {
       case 'terraformSet':
         return this.cmdTerraformSet(command);
       case 'createTransitLine': {
+        if (!this.transit.acceptsStops(command.line.mode ?? 'bus', command.line.stops)) {
+          return { ok: false, cost: 0, inverse: [], reason: 'invalid' };
+        }
         const line = this.transit.createLine(
           command.line.stops,
           command.line.color,
@@ -2665,6 +2787,12 @@ class SimWorld implements WorkerSim {
       }
       case 'updateTransitLine': {
         const prev = this.transit.getLine(command.line.id);
+        if (
+          prev &&
+          !this.transit.acceptsStops(command.line.mode ?? prev.mode ?? 'bus', command.line.stops)
+        ) {
+          return { ok: false, cost: 0, inverse: [], reason: 'invalid' };
+        }
         const updated = this.transit.updateLine(
           command.line.id,
           command.line.stops,
@@ -2689,6 +2817,10 @@ class SimWorld implements WorkerSim {
           inverse: existed ? [{ kind: 'createTransitLine', line: existed }] : [],
         };
       }
+      case 'placeStop':
+        return this.cmdPlaceStop(command.stop);
+      case 'removeStop':
+        return this.cmdRemoveStop(command.x, command.z, command.side);
       case 'paintDistrict':
         return this.cmdPaintDistrict(command.districtId, command.tiles);
       case 'paintLandfill':
@@ -3546,6 +3678,20 @@ class SimWorld implements WorkerSim {
       });
     }
 
+    // A stop goes with the street it stood on, and so do its lines' calls there.
+    for (const t of this.keepStopsOnBulldoze ? [] : inBoundsTiles) {
+      const standing = this.stops.onTile(t.x, t.z);
+      if (standing.length === 0) continue;
+      for (const stop of standing) {
+        this.stops.remove(stop.x, stop.z, stop.side);
+        refund += this.stopPrice(stop.kind) * BULLDOZE_REFUND_RATE;
+        inverse.push({ kind: 'placeStop', stop });
+      }
+      for (const line of this.transit.dropStopTile(t.x, t.z)) {
+        inverse.push({ kind: 'updateTransitLine', line });
+      }
+    }
+
     // Power line last: the bulldozer takes down the wire over the tiles it
     // clears, and the undo strings back exactly the run that was there.
     const pulledDown = stringPowerLine(g, clearedTiles, false);
@@ -3638,6 +3784,73 @@ class SimWorld implements WorkerSim {
     return false;
   }
 
+  /** The bus lines that name the tile, as they stand: what an undo has to put back once the tile loses its last stop. */
+  private linesNamingTile(x: number, z: number): TransitLine[] {
+    return this.transit
+      .getLines()
+      .filter((l) => (l.mode ?? 'bus') === 'bus' && l.stops.some((s) => s.x === x && s.z === z))
+      .map((l) => ({ ...l, stops: [...l.stops] }));
+  }
+
+  private stopPrice(kind: BusStop['kind']): number {
+    return this.catalogById.get(kind === 'shelter' ? 'bus-stop' : 'bus-stop-sign')?.cost ?? 0;
+  }
+
+  /**
+   * Stands a sign or a shelter on a side of a street tile. A shelter over a
+   * sign is the upgrade and costs the difference; its undo takes the shelter
+   * off and stands the sign back, with the lines that named the tile.
+   */
+  private cmdPlaceStop(stop: BusStop): CommandResult {
+    const refuse = (reason: string): CommandResult => ({ ok: false, cost: 0, inverse: [], reason });
+    const entry = this.catalogById.get(stop.kind === 'shelter' ? 'bus-stop' : 'bus-stop-sign');
+    if (!entry || (stop.side !== 0 && stop.side !== 1)) return refuse('invalid');
+    if (
+      !Number.isInteger(stop.x) ||
+      !Number.isInteger(stop.z) ||
+      !this.canHoldStop(stop.x, stop.z)
+    ) {
+      return refuse('invalid');
+    }
+    if (!this.sandbox && entry.unlockMilestone > this.stats.milestoneLevel) return refuse('locked');
+    const standing = this.stops.at(stop.x, stop.z, stop.side);
+    if (standing && !(standing.kind === 'sign' && stop.kind === 'shelter'))
+      return refuse('invalid');
+    const price = entry.cost - (standing ? this.stopPrice(standing.kind) : 0);
+    if (!this.unlimitedMoney && this.stats.funds < price) return refuse('funds');
+
+    const alone = this.stops.onTile(stop.x, stop.z).length <= 1;
+    const named = standing && alone ? this.linesNamingTile(stop.x, stop.z) : [];
+    this.stops.place(stop);
+    this.stats.funds -= price;
+    const inverse: Command[] = [{ kind: 'removeStop', x: stop.x, z: stop.z, side: stop.side }];
+    if (standing) {
+      inverse.push({ kind: 'placeStop', stop: { ...standing } });
+      for (const line of named) inverse.push({ kind: 'updateTransitLine', line });
+    }
+    return { ok: true, cost: price, inverse };
+  }
+
+  /**
+   * Takes a stop off its side, refunding the bulldoze share of its price.
+   * When no stop is left on the tile every line naming it drops it, and the
+   * undo stands the stop back and the lines as they were.
+   */
+  private cmdRemoveStop(x: number, z: number, side: 0 | 1): CommandResult {
+    const standing = this.stops.at(x, z, side);
+    if (!standing) return { ok: false, cost: 0, inverse: [], reason: 'invalid' };
+    this.stops.remove(x, z, side);
+    const inverse: Command[] = [{ kind: 'placeStop', stop: standing }];
+    if (!this.stops.hasStop(x, z)) {
+      for (const line of this.transit.dropStopTile(x, z)) {
+        inverse.push({ kind: 'updateTransitLine', line });
+      }
+    }
+    const refund = this.stopPrice(standing.kind) * BULLDOZE_REFUND_RATE;
+    this.stats.funds += refund;
+    return { ok: true, cost: -refund, inverse };
+  }
+
   private cmdPlaceBuilding(
     catalogId: string,
     x: number,
@@ -3648,6 +3861,9 @@ class SimWorld implements WorkerSim {
   ): CommandResult {
     const entry = this.catalogById.get(catalogId);
     if (!entry) return { ok: false, cost: 0, inverse: [], reason: 'invalid' };
+    if (catalogId === 'bus-stop' || catalogId === 'bus-stop-sign') {
+      return { ok: false, cost: 0, inverse: [], reason: BUS_STOP_NOT_A_BUILDING };
+    }
     if (!this.sandbox && entry.unlockMilestone > this.stats.milestoneLevel) {
       return { ok: false, cost: 0, inverse: [], reason: 'locked' };
     }

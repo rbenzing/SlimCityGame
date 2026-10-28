@@ -1,8 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
+import { BUS_STOP_PAD, BUS_STOP_SIGN } from './busstops';
 import {
-  BUS_STOP_PAD,
-  BUS_STOP_SIGN,
   CLINIC_BODY,
   CLINIC_CANOPY,
   CLINIC_ENTRY,
@@ -15,9 +14,7 @@ import {
   RECYCLING_YARD_HEIGHT,
   UTILITY_KIT_CATALOG_IDS,
   UtilityKitRenderer,
-  busStopShelterAnchor,
   clinicStallRect,
-  computeBusStopLayout,
   computeClinicLayout,
   computeDepotLayout,
   depotFrame,
@@ -43,7 +40,6 @@ const catalog = (catalogData as { buildings: BuildingCatalogEntry[] }).buildings
 const byId = (id: string): BuildingCatalogEntry => catalog.find((e) => e.id === id)!;
 const CLINIC = byId('clinic');
 const STATION = byId('rail-station');
-const BUS_STOP = byId('bus-stop');
 const flat = (): number => 0;
 
 function instance(
@@ -94,14 +90,20 @@ function placedBounds(
 }
 
 describe('the registry', () => {
-  it('holds the three kitless ploppables, and the renderer builds a kit for each from the catalog', () => {
-    for (const id of ['clinic', 'rail-station', 'bus-stop']) {
+  it('holds the two kitless ploppables, and the renderer builds a kit for each from the catalog', () => {
+    for (const id of ['clinic', 'rail-station']) {
       expect(UTILITY_KIT_CATALOG_IDS).toContain(id);
     }
     const renderer = new UtilityKitRenderer(new THREE.Scene(), flat, catalog);
     expect(renderer.kitIds().has('clinic')).toBe(true);
     expect(renderer.kitIds().has('rail-station')).toBe(true);
-    expect(renderer.kitIds().has('bus-stop')).toBe(true);
+  });
+
+  it('draws no bus stop as a building: a stop is road furniture', () => {
+    expect(UTILITY_KIT_CATALOG_IDS).not.toContain('bus-stop');
+    expect(UTILITY_KIT_CATALOG_IDS).not.toContain('bus-stop-sign');
+    const renderer = new UtilityKitRenderer(new THREE.Scene(), flat, catalog);
+    expect(renderer.kitIds().has('bus-stop')).toBe(false);
   });
 });
 
@@ -515,20 +517,14 @@ describe('the rail station kit', () => {
   });
 });
 
-describe('the bus stop layout', () => {
-  const layout = computeBusStopLayout(BUS_STOP.footprint);
-  const lot = lotOf(BUS_STOP.footprint);
-
-  it('stands a 1.52 × 3.66 m shelter at the lot’s street edge with its roof 2.29 m clear', () => {
+describe('the bus shelter', () => {
+  it('is a 1.52 × 3.66 m shelter with its roof 2.29 m clear', () => {
     expect(BUS_SHELTER.w).toBeCloseTo(3.66, 9);
     expect(BUS_SHELTER.d).toBeCloseTo(1.52, 9);
     expect(BUS_SHELTER.clear).toBeCloseTo(2.29, 9);
     expect(BUS_SHELTER.overhang).toBeCloseTo(0.3, 9);
     expect(BUS_SHELTER.bench.l).toBeCloseTo(1.83, 9);
     expect(BUS_SHELTER.bench.h).toBeCloseTo(0.45, 9);
-    const roofFront = layout.shelter.z + BUS_SHELTER.d / 2 + BUS_SHELTER.overhang;
-    expect(roofFront).toBeLessThanOrEqual(lot.z1);
-    expect(lot.z1 - roofFront).toBeLessThan(0.5);
     const geometry = buildBusShelterGeometry();
     geometry.computeBoundingBox();
     const b = geometry.boundingBox!;
@@ -538,88 +534,10 @@ describe('the bus stop layout', () => {
     expect(b.min.y).toBeCloseTo(0, 6);
   });
 
-  it('lays a 2.44 × 1.52 m boarding pad at the kerb beside the shelter, a walk between, and the sign bottom 2.13 m up', () => {
-    expect(layout.pad.z1 - layout.pad.z0).toBeCloseTo(BUS_STOP_PAD.out, 9);
-    expect(layout.pad.x1 - layout.pad.x0).toBeCloseTo(BUS_STOP_PAD.along, 9);
-    expect(BUS_STOP_PAD).toEqual({ out: 2.44, along: 1.52 });
-    expect(layout.pad.z1).toBeCloseTo(lot.z1, 9);
-    expect(inside(layout.pad, layout.walk)).toBe(true);
-    const shelter: Rect = {
-      x0: layout.shelter.x - BUS_SHELTER.w / 2,
-      x1: layout.shelter.x + BUS_SHELTER.w / 2,
-      z0: layout.shelter.z - BUS_SHELTER.d / 2,
-      z1: layout.shelter.z + BUS_SHELTER.d / 2,
-    };
-    expect(inside(shelter, layout.walk)).toBe(true);
-    expect(overlaps(shelter, layout.pad)).toBe(false);
+  it('hangs a 0.46 × 0.61 m flag sign with its bottom 2.13 m up, over a 2.44 × 3.66 m pad', () => {
+    expect(BUS_STOP_PAD).toEqual({ out: 2.44, along: 3.66 });
     expect(BUS_STOP_SIGN.bottom).toBeCloseTo(2.13, 9);
     expect(BUS_STOP_SIGN.w).toBeCloseTo(0.46, 9);
     expect(BUS_STOP_SIGN.h).toBeCloseTo(0.61, 9);
-    expect(inside(layout.walk, lot)).toBe(true);
-    expect(Math.abs(layout.sign.x)).toBeLessThan(lot.x1);
-    expect(Math.abs(layout.bin.x)).toBeLessThan(lot.x1);
   });
-
-  it('is deterministic', () => {
-    expect(computeBusStopLayout(BUS_STOP.footprint)).toEqual(layout);
-  });
-});
-
-describe('the bus stop kit', () => {
-  it('stands on a lawn plate over the whole tile, not a plinth, with no lit part', () => {
-    const renderer = new UtilityKitRenderer(new THREE.Scene(), flat, [BUS_STOP]);
-    renderer.setNightFactor(1);
-    for (const kind of ['busStopGrounds', 'busStopShelter', 'busStopProps'] as const) {
-      expect(renderer.partEmissiveHex('bus-stop', kind)).toBe(0);
-    }
-    const grounds = renderer.partGeometry('bus-stop', 'busStopGrounds')!;
-    grounds.computeBoundingBox();
-    const b = grounds.boundingBox!;
-    expect(b.max.x - b.min.x).toBeCloseTo(TILE_METERS, 6);
-    expect(b.max.z - b.min.z).toBeCloseTo(TILE_METERS, 6);
-    // Its top is the lawn plate's, with the walk a few centimetres proud.
-    expect(b.max.y).toBeGreaterThan(RECYCLING_YARD_HEIGHT);
-    expect(b.max.y).toBeLessThan(RECYCLING_YARD_HEIGHT + 0.1);
-    // The lawn's own colour: green dominates the plate's vertices.
-    const colors = grounds.getAttribute('color');
-    let green = 0;
-    for (let i = 0; i < colors.count; i++) if (colors.getY(i) > colors.getX(i) + 0.1) green++;
-    expect(green).toBeGreaterThanOrEqual(8);
-  });
-
-  it.each([0, 1, 2, 3] as const)(
-    'puts the shelter at the street edge inside the lot at rotation %i, where the idlers wait',
-    (rotation) => {
-      const renderer = new UtilityKitRenderer(new THREE.Scene(), flat, [BUS_STOP]);
-      renderer.apply(add(instance(1, 'bus-stop', { rotation })));
-      const slot = renderer.partSlotsFor(1, 'busStopShelter')[0]!;
-      const b = placedBounds(renderer, 'bus-stop', 'busStopShelter', slot);
-      const x0 = 10 * TILE_METERS;
-      const z0 = 10 * TILE_METERS;
-      expect(b.min.x).toBeGreaterThanOrEqual(x0 - 1e-6);
-      expect(b.max.x).toBeLessThanOrEqual(x0 + TILE_METERS + 1e-6);
-      expect(b.min.z).toBeGreaterThanOrEqual(z0 - 1e-6);
-      expect(b.max.z).toBeLessThanOrEqual(z0 + TILE_METERS + 1e-6);
-      // Against the edge local +Z turned to.
-      const streetEdge = [b.max.z, b.max.x, b.min.z, b.min.x][rotation]!;
-      const lotEdge = [z0 + TILE_METERS, x0 + TILE_METERS, z0, x0][rotation]!;
-      expect(Math.abs(streetEdge - lotEdge)).toBeLessThan(0.5);
-      const anchor = busStopShelterAnchor({ x: 10, z: 10, rotation }, BUS_STOP);
-      const m = new THREE.Matrix4();
-      renderer.getPartMatrix('bus-stop', 'busStopShelter', slot, m);
-      const p = new THREE.Vector3();
-      m.decompose(p, new THREE.Quaternion(), new THREE.Vector3());
-      expect(anchor.x).toBeCloseTo(p.x, 3);
-      expect(anchor.z).toBeCloseTo(p.z, 3);
-      const props = placedBounds(
-        renderer,
-        'bus-stop',
-        'busStopProps',
-        renderer.partSlotsFor(1, 'busStopProps')[0]!,
-      );
-      expect(props.max.y).toBeGreaterThan(BUS_STOP_SIGN.bottom + BUS_STOP_SIGN.h);
-      expect(props.min.x).toBeGreaterThanOrEqual(x0 - 1e-6);
-      expect(props.max.x).toBeLessThanOrEqual(x0 + TILE_METERS + 1e-6);
-    },
-  );
 });

@@ -5,7 +5,8 @@
  * and the month's running cost — or, where no depot of its mode fields it,
  * which depot to build — with a delete affordance (emits deleteTransitLine)
  * and a one-line hint for the click-to-place-stops / right-click-to-finish
- * drawing flow. The footer sums the running cost the budget is charged.
+ * drawing flow. The footer sums the running cost the budget is charged, and
+ * the advertising the warranted bus shelters earn it.
  */
 import type { JSX } from 'react';
 import { Icon } from './icons';
@@ -34,6 +35,7 @@ export function TransitLinesPanel(): JSX.Element | null {
   const ridership = useCityStore((s) => s.transitRidership);
   const fleet = useCityStore((s) => s.transitFleet);
   const deleteLine = useCityStore((s) => s.deleteTransitLine);
+  const advertising = useCityStore((s) => s.stats.advertising ?? 0);
 
   const drawing = selectedTool.startsWith('transit.');
   const visible = drawing || overlay === 'transit';
@@ -114,6 +116,14 @@ export function TransitLinesPanel(): JSX.Element | null {
           <div className="flex items-center justify-between text-[11px] text-white/60">
             <span className="uppercase tracking-wide">Transit running</span>
             <span data-testid="transit-running-total">¢{runningTotal}/mo</span>
+          </div>
+        )}
+        {advertising > 0 && (
+          <div className="flex items-center justify-between text-[11px] text-white/60">
+            <span className="uppercase tracking-wide">Shelter advertising</span>
+            <span data-testid="shelter-advertising" className="text-[#5dd06b]">
+              +¢{Math.round(advertising)}/mo
+            </span>
           </div>
         )}
       </div>
