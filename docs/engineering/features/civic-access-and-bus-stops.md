@@ -1,6 +1,6 @@
 # Civic access and bus stops — technical design
 
-- **Status:** Agreed 2026-10-27
+- **Status:** Built 2026-10-28 (agreed 2026-10-27)
 - **Date:** 2026-10-27
 - **Author:** Claude Fable 5.1
 

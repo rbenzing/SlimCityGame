@@ -25,7 +25,7 @@ current behavior only and carry no dates of their own._
 
 ## Status (2026-09-29)
 
-**Test suite:** 7,284 tests passing across 206 test files, run 2026-10-28.
+**Test suite:** 7,310 tests passing across 207 test files, run 2026-10-28.
 This is the only test count in the documentation set. When the suite changes
 again, update the figure here and nowhere else.
 
@@ -119,6 +119,11 @@ not a test to fix.
   The kit omits what does not fit and parks the vans in the lot's trailer
   stalls. The real fix is deeper lots for the heavy kinds in the lot layout
   (truck courts run 120–135 ft), a lots-and-land change.
+- A civic kit stands on a raised plinth, so its apron or yard meets the
+  crossing to the road with a step at the footprint's edge; the plinth is
+  the kits' pre-existing pad, and a ramp or a lowered pad is a kit
+  follow-up. A tram depot declares no crossing (its gate faces the track)
+  and the college no drive (its kit has no car park).
 - A bus stop stands on grid street tiles only: its furniture frame reads a
   grid road axis, so a free-form curve takes no stop yet. The lamp renderer
   already lays furniture along a curve and is the frame to reuse.
@@ -395,6 +400,32 @@ roads, and pinning the Three.js version. See [adr/](engineering/adr/README.md).
 ---
 
 ## 10. History (newest first)
+
+### Every civic building has a way in (slice 2 of civic access and bus stops, built 2026-10-28; epic complete)
+
+The second slice of [civic-access-and-bus-stops.md](game-design/features/civic-access-and-bus-stops.md):
+a hand-placed building joins the road.
+
+- **The crossing.** Every civic kit already drew its apron, yard, drive,
+  canopy or forecourt inside its footprint; what none had was the way from
+  its front edge over the verge and footway to the carriageway. Each kit
+  now declares the spans along its front where it meets the street — a
+  fire station's apron the width of its bays, a works or depot's drive at
+  its gate, a hospital's and a clinic's drives at the porte-cochère, a
+  school's drive and the walk at its door, a park's walk at its entrance,
+  a cemetery's drive at the gatehouse, a shore kit's spans on its land
+  side — and the lot renderer lays each crossing to the kerb with the
+  commercial lot's curb cut: 7.3 m for a drive, the span's width for an
+  apron, 1.8 m for a walk. Lamps and kerb furniture keep off the cuts. A
+  completeness test holds every civic id to a declaration.
+- **The stop moved back.** On a street with a footway the bus stop's pad,
+  pole, shelter and bin stand at the footway's outer edge and beyond it, the
+  walk kept clear; on a street with none the pad comes up to the road.
+- Checked in the browser: a kerbed street with a fire station, a school, a
+  clinic and a bus depot, the apron and drives meeting the road, a station
+  turned to the other side, and the stops' footway clear.
+- **Open, logged below:** the kits' raised plinth makes a step where the
+  apron meets the crossing.
 
 ### A bus stop is furniture on the footway (slice 1 of civic access and bus stops, built 2026-10-28)
 

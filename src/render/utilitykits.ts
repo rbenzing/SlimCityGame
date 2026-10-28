@@ -1284,9 +1284,13 @@ export function computeWorksLayout(footprint: FootprintSize): WorksLayout {
 }
 
 function buildWorksGroundsGeometry(footprint: FootprintSize): THREE.BufferGeometry {
-  const { apron } = computeWorksLayout(footprint);
+  const { apron, screenHouse } = computeWorksLayout(footprint);
+  const { halfD } = footprintHalfExtents(footprint);
+  // The inlet works' way in runs from the apron out to the land edge.
+  const inlet: Rect = { x0: screenHouse.x0, x1: screenHouse.x1, z0: -halfD, z1: apron.z0 };
   return buildGeneratorGroundsGeometry(footprint, GEN_SCRUB_RGB, [
     { rect: apron, rgb: GEN_CONCRETE_RGB },
+    { rect: inlet, rgb: GEN_CONCRETE_RGB },
   ]);
 }
 
@@ -4749,7 +4753,7 @@ export function computeEducationLayout(entry: BuildingCatalogEntry): EducationLa
       x0: -W,
       x1: layout.canopy.x0 - 0.5,
       z0: side.z1 + 1.3,
-      z1: D,
+      z1: halfD,
     });
     const mulchZ0 = side.z1 + 6.3;
     layout.mulch = { x0: -W + 3, x1: -W + 13, z0: mulchZ0, z1: mulchZ0 + 10.5 };

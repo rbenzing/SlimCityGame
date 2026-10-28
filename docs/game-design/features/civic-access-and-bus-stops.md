@@ -1,6 +1,6 @@
 # Civic access and bus stops — design
 
-- **Status:** Agreed 2026-10-27
+- **Status:** Built 2026-10-28 (agreed 2026-10-27)
 - **Date:** 2026-10-27
 
 Two things the player sees from the street that read wrong today. A bus
