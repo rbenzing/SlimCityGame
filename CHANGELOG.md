@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.80.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.79.0...slimcity-v1.80.0) (2026-10-28)
+
+
+### Features
+
+* **render:** every civic building has a way in to the road (civic access, slice 2) ([637bb49](https://github.com/rbenzing/SlimCityGame/commit/637bb49f8bed5ffdd74f986f53f408e7bd38a75f))
+* **render:** every civic building has a way in to the road (civic access, slice 2) ([205bf4c](https://github.com/rbenzing/SlimCityGame/commit/205bf4c8880546b9bcfbbf570469dc4bf1d7a46a))
+
+
+### Bug Fixes
+
+* **transit:** a bus stop stands beyond the footway, the footway kept clear ([2e602ab](https://github.com/rbenzing/SlimCityGame/commit/2e602ab973ea60f07581a883e892c0bf1bcebfa9))
+
 ## [1.79.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.78.0...slimcity-v1.79.0) (2026-10-28)
 
 
