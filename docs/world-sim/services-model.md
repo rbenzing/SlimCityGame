@@ -84,7 +84,7 @@ area is full its service radius stops being collected until more area is
 painted or an incinerator takes the load. A connected area derives one office
 tile (its street-adjacent member nearest the start of the search) and a dump
 path from the office to its farthest member; every other tile in the area piles
-trash. See [../art/buildings.md](../art/buildings.md) for the gatehouse and
+trash. See [../art/buildings/README.md](../art/buildings/README.md) for the gatehouse and
 pile models.
 
 The **incinerator** is a catalog ploppable (4×4, unlocks at milestone 3,

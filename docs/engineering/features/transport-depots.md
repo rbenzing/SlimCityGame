@@ -210,7 +210,7 @@ headway on screen agree with the panel. `MAX_BUSES_PER_LINE = 6` and the
 192-slot pool become functions of the largest pool the catalog permits, and the
 vehicle speeds come down to the commercial speeds. The kits (slice 3) follow
 the vehicle-services rule in
-[../../art/civic-massing.md](../../art/civic-massing.md): bay doors are the
+[../../art/civic-massing/README.md](../../art/civic-massing/README.md): bay doors are the
 silhouette, the apron carries the garaged fleet — capacity minus vehicles in
 service, countable — and the body must **not** fill the lot; two thirds of a
 depot is open ground. The rail yard's and tram depot's stabled sets are the
@@ -219,7 +219,7 @@ kit's own parked vehicles, on the vehicle kit's geometry.
 ### The kits (slice 3)
 
 Three recipes in `src/render/utilitykits.ts` on the civic pattern, from
-[../../art/civic-massing.md](../../art/civic-massing.md#the-depots):
+[../../art/civic-massing/reading-a-civic-building-at-a-glance/the-depots.md](../../art/civic-massing/reading-a-civic-building-at-a-glance/the-depots.md):
 
 - **Registry and names.** `bus-depot`, `bus-garage`, `tram-depot` and
   `rail-yard` join `UTILITY_KIT_CATALOG_IDS` (34 ids). The rail station's

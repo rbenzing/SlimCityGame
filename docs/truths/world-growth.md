@@ -169,7 +169,7 @@ Back to [the index](../GROUND-TRUTHS.md).
   is; a business levels up only with room for the jobs it adds. The kind is
   kept through every level-up; a level-up looks for the same zone and kind at
   the next level. The player never picks a kind. —
-  [building-types.md](../game-design/features/building-types.md),
+  [building-types.md](../specs/building-types.md),
   [simulation-rules.md](../game-design/simulation-rules.md#the-spawner-how-a-lot-is-chosen);
   `spawnCandidates`, `drawKind` in `src/sim/growth.ts`; `jobRoom` in
   `src/sim/demand.ts`
@@ -288,14 +288,14 @@ Back to [the index](../GROUND-TRUTHS.md).
   in [balancing.md](../game-design/balancing.md#residential-kinds): residents are
   `round(units × household)`, a building's households are its `units`, and
   power and water are per-home survey figures. A number in `catalog.json`
-  with no derivation is a bug. — [building-types.md](../game-design/features/building-types.md)
+  with no derivation is a bug. — [building-types.md](../specs/building-types.md)
 
 - [R-world-044] A block's homes are the floor it is drawn with: a mid-rise, tower or
   mixed-use block holds its drawn floor area (its body plate over its
   storeys, each tier above the first at the mean setback, a tower's podium
   and a mixed block's shop floor left out) × 85% ÷ a 93 m² apartment,
   rounded. Never count every storey at the ground plate. —
-  [building-types.md](../game-design/features/building-types.md#the-residential-kinds);
+  [building-types.md](../specs/building-types.md#the-residential-kinds);
   `bodyMetresFor` in `src/shared/floorarea.ts`, `computeSetbacks` in
   `src/render/massing.ts`
 

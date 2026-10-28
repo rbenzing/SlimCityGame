@@ -158,7 +158,7 @@ the incinerator's old catalog entry said:
 
 Three dimensions describing three plants, 15× apart. We trust the building: it
 is what the player looks at, and
-[../../art/civic-massing.md](../../art/civic-massing.md) is the only one of the
+[../../art/civic-massing/README.md](../../art/civic-massing/README.md) is the only one of the
 three with a rule behind it. `burnRate` is re-derived from it, at **450 t a
 day**, the middle of the building's band and about the size of the 475 t a day
 line Pasco County is adding: **90,000 units a pass**, a plant for about 200,000

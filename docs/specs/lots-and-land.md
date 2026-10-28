@@ -105,13 +105,13 @@ A lot forms from its street and faces it.
 - **A standing building is a parcel of its own** and is stepped over, so the cut never moves a house. Round a bend each arm is its own run, and a cul-de-sac is two runs, one down each side, with no lot cut across its end.
 - **The lot is turned to its street.** An upright catalog entry's `w` is the frontage and its `d` the depth. On a street running north to south the lot is its turned twin (`res-normal-t-N`, 2×1; `res-estate-t-N`, 3×2), so a normal lot is 20 m of frontage by 40 m deep whichever way its street runs. The square lots have no twin.
 - **Only the row starts a lot.** The rows behind the first, up to the zoning depth, are yard: no parcel starts there, so a house is never platted behind another. A tile no street fronts within the depth keeps the lot its land warrants.
-- **Faces follow.** A home faces the street that borders most of its edge ([buildings.md](../art/buildings.md#residential-lots)), the street it was cut from.
+- **Faces follow.** A home faces the street that borders most of its edge ([buildings.md](../art/buildings/residential-lots.md)), the street it was cut from.
 
 The whole plat is cut once, run by run in map order, with a claimed-tile set, so two streets fronting one corner never cut overlapping parcels. The spawner cuts it once a pass the same way.
 
 ### A kind takes the lots it needs
 
-The draw stays what it is ([building-types.md](../game-design/features/building-types.md#a-lot-picks-its-building)): among the zone's kinds that are unlocked and fit, one is drawn by its share of the real stock. "Fits" now means whole parcels: a building takes one parcel or assembles adjacent ones, never half of one. A kind that fits no parcel on a block never grows there, so a strip of half lots stays small homes and duplexes. Weights are unchanged.
+The draw stays what it is ([building-types.md](building-types.md#a-lot-picks-its-building)): among the zone's kinds that are unlocked and fit, one is drawn by its share of the real stock. "Fits" now means whole parcels: a building takes one parcel or assembles adjacent ones, never half of one. A kind that fits no parcel on a block never grows there, so a strip of half lots stays small homes and duplexes. Weights are unchanged.
 
 - A detached house takes one parcel of whatever size the standing cut.
 - A duplex or fourplex takes a half or a normal parcel, upright or turned, so a poor street grows small plexes and a rich one none: a double or estate parcel fits no plex.
@@ -200,7 +200,7 @@ The building info panel shows a `Lot` row after the Zone row, for a building who
 - **The spawner.** `isZonedLot` and the fit check read parcels instead of raw tiles.
 - **The catalog.** The detached, duplex and fourplex kinds carry a lot axis. A small home holds a small household's fewer rooms, not fewer people.
 - **Land value.** Read, never written; the feedback loop is real and deferred with the population model, so the plat cannot run away with itself.
-- **The house kit** draws the front yard, drive and car from the lot plan ([buildings.md](../art/buildings.md)): a 1×1 lot gets a shallow yard and a parking spot beside the house, a 2×3 a long drive.
+- **The house kit** draws the front yard, drive and car from the lot plan ([buildings.md](../art/buildings/README.md)): a 1×1 lot gets a shallow yard and a parking spot beside the house, a 2×3 a long drive.
 - **Taxes.** Property tax is on the building as today; a lot has no separate value.
 - **Saves.** The plat is derived at spawn time and stored on the building as its footprint, so no save layer changes; an old save loads with its 2×2 houses standing.
 - **Parking.** Whether a lot holds its code parking is [parking-to-code.md](parking-to-code.md)'s; this feature moves no footprint.

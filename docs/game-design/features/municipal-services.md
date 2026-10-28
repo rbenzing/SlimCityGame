@@ -135,7 +135,7 @@ the plan says which end we took and why.
 **Building sizes are derived too.** How large a facility is on the ground is
 not a look — it follows from how many people are inside it and the floor area
 per person that generic building code requires, converted to our tiles by
-[../../art/civic-massing.md](../../art/civic-massing.md). A fire station is
+[../../art/civic-massing/README.md](../../art/civic-massing/README.md). A fire station is
 the size of its appliance bays; a school is the size of its classrooms. Each
 epic shows that arithmetic for each building it adds.
 

@@ -177,7 +177,7 @@ public health and burial are one department, and two buildings need no slider.
 Every figure is derived from a published standard and our own scale — 20 m
 tiles, a 3.2 m storey, 6,000 ticks per game month — never picked to feel right.
 Settled values belong in [../balancing.md](../balancing.md); sizes follow
-[../../art/civic-massing.md](../../art/civic-massing.md) against the anchors in
+[../../art/civic-massing/README.md](../../art/civic-massing/README.md) against the anchors in
 [../../art/README.md](../../art/README.md). Where a standard gives a range, this
 says which end we took and why.
 

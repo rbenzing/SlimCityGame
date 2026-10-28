@@ -37,7 +37,7 @@ yard, 5 ft sides and a 20 ft rear, with lot coverage capped at 40–50%
 Houston allows 65–80% on its small lots. On a 1×2 lot that is a house of up to
 400 m² of plate behind a 7 m front yard, which is what the house kit's
 front-yard rule already draws
-([building-types.md](../game-design/features/building-types.md#what-the-player-sees)).
+([building-types.md](../specs/building-types.md)).
 
 **Blocks.** Subdivision regulations plat blocks no longer than 600 ft without a
 mid-block path and never over 1,320 ft, two tiers of lots deep with the block at

@@ -75,25 +75,25 @@ Back to [the index](../GROUND-TRUTHS.md).
   storeys are 4.5 m, the low end of the 14 ft 8 in–16 ft inpatient floors run
   in a project record ([City of Naples](https://www.naplesgov.com/media/98066),
   a single source), and its parking deck's two 3.35 m (11 ft). —
-  [buildings.md](../art/buildings.md),
+  [buildings.md](../art/buildings/README.md),
   [modeling-standards.md](../art/modeling-standards.md),
   [props-and-vehicles.md](../art/props-and-vehicles.md)
 - [R-render-014] Scale anchors are absolute metres: cosmetic car 4.0 × 1.8 m, pedestrian
   1.75 m, fire appliance 10 m, garbage truck 9 m, standard lane 3.75 m, footway
   1.875 m. A person beside a car reaches just above its roof. —
-  [art/README.md](../art/README.md), [civic-massing.md](../art/civic-massing.md),
+  [art/README.md](../art/README.md), [civic-massing.md](../art/civic-massing/README.md),
   [props-and-vehicles.md](../art/props-and-vehicles.md)
 - [R-render-015] A civic building's footprint and height derive from occupant-load arithmetic
   shown in its plan, never guessed; it goes up rather than out beyond about six
   tiles, and it is identifiable at the default camera pitch without its label by
   the part that does its work (bay doors, entrance, plant, grounds). —
-  [civic-massing.md](../art/civic-massing.md)
+  [civic-massing.md](../art/civic-massing/README.md)
 - [R-render-016] A farm counts as industry and is never drawn as industry. Every renderer
   that dresses industry — lot pad, setback tiers, roof props and stacks,
   parking bays and kerb cars, the facade — asks `isFarmEntry` first. A farm's
   pickable body is its barn walls, placed by the one farm plan (`planFarm`)
   that the ground, the instancer and the kit all read, so the roof sits on the
-  barn and the silo stands in its yard. — [buildings.md](../art/buildings.md);
+  barn and the silo stands in its yard. — [buildings.md](../art/buildings/README.md);
   `src/render/archetypes.ts`, `src/render/farmlot.ts`
 - [R-render-017] A utility kit that paves its whole lot (`pavesLot`: the recycling depot, the
   recovery facility, the transfer station, the hospital) stands on the highest ground under
@@ -127,7 +127,7 @@ Back to [the index](../GROUND-TRUTHS.md).
   `src/render/nightlook.ts`, measured by `tools/nightlook-shots.mjs`
 - [R-render-022] Anything laid on the ground (pad, apron, driveway, bay, lamp pool, grid)
   samples real terrain height per vertex and splits on the terrain's own
-  diagonal. — [buildings.md](../art/buildings.md),
+  diagonal. — [buildings.md](../art/buildings/README.md),
   [lighting.md](../visual-render/lighting.md), [streets.md](../art/streets.md)
 - [R-render-023] Every building levels its footprint when it is placed, grown or plopped,
   spawn or level-up: the footprint's own vertices and the far-edge vertices
@@ -138,7 +138,7 @@ Back to [the index](../GROUND-TRUTHS.md).
   house on a hillside hung over its downhill side, and a works' dock floated
   over its car park, until both held. —
   [terrain.md](../visual-render/terrain.md#levelling-under-structures),
-  [buildings.md](../art/buildings.md#lots-and-paved-ground);
+  [buildings.md](../art/buildings/lots-and-paved-ground.md);
   `computeFlattenPatch` in `src/sim/worker.entry.ts`, `src/render/footprint.ts`
 - [R-render-024] A data lens paints tile (x, z) over tile (x, z): the lens texture's column x
   and row z are that tile, so the quad's u runs with world x and its v with
@@ -163,7 +163,7 @@ Back to [the index](../GROUND-TRUTHS.md).
   The street it fronts is the one bordering the most of its edge, so a home
   on a bend or beside a cul-de-sac faces the street it runs along; ties go
   north, east, south, west. —
-  [buildings.md](../art/buildings.md#residential-lots); `findRoadFacingEdge` in
+  [buildings.md](../art/buildings/residential-lots.md); `findRoadFacingEdge` in
   `src/shared/roadedge.ts`
 - [R-render-027] A kerb takes cars at any hour only where the street paints a parking lane on
   that side; a street whose tier allows parking but paints no lane takes short
@@ -176,7 +176,7 @@ Back to [the index](../GROUND-TRUTHS.md).
   `curbWidthMeters`. A road-facing kit part is skipped when a building fronts
   no street. — [streets.md](../art/streets.md),
   [props-and-vehicles.md](../art/props-and-vehicles.md),
-  [buildings.md](../art/buildings.md)
+  [buildings.md](../art/buildings/README.md)
 - [R-render-029] A vehicle mesh's nose is at +Z, yaw is `atan2(dx, dz)`, and cars sit in their
   right-hand lane by a tier-derived half-lane offset. —
   [props-and-vehicles.md](../art/props-and-vehicles.md)

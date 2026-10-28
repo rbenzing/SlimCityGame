@@ -182,7 +182,7 @@ it is that shape because the published figures say so.
 
 ### Do the existing buildings match?
 
-Checked against [../../art/civic-massing.md](../../art/civic-massing.md) — gross floor
+Checked against [../../art/civic-massing/README.md](../../art/civic-massing/README.md) — gross floor
 area = w × d × 185 × (height ÷ 3.2) — at the scale in
 [../../art/README.md](../../art/README.md).
 

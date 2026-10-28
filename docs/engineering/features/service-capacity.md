@@ -317,7 +317,7 @@ The Services panel is DOM overlay, covered by component tests plus one look in a
 - **New service buildings.** None. Four catalog entries gain a field.
 - **Correcting those four buildings' sizes.** The design document derives them and
   records that all four existing heights are wrong; the corrections belong to the epics
-  that rebuild them, by [../../art/civic-massing.md](../../art/civic-massing.md).
+  that rebuild them, by [../../art/civic-massing/README.md](../../art/civic-massing/README.md).
 - **Reworking coverage.** The BFS, the two-tile radiation and the blend are unchanged.
 - **Queues, waiting lists, dispatch and per-citizen simulation.** An overloaded facility
   is a weaker facility; it grows no backlog, sends no vehicle, and tracks no individual.

@@ -16,7 +16,7 @@ of it:
   [vegetation.md](vegetation.md).
 - **Per-instance colour**, which is how one archetype's geometry produces a
   street of buildings that are not identical. See
-  [../art/buildings.md](../art/buildings.md).
+  [../art/buildings/README.md](../art/buildings/README.md).
 - **Emissive**, driven by the day/night ramp — the one material property that
   changes at runtime on almost everything. See [lighting.md](lighting.md).
 

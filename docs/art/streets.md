@@ -10,7 +10,7 @@ for the surface, the paint, the furniture and the zoning overlay.
 
 ## Asphalt and paint
 
-- **Asphalt**: light grey per the [buildings.md](buildings.md) palette
+- **Asphalt**: light grey per the [buildings/README.md](buildings/README.md) palette
   (darker than the sidewalk, lighter than a near-black), with a slight tier
   darkening — highway darkest. Gravel Road instead renders a dusty tan
   unpaved look with no paint and no kerbs.
@@ -351,7 +351,7 @@ fixed positive band above the terrain height at its own position, with each
 tile subdivided into 4 cells so the fill does not poke through sloped ground
 near a road. New residential zone tints run in greens; Mixed tints a
 distinct teal sitting between the residential green and the commercial blue
-— see [buildings.md](buildings.md) for what each zone actually builds.
+— see [buildings/README.md](buildings/README.md) for what each zone actually builds.
 
 ## Deferred
 

@@ -34,10 +34,10 @@ Lane and vehicle sizes are real metres and do **not** scale with the tile;
 building footprints are given in tiles and do. A building's floor count is
 its height divided by 3.2 m per floor, so a taller catalog entry reads as
 more storeys rather than one stretched box (see
-[buildings.md](buildings.md)). Residential homes are re-proportioned against
+[buildings/README.md](buildings/README.md)). Residential homes are re-proportioned against
 the same anchor: 1–2 storeys with a visible yard, sized against the narrower
 local-street sections below and the 4 m car parked on the driveway (see
-[buildings.md](buildings.md) and [props-and-vehicles.md](props-and-vehicles.md)).
+[buildings/README.md](buildings/README.md) and [props-and-vehicles.md](props-and-vehicles.md)).
 Whatever the carriageway does not use is footway and grass verge — the
 intended suburban look, not wasted space.
 
@@ -80,10 +80,10 @@ and capacity numbers are simulation facts, not art direction; they stay in
 
 | File                                           | Covers                                                                                                               |
 | ---------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
-| [buildings.md](buildings.md)                   | Massing, facades, windows, rooflines, archetype families, procedural houses, construction/abandoned states, lots.    |
+| [buildings/README.md](buildings/README.md)                   | Massing, facades, windows, rooflines, archetype families, procedural houses, construction/abandoned states, lots.    |
 | [streets.md](streets.md)                       | Road surface and paint, medians and kerbs, junction and motorway signage, ground-cover transitions, the zoning grid. |
 | [props-and-vehicles.md](props-and-vehicles.md) | The vehicle kit, parked cars, utility and service silhouettes, landmark ploppables, street furniture and lamps.      |
-| [civic-massing.md](civic-massing.md)           | How a ploppable service or utility building gets its footprint and height from what it does.                         |
+| [civic-massing/README.md](civic-massing/README.md)           | How a ploppable service or utility building gets its footprint and height from what it does.                         |
 
 These together are the environmental art guide. They are kept apart
 rather than fused into one file because five hundred lines under a single

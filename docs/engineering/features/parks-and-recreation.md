@@ -194,7 +194,7 @@ merged into the sports ground's plate, exactly as the path cross already is, and
 the overload read — worn, then bare grass — is a per-instance colour on the
 ground pool via `setColorAt`, which it already supports. Only `pitchGoal` (two
 per sports ground) and `pavilionBlock` (one) are new part kinds; per the
-campus-services rule in [../../art/civic-massing.md](../../art/civic-massing.md)
+campus-services rule in [../../art/civic-massing/README.md](../../art/civic-massing/README.md)
 a grounds-led facility is read by its grounds, so the pavilion is a low block at
 the site edge. Kit trees stay self-contained and do not import
 [../../visual-render/vegetation.md](../../visual-render/vegetation.md).

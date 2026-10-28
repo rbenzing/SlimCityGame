@@ -62,7 +62,7 @@ also clears the trees on every tile it covers, bare ground included.
 This is the rule for the wild trees grown from the map. A home's own yard
 trees are not part of it: they belong to the house kit, are planted by the
 home's own seed clear of its house, drive and yard furniture, and go when the
-home does (see [buildings.md](../art/buildings.md#residential-lots)).
+home does (see [buildings.md](../art/buildings/residential-lots.md)).
 
 ## Ground cover
 

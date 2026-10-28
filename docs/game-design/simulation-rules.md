@@ -220,7 +220,7 @@ footprint rather than just its origin corner, so a lot's service does not
 depend on which side of it the street happens to sit. A lot that fails the
 checks after the draw is simply tried again on the next sweep, with a fresh
 draw. The kinds, their weights and where they come from are in
-[features/building-types.md](features/building-types.md).
+[specs/building-types.md](../specs/building-types.md).
 
 Nobody moves into a home the grid cannot light or water. The grid must also
 have spare supply for the entry's `powerUse` and `waterUse`: supply less
@@ -373,7 +373,7 @@ A zoned building's mass does not fill its footprint tile: the body is a
 size in metres set by its kind — 4.75 m per lot tile for a detached house,
 13.6 m per tile for a block, and a fixed share of the lot capped in metres
 for a duplex, a fourplex or a multiplex, never more than 85% of the tile on
-either axis (see [../art/buildings.md](../art/buildings.md#residential-kinds)) —
+either axis (see [../art/buildings/residential-kinds/README.md](../art/buildings/residential-kinds/README.md)) —
 so that neighbouring buildings never share a wall. The lot, not the building, claims the rest of
 the tile: a lot pad reserves the building's whole footprint, sitting under
 the body and surfacing whatever remainder the building implies — paved yard,
@@ -382,7 +382,7 @@ between them, stopping short of the road at the verge the parking apron
 already respects; a home's lawn instead runs across the verge to the
 sidewalk, and the house stands at the front of its lot with its drive and
 yard laid out from the street (see
-[buildings.md](../art/buildings.md#residential-lots)).
+[buildings.md](../art/buildings/residential-lots.md)).
 
 Whether a lot's kerb may be used for parking is decided by two independent
 rules that compose. The road decides whether and when its kerb is parkable: a

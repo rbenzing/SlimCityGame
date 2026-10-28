@@ -21,7 +21,7 @@ no draw-call growth:
 - **Palette**: a curated ~10-colour saturated list (red, blue, teal, green,
   magenta, pink, yellow, orange, white, charcoal) picked by a slot hash — a
   deliberate saturation contrast against the desaturated city in
-  [buildings.md](buildings.md). Yellow reads as a taxi without needing a
+  [buildings/README.md](buildings/README.md). Yellow reads as a taxi without needing a
   separate livery.
 - **Heading**: a vehicle's mesh has its nose at +Z, so its facing yaw is
   `atan2(dx, dz)` — a car's long axis always aligns with the direction it is
@@ -78,13 +78,13 @@ Static parked cars are an occupancy signal, not decoration:
   with its nose 0.2 m short of the stall's head and its tail over the aisle.
   Constructing and Abandoned buildings park zero cars — an empty lot is
   legible sim state, matching the dark-window rule for abandonment in
-  [buildings.md](buildings.md).
+  [buildings/README.md](buildings/README.md).
 - **Look**: simple two-box cars (body plus cabin) in the vehicle kit's
   saturated palette, picked by a hash of the building id and stall index,
   standing between the lot's white stall lines — the parking-lot read.
   Industrial lots mix box trucks (7 m) and pickups in with their workers'
   cars, using the lorry silhouette; commercial lots park cars. Homes never street-park: a home that fronts a street parks on
-  its own drive — see [Residential lots](buildings.md#residential-lots).
+  its own drive — see [Residential lots](buildings/residential-lots.md).
   A farm keeps a pickup in its yard, the lorry silhouette at a full-size
   pickup's 5.31 × 2.03 × 1.91 m, which does the rounds of the yard by day and
   parks by the farmhouse at night — see
@@ -173,18 +173,18 @@ of the generic building facade box:
   the water-facing edge, turned the same way.
 - **Coal plant**: a boiler house and turbine hall, a precipitator and two
   striped smokestacks in the industrial chimney language from
-  [buildings.md](buildings.md), the coal stockpile with its conveyor
+  [buildings/README.md](buildings/README.md), the coal stockpile with its conveyor
   gallery, a cooling tower, an ash silo and a switchyard.
 - **Incinerator, recycling depot, MRF and transfer station**: a tipping
   hall, boiler hall and stack; a roll-off drop-off; a baling hall with its
   docks; a tipping floor with push walls over a load-out bay. See
-  [civic-massing.md](civic-massing.md#the-earliest-kits-redone) for all
+  [civic-massing.md](civic-massing/reading-a-civic-building-at-a-glance/the-earliest-kits-redone.md) for all
   eight.
 - **Solar farm, gas turbine, combined-cycle station, nuclear station**: rows of
   tilted panels facing the sun at every rotation; a turbine package and one slim
   stack; a heat-recovery boiler, a taller stack and a cooling tower; a domeless
   reactor building, a switchyard and a shore intake. See
-  [civic-massing.md](civic-massing.md#the-generators-solar-gas-combined-cycle-and-the-reactor).
+  [civic-massing.md](civic-massing/reading-a-civic-building-at-a-glance/the-generators-solar-gas-combined-cycle-and-the-reactor.md).
 - **The parks** are five rungs that read apart at the default pitch without
   a label, each the real size of its type
   ([parks-and-recreation.md](../game-design/features/parks-and-recreation.md)).
@@ -240,15 +240,15 @@ of the generic building facade box:
 - **The four fire and police stations** are kits on a paved lot: framed bay
   doors, an apron and the parked engine for fire; an entrance with a canopy, a
   sally port and the car park for police; windows and door panes that light at
-  night. See [civic-massing.md](civic-massing.md#the-fire-and-police-stations).
+  night. See [civic-massing.md](civic-massing/reading-a-civic-building-at-a-glance/the-fire-and-police-stations.md).
 - **The four schools and the library** are kits: classroom wings at their stated
   floor, a gym, and grounds — playground, bus pull-in with a parked school bus,
   tennis courts, a college quad, a library's raised reading room. See
-  [civic-massing.md](civic-massing.md#the-schools-the-college-and-the-library).
+  [civic-massing.md](civic-massing/reading-a-civic-building-at-a-glance/the-schools-the-college-and-the-library.md).
 - **The clinic, the rail station and the bus stop** are kits: a drop-off
   under a porte-cochère, a platform and a combination depot on the track
   edge, an agency shelter on a lawn tile. See
-  [civic-massing.md](civic-massing.md#the-clinic-the-depot-and-the-bus-stop).
+  [civic-massing.md](civic-massing/reading-a-civic-building-at-a-glance/the-clinic-the-depot-and-the-bus-stop.md).
 - **The three depots** are kits read by their bay doors and the fleet on the
   apron: the bus depot and the central bus garage share one recipe (stall
   rows about their aisles, a shop with framed drive-through bays, a wash
@@ -258,7 +258,7 @@ of the generic building facade box:
   catenary poles at the tram depot and over ballast at the yard, the shop
   hall along the track side. The vehicles parked are what the depot holds
   less what is out on the lines. See
-  [civic-massing.md](civic-massing.md#the-depots).
+  [civic-massing.md](civic-massing/reading-a-civic-building-at-a-glance/the-depots.md).
 - Every zoned-growth building keeps the standard facade system with its
   own kit's parts, because those genuinely are buildings; the airport
   stays a box until it has an epic of its own.
@@ -287,7 +287,7 @@ visible — a facility, not a data lens the player has to switch on.
   receptacle and a flag sign with its bottom 7 ft up, from one builder
   shared with the kit, so a line's stop and a plopped stop read alike —
   low-poly, instanced, deterministic per stop; the figures are in
-  [civic-massing.md](civic-massing.md#the-clinic-the-depot-and-the-bus-stop).
+  [civic-massing.md](civic-massing/reading-a-civic-building-at-a-glance/the-clinic-the-depot-and-the-bus-stop.md).
   A line's stop on a plopped bus stop's tile draws no shelter of its own.
 - **Incident pins**: a call's marker is a cone the selection pin's size,
   4.4 m tall and 1.6 m across at its base, point down, hovering 2.5 m above

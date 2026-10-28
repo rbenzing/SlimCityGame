@@ -192,7 +192,7 @@ and 3.0 m tall. Published bus parking puts a 12.2 m bus in a 13.7 m × 3.66 m
 stall — 1.5 m longitudinal and 1.07 m lateral clearance — so our 10 m bus takes
 an **11.5 m × 3.6 m stall**, with the published **12.2 m aisle** for 90° bus
 stalls between facing rows. (The 7.3 m aisle in
-[../../art/civic-massing.md](../../art/civic-massing.md) is a car figure; a bus
+[../../art/civic-massing/README.md](../../art/civic-massing/README.md) is a car figure; a bus
 needs its own length to swing.) Maintenance runs at **one bay per ten buses**,
 the lean end of transit facility planning (one per fifteen is the common
 figure, [Walker](https://walkerconsultants.com/planning-beyond-the-route-addressing-transit-planning-maintenance-constraints/);

@@ -68,7 +68,7 @@ slip road carries a sound wall that cuts the noise behind it
 
 **Building types** are complete: a zoned lot draws a kind of building by lot
 fit and real-world share, and keeps it for life
-([building-types.md](game-design/features/building-types.md)). Homes come
+([building-types.md](specs/building-types.md)). Homes come
 in nine kinds, businesses in seven, and industry in eight across two zones,
 the new **Heavy Industrial** zone holding the plants that pollute; a
 business opens only where the town has room for its jobs, and industry
@@ -227,7 +227,7 @@ zones that need it and drawn as a campus. So is power generation
 farm, a gas turbine, a combined-cycle station and a reactor, each a real small
 unit sized to the game's cities. So is building detail, at the player's
 request (2026-10-14, complete 2026-10-16;
-[building-detail.md](game-design/features/building-detail.md)): every
+[building-detail.md](specs/building-detail.md)): every
 zoned building and ploppable drawn as the US type it is, to the water tower's
 standard, from a sourced reference library and inside a measured triangle
 budget; eight slices, the budget measured first, then the performance

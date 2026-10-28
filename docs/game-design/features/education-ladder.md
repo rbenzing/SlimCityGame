@@ -14,7 +14,7 @@ the save, the panels and the Advisor need: the four schools, the library, the
 gates and the problem that tells a player which school is missing. **Slice 2,
 built,** draws the five buildings: classroom wings at their stated floor, gyms,
 and grounds a player reads them by — see
-[../../art/civic-massing.md](../../art/civic-massing.md#the-schools-the-college-and-the-library).
+[../../art/civic-massing/reading-a-civic-building-at-a-glance/the-schools-the-college-and-the-library.md](../../art/civic-massing/reading-a-civic-building-at-a-glance/the-schools-the-college-and-the-library.md).
 
 The 2026-09-18 draft was built on English sources. It is rewritten here on the
 United States' own: NCES enrolment and school counts, a US school construction
@@ -346,7 +346,7 @@ Grand City for the college.
 ### Sizes and draw
 
 Sizes come from a floor, by the massing rule in
-[../../art/civic-massing.md](../../art/civic-massing.md): gross floor =
+[../../art/civic-massing/README.md](../../art/civic-massing/README.md): gross floor =
 `w × d × 185 × height ÷ 3.2` square metres. The floor a pupil is allowed comes from
 Maine's Department of Education space-allocation guidelines (2025): 140 sf for an
 elementary pupil, 160 for a middle and 185 for a high school pupil, with

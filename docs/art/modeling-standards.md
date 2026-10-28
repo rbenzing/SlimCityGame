@@ -16,7 +16,7 @@ they govern every building kit:
 - **Floor count is height ÷ 3.2 m.** A catalog entry's `height` is not a
   free-floating number — a taller entry is meant to read as more storeys,
   not one box stretched taller with the same window band. See
-  [buildings.md](buildings.md) for the facade shader that draws this grid.
+  [buildings/README.md](buildings/README.md) for the facade shader that draws this grid.
 - **Footprints are in tiles; kit-part dimensions are in real metres.** A
   catalog entry's `footprint: { w, d }` is tile counts and scales with
   `TILE_METERS`; everything `buildingkit.ts`/`houses.ts` place on top of
@@ -165,7 +165,7 @@ use. A chunk is rebuilt when a lot in it changes, as a road chunk is.
 
 Archetype-specific proportions (how tall a monitor roof sits, how a
 warehouse's dock is sized against its frontage) belong to
-[buildings.md](buildings.md), [streets.md](streets.md), and
+[buildings/README.md](buildings/README.md), [streets.md](streets.md), and
 [props-and-vehicles.md](props-and-vehicles.md), not here — this page is
 the budget and the topology rule those files' specifics have to satisfy,
 kept apart so it does not repeat with every new archetype.
