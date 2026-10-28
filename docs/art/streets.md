@@ -4,7 +4,7 @@ What a road looks like, not how it behaves. Roads graduate from tinted quads
 to readable streets entirely through vertex-colour and geometry work on the
 existing per-chunk road mesh — no textures. Lane composition, junction
 control logic and capacity numbers are simulation facts and stay in
-[road-model.md](../world-sim/road-model.md); the road cross-section table lives in the
+[road-model.md](../world-sim/road-model/README.md); the road cross-section table lives in the
 [scale bible](README.md). This file is what a modeller or shader author needs
 for the surface, the paint, the furniture and the zoning overlay.
 
@@ -168,7 +168,7 @@ for the surface, the paint, the furniture and the zoning overlay.
   arm's inset to the other's where they differ. The one exception is a motorway tile a ramp meets — a merge
   or a diverge — which is not an intersection: its lines run through, it has
   no box and no rounded corners, and its edge line only opens across the
-  ramp's mouth (see [road-model.md](../world-sim/road-model.md), Ramps and
+  ramp's mouth (see [road-model.md](../world-sim/road-model/README.md), Ramps and
   interchanges). What an approach into a proper intersection is painted
   follows the junction's control. An approach that gives way under a stop or
   a give-way, and every approach under an all-way stop or a signal, gets a
@@ -200,7 +200,7 @@ for the surface, the paint, the furniture and the zoning overlay.
   a true half-circle at each end flattens its caps along itself.
 - **Direction arrows**: a placed one-way road shows pavement direction arrows
   roughly every third tile, each the standard 2.90 m through arrow (see
-  [road-model.md](../world-sim/road-model.md#markings) for every arrow's
+  [road-model.md](../world-sim/road-model/markings.md) for every arrow's
   size). While a one-way road or a highway is being
   dragged into place, translucent arrows along the ghost path also show the
   direction traffic will run, following the drag path around a corner; they
@@ -260,7 +260,7 @@ for the surface, the paint, the furniture and the zoning overlay.
 
 A junction is signed by its own control, which the simulation's warrant
 decides from the classes that meet and what they carry
-([road-model.md](../world-sim/road-model.md)), never by the approaching
+([road-model.md](../world-sim/road-model/README.md)), never by the approaching
 road's tier. A signalised junction puts a **traffic signal** on every
 approach — a mast with a short arm reaching over the carriageway and a
 three-lens head hung off it.

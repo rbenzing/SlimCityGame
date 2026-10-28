@@ -46,7 +46,7 @@ joined street tiles that are not themselves tram track, with tram track joined
 at both ends, is a **tram crossing** along that axis, and the tram graph counts
 every tile of it as track. Two tiles is a road laid as two carriageways: the
 median opens where the tramway crosses it
-([road-model.md](road-model.md)), so the tram goes over both halves. Nothing is
+([road-model.md](road-model/README.md)), so the tram goes over both halves. Nothing is
 saved for it, so it comes and goes with the tramway: take one tram arm away
 and the tiles are an ordinary junction again. A tram may only go straight over
 a crossing, never turn onto the street it is crossing, because the street has

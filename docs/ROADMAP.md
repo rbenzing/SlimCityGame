@@ -239,7 +239,7 @@ fields a line's vehicles over its own network, a mode with no depot runs
 nothing, every vehicle in service is charged its operating cost, buses
 pull out at dawn and home at night, and the fleet at home stands on the
 apron. **In progress, at the player's request (2026-10-16): tramways**
-([tramways.md](game-design/features/tramways.md)) — a street tramway drawn
+([tramways.md](specs/tramways.md)) — a street tramway drawn
 as a street cars share, a tram reservation lifted onto an elevated guideway
 in the Disney World monorail's form with raised stations, and every tram
 lane routable; complete 2026-10-23 with the raised stations. **The

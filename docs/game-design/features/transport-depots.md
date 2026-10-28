@@ -127,7 +127,7 @@ quiet suburb and runs it across town will find the congestion they built.
 
 **The road model.** A bus lane and a tram lane are already lane pieces a player
 can compose into a road
-([../../world-sim/road-model.md](../../world-sim/road-model.md)). A dedicated
+([../../world-sim/road-model.md](../../world-sim/road-model/README.md)). A dedicated
 lane shortens the derived round-trip time, so for the first time those lanes buy
 a number rather than a coloured stripe. Worth stating plainly about trams:
 today's tram track is an ordinary street with rails embedded in its running

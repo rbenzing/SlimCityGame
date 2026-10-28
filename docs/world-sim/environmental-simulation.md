@@ -138,7 +138,7 @@ Happiness input.
 
 **Sound walls.** Noise is the one field whose diffusion a tile edge can cut.
 A motorway or ramp's sound wall stands on a tile edge
-([road-model.md](road-model.md#sound-walls)), and each edge has a
+([road-model.md](road-model/sound-walls.md)), and each edge has a
 transmission `t` out of 256, 256 where nothing stands. In the kernel a
 neighbour across an edge counts as `self + ((neighbour − self) × t >> 8)`
 instead of itself. That scales the flow between the two tiles the same from

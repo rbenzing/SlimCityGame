@@ -13,7 +13,9 @@ How to use it:
 
 | Area                                   | File                                          | Rules | Ids                                  |
 | -------------------------------------- | --------------------------------------------- | ----: | ------------------------------------ |
-| Roads, junctions and transit           | [roads.md](truths/roads.md)                   | 80    | `R-roads-001` to `R-roads-080`       |
+| Roads: network and profiles            | [roads-network.md](truths/roads-network.md)   | 38    | `R-roads-001–006, 009, 010, 015–028, 040–043, 051–055, 057–060, 076, 077, 080` |
+| Roads: junctions, markings, ramps      | [roads-junctions.md](truths/roads-junctions.md) | 33  | `R-roads-029–036, 044–050, 056, 061–075, 078, 079` |
+| Roads: rail, tram and transit          | [roads-transit.md](truths/roads-transit.md)   | 9     | `R-roads-007, 008, 011–014, 037–039` |
 | World and simulation                   | [world.md](truths/world.md)                   | 48    | `R-world-001` to `R-world-048`       |
 | Utilities and services                 | [services.md](truths/services.md)             | 38    | `R-services-001` to `R-services-038` |
 | Saves and the data model               | [saves.md](truths/saves.md)                   | 12    | `R-saves-001` to `R-saves-012`       |

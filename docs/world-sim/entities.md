@@ -49,7 +49,7 @@ exist side by side, each built from a disjoint or overlapping tile predicate:
 the street network (`isStreetTier`), the rail network (`isRailTier`,
 disjoint from the street tiles), and the tram network (`isTramTier`, a
 subset of the street tiles — a tram tile belongs to both graphs at once).
-See [road-model.md](road-model.md) for what a road IS (class, profile,
+See [road-model.md](road-model/README.md) for what a road IS (class, profile,
 junction) and [pathfinding.md](pathfinding.md) for what the graph looks like
 to a search.
 

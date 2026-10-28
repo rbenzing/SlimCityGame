@@ -8,7 +8,7 @@ the algorithm itself: the graph it searches, the A* mechanics, and the one
 unusual design decision — search state keyed on **(node, arriving edge)**
 rather than bare node — that everything else here exists to explain. It
 complements, and does not restate, two documents that already cover
-adjacent ground in full: [road-model.md](road-model.md) has the capacity,
+adjacent ground in full: [road-model.md](road-model/README.md) has the capacity,
 control-delay and warrant formulas this algorithm evaluates, and
 [../engineering/systems/traffic.md](../engineering/systems/traffic.md)
 describes how the traffic system that is `findPath`'s heaviest caller is
@@ -108,7 +108,7 @@ candidate next step. The travel-time term and its congestion scaling are
 already covered in full, with every number, in
 [traffic-model.md](traffic-model.md#path-cost-is-congestion-aware); the
 control-delay and warrant formulas `junctionDelay` calls into are in
-[road-model.md](road-model.md#capacity-control-delay-and-warrants--the-formulas).
+[road-model.md](road-model/capacity-control-delay-and-warrants--the-formulas.md).
 What is specific to the search itself: `directionShare` and
 `narrowsAtA`/`narrowsAtB` make the congestion term direction-sensitive (an
 edge with an uneven lane split, or one that tapers into a narrower road

@@ -46,7 +46,7 @@ Back to [the index](../GROUND-TRUTHS.md).
   the refusal as its tooltip, never offered and then refused; the choice
   already made is never disabled. A selected tool's card is always on the
   drawer's visible sub-tab: opening another sub-tab puts the tool down. —
-  [hud.md](../ux/hud.md), [road-model.md](../world-sim/road-model.md); `layRefusal`
+  [hud.md](../ux/hud.md), [road-model.md](../world-sim/road-model/README.md); `layRefusal`
   in `src/shared/roadprofile.ts`, `src/ui/RoadToolOptions.tsx`
 - [R-design-011] Disabled (nothing to do now, about 30% opacity) and gated by milestone (40%
   opacity, lock, tooltip naming the milestone) are distinct treatments and are

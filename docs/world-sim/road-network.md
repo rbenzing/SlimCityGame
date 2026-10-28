@@ -5,7 +5,7 @@ angle. The decision is
 [ADR-0016](../engineering/adr/0016-roads-are-a-network-of-nodes-and-segments.md).
 This document is the target the road system is moving to, and the order it
 moves in. Until a stage below has shipped, the tile-based model in
-[road-model.md](road-model.md) and [overpasses.md](overpasses.md) is what the
+[road-model.md](road-model/README.md) and [overpasses.md](overpasses.md) is what the
 game does.
 
 ## What the network holds
@@ -101,11 +101,11 @@ with the same profile is not a junction; the road runs straight through it.
 - **Control belongs to the node.** Control, turn restrictions and lane turns
   are stored per node and per road meeting it, with the roads numbered
   clockwise from north. Warrants, defaults and the delay formulas in
-  [road-model.md](road-model.md) are unchanged; they read a road's approach
+  [road-model.md](road-model/README.md) are unchanged; they read a road's approach
   from its segment instead of from a compass direction.
 - **The class rules are unchanged.** Rank, replacement, which classes may
   meet, and that a highway meets only a highway or a ramp, all hold as in
-  [road-model.md](road-model.md).
+  [road-model.md](road-model/README.md).
 - **A ramp meets a motorway alongside it.** Where a ramp joins or leaves a
   motorway, it does so at no more than 20° to the motorway, in the motorway's
   direction of travel. The narrowest-angle rule does not apply there, because
@@ -137,7 +137,7 @@ derived from the network:
   beside another — are held apart in a derived layer (`roadSeparate`,
   recomputed from the network and never saved), which the masks and every
   reader of joins respect. See
-  [road-model.md](road-model.md#how-roads-meet-rank-replacement-and-transitions).
+  [road-model.md](road-model/how-roads-meet-rank-replacement-and-transitions.md).
 
 ## How each system reads the network
 

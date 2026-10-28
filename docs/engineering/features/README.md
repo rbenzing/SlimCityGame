@@ -77,14 +77,14 @@ Outside the programme:
 | Document                                           | Save format | Worker protocol |
 | -------------------------------------------------- | ----------- | --------------- |
 | [farms.md](farms.md)                               | no          | no              |
-| [interchanges.md](interchanges.md)                 | no          | no              |
-| [roundabouts.md](roundabouts.md)                   | no          | additive        |
-| [sound-barriers.md](sound-barriers.md)             | no          | no              |
+| [interchanges.md](../../specs/interchanges.md)     | no          | no              |
+| [roundabouts.md](../../specs/roundabouts.md)       | no          | additive        |
+| [sound-barriers.md](../../specs/sound-barriers.md) | no          | no              |
 | [building-types.md](building-types.md)             | no          | no              |
 | [underground-view.md](underground-view.md)         | no          | no              |
 | [parking-to-code.md](parking-to-code.md)           | no          | no              |
 | [building-detail.md](building-detail.md)           | no          | no              |
-| [tramways.md](tramways.md)                         | no          | no              |
+| [tramways.md](../../specs/tramways.md)             | no          | no              |
 | [curved-parcels.md](curved-parcels.md)             | yes (17)    | additive        |
 | [rci-kits-second-pass.md](rci-kits-second-pass.md) | no          | no              |
 | [civic-access-and-bus-stops.md](civic-access-and-bus-stops.md) | no          | additive        |

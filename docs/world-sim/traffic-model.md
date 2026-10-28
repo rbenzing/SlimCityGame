@@ -37,8 +37,8 @@ rather than an ever-accumulating total.
 `(length / speed) × (1 + 2 · (volume / capacity))`, capped at v/c = 1 for
 the multiplier, plus whatever junction delay the driver pays entering it
 (see
-[road-model.md#capacity-control-delay-and-warrants--the-formulas](road-model.md#capacity-control-delay-and-warrants--the-formulas)
-and [road-model.md#ramps-and-interchanges](road-model.md#ramps-and-interchanges)
+[road-model.md#capacity-control-delay-and-warrants--the-formulas](road-model/capacity-control-delay-and-warrants--the-formulas.md)
+and [road-model.md#ramps-and-interchanges](road-model/ramps-and-interchanges.md)
 for the merge-delay term). A route that would cross a lane-drop taper is
 limited to the narrower road's own capacity for that stretch, so a hard
 lane drop reads as a real chokepoint rather than a free merge. Because a

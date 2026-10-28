@@ -1,9 +1,10 @@
 /**
  * Checks the Markdown documentation. A relative link that points at a file
  * that is not there fails the run, and so does a rule id defined twice or
- * cited but never defined. Three further passes only warn (exit 0):
- * files over their size budget, dates written into a specification, and a
- * sentence repeated in two files.
+ * cited but never defined. So does a file over its size budget under
+ * docs/truths/, docs/specs/ or docs/world-sim/road-model/, and a spec
+ * without its card. Two further passes only warn: other files over budget,
+ * dates written into a specification, and a sentence repeated in two files.
  *
  * A documentation set rots quietly: a file is renamed, the links to it still
  * read fine, and nothing complains until someone follows one. This is the
@@ -106,7 +107,7 @@ const warn = (check, detail) => {
 /** Byte budget of a file by its path, or Infinity where it has none. */
 function budget(path) {
   if (['CLAUDE.md', 'docs/README.md', 'docs/GROUND-TRUTHS.md'].includes(path)) return 4096;
-  if (path.startsWith('docs/truths/')) return 24576;
+  if (startsWithAny(path, ['docs/truths/', 'docs/specs/'])) return 24576;
   if (startsWithAny(path, ['docs/history/', 'docs/sources/', 'docs/engineering/adr/', 'docs/Road Guides/'])) {
     return Infinity;
   }
@@ -117,8 +118,46 @@ const over = docs
   .map(({ path, text }) => ({ path, bytes: Buffer.byteLength(text), limit: budget(path) }))
   .filter((d) => d.bytes > d.limit)
   .sort((a, b) => b.bytes - b.limit - (a.bytes - a.limit));
-for (const d of over) warn('size', `${d.path} ${d.bytes} bytes, budget ${d.limit}`);
-console.log(`${over.length} size warning(s)\n`);
+let failures = 0;
+const STRICT = ['docs/truths/', 'docs/specs/', 'docs/world-sim/road-model/'];
+/** Strict paths whose own migration slice has not run yet; they warn until it does. */
+const PENDING = ['docs/truths/world.md'];
+for (const d of over) {
+  if (startsWithAny(d.path, STRICT) && !PENDING.includes(d.path)) {
+    console.error(`over budget  ${d.path}  ${d.bytes} > ${d.limit}`);
+    failures++;
+  } else warn('size', `${d.path} ${d.bytes} bytes, budget ${d.limit}`);
+}
+console.log(`${over.length} file(s) over budget\n`);
+
+/**
+ * A spec opens with a title, then its card: the six labelled lines in order,
+ * all before the first `## ` section. A card past 40 lines is a warning, since
+ * a long Numbers table is still a card.
+ */
+const CARD = ['**Owns:**', '**Rules:**', '**Numbers:**', '**Code:**', '**Tests:**', '**Open:**'];
+const CARD_LINES = 40;
+for (const { path, text } of docs) {
+  if (!path.startsWith('docs/specs/') || /\/(_template|README)\.md$/.test(path)) continue;
+  const lines = text.split(/\r?\n/);
+  const firstSection = lines.findIndex((l) => l.startsWith('## '));
+  const head = firstSection < 0 ? lines : lines.slice(0, firstSection);
+  let at = -1;
+  const problems = [];
+  if (!lines[0].startsWith('# ')) problems.push('does not begin with "# "');
+  for (const key of CARD) {
+    const i = head.findIndex((l) => l.includes(key));
+    if (i < 0) problems.push(`${key} missing before the first section`);
+    else if (i < at) problems.push(`${key} out of order`);
+    else at = i;
+  }
+  if (problems.length > 0) {
+    console.error(`no card  ${path}  ${problems.join('; ')}`);
+    failures++;
+  } else if (head.length > CARD_LINES) {
+    warn('card', `${path} card is ${head.length} lines, aim for ${CARD_LINES}`);
+  }
+}
 
 const DATED_OK = ['docs/history/', 'docs/ROADMAP.md', 'docs/engineering/adr/', 'docs/DESIGN.md', 'CHANGELOG.md'];
 const dated = docs
@@ -143,4 +182,5 @@ for (const [sentence, paths] of restated.slice(0, 40)) {
   warn('restated', `${[...paths].join(' and ')} — "${sentence.slice(0, 80)}"`);
 }
 console.log(`${restated.length} restated-sentence warning(s)${restated.length > 40 ? ' (first 40 shown)' : ''}\n`);
-console.log(`${warnings} warning(s) shown in total; links and rule ids are the only failures.`);
+console.log(`${warnings} warning(s) shown in total; ${failures} failure(s) (budgets and cards under truths, specs and road-model).`);
+if (failures > 0) process.exit(1);
