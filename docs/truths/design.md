@@ -9,7 +9,7 @@ Back to [the index](../GROUND-TRUTHS.md).
   control. —
   [ADR-0011](../engineering/adr/0011-rule-zero-every-control-is-wired-to-real-behaviour.md),
   [ux/README.md](../ux/README.md)
-- [R-design-002] A tuning constant lives in code and [balancing.md](../game-design/balancing.md)
+- [R-design-002] A tuning constant lives in code and [balancing.md](../game-design/balancing/README.md)
   names its file. Change the number in the code, never only the doc, and never
   create a second copy of a dial. —
   [game-design/README.md](../game-design/README.md)
@@ -20,7 +20,7 @@ Back to [the index](../GROUND-TRUTHS.md).
 - [R-design-005] The Advisor re-ranks every tenth snapshot, sorts by severity, then affected
   count, then fixed priority so it never reshuffles under the cursor, and
   returns an empty list for a healthy city. —
-  [progression.md](../game-design/progression.md), [hud.md](../ux/hud.md)
+  [progression.md](../game-design/progression.md), [hud.md](../ux/hud/README.md)
 - [R-design-006] The Advisor reports a grid too small for its city as a shortage ("build
   another plant"), never as a gap in the network, and says so for as long as
   a building stands dark from it or growth waits on it. —
@@ -40,13 +40,13 @@ Back to [the index](../GROUND-TRUTHS.md).
 - [R-design-009] A road off the grid is previewed by the same `planSegment` its command runs,
   against the render thread's mirror of the grid and the road network, so the
   ghost and the command never disagree about what may be laid. A motorway
-  offers no `Grid` mode. — [road-network.md](../world-sim/road-network.md),
+  offers no `Grid` mode. — [road-network.md](../world-sim/road-network/README.md),
   [interaction.md](../ux/interaction.md)
 - [R-design-010] A road option that would compose a road the tool refuses is disabled with
   the refusal as its tooltip, never offered and then refused; the choice
   already made is never disabled. A selected tool's card is always on the
   drawer's visible sub-tab: opening another sub-tab puts the tool down. —
-  [hud.md](../ux/hud.md), [road-model.md](../world-sim/road-model/README.md); `layRefusal`
+  [hud.md](../ux/hud/README.md), [road-model.md](../world-sim/road-model/README.md); `layRefusal`
   in `src/shared/roadprofile.ts`, `src/ui/RoadToolOptions.tsx`
 - [R-design-011] Disabled (nothing to do now, about 30% opacity) and gated by milestone (40%
   opacity, lock, tooltip naming the milestone) are distinct treatments and are
@@ -70,7 +70,7 @@ Back to [the index](../GROUND-TRUTHS.md).
   [components.md](../ux/components.md)
 - [R-design-016] A key binding is listed in the docs or the Help popover only after it is
   verified against `main.ts` and `App.tsx`; never an aspirational binding. —
-  [hud.md](../ux/hud.md), [input-mapping.md](../ux/input-mapping.md)
+  [hud.md](../ux/hud/README.md), [input-mapping.md](../ux/input-mapping.md)
 - [R-design-017] A game-design document precedes the technical plan, which precedes the code.
   A shipped design document stays as a record of intent, and the behaviour moves
   to the specifications. —

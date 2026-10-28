@@ -34,8 +34,7 @@ capacity expressed in vehicles per hour converts by one constant:
   against its own road. Delay is per movement, dividing by however many lanes serve that
   movement, and is added to the edge cost of the approach.
   Every curve here is the sim's own reduced form of the manual's, not the
-  manual's, and the roundabout's stays that way on purpose (decided
-  2026-10-05): the HCM's single-lane entry delay (7th edition, Eq. 22-17)
+  manual's, and the roundabout's stays that way on purpose (decided): the HCM's single-lane entry delay (7th edition, Eq. 22-17)
   costs three to six times as much at moderate to high v/c, about 63 s
   against 14 s at capacity, and adopting it alone would make a roundabout
   far slower than a signal or a stop at load, which the reduced curves for

@@ -21,7 +21,7 @@ There are no citizens to update — population is a number, and traffic is an
 assignment over a graph whose nodes exist only at junctions. The cost scales
 with the size of the road network, not with how much of it is on screen. See
 [agent-behavior.md](agent-behavior.md) and
-[../engineering/systems/traffic.md](../engineering/systems/traffic.md).
+[../engineering/systems/traffic.md](../engineering/systems/traffic/README.md).
 
 What _does_ vary by cadence is which systems run on which tick — several run on
 their own interval rather than every tick. That is a fixed schedule, not a

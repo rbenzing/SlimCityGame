@@ -12,7 +12,7 @@ Every figure in the programme is derived from a published municipal standard and
 - **Building sizes are derived too.** A facility's ground size follows from how many people are inside it and the floor area per person that generic building code requires, converted to tiles by [civic massing](../art/civic-massing/README.md). A fire station is the size of its appliance bays; a school is the size of its classrooms.
 - The override, once: if a derived figure makes the small facility unaffordable at the milestone that unlocks it, the plan says so and states what it took instead. A standard that produces an unbuyable first school is the wrong standard for a 20 m-tile toy city.
 
-Settled values live in [balancing](../game-design/balancing.md).
+Settled values live in [balancing](../game-design/balancing/README.md).
 
 ## What the facilities draw
 

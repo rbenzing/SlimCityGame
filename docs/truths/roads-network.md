@@ -80,7 +80,7 @@ MUTCD citations below use 11th-edition section numbers.
   `console.error`, never kept quietly. The graph never contains a diagonal
   step, and a grid corner's arc is render-only. —
   [ADR-0016](../engineering/adr/0016-roads-are-a-network-of-nodes-and-segments.md),
-  [road-network.md](../world-sim/road-network.md), [streets.md](../art/streets.md)
+  [road-network.md](../world-sim/road-network/README.md), [streets.md](../art/streets/README.md)
 - [R-roads-017] A road off the grid (at an angle, curved, or ending off a tile centre)
   writes no road tile layer. It holds the tiles its whole cross-section
   covers in the derived `roadFootprint` layer, which nothing else is built on
@@ -90,14 +90,14 @@ MUTCD citations below use 11th-edition section numbers.
   junction, 10 m long, never crossing or crowding another road but at a node,
   on dry, unbuilt ground at a road's slope. `planSegment` in
   `src/world/freeroads.ts` is the only place those are checked. —
-  [road-network.md](../world-sim/road-network.md); `src/shared/roadgeom.ts`
+  [road-network.md](../world-sim/road-network/README.md); `src/shared/roadgeom.ts`
 - [R-roads-018] A grid tile where a road off the grid meets is drawn by one renderer only:
   the free-road junction, whole, with each grid road carried to the tile's
   edge. The tile renderer draws none of its road, and no furniture or lamp the
   tile's own role earned stands on it. Drawn twice, the tile's old corner or
   straight showed through the junction — its kerb across the new road's
   mouth, its corner sign standing in the carriageway. —
-  [road-network.md](../world-sim/road-network.md); `freeJunctionTiles` in
+  [road-network.md](../world-sim/road-network/README.md); `freeJunctionTiles` in
   `src/render/freeroadmesh.ts`, `setFreeJunctionTiles` in
   `src/render/roadsmesh.ts`
 - [R-roads-019] Never compare a stored `roadFlow` byte to a `RoadFlow` value directly:
@@ -164,11 +164,11 @@ MUTCD citations below use 11th-edition section numbers.
   edge id. Never persist an edge or node id across an edit. Tram-graph edge ids
   are a private numbering, and tram relief is recomputed over the road graph. —
   [pathfinding.md](../world-sim/pathfinding.md),
-  [systems/traffic.md](../engineering/systems/traffic.md),
+  [systems/traffic.md](../engineering/systems/traffic/README.md),
   [transit-model.md](../world-sim/transit-model.md)
 - [R-roads-041] Traffic and pathfinding draw no RNG: route jitter is a pure hash of origin
   and destination. Cosmetic vehicles never feed back into the sim. —
-  [systems/traffic.md](../engineering/systems/traffic.md),
+  [systems/traffic.md](../engineering/systems/traffic/README.md),
   [ADR-0001](../engineering/adr/0001-traffic-is-statistical-assignment-with-cosmetic-agents.md)
 - [R-roads-042] The tile is the 20 m width budget. A profile wider than one tile becomes a
   two-tile corridor only when the class's own largest road needs one, otherwise

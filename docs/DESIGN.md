@@ -47,7 +47,7 @@ file is the index to what they foreclose, not a second copy of the argument.
 - **Free-form road geometry is no longer deferred:** roads at any angle,
   curves and angled junctions are being built as a network of nodes and
   segments ([ADR-0016](engineering/adr/0016-roads-are-a-network-of-nodes-and-segments.md),
-  [road network](world-sim/road-network.md)). Still deferred: signal-phase design, reversible and contraflow lanes, and per-lane speed
+  [road network](world-sim/road-network/README.md)). Still deferred: signal-phase design, reversible and contraflow lanes, and per-lane speed
   limits.
 - **Terrain painting**, and a procedural map generator complementing the curated
   maps.

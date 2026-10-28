@@ -1,7 +1,7 @@
 # Architecture rules
 
 The rules that hold the three-execution-context split
-([architecture.md](../architecture.md)) together in practice, and what
+([architecture.md](../architecture/README.md)) together in practice, and what
 actually enforces each one. Full import evidence lives in
 [dependency-map.md](../dependency-map.md); this document is the "what to
 follow when writing code," not the audit.
@@ -109,7 +109,7 @@ does not.
 
 ## See also
 
-- [architecture.md](../architecture.md) — the three execution contexts and
+- [architecture.md](../architecture/README.md) — the three execution contexts and
   one tick traced end to end.
 - [dependency-map.md](../dependency-map.md) — the full import graph and
   evidence.

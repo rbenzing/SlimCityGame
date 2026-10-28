@@ -12,7 +12,7 @@ _for_ lives in [../game-design/](../game-design/README.md).
 | ---------------------------------------- | ------------------------------------------------------------------- |
 | [ux-design.md](ux-design.md)             | The interaction philosophy the rest follows from                    |
 | [ui-architecture.md](ui-architecture.md) | How the overlay is structured and composed                          |
-| [hud.md](hud.md)                         | Every on-screen surface: docks, drawers, panels, popovers           |
+| [hud.md](hud/README.md)                         | Every on-screen surface: docks, drawers, panels, popovers           |
 | [components.md](components.md)           | The reusable controls and when to reach for each                    |
 | [interaction.md](interaction.md)         | The rules that cut across panels: feedback, selection, cancellation |
 | [input-mapping.md](input-mapping.md)     | Keyboard and mouse bindings                                         |

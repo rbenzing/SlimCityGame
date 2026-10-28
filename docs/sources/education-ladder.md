@@ -1,6 +1,6 @@
 # Education ladder — sources and derivations
 
-The rules are in [the spec](../specs/education-ladder.md). Every figure derives from a published US source and the 20 m tile. Settled numbers are in [balancing](../game-design/balancing.md).
+The rules are in [the spec](../specs/education-ladder.md). Every figure derives from a published US source and the 20 m tile. Settled numbers are in [balancing](../game-design/balancing/README.md).
 
 ## Capacities
 
@@ -121,7 +121,7 @@ The **existing school stays 3×3 × 10 m**: its 5,203 m², about 56,000 sf, is 4
 
 ## Draw
 
-Draw follows the civic method in [balancing](../game-design/balancing.md#civic-draw): the floor at the building type's intensity over the year, and the water by the type's benchmark. Education reads 9.4 kWh/sf (CBECS) and a K-12 school 10.84 gallons a square foot a year (WaterSense); a college has no figure of its own and takes the same two. A library is public assembly at 12.1 kWh/sf with the office water benchmark, 14.48 gal/sf.
+Draw follows the civic method in [balancing](../game-design/balancing/civic-draw.md): the floor at the building type's intensity over the year, and the water by the type's benchmark. Education reads 9.4 kWh/sf (CBECS) and a K-12 school 10.84 gallons a square foot a year (WaterSense); a college has no figure of its own and takes the same two. A library is public assembly at 12.1 kWh/sf with the office water benchmark, 14.48 gal/sf.
 
 | Building   | Floor      | Power     | Water   |
 | ---------- | ---------- | --------- | ------- |

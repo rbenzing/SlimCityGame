@@ -20,7 +20,7 @@ because reviewers keep upholding them.
 
 ## How these relate to the rest of `docs/engineering/`
 
-[architecture.md](../architecture.md) and
+[architecture.md](../architecture/README.md) and
 [dependency-map.md](../dependency-map.md) describe what the system's parts
 are and how they connect. These documents describe how a person working in
 this codebase writes, names, tests, and ships a change inside that

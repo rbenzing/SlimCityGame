@@ -2,7 +2,7 @@
 
 - [1. Threads and direction](1-threads-and-direction.md)
 - [2. The worker envelope: `MainToWorker` / `WorkerToMain`](2-the-worker-envelope-maintoworker--workertomain.md)
-- [3. Commands](3-commands.md)
+- [3. Commands](3-commands/README.md)
 - [4. Turn and junction encoding](4-turn-and-junction-encoding.md)
 - [5. Road composition](5-road-composition.md)
 - [6. The world grid and persistence](6-the-world-grid-and-persistence.md)

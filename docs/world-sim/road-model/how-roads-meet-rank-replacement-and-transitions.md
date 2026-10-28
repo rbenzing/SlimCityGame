@@ -206,7 +206,7 @@ The refusals are unchanged. A road laid apart is refused beside a road its
 class may never meet — a street beside a motorway — as it would be when
 joined.
 
-**Status: built** (2026-09-28): `buildRoad` takes `join` and `apart`, saves
+**Status: built:** `buildRoad` takes `join` and `apart`, saves
 keep what is held apart, and the road tool's `Roads` snap toggle sends
 `join: false` when it is off.
 

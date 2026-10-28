@@ -19,7 +19,7 @@ READING THE DOCS (docs/engineering/documentation-strategy.md decides this)
 - A scout reads a spec's card (before its first section heading) and opens a section only when the ticket needs it; it returns pointers (file#anchor, rule id, src/file:line), never file dumps.
 - A ticket cites rules and anchors, never "read the doc". A cook reads what the ticket cites. A reviewer reads the full spec of the area under review, once.
 - Delivery history lives in docs/history/ (one file a month), never in a spec; docs/ROADMAP.md holds status, the Open list and the milestones. Read the Open list, not the history, to learn what exists.
-- Every file has a byte budget by tier (4 KB for this file, docs/README.md and the truths index; 16 KB for a spec); `npm run lint:docs` reports the overshoots. A file over budget is split by section, never trimmed by dropping a rule or a number.
+- Every file has a byte budget by tier (4 KB for this file, docs/README.md and the truths index; 16 KB for a spec); `npm run lint:docs` fails on an overshoot. A file over budget is split by section, never trimmed by dropping a rule or a number.
 - Write for the reader who skims: rules as imperatives of at most two lines, numbers in tables with their source and constant, a code pointer instead of a paragraph about what code does, no dates in a spec, no sentence repeated from another file.
 
 GROUND TRUTHS

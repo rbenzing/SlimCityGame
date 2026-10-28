@@ -133,7 +133,7 @@ would leave the road above less than its clearance is refused.
 
 **Nothing crosses a guideway.** A road that gives its trams a reservation
 carries it on beams 6 to 7.22 m above its surface
-([../art/streets.md](../art/streets.md)), and an overpass deck stands 5 m
+([../art/streets.md](../art/streets/README.md)), and an overpass deck stands 5 m
 over the road below, so the two cannot share a tile. An overpass across a
 guideway tile is refused ("An overpass can't cross a guideway"), and so is a
 guideway laid or composed under an existing overpass ("A guideway can't pass

@@ -7,7 +7,7 @@ data it stores, and the conventions the codebase holds itself to.
 
 | Document                               | Covers                                                                                                 |
 | -------------------------------------- | ------------------------------------------------------------------------------------------------------ |
-| [architecture.md](architecture.md)     | The whole system at arm's length: three execution contexts, the module map, one tick traced end to end |
+| [architecture.md](architecture/README.md)     | The whole system at arm's length: three execution contexts, the module map, one tick traced end to end |
 | [dependency-map.md](dependency-map.md) | Which module may depend on which, with evidence, and which rules are actually enforced                 |
 | [adr/](adr/README.md)                  | Numbered decision records — why each costly choice was made, and what it cost                          |
 

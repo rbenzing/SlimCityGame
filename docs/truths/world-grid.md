@@ -47,7 +47,7 @@ Back to [the index](../GROUND-TRUTHS.md).
   (the lawn, or the house), and goes in by the front door the house kit drew,
   along that kit's own path; a walker anchored a tile back from the street
   walked through the living room of any home that touched it. —
-  [props-and-vehicles.md](../art/props-and-vehicles.md); `computeWalkPath` and
+  [props-and-vehicles.md](../art/props-and-vehicles/README.md); `computeWalkPath` and
   `walkSample` in `src/render/pedestrians.ts`, `frontDoorOf` in
   `src/render/houselot.ts`
   Traffic is statistical assignment. —
@@ -100,7 +100,7 @@ Back to [the index](../GROUND-TRUTHS.md).
   never sees a sewer. That one predicate is the only place the milestone is
   read; growth, the sewer line, the flag, the stink and the Advisor's counts
   all follow from it. —
-  [simulation-rules.md](../game-design/simulation-rules.md#a-house-on-a-well);
+  [simulation-rules.md](../game-design/simulation-rules/the-spawner-how-a-lot-is-chosen.md#a-house-on-a-well);
   `src/sim/network.ts`
 
 - [R-world-031] Sewage is the third utility and runs on the water's own network: a drain

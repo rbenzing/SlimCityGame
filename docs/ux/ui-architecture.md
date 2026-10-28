@@ -1,7 +1,7 @@
 # Overlay architecture
 
 How the interface is wired together — not what it shows (see
-[hud.md](hud.md)) or how it behaves (see [interaction.md](interaction.md)).
+[hud.md](hud/README.md)) or how it behaves (see [interaction.md](interaction.md)).
 
 ## `#ui-root` / `#viewport` and pointer-events layering
 
@@ -51,7 +51,7 @@ panel never needs to know how a command reaches the worker, and `main.ts`
 never needs to know which panel triggered it. See
 [../engineering/adr/0004-dom-overlay-is-react-3d-world-stays-imperative-three.md](../engineering/adr/0004-dom-overlay-is-react-3d-world-stays-imperative-three.md)
 for why the two sides use different frameworks at all, and
-[../engineering/architecture.md](../engineering/architecture.md) for the
+[../engineering/architecture.md](../engineering/architecture/README.md) for the
 full module map.
 
 Transient UI-navigation state that nothing outside `src/ui` needs to

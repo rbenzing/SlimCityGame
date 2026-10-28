@@ -3,7 +3,7 @@
 The render thread's own pipeline: how the Three.js scene is built, kept
 cheap, and picked. For the whole application — the sim worker, the command
 protocol, the React overlay, and how the three cooperate — see
-[architecture.md](../engineering/architecture.md); this page only elaborates
+[architecture.md](../engineering/architecture/README.md); this page only elaborates
 the render-thread box in that diagram (`src/main.ts` plus `src/render/*`) and
 does not repeat the parts of it that aren't about drawing.
 
@@ -23,7 +23,7 @@ renderer. See [lighting.md](lighting.md) for what that ramp actually drives.
 
 The render thread drives its own frame loop through
 `renderer.setAnimationLoop`, independent of the sim's fixed 20 Hz tick rate —
-see [architecture.md](../engineering/architecture.md#one-frame) for the full
+see [architecture.md](../engineering/architecture/one-frame.md) for the full
 per-frame sequence (camera, terrain/water/cloud updates, vehicle
 interpolation, transit, signal phase, the bloom pass). Nothing here repeats
 that ordering; this page is about what each renderer costs, not when it runs.

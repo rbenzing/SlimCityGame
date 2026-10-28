@@ -28,7 +28,7 @@ mid-construction.
 The one place a road is stored: node and segment slot tables, structure of
 arrays, in `src/world/roadnet.ts`, held by the worker and saved after the
 grid's tiles. What it holds and why is
-[road-network.md](../../world-sim/road-network.md). Every road layer of the grid
+[road-network.md](../../world-sim/road-network/README.md). Every road layer of the grid
 (†) is derived from it by `deriveRoadLayers`. The grid commands still plan on
 tiles; after each command the worker calls `reconcileRoads`, which takes up
 what the plan laid while keeping the slot of every node still at the same

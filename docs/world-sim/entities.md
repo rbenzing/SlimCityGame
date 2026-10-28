@@ -26,7 +26,7 @@ binary in its effect: population, jobs, tax, utility demand and service
 upkeep all count an Active building in full and a Constructing or Abandoned
 one not at all. See [population-model.md](population-model.md) for what that
 means for the population number, and
-[../game-design/simulation-rules.md](../game-design/simulation-rules.md) for
+[../game-design/simulation-rules.md](../game-design/simulation-rules/README.md) for
 how a building spawns, levels up and abandons.
 
 Persisted in `SaveMeta.registry` (`BuildingRegistry.serialize()`), including

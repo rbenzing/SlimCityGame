@@ -77,12 +77,12 @@ Back to [the index](../GROUND-TRUTHS.md).
   a single source), and its parking deck's two 3.35 m (11 ft). —
   [buildings.md](../art/buildings/README.md),
   [modeling-standards.md](../art/modeling-standards.md),
-  [props-and-vehicles.md](../art/props-and-vehicles.md)
+  [props-and-vehicles.md](../art/props-and-vehicles/README.md)
 - [R-render-014] Scale anchors are absolute metres: cosmetic car 4.0 × 1.8 m, pedestrian
   1.75 m, fire appliance 10 m, garbage truck 9 m, standard lane 3.75 m, footway
   1.875 m. A person beside a car reaches just above its roof. —
   [art/README.md](../art/README.md), [civic-massing.md](../art/civic-massing/README.md),
-  [props-and-vehicles.md](../art/props-and-vehicles.md)
+  [props-and-vehicles.md](../art/props-and-vehicles/README.md)
 - [R-render-015] A civic building's footprint and height derive from occupant-load arithmetic
   shown in its plan, never guessed; it goes up rather than out beyond about six
   tiles, and it is identifiable at the default camera pitch without its label by
@@ -128,7 +128,7 @@ Back to [the index](../GROUND-TRUTHS.md).
 - [R-render-022] Anything laid on the ground (pad, apron, driveway, bay, lamp pool, grid)
   samples real terrain height per vertex and splits on the terrain's own
   diagonal. — [buildings.md](../art/buildings/README.md),
-  [lighting.md](../visual-render/lighting.md), [streets.md](../art/streets.md)
+  [lighting.md](../visual-render/lighting.md), [streets.md](../art/streets/README.md)
 - [R-render-023] Every building levels its footprint when it is placed, grown or plopped,
   spawn or level-up: the footprint's own vertices and the far-edge vertices
   open ground owns, never one a road, another building or water owns. A body
@@ -145,7 +145,7 @@ Back to [the index](../GROUND-TRUTHS.md).
   world z, set from its own positions. Built on a rotated plane's stock UVs,
   every lens drew its data mirrored north to south, and the power lens showed
   a powered street as dark ground. —
-  [architecture.md](../engineering/architecture.md); `OverlayRenderer` in
+  [architecture.md](../engineering/architecture/README.md); `OverlayRenderer` in
   `src/render/overlays.ts`
 - [R-render-025] No wild tree stands on a tile holding a grid road, a road off the grid's
   footprint, or a building. It is read from the mirror whenever roads, the
@@ -169,20 +169,20 @@ Back to [the index](../GROUND-TRUTHS.md).
   that side; a street whose tier allows parking but paints no lane takes short
   daytime stays and nothing overnight; every other road takes none. No car
   stands inside a junction's no-parking setback. —
-  [props-and-vehicles.md](../art/props-and-vehicles.md#parked-cars-and-lot-life),
+  [props-and-vehicles.md](../art/props-and-vehicles/parked-cars-and-lot-life.md),
   [road-model.md](../world-sim/road-model/furniture-and-what-gates-it.md)
 - [R-render-028] Nothing kerbside stands on a tile with road on both axes (manholes excepted);
   one prop per kerbside slot; everything beside a road measures from
   `curbWidthMeters`. A road-facing kit part is skipped when a building fronts
-  no street. — [streets.md](../art/streets.md),
-  [props-and-vehicles.md](../art/props-and-vehicles.md),
+  no street. — [streets.md](../art/streets/README.md),
+  [props-and-vehicles.md](../art/props-and-vehicles/README.md),
   [buildings.md](../art/buildings/README.md)
 - [R-render-029] A vehicle mesh's nose is at +Z, yaw is `atan2(dx, dz)`, and cars sit in their
   right-hand lane by a tier-derived half-lane offset. —
-  [props-and-vehicles.md](../art/props-and-vehicles.md)
+  [props-and-vehicles.md](../art/props-and-vehicles/README.md)
 - [R-render-030] Road paint is true-world scale, and dash and sleeper phase are taken from
   global world coordinates, never the tile or the chunk; the line figures are
-  in the roads section above. — [streets.md](../art/streets.md),
+  in the roads section above. — [streets.md](../art/streets/README.md),
   [road-model.md](../world-sim/road-model/README.md)
 - [R-render-031] Wherever visual time is derived, add `CLOCK_START_OFFSET_TICKS` (tick 0 is
   09:00) and run on `VISUAL_DAY_TICKS`, never the calendar day. —

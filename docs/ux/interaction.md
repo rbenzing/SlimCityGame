@@ -2,7 +2,7 @@
 
 Rules that cut across panels rather than belonging to any one of them. If a
 rule is stated here, it is not repeated on the panel page — see
-[`hud.md`](hud.md) for where a given panel lives and what it shows.
+[`hud.md`](hud/README.md) for where a given panel lives and what it shows.
 
 ## Rule Zero: nothing renders as a dead control
 
@@ -72,7 +72,7 @@ one undo step, because it was one gesture.
 ## Curve and free road modes
 
 Two path modes lay roads off the grid, once the road network
-([road-network.md](../world-sim/road-network.md)) has reached its tool stage.
+([road-network.md](../world-sim/road-network/README.md)) has reached its tool stage.
 What a free road may be — how tight a curve each class may take, how narrow an
 angle two roads may meet at — is that document; this is how the player draws
 one.
@@ -199,7 +199,7 @@ a road off the grid anywhere but at a tile centre it meets is shown refused,
 with the world's own reason, rather than shown valid and refused after
 release.
 
-**Status** (2026-09-28): built.
+**Status:** built.
 
 ## Road guide snapping
 
@@ -260,7 +260,7 @@ the player:
 
 `Space` pauses the simulation and resumes it at the speed it was running.
 Speed has no key of its own; it is picked from the sim controls in the
-status strip ([`hud.md`](hud.md)). Escape is a small stack, most-local effect
+status strip ([`hud.md`](hud/README.md)). Escape is a small stack, most-local effect
 first:
 
 1. If a drag is in progress, Escape cancels it. This is handled at the

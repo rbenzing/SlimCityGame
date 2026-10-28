@@ -37,12 +37,12 @@ So when you add a paragraph, first decide what kind of thing it is:
 | How the interface behaves                            | [docs/ux/](docs/ux/README.md)                                       |
 | That something shipped, or is next, or a date        | [docs/ROADMAP.md](docs/ROADMAP.md)                                  |
 | Something we have decided not to build               | [docs/DESIGN.md](docs/DESIGN.md)                                    |
-| How to play                                          | [docs/USERGUIDE.md](docs/USERGUIDE.md)                              |
+| How to play                                          | [docs/USERGUIDE.md](docs/userguide/README.md)                              |
 
 Two habits follow from that table and are worth stating outright.
 
 **Never date a spec.** A sentence in any of the discipline folders describes the
-product as it is now. The moment it carries "(shipped 2026-08-11)" or "v2" it
+product as it is now. The moment it carries "(shipped <date>)" or "v2" it
 has become a changelog entry in the wrong file, and the next reader cannot tell
 which of two nearby paragraphs is true. Delivery belongs to
 [docs/ROADMAP.md](docs/ROADMAP.md), and nowhere else.

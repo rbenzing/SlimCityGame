@@ -29,7 +29,7 @@ running lanes either way. Only the bike lane genuinely varies with size, since
 it is an edge strip rather than a running lane.
 
 **A tram reservation costs a median, not a lane.** Its tracks run on two
-beams over the road ([streets.md](../../art/streets.md)), so what the
+beams over the road ([streets.md](../../art/streets/README.md)), so what the
 reservation takes at grade is the column line: its two `tram` pieces are
 1.2 m each, a 2.4 m median, and the road keeps its general lanes. Nothing
 drives on that median, so `laneCount` does not count it, and a reservation

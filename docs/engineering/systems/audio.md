@@ -82,5 +82,5 @@ the ambient and UI mix; independently `musicVolume` (0–1, default 0.6),
 default `'all'`) for the music player. Only listening preferences persist —
 never the playlist.
 
-See [../../ux/hud.md](../../ux/hud.md) for the Options panel's Audio
+See [../../ux/hud.md](../../ux/hud/README.md) for the Options panel's Audio
 section and the compact now-playing transport.

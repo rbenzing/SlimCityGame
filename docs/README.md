@@ -5,7 +5,7 @@ folder will have the rest.
 
 | I want to know…                        | Go to                                     |
 | -------------------------------------- | ----------------------------------------- |
-| How do I play?                         | [USERGUIDE.md](USERGUIDE.md)              |
+| How do I play?                         | [USERGUIDE.md](userguide/README.md)              |
 | What is built, and what is next?       | [ROADMAP.md](ROADMAP.md)                  |
 | What was delivered, and when?          | [history/](history/README.md)             |
 | What are we deliberately not building? | [DESIGN.md](DESIGN.md)                    |
@@ -51,7 +51,7 @@ and the two now contradict each other with no way to tell which is current.
 When you are about to restate something, link to it instead.
 
 **Never date a specification.** A spec describes the product as it is now. The
-moment it carries "(shipped 2026-08-11)" or "v2" it has become a changelog in
+moment it carries "(shipped <date>)" or "v2" it has become a changelog in
 the wrong file, and the next reader cannot tell which of two nearby paragraphs
 is true. Delivery belongs to [ROADMAP.md](ROADMAP.md), and nowhere else.
 

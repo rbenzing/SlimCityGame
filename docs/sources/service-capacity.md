@@ -1,6 +1,6 @@
 # Service capacity — sources and derivations
 
-The research behind [the service capacity spec](../specs/service-capacity.md). Every figure comes from published staffing, workload or enrolment figures and the 20 m tile, with its arithmetic; where no source was found, the figure is a stated dial. Settled values live in [balancing](../game-design/balancing.md).
+The research behind [the service capacity spec](../specs/service-capacity.md). Every figure comes from published staffing, workload or enrolment figures and the 20 m tile, with its arithmetic; where no source was found, the figure is a stated dial. Settled values live in [balancing](../game-design/balancing/README.md).
 
 ## Police station, 25,000 people
 

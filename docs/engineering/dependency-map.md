@@ -1,7 +1,7 @@
 # Dependency map
 
 Which module may import which, with the evidence for each claim.
-[architecture.md](architecture.md) states the rule in one paragraph; this
+[architecture.md](architecture/README.md) states the rule in one paragraph; this
 document is the full picture — every directory, what it actually imports
 today (grepped, not asserted), and which rules are enforced by tooling
 versus upheld only by review.
@@ -137,7 +137,7 @@ is a reviewer reading the diff.
 
 ## See also
 
-- [architecture.md](architecture.md) — the three execution contexts and one
+- [architecture.md](architecture/README.md) — the three execution contexts and one
   tick traced end to end.
 - [standards/architecture-rules.md](standards/architecture-rules.md) — the
   firewall, the contract layer, and the legitimate `Math.random`/`Date.now`

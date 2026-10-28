@@ -28,7 +28,7 @@ Back to [the index](../GROUND-TRUTHS.md).
   never continuously. Thresholds are stored as volume/capacity fractions that
   restate the MUTCD absolute volumes (500 + 150 veh/h for a signal, 300 + 200
   for an all-way stop), never as veh/h. —
-  [systems/traffic.md](../engineering/systems/traffic.md),
+  [systems/traffic.md](../engineering/systems/traffic/README.md),
   [road-model.md](../world-sim/road-model/README.md)
 - [R-roads-033] Signals run a 60 s cycle (90 s with a dedicated left) on one city-wide clock,
   and the rendered head cycles on that same clock. —
@@ -187,7 +187,7 @@ Back to [the index](../GROUND-TRUTHS.md).
   only from their right: a signal stands on the approaching driver's right,
   and a one-way carriageway's exit stands right of the flow or not at all.
   The placement decides the facing and the renderer applies it, never
-  recomputing one of its own. — [streets.md](../art/streets.md);
+  recomputing one of its own. — [streets.md](../art/streets/README.md);
   `CANTILEVER_FACE_Z`, `cantileverSide`, `flowFacingYaw` and
   `signWorldTransform` in `src/render/roadfurniture.ts`
 - [R-roads-067] A manhole cover is the top of a sewer and is drawn only on a road whose

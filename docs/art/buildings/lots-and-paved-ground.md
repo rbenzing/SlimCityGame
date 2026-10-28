@@ -39,7 +39,7 @@ paving and conforming to it like every other lot paint:
 A filling station keeps 12 m clear in front of its kiosk for its canopy and
 pumps; a chemical plant or paper mill keeps 8 m behind its body for its tank
 farm. Downtown kinds stand centred and paint nothing. See
-[props-and-vehicles.md](../props-and-vehicles.md) for the cars.
+[props-and-vehicles.md](../props-and-vehicles/README.md) for the cars.
 
 Pads, aprons, driveways and bay markings all go through one shared,
 terrain-conforming builder: it subdivides the ground quad into cells too

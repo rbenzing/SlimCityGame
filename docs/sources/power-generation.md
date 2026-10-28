@@ -1,6 +1,6 @@
 # Power generation — sources and derivations
 
-The rules are in [the spec](../specs/power-generation.md). Every figure is derived here; the settled numbers belong in [balancing](../game-design/balancing.md) once they stop moving.
+The rules are in [the spec](../specs/power-generation.md). Every figure is derived here; the settled numbers belong in [balancing](../game-design/balancing/README.md) once they stop moving.
 
 ## What demand looks like
 

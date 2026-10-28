@@ -2,7 +2,7 @@
 
 - **Status:** Built
 
-**Owns:** what kind of building a zoned lot grows: the kind catalog and its draw weights, the room rule for businesses, the Heavy Industrial zone, industry's order book, and the sourced households, jobs, power, water, pollution and noise of every kind. Lots are [lots-and-land.md](lots-and-land.md).
+**Owns:** which building a zoned lot grows: the kind catalog and draw weights, the room rule for businesses, the Heavy Industrial zone, industry's order book, and each kind's sourced households, jobs, power, water, pollution and noise. Lots: [lots-and-land.md](lots-and-land.md).
 
 **Rules:**
 
@@ -132,11 +132,11 @@ The types are those the building code and the housing survey already distinguish
 - Detached houses hold 3 people where they held 4, and a tower up to 644 where it held 150. The level ladder no longer adds people to a house; it adds homes to a block.
 - A block's homes are its drawn floor × 0.85 ÷ 93 m², rounded. Each tier above the first is 15% narrower on both sides, so a tower's 25 storeys come to 285 homes, not 375. A podium and a shopfront block's shops hold no homes.
 - Power and water per home are the survey's averages, so a 1.4 kW house is not rounded to 1 kW: the line sums in millionths. Nothing outside `network.ts` and growth's supply bookkeeping reads those units.
-- A farm's `powerUse` keeps its ratio to the detached house; a farm and a house on a well draw no water ([simulation-rules](../game-design/simulation-rules.md#a-house-on-a-well)).
+- A farm's `powerUse` keeps its ratio to the detached house; a farm and a house on a well draw no water ([simulation-rules](../game-design/simulation-rules/the-spawner-how-a-lot-is-chosen.md#a-house-on-a-well)).
 
 ### A business opens where the town has room
 
-A shop or office is drawn as a home is, with one more test. The demand model knows how many local jobs the town's industry supports and how many basic jobs its workforce calls for ([simulation-rules](../game-design/simulation-rules.md#demand-the-rci-model)). The gap to the jobs already open or going up is the room.
+A shop or office is drawn as a home is, with one more test. The demand model knows how many local jobs the town's industry supports and how many basic jobs its workforce calls for ([simulation-rules](../game-design/simulation-rules/demand-the-rci-model.md)). The gap to the jobs already open or going up is the room.
 
 - `jobRoom(input)` returns the two gaps the demand formulas already compute, in jobs. The worker computes it beside `computeDemand` every tick and passes it to `growth.tick` as `room`, unlimited for callers with no economy.
 - Growth copies it per pass and counts it down as it builds, as `spare` does, so two lots on one pass cannot both fill it.
@@ -200,7 +200,7 @@ Eight kinds. Light zone: workshop, warehouse, factory, flex. Heavy zone: `foodpl
 - **Pollution.** A town's air goes bad where the player zoned heavy industry, the power station and the incinerator, and nowhere else.
 - **Saves.** Unchanged; the worker protocol is unchanged, since the household count comes from the catalog the client holds.
 - **Lots.** [lots-and-land.md](lots-and-land.md) decides parcels; `isZonedLot` requires every tile of a footprint to carry the lot's zone, at spawn and level-up.
-- **Tuning.** The weights, on each kind's first level (`share`), are the dial: raise the duplex and fourplex weights, or zone narrow lots, for variety. The other dial is the pollution scale, which is the coal plant's figure and moves with it. Rules are in [balancing](../game-design/balancing.md#residential-kinds).
+- **Tuning.** The weights, on each kind's first level (`share`), are the dial: raise the duplex and fourplex weights, or zone narrow lots, for variety. The other dial is the pollution scale, which is the coal plant's figure and moves with it. Rules are in [balancing](../game-design/balancing/residential-kinds.md).
 
 ## Decided
 

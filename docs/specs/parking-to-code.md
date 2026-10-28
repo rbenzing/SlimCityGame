@@ -83,7 +83,7 @@
 **Open:**
 
 - The kerb paints stalls across curb cuts and house drives, so a lot's kerb credit can count a stall a driveway would block.
-- A kerb-credited lot's customers are drawn parked on the lot, not in the kerb stalls its credit counts.
+- Customers of a kerb-credited lot still park on the lot, not in its credited kerb stalls.
 - A framed lot beside a curve that lays no car park still reads its kerbside allowance from grid edges.
 
 ## Why the rules are what they are
@@ -196,4 +196,4 @@ The renderer hands it its chunk tiles and the snapshots' junction controls. The 
 - A body on its lot line can meet a neighbour's; the 85% fill ceiling holds its size, not its position.
 - Not a parking simulation: cars do not search for spaces and a full lot costs nothing.
 - Not built: downtown decks and garages, parking maximums, shared-parking reductions, transit waivers, angled lot stalls, one-way aisles.
-- Figures are code figures, not dials, named in [balancing.md](../game-design/balancing.md#parking-to-code).
+- Figures are code figures, not dials, named in [balancing.md](../game-design/balancing/parking-to-code.md).

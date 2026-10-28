@@ -20,7 +20,7 @@ textures:
 
 A tree is read at 40 m or more, where its silhouette is a trunk and a mass,
 so each species has a triangle ceiling the geometry test holds, chosen in the
-performance slice of the building-detail programme (2026-10-15) after the
+performance slice of the building-detail programme after the
 first frame measurement found a 192-triangle broadleaf under every yard and
 across every forest: **broadleaf 100** (a six-sided trunk and two or three
 blobs at five by four segments), **pine 40**, **poplar 50**, **shrub 30**. A
@@ -79,5 +79,5 @@ All vertex-colour work on the existing terrain chunks — no new geometry:
   noise above; everywhere else gets the full hue and patch variation.
 - Ground under a dense tree cluster darkens slightly — a canopy-shadow read.
 
-See [../art/streets.md](../art/streets.md) for how this ground cover
+See [../art/streets.md](../art/streets/README.md) for how this ground cover
 transitions into a road's kerb and the dirt ring around a rounded dead end.

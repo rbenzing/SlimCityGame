@@ -8,7 +8,7 @@ parking, bike lanes, lamps and sidewalks, a parking style (parallel, angled
 its edits apply to the next drag. A choice that composes a road too wide for
 the tile is offered disabled, with the reason. The path modes are `Straight`, `L-path`, `Grid`
 (not for a motorway) and `Curve`, which lays a road off the grid
-([road-network.md](../road-network.md),
+([road-network.md](../road-network/README.md),
 [interaction.md](../../ux/interaction.md#curve-and-free-road-modes)). A replace
 mode drags a new profile over an
 existing run in place, keeping alignment, buildings and elevation; if the
