@@ -233,7 +233,7 @@ a grid that exactly meets its load is never cut by a rounding error, and a
 house's 1.4 kW counts as 1,400 W rather than rounding to 1 kW. A building's
 `powerUse` is its average draw in MW and its `waterUse` its average draw in
 kL a day; where those figures come from is in
-[../game-design/features/building-types.md](../game-design/features/building-types.md).
+[../specs/building-types.md](../specs/building-types.md).
 
 A building the cut leaves dark carries `PowerShortage` (or `WaterShortage`)
 beside `NoPower` (or `NoWater`), so the advisor can tell a grid that is too

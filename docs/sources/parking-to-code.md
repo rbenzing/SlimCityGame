@@ -16,7 +16,7 @@ The rates are the modal minimums in US municipal codes: St Charles MO, Wadsworth
 | Warehouse                                                        | 0.5                             | industrial    |
 | Flex (half office at 3, half warehouse at 1)                     | 2                               | industrial    |
 
-A lot's floor is its body's plate times its storeys. The plate is the massing rule's, 13.6 m a lot tile or the kind's own. The storeys are one per 3.2 m for a shop or flex space and one high-bay floor for every other works ([building-types.md](../game-design/features/building-types.md)). Spaces round up.
+A lot's floor is its body's plate times its storeys. The plate is the massing rule's, 13.6 m a lot tile or the kind's own. The storeys are one per 3.2 m for a shop or flex space and one high-bay floor for every other works ([building-types.md](../specs/building-types.md)). Spaces round up.
 
 ### The small-use exemption
 

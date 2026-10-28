@@ -43,7 +43,7 @@ each on its own ground, and the halves take the higher of their two lifts at
 each station, so both are on the ground or both on decks and neither's
 corners average the other's unlevelled cells. The body is
 then seated on the highest
-ground under the body itself ([buildings.md](../art/buildings.md#lots-and-paved-ground)),
+ground under the body itself ([buildings.md](../art/buildings/lots-and-paved-ground.md)),
 never under the whole footprint, so a street climbing past the lot does not
 lift the house off the pad it stands on.
 

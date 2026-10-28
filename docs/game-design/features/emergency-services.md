@@ -278,7 +278,7 @@ $13.5M in 2017, about $466 a square foot.
 ### The sizes and the models
 
 The lots come from the floors, the bays and the apron, with the arithmetic and the
-sources in [../../art/civic-massing.md](../../art/civic-massing.md#the-fire-and-police-stations):
+sources in [../../art/civic-massing/reading-a-civic-building-at-a-glance/the-fire-and-police-stations.md](../../art/civic-massing/reading-a-civic-building-at-a-glance/the-fire-and-police-stations.md):
 the district fire station is 3×2 at two storeys, the district police station 3×3 at
 three. The first rungs keep their 2×2 lots; their heights are 6.4 m.
 

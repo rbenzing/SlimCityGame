@@ -210,7 +210,7 @@ because nothing checked a park's reach against anything.
 ### Sizes, from ground rather than floor area
 
 Most of this epic is **ground, not floor area**, so the gross-floor-area formula
-in [../../art/civic-massing.md](../../art/civic-massing.md) does not apply to
+in [../../art/civic-massing/README.md](../../art/civic-massing/README.md) does not apply to
 four of the five rungs — there is no floor, and its six-tile siting rule is a
 building's rule, from which open space is exempt. Their sizes are the real
 sizes of the US park types, from the NRPA park classification (Mertes & Hall,

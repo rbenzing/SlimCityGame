@@ -80,13 +80,13 @@ Outside the programme:
 | [interchanges.md](../../specs/interchanges.md)     | no          | no              |
 | [roundabouts.md](../../specs/roundabouts.md)       | no          | additive        |
 | [sound-barriers.md](../../specs/sound-barriers.md) | no          | no              |
-| [building-types.md](building-types.md)             | no          | no              |
+| [building-types.md](../../specs/building-types.md) | no          | no              |
 | [underground-view.md](underground-view.md)         | no          | no              |
 | [parking-to-code.md](../../specs/parking-to-code.md)           | no          | no              |
-| [building-detail.md](building-detail.md)           | no          | no              |
+| [building-detail.md](../../specs/building-detail.md) | no          | no              |
 | [tramways.md](../../specs/tramways.md)             | no          | no              |
 | [curved-parcels.md](../../specs/curved-parcels.md)             | yes (17)    | additive        |
-| [rci-kits-second-pass.md](rci-kits-second-pass.md) | no          | no              |
+| [rci-kits.md](../../specs/rci-kits.md)             | no          | no              |
 | [civic-access-and-bus-stops.md](civic-access-and-bus-stops.md) | no          | additive        |
 
 Farms add a zone and derive the soil it grows on, so neither contract moves.

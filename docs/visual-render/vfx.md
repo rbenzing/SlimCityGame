@@ -16,7 +16,7 @@ Several things a player might expect to produce an effect currently do not:
   an event. See [../world-sim/environmental-simulation.md](../world-sim/environmental-simulation.md).
 - **Construction** is shown by swapping the building's own geometry through
   construction states, not by dust or scaffolding effects. See
-  [../art/buildings.md](../art/buildings.md).
+  [../art/buildings/README.md](../art/buildings/README.md).
 
 Weather, seasons and flooding are deliberately deferred rather than merely
 unbuilt — [../DESIGN.md](../DESIGN.md) owns that decision and the reasoning.

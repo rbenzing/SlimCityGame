@@ -119,7 +119,7 @@ player has — so the reactor costs ground as well as treasury, and the power li
 is how its output gets inland. Nothing else gains a constraint.
 
 Each plant is read by its **plant**, not its offices, per
-[../../art/civic-massing.md](../../art/civic-massing.md) — the gas turbine by its
+[../../art/civic-massing/README.md](../../art/civic-massing/README.md) — the gas turbine by its
 inlet filter house and stack, the combined-cycle station by its heat-recovery
 boiler and taller stack, the reactor by its reactor building and switchyard. A
 NuScale module sits in a pool below grade inside a flat-roofed reactor building:
@@ -186,7 +186,7 @@ natural-gas combustion turbine **13.9%**, nuclear **90.8%**.
   NuScale sells plants of four, six or twelve modules; the game's station is one
   module's share of such a plant, and a city that wants more builds more.
 
-**Footprints.** [../../art/civic-massing.md](../../art/civic-massing.md) sizes a
+**Footprints.** [../../art/civic-massing/README.md](../../art/civic-massing/README.md) sizes a
 building by occupant load, but a boiler hall is one volume with nobody in it, so
 the coal plant's 4×4 came from its built plate (about 2,900 m² at 185 m² a tile).
 The new plants take the nearest evidence each has:

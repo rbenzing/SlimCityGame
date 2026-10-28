@@ -257,5 +257,5 @@ Back to [the index](../GROUND-TRUTHS.md).
   Kerb-parked cars read the same drawn section: where a bay has taken the
   parking, no car stands, rather than a row at the plain section's offset
   held off only by the junction's no-parking zone. —
-  [buildings.md](../art/buildings.md#residential-lots); `drawnProfileAt` in
+  [buildings.md](../art/buildings/residential-lots.md); `drawnProfileAt` in
   `src/app/clientgrid.ts`

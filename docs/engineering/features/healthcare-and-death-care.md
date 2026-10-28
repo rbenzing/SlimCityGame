@@ -111,7 +111,7 @@ silhouette read comes from height and livery** as much as length.
 
 ### Deriving every footprint and height
 
-Formula from [../../art/civic-massing.md](../../art/civic-massing.md): gross
+Formula from [../../art/civic-massing/README.md](../../art/civic-massing/README.md): gross
 floor area = `w × d × 185 × (height ÷ 3.2)`, so tiles = gross ÷ 185 ÷ storeys,
 rounded up to a whole rectangle. Open ground inside a footprint is 215 m² per
 tile (400 − 185); a 90° stall all-in is 24.7 m².
@@ -509,7 +509,7 @@ Behaviour, in the order the risk sits:
   for the reasons the design document gives.
 - Not built: the fill gauge in the services panel. The cemetery's and the
   crematorium's kits, the headstones and the hearse mesh are drawn: see
-  [../../art/civic-massing.md](../../art/civic-massing.md) and
+  [../../art/civic-massing/README.md](../../art/civic-massing/README.md) and
   [../../art/props-and-vehicles.md](../../art/props-and-vehicles.md).
 - Giving `Problem.LowDemand` teeth, named above precisely because this epic must
   not be what arms it; and reworking coverage or the road-network BFS.

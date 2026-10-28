@@ -4,6 +4,9 @@ One spec a built feature, card first; the template is [_template.md](_template.m
 
 | Spec                                   | What it decides                                                                                                                                       |
 | -------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [building-types.md](building-types.md) | A zoned lot grows a kind of building, drawn by lot fit and real-world share; residential, commercial and industrial kinds, sourced |
+| [building-detail.md](building-detail.md) | Every zoned building and ploppable drawn as the US type it is, from a sourced reference library, inside a measured triangle budget |
+| [rci-kits.md](rci-kits.md) | Every zoned kind told apart at 40 m by its body material, its sized identifying parts and its yard, from sources |
 | [curved-parcels.md](curved-parcels.md) | Lots platted square to a free-form road, with every zone's ladder and car parks in the parcel's frame |
 | [farms.md](farms.md)                   | Farmland off dirt roads, on soil the ground itself grades |
 | [lots-and-land.md](lots-and-land.md)   | A zoned block platted into lots the land's standing sizes, from half lots to estates, on US zoning standards |

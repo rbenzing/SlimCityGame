@@ -3,7 +3,7 @@
 The night look is three deterministic layers — patterns seeded by building or
 instance id, zero per-frame randomness — plus the bloom pass that ties them
 together. This file is its own document because it cuts across every other
-one: it governs how buildings ([../art/buildings.md](../art/buildings.md)), streets and
+one: it governs how buildings ([../art/buildings/README.md](../art/buildings/README.md)), streets and
 lamps ([../art/streets.md](../art/streets.md), [../art/props-and-vehicles.md](../art/props-and-vehicles.md))
 and the sky ([vegetation.md](vegetation.md)) all look at any given moment.
 
@@ -29,7 +29,7 @@ would drag the small hours under the legibility floor below.
 
 ## Emissive building windows
 
-The window grid described in [../art/buildings.md](../art/buildings.md) carries a
+The window grid described in [../art/buildings/README.md](../art/buildings/README.md) carries a
 per-archetype procedural emissive on the same instanced material used for
 its day-side glass tint. A hash of the building id and window index decides
 each window's lit threshold, so roughly 40–70% of a building's windows are
@@ -54,7 +54,7 @@ bays of about 1.5 m (`STOREFRONT_BAY_M`) by 0.12 m dark mullions
 (`STOREFRONT_MULLION_M`) over a 0.6 m dark bulkhead (`STOREFRONT_BULKHEAD_M`,
 the same figure the kit's bulkhead part stands) under a 0.3 m head
 (`STOREFRONT_HEAD_M`) — `storefrontCut` in `facade.ts`, the parts
-[../art/buildings.md](../art/buildings.md) gives a storefront — so a lit
+[../art/buildings/README.md](../art/buildings/README.md) gives a storefront — so a lit
 shopfront at 40 m reads as a row of lit windows under a sign band, and the
 sign band glows in its own livery colour above it.
 
@@ -87,7 +87,7 @@ roof or a wall never does. A farmhouse, drawn by the farm kit rather than on
 the facade material, lights its panes by the same hash and threshold
 ([../specs/farms.md](../specs/farms.md)). An Abandoned building's windows stay dark
 regardless of the hour — a lit window is the one signal that a building is
-Active (see [../art/buildings.md](../art/buildings.md)). The whole system runs as one TSL
+Active (see [../art/buildings/README.md](../art/buildings/README.md)). The whole system runs as one TSL
 node material plus an instance-index hash, one material per archetype
 family, at zero extra draw calls.
 

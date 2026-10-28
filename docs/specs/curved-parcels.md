@@ -163,5 +163,5 @@ A row of houses on a bend, each square to the street in front of it, with drives
 - Replace snapping a curve's crossed tiles to fake fronts: that was the bug.
 - Cul-de-sac bulbs are nodes and are not cut; parcels run along segments.
 - A parcel is cut shorter and dropped if it falls under a cottage, never bent, and never crosses a grid road or a segment end.
-- Kits are unchanged and composed with a heading instead of a quarter turn ([building-types.md](../game-design/features/building-types.md), [building-detail.md](../game-design/features/building-detail.md)).
+- Kits are unchanged and composed with a heading instead of a quarter turn ([building-types.md](building-types.md), [building-detail.md](building-detail.md)).
 - The kerb plat reads a segment's centre line and width; zoning depth is still measured square to the road from the kerb ([road-network.md](../world-sim/road-network.md)).

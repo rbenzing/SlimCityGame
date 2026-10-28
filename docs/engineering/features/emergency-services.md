@@ -240,7 +240,7 @@ Built. The two stations are resized to 6.4 m and a large rung stands above each:
 `fire-station-district` (3×2, 6.4 m, capacity 31,000, `responders` 2, ¢13,150, upkeep
 ¢720) and `police-station-district` (3×3, 9.6 m, 47,000, 11, ¢9,950, ¢563), both at the
 `MILESTONES` entry named Small City. Every figure and its sources are in the design
-document and [../../art/civic-massing.md](../../art/civic-massing.md#the-fire-and-police-stations).
+document and [../../art/civic-massing/reading-a-civic-building-at-a-glance/the-fire-and-police-stations.md](../../art/civic-massing/reading-a-civic-building-at-a-glance/the-fire-and-police-stations.md).
 The withdrawn draft's table is not reused.
 
 | Module                    | Change                                                                                                                  |

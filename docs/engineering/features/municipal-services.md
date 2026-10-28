@@ -138,7 +138,7 @@ by **how much each closes a loop**, not by size:
 
 Each epic's pair of documents is named in the table below, and every one of them
 sizes its buildings by the rule in
-[../../art/civic-massing.md](../../art/civic-massing.md) rather than by eye.
+[../../art/civic-massing/README.md](../../art/civic-massing/README.md) rather than by eye.
 
 | #   | Design                                                                                                             | Technical                                                    |
 | --- | ------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------ |

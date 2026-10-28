@@ -113,7 +113,7 @@ Four kits join `UTILITY_KIT_CATALOG_IDS`, built the same way as the coal plant's
 and the stations': a pure layout from the catalog footprint, merged low-poly
 geometry per part, instanced, no `Math.random` and no `Date.now`. Each is read by
 its plant; every part and dimension is in
-[../../art/civic-massing.md](../../art/civic-massing.md#the-generators-solar-gas-combined-cycle-and-the-reactor).
+[../../art/civic-massing/reading-a-civic-building-at-a-glance/the-generators-solar-gas-combined-cycle-and-the-reactor.md](../../art/civic-massing/reading-a-civic-building-at-a-glance/the-generators-solar-gas-combined-cycle-and-the-reactor.md).
 Two of them read the world beyond their footprint, both already done by sibling
 kits: the solar rows face the sun's noon side of the scene **whatever the lot's
 rotation**, and the reactor's cooling-water intake stands on the edge that touches

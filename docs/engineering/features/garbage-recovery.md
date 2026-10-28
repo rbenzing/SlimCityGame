@@ -299,7 +299,7 @@ citywide.
 
 ### Building sizes
 
-The formula in [../../art/civic-massing.md](../../art/civic-massing.md) reads
+The formula in [../../art/civic-massing/README.md](../../art/civic-massing/README.md) reads
 `height ÷ 3.2` as storeys, and a recovery building is one clear-span hall, so
 gross floor area is a **volume proxy** here and the sizing runs the other way:
 derive single-level plan area from throughput and vehicle movement, ÷ 185 m² a

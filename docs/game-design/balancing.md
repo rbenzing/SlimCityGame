@@ -35,7 +35,7 @@ agree everywhere they overlap.
 
 ## Residential kinds
 
-Every figure is sourced in [features/building-types.md](features/building-types.md).
+Every figure is sourced in [specs/building-types.md](../specs/building-types.md).
 
 | Constant           | Value                                                                                                                  | Meaning                                                                                                                                                     | File                      |
 | ------------------ | ---------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------- |
@@ -58,7 +58,7 @@ Every figure is sourced in [features/building-types.md](features/building-types.
 
 ## Commercial kinds
 
-Every figure is sourced in [features/building-types.md](features/building-types.md#the-commercial-kinds).
+Every figure is sourced in [specs/building-types.md](../specs/building-types.md#the-commercial-kinds).
 
 | Constant             | Value                                                                                    | Meaning                                                                                       | File                      |
 | -------------------- | ---------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- | ------------------------- |
@@ -74,7 +74,7 @@ Every figure is sourced in [features/building-types.md](features/building-types.
 
 ## Industrial kinds
 
-Every figure is sourced in [features/building-types.md](features/building-types.md#the-industrial-kinds).
+Every figure is sourced in [specs/building-types.md](../specs/building-types.md#the-industrial-kinds).
 
 | Constant           | Value                                                                                                           | Meaning                                                                                                              | File                      |
 | ------------------ | --------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- | ------------------------- |
