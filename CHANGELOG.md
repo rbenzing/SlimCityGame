@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.80.2](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.80.1...slimcity-v1.80.2) (2026-10-28)
+
+
+### Bug Fixes
+
+* **sim:** sandbox lifts growth's unlocks; each testing option answers its own checkbox ([7efcb24](https://github.com/rbenzing/SlimCityGame/commit/7efcb24527e6b9b3dde81a8cb05c372df0f6af5c))
+* **sim:** sandbox lifts growth's unlocks; each testing option answers… ([2b20a5e](https://github.com/rbenzing/SlimCityGame/commit/2b20a5e4c0778247083c158730871d452c8596ef))
+
 ## [1.80.1](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.80.0...slimcity-v1.80.1) (2026-10-28)
 
 
