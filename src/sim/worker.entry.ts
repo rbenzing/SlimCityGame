@@ -792,6 +792,7 @@ class SimWorld implements WorkerSim {
     this.growth = new GrowthSystem(CATALOG, rng.fork(1), canPlaceFootprint, (id) =>
       this.profileForId(id),
     );
+    this.growth.unlockAll = this.sandbox;
     this.network.rebuild(this.grid);
     this.railNetwork.rebuild(this.grid);
     this.tramNetwork.rebuild(this.grid);
@@ -1291,6 +1292,7 @@ class SimWorld implements WorkerSim {
       takeRegionalBodies: () => this.deathCare.takeRegionalThisMonth(),
       transitRunning: this.transitResult.runningCost.reduce((sum, c) => sum + c, 0),
       stops: this.stops.states(),
+      unlimitedMoney: this.unlimitedMoney,
     });
     Object.assign(this.stats, econ.statsPatch);
     this.occupancy = econ.occupancy;
@@ -2853,6 +2855,7 @@ class SimWorld implements WorkerSim {
       }
       case 'setSandbox':
         this.sandbox = command.on;
+        this.growth.unlockAll = command.on;
         return { ok: true, cost: 0, inverse: [] };
       case 'setUnlimitedMoney':
         this.unlimitedMoney = command.on;
@@ -2919,7 +2922,7 @@ class SimWorld implements WorkerSim {
       }
     }
     const cost = on ? newTiles * LANDFILL_PAINT_COST_PER_TILE : 0;
-    if (on && !this.sandbox && !this.unlimitedMoney && cost > this.stats.funds) {
+    if (on && !this.unlimitedMoney && cost > this.stats.funds) {
       return { ok: false, cost: 0, inverse: [], reason: 'funds' };
     }
 
@@ -2969,7 +2972,7 @@ class SimWorld implements WorkerSim {
       if (now !== on && (!on || canStringLine(g, t.x, t.z))) wouldChange += 1;
     }
     const cost = on ? wouldChange * POWER_LINE_COST_PER_TILE : 0;
-    if (on && !this.sandbox && !this.unlimitedMoney && cost > this.stats.funds) {
+    if (on && !this.unlimitedMoney && cost > this.stats.funds) {
       return { ok: false, cost: 0, inverse: [], reason: 'funds' };
     }
 
@@ -3000,7 +3003,7 @@ class SimWorld implements WorkerSim {
       if (now !== on && (!on || canLayPipe(g, t.x, t.z))) wouldChange += 1;
     }
     const cost = on ? wouldChange * WATER_PIPE_COST_PER_TILE : 0;
-    if (on && !this.sandbox && !this.unlimitedMoney && cost > this.stats.funds) {
+    if (on && !this.unlimitedMoney && cost > this.stats.funds) {
       return { ok: false, cost: 0, inverse: [], reason: 'funds' };
     }
 

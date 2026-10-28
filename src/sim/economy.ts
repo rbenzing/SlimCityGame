@@ -86,6 +86,8 @@ export interface EconomyTickInput {
    * earns nothing. Omitted, no stop exists.
    */
   stops?: readonly BusStopState[];
+  /** Unlimited money is on: the budget warnings stay quiet. */
+  unlimitedMoney?: boolean;
 }
 
 export interface EconomyTickResult {
@@ -356,7 +358,9 @@ export class EconomySystem {
       statsPatch.transitRunning = transitRunning;
       statsPatch.advertising = advertising;
 
-      if (funds < 0) {
+      // With unlimited money the cash flow is still tracked, but it raises no warning.
+      const warn = !input.unlimitedMoney;
+      if (warn && funds < 0) {
         notifications.push({
           id: nextId(),
           severity: 'critical',
@@ -364,7 +368,7 @@ export class EconomySystem {
           body: 'City funds are negative. Bankruptcy risk.',
           tick: tickNo,
         });
-      } else if (funds < FUNDS_WARNING_THRESHOLD) {
+      } else if (warn && funds < FUNDS_WARNING_THRESHOLD) {
         notifications.push({
           id: nextId(),
           severity: 'warning',

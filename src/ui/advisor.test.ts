@@ -497,6 +497,32 @@ describe('city-wide checks', () => {
     expect(idsOf(broke)).not.toContain('budget-deficit');
   });
 
+  it('raises no money problem with unlimited money, in the red or in deficit', () => {
+    const none = { power: 0, water: 0, sewer: 0 };
+    const broke = cityIssues(
+      [],
+      healthyStats({ funds: -200, monthlyExpenses: 1500 }),
+      none,
+      none,
+      undefined,
+      [],
+      true,
+    );
+    expect(idsOf(broke)).not.toContain('insolvent');
+    expect(idsOf(broke)).not.toContain('budget-deficit');
+
+    const deficit = cityIssues(
+      [],
+      healthyStats({ monthlyExpenses: 1500 }),
+      none,
+      none,
+      undefined,
+      [],
+      true,
+    );
+    expect(idsOf(deficit)).not.toContain('budget-deficit');
+  });
+
   it('says nothing about jobs on an empty map', () => {
     const issues = cityIssues([], healthyStats({ population: 0, jobs: 0, employed: 0 }));
     expect(idsOf(issues)).not.toContain('no-jobs');

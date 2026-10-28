@@ -625,6 +625,67 @@ describe('GrowthSystem', () => {
       },
     );
 
+    describe('unlockAll (sandbox)', () => {
+      const medium = (): GridState => {
+        const g = makeGrid();
+        for (let dz = 0; dz < resMediumL1.footprint.d; dz++) {
+          for (let dx = 0; dx < resMediumL1.footprint.w; dx++) {
+            serviceTile(g, dx, dz, ZoneType.ResMedium);
+          }
+        }
+        g.fields[FieldId.LandValue]!.fill(255);
+        return g;
+      };
+      const growthWith = (unlockAll: boolean): GrowthSystem => {
+        const growth = new GrowthSystem(expandedZonesCatalog, constantRng(0), alwaysTrue);
+        growth.unlockAll = unlockAll;
+        return growth;
+      };
+
+      it('grows nothing in a locked zone while off, and grows it at milestone 0 while on', () => {
+        const off = growthWith(false).tick(
+          medium(),
+          new BuildingRegistry(expandedZonesCatalog),
+          fullResDemand,
+          0,
+          0,
+        );
+        expect(off.added).toEqual([]);
+
+        const on = growthWith(true).tick(
+          medium(),
+          new BuildingRegistry(expandedZonesCatalog),
+          fullResDemand,
+          0,
+          0,
+        );
+        expect(on.added).toHaveLength(1);
+        expect(on.added[0]!.catalogId).toBe(resMediumL1.id);
+      });
+
+      it('leaves the septic rung on the real milestone: no drain is needed at milestone 0, one is from Big Town', () => {
+        const g = medium();
+        g.sewered.fill(0);
+        const early = growthWith(true).tick(
+          g,
+          new BuildingRegistry(expandedZonesCatalog),
+          fullResDemand,
+          0,
+          0,
+        );
+        expect(early.added).toHaveLength(1);
+
+        const later = growthWith(true).tick(
+          g,
+          new BuildingRegistry(expandedZonesCatalog),
+          fullResDemand,
+          SEWER_MILESTONE,
+          0,
+        );
+        expect(later.added).toEqual([]);
+      });
+    });
+
     it.each([
       ['ResLow', ZoneType.ResLow],
       ['ResHigh', ZoneType.ResHigh],

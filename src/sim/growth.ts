@@ -649,6 +649,13 @@ export class GrowthSystem {
     sewer: new Map<number, Waiting>(),
   };
 
+  /** Sandbox: every kind a lot can grow is unlocked; the milestone still rules the septic rung. */
+  unlockAll = false;
+
+  private unlockLevel(milestoneLevel: number): number {
+    return this.unlockAll ? Number.POSITIVE_INFINITY : milestoneLevel;
+  }
+
   constructor(
     catalog: BuildingCatalogEntry[],
     rng: Rng,
@@ -1153,7 +1160,7 @@ export class GrowthSystem {
         (e.lot === undefined ||
           (e.footprint.w === entry.footprint.w && e.footprint.d === entry.footprint.d)),
     );
-    if (!nextKind || nextKind.unlockMilestone > milestoneLevel) return false;
+    if (!nextKind || nextKind.unlockMilestone > this.unlockLevel(milestoneLevel)) return false;
     // A building on a curved parcel improves in place only: a next level that
     // grows its footprint would claim ground its frame has never been checked
     // over, so it waits.
@@ -1397,7 +1404,7 @@ export class GrowthSystem {
         BuildingCatalogEntry,
         { entry: BuildingCatalogEntry } & Placement
       >();
-      const fitting = spawnCandidates(this.catalog, zone, milestoneLevel, (kind) => {
+      const fitting = spawnCandidates(this.catalog, zone, this.unlockLevel(milestoneLevel), (kind) => {
         for (const e of footprintsOf(this.catalog, kind)) {
           const at =
             frontageZone && e.lot === undefined
@@ -1535,7 +1542,7 @@ export class GrowthSystem {
       return { entry: e, frame: run.frame, tiles };
     };
     const sites = new Map<BuildingCatalogEntry, FramedSite>();
-    const fitting = spawnCandidates(this.catalog, zone, milestoneLevel, (kind) => {
+    const fitting = spawnCandidates(this.catalog, zone, this.unlockLevel(milestoneLevel), (kind) => {
       for (const e of footprintsOf(this.catalog, kind)) {
         const site = siteFor(e);
         if (site === null) continue;
@@ -1609,7 +1616,9 @@ export class GrowthSystem {
     if (demand.ind <= 0) return;
     const first = this.catalog.find(
       (e) =>
-        e.zone === ZoneType.Agriculture && e.level === 1 && e.unlockMilestone <= milestoneLevel,
+        e.zone === ZoneType.Agriculture &&
+        e.level === 1 &&
+        e.unlockMilestone <= this.unlockLevel(milestoneLevel),
     );
     if (!first) return;
     const { w, d } = footprintForRotation(first, 0);
@@ -1624,7 +1633,7 @@ export class GrowthSystem {
         e.zone === ZoneType.Agriculture &&
         e.level === 1 &&
         e.kind === kind &&
-        e.unlockMilestone <= milestoneLevel,
+        e.unlockMilestone <= this.unlockLevel(milestoneLevel),
     );
     if (!entry) return;
     this.spawnIfSupplied(

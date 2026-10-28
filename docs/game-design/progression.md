@@ -28,7 +28,14 @@ unlock at Small Town; medium apartments, the Heavy Industrial zone, the
 water drain pipe and the sewage treatment works at Busy Township; mixed-use,
 flex and R&D buildings, the incinerator and the rail station at Big Town;
 high-rise residential and commercial at Small City; the airport at Grand
-City.
+City. A zone's tier unlocks with its first building, and a lot grows only
+the kinds the town has unlocked.
+
+The two testing options each lift one gate and nothing else. **Sandbox**
+(unlock all build items) unlocks every card and every kind a lot can grow,
+so a zone painted early grows at once; it never touches a price or the
+septic rung below. **Unlimited money** lifts every price and the budget
+warnings; cash flow is still tracked.
 
 One rule rides the ladder rather than unlocking on it. A town is on septic
 tanks until it is a **Big Town** (`SEWER_MILESTONE`): below that, nothing
