@@ -52,6 +52,12 @@ MUTCD citations below use 11th-edition section numbers.
   [road-model.md](world-sim/road-model.md),
   [overpasses.md](world-sim/overpasses.md); `atOneLevel` in
   `src/shared/overpass.ts`
+- The ground under a deck is never levelled, but a deck the grade solver
+  lifted less than 0.5 m (`GROUND_HUGGING_LIFT_M`) to close a neighbour's
+  step is on the ground, not in the air: it is levelled with its run like
+  any grounded road tile, or the ground beside it stands proud of the deck. —
+  [road-model.md](world-sim/road-model.md); `GROUND_HUGGING_LIFT_M` in
+  `src/sim/worker.entry.ts`
 - A rail tile between two street tiles
   is a break in the street, not a crossing, and rail laid through a street in
   replace mode severs it: the track draws running straight through and the street ends
@@ -650,7 +656,8 @@ MUTCD citations below use 11th-edition section numbers.
   decides holds at the junction unchanged. — [road-model.md](world-sim/road-model.md);
   `withTurnPocket` in `src/shared/roadprofile.ts`
 - A lot's drive, walk and yard are laid to the street as it is drawn,
-  turn bay included, and are re-laid when a junction gains or loses its bay;
+  turn bay included, and are re-laid when a junction gains or loses its bay or a road edit
+  beside them redraws the street;
   the section without the bay puts a drive across the widened carriageway.
   Kerb-parked cars read the same drawn section: where a bay has taken the
   parking, no car stands, rather than a row at the plain section's offset

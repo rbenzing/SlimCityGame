@@ -28,6 +28,7 @@ import {
   roadCellsOf,
 } from '../../src/world/roadnet';
 import { RUNS_INTO_FREE_ROAD } from '../../src/world/freeroads';
+import { generateProceduralMap } from '../../src/world/maps';
 import {
   column,
   initialized,
@@ -171,6 +172,38 @@ describe('roads on a slope', () => {
     const afterUndo = latestSaveGrid(h);
     for (const t of region) {
       expect(afterUndo.height[tileIndex(t.x, t.z)]).toBe(beforeHeights.get(tileIndex(t.x, t.z)));
+    }
+  });
+
+  it('levels a tile the grade solver lifted a sliver, so no step is left in the run', () => {
+    // Drawing a crossroads arm by arm: the first arm's dead-end run-out drops
+    // two tiles to the junction's height, and the next arm over them meets a
+    // 2 m step the solver closes by lifting one tile 4 cm. That tile is still
+    // on the ground and has to be levelled with the run around it.
+    const h = makeHarness();
+    h.sim.handleMessage({ type: 'init', seed: 12345, map: generateProceduralMap(12345, 'Hills') });
+    run(h, 0, [{ kind: 'setSandbox', on: true }]);
+    const centre = { x: 120, z: 40 };
+    const arms = [
+      [1, 0],
+      [0, 1],
+      [-1, 0],
+    ];
+    arms.forEach(([dx, dz], n) => {
+      const tiles = [centre];
+      for (let i = 1; i <= 5; i++) tiles.push({ x: centre.x + dx! * i, z: centre.z + dz! * i });
+      const ack = run(h, n + 1, [
+        { kind: 'buildRoad', tier: RoadTier.Avenue, tiles, elevation: 0, replace: true },
+      ]);
+      expect(ack.ok).toBe(true);
+    });
+    h.sim.handleMessage({ type: 'requestSave' });
+    const g = latestSaveGrid(h);
+    for (let x = 115; x < 125; x++) {
+      const step = Math.abs(
+        g.height[tileIndex(x + 1, centre.z)]! - g.height[tileIndex(x, centre.z)]!,
+      );
+      expect(step, `deck step between x=${x} and x=${x + 1}`).toBeLessThan(1);
     }
   });
 });

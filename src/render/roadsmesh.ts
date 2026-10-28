@@ -6545,7 +6545,8 @@ export class RoadMeshRenderer {
     }
   }
 
-  apply(deltas: RoadTileDelta[]): void {
+  /** Answers the chunks it rebuilt, so the lots beside them can be laid again. */
+  apply(deltas: RoadTileDelta[]): ReadonlySet<number> {
     this.kerbFaces.clear();
     const dirty = new Set<number>();
     for (const delta of deltas) {
@@ -6572,6 +6573,7 @@ export class RoadMeshRenderer {
 
     for (const key of dirty) this.rebuildChunk(key);
     this.rebuildMedianTrees();
+    return dirty;
   }
 
   /**

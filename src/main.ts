@@ -1861,7 +1861,16 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       const tool = store.getState().selectedTool;
       // A stop stands on the street's side, never on a lot.
       if (isStopTool(tool)) return true;
-      if (tool.startsWith('plop.')) return clientGrid.isFreeForPlop(tiles);
+      if (tool.startsWith('plop.')) {
+        if (!clientGrid.isFreeForPlop(tiles)) return false;
+        const needs = catalogById.get(tool.slice('plop.'.length))?.requiresAdjacent;
+        if (!needs || tiles.length === 0) return true;
+        const x0 = Math.min(...tiles.map((t) => t.x));
+        const z0 = Math.min(...tiles.map((t) => t.z));
+        const w = Math.max(...tiles.map((t) => t.x)) - x0 + 1;
+        const d = Math.max(...tiles.map((t) => t.z)) - z0 + 1;
+        return clientGrid.hasAdjacent(needs, x0, z0, w, d);
+      }
       if (tool in ROAD_TOOL_TO_TIER) return clientGrid.isClearOfBuildings(tiles);
       return true;
     },
@@ -2085,7 +2094,9 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       clientGrid.applyRoundabouts(snap.roundabouts);
       roadsMesh.setRoundabouts(snap.roundabouts);
     }
-    const redrawnChunks = snap.junctions ? roadsMesh.setJunctionControls(snap.junctions) : null;
+    const redrawnChunks = new Set<number>(
+      snap.junctions ? roadsMesh.setJunctionControls(snap.junctions) : [],
+    );
     if (snap.junctions || snap.roundabouts) {
       // An open inspector shows the junction as it IS: the worker may have
       // refused the change, or the warrant may have moved it while the panel
@@ -2098,7 +2109,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       // deck heights back out of the mirror — meshing before those land lays
       // the carriageway on the ground underneath its own bridge.
       const raised = clientGrid.applyRoadDeltas(snap.roads);
-      roadsMesh.apply(snap.roads);
+      for (const key of roadsMesh.apply(snap.roads)) redrawnChunks.add(key);
       // Tiles beside a deck sample the ramp blend but carry no delta of their
       // own, so their geometry only rebuilds if we ask for it.
       if (raised.length > 0)
@@ -2176,13 +2187,20 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
         if (current !== selected) state.setSelectedBuilding(current);
       }
     }
-    // A control that moves gives or takes the turn bays down its arms, which
-    // widens or narrows the street with no building changing: every lot beside
-    // a stretch the road mesh redrew is laid again against the kerb it now has,
-    // and its kerb stalls with it.
-    if (redrawnChunks && redrawnChunks.size > 0) {
+    // A control that moves gives or takes the turn bays down its arms, and a
+    // road edit reshapes the kerb: either changes the street with no building
+    // changing, so every lot beside a stretch the road mesh redrew is laid
+    // again against the kerb it now has, and its kerb stalls with it. A
+    // building this snapshot already delivered was laid against the new kerb.
+    if (redrawnChunks.size > 0) {
+      const delivered = new Set<number>();
+      if (snap.buildings) {
+        for (const b of snap.buildings.added) delivered.add(b.id);
+        for (const b of snap.buildings.updated) delivered.add(b.id);
+      }
       const updated: BuildingInstance[] = [];
       for (const b of knownBuildings.values()) {
+        if (delivered.has(b.id)) continue;
         const entry = catalogById.get(b.catalogId);
         if (!entry) continue;
         const { w, d } = footprintForRotation(entry, b.rotation);

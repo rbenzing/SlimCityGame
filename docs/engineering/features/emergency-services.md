@@ -127,7 +127,8 @@ none in reach and free, it is held as `answered: false`:
   re-roll, and a taken call joins the answered pool with its already-drawn
   severity;
 - it lapses after `UNANSWERED_LAPSE_TICKS = 30`, the longest on-scene time of an
-  answered call (10 + 20), and is visible for 30 ticks. The lapse is a dial;
+  answered call of any kind (fire at full severity, 10 + 20), and is visible for
+  30 ticks. The lapse is a dial;
 - the building stays in `activeTargets` until the call lapses or resolves, so no
   second call starts on it;
 - a city with no fire station still sends police: the responder search is per
@@ -150,15 +151,19 @@ coverage now reduces calls.
 
 Checks: a one-engine town of 14,000 at reference fields makes about 588
 non-medical fire calls a year, 1.6 a day; a 25,000-person town makes about 11,250
-police calls a year, 31 a day, which keeps 6 cars about 21% busy at an hour a call.
-The on-scene time of 10 + severity × 20 ticks is unchanged, though longer than an
-average police call (Austin's assessment: about 26 minutes for responsive calls);
-that is flagged for a later slice.
+police calls a year, 31 a day, which keeps 6 cars about 9% busy at 26.4 minutes a call.
+
+The on-scene time is `serviceTicksFor(kind, severity)` in `src/sim/dispatch.ts`.
+Crime and medical use a per-kind mean in minutes (`ON_SCENE_MINUTES`: crime 26.4,
+medical 29, the ambulance's scene plus transport time) and
+round(minutes × (0.5 + severity) ÷ 7.2) ticks, 7.2 being the minutes in a tick.
+Fire keeps 10 + severity × 20 ticks, a dial for want of a US figure. The sources
+are in the design document.
 
 ### What does not change
 
 The field reads, the vehicle model (one tile a tick, animation pacing, never a
-travel-time model), the phase machine, the on-scene duration and the read-only
+travel-time model), the phase machine, and the read-only
 contract.
 
 ### Visibility
@@ -268,4 +273,4 @@ renderer.
   there is no travel-time model.
 - Disasters, and any service that exists only to respond to them.
 - Reworking coverage, or the Crime and FireRisk growth rules.
-- The on-scene time, flagged above for a later slice.
+- A US figure for fire on-scene time; fire stays a dial until one is found.

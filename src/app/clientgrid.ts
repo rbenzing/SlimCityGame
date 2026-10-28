@@ -13,7 +13,7 @@ import { SEA_LEVEL, TILE_METERS, worldToTile } from '../shared/constants';
 import { footprintForRotation } from '../shared/footprint';
 import { claimedTiles } from '../shared/lotframe';
 import { regradeSoil, soilGrades } from '../shared/soil';
-import { corridorHalfOf, flowDirection, RoadFlow, RoadTier } from '../shared/types';
+import { corridorHalfOf, flowDirection, isRailTier, RoadFlow, RoadTier } from '../shared/types';
 import { approachZoneTiles, armSlot } from '../shared/approach';
 import {
   approachAhead,
@@ -28,6 +28,7 @@ import {
   worldOrderedProfile,
   FIRST_CUSTOM_PROFILE_ID,
   isPresetProfileId,
+  isTramTile,
   presetProfileForTier,
   profilesEqual,
 } from '../shared/roadprofile';
@@ -816,6 +817,31 @@ export class ClientGridMirror {
       if (this.isOccupied(i)) return false;
     }
     return true;
+  }
+
+  /**
+   * Whether the w x d footprint at (x, z) has what a `requiresAdjacent` entry
+   * needs orthogonally beside it: water, rail track, or a street carrying a
+   * tram lane. The same ring the worker's commit check walks; the worker stays
+   * authoritative, this lets the ghost refuse first.
+   */
+  hasAdjacent(kind: 'rail' | 'water' | 'tram', x: number, z: number, w: number, d: number): boolean {
+    const accepts = (i: number): boolean => {
+      if (kind === 'water') return this.water[i] === 1;
+      if (kind === 'rail') return isRailTier(this.roadTier[i] ?? RoadTier.None);
+      return isTramTile(this, i, (id) => this.profileById(id));
+    };
+    for (let dz = -1; dz <= d; dz++) {
+      for (let dx = -1; dx <= w; dx++) {
+        const insideX = dx >= 0 && dx < w;
+        const insideZ = dz >= 0 && dz < d;
+        if (insideX && insideZ) continue;
+        if ((dx === -1 || dx === w) && (dz === -1 || dz === d)) continue;
+        if (!this.inBounds(x + dx, z + dz)) continue;
+        if (accepts(this.idx(x + dx, z + dz))) return true;
+      }
+    }
+    return false;
   }
 
   /**

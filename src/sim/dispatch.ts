@@ -53,6 +53,7 @@ import {
   EMPLOYMENT_RATE,
   FIELD_REFERENCE,
   RESPONSE_REACH_TILES,
+  TICKS_PER_DAY,
   TICKS_PER_YEAR,
   TICK_RATE,
   TILE_METERS,
@@ -87,18 +88,44 @@ export const MAX_UNANSWERED_INCIDENTS = 32;
 /** Service vehicles move exactly one tile per tick -- a deliberate, simple, testable speed model (not congestion-aware; distinct from TrafficSystem's cosmetic cars). */
 const SERVICE_VEHICLE_SPEED_MPS = TILE_METERS * TICK_RATE;
 
-/** On-scene service duration, in ticks: BASE + severity(0..1) * SEVERITY_SCALE. */
+/** Fire on-scene duration, in ticks: BASE + severity(0..1) * SEVERITY_SCALE. A dial. */
 const SERVICE_TICKS_BASE = 10;
 const SERVICE_TICKS_SEVERITY_SCALE = 20;
 
 /**
- * How long an unanswered call stands before it lapses: the longest an answered
- * call spends on scene, so it is visible for as long as an answered one would
- * have been. A dial.
+ * Mean minutes a unit is off the road per call, for the kinds with a sourced
+ * figure: police arrival to clear (26.4), ambulance scene plus transport
+ * (16 + 13). Severity spreads it 0.5x to 1.5x.
  */
-export const UNANSWERED_LAPSE_TICKS = SERVICE_TICKS_BASE + SERVICE_TICKS_SEVERITY_SCALE;
+const ON_SCENE_MINUTES: Partial<Readonly<Record<Incident['kind'], number>>> = {
+  crime: 26.4,
+  medical: 29,
+};
+
+const MINUTES_PER_DAY = 1440;
+
+/** Ticks a unit stays on an incident of this kind and severity (0..1). */
+export function serviceTicksFor(kind: Incident['kind'], severity: number): number {
+  const minutes = ON_SCENE_MINUTES[kind];
+  if (minutes === undefined) {
+    return Math.round(SERVICE_TICKS_BASE + severity * SERVICE_TICKS_SEVERITY_SCALE);
+  }
+  // Tenths of a minute and a doubled spread keep the product integral, so an
+  // exact half tick rounds up instead of landing a float hair under it.
+  const tenths = Math.round(minutes * 10);
+  return Math.round((tenths * (1 + 2 * severity) * TICKS_PER_DAY) / (20 * MINUTES_PER_DAY));
+}
 
 const INCIDENT_KINDS: readonly Incident['kind'][] = ['fire', 'crime', 'medical'];
+
+/**
+ * How long an unanswered call stands before it lapses: the longest an answered
+ * call spends on scene (any kind, worst severity), so it is visible for as long
+ * as an answered one would have been. A dial.
+ */
+export const UNANSWERED_LAPSE_TICKS = Math.max(
+  ...INCIDENT_KINDS.map((kind) => serviceTicksFor(kind, 1)),
+);
 
 const SERVICE_KIND_FOR_INCIDENT: Readonly<Record<Incident['kind'], FundingKey>> = {
   fire: 'fire',
@@ -527,9 +554,7 @@ export class DispatchSystem {
       slot,
       phase: 'toIncident',
       vehicle,
-      serviceTicksRemaining: Math.round(
-        SERVICE_TICKS_BASE + call.severity * SERVICE_TICKS_SEVERITY_SCALE,
-      ),
+      serviceTicksRemaining: serviceTicksFor(call.kind, call.severity),
       stationTile: { x: station.building.x, z: station.building.z },
       stationId: station.building.id,
       incidentTile: call.incidentTile,

@@ -25,7 +25,7 @@ current behavior only and carry no dates of their own._
 
 ## Status (2026-09-29)
 
-**Test suite:** 7,310 tests passing across 207 test files, run 2026-10-28.
+**Test suite:** 7,319 tests passing across 207 test files, run 2026-10-28.
 This is the only test count in the documentation set. When the suite changes
 again, update the figure here and nowhere else.
 
@@ -143,25 +143,19 @@ not a test to fix.
   too.
 - The kerb paints stalls across curb cuts and house drives, so a lot's kerb
   credit can count a stall a driveway would block.
-- A lot's car park is laid when its building is built or levels up; a
-  street's kerb parking repainted later does not re-lay it. Lots are re-laid
-  when a junction control opens or closes a turn bay, but not on a road edit
-  alone, so a bay that a re-profiled road gains or loses leaves the drives
-  beside it as they were until the next building change.
-- The clipping sweep's junction cases read ground 0.32 m above the deck at
-  an Avenue-on-Avenue crossroads (118,40 on seed 12345) and 0.09–0.12 m at
-  two street crossroads; the parade's runs are clean. Trace the junction
-  box's corners against the levelling the way the dead ends were.
+- A corner apron tile beside a road on a slope can keep a stale run-out
+  height up to 0.4 m above the deck beside it (seen on a synthetic slope
+  while tracing the junction step, not in the clipping sweep); the apron
+  cap would read edge-adjacent roads first to close it.
 - A kerb-credited lot's customers are drawn parked on the lot, not in the
   kerb stalls its credit counts.
 - The district fire station's second company rolls as a second engine: there
   is no ladder-truck vehicle kind yet (an aerial is 51 ft and up, 13 ft high,
   per one feasibility study). The engines parked on station aprons are
   decoration and stay put when the station dispatches.
-- An incident's on-scene time is still 10–30 ticks (1.2–3.6 game hours) for
-  every kind, longer than an average police call (Austin's assessment: about
-  26 minutes for responsive calls); re-derive it per kind, which sets how busy
-  a station's crews are.
+- A fire's on-scene time of 10–30 ticks (1.2–3.6 game hours) is a dial: no
+  US figure for an engine's time on scene was found (NIST's fireground
+  experiments give crew-size ratios, NFPA 1710 gives arrival targets).
 - After the performance slice (2026-10-15) the Metropolis is triangle-bound
   on the measured laptop GPU: the city still adds 19–26 M triangles over the
   empty map's 8.4 M, and the overview still draws three times the oblique's
@@ -190,10 +184,6 @@ not a test to fix.
   renderer's hiding of the loop has to match the sim to the hour. Either the
   truth gains the exception or both systems move to the calendar day; the
   player decides.
-- The placement ghost does not read `requiresAdjacent`: a reactor, pumping
-  station, drain or treatment works shows as placeable over dry land, and only
-  the commit is refused, with a toast. The ghost should refuse it as it refuses
-  an overlap.
 - The crematorium's upkeep of ¢600 is the design's dial: no US operating
   cost for a crematory was found (gas is 12.5–28.5 therms a cremation by one
   maker's metering, staff unpublished).
@@ -400,6 +390,31 @@ roads, and pinning the Three.js version. See [adr/](engineering/adr/README.md).
 ---
 
 ## 10. History (newest first)
+
+### Four rules that were owed (the open-items rules sweep, built 2026-10-28)
+
+The second half of the open-items sweep begun on 2026-10-23: four debts from
+the Open list, each a fix against an existing spec.
+
+- **The ghost refuses a dry shore.** A reactor, pumping station, drain or
+  treatment works that needs water beside it, a depot that needs rail or a
+  tram street, now shows as blocked in the placement ghost the way an overlap
+  does; the worker's commit check is unchanged and still authoritative.
+- **A road edit re-lays the lots beside it.** The road mesh reports the
+  chunks it redrew, and every lot beside one is laid again against the kerb
+  it now has, as it already was when a junction gained or lost a turn bay.
+- **The Avenue crossroads step was an arm, not a corner.** Drawing a
+  crossroads arm by arm, the first arm's dead-end run-out dropped two tiles
+  to the junction's height; the next arm over them met a 2 m step the grade
+  solver closed by lifting one tile 4 cm, and the leveller then skipped that
+  tile as elevated. A deck lifted under 0.5 m is now levelled with its run.
+  The junction sweep's worst ground-above-deck went from 0.32 m to none.
+- **On-scene time per kind.** A police call holds its car 26.4 minutes
+  (Austin, arrival to clear); an ambulance is off the road 29 minutes (a
+  16 minute scene plus 13 minute transport, NEMSIS chest-pain medians),
+  severity spreading each from half to one and a half times; fire keeps its
+  1.2 to 3.6 hours as a dial, no US on-scene figure having been found. Six
+  police cars in a town of 25,000 are now about 9% busy, not 21%.
 
 ### Every civic building has a way in (slice 2 of civic access and bus stops, built 2026-10-28; epic complete)
 

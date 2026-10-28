@@ -552,6 +552,37 @@ describe('ClientGridMirror', () => {
     });
   });
 
+  describe('hasAdjacent', () => {
+    const track = (x: number, z: number, tier: RoadTier) => ({
+      x,
+      z,
+      tier,
+      mask: 0,
+      elevation: 0,
+      profile: tier,
+      flow: 0,
+    });
+
+    it('finds water orthogonally beside the footprint, not at a corner or far off', () => {
+      expect(mirror.hasAdjacent('water', 4, 5, 1, 1)).toBe(true); // west of (5,5)
+      expect(mirror.hasAdjacent('water', 4, 4, 1, 1)).toBe(false); // diagonal only
+      expect(mirror.hasAdjacent('water', 20, 20, 2, 2)).toBe(false);
+    });
+
+    it('finds rail track beside the footprint but not a street', () => {
+      mirror.applyRoadDeltas([track(12, 10, RoadTier.RailTrack), track(30, 10, RoadTier.TwoLane)]);
+      expect(mirror.hasAdjacent('rail', 10, 10, 2, 1)).toBe(true);
+      expect(mirror.hasAdjacent('rail', 10, 12, 2, 1)).toBe(false);
+      expect(mirror.hasAdjacent('rail', 28, 10, 2, 1)).toBe(false);
+    });
+
+    it('finds a tramway tile beside the footprint but not a plain street', () => {
+      mirror.applyRoadDeltas([track(12, 10, RoadTier.Tram), track(30, 10, RoadTier.TwoLane)]);
+      expect(mirror.hasAdjacent('tram', 10, 10, 2, 1)).toBe(true);
+      expect(mirror.hasAdjacent('tram', 28, 10, 2, 1)).toBe(false);
+    });
+  });
+
   describe('isClearOfBuildings', () => {
     it('lets a road cross water and another road, but never a building', () => {
       mirror.applyRoadDeltas([

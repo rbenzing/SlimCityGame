@@ -464,6 +464,13 @@ function deadEndFacings(mask: number, flow: number): ReadonlyArray<readonly [num
   return [[-dx, -dz]];
 }
 
+/**
+ * A deck lifted this little off its ground still lies on it: the grade solver
+ * raises a tile a sliver to meet a neighbour's step, which is not a bridge and
+ * must be levelled with the rest of the road or its ground stands proud of it.
+ */
+const GROUND_HUGGING_LIFT_M = 0.5;
+
 /** 8-neighbor (Chebyshev distance 1) ring offsets — the "1-tile apron" around a road footprint. */
 const APRON_NEIGHBOR_OFFSETS: ReadonlyArray<readonly [number, number]> = [
   [-1, -1],
@@ -3407,7 +3414,9 @@ class SimWorld implements WorkerSim {
     // run-out past a dead end. Elevated tiles are exempt — the deck spans the
     // ground, it does not sit on it, and levelling a riverbed under a bridge
     // would drain the river.
-    const grounded = rebuilt.filter((t) => (g.roadElevation[tileIndex(t.x, t.z)] ?? 0) === 0);
+    const grounded = rebuilt.filter(
+      (t) => (g.roadElevation[tileIndex(t.x, t.z)] ?? 0) < GROUND_HUGGING_LIFT_M,
+    );
     this.flattenFootprint(grounded, true, inverse);
     return { ok: true, cost, inverse };
   }
@@ -4100,7 +4109,7 @@ class SimWorld implements WorkerSim {
     // the shoreline down into the water the bridge was built to cross.
     const isRoadSource = (x: number, z: number): boolean => {
       const idx = tileIndex(x, z);
-      if ((g.roadElevation[idx] ?? 0) > 0) return false;
+      if ((g.roadElevation[idx] ?? 0) >= GROUND_HUGGING_LIFT_M) return false;
       return rSet.has(idx) || g.roadTier[idx] !== RoadTier.None;
     };
 
