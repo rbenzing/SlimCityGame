@@ -24,7 +24,7 @@
 import * as THREE from 'three';
 import { uniform } from 'three/tsl';
 import { nightBodyMaterial } from './nightlook';
-import { BuildingState } from '../shared/types';
+import { BuildingState, RoadTier } from '../shared/types';
 import type { BuildingCatalogEntry, BuildingDelta, BuildingInstance } from '../shared/types';
 import { CHUNK_TILES, CHUNKS_PER_SIDE, TILE_METERS } from '../shared/constants';
 import { footprintForRotation } from '../shared/footprint';
@@ -37,7 +37,14 @@ import { materialUnit, type MaterialName } from './palette';
 import { massingLifecycleTint } from './massing';
 import { isFarmEntry, isHouseEntry, isWalkUpEntry } from './archetypes';
 import { cropBands, planFarm, type FarmPlan, type FarmRect } from './farmlot';
-import { edgeFrameOfParcel, NO_STREETS, type StreetLookup } from './frontage';
+import { edgeFrameOfParcel, NO_STREETS, sidewalkDepthMeters, type StreetLookup } from './frontage';
+import {
+  civicCrossingRects,
+  civicSiteFor,
+  NO_SENSORS,
+  type CivicSite,
+  type KitSensors,
+} from './civiccrossing';
 import { lotToWorld, planHouseLot, type HouseLotPlan, type LotRect } from './houselot';
 import {
   CURB_CUT_Y_OFFSET,
@@ -147,6 +154,8 @@ export class LotRenderer {
   private readonly kerb: KerbSurroundings | null;
   /** The kerb stalls a framed lot's frontage earns from its free road; null credits none. */
   private readonly kerbCreditOf: KerbCreditOf | null;
+  /** The water and track a shore kit, a station or a rail yard turns to face, which decide where its way in is. */
+  private readonly kitSensors: KitSensors;
   /** 0 (day) .. 1 (night): what the lots' ground shades by, the same tint as the terrain. */
   private readonly nightFactorUniform = uniform(0);
   private readonly material = nightBodyMaterial(this.nightFactorUniform, { vertexColors: true });
@@ -166,6 +175,7 @@ export class LotRenderer {
     dirtAt: (x: number, z: number) => boolean = () => false,
     kerb: KerbSurroundings | null = null,
     kerbCreditOf: KerbCreditOf | null = null,
+    kitSensors: KitSensors = NO_SENSORS,
   ) {
     this.scene = scene;
     this.heightAt = heightAt;
@@ -175,6 +185,7 @@ export class LotRenderer {
     this.dirtAt = dirtAt;
     this.kerb = kerb;
     this.kerbCreditOf = kerbCreditOf;
+    this.kitSensors = kitSensors;
   }
 
   /** 0 (day) .. 1 (night): how far the lots' ground shades toward the night tint. */
@@ -257,6 +268,15 @@ export class LotRenderer {
           this.heightAt,
         );
       layFarmGround(farm, building.state, lay);
+      this.store(building, positions, colors);
+      return;
+    }
+
+    // A civic building brings its own ground and lays only its way in, across
+    // the verge and the footway to the street it fronts.
+    const civic = civicSiteFor(entry, building, this.street, this.kitSensors);
+    if (civic) {
+      this.layCivicCrossing(civic, positions, colors, tinted);
       this.store(building, positions, colors);
       return;
     }
@@ -362,8 +382,7 @@ export class LotRenderer {
           this.heightAt,
         );
       };
-      const lay = (r: LotRect, y: number, name: MaterialName): void =>
-        layColor(r, y, tinted(name));
+      const lay = (r: LotRect, y: number, name: MaterialName): void => layColor(r, y, tinted(name));
       this.layCarPark(carPark, entry, surface, lay, (r) =>
         layColor(r, STRIPE_LINE_Y_OFFSET, NEAR_WHITE_STRIPE_COLOR),
       );
@@ -391,6 +410,57 @@ export class LotRenderer {
       this.layHouseLot(plan, surface, lay);
     }
     this.store(building, positions, colors);
+  }
+
+  /**
+   * A civic building's crossings: each span's verge strip and its footway cut,
+   * paved the way a shop's drive is (asphalt, a drive's and an apron's) or a
+   * home's walk is (concrete). A framed parcel's front line is the back of its
+   * free road's footway, so it has no verge and a street's footway is assumed.
+   */
+  private layCivicCrossing(
+    site: CivicSite,
+    positions: number[],
+    colors: number[],
+    tinted: (name: MaterialName) => readonly [number, number, number],
+  ): void {
+    const road = this.street(site.edge.roadTileX, site.edge.roadTileZ);
+    if (!road && !site.framed) return;
+    const vergeM = site.framed ? 0 : (road?.vergeM ?? 0);
+    const sidewalkM = road?.sidewalkM ?? sidewalkDepthMeters(RoadTier.TwoLane);
+    for (const { rect, kind, layer } of civicCrossingRects(site.crossings, vergeM, sidewalkM)) {
+      const color = tinted(kind === 'walk' ? 'cleanConcrete' : 'brightAsphalt');
+      const y =
+        layer === 'footway' ? CURB_CUT_Y_OFFSET : kind === 'walk' ? WALK_Y_OFFSET : DRIVE_Y_OFFSET;
+      if (site.framed) {
+        pushConformingTurnedQuad(
+          positions,
+          colors,
+          (u, v) => lotPointToWorld(site.frame, u, v),
+          rect.u0,
+          rect.v0,
+          rect.u1,
+          rect.v1,
+          y,
+          color,
+          this.heightAt,
+        );
+        continue;
+      }
+      const a = lotPointToWorld(site.frame, rect.u0, rect.v0);
+      const b = lotPointToWorld(site.frame, rect.u1, rect.v1);
+      pushConformingQuad(
+        positions,
+        colors,
+        Math.min(a.x, b.x),
+        Math.min(a.z, b.z),
+        Math.max(a.x, b.x),
+        Math.max(a.z, b.z),
+        y,
+        color,
+        this.heightAt,
+      );
+    }
   }
 
   /** What a home's lot paves over its lawn: the verge strips, the walks, the patios, the drives and their cuts across the footway. */

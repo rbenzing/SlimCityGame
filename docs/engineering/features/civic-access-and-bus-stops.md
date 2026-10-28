@@ -1,6 +1,6 @@
 # Civic access and bus stops — technical design
 
-- **Status:** Agreed 2026-10-27
+- **Status:** Built 2026-10-28 (agreed 2026-10-27)
 - **Date:** 2026-10-27
 - **Author:** Claude Fable 5.1
 
@@ -81,15 +81,15 @@ their inverse.
 `busStopPlacement(stop, profile)` in `src/render/busstops.ts` is the one
 function that lays the furniture, in the tile's road frame (the road axis
 along, the side's normal out): the kerb face at the carriageway's edge, its
-half width, with the kerb reserve behind it where the pole stands as a
-lamp column does; on a road with no kerb the pad begins past the reserve;
-the pad from the kerb face 2.44 m out, 3.66 m along,
-centred on the tile; the pole 0.46 m out from the kerb at the pad's leading
-end in the road's flow direction; the shelter (`BUS_SHELTER` from
-`busshelter.ts`) with its front 0.9 m from the kerb, which on a footway
-narrower than that plus its depth stands its back in the verge; the bin at
-the pad's trailing end. On a tile whose profile has no `sidewalk` piece the
-same placement applies with the pad's near edge at the kerb reserve. The
+half width; on a tile whose profile has a `sidewalk` piece the pad begins
+at the footway's outer edge (kerb face plus `sidewalkDepthMeters`) and runs
+2.44 m beyond it, 3.66 m along, centred on the tile, so the footway stays
+clear; the pole at the pad's road-side edge at its leading end in the
+road's flow direction; the shelter (`BUS_SHELTER` from `busshelter.ts`)
+along the back of the pad facing the road; the bin at the pad's trailing
+end. On a tile with no `sidewalk` piece the pad's near edge is the kerb
+reserve's outer edge, up to the road, and the pole, shelter and bin stand
+on it the same way. The
 pools are the shelter's existing one and three new instanced pools (pad,
 pole, bin); the pads conform to the terrain like the lot pads.
 
@@ -116,32 +116,43 @@ street in reach is dropped, and the loader logs it.
 
 ### Slice 2: the civic drive
 
-`civicAccessFor(entry)` in `src/shared/parkingcode.ts` returns, for a
-service, transport, utility or park entry, the access the kit declares:
+Every civic kit already draws its own apron, yard, drive, canopy or
+forecourt inside its footprint (`src/render/utilitykits.ts` holds all 37
+civic kits; the airport is a landmark). What none of them has is the way
+from the footprint's front edge over the verge and the footway to the
+carriageway. So the civic access is a **crossing**, the one thing the kits
+share, and each kit declares where along its front it wants one:
 
 ```ts
+/** Where a civic kit's front edge meets the street, in local metres from its front-left corner. */
 export interface CivicAccess {
-  /** Where the drive ends, in the lot's local metres from its front-left corner. */
-  point: { u: number; v: number };
-  /** A fire station's full-width apron instead of a drive. */
-  apron?: { u0: number; u1: number; depthM: number };
-  /** A school's bus loop off the drive. */
-  busLoop?: { radiusM: number };
+  spans: readonly {
+    u0: number;
+    u1: number;
+    /** A vehicle crossing (7.3 m two-way, a fire apron the bays' width) or a 1.8 m walk. */
+    kind: 'drive' | 'apron' | 'walk';
+  }[];
 }
 ```
 
-Each kit's access point is a constant beside its layout in
-`src/render/utilitykits.ts` or `ploppables.ts` (the bay doors' centre, the
-car park's mouth, the yard gate, the visitor pad), read through one
-registry `CIVIC_ACCESS_BY_ID`. `lotLayoutFor` lays, for such an entry, a
-`CIVIC_DRIVE_WIDTH_M` (7.3) drive from the kerb at the point's `u` to the
-point's `v`, with the curb cut across the footway the commercial layout
-already draws; an apron lays `FIRE_APRON_DEPTH_M` (14) across `[u0, u1]`;
-a bus loop lays a one-way 7.3 m lane on `BUS_LOOP_RADIUS_M` (15) where the
-lot's width holds it, else none. The kit renderer draws these through the
-same placement the commercial lot plan uses (and, on a framed parcel, the
-frame). `curbCutTileFor` covers the civic cut so kerb furniture keeps off
-it. An entry with no frontage draws nothing.
+`CIVIC_ACCESS_BY_ID` in `src/shared/civicaccess.ts` names every civic
+catalog id (a test mirrors `UTILITY_KIT_CATALOG_IDS` plus the airport so
+none is missed): a fire station's apron the width of its bays, a works or
+depot's drive at its gate, a hospital's and a clinic's drive at the
+porte-cochère plus a walk at the door, a school's drive at its loop and a
+walk at the entrance, a library's and a station's walk and drive, a park's
+walk at its entrance, a cemetery's drive at the gatehouse. A shore kit
+(water tower, turbine, pump, drain, sewage works) declares its spans on
+its land side. The lot renderer lays each span from the footprint's front
+edge to the carriageway as the house drive's cut is laid (verge then
+footway, concrete, `CIVIC_DRIVE_WIDTH_M` 7.3 for a drive, the span's width
+for an apron, 1.8 m for a walk) on the frontage the building faces, with
+the curb cut the commercial lot draws; `curbCutTileFor` covers the civic
+cuts so lamps and kerb furniture keep off them. A kit whose apron stops
+short of its front edge is extended to it. An entry with no street along
+its front draws nothing, as nothing grows there. A deeper fire apron or a
+school bus loop inside a footprint that cannot hold one is a kit follow-up,
+not this slice.
 
 ## What could go wrong
 

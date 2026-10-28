@@ -278,7 +278,9 @@ MUTCD citations below use 11th-edition section numbers.
   beside its track, so a stop partway down a block longer than sixteen
   tiles routed to nothing and carried nobody until this was so. A bus stop
   is road furniture on one side of its street tile, never a building on a
-  tile of its own: a sign or a shelter on an 8 by 5 ft pad at the kerb,
+  tile of its own: a sign or a shelter on an 8 by 5 ft pad at the outer
+  edge of the footway, the footway kept clear, or up to the road where
+  there is none,
   placed by its own tool, refused on a junction, a motorway, a ramp, rail or
   a tram reservation; a bus line names only tiles holding a stop, and the
   last stop leaving a tile leaves every line. A shelter with 25 boardings a

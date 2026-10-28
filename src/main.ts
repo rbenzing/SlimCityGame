@@ -104,6 +104,7 @@ import {
   type KerbSide,
 } from './render/parked';
 import { findRoadFacingEdge, streetLookupOf } from './render/frontage';
+import { civicCutTiles, civicSiteFor, type KitSensors } from './render/civiccrossing';
 import {
   driveRoadTiles,
   planHouseGround,
@@ -289,14 +290,21 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
   // kit renderer claims are handed to BuildingInstancer as plinthIds so the
   // instancer draws only a low plinth slab under them (picking/outline/
   // bulldoze still flow through the instancer path).
+  // A shore building turns to face the water beside it; a station lays its
+  // platform, and a rail yard its lead, along the track beside it. The lots'
+  // civic crossings read the same two, so a way in lands on the side the kit
+  // turned its front to.
+  const kitSensors: KitSensors = {
+    waterAt: (x, z) => inBounds(x, z) && clientGrid.water[z * clientGrid.size + x] === 1,
+    railAt: (x, z) =>
+      inBounds(x, z) && isRailTier(clientGrid.roadTier[z * clientGrid.size + x] ?? 0),
+  };
   const utilityKits = new UtilityKitRenderer(
     world.scene,
     heightAt,
     catalog,
-    // A shore building turns to face the water beside it.
-    (x, z) => inBounds(x, z) && clientGrid.water[z * clientGrid.size + x] === 1,
-    // A station lays its platform along the track beside it.
-    (x, z) => inBounds(x, z) && isRailTier(clientGrid.roadTier[z * clientGrid.size + x] ?? 0),
+    kitSensors.waterAt,
+    kitSensors.railAt,
     // A tram depot runs its lead to the tram track beside it.
     (x, z) => inBounds(x, z) && isTramTier(clientGrid.roadTier[z * clientGrid.size + x] ?? 0),
   );
@@ -446,6 +454,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
     dirtAt,
     kerb,
     kerbCreditOf,
+    kitSensors,
   );
   // A farm's barn roof, farmhouse, silos, bins, orchard, fence and herd.
   const farms = new FarmRenderer(world.scene, heightAt, catalog, dirtAt);
@@ -2144,6 +2153,12 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
         if (!entry) continue;
         const cut = curbCutTileFor(entry, inst, roadAt, kerb, kerbCreditOf);
         if (cut) nextDriveways.add(cut.x * 100_000 + cut.z);
+        const civic = civicSiteFor(entry, inst, street, kitSensors);
+        if (civic) {
+          for (const tile of civicCutTiles(civic, street)) {
+            nextDriveways.add(tile.x * 100_000 + tile.z);
+          }
+        }
         const home = planHouseGround(inst, entry, roadAt, street);
         if (!home) continue;
         for (const tile of driveRoadTiles(inst, entry, home)) {
