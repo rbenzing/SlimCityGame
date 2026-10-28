@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.80.1](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.80.0...slimcity-v1.80.1) (2026-10-28)
+
+
+### Bug Fixes
+
+* **rules:** four owed rules — ghost shore check, lots re-laid on a road edit, junction step, on-scene time per kind ([e3919e0](https://github.com/rbenzing/SlimCityGame/commit/e3919e047f26372ba9d3177fb23da4e488a5bd85))
+* **rules:** four owed rules — ghost shore check, lots re-laid on a road edit, junction step, on-scene time per kind ([c92f4cf](https://github.com/rbenzing/SlimCityGame/commit/c92f4cf61f208a998b0f7c85c78228892990e792))
+
 ## [1.80.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.79.0...slimcity-v1.80.0) (2026-10-28)
 
 
