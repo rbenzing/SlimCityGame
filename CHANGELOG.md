@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.79.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.78.0...slimcity-v1.79.0) (2026-10-28)
+
+
+### Features
+
+* **transit:** a bus stop is furniture on the footway, a sign or a sh… ([16fc1b0](https://github.com/rbenzing/SlimCityGame/commit/16fc1b040a1bae5e6d4135fdaca2b199dfa59430))
+* **transit:** a bus stop is furniture on the footway, a sign or a shelter ([91adc48](https://github.com/rbenzing/SlimCityGame/commit/91adc4890d23887450cf5f4ecd7ce465719f4d14))
+
 ## [1.78.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.77.0...slimcity-v1.78.0) (2026-10-27)
 
 
