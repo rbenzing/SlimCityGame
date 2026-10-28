@@ -217,6 +217,7 @@ export function cityIssues(
   unserved: ZonedUnserved = NOTHING_UNSERVED,
   deathCare: DeathCareReport = NO_DEATH_CARE,
   incidents: readonly Incident[] = [],
+  unlimitedMoney = false,
 ): CityIssue[] {
   const counts = new Map<number, number>();
   const focus = new Map<number, BuildingInstance>();
@@ -270,7 +271,7 @@ export function cityIssues(
     ...unservedIssues(unserved),
     ...deathCareIssues(deathCare, stats),
     ...unansweredCallIssues(incidents),
-    ...cityWideIssues(stats),
+    ...cityWideIssues(stats, unlimitedMoney),
   );
 
   const order = new Map(PROBLEM_RULES.map((rule, index) => [rule.id, index]));
@@ -449,10 +450,12 @@ function unansweredCallIssues(incidents: readonly Incident[]): CityIssue[] {
 }
 
 /** The problems that live in the totals rather than on any one building. */
-function cityWideIssues(stats: CityStats): CityIssue[] {
+function cityWideIssues(stats: CityStats, unlimitedMoney: boolean): CityIssue[] {
   const issues: CityIssue[] = [];
 
-  if (stats.funds < 0) {
+  // With unlimited money neither budget warning applies.
+  const warn = !unlimitedMoney;
+  if (warn && stats.funds < 0) {
     issues.push({
       id: 'insolvent',
       severity: 'critical',
@@ -460,7 +463,7 @@ function cityWideIssues(stats: CityStats): CityIssue[] {
       detail: 'Raise taxes, cut service funding, or stop building until income recovers.',
       count: 0,
     });
-  } else if (stats.monthlyExpenses > stats.monthlyIncome) {
+  } else if (warn && stats.monthlyExpenses > stats.monthlyIncome) {
     issues.push({
       id: 'budget-deficit',
       severity: 'warning',

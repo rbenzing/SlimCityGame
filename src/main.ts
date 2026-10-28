@@ -1994,6 +1994,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
           zonedUnserved,
           deathCare,
           incidents,
+          state.settings.unlimitedMoney,
         ),
       );
     }

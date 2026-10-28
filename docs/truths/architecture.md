@@ -105,3 +105,10 @@ Back to [the index](../GROUND-TRUTHS.md).
   [error-handling.md](../engineering/standards/error-handling.md),
   [logging.md](../engineering/standards/logging.md)
 
+- [R-architecture-017] Sandbox lifts every unlock, the kinds a lot grows and levels up into
+  included, and nothing else: never a price, never the septic rung. Unlimited
+  money lifts every price and the budget warnings, and nothing else. Each
+  option answers only its own checkbox. —
+  [progression.md](../game-design/progression.md); `GrowthSystem` in
+  `src/sim/growth.ts`
+

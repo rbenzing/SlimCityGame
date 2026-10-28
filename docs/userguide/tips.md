@@ -26,6 +26,7 @@
   or an overwhelmed incinerator silently stops collecting its area. Check the
   trash lens, then expand the landfill or add a facility across town.
 - **Sandbox / testing options** (Options menu): _"Sandbox: unlock all build
-  items"_ ignores milestone locks, and _"Unlimited money"_ ignores funds and
-  costs — the money readout shows ∞, though cash flow is still tracked, so you
+  items"_ ignores milestone locks, so any zone you paint grows at once, and
+  _"Unlimited money"_ ignores funds and costs — the money readout shows ∞ and
+  the budget warnings stay quiet, though cash flow is still tracked, so you
   can build anything even in the red. Handy for experimenting with a layout.

@@ -552,6 +552,30 @@ describe('EconomySystem: monthly income/expenses', () => {
     expect(critResult.statsPatch.funds).toBeCloseTo(-150, 6);
     expect(critResult.notifications.some((n) => n.severity === 'critical')).toBe(true);
   });
+
+  it('raises no budget notification with unlimited money, yet still tracks the cash flow', () => {
+    const g = makeGrid();
+    const sys = new EconomySystem(catalog, roadSpecs);
+    const stats = makeStats({ funds: 50, loanBalance: 20000 });
+    const { statsPatch, notifications } = sys.tick({
+      g,
+      buildings: [],
+      stats,
+      tickNo: TICKS_PER_MONTH,
+      unlimitedMoney: true,
+    });
+    expect(statsPatch.funds).toBeCloseTo(-150, 6);
+    expect(notifications.filter((n) => n.title.startsWith('Budget'))).toEqual([]);
+
+    const low = sys.tick({
+      g,
+      buildings: [],
+      stats: makeStats({ funds: 2100, loanBalance: 20000 }),
+      tickNo: TICKS_PER_MONTH,
+      unlimitedMoney: true,
+    });
+    expect(low.notifications.filter((n) => n.title.startsWith('Budget'))).toEqual([]);
+  });
 });
 
 describe('EconomySystem: milestones', () => {

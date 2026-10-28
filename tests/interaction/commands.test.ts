@@ -113,6 +113,29 @@ describe('worker sim', () => {
     expect(buildingAck.reason).toBeUndefined();
   });
 
+  it('sandbox waives no price: a power line is refused for funds unless unlimited money is on', () => {
+    h.sim.handleMessage({ type: 'requestSave' });
+    const saveMsg = h.messages.find((m) => m.type === 'save');
+    if (!saveMsg || saveMsg.type !== 'save') throw new Error('no save message');
+    const payload = decodeSave(saveMsg.data);
+    payload.meta.stats.funds = 5;
+    h.sim.handleMessage({ type: 'loadSave', data: encodeSave(payload) });
+    const line = (z: number): Command => ({
+      kind: 'stringPowerLine',
+      tiles: Array.from({ length: 5 }, (_, i) => ({ x: 20 + i, z })),
+      on: true,
+    });
+
+    send(h, 20, [{ kind: 'setSandbox', on: true }, line(20)]);
+    h.ticks(1);
+    expect(h.ackFor(20)!.ok).toBe(false);
+    expect(h.ackFor(20)!.reason).toBe('funds');
+
+    send(h, 21, [{ kind: 'setUnlimitedMoney', on: true }, line(22)]);
+    h.ticks(1);
+    expect(h.ackFor(21)!.ok).toBe(true);
+  });
+
   it('unlimited money bypasses the funds gate (build anything even when broke)', () => {
     // Drain funds via a save round-trip so the coal plant (12000) is unaffordable.
     h.sim.handleMessage({ type: 'requestSave' });
