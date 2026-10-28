@@ -15,8 +15,8 @@ data it stores, and the conventions the codebase holds itself to.
 
 | Document                       | Covers                                                                           |
 | ------------------------------ | -------------------------------------------------------------------------------- |
-| [interfaces.md](interfaces.md) | Every command, every snapshot channel, the dev read-back surface, the data files |
-| [data-model.md](data-model.md) | The grid layers, the save format, the version table, what is never saved         |
+| [interfaces.md](interfaces/README.md) | Every command, every snapshot channel, the dev read-back surface, the data files |
+| [data-model.md](data-model/README.md) | The grid layers, the save format, the version table, what is never saved         |
 
 ## Limits
 

@@ -34,7 +34,7 @@ The player asked for this (2026-10-14), naming the water tower as the bar.
 
 Nothing changes in the simulation. A lot grows the kind it grows today
 ([building-types.md](building-types.md)), on the lot it has
-([lots-and-land.md](lots-and-land.md)), and draws what it draws from the
+([lots-and-land.md](../../specs/lots-and-land.md)), and draws what it draws from the
 grid. What changes is what stands on the lot. Each kind gains a **recipe** of
 real parts, and a building's level, lot and seeded variants pick among them,
 so a street of detached houses reads as a street of houses — a ranch, a
@@ -185,8 +185,8 @@ at against the reference; then the frame test at the Metropolis.
 byte changes. The programme is render-only.
 
 **The lots.** A house's porch and garage stand where
-[lots-and-land.md](lots-and-land.md) already puts its door, pad and drive; a
-dock bank stands where [parking-to-code.md](parking-to-code.md) already puts
+[lots-and-land.md](../../specs/lots-and-land.md) already puts its door, pad and drive; a
+dock bank stands where [parking-to-code.md](../../specs/parking-to-code.md) already puts
 the truck court. The lot layouts are the sites the buildings are drawn onto,
 not redrawn.
 

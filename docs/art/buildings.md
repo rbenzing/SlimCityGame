@@ -83,7 +83,7 @@ procedural house kit:
 - A detached home stands on the lot the land warrants — 1×1, 1×2, 2×2, 2×3
   or 3×3 — and keeps it through its three levels, which change its height and
   not its ground
-  ([../game-design/features/lots-and-land.md](../game-design/features/lots-and-land.md));
+  ([../specs/lots-and-land.md](../specs/lots-and-land.md));
   a duplex and a fourplex take a half (1×1) or a normal (1×2, or 2×1 turned)
   lot and keep it at every level; a townhouse row takes one normal lot (1×2,
   or 2×1 turned) at every level and holds three homes on it, and a long
@@ -201,7 +201,7 @@ home's lawn, which runs across the verge to the sidewalk (see
 which cross it.
 
 **A suburban commercial or industrial lot is a car park laid to code**
-([parking-to-code.md](../game-design/features/parking-to-code.md)). Its pad
+([parking-to-code.md](../specs/parking-to-code.md)). Its pad
 is mown lawn, and only what its layout uses is paved over it: asphalt (dark
 for industry) under the drive, its throat and aisles, the spaces and access
 aisles, the berths, the forecourt and the tank farm; concrete under the

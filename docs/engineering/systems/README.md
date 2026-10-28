@@ -14,8 +14,8 @@ almost every duplication problem starts with getting it wrong:
 | What does the product do, from outside?   | [the specs](../../README.md)          |
 | How is the whole system put together?     | [architecture.md](../architecture.md) |
 | How does _this one system_ work inside?   | here                                  |
-| What shape crosses this boundary?         | [interfaces.md](../interfaces.md)     |
-| What does the stored data look like?      | [data-model.md](../data-model.md)     |
+| What shape crosses this boundary?         | [interfaces.md](../interfaces/README.md)     |
+| What does the stored data look like?      | [data-model.md](../data-model/README.md)     |
 | Why was this chosen over the alternative? | [adr/](../adr/README.md)              |
 
 A worked example of the difference. The road model spec says a signalised approach takes a

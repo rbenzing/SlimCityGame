@@ -196,7 +196,7 @@ stalls the street paints along its frontage, with its accessible spaces and
 loading berths. A kind whose own lot falls short has larger lots in the
 catalog for the same building; it is a candidate if any of them fits, and it
 stands on the smallest that does
-([parking-to-code.md](features/parking-to-code.md#larger-lots)). Its larger
+([parking-to-code.md](../specs/parking-to-code.md#which-kinds-fit-and-larger-lots)). Its larger
 lots are never candidates of their own, so a kind is drawn by its `share`
 once, however many lots it has.
 A detached house stands on a parcel of the plat cut from its street: each run
@@ -207,7 +207,7 @@ normal lot, 1×2; 160 to 223 a double lot, 2×2; 224 and over an acre lot,
 to run along its street, stepping over what already stands, and
 only the tile a parcel starts on grows that lot. A tile no street's plat
 reaches takes the lot its land warrants wherever it fits
-([lots-and-land.md](features/lots-and-land.md)).
+([lots-and-land.md](../specs/lots-and-land.md)).
 One is drawn by its `share`, the kind's weight in the real stock, with one
 roll of the growth rng against the candidates' cumulative weights in catalog
 order; a kind alone among the candidates needs no roll. At least one tile of
@@ -338,7 +338,7 @@ passes): it is replaced, on the same footprint, by a level-1 duplex or
 fourplex of its zone and lot, drawn by share, unlocked at the current
 milestone, given spare supply for what it adds, and it enters Constructing.
 Any level converts; the lot never changes
-([features/lots-and-land.md](features/lots-and-land.md#a-small-house-on-prime-land-becomes-a-plex-built-2026-10-08)).
+([features/lots-and-land.md](../specs/lots-and-land.md#a-small-house-on-prime-land-becomes-a-plex)).
 
 A farm levels up by taking more land:
 

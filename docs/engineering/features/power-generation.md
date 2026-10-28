@@ -35,7 +35,7 @@ the four kits and the screenshots that judge them.
 
 **Save format: no change.** A save stores building instances by `catalogId`
 string and the catalog is code data, so new entries are invisible to the
-serialiser. See [../data-model.md](../data-model.md).
+serialiser. See [../data-model/README.md](../data-model/README.md).
 
 **The additive rule holds anyway, and is what the loader test pins.** A save
 written before this epic loads after it with every building intact and every
@@ -47,7 +47,7 @@ means "the city never had this", never "reject the file".
 
 **Worker protocol: no change.** No new command, no new snapshot field. Placement
 goes through the existing build command, and `SimSnapshot` already carries
-`powerSupply` and `powerDemand` in MW. See [../interfaces.md](../interfaces.md).
+`powerSupply` and `powerDemand` in MW. See [../interfaces/README.md](../interfaces/README.md).
 
 ## The design
 

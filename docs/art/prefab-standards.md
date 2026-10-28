@@ -15,7 +15,7 @@ The nearest equivalents, and what each actually is:
 - **Catalogue entries** (`src/data/catalog.json`) — data, not objects. A row
   says what a building is worth, what it costs, its footprint and its unlock
   milestone. It carries no geometry. See
-  [../engineering/data-model.md](../engineering/data-model.md).
+  [../engineering/data-model/README.md](../engineering/data-model/README.md).
 - **Archetypes** (`src/render/archetypes.ts`) — the code that turns a catalogue
   entry plus a seed into geometry. The closest thing to a prefab, except it is
   a function rather than a saved asset, and two buildings of the same archetype

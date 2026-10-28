@@ -36,7 +36,7 @@ change most likely to be got wrong on paper.
 
 **Save format: yes, additively, and the grid is untouched.** No tile layer is
 added, so `SAVE_VERSION` and `BYTES_PER_TILE` stay where they are
-([../data-model.md](../data-model.md)). Two optional additions, defaulted the
+([../data-model/README.md](../data-model/README.md)). Two optional additions, defaulted the
 way the `garbage` block was.
 
 - **`SaveMeta.deathCare`** holds the city counters of the deaths-and-re-let
@@ -68,7 +68,7 @@ rather than the save rejected**: the programme rule, and the first test written.
 `deathCare` block (per-facility used/total plus the uncollected count, and the
 crematoria) so the panel reads a gauge without a round trip. **No new
 `Command`**, since `placeBuilding` and `bulldoze` exist
-([../interfaces.md](../interfaces.md)); `placeBuilding` gains an optional
+([../interfaces/README.md](../interfaces/README.md)); `placeBuilding` gains an optional
 `interments`, sent only by the undo of demolishing a cemetery that held some, and
 **no new `ServiceKind`**, since death care writes no coverage field and rides
 the `health` funding.

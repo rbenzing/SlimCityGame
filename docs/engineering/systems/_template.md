@@ -26,7 +26,7 @@ presented as a guarantee is worse than saying nothing.
 ## Interactions
 
 What this system reads from others and what it publishes. Link
-[interfaces.md](../interfaces.md) for exact shapes rather than repeating them.
+[interfaces.md](../interfaces/README.md) for exact shapes rather than repeating them.
 
 ## Cost
 

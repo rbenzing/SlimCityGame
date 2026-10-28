@@ -109,7 +109,7 @@ Back to [the index](../GROUND-TRUTHS.md).
   never infers stalls another way. Every input is grid state (the road tiles,
   the profile table, the junction controls), never anything only the mesh
   knows, and nothing off the map: a lookup past the edge finds no road on
-  either thread. — [parking-to-code.md](../engineering/features/parking-to-code.md);
+  either thread. — [parking-to-code.md](../specs/parking-to-code.md);
   `src/shared/kerblayout.ts`, `src/sim/kerbsurroundings.ts`
 - [R-roads-056] A sound wall is a piece of a motorway's or ramp's own cross-section, never
   a separate structure, and only those two classes admit it. Which tile edge

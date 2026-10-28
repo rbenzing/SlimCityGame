@@ -110,7 +110,7 @@ sixth somewhat fertile, a tenth fertile, and the rest unfit. Terraforming
 reshapes soil with the ground: a raised beach is no longer a beach, and a
 levelled hillside becomes cropland. Only a new farm or a level-up reads the
 grade, so a standing farm keeps its kind. The sources and the reasoning are
-in [farms.md](../game-design/features/farms.md).
+in [farms.md](../specs/farms.md).
 
 ## Water
 

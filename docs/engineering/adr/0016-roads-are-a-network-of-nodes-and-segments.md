@@ -66,7 +66,7 @@ which the existing systems move onto it.
 - **Neutral:** zoning, buildings and terrain stay on the grid. A road at an
   angle fronts grid lots, which is less tidy than lots aligned to the road;
   aligned lots are a later choice, not part of this one — taken up on
-  2026-10-23 by [curved-parcels.md](../features/curved-parcels.md), which
+  2026-10-23 by [curved-parcels.md](../../specs/curved-parcels.md), which
   keeps the grid as the address space and gives a parcel a frame.
 - **Neutral:** saves change shape. The network is saved and the road tile
   layers are not; older saves convert on load.

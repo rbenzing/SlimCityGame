@@ -14,11 +14,11 @@ Back to [the index](../GROUND-TRUTHS.md).
   constants and pure helpers with no three.js and no DOM. Edit it deliberately,
   as a contract change, never as a convenience. —
   [architecture-rules.md](../engineering/standards/architecture-rules.md),
-  [interfaces.md](../engineering/interfaces.md)
+  [interfaces.md](../engineering/interfaces/README.md)
 - [R-architecture-003] The worker is authoritative and never touches the DOM or a `THREE.Scene`. It
   never originates a `Command`; every `Command` starts on the main thread (tool
   commit, undo/redo, settings). — [architecture.md](../engineering/architecture.md),
-  [interfaces.md](../engineering/interfaces.md)
+  [interfaces.md](../engineering/interfaces/README.md)
 - [R-architecture-004] Player `Command`s are the only way the world mutates. The render thread and
   React never write grid or building state; they read `SimSnapshot` deltas into
   `ClientGridMirror` and the store. All cross-thread exchange is a
@@ -30,13 +30,13 @@ Back to [the index](../GROUND-TRUTHS.md).
   carries deltas: a channel is present only when it changed (`stats`, `vehicles`
   and `transit` excepted), and `roadProfiles` is always sent before `roads`. —
   [ADR-0002](../engineering/adr/0002-sim-runs-deterministic-fixed-timestep-in-a-worker.md),
-  [interfaces.md](../engineering/interfaces.md)
+  [interfaces.md](../engineering/interfaces/README.md)
 - [R-architecture-006] A snapshot's `buildings` delta names each id in exactly one of `added`,
   `updated` and `removed`, carrying the building as it stands now, so no
   renderer depends on the order it applies them in. Sent as logged, a home
   updated and then levelled up in one window arrived both updated and removed,
   and every renderer that applied removals first put the old home's roof back
-  beside the new house. — [interfaces.md](../engineering/interfaces.md);
+  beside the new house. — [interfaces.md](../engineering/interfaces/README.md);
   `settleBuildingDelta` in `src/sim/buildings.ts`
 - [R-architecture-007] Only `src/main.ts` imports from every directory and spawns the worker. A UI
   panel reaches the render thread only through a method on `BoundActions` in
@@ -55,7 +55,7 @@ Back to [the index](../GROUND-TRUTHS.md).
   simply not undoable. Sim-grown changes (spawn, level-up, abandonment) never
   enter the undo stack. —
   [ADR-0008](../engineering/adr/0008-every-tool-commit-is-a-reversible-command.md),
-  [interfaces.md](../engineering/interfaces.md); `applyCommand` in
+  [interfaces.md](../engineering/interfaces/README.md); `applyCommand` in
   `src/sim/worker.entry.ts`, `src/tools/undo.ts`
 - [R-architecture-009] A command batch lands whole or not at all. At the first command the world
   refuses, `drainCommands` stops, takes back every command of the batch that
@@ -73,7 +73,7 @@ Back to [the index](../GROUND-TRUTHS.md).
   the next snapshot as it stands, paused or not, and only what the sim works
   out (ridership, say) waits for a tick: a transit line drawn while paused once
   stayed off the screen until play resumed, because its snapshot read the last
-  tick's lines. — [interfaces.md](../engineering/interfaces.md)
+  tick's lines. — [interfaces.md](../engineering/interfaces/README.md)
 - [R-architecture-011] Every priced command refuses with `reason: 'funds'` when cost exceeds funds
   (unless unlimited money is on). Zoning, de-zoning, bulldoze and district paint
   are always free. Every catalog entry, zone tier and tool carries an
@@ -96,7 +96,7 @@ Back to [the index](../GROUND-TRUTHS.md).
 - [R-architecture-015] Dev-only read-backs hang off `window.__slimcity` behind
   `import.meta.env.DEV`. Add a read method there rather than inferring from
   pixels, and never edit `src/` while a screenshot harness is running. —
-  [interfaces.md](../engineering/interfaces.md),
+  [interfaces.md](../engineering/interfaces/README.md),
   [debugging.md](../engineering/standards/debugging.md)
 - [R-architecture-016] Expected, recoverable failures (storage, optional GPU features) are handled
   locally with a fallback and a comment naming the expected failure; they never

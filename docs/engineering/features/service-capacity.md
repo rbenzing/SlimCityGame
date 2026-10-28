@@ -42,7 +42,7 @@ this is the only change any of them makes to an existing contract.
 **Save format: no.** Capacity is catalog data and catalogs ship with the build; a save
 stores building instances by `catalogId`, never the catalog itself, and load is derived
 every tick and written nowhere, so `SAVE_VERSION` does not move and no layer is appended
-(see [../data-model.md](../data-model.md)). The additive rule still has to be stated,
+(see [../data-model/README.md](../data-model/README.md)). The additive rule still has to be stated,
 because it is what the loader relies on: **a save written before this epic loads after
 it**, with the new field absent rather than rejected — absent meaning uncapped, never
 capacity zero.
@@ -50,7 +50,7 @@ capacity zero.
 **Worker protocol: yes, additively.** `SimSnapshot` gains an optional `serviceLoad`,
 `SelectionInfo` an optional `serviceLoad`. No command changes: `setServiceFunding`
 exists and already takes 0..1.5. A mirror that does not understand the new field ignores
-it. See [../interfaces.md](../interfaces.md).
+it. See [../interfaces/README.md](../interfaces/README.md).
 
 ## The design
 

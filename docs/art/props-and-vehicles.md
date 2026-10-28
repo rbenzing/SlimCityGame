@@ -73,7 +73,7 @@ Static parked cars are an occupancy signal, not decoration:
 
 - **Placement**: on a suburban commercial or industrial lot, one car to each
   stall of the car park laid to code
-  ([parking-to-code.md](../game-design/features/parking-to-code.md)), nose
+  ([parking-to-code.md](../specs/parking-to-code.md)), nose
   in, centred in its 9 × 18 ft stall; a vehicle longer than the stall stands
   with its nose 0.2 m short of the stall's head and its tail over the aisle.
   Constructing and Abandoned buildings park zero cars — an empty lot is
@@ -88,7 +88,7 @@ Static parked cars are an occupancy signal, not decoration:
   A farm keeps a pickup in its yard, the lorry silhouette at a full-size
   pickup's 5.31 × 2.03 × 1.91 m, which does the rounds of the yard by day and
   parks by the farmhouse at night — see
-  [the farms spec](../engineering/features/farms.md).
+  [the farms spec](../specs/farms.md).
 - **Orientation**: a stall is parallel street parking — the car's long axis
   runs along the road, not perpendicular to it — the standard read for a car
   actually parked at a kerb or in a row. Where the street paints an angled or

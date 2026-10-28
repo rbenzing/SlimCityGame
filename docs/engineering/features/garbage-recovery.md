@@ -45,14 +45,14 @@ old save's `landfillStored` counts old units and would read as an empty
 landfill, so, as the grid already does for layer additions, **bump
 `SAVE_VERSION` and multiply `landfillStored` by the capacity ratio below it** —
 the fill fraction seen before the upgrade is the one seen after. See
-[../data-model.md](../data-model.md).
+[../data-model/README.md](../data-model/README.md).
 
 **Worker protocol: yes, additively.** `SimSnapshot.garbage` gains an optional
 `recovery: { id, fill, capacity, divertedLastPass }[]` and an optional
 `recoveredTotal`. `VehicleKind` gains `Recycling`, at the next free
 `VehicleKind` value when it is built (append-only), and a mirror that does not
 know the value falls back to the `Garbage` livery rather than dropping the
-vehicle. No new `Command`. See [../interfaces.md](../interfaces.md).
+vehicle. No new `Command`. See [../interfaces/README.md](../interfaces/README.md).
 
 ## The design
 

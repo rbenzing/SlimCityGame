@@ -4,7 +4,7 @@ Everything the world holds as a thing, independent of how it looks or how it
 moves: how it gets an identity, which object owns it at runtime, whether it
 survives a save, and how it relates to the tile grid. For the byte-for-byte
 schema and save-version history, see
-[../engineering/data-model.md](../engineering/data-model.md) — this document
+[../engineering/data-model/README.md](../engineering/data-model/README.md) — this document
 does not repeat that table, only says what each entity IS and how it behaves
 as a thing in the world.
 
@@ -38,7 +38,7 @@ promotes an in-progress `Constructing` building straight to `Active` on load.
 
 A road is not stored as an object at all. `GridState.roadTier` /
 `roadProfile` / `roadFlow` / `roadElevation` are per-tile grid layers (see
-[../engineering/data-model.md](../engineering/data-model.md)); the routable
+[../engineering/data-model/README.md](../engineering/data-model/README.md)); the routable
 graph — `GraphNode`/`GraphEdge` — is derived from the road network those
 layers come from, by `RoadNetwork.rebuild`/`ensureFresh`
 (`src/world/roadgraph.ts`), and rebuilt

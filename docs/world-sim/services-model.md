@@ -183,7 +183,7 @@ The landfill's total stored pile, each incinerator's buffer and each recovery
 facility's residue store, however, do round-trip through the save's meta
 block; a save written before one existed loads it empty. The landfill's painted _extent_ is separately part of the
 grid itself and has been since the area was first paintable. See
-[../engineering/data-model.md](../engineering/data-model.md).
+[../engineering/data-model/README.md](../engineering/data-model/README.md).
 
 ## Death care
 

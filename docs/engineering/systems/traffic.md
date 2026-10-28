@@ -199,7 +199,7 @@ cosmetic systems (garbage trucks) share the same pool's tail with.
 
 Traffic depends on `RoadNetworkApi` (`findPath`, `addVolume`, `getEdges`,
 `decayVolumes`) as an injected interface, never importing `roads.ts`
-directly — see [interfaces.md](../interfaces.md) for the shape. A district's
+directly — see [interfaces.md](../interfaces/README.md) for the shape. A district's
 `noHeavyTraffic` policy reaches routing through `RoadNetwork.setEdgeCostHook`,
 composed with each trip's own jitter multiplier, so through-traffic can be
 made to prefer routing around a district without changing the base cost

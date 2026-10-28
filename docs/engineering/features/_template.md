@@ -21,7 +21,7 @@ be able to see the blast radius before reading the plan.
 Call out explicitly whether this changes the **save format** or the **worker
 protocol**. Both are contracts other things depend on, and both are far cheaper
 to get right on paper — see
-[data-model.md](../data-model.md) and [interfaces.md](../interfaces.md).
+[data-model.md](../data-model/README.md) and [interfaces.md](../interfaces/README.md).
 
 ## The design
 

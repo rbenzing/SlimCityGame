@@ -53,7 +53,7 @@ road with are all on the network.
 pool is derived every tick from the building registry, which already persists.
 The one persisted addition is `TransitLine.vehicles?: number`, the player's
 requested fleet, inside the existing `SaveMeta.transitLines` array in
-[../data-model.md](../data-model.md). A save written before this epic loads
+[../data-model/README.md](../data-model/README.md). A save written before this epic loads
 after it: its lines carry no `vehicles` field, which means "the derived
 default", and **its lines stand idle until a depot is built**, which is the
 rule the player chose. No save is rejected for a missing field.
@@ -63,7 +63,7 @@ rule the player chose. No save is rejected for a missing field.
 `{ lines, ridership, served, requested, headwayMin, runningCost, pools }`, the
 new members optional so an older mirror ignores them. Depots use the existing
 ploppable path, and a line's requested fleet rides on `updateTransitLine`,
-which already carries a whole line. See [../interfaces.md](../interfaces.md).
+which already carries a whole line. See [../interfaces/README.md](../interfaces/README.md).
 
 ## The design
 
@@ -374,6 +374,6 @@ Three recipes in `src/render/utilitykits.ts` on the civic pattern, from
 
 When slice 1 ships,
 [../../world-sim/transit-model.md](../../world-sim/transit-model.md) (which
-lists depots as deferred) and [../data-model.md](../data-model.md) (which
+lists depots as deferred) and [../data-model/README.md](../data-model/README.md) (which
 describes `TransitLine`) are updated in the same change; the map is
 [../../README.md](../../README.md).

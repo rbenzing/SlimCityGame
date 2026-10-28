@@ -65,19 +65,19 @@ farm, and a detached house, a duplex or a fourplex keeps its lot. A duplex level
 The one change of kind is a teardown: a detached house on a half or normal
 lot whose land reaches the estate band is replaced, at 2% a year, by a duplex
 or a fourplex on the same lot
-([lots-and-land.md](lots-and-land.md#a-small-house-on-prime-land-becomes-a-plex-built-2026-10-08)).
+([lots-and-land.md](../../specs/lots-and-land.md#a-small-house-on-prime-land-becomes-a-plex)).
 What a level-up gives depends on the kind: a house-scale building gets a bigger
 or better house for the same household; a block gets more storeys and more
 homes. A commercial or dense building whose next level is larger on the ground
 is redeveloped: the growing level takes whole lots beside it, only where they
 are free, and stays as it is where they are not
-([lots-and-land.md](lots-and-land.md#commercial-and-dense-land-is-cut-into-frontage-lots-built-2026-10-07)).
+([lots-and-land.md](../../specs/lots-and-land.md#commercial-and-dense-land-is-cut-into-frontage-lots)).
 
 ### The residential kinds
 
 | Kind                 | Zone               | From | Weight | Lot (tiles) L1 / L2 / L3 | Storeys       | Homes       | Residents     |
 | -------------------- | ------------------ | ---- | ------ | ------------------------ | ------------- | ----------- | ------------- |
-| Detached house       | Low density        | M0   | 61.1   | 1×1, 1×2, 2×2, 2×3 or 3×3 by the land, the same at every level ([lots-and-land.md](lots-and-land.md)) | 1 / 2 / 2     | 1           | 3             |
+| Detached house       | Low density        | M0   | 61.1   | 1×1, 1×2, 2×2, 2×3 or 3×3 by the land, the same at every level ([lots-and-land.md](../../specs/lots-and-land.md)) | 1 / 2 / 2     | 1           | 3             |
 | Duplex               | Low density        | M1   | 1.6    | 1×1 or 1×2, the same at every level; 2×1 turned | 2 / 2 / 2.5   | 2           | 5             |
 | Fourplex             | Low density        | M1   | 1.2    | 1×1 or 1×2, the same at every level; 2×1 turned | 2.5 / 2.5 / 3 | 4           | 9             |
 | Townhouse row        | Row housing        | M1   | 1.6    | 1×2, one normal parcel, at every level; 2×1 turned | 2 / 3 / 3.5   | 3 / 3 / 3   | 8 / 8 / 8     |
@@ -136,7 +136,7 @@ or length; Opticos gives the same unit width at 2 to 3.5 storeys, so a taller
 townhouse is more floor per home. A long terrace is neighbouring parcels in a
 run, which is how row housing is platted: each parcel's building is a run of
 three, with side yards between runs
-([lots-and-land.md](lots-and-land.md#row-housing-stands-on-one-normal-lot-built-2026-10-07)).
+([lots-and-land.md](../../specs/lots-and-land.md#medium-density-and-row-housing)).
 A multiplex of 5–12 homes takes a lot 95–120 by
 100–150 ft and a courtyard building of 6–25 homes one of 100–135 by 110–150
 ([multiplex](https://missingmiddlehousing.com/types/multiplex-small/),
@@ -144,7 +144,7 @@ A multiplex of 5–12 homes takes a lot 95–120 by
 a 2×2 lot each, at 20 and 30 homes to the acre against the types' 12–70 and
 26–70. The 2×2 is two normal parcels of the plat assembled side by side, and
 it stays two at every level
-([lots-and-land.md](lots-and-land.md#medium-density-assembles-two-parcels-built-2026-10-07)).
+([lots-and-land.md](../../specs/lots-and-land.md#medium-density-and-row-housing)).
 
 **Storeys.** Opticos gives the duplex and fourplex 2–2.5 storeys, the
 townhouse 2–3.5, the multiplex 2–2.5 and the courtyard building 1–3.5, with
@@ -219,7 +219,7 @@ A commercial kind's lot column is its footprint at each level, and a level
 whose footprint is larger is a redevelopment: the building takes whole lots of
 the plat beside it, a fast-food box becoming a restaurant on two lots only
 when the lot beside it is empty
-([lots-and-land.md](lots-and-land.md#commercial-and-dense-land-is-cut-into-frontage-lots-built-2026-10-07)).
+([lots-and-land.md](../../specs/lots-and-land.md#commercial-and-dense-land-is-cut-into-frontage-lots)).
 
 | Kind              | Zone             | From | Weight | Lot (tiles) L1 / L2 / L3 | Storeys     | Jobs             |
 | ----------------- | ---------------- | ---- | ------ | ------------------------ | ----------- | ---------------- |

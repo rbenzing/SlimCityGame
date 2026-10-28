@@ -44,7 +44,7 @@ requirements that matter most:
   because it is invisible until the first night. See [lighting.md](lighting.md).
 - **An id colour** where the object must be pickable, encoded as a 24-bit RGB
   triple. See
-  [../engineering/interfaces.md](../engineering/interfaces.md).
+  [../engineering/interfaces/README.md](../engineering/interfaces/README.md).
 
 ## Budgets
 

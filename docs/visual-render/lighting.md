@@ -85,7 +85,7 @@ and a shop wall keep 20–22% and a roof, a lawn and the road 18–19% at 03:00.
 Only window panes and the lit parts below glow; a garage door, a porch, a
 roof or a wall never does. A farmhouse, drawn by the farm kit rather than on
 the facade material, lights its panes by the same hash and threshold
-([../engineering/features/farms.md](../engineering/features/farms.md)). An Abandoned building's windows stay dark
+([../specs/farms.md](../specs/farms.md)). An Abandoned building's windows stay dark
 regardless of the hour — a lit window is the one signal that a building is
 Active (see [../art/buildings.md](../art/buildings.md)). The whole system runs as one TSL
 node material plus an instance-index hash, one material per archetype
