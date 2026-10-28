@@ -13,9 +13,18 @@ DON'T
 - extend documentation with v2 or versioning per section, only overall documentation maintains version.
 - write code unless we have solid documentation
 
+READING THE DOCS (docs/engineering/documentation-strategy.md decides this)
+
+- Read this file and docs/README.md on every task. Then read the section of docs/GROUND-TRUTHS.md for each area the task touches (roads, world and sim, utilities and services, saves, architecture, rendering and art, game design and UX, process) and nothing else of it.
+- A scout reads a spec's card (its first 40 lines) and opens a section only when the ticket needs its why; it returns pointers (file#anchor, rule, src/file:line), never file dumps.
+- A ticket cites rules and anchors, never "read the doc". A cook reads what the ticket cites. A reviewer reads the full spec of the area under review, once.
+- Delivery history lives in docs/history/ (one file a month), never in a spec; docs/ROADMAP.md holds status, the Open list and the milestones. Read the Open list, not the history, to learn what exists.
+- Every file has a byte budget by tier (4 KB for this file, docs/README.md and the truths index; 16 KB for a spec); `npm run lint:docs` reports the overshoots. A file over budget is split by section, never trimmed by dropping a rule or a number.
+- Write for the reader who skims: rules as imperatives of at most two lines, numbers in tables with their source and constant, a code pointer instead of a paragraph about what code does, no dates in a spec, no sentence repeated from another file.
+
 GROUND TRUTHS
 
-- ALWAYS read and follow docs/GROUND-TRUTHS.md before changing anything. It is the always/never rulebook for every part of the game (roads, sim, services, saves, architecture, rendering, art, UX, process).
+- Follow docs/GROUND-TRUTHS.md. It is the always/never rulebook for every part of the game; read the sections for the areas you touch, as above.
 - When code and a truth disagree, stop and flag it. Never silently pick one.
 - When you learn a new invariant (a bug a rule would have prevented, or a rule the user states), add it to docs/GROUND-TRUTHS.md and to the spec that decides it, in the same change.
 - The ones broken most often:
