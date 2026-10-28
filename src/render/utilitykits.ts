@@ -123,9 +123,6 @@
  *    "depotGroundsLong"), the platform canopy on its posts ("depotCanopy" or
  *    "depotCanopyLong"), the combination depot ("depotBuilding"), its doors and
  *    windows on the lit material ("depotLit") and cars ("depotCar").
- *  - bus-stop: a lawn plate with the walk and boarding pad ("busStopGrounds"),
- *    the shared shelter busshelter.ts builds ("busStopShelter") and the flag
- *    sign and receptacle ("busStopProps").
  *  - bus-depot, bus-garage: one recipe at two sizes. The paved yard with the
  *    drive, the stall paint and the fuel pads ("busBaseYard"), the shop hall
  *    with its framed bay doors, the wash lane's gantry, the office, the fuel
@@ -186,7 +183,6 @@ import {
   YELLOW_MARKING_COLOR,
 } from './roadsmesh';
 import { UNIT_HEIGHT_M, UNIT_LENGTH_M, UNIT_WIDTH_M } from './buildingkit';
-import { BUS_SHELTER, buildBusShelterGeometry } from './busshelter';
 import {
   buildTrainCarGeometry,
   buildTramCarGeometry,
@@ -237,7 +233,6 @@ export const UTILITY_KIT_CATALOG_IDS: readonly string[] = [
   'sports-ground',
   'clinic',
   'rail-station',
-  'bus-stop',
   'bus-depot',
   'bus-garage',
   'tram-depot',
@@ -340,9 +335,6 @@ export type UtilityKitPartKind =
   | 'depotBuilding'
   | 'depotLit'
   | 'depotCar'
-  | 'busStopGrounds'
-  | 'busStopShelter'
-  | 'busStopProps'
   | 'busBaseYard'
   | 'busBaseShop'
   | 'busBaseLit'
@@ -8100,100 +8092,6 @@ export function depotFrames(entry: BuildingCatalogEntry): {
     : { short: { w: d, d: w }, long: { w, d } };
 }
 
-// --- the bus stop ---------------------------------------------------------------
-
-/** The boarding pad: 96 in out from the kerb, 60 in along it. */
-export const BUS_STOP_PAD = { out: 2.44, along: 1.52 };
-/** The flag sign: 18 × 24 in with its bottom 7 ft up, on a slim pole. */
-export const BUS_STOP_SIGN = { w: 0.46, h: 0.61, bottom: 2.13, pole: 0.04 };
-/** The receptacle: a 32 gal can, 24 in across and 40 in tall. */
-export const BUS_STOP_BIN = { r: 0.305, h: 1.0 };
-/** The shelter stands this far in from the lot's street edge, roof overhang included. */
-const BUS_STOP_SHELTER_IN_M = 0.1;
-
-const BUS_STOP_CONCRETE_RGB: RGB = [0.66, 0.64, 0.6];
-const BUS_STOP_PAD_RGB: RGB = [0.74, 0.72, 0.68];
-const BUS_STOP_SIGN_RGB: RGB = [0.16, 0.3, 0.52];
-const BUS_STOP_POLE_RGB: RGB = [0.45, 0.47, 0.5];
-const BUS_STOP_BIN_RGB: RGB = [0.22, 0.3, 0.26];
-
-export interface BusStopLayout {
-  /** The shelter's ground centre; its long axis along X, its open front to +Z. */
-  shelter: Vec2;
-  pad: Rect;
-  /** The concrete under the shelter and between it and the pad. */
-  walk: Rect;
-  sign: Vec2;
-  bin: Vec2;
-}
-
-/** The shelter at the lot's street edge, the boarding pad beside it at the kerb, the sign pole beyond the pad and the receptacle at the shelter's other end. Pure; fixed per footprint. */
-export function computeBusStopLayout(footprint: FootprintSize): BusStopLayout {
-  const { halfD } = footprintHalfExtents(footprint);
-  const edge = halfD;
-  const shelterZ = edge - BUS_STOP_SHELTER_IN_M - BUS_SHELTER.overhang - BUS_SHELTER.d / 2;
-  const padX1 = BUS_STOP_PAD.along / 2;
-  const shelterX = padX1 + BUS_SHELTER.overhang + 0.4 + BUS_SHELTER.w / 2;
-  const binX = shelterX + BUS_SHELTER.w / 2 + BUS_SHELTER.overhang + BUS_STOP_BIN.r + 0.2;
-  const sign: Vec2 = { x: -padX1 - 0.35, z: edge - 0.5 };
-  const pad: Rect = { x0: -padX1, x1: padX1, z0: edge - BUS_STOP_PAD.out, z1: edge };
-  return {
-    shelter: { x: shelterX, z: shelterZ },
-    pad,
-    walk: {
-      x0: sign.x - 0.3,
-      x1: binX + BUS_STOP_BIN.r + 0.3,
-      z0: Math.min(pad.z0, shelterZ - BUS_SHELTER.d / 2 - BUS_SHELTER.overhang - 0.1),
-      z1: edge,
-    },
-    sign,
-    bin: { x: binX, z: shelterZ },
-  };
-}
-
-/** The lawn plate with the walk and the boarding pad on it. */
-function buildBusStopGroundsGeometry(footprint: FootprintSize): THREE.BufferGeometry {
-  const { pad, walk } = computeBusStopLayout(footprint);
-  return mergeParts([
-    lawnPlate(footprint),
-    groundPatch(walk, 0, EDU_CONCRETE_M, BUS_STOP_CONCRETE_RGB),
-    groundPatch(pad, EDU_CONCRETE_M, 0.01, BUS_STOP_PAD_RGB),
-  ]);
-}
-
-/** The flag sign on its pole and the receptacle; local Y=0 is the walk's top. */
-function buildBusStopPropsGeometry(footprint: FootprintSize): THREE.BufferGeometry {
-  const { sign, bin } = computeBusStopLayout(footprint);
-  const { w, h, bottom, pole } = BUS_STOP_SIGN;
-  const post = new THREE.CylinderGeometry(pole, pole, bottom + h, 6);
-  post.translate(sign.x, (bottom + h) / 2, sign.z);
-  const flag = standingBox(0.03, h, w, sign.x, bottom, sign.z, BUS_STOP_SIGN_RGB);
-  const can = new THREE.CylinderGeometry(BUS_STOP_BIN.r, BUS_STOP_BIN.r * 0.92, BUS_STOP_BIN.h, 8);
-  can.translate(bin.x, BUS_STOP_BIN.h / 2, bin.z);
-  const lid = new THREE.CylinderGeometry(BUS_STOP_BIN.r + 0.02, BUS_STOP_BIN.r + 0.02, 0.06, 8);
-  lid.translate(bin.x, BUS_STOP_BIN.h + 0.03, bin.z);
-  return mergeParts([
-    paintVertexColor(post, hexFromRgb(BUS_STOP_POLE_RGB)),
-    flag,
-    paintVertexColor(can, hexFromRgb(BUS_STOP_BIN_RGB)),
-    paintVertexColor(lid, hexFromRgb(BUS_STOP_POLE_RGB)),
-  ]);
-}
-
-/** Where a plopped bus stop's shelter stands, in world metres: the idlers at a line's stop on that tile wait there. */
-export function busStopShelterAnchor(
-  building: Pick<BuildingInstance, 'x' | 'z' | 'rotation'>,
-  entry: BuildingCatalogEntry,
-): Vec2 {
-  const lot = footprintForRotation(entry, building.rotation);
-  const { shelter } = computeBusStopLayout(entry.footprint);
-  const turned = rotateLocalXZ(shelter.x, shelter.z, building.rotation);
-  return {
-    x: (building.x + lot.w / 2) * TILE_METERS + turned.x,
-    z: (building.z + lot.d / 2) * TILE_METERS + turned.z,
-  };
-}
-
 // ---------------------------------------------------------------------------
 // the depots: a bus base at two sizes, a tram depot and a rail yard, each
 // read by its bay doors and the fleet on its apron. The bus base takes local
@@ -9561,8 +9459,6 @@ export class UtilityKitRenderer {
         return this.buildClinicKit(entry);
       case 'rail-station':
         return this.buildDepotKit(entry);
-      case 'bus-stop':
-        return this.buildBusStopKit(entry);
       case 'bus-depot':
       case 'bus-garage':
         return this.buildBusBaseKit(entry);
@@ -9689,21 +9585,6 @@ export class UtilityKitRenderer {
         depotBuilding: pool(buildDepotBuildingGeometry()),
         depotLit: pool(buildDepotLitGeometry(), this.stationLightMaterial),
         depotCar: pool(buildParkedCarGeometry(), lambert(), INITIAL_KIT_CAPACITY * DEPOT_STALLS),
-      },
-    };
-  }
-
-  private buildBusStopKit(entry: BuildingCatalogEntry): KitDefinition {
-    const lambert = (): THREE.Material => this.bodyMaterial();
-    const pool = (geometry: THREE.BufferGeometry) =>
-      new InstancedSlotPool(this.scene, geometry, lambert(), INITIAL_MULTI_PART_CAPACITY);
-    return {
-      entry,
-      pavesLot: true,
-      pools: {
-        busStopGrounds: pool(buildBusStopGroundsGeometry(entry.footprint)),
-        busStopShelter: pool(buildBusShelterGeometry()),
-        busStopProps: pool(buildBusStopPropsGeometry(entry.footprint)),
       },
     };
   }
@@ -10272,9 +10153,6 @@ export class UtilityKitRenderer {
       case 'rail-station':
         this.applyDepot(kit, building, entry, centerX, groundY, centerZ, rotation);
         return;
-      case 'bus-stop':
-        this.applyBusStop(kit, building, centerX, groundY, centerZ, rotation);
-        return;
       case 'bus-depot':
       case 'bus-garage':
         this.applyBusBase(kit, building, entry, centerX, groundY, centerZ, rotation);
@@ -10532,31 +10410,6 @@ export class UtilityKitRenderer {
         depotBuilding: [placeLocal(depotBuilding, depotAt, floor, turn)],
         depotLit: [placeLocal(depotLit, depotAt, floor, turn)],
         depotCar: cars,
-      },
-    });
-  }
-
-  private applyBusStop(
-    kit: KitDefinition,
-    building: BuildingInstance,
-    centerX: number,
-    groundY: number,
-    centerZ: number,
-    rotation: 0 | 1 | 2 | 3,
-  ): void {
-    const { busStopGrounds, busStopShelter, busStopProps } = kit.pools;
-    if (!busStopGrounds || !busStopShelter || !busStopProps) return;
-    const { shelter } = computeBusStopLayout(kit.entry.footprint);
-    const turned = rotateLocalXZ(shelter.x, shelter.z, rotation);
-    const walk = groundY + RECYCLING_YARD_HEIGHT + EDU_CONCRETE_M;
-    this.instances.set(building.id, {
-      catalogId: building.catalogId,
-      slots: {
-        busStopGrounds: [this.placeAt(busStopGrounds, centerX, groundY, centerZ, rotation)],
-        busStopShelter: [
-          this.placeAt(busStopShelter, centerX + turned.x, walk, centerZ + turned.z, rotation),
-        ],
-        busStopProps: [this.placeAt(busStopProps, centerX, walk, centerZ, rotation)],
       },
     });
   }

@@ -12,13 +12,14 @@
 import type {
   BuildingCatalogEntry,
   BuildingInstance,
+  BusStopState,
   CityNotification,
   CityStats,
   GridState,
   RoadProfile,
   RoadSpec,
 } from '../shared/types';
-import { BuildingState, FieldId, RoadTier, fundingKeyOf } from '../shared/types';
+import { BuildingState, FieldId, RoadTier, SHELTER_AD_INCOME, fundingKeyOf } from '../shared/types';
 import { occupiedResidents } from '../shared/occupancy';
 import { isPresetProfileId, roadPriceOf } from '../shared/roadprofile';
 import {
@@ -79,6 +80,12 @@ export interface EconomyTickInput {
    * boundary beside building upkeep. Omitted, nothing runs and nothing is billed.
    */
   transitRunning?: number;
+  /**
+   * The bus stops standing: every shelter is charged the shelter's catalog
+   * upkeep, and each warranted one earns SHELTER_AD_INCOME. A sign costs and
+   * earns nothing. Omitted, no stop exists.
+   */
+  stops?: readonly BusStopState[];
 }
 
 export interface EconomyTickResult {
@@ -271,9 +278,17 @@ export class EconomySystem {
         }
       }
       const recyclingCredit = (input.takeRecoveredUnits?.() ?? 0) * RECYCLING_CREDIT_PER_UNIT;
-      const income = rawIncome * landValueFactor + taxCorrection + recyclingCredit;
+      let shelters = 0;
+      let warranted = 0;
+      for (const stop of input.stops ?? []) {
+        if (stop.kind !== 'shelter') continue;
+        shelters += 1;
+        if (stop.warranted) warranted += 1;
+      }
+      const advertising = warranted * SHELTER_AD_INCOME;
+      const income = rawIncome * landValueFactor + taxCorrection + recyclingCredit + advertising;
 
-      let buildingUpkeep = 0;
+      let buildingUpkeep = (this.catalog.get('bus-stop')?.upkeep ?? 0) * shelters;
       for (const b of buildings) {
         if (b.state !== BuildingState.Active) continue;
         const spec = this.catalog.get(b.catalogId);
@@ -339,6 +354,7 @@ export class EconomySystem {
       statsPatch.monthlyIncome = income;
       statsPatch.monthlyExpenses = expenses;
       statsPatch.transitRunning = transitRunning;
+      statsPatch.advertising = advertising;
 
       if (funds < 0) {
         notifications.push({

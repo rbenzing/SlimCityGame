@@ -274,12 +274,19 @@ MUTCD citations below use 11th-edition section numbers.
   `src/world/pathfind.ts`, `src/shared/approach.ts`
 - A transit stop finds the network through the tile it stands on OR a tile
   beside it: a node within 8 tiles by proximity, else the nearer end of the
-  run under it or under one of its four neighbours. A bus stop never stands on
-  the street but on the kerb tile beside it, so a stop partway down a block
-  longer than sixteen tiles routed to nothing and carried nobody until this
-  was so. A point two or more tiles from any road is off the network. —
-  [transit-model.md](world-sim/transit-model.md); `nearestNode` in
-  `src/world/roadgraph.ts`
+  run under it or under one of its four neighbours. A rail station stands
+  beside its track, so a stop partway down a block longer than sixteen
+  tiles routed to nothing and carried nobody until this was so. A bus stop
+  is road furniture on one side of its street tile, never a building on a
+  tile of its own: a sign or a shelter on an 8 by 5 ft pad at the kerb,
+  placed by its own tool, refused on a junction, a motorway, a ramp, rail or
+  a tram reservation; a bus line names only tiles holding a stop, and the
+  last stop leaving a tile leaves every line. A shelter with 25 boardings a
+  day is warranted and earns its ad income; a sign costs and earns nothing.
+  A point two or more tiles from any road is off the network. —
+  [transit-model.md](world-sim/transit-model.md),
+  [civic-access-and-bus-stops.md](game-design/features/civic-access-and-bus-stops.md);
+  `nearestNode` in `src/world/roadgraph.ts`, `src/sim/stops.ts`
 - A line's vehicles are fielded by a depot of its mode over the mode's own
   network, never from nowhere: a bus depot touching a street, a tram depot
   touching tram track (`isTramTile`, the tram graph's own test), a rail yard
@@ -1030,8 +1037,9 @@ MUTCD citations below use 11th-edition section numbers.
   [engineering/features/curved-parcels.md](engineering/features/curved-parcels.md);
   `src/shared/lotframe.ts`, `platAlongKerbs` in `src/world/plat.ts`,
   `edgeFrameOfParcel` in `src/render/frontage.ts`
-- A ploppable in hand shows the zoning grid, the painted tint and the plat
-  of every platted zone, so nothing is placed over painted land unseen. —
+- A building ploppable in hand shows the zoning grid, the painted tint and
+  the plat of every platted zone, so nothing is placed over painted land
+  unseen; a bus stop tool, which takes no land, shows none of it. —
   [hud.md](ux/hud.md); `rebuildPlat` in `src/main.ts`
 - A commercial or dense building (a catalog entry with no `lot`) takes whole
   lots along its frontage and never half of one: every lot it touches fronts

@@ -1,7 +1,6 @@
 /**
- * The bus shelter: one builder for the shelter a transit line draws at its
- * stop and the shelter the bus-stop ploppable's kit stands, so the two read
- * alike. Local frame: the long axis along X, the open front toward +Z, the
+ * The bus shelter: one builder for the shelter a tram line draws at its stop
+ * and the shelter a bus stop stands (busstops.ts), so the two read alike. Local frame: the long axis along X, the open front toward +Z, the
  * glazed back at -Z, local Y=0 the ground the posts stand on. Pure of the
  * scene; the geometry carries its colours as vertex colours.
  */
@@ -31,7 +30,8 @@ export const SHELTER_ROOF_COLOR = 0x8a8f94;
 export const SHELTER_GLASS_COLOR = 0x384d5c;
 const BENCH_COLOR = 0x8a6a4a;
 
-function painted(geometry: THREE.BufferGeometry, hex: number): THREE.BufferGeometry {
+/** A geometry carrying one flat colour as vertex colours, without a uv. */
+export function painted(geometry: THREE.BufferGeometry, hex: number): THREE.BufferGeometry {
   const c = new THREE.Color(hex);
   const count = geometry.getAttribute('position').count;
   const colors = new Float32Array(count * 3);
@@ -45,7 +45,8 @@ function painted(geometry: THREE.BufferGeometry, hex: number): THREE.BufferGeome
   return geometry;
 }
 
-function box(
+/** A painted box standing on `y0`, centred at (x, z). */
+export function box(
   w: number,
   h: number,
   d: number,

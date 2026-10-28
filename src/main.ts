@@ -22,6 +22,7 @@ import {
 import type {
   BuildingCatalogEntry,
   BuildingInstance,
+  BusStopState,
   CityStats,
   Command,
   CommandAck,
@@ -135,7 +136,8 @@ import { PhotoModeController } from './render/photomode';
 import { StatsHistory } from './ui/statshistory';
 import { ADVISOR_REFRESH_SNAPSHOTS, cityIssues } from './ui/advisor';
 import { GhostRenderer, type GhostKind, type SetPreviewOptions } from './render/ghosts';
-import { UtilityKitRenderer, busStopShelterAnchor } from './render/utilitykits';
+import { UtilityKitRenderer } from './render/utilitykits';
+import { BusStopRenderer, stopRoadAt } from './render/busstops';
 import { FarmRenderer } from './render/farms';
 import { ZoneGridRenderer } from './render/zonegrid';
 import { LampRenderer } from './render/lamps';
@@ -155,7 +157,13 @@ import { SelectionOutline } from './render/outline';
 import { MapPin } from './render/pin';
 import { CameraRig } from './render/camera';
 import { IdPicker } from './render/picking';
-import { ToolManager, ROAD_TOOL_TO_TIER, ZONE_TOOL_TO_TYPE, type ToolEnv } from './tools/tools';
+import {
+  ToolManager,
+  ROAD_TOOL_TO_TIER,
+  ZONE_TOOL_TO_TYPE,
+  isStopTool,
+  type ToolEnv,
+} from './tools/tools';
 import { UndoStack } from './tools/undo';
 import { useCityStore } from './ui/store';
 import type { SelectedJunction } from './ui/store';
@@ -336,6 +344,8 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
   // (fire/police/ambulance from the shared buffer + incident pins), and the
   // district tint/boundary overlay. All fed from the snapshot channels.
   const transitRenderer = new TransitRenderer(world.scene, heightAt);
+  // Bus stops: road furniture on a street's side, drawn whatever lens is up.
+  const busStops = new BusStopRenderer(world.scene, heightAt);
   // A tram reservation's guideway, standing on the road surface; its trams ride it.
   const guideway = new GuidewayRenderer(world.scene, roadSurfaceAt);
   transitRenderer.setGuideway(guideway.seatAt);
@@ -870,9 +880,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
           const profile = near ? lookup(net.segProfile[near.seg]!) : null;
           const nearM = near ? { x: near.at.x / 100, z: near.at.z / 100 } : null;
           const halfM = near ? segmentHalfWidthM(net, near.seg, lookup) : null;
-          const toOrigin = nearM
-            ? Math.hypot(p.frame.x - nearM.x, p.frame.z - nearM.z)
-            : null;
+          const toOrigin = nearM ? Math.hypot(p.frame.x - nearM.x, p.frame.z - nearM.z) : null;
           const kerb =
             nearM && halfM !== null && toOrigin
               ? {
@@ -892,7 +900,9 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
             w: p.w,
             d: p.d,
             tiles: p.tiles.length,
-            centreLineM: near ? Math.hypot(near.at.x / 100 - p.frame.x, near.at.z / 100 - p.frame.z) : null,
+            centreLineM: near
+              ? Math.hypot(near.at.x / 100 - p.frame.x, near.at.z / 100 - p.frame.z)
+              : null,
             halfWidthM: near ? segmentHalfWidthM(net, near.seg, lookup) : null,
             landValue: first ? (latestLandValue?.[tileIndex(first.x, first.z)] ?? 0) : 0,
           };
@@ -1274,21 +1284,20 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
     tramStations.rebuild(latestTransitLines, latestRoadTiles, guideway.structure());
     return !sameTileKeySet(before, tramStations.tiles());
   };
-  /** The plopped bus stops by tile: a line's stop there keeps the kit's shelter. */
-  const stopBuildingsByTile = (): Map<number, BuildingInstance> => {
-    const stopBuildings = new Map<number, BuildingInstance>();
-    for (const b of knownBuildings.values()) {
-      if (b.catalogId === 'bus-stop') stopBuildings.set(b.x * 100_000 + b.z, b);
-    }
-    return stopBuildings;
+  /** The bus stops as the worker last sent them; an older worker sends none. */
+  let latestStops: readonly BusStopState[] = [];
+  /** The tiles holding a bus stop: a line's stop there is the stop's own furniture, not a shelter of the line's. */
+  let stopTiles: ReadonlySet<number> = new Set();
+  /** Draws the stops on the roads as they stand now. */
+  const redrawStops = (): void => {
+    busStops.apply(latestStops, (x, z) => stopRoadAt(latestRoadTileSet, x, z));
   };
-  /** The lines as the transit renderer draws them: no shelter at a plopped stop or under a raised station. */
+  /** The lines as the transit renderer draws them: no shelter at a bus stop or under a raised station. */
   const applyTransit = (transit: TransitSnapshot | null): void => {
     if (!transit) return;
-    const stopBuildings = stopBuildingsByTile();
     transitRenderer.apply(
       transit,
-      (x, z) => stopBuildings.has(x * 100_000 + z),
+      (x, z) => stopTiles.has(x * 100_000 + z),
       tramStations.isStation,
     );
   };
@@ -1651,6 +1660,8 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
     },
     roadMaskAt: (tile) =>
       inBounds(tile.x, tile.z) ? (clientGrid.roadMask[tile.z * clientGrid.size + tile.x] ?? 0) : 0,
+    stopAt: (x, z, side) =>
+      latestStops.find((s) => s.x === x && s.z === z && s.side === side)?.kind ?? null,
     roadElevationAt: (tile) =>
       inBounds(tile.x, tile.z)
         ? (clientGrid.roadElevation[tile.z * clientGrid.size + tile.x] ?? 0)
@@ -1732,6 +1743,15 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
         .setPreview(
           preview ? { cost: preview.cost, label: preview.label, valid: preview.valid } : null,
         );
+      // The stop being placed, laid by the placement function a placed stop is.
+      const road = preview?.stop
+        ? stopRoadAt(latestRoadTileSet, preview.stop.stop.x, preview.stop.stop.z)
+        : null;
+      busStops.setGhost(
+        preview?.stop?.stop ?? null,
+        road && preview?.stop ? { ...road, lateral: preview.stop.lateral } : null,
+        preview?.valid ?? false,
+      );
       if (preview?.curve) {
         // A road off the grid is drawn as its own line at its real width.
         ghosts.setCurve(
@@ -1802,7 +1822,9 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
             };
           }
         }
-        ghosts.setPreview(preview.tiles, preview.valid, ghostKindFor(tool), opts);
+        // A stop is drawn as its own furniture, not as a tile.
+        if (isStopTool(tool)) ghosts.clear();
+        else ghosts.setPreview(preview.tiles, preview.valid, ghostKindFor(tool), opts);
         cursorChip.setChip({
           cost: preview.cost,
           lengthMeters: preview.lengthMeters,
@@ -1828,6 +1850,8 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
         : store.getState().stats.milestoneLevel,
     canPlace: (tiles) => {
       const tool = store.getState().selectedTool;
+      // A stop stands on the street's side, never on a lot.
+      if (isStopTool(tool)) return true;
       if (tool.startsWith('plop.')) return clientGrid.isFreeForPlop(tiles);
       if (tool in ROAD_TOOL_TO_TIER) return clientGrid.isClearOfBuildings(tiles);
       return true;
@@ -2073,6 +2097,8 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       zoneGrid.rebuild(clientGrid);
       const roadTiles = clientGrid.roadTiles();
       setLatestRoadTiles(roadTiles);
+      // A stop stands on its tile's own cross-section, so it follows the road.
+      if (latestStops.length > 0) redrawStops();
       // The guideway and its stations go before the lamps, which keep off the stations.
       guideway.rebuild(roadTiles);
       if (rebuildTramStations() && !snap.transit) applyTransit(latestTransit);
@@ -2202,13 +2228,18 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       serviceVehicles.setBuffer(snap.vehicles);
       snapshotAgeMs = 0;
     }
+    // Bus stops: the furniture on the streets, and the selected one's figures.
+    if (snap.stops) {
+      latestStops = snap.stops;
+      stopTiles = new Set(snap.stops.map((s) => s.x * 100_000 + s.z));
+      redrawStops();
+      state.setStops(snap.stops);
+      if (snap.transit === undefined) applyTransit(latestTransit);
+    }
     // Bus transit: rebuild stops/ribbon/buses + publish the line list.
     if (snap.transit) {
       latestTransit = snap.transit;
       latestTransitLines = snap.transit.lines;
-      // A plopped bus stop's tile keeps that kit's shelter: the line draws
-      // none there, and the idlers wait at the kit's.
-      const stopBuildings = stopBuildingsByTile();
       if (rebuildTramStations()) rebuildLamps();
       applyTransit(snap.transit);
       // The depots park what is not out on the lines; an older worker lists
@@ -2230,11 +2261,9 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       latestStopPoints = snap.transit.lines.flatMap((l) => {
         const pts = toWorldPoints(l.stops);
         return l.stops.map((s, i) => {
-          const plopped = stopBuildings.get(s.x * 100_000 + s.z);
-          const entry = plopped ? catalogById.get(plopped.catalogId) : undefined;
-          if (plopped && entry) {
-            return { x: s.x, z: s.z, anchor: busStopShelterAnchor(plopped, entry) };
-          }
+          // A bus stop's idlers wait at its shelter, or on its pad.
+          const waiting = busStops.waitPoint(s.x, s.z);
+          if (waiting) return { x: s.x, z: s.z, anchor: waiting };
           // Under a raised station no shelter stands at the kerb: the idlers
           // wait up on its platforms.
           const platforms = tramStations.platformsAt(s.x, s.z);
@@ -2448,7 +2477,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       zoneGrid.setVisible(
         state.selectedTool.startsWith('zone.') ||
           state.selectedTool === 'landfill.paint' ||
-          state.selectedTool.startsWith('plop.'),
+          (state.selectedTool.startsWith('plop.') && !isStopTool(state.selectedTool)),
       );
       rebuildPlat();
       if (zoneGrid.isVisible()) requestField(FieldId.LandValue);
@@ -2486,6 +2515,8 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
     }
   });
 
+  /** How near the ground a click is to a stop's pad, metres, for the click to select the stop. */
+  const STOP_PICK_RADIUS_M = 3;
   // --- pointer routing ---------------------------------------------------------------
   const localXY = (e: PointerEvent): { x: number; y: number } => {
     const rect = viewport.getBoundingClientRect();
@@ -2521,7 +2552,16 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
     // Nothing built under the cursor: the ground might still be a junction,
     // which has its own inspector. A building always wins the click, since it
     // is the thing standing there.
+    store.getState().setSelectedStop(null);
     if (id !== null) {
+      store.getState().setSelectedJunction(null);
+      return;
+    }
+    // A bus stop is furniture on the street, picked by the ground beside it.
+    const ground = groundPointAt(x, y);
+    const stop = ground ? busStops.pick(ground.x, ground.z, STOP_PICK_RADIUS_M) : null;
+    if (stop) {
+      store.getState().setSelectedStop({ x: stop.x, z: stop.z, side: stop.side });
       store.getState().setSelectedJunction(null);
       return;
     }

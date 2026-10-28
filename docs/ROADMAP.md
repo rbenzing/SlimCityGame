@@ -25,7 +25,7 @@ current behavior only and carry no dates of their own._
 
 ## Status (2026-09-29)
 
-**Test suite:** 7,227 tests passing across 203 test files, run 2026-10-27.
+**Test suite:** 7,284 tests passing across 206 test files, run 2026-10-28.
 This is the only test count in the documentation set. When the suite changes
 again, update the figure here and nowhere else.
 
@@ -119,6 +119,9 @@ not a test to fix.
   The kit omits what does not fit and parks the vans in the lot's trailer
   stalls. The real fix is deeper lots for the heavy kinds in the lot layout
   (truck courts run 120–135 ft), a lots-and-land change.
+- A bus stop stands on grid street tiles only: its furniture frame reads a
+  grid road axis, so a free-form curve takes no stop yet. The lamp renderer
+  already lays furniture along a curve and is the frame to reuse.
 - Beside a curve an industrial box can still grow on verge tiles outside
   any framed parcel, since industry has no frontage rule on the grid; a
   framed building never levels up into a larger footprint; and a framed lot
@@ -392,6 +395,33 @@ roads, and pinning the Three.js version. See [adr/](engineering/adr/README.md).
 ---
 
 ## 10. History (newest first)
+
+### A bus stop is furniture on the footway (slice 1 of civic access and bus stops, built 2026-10-28)
+
+The first slice of [civic-access-and-bus-stops.md](game-design/features/civic-access-and-bus-stops.md):
+the bus stop stops being a kiosk on a tile of its own.
+
+- **A stop is road furniture.** A sign on a pole or a shelter on an 8 by
+  5 ft boarding pad, on one side of a street tile, placed by its own tool
+  on the side the pointer is on and refused on a junction, a motorway, a
+  ramp, rail or a tram reservation; on a street with no footway the same
+  pad stands at the shoulder. It takes no land. A bus line names only
+  tiles holding a stop, the last stop leaving a tile leaves every line,
+  and a road edit under a stop is refused until the stop is bulldozed, so
+  every command keeps its inverse.
+- **Two kinds at their real prices.** The sign at ₵2 and nothing a month,
+  the shelter at ₵150 and ₵10, priced by the 1 to 83 ratio of a sign and
+  pole to an installed shelter; a shelter that 25 or more board a day is
+  warranted and earns ₵7 a month of advertising, seven tenths of its
+  upkeep as a city's shelter contract pays. Each stop keeps its boardings a
+  day, summed over the lines calling, and the inspector shows them.
+- **Old saves.** A save's bus-stop buildings become shelters on the street
+  tiles they fronted, on the side facing where they stood, their tiles
+  freed and their lines rewritten.
+- Checked in the browser: a sign and a shelter on each side of a kerbed
+  two-lane and of a gravel road, the tool's ghost and the inspector.
+- **Open, logged below:** a stop stands on grid street tiles only, not yet
+  on a free-form curve, since its furniture frame reads a grid road axis.
 
 ### The rest of the ladder and the car parks on a curve (slice 2 of the curved parcels, built 2026-10-27)
 

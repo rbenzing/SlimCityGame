@@ -80,8 +80,10 @@ their inverse.
 
 `busStopPlacement(stop, profile)` in `src/render/busstops.ts` is the one
 function that lays the furniture, in the tile's road frame (the road axis
-along, the side's normal out): the kerb face at the carriageway half width
-plus the kerb reserve; the pad from the kerb face 2.44 m out, 3.66 m along,
+along, the side's normal out): the kerb face at the carriageway's edge, its
+half width, with the kerb reserve behind it where the pole stands as a
+lamp column does; on a road with no kerb the pad begins past the reserve;
+the pad from the kerb face 2.44 m out, 3.66 m along,
 centred on the tile; the pole 0.46 m out from the kerb at the pad's leading
 end in the road's flow direction; the shelter (`BUS_SHELTER` from
 `busshelter.ts`) with its front 0.9 m from the kerb, which on a footway

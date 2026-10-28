@@ -7,6 +7,7 @@ import {
   VehicleKind,
   ZoneType,
   type BuildingInstance,
+  type Command,
   type SimSnapshot,
   type WorkerToMain,
 } from '../../src/shared/types';
@@ -38,10 +39,16 @@ import { guardRoadNetwork } from '../support/guard';
 
 guardRoadNetwork();
 
+/** A bus shelter on the low side of the street tile, which is where a bus line's stop stands. */
+const shelterAt = (at: { x: number; z: number }): Command => ({
+  kind: 'placeStop',
+  stop: { x: at.x, z: at.z, side: 0, kind: 'shelter' },
+});
+
 describe('drawing a bus line while the city is paused', () => {
   const stops = [
-    { x: 62, z: 79 },
-    { x: 76, z: 79 },
+    { x: 62, z: 80 },
+    { x: 76, z: 80 },
   ];
 
   it('shows the line at once, with no riders until the city runs, and takes it away at once', () => {
@@ -49,8 +56,8 @@ describe('drawing a bus line while the city is paused', () => {
     const built = run(h, 1, [
       { kind: 'setSandbox', on: true },
       { kind: 'buildRoad', tier: RoadTier.TwoLane, tiles: roadRow(60, 80, 20) },
-      { kind: 'placeBuilding', catalogId: 'bus-stop', ...stops[0]!, rotation: 0 },
-      { kind: 'placeBuilding', catalogId: 'bus-stop', ...stops[1]!, rotation: 0 },
+      shelterAt(stops[0]!),
+      shelterAt(stops[1]!),
     ]);
     expect(built.ok).toBe(true);
     h.sim.handleMessage({ type: 'setSpeed', speed: 0 });
@@ -91,8 +98,8 @@ describe('a bus line’s dead runs', () => {
    */
   const STREET_Z = 80;
   const stops = [
-    { x: 66, z: STREET_Z - 1 },
-    { x: 76, z: STREET_Z - 1 },
+    { x: 66, z: STREET_Z },
+    { x: 76, z: STREET_Z },
   ];
   const DEPOT = { x: 70, z: STREET_Z + 1 };
   const GATE_NODE = { x: 72, z: STREET_Z };
@@ -107,8 +114,8 @@ describe('a bus line’s dead runs', () => {
       { kind: 'buildRoad', tier: RoadTier.TwoLane, tiles: column(67, STREET_Z + 1, 4) },
       { kind: 'buildRoad', tier: RoadTier.TwoLane, tiles: column(72, STREET_Z + 1, 4) },
       { kind: 'placeBuilding', catalogId: 'wind-turbine', x: 60, z: STREET_Z - 1, rotation: 0 },
-      { kind: 'placeBuilding', catalogId: 'bus-stop', ...stops[0]!, rotation: 0 },
-      { kind: 'placeBuilding', catalogId: 'bus-stop', ...stops[1]!, rotation: 0 },
+      shelterAt(stops[0]!),
+      shelterAt(stops[1]!),
       { kind: 'placeBuilding', catalogId: 'bus-depot', ...DEPOT, rotation: 0 },
       {
         kind: 'createTransitLine',
@@ -214,8 +221,8 @@ describe('a bus line’s dead runs', () => {
 
 describe('a bus line and the depot that fields it', () => {
   const stops = [
-    { x: 62, z: 79 },
-    { x: 76, z: 79 },
+    { x: 62, z: 80 },
+    { x: 76, z: 80 },
   ];
   const DEPOT = { x: 70, z: 81 };
 
@@ -227,8 +234,8 @@ describe('a bus line and the depot that fields it', () => {
       { kind: 'setUnlimitedMoney', on: true },
       { kind: 'buildRoad', tier: RoadTier.TwoLane, tiles: roadRow(60, 80, 20) },
       { kind: 'placeBuilding', catalogId: 'wind-turbine', x: 60, z: 79, rotation: 0 },
-      { kind: 'placeBuilding', catalogId: 'bus-stop', ...stops[0]!, rotation: 0 },
-      { kind: 'placeBuilding', catalogId: 'bus-stop', ...stops[1]!, rotation: 0 },
+      shelterAt(stops[0]!),
+      shelterAt(stops[1]!),
       { kind: 'createTransitLine', line: { id: 0, stops, color: 0xd23c3c, mode: 'bus' } },
     ]);
     expect(built.ok).toBe(true);
@@ -442,16 +449,16 @@ describe('a bus line down a long block', () => {
           { kind: 'placeBuilding', catalogId: 'water-tower', x: 52, z: 79, rotation: 0 },
           { kind: 'paintZone', zone: ZoneType.ResLow, tiles: rows(56, 81, 50, 2) },
           { kind: 'paintZone', zone: ZoneType.ComLow, tiles: rows(56, 77, 50, 2) },
-          { kind: 'placeBuilding', catalogId: 'bus-stop', x: 54, z: 81, rotation: 0 },
-          { kind: 'placeBuilding', catalogId: 'bus-stop', x: 80, z: 81, rotation: 0 },
+          shelterAt({ x: 54, z: 80 }),
+          shelterAt({ x: 80, z: 80 }),
           { kind: 'placeBuilding', catalogId: 'bus-depot', x: 106, z: 81, rotation: 0 },
           {
             kind: 'createTransitLine',
             line: {
               id: 0,
               stops: [
-                { x: 54, z: 81 },
-                { x: 80, z: 81 },
+                { x: 54, z: 80 },
+                { x: 80, z: 80 },
               ],
               color: 0xd23c3c,
               mode: 'bus',

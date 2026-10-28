@@ -13,6 +13,7 @@
  */
 import { TICKS_PER_MONTH } from '../shared/constants';
 import type {
+  BusStop,
   CityStats,
   MainToWorker,
   RoadProfile,
@@ -41,6 +42,8 @@ export interface SaveMeta {
    * since loading used to discard them outright.
    */
   transitLines?: TransitLine[];
+  /** Bus stops on street tiles. Absent in saves written before stops existed, which load with none. */
+  busStops?: BusStop[];
   /**
    * Road composition: the player-composed profiles this save's roads refer
    * to by id (presets are catalogue data). Absent in saves written before

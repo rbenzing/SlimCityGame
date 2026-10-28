@@ -180,8 +180,10 @@ describe('a small town, built and grown, as the regression for everything togeth
 
   it('stands every building a player places', () => {
     const standingIds = new Set(placed().map((b) => b.catalogId));
+    // A bus stop stands on a street as road furniture, not as a building.
+    const asStops = new Set(['bus-stop', 'bus-stop-sign']);
     const missing = catalog
-      .filter((e) => e.zone === undefined && !standingIds.has(e.id))
+      .filter((e) => e.zone === undefined && !asStops.has(e.id) && !standingIds.has(e.id))
       .map((e) => e.id);
     expect(missing).toEqual([]);
   });

@@ -27,6 +27,7 @@ import { footprintForRotation } from '../shared/footprint';
 import type {
   BrushSettings,
   BuildingCatalogEntry,
+  BusStop,
   Command,
   CursorChip,
   RoadSpec,
@@ -40,6 +41,7 @@ import type {
 import {
   corridorHalfOf,
   flowsAlong,
+  isStreetTier,
   RoadTier as RoadTierValue,
   ZoneType as ZoneTypeValue,
 } from '../shared/types';
@@ -148,6 +150,12 @@ export interface ToolPreview extends CursorChip {
    * line at `widthMeters` rather than tiles.
    */
   curve?: { centre: { x: number; z: number }[]; clicks: { x: number; z: number }[] };
+  /**
+   * A bus stop being placed: the stop the pointer snapped to and the world
+   * axis its side is offset along. Present only for the bus stop tools, and
+   * only while the pointer is by a street tile that can take one.
+   */
+  stop?: { stop: BusStop; lateral: 'x' | 'z' };
 }
 
 /** A road off the grid, as the tool asks whether it may be laid. */
@@ -289,6 +297,12 @@ export interface ToolEnv {
    * is recognised and a drag meets every road at grade.
    */
   roadMaskAt?(tile: TilePoint): number;
+  /**
+   * The kind of bus stop standing on one side of a street tile, or null where
+   * none does. Optional: without it the bus stop tools never see a taken side
+   * (the world still refuses it), and the bus line tool takes any tile.
+   */
+  stopAt?(x: number, z: number, side: 0 | 1): BusStop['kind'] | null;
   /**
    * How far an existing road tile's deck stands above its ground, metres; 0
    * on the ground. Optional: without it no road is seen raised above a drag,
@@ -817,6 +831,24 @@ export function brushDiscTiles(center: TilePoint, radius: number): TilePoint[] {
 function isPlopTool(tool: ToolId): boolean {
   return tool.startsWith('plop.');
 }
+
+/** The bus stop tools: ploppable ids whose entry takes no tile, only a side of a street's. */
+export function isStopTool(tool: ToolId): boolean {
+  return tool === 'plop.bus-stop' || tool === 'plop.bus-stop-sign';
+}
+
+/** What a stop tool places: the shelter, or the sign. */
+function stopKindOf(tool: ToolId): BusStop['kind'] {
+  return tool === 'plop.bus-stop' ? 'shelter' : 'sign';
+}
+
+/** Why a stop cannot go where the pointer is. */
+const STOP_NEEDS_STREET = 'A stop goes beside a street';
+const STOP_SIDE_TAKEN = 'This side of the street already has a stop';
+
+/** The neighbour-mask bits of a road tile: N=1, E=2, S=4, W=8. */
+const MASK_ACROSS_X = 2 | 8;
+const MASK_ACROSS_Z = 1 | 4;
 
 function isTerraformTool(tool: ToolId): boolean {
   return tool.startsWith('terraform.');
@@ -1358,7 +1390,11 @@ export class ToolManager {
         return true;
       }
       if (button === 0) {
-        const tile = this.env.screenToTile(sx, sy);
+        const under = this.env.screenToTile(sx, sy);
+        this.hoverPoint = this.wantsGroundPoint() ? this.cursorCm(sx, sy) : null;
+        // A bus line calls only where a stop stands.
+        const tile =
+          under && transitModeOf(this._tool) === 'bus' ? this.stopTileNear(under) : under;
         if (tile) {
           this.transitStops.push(tile);
           this.hoverTile = tile;
@@ -1383,7 +1419,7 @@ export class ToolManager {
     const { tile, end } = this.dragAt(sx, sy);
     this.hoverTile = tile;
     this.hoverEnd = end;
-    this.hoverPoint = this._tool === 'roundabout' ? this.cursorCm(sx, sy) : null;
+    this.hoverPoint = this.wantsGroundPoint() ? this.cursorCm(sx, sy) : null;
     this.dragStart = tile;
     this.dragStartEnd = end;
     this.armed = tile !== null;
@@ -1410,7 +1446,7 @@ export class ToolManager {
     const { tile, end } = this.dragAt(sx, sy);
     this.hoverTile = tile;
     this.hoverEnd = end;
-    this.hoverPoint = this._tool === 'roundabout' ? this.cursorCm(sx, sy) : null;
+    this.hoverPoint = this.wantsGroundPoint() ? this.cursorCm(sx, sy) : null;
     if (this.freeDragStart) this.curveCursor = this.cursorCm(sx, sy) ?? this.curveCursor;
     if (tile) {
       if (
@@ -1436,6 +1472,7 @@ export class ToolManager {
     if (this.armed && this.dragStart) {
       const at = this.dragAt(sx, sy);
       if (at.tile) this.hoverEnd = at.end;
+      if (isStopTool(this._tool)) this.hoverPoint = this.cursorCm(sx, sy);
       const end = at.tile ?? this.hoverTile ?? this.dragStart;
       const free = this.freeDrag(this.dragStart, end, this.cursorCm(sx, sy));
       if (free) this.layFree(free);
@@ -1750,6 +1787,124 @@ export class ToolManager {
     this.emitCurvePreview();
   }
 
+  /** Whether the pointer's ground position is wanted along with its tile. */
+  private wantsGroundPoint(): boolean {
+    return (
+      this._tool === 'roundabout' ||
+      isStopTool(this._tool) ||
+      (isTransitTool(this._tool) && transitModeOf(this._tool) === 'bus')
+    );
+  }
+
+  /**
+   * The street tile and side a pointer over `under` snaps to for a bus stop:
+   * the nearest tile within one of it whose street a stop may stand beside —
+   * not a junction, a motorway, a ramp, rail or a tram reservation — and the
+   * side of its road axis the pointer is on. Null where there is none.
+   */
+  private stopSpotAt(
+    under: TilePoint,
+  ): { tile: TilePoint; side: 0 | 1; lateral: 'x' | 'z' } | null {
+    const p = this.hoverPoint;
+    const profileAt = this.env.roadProfileAt;
+    if (!p || !profileAt) return null;
+    const wx = p.x / 100;
+    const wz = p.z / 100;
+    let best: { tile: TilePoint; side: 0 | 1; lateral: 'x' | 'z' } | null = null;
+    let bestDistance = Infinity;
+    for (let dz = -1; dz <= 1; dz++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        const tile = { x: under.x + dx, z: under.z + dz };
+        if (!inBounds(tile.x, tile.z)) continue;
+        const profile = profileAt(tile);
+        if (!profile) continue;
+        if (
+          !isStreetTier(tierForProfile(profile)) ||
+          !isStreetClass(profile.class) ||
+          carriesGuideway(profile)
+        ) {
+          continue;
+        }
+        const mask = this.env.roadMaskAt?.(tile) ?? 0;
+        const acrossX = (mask & MASK_ACROSS_X) !== 0;
+        const acrossZ = (mask & MASK_ACROSS_Z) !== 0;
+        if (acrossX && acrossZ) continue;
+        const cx = tileToWorld(tile.x);
+        const cz = tileToWorld(tile.z);
+        const distance = Math.hypot(wx - cx, wz - cz);
+        if (distance >= bestDistance) continue;
+        const lateral = acrossZ ? 'x' : 'z';
+        const offset = lateral === 'z' ? wz - cz : wx - cx;
+        bestDistance = distance;
+        best = { tile, side: offset >= 0 ? 1 : 0, lateral };
+      }
+    }
+    return best;
+  }
+
+  /** What a stop tool says of the pointer at `under`: the preview, and the stop it would place when it can. */
+  private judgeStop(under: TilePoint): { preview: ToolPreview; stop: BusStop | null } {
+    const entry = this.env.entry(catalogIdOf(this._tool));
+    if (!entry) return { preview: this.noStopPreview('Stop', 0), stop: null };
+    const spot = this.stopSpotAt(under);
+    if (!spot) return { preview: this.noStopPreview(entry.name, entry.cost), stop: null };
+    const kind = stopKindOf(this._tool);
+    const stop: BusStop = { x: spot.tile.x, z: spot.tile.z, side: spot.side, kind };
+    const held = this.env.stopAt?.(stop.x, stop.z, stop.side) ?? null;
+    // A shelter over a sign is the upgrade, at the price difference; anything
+    // else on a side that holds a stop is a repeat.
+    const taken = held === kind || (held === 'shelter' && kind === 'sign');
+    const signCost = this.env.entry('bus-stop-sign')?.cost ?? 0;
+    const cost =
+      held === 'sign' && kind === 'shelter' ? Math.max(0, entry.cost - signCost) : entry.cost;
+    const judged = this.evaluate([spot.tile], cost, entry.unlockMilestone, true);
+    const invalidReason = taken ? STOP_SIDE_TAKEN : judged.invalidReason;
+    return {
+      preview: {
+        tiles: [spot.tile],
+        valid: !taken && judged.valid,
+        cost,
+        label: entry.name,
+        ...(invalidReason !== undefined ? { invalidReason } : {}),
+        stop: { stop, lateral: spot.lateral },
+      },
+      stop: taken || !judged.valid ? null : stop,
+    };
+  }
+
+  private noStopPreview(label: string, cost: number): ToolPreview {
+    return { tiles: [], valid: false, cost, label, invalidReason: STOP_NEEDS_STREET };
+  }
+
+  /**
+   * The tile a bus line's stop click lands on: the nearest tile within one of
+   * `under` holding a stop, so a line can only call where a stop stands.
+   * Null where none does. An env that cannot say takes the tile as it is.
+   */
+  private stopTileNear(under: TilePoint): TilePoint | null {
+    const stopAt = this.env.stopAt;
+    const p = this.hoverPoint;
+    if (!stopAt || !p) return under;
+    let best: TilePoint | null = null;
+    let bestDistance = Infinity;
+    for (let dz = -1; dz <= 1; dz++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        const tile = { x: under.x + dx, z: under.z + dz };
+        if (!inBounds(tile.x, tile.z)) continue;
+        if (stopAt(tile.x, tile.z, 0) === null && stopAt(tile.x, tile.z, 1) === null) continue;
+        const distance = Math.hypot(
+          p.x / 100 - tileToWorld(tile.x),
+          p.z / 100 - tileToWorld(tile.z),
+        );
+        if (distance < bestDistance) {
+          bestDistance = distance;
+          best = tile;
+        }
+      }
+    }
+    return best;
+  }
+
   /** Advances the ploppable's rotation a quarter turn and refreshes its preview. */
   rotatePlop(): void {
     this.rotation = ((this.rotation + 1) % 4) as 0 | 1 | 2 | 3;
@@ -1976,6 +2131,10 @@ export class ToolManager {
 
   private emitPreview(current: TilePoint): void {
     const tool = this._tool;
+    if (isStopTool(tool)) {
+      this.env.onPreview(this.judgeStop(current).preview);
+      return;
+    }
     if (isPlopTool(tool)) {
       const entry = this.env.entry(catalogIdOf(tool));
       if (!entry) {
@@ -2006,8 +2165,10 @@ export class ToolManager {
       return;
     }
     if (isTransitTool(tool)) {
-      // Ghost the committed stops plus the tentative next stop under the cursor.
-      const tiles = [...this.transitStops, current];
+      // Ghost the committed stops plus the tentative next stop under the cursor,
+      // which for a bus line is the stop it would call at, if one is near.
+      const next = transitModeOf(tool) === 'bus' ? this.stopTileNear(current) : current;
+      const tiles = next ? [...this.transitStops, next] : [...this.transitStops];
       this.env.onPreview({
         tiles,
         valid: tiles.length >= MIN_TRANSIT_STOPS,
@@ -2345,6 +2506,14 @@ export class ToolManager {
           interchangeCommands(judged.layout, this.interchange.streetTier),
         );
       }
+      return;
+    }
+    if (isStopTool(tool)) {
+      // Asked again as it is placed: nothing is sent for a spot that is not valid.
+      const { stop } = this.judgeStop(end);
+      const entry = this.env.entry(catalogIdOf(tool));
+      if (stop && entry) this.env.send(entry.name, [{ kind: 'placeStop', stop }]);
+      this.env.onPreview(null);
       return;
     }
     if (isPlopTool(tool)) {

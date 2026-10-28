@@ -141,8 +141,18 @@ In every case the relief taken off an edge is `ridership × 0.02`
 (`CONGESTION_RELIEF_PER_RIDER`), clamped so an edge's volume never goes
 negative.
 
-**Stops differ by mode.** A bus stop is a small road-adjacent catalog
-ploppable, unlocked at milestone 1. A rail station is a much larger
+**Stops differ by mode.** A bus stop is road furniture on one side of a
+street tile, never a building on a tile of its own: a sign on a pole on an
+8 ft by 5 ft boarding pad, or a shelter on the same pad, placed by its own
+tool on the side of the road the pointer is on and unlocked at milestone 1.
+A bus line's stops name the street tiles those stops stand on; a tile with
+no stop cannot be a bus line's stop, and taking the last stop off a tile
+takes the tile off every line. Each stop keeps its boardings a day, the
+sum over the lines calling at it; a shelter that 25 or more board a day is
+warranted and sells its ad panel for ₵7 a month against its ₵10 upkeep,
+while a sign costs and earns nothing
+([civic-access-and-bus-stops.md](../game-design/features/civic-access-and-bus-stops.md)).
+A rail station is a much larger
 ploppable (a 2×3 footprint) gated on standing adjacent to rail track rather
 than to a street — the first ploppable in the game whose placement rule is
 not "next to a road" — unlocked at milestone 3. A tram stop is neither: it
@@ -166,8 +176,8 @@ network**: a stop resolves to a graph node by proximity (within 8 tiles), and
 a long junction-free corridor — exactly the shape of a dedicated transit
 route — only has nodes at its two ends. Snapping falls back to the nearer end
 of the specific run a point stands on, or of a run on one of the four tiles
-beside it, since a bus stop never stands on the street but on the kerb tile
-beside it. So a station or a tram stop placed partway down a long line, and a
+beside it, which a rail station still needs, standing beside its track; a
+bus stop names its own street tile. So a station or a tram stop placed partway down a long line, and a
 bus stop partway down a long block, still route correctly rather than
 carrying nobody. A point two or more tiles from any road is off the network
 and routes to nothing.

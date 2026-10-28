@@ -7,7 +7,14 @@ import type {
   RoadProfile,
   RoadSpec,
 } from '../shared/types';
-import { BuildingState, FieldId, RoadTier, ZoneType } from '../shared/types';
+import {
+  BuildingState,
+  FieldId,
+  RoadTier,
+  SHELTER_AD_INCOME,
+  SHELTER_WARRANT_BOARDINGS,
+  ZoneType,
+} from '../shared/types';
 import {
   MAX_LOAN,
   MILESTONES,
@@ -735,5 +742,64 @@ describe('EconomySystem: a city that loses residents', () => {
       tickNo: 1,
     });
     expect(statsPatch.milestoneProgress).toBe(0);
+  });
+});
+
+describe('EconomySystem: bus shelters', () => {
+  const shelter: BuildingCatalogEntry = {
+    id: 'bus-stop',
+    name: 'Bus shelter',
+    category: 'transit',
+    footprint: { w: 1, d: 1 },
+    height: 3,
+    color: 0,
+    powerUse: 0,
+    waterUse: 0,
+    cost: 150,
+    upkeep: 10,
+    unlockMilestone: 1,
+  };
+
+  /** The month's settlement for a city that is nothing but these stops. */
+  function month(boardings: number, kind: 'sign' | 'shelter'): Partial<CityStats> {
+    const sys = new EconomySystem([...catalog, shelter], roadSpecs);
+    const stops = [
+      {
+        x: 5,
+        z: 5,
+        side: 0 as const,
+        kind,
+        boardingsPerDay: boardings,
+        warranted: kind === 'shelter' && boardings >= SHELTER_WARRANT_BOARDINGS,
+      },
+    ];
+    return sys.tick({
+      g: makeGrid(),
+      buildings: [],
+      stats: makeStats(),
+      tickNo: TICKS_PER_MONTH,
+      stops,
+    }).statsPatch;
+  }
+
+  it('sells advertising on a shelter at 25 boardings a day, and pays its upkeep', () => {
+    const patch = month(25, 'shelter');
+    expect(patch.advertising).toBe(SHELTER_AD_INCOME);
+    expect(patch.monthlyIncome).toBe(SHELTER_AD_INCOME);
+    expect(patch.monthlyExpenses).toBe(10);
+  });
+
+  it('sells nothing on a shelter at 24 boardings a day, though it still costs its upkeep', () => {
+    const patch = month(24, 'shelter');
+    expect(patch.advertising).toBe(0);
+    expect(patch.monthlyIncome).toBe(0);
+    expect(patch.monthlyExpenses).toBe(10);
+  });
+
+  it('charges and earns nothing for a sign, however many board', () => {
+    const patch = month(500, 'sign');
+    expect(patch.advertising).toBe(0);
+    expect(patch.monthlyIncome).toBe(0);
+    expect(patch.monthlyExpenses).toBe(0);
   });
 });

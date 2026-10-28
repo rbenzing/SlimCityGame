@@ -717,6 +717,13 @@ export type Command =
   | { kind: 'updateTransitLine'; line: TransitLine }
   // Remove the line with this id.
   | { kind: 'deleteTransitLine'; id: number }
+  // A bus stop on one side of a street tile: a sign, or a shelter (which also
+  // upgrades a sign standing there). Refused on a junction, a motorway, a ramp,
+  // rail, a tram reservation, or a side already holding that kind.
+  | { kind: 'placeStop'; stop: BusStop }
+  // Takes the stop off the tile's side and off every line that named the tile
+  // when no stop remains there.
+  | { kind: 'removeStop'; x: number; z: number; side: 0 | 1 }
   // ---- Districts & policies ----
   // Paint `districtId` (0 = erase back to unassigned) onto GridState.district for `tiles`.
   | { kind: 'paintDistrict'; districtId: number; tiles: TilePoint[] }
@@ -769,6 +776,8 @@ export interface CityStats {
   monthlyExpenses: number;
   /** The month's transit running charge inside `monthlyExpenses`, ¢; absent before the first month settles. */
   transitRunning?: number;
+  /** The month's bus-shelter advertising income inside `monthlyIncome`, ¢; absent before the first month settles. */
+  advertising?: number;
   population: number;
   jobs: number;
   employed: number;
@@ -1002,6 +1011,8 @@ export interface SimSnapshot {
    * The fleet figures are optional so an older mirror ignores them.
    */
   transit?: { lines: TransitLine[]; ridership: number[] } & Partial<TransitFleetSnapshot>;
+  /** Every bus stop with its boardings a day and whether a shelter there is warranted; absent on an older worker. */
+  stops?: BusStopState[];
   /**
    * Service dispatch: currently-active incidents (cosmetic —
    * coverage/economy unchanged). Service vehicles responding to them ride the
@@ -2058,8 +2069,30 @@ export interface BrushSettings {
 /** Which network carries a transit line: the streets, or the track. */
 export type TransitMode = 'bus' | 'rail' | 'tram';
 
+/** A bus stop: road furniture on one side of a street tile, never a building on a tile of its own. */
+export interface BusStop {
+  x: number;
+  z: number;
+  /** Which side of the tile's road axis, 0 the low side, 1 the high side (the parking lane's own convention). */
+  side: 0 | 1;
+  kind: 'sign' | 'shelter';
+}
+
+/** A stop as the snapshot reports it: the stop, its boardings a day summed over the lines calling, and the shelter warrant. */
+export interface BusStopState extends BusStop {
+  boardingsPerDay: number;
+  warranted: boolean;
+}
+
+/** Boardings a day at which a shelter is warranted and its ad panel sells. */
+export const SHELTER_WARRANT_BOARDINGS = 25;
+
+/** What a warranted shelter's ad panel earns the city a month, ¢. */
+export const SHELTER_AD_INCOME = 7;
+
 export interface TransitLine {
   id: number;
+  /** Street tiles each holding a bus stop (bus), or stop points on the track (rail, tram). */
   stops: TilePoint[];
   color: number; // packed hex RGB
   /**

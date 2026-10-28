@@ -23,8 +23,8 @@
  * per-line world-space path to the snapshot, `apply()` is the only place
  * that would need updating.
  *
- * Bus-stop shelter: the shelter busshelter.ts builds (the one the bus-stop
- * ploppable's kit stands too), and a stop sign on its own pole just beyond one
+ * Line-stop shelter: the shelter busshelter.ts builds (the one a bus stop
+ * stands too, laid by busstops.ts), and a stop sign on its own pole just beyond one
  * end. The stop's own position/data (`TilePoint`) is untouched; only the
  * visual model at that position grows. Since the transit snapshot carries no
  * road-tangent data, the shelter's long axis instead follows the LINE's own
@@ -34,8 +34,8 @@
  * above), and it sits laterally offset from the stop's exact tile point, to
  * a side alternated deterministically by hash(tile) -- reading as "beside
  * the route" rather than dead-center on top of the existing stop position,
- * its open front toward the stop. A stop standing on a plopped bus stop's
- * tile draws nothing here: that kit's shelter is the stop's.
+ * its open front toward the stop. A stop standing on a tile that holds a bus
+ * stop draws nothing here: the bus stop's own furniture is the stop's.
  */
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
@@ -481,9 +481,9 @@ export class TransitRenderer {
 
   /**
    * Full rebuild from the worker's transit snapshot (lines change relatively
-   * rarely). `hasStopBuilding` says whether a plopped bus stop stands on a
-   * tile: a line's stop there draws no shelter and no sign of its own, since
-   * the kit's shelter is the stop's. `isStation` says a raised tram station
+   * rarely). `hasStopBuilding` says whether a bus stop holds a tile: a
+   * line's stop there draws no shelter and no sign of its own, since the bus
+   * stop's furniture is the stop's. `isStation` says a raised tram station
    * stands over a tile, which draws no kerb shelter under it either.
    */
   apply(
@@ -645,8 +645,8 @@ export class TransitRenderer {
     for (const line of lines) {
       // A rail stop is a station: a ploppable building the player placed, which
       // already stands there. Dropping a bus shelter on top of it would be a
-      // second, smaller shelter inside the first. A stop on a plopped bus
-      // stop's tile is the same case at the bus's scale, and a tram stop under
+      // second, smaller shelter inside the first. A stop on a tile holding a
+      // bus stop is the same case at the bus's scale, and a tram stop under
       // a raised station is served from the platforms above.
       if (modeOf(line) === 'rail') continue;
       const worldPoints = toWorldPoints(line.stops);

@@ -115,8 +115,8 @@ export const TOWN = {
   drain: { x: 89, z: 69 },
   works: { x: 86, z: 68 },
   worksPipe: { z: 68, x0: 88, x1: 89 },
-  busStopWest: { x: 52, z: 101 },
-  busStopEast: { x: 129, z: 131 },
+  busStopWest: { x: 52, z: 100 },
+  busStopEast: { x: 129, z: 130 },
   busDepot: { x: 122, z: 101 },
   busGarage: { x: 136, z: 101 },
   tramDepot: { x: 50, z: 86 },
@@ -516,7 +516,10 @@ export function townSteps(): TownStep[] {
     },
     {
       label: 'bus stops at each end of town',
-      commands: [place('bus-stop', t.busStopWest), place('bus-stop', t.busStopEast)],
+      commands: [
+        { kind: 'placeStop', stop: { ...t.busStopWest, side: 1, kind: 'shelter' } },
+        { kind: 'placeStop', stop: { ...t.busStopEast, side: 1, kind: 'shelter' } },
+      ],
     },
     {
       label: 'rail stations on the track',

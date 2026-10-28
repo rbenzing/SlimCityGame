@@ -18,6 +18,7 @@ import { RoadTier } from '../shared/types';
 import type {
   BrushSettings,
   BuildingInstance,
+  BusStopState,
   CityNotification,
   CityStats,
   Command,
@@ -184,6 +185,10 @@ export interface CityStoreState {
    * warrant changes under the open panel is what the panel shows.
    */
   selectedJunction: SelectedJunction | null;
+  /** Every bus stop as the last snapshot reported it, with its boardings and warrant. */
+  stops: BusStopState[];
+  /** The side of a street tile whose stop the player has open in the inspector. */
+  selectedStop: { x: number; z: number; side: 0 | 1 } | null;
   canUndo: boolean;
   canRedo: boolean;
   bound: BoundActions | null;
@@ -281,6 +286,8 @@ export interface CityStoreState {
   dismissNotification: (id: number) => void;
   setSelectedBuilding: (building: BuildingInstance | null) => void;
   setSelectedJunction: (junction: SelectedJunction | null) => void;
+  setStops: (stops: BusStopState[]) => void;
+  setSelectedStop: (stop: { x: number; z: number; side: 0 | 1 } | null) => void;
   setUndoState: (canUndo: boolean, canRedo: boolean) => void;
   setPreview: (preview: PreviewInfo | null) => void;
   bindActions: (actions: BoundActions) => void;
@@ -344,6 +351,8 @@ export const useCityStore = create<CityStoreState>((set, get) => ({
   preview: null,
   selectedBuilding: null,
   selectedJunction: null,
+  stops: [],
+  selectedStop: null,
   canUndo: false,
   canRedo: false,
   bound: null,
@@ -417,6 +426,22 @@ export const useCityStore = create<CityStoreState>((set, get) => ({
     set((state) => ({ notifications: state.notifications.filter((n) => n.id !== id) })),
   setSelectedBuilding: (building) => set({ selectedBuilding: building }),
   setSelectedJunction: (junction) => set({ selectedJunction: junction }),
+  // A stop taken away under an open inspector closes it.
+  setStops: (stops) =>
+    set((state) => ({
+      stops,
+      selectedStop:
+        state.selectedStop &&
+        stops.some(
+          (s) =>
+            s.x === state.selectedStop!.x &&
+            s.z === state.selectedStop!.z &&
+            s.side === state.selectedStop!.side,
+        )
+          ? state.selectedStop
+          : null,
+    })),
+  setSelectedStop: (stop) => set({ selectedStop: stop }),
   setUndoState: (canUndo, canRedo) => set({ canUndo, canRedo }),
   setPreview: (preview) => set({ preview }),
   bindActions: (actions) => set({ bound: actions }),

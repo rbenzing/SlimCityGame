@@ -17,6 +17,8 @@ export function resetCityStore(): void {
     notifications: [],
     preview: null,
     selectedBuilding: null,
+    stops: [],
+    selectedStop: null,
     canUndo: false,
     canRedo: false,
     bound: null,

@@ -117,6 +117,16 @@ describe('TransitLinesPanel', () => {
     expect(screen.getByTestId('transit-running-total')).toHaveTextContent('¢282/mo');
   });
 
+  it('shows the shelter advertising income when the stats carry it, and no line when they do not', () => {
+    useCityStore.setState({ selectedTool: 'transit.line' });
+    const { unmount } = render(<TransitLinesPanel />);
+    expect(screen.queryByTestId('shelter-advertising')).not.toBeInTheDocument();
+    unmount();
+    useCityStore.setState((s) => ({ stats: { ...s.stats, advertising: 21 } }));
+    render(<TransitLinesPanel />);
+    expect(screen.getByTestId('shelter-advertising')).toHaveTextContent('+¢21/mo');
+  });
+
   it('reads every line as running nothing before a snapshot carries fleet figures', () => {
     useCityStore.setState({ selectedTool: 'transit.line' });
     useCityStore.getState().setTransit(LINES, [40, 300, 120]);
