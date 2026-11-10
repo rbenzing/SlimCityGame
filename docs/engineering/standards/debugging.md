@@ -82,11 +82,25 @@ have moved past. Fix the layout; never loosen the guard. A raw
 `page.screenshot` is kept only where two frames are compared pixel for pixel
 to find a moving vehicle.
 
+Four things the hooks do that a harness must allow for:
+
+- `setVehicles` and `setIncidents` last until the next snapshot. A command
+  sent after them clears what they stood; stand it again before the frame.
+- `setDayT` moves the light only while the sim runs, and lamps light only on
+  a powered street. A night frame needs a power source in its layout and a
+  moment of running clock.
+- A tool with no command of its own, such as the Interchange tool, is driven
+  with `setTool` and real pointer input. Never copy its layout into the
+  harness: the copy is a second source of truth, and its faults read as the
+  game's.
+- A tool locked behind a milestone does nothing on a click. The saved option
+  `sandboxUnlockAll` lifts the lock, as `unlimitedMoneyOption` lifts the debt.
+
 There is one harness per feature area — `archetype-shots.mjs`,
 `bridge-shots.mjs`, `corridor-shots.mjs`, `junction-shots.mjs`,
 `lamppower-shots.mjs`, `oneway-shots.mjs`, `powerline-shots.mjs`,
 `roadclip-shots.mjs`, `tramway-shots.mjs`, `transition-shots.mjs`, and some
-three dozen more — rather than one generic harness with flags, matching the
+forty more — rather than one generic harness with flags, matching the
 one-system-per-file convention in `src/render/`.
 
 **Using one to debug a render issue:** run the matching harness (or write a
