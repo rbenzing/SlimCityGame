@@ -9,7 +9,7 @@
  */
 import { chromium } from 'playwright';
 import { mkdirSync } from 'node:fs';
-import { tileCamera } from './shotcam.mjs';
+import { cleanShot, logAlerts, tileCamera } from './shotcam.mjs';
 
 const base = process.argv[2] ?? 'http://localhost:5173';
 const url = base + (base.includes('?') ? '&' : '?') + 'nobloom';
@@ -52,8 +52,10 @@ const TRAM_RESERVED = {
   pieces: [
     { kind: 'sidewalk', width: 1.875 },
     { kind: 'travel', width: 3.6, flow: 'back' },
-    { kind: 'tram', width: 3.5 },
-    { kind: 'tram', width: 3.5 },
+    { kind: 'travel', width: 3.6, flow: 'back' },
+    { kind: 'tram', width: 1.2, flow: 'back' },
+    { kind: 'tram', width: 1.2, flow: 'fwd' },
+    { kind: 'travel', width: 3.6, flow: 'fwd' },
     { kind: 'travel', width: 3.6, flow: 'fwd' },
     { kind: 'sidewalk', width: 1.875 },
   ],
@@ -86,7 +88,10 @@ await page.addInitScript(() => {
     );
     // Every road unlocked, so a card locked behind a milestone cannot read as
     // a card that was retired.
-    localStorage.setItem('slimcity.settings', JSON.stringify({ sandboxUnlockAll: true }));
+    localStorage.setItem(
+      'slimcity.settings',
+      JSON.stringify({ sandboxUnlockAll: true, unlimitedMoney: true }),
+    );
   } catch (e) {
     void e;
   }
@@ -106,6 +111,7 @@ const failures = [];
 await cmd('Sandbox', [{ kind: 'setSandbox', on: true }]);
 await cmd('Money', [{ kind: 'setUnlimitedMoney', on: true }]);
 await page.waitForTimeout(500);
+await logAlerts(page, 'transit');
 
 // ---------------------------------------------------------------------------
 // The drawer: what it offers, and what it no longer does.
@@ -147,12 +153,13 @@ const oneSideText = await page.getByLabel('Profile width').textContent();
 console.log('two-lane + one bus lane:', oneSideText, '|', oneSide);
 if (oneSide !== 'Fits the tile')
   failures.push(`a two-lane street with one bus lane reads "${oneSide}"`);
-await page.screenshot({ path: `${out}/options-two-lane-bus.png` });
+await cleanShot(page, `${out}/options-two-lane-bus.png`);
 
-await page.getByRole('group', { name: 'Bus lanes' }).getByText('Both', { exact: true }).click();
-await page.waitForTimeout(250);
-const bothSides = await page.getByLabel('Profile width').getAttribute('title');
+// The refused choice is a disabled chip carrying the rule, not a click that lays it.
+const bothChip = page.getByRole('group', { name: 'Bus lanes' }).getByText('Both', { exact: true });
+const bothSides = await bothChip.getAttribute('title');
 console.log('two-lane + two bus lanes:', bothSides);
+if (!(await bothChip.isDisabled())) failures.push('two bus lanes on a two-lane street are offered');
 if (!/runs 2 to 3 lanes/.test(bothSides ?? ''))
   failures.push(`two bus lanes on a two-lane street reads "${bothSides}", not the lane-range rule`);
 
@@ -169,7 +176,7 @@ if (!(await hasGroup('Bus lanes'))) failures.push('an avenue is not offered a bu
 if (!(await hasGroup('Tramway'))) failures.push('an avenue is not offered a tramway');
 await page.getByRole('group', { name: 'Tramway' }).getByText('Reserved', { exact: true }).click();
 await page.waitForTimeout(250);
-await page.screenshot({ path: `${out}/options-avenue-tram.png` });
+await cleanShot(page, `${out}/options-avenue-tram.png`);
 await page.keyboard.press('Escape');
 await page.waitForTimeout(300);
 
@@ -289,7 +296,7 @@ await call(() => window.__slimcity.setDayT(0.5));
 const shot = async (name, tx, tz, d, yaw, pitch) => {
   await cam(tx, tz, d, yaw, pitch);
   await page.waitForTimeout(900);
-  await page.screenshot({ path: `${out}/${name}.png` });
+  await cleanShot(page, `${out}/${name}.png`);
   console.log('shot', name);
 };
 await shot('three-variants', X + 8, Z + 4, 150, 0.0, 1.2);

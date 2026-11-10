@@ -9,13 +9,13 @@
  * through the dev hooks, since they depend on years of deaths and on traffic
  * a screenshot cannot wait for.
  *
- * Usage: node tools/cemetery-shots.mjs [baseUrl]   (a dev server must be running) */
+ * Usage: node tools/cemetery-shots.mjs [baseUrl] [outDir]   (a dev server must be running) */
 import { chromium } from 'playwright';
 import { mkdirSync } from 'node:fs';
-import { closeUp, hooksReady, tileCamera } from './shotcam.mjs';
+import { cleanShot, closeUp, hooksReady, tileCamera, unlimitedMoneyOption } from './shotcam.mjs';
 
 const base = process.argv[2] ?? 'http://localhost:5173';
-const out = 'tools/shots-cemetery';
+const out = process.argv[3] ?? 'tools/shots-cemetery';
 mkdirSync(out, { recursive: true });
 
 const browser = await chromium.launch({ headless: true, args: ['--use-angle=default'] });
@@ -32,6 +32,7 @@ const session = (value) =>
   }, value);
 
 await session({ screen: 'playing', seed: 1, mode: 'new' });
+await unlimitedMoneyOption(page);
 await page.goto(base, { waitUntil: 'domcontentloaded' });
 await page.waitForSelector('#viewport canvas', { timeout: 30000 });
 await hooksReady(page);
@@ -106,7 +107,7 @@ const hook = (fn, arg) => page.evaluate(fn, arg);
 const camera = tileCamera(page);
 const shot = async (name, settle = 1500) => {
   await page.waitForTimeout(settle);
-  await page.screenshot({ path: `${out}/${name}.png` });
+  await cleanShot(page, `${out}/${name}.png`);
   console.log('shot', name);
 };
 
@@ -151,14 +152,14 @@ await shot('a3-cemetery-oblique');
 const restore = await closeUp(page, 2);
 await camera(c.x + 0.2, c.z + 0.6, 40, Math.PI / 6, 0.45);
 await shot('b-cemetery-pedestrian-scale', 2000);
-await camera(c.x + 2.2, c.z + 2, 40, -Math.PI / 5, 0.4);
+await camera(c.x + 1.5, c.z + 0.7, 40, (2 * Math.PI) / 3, 0.35);
 await shot('b2-cemetery-gatehouse', 2000);
 await restore();
 
 // A hearse, an ambulance and a car stopped on main street (z = 100).
 const T = await hook(() => window.__slimcity.tileMeters());
 const roadZ = (100 + 0.5) * T;
-const startX = 70 * T;
+const startX = 91 * T;
 await hook(
   ([z, x0, kinds]) =>
     window.__slimcity.setVehicles(
@@ -167,9 +168,9 @@ await hook(
   // car, ambulance, hearse
   [roadZ, startX, [0, 5, 8]],
 );
-await camera(70.5, 100, 40, 0, 0.18);
+await camera(91, 100, 40, Math.PI, 0.25);
 await shot('c-hearse-ambulance-car');
-await camera(70.5, 100, 40, Math.PI / 5, 0.3);
+await camera(91, 100, 40, Math.PI + Math.PI / 5, 0.3);
 await shot('c2-hearse-ambulance-car-three-quarter');
 
 // --- the health lens over a body backlog -----------------------------------
@@ -179,13 +180,12 @@ await hook(() => window.__slimcity.setSpeed(4));
 await page.waitForTimeout(12000);
 await hook(() => window.__slimcity.setSpeed(0));
 await hook(() => window.__slimcity.setOverlay(7));
-const h0 = saves.homes[0];
-await camera(h0.x, h0.z, 500, 0, 1.2);
+await camera(100.5, 100, 220, 0, 1.0);
 await shot('d-health-lens-district');
-await camera(h0.x, h0.z, 1600, 0, 1.2);
+await camera(100.5, 100, 800, 0, 1.2);
 await shot('d2-health-lens-town');
 await hook(() => window.__slimcity.setOverlay(null));
-await camera(h0.x, h0.z, 300, 0, 0.7);
+await camera(100.5, 100, 150, 0, 0.7);
 await shot('d3-district-no-lens');
 
 console.log('stats', JSON.stringify(await hook(() => window.__slimcity.getStats())));

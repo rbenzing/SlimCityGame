@@ -11,7 +11,14 @@
  */
 import { chromium } from 'playwright';
 import { mkdirSync } from 'node:fs';
-import { tileCamera, closeUp, hooksReady } from './shotcam.mjs';
+import {
+  cleanShot,
+  tileCamera,
+  closeUp,
+  hooksReady,
+  logAlerts,
+  unlimitedMoneyOption,
+} from './shotcam.mjs';
 
 const base = process.argv[2] ?? 'http://localhost:5173';
 const url = base + (base.includes('?') ? '&' : '?') + 'nobloom';
@@ -27,6 +34,7 @@ page.on('pageerror', (e) => {
   pageErrors.push(e.message);
   console.log('[pageerror]', e.message);
 });
+await unlimitedMoneyOption(page);
 await page.addInitScript(() => {
   try {
     sessionStorage.setItem(
@@ -84,6 +92,7 @@ await cmd('Money', [{ kind: 'setUnlimitedMoney', on: true }]);
 // the shot is the whole point of taking it.
 await call(() => window.__slimcity.setDayT(0.5));
 await page.waitForTimeout(300);
+await logAlerts(page, 'roadconformity');
 
 const CX = 14;
 const CZ = 14;
@@ -97,8 +106,9 @@ const SCENARIOS = [
   { name: 'alley-t-avenue', major: TIER.avenue, minor: TIER.alley, shape: 'tee' },
   // The motorway is limited access, so the street that reaches it is a ramp.
   // A street crossing it is refused by the road tool, which is where that rule
-  // lives and where its unit tests are; nothing to photograph.
-  { name: 'ramp-t-highway', major: TIER.highway, minor: TIER.ramp, shape: 'tee' },
+  // lives and where its unit tests are; nothing to photograph. The ramp is laid
+  // as the player lays one: up beside the motorway, then east along it to merge.
+  { name: 'ramp-t-highway', major: TIER.highway, minor: TIER.ramp, shape: 'ramp' },
   { name: 'twolane-x-twolane', major: TIER.twoLane, minor: TIER.twoLane, shape: 'cross' },
   // An alley is a service road, not a leg of the traffic network: it wants no
   // turn bay taken out of the street it joins and no footway bent into it.
@@ -122,10 +132,11 @@ const SCENARIOS = [
   { name: 'bus-x-twolane', major: TIER.twoLane, minor: TIER.bus, shape: 'cross' },
   { name: 'bike-x-twolane', major: TIER.twoLane, minor: TIER.bike, shape: 'cross' },
   { name: 'twolane-x-bike', major: TIER.bike, minor: TIER.twoLane, shape: 'cross' },
-  // Tram runs in the carriageway; rail is a separate network that crosses a
-  // street at grade without joining it.
+  // Tram runs in the carriageway. Rail is a separate network that never shares
+  // a tile with a street at grade: a rail tile between two street tiles breaks
+  // the street in two rather than crossing it.
   { name: 'tram-x-twolane', major: TIER.twoLane, minor: TIER.tram, shape: 'cross' },
-  { name: 'rail-x-twolane', major: TIER.twoLane, minor: TIER.rail, shape: 'cross' },
+  { name: 'rail-breaks-twolane', major: TIER.twoLane, minor: TIER.rail, shape: 'cross' },
 ];
 
 // One plot per scenario, flattest first, so a scenario added above always gets
@@ -317,7 +328,13 @@ for (let i = 0; i < SCENARIOS.length && i < plots.length; i++) {
   await cmd('major', [{ kind: 'buildRoad', tier: s.major, tiles: majorTiles }]);
   await page.waitForTimeout(600);
   const minorTiles =
-    s.shape === 'cross' ? col(CX, 2, 26) : s.shape === 'corner' ? row(CZ, 2, CX) : col(CX, 2, CZ);
+    s.shape === 'cross'
+      ? col(CX, 2, 26)
+      : s.shape === 'corner'
+        ? row(CZ, 2, CX)
+        : s.shape === 'ramp'
+          ? [...col(CX - 4, CZ + 1, CZ + 8).reverse(), ...row(CZ + 1, CX - 3, CX)]
+          : col(CX, 2, CZ);
   await cmd('minor', [{ kind: 'buildRoad', tier: s.minor, tiles: minorTiles }]);
   await page.waitForTimeout(2200);
 
@@ -452,7 +469,9 @@ for (let i = 0; i < SCENARIOS.length && i < plots.length; i++) {
   if (map.unknown.length > 0) console.log('  unnamed colours:', map.unknown.join(' '));
 
   const shots = [
-    ['box', jx, jz, 44, 0, 1.5],
+    // Wider than the box itself, and aimed a little south, so the arm ends and
+    // the bike symbols at the north clear the frame edges and the bottom HUD bar.
+    ['box', jx, jz + 0.3, 64, 0, 1.5],
     ['corner-nw', jx - 0.5, jz - 0.5, 40, 0, 1.5],
     ['wide', jx, jz, 90, 0, 1.5],
   ];
@@ -460,7 +479,7 @@ for (let i = 0; i < SCENARIOS.length && i < plots.length; i++) {
   for (const [name, tx, tz, d, yaw, pitch] of shots) {
     await cam(tx, tz, d, yaw, pitch);
     await page.waitForTimeout(700);
-    await page.screenshot({ path: `${out}/${s.name}-${name}.png` });
+    await cleanShot(page, `${out}/${s.name}-${name}.png`);
   }
   await restore();
   console.log('  shots written');

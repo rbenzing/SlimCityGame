@@ -91,6 +91,16 @@ MUTCD citations below use 11th-edition section numbers.
   on dry, unbuilt ground at a road's slope. `planSegment` in
   `src/world/freeroads.ts` is the only place those are checked. —
   [road-network.md](../world-sim/road-network/README.md); `src/shared/roadgeom.ts`
+- [R-roads-081] Where exactly two runs of one road meet at an angle the node is a bend,
+  not a junction. Its centre line turns on an arc tangent to both runs, of
+  the class's minimum radius where the runs are long enough to hold it and
+  the widest arc the shorter run holds where they are not; both kerbs, the
+  footways, the edge lines and every lane line sweep round about that arc's
+  centre, and vehicles drive it. No edge of a bend is a corner: a kerb return
+  joins roads at a junction of three arms or more. Two straight runs met at
+  60° once drew a pointed outer kerb no lane could round. —
+  [geometry-rules.md](../world-sim/road-network/geometry-rules.md);
+  `armsAt`, `cornerLine` in `src/render/freeroadmesh.ts`, `src/shared/roadgeom.ts`
 - [R-roads-018] A grid tile where a road off the grid meets is drawn by one renderer only:
   the free-road junction, whole, with each grid road carried to the tile's
   edge. The tile renderer draws none of its road, and no furniture or lamp the

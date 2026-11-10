@@ -15,7 +15,7 @@
  * Usage: node tools/curve-shots.mjs [baseUrl] [outDir]   (a dev server must be running) */
 import { chromium } from 'playwright';
 import { mkdirSync } from 'node:fs';
-import { closeUp, hooksReady, tileCamera } from './shotcam.mjs';
+import { cleanShot, closeUp, hooksReady, tileCamera } from './shotcam.mjs';
 
 const base = process.argv[2] ?? 'http://localhost:5173';
 const url = base + (base.includes('?') ? '&' : '?') + 'nobloom';
@@ -36,6 +36,11 @@ const ZONE_REACH_TILES = 4;
 const FIRST_ARC_REACH_TILES = 3;
 /** Half the road's footprint in tiles: a tile this close to the centre line is the road's, not the zone's. */
 const ROAD_HALF_TILES = 0.28;
+/** The game's steepest slope a building tile takes to an orthogonal neighbour, in metres (MAX_BUILD_SLOPE). */
+const MAX_BUILD_SLOPE = 4;
+/** A held 2x2 station's centre this far from the bend's centre line clears the road's footprint and still touches it. */
+const STATION_CLEAR_MIN_TILES = 1.8;
+const STATION_CLEAR_MAX_TILES = 3.2;
 /** How long the town is given to grow, and how often it is asked. */
 const GROW_POLLS = Number(process.env.CURVE_POLLS ?? 900);
 const POLL_MS = 200;
@@ -107,7 +112,7 @@ try {
   const T = await call(() => window.__slimcity.tileMeters());
   const shot = async (name, settle = 1500) => {
     await page.waitForTimeout(settle);
-    await page.screenshot({ path: `${out}/${name}.png` });
+    await cleanShot(page, `${out}/${name}.png`);
     console.log('shot', name);
   };
 
@@ -468,10 +473,74 @@ try {
   await setTool('plop.police-station');
   await cam(bendCentre.x, bendCentre.z, 200, 0, OVERHEAD_PITCH);
   await page.waitForTimeout(800);
+  // Hold it on open ground beside the bend, clear of every road and building,
+  // and to the right of the panel: the nearest such pixel to the bend.
   const view = page.viewportSize();
-  await page.mouse.move(view.width / 2, view.height / 2 - 60);
-  await page.waitForTimeout(300);
-  await page.mouse.move(view.width / 2 + 10, view.height / 2 - 50);
+  const candidates = await call(
+    ([w, h]) => {
+      const list = [];
+      for (let sy = 120; sy < h - 160; sy += 20)
+        for (let sx = Math.round(w * 0.35); sx < w - 60; sx += 20) {
+          const t = window.__slimcity.screenToTile(sx, sy);
+          if (t) list.push({ sx, sy, t });
+        }
+      return list;
+    },
+    [view.width, view.height],
+  );
+  // The grown town leaves few gaps, so the spot is chosen from a fresh grid:
+  // the 2x2 station and a tile of margin all dry, unbuilt, off the grid roads
+  // and within the slope limit, clear of the bend's road yet touching its
+  // street (its centre a station's half-width plus the road's from the line).
+  // The bend's road is off the grid, so the game itself is then asked: the
+  // cursor chip must not read "Overlapping items".
+  const grown = await readGrid();
+  const tileFree = (x, z) => {
+    if (x < 0 || z < 0 || x >= grown.size || z >= grown.size) return false;
+    const i = idx(x, z);
+    if (grown.water[i] || grown.roadTier[i] !== 0 || grown.buildingId[i] !== 0) return false;
+    for (const [ox, oz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const nx = x + ox;
+      const nz = z + oz;
+      if (nx < 0 || nz < 0 || nx >= grown.size || nz >= grown.size) continue;
+      if (Math.abs(grown.height[i] - grown.height[idx(nx, nz)]) > MAX_BUILD_SLOPE) return false;
+    }
+    return true;
+  };
+  const spotFits = (t) => {
+    for (let dz = -1; dz <= 2; dz++) for (let dx = -1; dx <= 2; dx++) if (!tileFree(t.x + dx, t.z + dz)) return false;
+    const reach = nearestOnLine(t.x, t.z).d;
+    return reach >= STATION_CLEAR_MIN_TILES && reach <= STATION_CLEAR_MAX_TILES;
+  };
+  const probes = [];
+  const seen = new Set();
+  for (const c of candidates) {
+    const key = `${c.t.x},${c.t.z}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    if (spotFits(c.t)) probes.push(c);
+  }
+  probes.sort(
+    (p, q) =>
+      Math.hypot(p.t.x - bendCentre.x, p.t.z - bendCentre.z) -
+      Math.hypot(q.t.x - bendCentre.x, q.t.z - bendCentre.z),
+  );
+  console.log('ploppable spots free on the grid:', probes.length);
+  let open = null;
+  for (const c of probes.slice(0, 60)) {
+    await page.mouse.move(c.sx - 6, c.sy - 6);
+    await page.mouse.move(c.sx, c.sy);
+    await page.waitForTimeout(250);
+    if ((await page.getByText('Overlapping items').count()) === 0) {
+      open = c;
+      break;
+    }
+  }
+  console.log('ploppable held at', JSON.stringify(open?.t ?? null));
+  if (!open) {
+    console.log('FAIL: no usable placement near the bend');
+    process.exitCode = 1;
+  }
   await shot('5-ploppable-in-hand', 2500);
   await setTool('select');
 

@@ -10,14 +10,14 @@
  * reservation's mid-run stop (from the street, close, from the platform and
  * at night), and the two street tramways and the guideway again at night.
  *
- * Usage: node tools/tramway-shots.mjs [baseUrl]   (a dev server must be running) */
+ * Usage: node tools/tramway-shots.mjs [baseUrl] [outDir]   (a dev server must be running) */
 import { chromium } from 'playwright';
 import { mkdirSync, readFileSync } from 'node:fs';
-import { closeUp, hooksReady, tileCamera } from './shotcam.mjs';
+import { cleanShot, closeUp, hooksReady, tileCamera, unlimitedMoneyOption } from './shotcam.mjs';
 
 const base = process.argv[2] ?? 'http://localhost:5173';
 const url = base + (base.includes('?') ? '&' : '?') + 'nobloom';
-const out = 'tools/shots-tramways';
+const out = process.argv[3] ?? 'tools/shots-tramways';
 mkdirSync(out, { recursive: true });
 
 const RT = { TwoLane: 1, Avenue: 2, Tram: 10 };
@@ -65,6 +65,7 @@ await page.addInitScript(() => {
     void e;
   }
 });
+await unlimitedMoneyOption(page);
 await page.goto(url, { waitUntil: 'domcontentloaded' });
 await page.waitForSelector('#viewport canvas', { timeout: 30000 });
 await hooksReady(page);
@@ -75,7 +76,7 @@ const cmd = (label, commands) => hook(([l, c]) => window.__slimcity.cmd(l, c), [
 const camera = tileCamera(page);
 const shot = async (name, settle = 1800) => {
   await page.waitForTimeout(settle);
-  await page.screenshot({ path: `${out}/${name}.png` });
+  await cleanShot(page, `${out}/${name}.png`);
   console.log('shot', name);
 };
 
@@ -218,8 +219,10 @@ const placeCars = () =>
   );
 await placeCars();
 
-// A line's trams are drawn under the transit lens, as every line's vehicles are.
-await hook(() => window.__slimcity.setOverlay('transit'));
+// A line's trams are drawn under the transit lens, as every line's vehicles
+// are, and the lens paints its own wedges and opens the Transit Lines panel
+// over the corner: it is on for the shots of the lines and off for the rest.
+const lens = (on) => hook((o) => window.__slimcity.setOverlay(o), on ? 'transit' : null);
 const PITCH = 0.7;
 const views = [];
 for (const r of ROWS) {
@@ -242,12 +245,71 @@ views.push(['station-platform', X + STATION_AT - 1, reservedZ + 0.35, 45, Math.P
 // the far end, away from the junction, with idlers up on the platforms.
 views.push(['station-junction', X + CROSS_AT + 1.5, reservedZ, 45, Math.PI - 0.5, 0.4]);
 for (const [name, tx, tz, d, yaw, pitch] of views) {
+  await lens(name.endsWith('-line'));
   await camera(tx, tz, d, yaw, pitch);
   await shot(name);
 }
+// Trams in frame. They are drawn cosmetically on real time and no hook says where
+// they are, so the frame says: two frames a beat apart differ where something
+// moves, and with the city held still the trams are all that does. The shot is
+// taken once that movement sits wholly inside the frame, clear of the lens panel.
+const motion = async (a, b) =>
+  page.evaluate(
+    async ([pa, pb]) => {
+      const load = async (b64) => {
+        const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+        const bmp = await createImageBitmap(new Blob([bytes], { type: 'image/png' }));
+        const c = document.createElement('canvas');
+        c.width = bmp.width;
+        c.height = bmp.height;
+        const ctx = c.getContext('2d');
+        ctx.drawImage(bmp, 0, 0);
+        return ctx.getImageData(0, 0, c.width, c.height);
+      };
+      const [ia, ib] = await Promise.all([load(pa), load(pb)]);
+      let n = 0;
+      let x0 = ia.width;
+      let x1 = 0;
+      // Clear of the lens panel (top-left), the buttons and the bottom bar.
+      for (let y = 280; y < ia.height - 110; y++) {
+        for (let x = 0; x < ia.width; x++) {
+          const i = (y * ia.width + x) * 4;
+          const d =
+            Math.abs(ia.data[i] - ib.data[i]) +
+            Math.abs(ia.data[i + 1] - ib.data[i + 1]) +
+            Math.abs(ia.data[i + 2] - ib.data[i + 2]);
+          if (d > 60) {
+            n++;
+            if (x < x0) x0 = x;
+            if (x > x1) x1 = x;
+          }
+        }
+      }
+      return { n, x0, x1, width: ia.width };
+    },
+    [a.toString('base64'), b.toString('base64')],
+  );
+const tramShot = async (name, tx, tz, d, yaw, pitch) => {
+  await lens(true);
+  await camera(tx, tz, d, yaw, pitch);
+  await page.waitForTimeout(1500);
+  for (let i = 0; i < 150; i++) {
+    const a = await page.screenshot();
+    await page.waitForTimeout(150);
+    const m = await motion(a, await page.screenshot());
+    if (m.n >= 300 && m.x0 > 320 && m.x1 < m.width - 160) {
+      console.log(name, 'tram motion', m.n, m.x0, m.x1);
+      await shot(name, 0);
+      return;
+    }
+  }
+  throw new Error(`no tram came into frame for ${name}`);
+};
+await tramShot('tramway-street-tram', X + 11, Z, 60, Math.PI, PITCH);
+await tramShot('station-street-tram', X + STATION_AT, reservedZ, 60, Math.PI, PITCH);
 // Fine detail: the slab, rails and grooves over the same ground, at twice the
 // pixels, with the lens off so nothing is laid over the paving.
-await hook(() => window.__slimcity.setOverlay(null));
+await lens(false);
 const restore = await closeUp(page, 2);
 await camera(X + 11.5, Z, 40, Math.PI - 0.5, 0.55);
 await shot('tramway-rails-detail');
@@ -256,7 +318,8 @@ await restore();
 // street tramway, with nothing laid over the paving.
 const rampZ = ROWS.find((r) => r.name === 'ramp').z;
 for (const [name, tx, tz, d, yaw, pitch] of [
-  ['guideway-structure', X + 11.5, reservedZ, 40, Math.PI - 0.5, 0.4],
+  // Low and along the span, so the columns and the underside read in a row.
+  ['guideway-structure', X + 13, reservedZ, 40, Math.PI / 2, 0.12],
   ['guideway-from-above', X + 11, reservedZ, 50, Math.PI, 1.2],
   ['guideway-ramp', X + RAMP_FROM + 1, rampZ, 70, Math.PI - 0.9, 0.3],
 ]) {
@@ -266,14 +329,15 @@ for (const [name, tx, tz, d, yaw, pitch] of [
 
 // The night, before the trams pull in at 23:00: the clock is applied by the
 // next snapshot, which a command sends, and the cars go back after it.
-await hook(() => window.__slimcity.setOverlay('transit'));
 await hook(() => window.__slimcity.setDayT(0.9));
 await cmd('Phase', [{ kind: 'setUnlimitedMoney', on: true }]);
 await page.waitForTimeout(2000);
 await placeCars();
 for (const r of ROWS.slice(0, 3)) {
+  await lens(true);
   await camera(X + 11, r.z, 150, Math.PI, PITCH);
   await shot(`${r.name}-night-line`, 2500);
+  await lens(false);
   await camera(X + 11, r.z, 60, Math.PI, PITCH);
   await shot(`${r.name}-night`, 2500);
 }

@@ -7,7 +7,7 @@
  */
 import { chromium } from 'playwright';
 import { mkdirSync } from 'node:fs';
-import { tileCamera } from './shotcam.mjs';
+import { cleanShot, dismissToasts, readToasts, tileCamera, unlimitedMoneyOption } from './shotcam.mjs';
 
 const base = process.argv[2] ?? 'http://localhost:5173';
 const url = base + (base.includes('?') ? '&' : '?') + 'nobloom';
@@ -15,6 +15,8 @@ const out = process.argv[3] ?? 'tools/shots-rail';
 mkdirSync(out, { recursive: true });
 
 const RT = { TwoLane: 1, RailTrack: 11 };
+/** Rows between the railway and the parallel street: the station's depth plus the track row. */
+const STREET_ROW = 4;
 
 const b = await chromium.launch({ headless: true, args: ['--use-angle=default'] });
 const page = await b.newPage({ viewport: { width: 1400, height: 900 } });
@@ -29,6 +31,7 @@ await page.addInitScript(() => {
     void e;
   }
 });
+await unlimitedMoneyOption(page);
 await page.goto(url, { waitUntil: 'domcontentloaded' });
 await page.waitForSelector('#viewport canvas', { timeout: 20000 });
 await page.waitForTimeout(4000);
@@ -84,16 +87,28 @@ const row = (z, tier, x0, x1) =>
     },
   ]);
 await row(Z, RT.RailTrack, X, X + 36);
-await row(Z + 6, RT.TwoLane, X, X + 36);
+// The street runs along the stations' far edge: a station needs a street to
+// open its drive onto as well as the track.
+await row(Z + STREET_ROW, RT.TwoLane, X, X + 36);
 await page.waitForTimeout(700);
 
 // Stations: touching the track (should place) and well away from it (should not).
 const place = (x, z) =>
   cmd('Station', [{ kind: 'placeBuilding', catalogId: 'rail-station', x, z, rotation: 0 }]);
-await place(X + 2, Z + 1); // touches the track's south side
-await place(X + 30, Z + 1);
+await place(X + 6, Z + 1); // touches the track's south side
+await place(X + 22, Z + 1);
 await place(X + 15, Z + 12); // nowhere near track — must be refused
+// With no depot nothing runs: a rail yard on the track's south side (its long
+// side on the railway, a drive to the street) and a bus depot on the street's
+// far kerb, with a turbine on the street for power.
+const plop = (catalogId, x, z, rotation) =>
+  cmd(catalogId, [{ kind: 'placeBuilding', catalogId, x, z, rotation }]);
+await plop('wind-turbine', X + 34, Z + STREET_ROW - 1, 0);
+await plop('rail-yard', X + 12, Z + 1, 1);await plop('bus-depot', X + 6, Z + STREET_ROW + 1, 2);
 await page.waitForTimeout(700);
+console.log('toasts after placing:', JSON.stringify(await readToasts(page)));
+// The third refusal is the check; it is not the subject of any shot.
+await dismissToasts(page);
 
 const buildings = await readBuildings();
 const stations = buildings.filter((bl) => bl.catalogId === 'rail-station');
@@ -111,23 +126,30 @@ await cmd('Rail line', [
       id: 0,
       color: 0x42a5f5,
       mode: 'rail',
+      vehicles: 2,
       stops: [
-        { x: X + 2, z: Z },
-        { x: X + 30, z: Z },
+        { x: X + 6, z: Z },
+        { x: X + 22, z: Z },
       ],
     },
   },
 ]);
 // A bus line on the parallel street, to prove both modes still work together.
+for (const dx of [8, 20]) {
+  await cmd('Stop', [
+    { kind: 'placeStop', stop: { x: X + dx, z: Z + STREET_ROW, side: 0, kind: 'shelter' } },
+  ]);
+}
 await cmd('Bus line', [
   {
     kind: 'createTransitLine',
     line: {
       id: 0,
       color: 0xef5350,
+      vehicles: 2,
       stops: [
-        { x: X + 4, z: Z + 6 },
-        { x: X + 28, z: Z + 6 },
+        { x: X + 8, z: Z + STREET_ROW },
+        { x: X + 20, z: Z + STREET_ROW },
       ],
     },
   },
@@ -155,12 +177,73 @@ console.log('transit snapshot:', JSON.stringify(transit));
 const shot = async (name, tx, tz, d, yaw, pitch) => {
   await cam(tx, tz, d, yaw, pitch);
   await page.waitForTimeout(900);
-  await page.screenshot({ path: `${out}/${name}.png` });
+  await cleanShot(page, `${out}/${name}.png`);
   console.log('shot', name);
 };
-await shot('station', X + 2, Z, 40, 0, 0.4);
-await shot('train-side', X + 16, Z, 45, 0, 0.18);
-await shot('line-overview', X + 18, Z + 2, 150, 0.5, 0.8);
+
+/** Where the train's cars show in a frame: pixel count and the horizontal span
+ * of the navy the cars' roofs take from the line's blue. Trains are drawn
+ * cosmetically on real time and no hook reports where they are, so the frame
+ * itself is the only way to know one is in it, and whole. */
+const trainPixels = async (png) =>
+  page.evaluate(async (b64) => {
+    const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+    const bmp = await createImageBitmap(new Blob([bytes], { type: 'image/png' }));
+    const c = document.createElement('canvas');
+    c.width = bmp.width;
+    c.height = bmp.height;
+    const ctx = c.getContext('2d');
+    ctx.drawImage(bmp, 0, 0);
+    const d = ctx.getImageData(0, 0, c.width, c.height).data;
+    let n = 0;
+    let x0 = c.width;
+    let x1 = 0;
+    // Skip the top 300 px (sky, lens panel, far ground) and the bottom bar.
+    for (let y = 300; y < c.height - 110; y++) {
+      for (let x = 0; x < c.width; x++) {
+        const i = (y * c.width + x) * 4;
+        if (
+          d[i + 2] > 40 &&
+          d[i + 2] < 120 &&
+          d[i + 2] > d[i] + 25 &&
+          d[i + 1] < 70 &&
+          d[i + 2] > d[i + 1] + 15
+        ) {
+          n++;
+          if (x < x0) x0 = x;
+          if (x > x1) x1 = x;
+        }
+      }
+    }
+    return { n, x0, x1 };
+  }, png.toString('base64'));
+
+/** Aim, then take the shot on a frame that has a whole train in it, clear of the side edges. */
+const trainShot = async (name, tx, tz, d, yaw, pitch, minPixels = 300) => {
+  await cam(tx, tz, d, yaw, pitch);
+  await page.waitForTimeout(900);
+  for (let i = 0; i < 120; i++) {
+    const { n, x0, x1 } = await trainPixels(await page.screenshot());
+    if (n >= minPixels &&x0 > 320 && x1 < 1380) {
+      console.log(name, 'train pixels', n, x0, x1);
+      await cleanShot(page, `${out}/${name}.png`);
+      console.log('shot', name);
+      return;
+    }
+    await page.waitForTimeout(150);
+  }
+  throw new Error(`no train came into frame for ${name}`);
+};
+
+// A line's trains are drawn only under the transit lens, as every line's vehicles are.
+await call(() => window.__slimcity.setOverlay('transit'));
+await page.waitForTimeout(500);
+// From the north, so the platform and track are in front of the station.
+const NORTH = Math.PI;
+await trainShot('station', X + 6.5, Z + 1, 90, NORTH, 0.55);
+await trainShot('train-side', X + 12, Z, 80, NORTH, 0.3);
+// The whole line is in frame, so both trains are, wherever they are on it.
+await shot('line-overview', X + 14, Z + 2, 340, 0, 0.9);
 
 console.log('done ->', out);
 await b.close();

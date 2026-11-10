@@ -23,6 +23,9 @@ One spec a built feature, card first; the template is [_template.md](_template.m
 | [service-capacity.md](service-capacity.md) | A facility's capacity in people, the load it carries, smooth degradation, per-tile pooling and the Services panel |
 | [education-ladder.md](education-ladder.md) | Four schools and a library, the field each writes, the level-3 gates by zone, and sourced capacity and price |
 | [power-generation.md](power-generation.md) | The six generators, what the grid counts each for, the shoreline gate, and sourced rating, size and price |
+| [power-distribution.md](power-distribution.md) | Agreed, not yet built: the street's drawn supply (poles or buried cable), strung lines and cables, the substation, and sourced size, build cost and upkeep |
+| [street-furniture.md](street-furniture.md) | Agreed, not yet built: a furnishing strip and a clear walk, and where lamps, signs, signals, covers, meters and trees stand on streets with a footway, a kerb only or neither |
+| [structured-parking.md](structured-parking.md) | Agreed, not yet built: dense kinds park on a surface lot at level 1 and in a deck or podium garage on their own lot from level 2, drawn to read as a garage |
 | [water-and-sewage.md](water-and-sewage.md) | Pipes, pumping station, tower, drain and treatment works; sewage as the third utility and the septic era |
 | [transport-depots.md](transport-depots.md) | The four depots a transit line's vehicles come from, the fleet pool, headway, dead runs and running charge |
 | [emergency-services.md](emergency-services.md) | How far a police or fire station answers, how many calls it runs, unanswered calls, and the two-rung ladder |

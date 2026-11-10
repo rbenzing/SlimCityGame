@@ -21,6 +21,11 @@
   which are not held in [Road Guides](../../Road%20Guides/README.md), so they
   cannot be checked against the standard here.
 
+- **A bend at a node.** Two runs of one road that meet at an angle turn on an
+  arc there, at the class's minimum radius or the widest the shorter run
+  holds; no edge of the bend is a corner. Agreed and not yet drawn: such a
+  node still takes a junction's kerb return. `[R-roads-081]`
+
 - **Shortest segment.** A segment is at least half a tile, 10 m, long.
 - **Narrowest angle.** Two roads meeting at a node are at least 30° apart,
   measured between their centre lines where they leave the node. A sharper

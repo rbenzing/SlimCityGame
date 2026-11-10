@@ -8,7 +8,7 @@
  */
 import { chromium } from 'playwright';
 import { mkdirSync } from 'node:fs';
-import { tileCamera } from './shotcam.mjs';
+import { cleanShot, closeUp, tileCamera, unlimitedMoneyOption } from './shotcam.mjs';
 
 const base = process.argv[2] ?? 'http://localhost:5173';
 const url = base + (base.includes('?') ? '&' : '?') + 'nobloom';
@@ -35,6 +35,7 @@ await page.addInitScript(() => {
     void e;
   }
 });
+await unlimitedMoneyOption(page);
 await page.goto(url, { waitUntil: 'domcontentloaded' });
 await page.waitForSelector('#viewport canvas', { timeout: 20000 });
 await page.waitForTimeout(4000);
@@ -109,15 +110,18 @@ if (!(report.drawnNorthward.length === 1 && report.drawnNorthward[0] === FLOW.no
 
 await call(() => window.__slimcity.setSpeed(0));
 await call(() => window.__slimcity.setDayT(0.5));
-const shot = async (name, tx, tz, d, yaw, pitch) => {
+const shot = async (name, tx, tz, d, yaw, pitch, scale = 1) => {
+  const restore = scale > 1 ? await closeUp(page, scale) : null;
   await cam(tx, tz, d, yaw, pitch);
   await page.waitForTimeout(900);
-  await page.screenshot({ path: `${out}/${name}.png` });
+  await cleanShot(page, `${out}/${name}.png`);
+  await restore?.();
   console.log('shot', name);
 };
 // The two columns while they still disagree: same geometry, opposite arrows.
-await shot('drawn-southward', X, Z + 5, 120, 0.0, 1.45);
-await shot('drawn-northward', X + 4, Z + 5, 120, 0.0, 1.45);
+// The camera's floor is 40 m, so the arrows are read from doubled pixels.
+await shot('drawn-southward', X, Z + 5, 60, 0.0, 1.45, 2);
+await shot('drawn-northward', X + 4, Z + 5, 60, 0.0, 1.45, 2);
 // One arrow tile of each, close: the head is the wide end, and the two point
 // opposite ways down the same axis.
 const arrowZ = Z + ((3 - (Z % 3)) % 3) + 3;
@@ -141,7 +145,7 @@ for (const t of column(X)) {
 if (pageErrors.length > 0) failures.push(`page errors: ${pageErrors.join(' | ')}`);
 
 // Both columns now run north: the left one turned round without being rebuilt.
-await shot('turned-northward', X, Z + 5, 120, 0.0, 1.45);
+await shot('turned-northward', X, Z + 5, 60, 0.0, 1.45, 2);
 
 console.log(failures.length === 0 ? 'PASS' : 'FAIL:\n - ' + failures.join('\n - '));
 console.log('done ->', out);

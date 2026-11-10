@@ -1,22 +1,24 @@
 /** Ploppable shots: the clinic, the rail station and the bus stop, each drawn
  * by its kit beside a street. A railway runs one block north of the street with
  * two stations on it, one with the track along its short edge and one along its
- * long edge; the clinic and two bus stops stand on the street's south kerb, and
- * a bus line stops on one of the bus stops' tiles so the line draws no shelter
- * of its own there. Each shot at the default pitch beside the 4 m car, and the
+ * long edge; the clinic stands on the street's south kerb with two bus shelters
+ * and a sign on the street tiles, and a bus line runs from the second shelter
+ * to the sign. Each shot at the default pitch beside the 4 m car, and the
  * same at night.
  *
- * Usage: node tools/ploppable-shots.mjs [baseUrl]   (a dev server must be running) */
+ * Usage: node tools/ploppable-shots.mjs [baseUrl] [outDir]   (a dev server must be running) */
 import { chromium } from 'playwright';
 import { mkdirSync } from 'node:fs';
-import { hooksReady, tileCamera } from './shotcam.mjs';
+import { cleanShot, closeUp, hooksReady, tileCamera, unlimitedMoneyOption } from './shotcam.mjs';
 
 const base = process.argv[2] ?? 'http://localhost:5173';
 const url = base + (base.includes('?') ? '&' : '?') + 'nobloom';
-const out = 'tools/shots-ploppables';
+const out = process.argv[3] ?? 'tools/shots-ploppables';
 mkdirSync(out, { recursive: true });
 
 const RT = { TwoLane: 1, RailTrack: 11 };
+/** The street's south kerb, where the clinic stands. */
+const STOP_SIDE = 1;
 
 const browser = await chromium.launch({ headless: true, args: ['--use-angle=default'] });
 const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
@@ -32,6 +34,7 @@ await page.addInitScript(() => {
     void e;
   }
 });
+await unlimitedMoneyOption(page);
 await page.goto(url, { waitUntil: 'domcontentloaded' });
 await page.waitForSelector('#viewport canvas', { timeout: 30000 });
 await hooksReady(page);
@@ -42,7 +45,7 @@ const cmd = (label, commands) => hook(([l, c]) => window.__slimcity.cmd(l, c), [
 const camera = tileCamera(page);
 const shot = async (name, settle = 1800) => {
   await page.waitForTimeout(settle);
-  await page.screenshot({ path: `${out}/${name}.png` });
+  await cleanShot(page, `${out}/${name}.png`);
   console.log('shot', name);
 };
 
@@ -96,14 +99,17 @@ const place = (catalogId, x, z, rotation) =>
 // the track; station B stands with its long edge on the track.
 await place('rail-station', X + 8, Z - 3, 0);
 await place('rail-station', X + 22, Z - 3, 1);
-// The clinic and the bus stops on the street's south kerb, turned to face it.
+// The clinic on the street's south kerb, turned to face it; the bus stops are
+// street furniture on the street tiles themselves, on the south side.
 await place('clinic', X + 2, Z + 1, 2);
-await place('bus-stop', X + 6, Z + 1, 2);
-await place('bus-stop', X + 14, Z + 1, 2);
+const stop = (dx, kind) =>
+  cmd('Stop', [{ kind: 'placeStop', stop: { x: X + dx, z: Z, side: STOP_SIDE, kind } }]);
+await stop(6, 'shelter');
+await stop(14, 'shelter');
+await stop(18, 'sign');
 await page.waitForTimeout(800);
 
-// A bus line whose first stop stands on the second bus stop's tile and whose
-// last stands on bare kerb: one kit shelter, one line shelter.
+// A bus line between the second shelter and the sign four tiles on.
 await cmd('Bus line', [
   {
     kind: 'createTransitLine',
@@ -111,8 +117,8 @@ await cmd('Bus line', [
       id: 0,
       color: 0xef5350,
       stops: [
-        { x: X + 14, z: Z + 1 },
-        { x: X + 18, z: Z + 1 },
+        { x: X + 14, z: Z },
+        { x: X + 18, z: Z },
       ],
     },
   },
@@ -136,7 +142,8 @@ await hook(
     window.__slimcity.setVehicles([
       { x: (x + 2.5) * tile, z: (z + 0.65) * tile, heading: Math.PI / 2, kind: 0 },
       { x: (x + 9) * tile, z: (z + 0.35) * tile, heading: -Math.PI / 2, kind: 0 },
-      { x: (x + 14.5) * tile, z: (z + 0.65) * tile, heading: Math.PI / 2, kind: 0 },
+      // In the lane beside the stop's, not on the pad the shelter stands over.
+      { x: (x + 14.5) * tile, z: (z + 0.54) * tile, heading: Math.PI / 2, kind: 0 },
     ]),
   [T, X, Z],
 );
@@ -161,15 +168,18 @@ const views = [
   ['c2-busstop-with-line-stop', shelterOf(X + 14).x, shelterOf(X + 14).z, 42, Math.PI, 0.75],
 ];
 for (const [name, tx, tz, d, yaw, pitch] of views) {
+  // A shelter is small at the camera's 40 m floor: the bus stop views take twice the pixels.
+  const restore = name.startsWith('c') ? await closeUp(page, 2) : null;
   await camera(tx, tz, d, yaw, pitch);
   await shot(name);
+  if (restore) await restore();
 }
 
 // The line's own shelter shows under the transit lens, where every line's does.
 await hook(() => window.__slimcity.setOverlay('transit'));
 for (const [name, tx, tz, d, yaw, pitch] of [
   ['c3-line-both-stops', X + 15.5, Z + 0.7, 105, Math.PI, 0.7],
-  ['c4-line-own-shelter', X + 17.5, Z + 0.5, 42, Math.PI + 0.4, 0.5],
+  ['c4-line-far-stop', X + 17.5, Z + 0.5, 42, Math.PI + 0.4, 0.5],
 ]) {
   await camera(tx, tz, d, yaw, pitch);
   await shot(name);
@@ -184,8 +194,10 @@ for (const [name, tx, tz, d, yaw, pitch] of [
   ['d2-station-night', stationA.x, stationA.z + 0.4, 85, 0, PITCH],
   ['d3-busstop-night', shelterOf(X + 14).x, shelterOf(X + 14).z, 42, Math.PI, 0.75],
 ]) {
+  const restore = name.startsWith('d3') ? await closeUp(page, 2) : null;
   await camera(tx, tz, d, yaw, pitch);
   await shot(name, 2500);
+  if (restore) await restore();
 }
 
 console.log('page errors', errors.length ? errors : 'none');

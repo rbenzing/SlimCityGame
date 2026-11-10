@@ -16,7 +16,7 @@
  * Usage: node tools/house-shots.mjs [baseUrl] [outDir]   (a dev server must be running) */
 import { chromium } from 'playwright';
 import { mkdirSync } from 'node:fs';
-import { closeUp, hooksReady, tileCamera } from './shotcam.mjs';
+import { cleanShot, closeUp, hooksReady, tileCamera } from './shotcam.mjs';
 
 const base = process.argv[2] ?? 'http://localhost:5173';
 const out = process.argv[3] ?? 'tools/shots-houses';
@@ -245,7 +245,7 @@ try {
   const shoot = async (name, tx, tz, distance, yaw, pitch = DEFAULT_PITCH) => {
     await cam(tx, tz, distance, yaw, pitch);
     await page.waitForTimeout(1200);
-    await page.screenshot({ path: `${out}/${name}.png` });
+    await cleanShot(page, `${out}/${name}.png`);
   };
   const middle = X + HOMES / 2;
   // The line-up's seven homes framed whole from the west, aimed at the

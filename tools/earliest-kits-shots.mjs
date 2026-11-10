@@ -5,14 +5,14 @@
  * coal plant and the incinerator from the street and from the yard, and the
  * same at night.
  *
- * Usage: node tools/earliest-kits-shots.mjs [baseUrl]   (a dev server must be running) */
+ * Usage: node tools/earliest-kits-shots.mjs [baseUrl] [outDir]   (a dev server must be running) */
 import { chromium } from 'playwright';
 import { mkdirSync } from 'node:fs';
-import { hooksReady, tileCamera } from './shotcam.mjs';
+import { cleanShot, hooksReady, tileCamera, unlimitedMoneyOption } from './shotcam.mjs';
 
 const base = process.argv[2] ?? 'http://localhost:5173';
 const url = base + (base.includes('?') ? '&' : '?') + 'nobloom';
-const out = 'tools/shots-earliest-kits';
+const out = process.argv[3] ?? 'tools/shots-earliest-kits';
 mkdirSync(out, { recursive: true });
 
 const RT = { TwoLane: 1 };
@@ -31,6 +31,7 @@ await page.addInitScript(() => {
     void e;
   }
 });
+await unlimitedMoneyOption(page);
 await page.goto(url, { waitUntil: 'domcontentloaded' });
 await page.waitForSelector('#viewport canvas', { timeout: 30000 });
 await hooksReady(page);
@@ -41,7 +42,7 @@ const cmd = (label, commands) => hook(([l, c]) => window.__slimcity.cmd(l, c), [
 const camera = tileCamera(page);
 const shot = async (name, settle = 1800) => {
   await page.waitForTimeout(settle);
-  await page.screenshot({ path: `${out}/${name}.png` });
+  await cleanShot(page, `${out}/${name}.png`);
   console.log('shot', name);
 };
 
@@ -175,7 +176,7 @@ const views = [
   ['f2-pump-water', c.pump.x, c.pump.z + 0.5, 85, 0, PITCH],
   ['g-works-street', c.works.x, c.works.z - 0.3, 85, Math.PI, PITCH],
   ['g2-works-water', c.works.x, c.works.z + 0.5, 85, 0, PITCH],
-  ['h-drain-street', c.drain.x, c.drain.z - 0.2, 48, Math.PI, PITCH],
+  ['h-drain-street', c.drain.x, c.drain.z + 0.5, 40, Math.PI, 0.35],
   ['h2-drain-water', c.drain.x, c.drain.z + 0.3, 48, 0.4, 0.5],
 ];
 for (const [name, tx, tz, d, yaw, pitch] of views) {
@@ -194,7 +195,7 @@ for (const [name, tx, tz, d, yaw, pitch] of [
   ['n5-depot-night', c.depot.x, c.depot.z + 0.3, 95, 0, PITCH],
   ['n6-pump-night', c.pump.x, c.pump.z - 0.3, 85, Math.PI, PITCH],
   ['n7-works-night', c.works.x, c.works.z - 0.3, 85, Math.PI, PITCH],
-  ['n8-drain-night', c.drain.x, c.drain.z - 0.2, 48, Math.PI, PITCH],
+  ['n8-drain-night', c.drain.x, c.drain.z + 0.5, 40, Math.PI, 0.35],
 ]) {
   await camera(tx, tz, d, yaw, pitch);
   await shot(name, 2500);

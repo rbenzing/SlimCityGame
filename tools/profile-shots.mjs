@@ -7,7 +7,7 @@
  */
 import { chromium } from 'playwright';
 import { mkdirSync } from 'node:fs';
-import { tileCamera, tileMeters } from './shotcam.mjs';
+import { cleanShot, logAlerts, tileCamera, tileMeters, unlimitedMoneyOption } from './shotcam.mjs';
 
 const base = process.argv[2] ?? 'http://localhost:5173';
 const url = base + (base.includes('?') ? '&' : '?') + 'nobloom';
@@ -37,6 +37,7 @@ const BARE = {
 const b = await chromium.launch({ headless: true, args: ['--use-angle=default'] });
 const page = await b.newPage({ viewport: { width: 1400, height: 900 } });
 page.on('pageerror', (e) => console.log('[pageerror]', e.message));
+await unlimitedMoneyOption(page);
 await page.addInitScript(() => {
   try {
     sessionStorage.setItem(
@@ -64,7 +65,7 @@ let anchor = null;
 for (let z = 40; z < N - 40 && !anchor; z++) {
   for (let x = 40; x < N - 60; x++) {
     let ok = true;
-    for (let k = 0; k < 16 && ok; k++) {
+    for (let k = 0; k < 20 && ok; k++) {
       for (let dz = -2; dz <= 8 && ok; dz++) {
         const i = idx(x + k, z + dz);
         if (g0.water[i] || Math.abs(g0.height[i]) > 18) ok = false;
@@ -100,7 +101,13 @@ await cmd('Two-Lane Road', [
   { kind: 'defineRoadProfile', id: BARE_ID, profile: BARE },
   { kind: 'buildRoad', tier: TWO_LANE, tiles: row(Z + 6), profile: BARE_ID },
 ]);
-await page.waitForTimeout(1200);
+// A lamp stands only on a street the grid supplies, so each row needs a plant
+// butted against its end: the two 4x4 plants touch the three rows (Z, Z+3, Z+6).
+await cmd('Plants', [
+  { kind: 'placeBuilding', catalogId: 'coal-plant', x: X + 14, z: Z - 1, rotation: 0 },
+  { kind: 'placeBuilding', catalogId: 'coal-plant', x: X + 14, z: Z + 3, rotation: 0 },
+]);
+await page.waitForTimeout(4000);
 
 const g = await readGrid();
 const ids = (z) => [...new Set(row(z).map((t) => g.roadProfile[idx(t.x, t.z)]))];
@@ -151,10 +158,11 @@ if (parkedPoles.some((v) => v < 6.0 || v > 6.0 + 1.875))
 await cmd('Speed', []);
 await call(() => window.__slimcity.setSpeed(0));
 await call(() => window.__slimcity.setDayT(0.5));
+await logAlerts(page, 'profile');
 const shot = async (name, tx, tz, d, yaw, pitch) => {
   await cam(tx, tz, d, yaw, pitch);
   await page.waitForTimeout(900);
-  await page.screenshot({ path: `${out}/${name}.png` });
+  await cleanShot(page, `${out}/${name}.png`);
   console.log('shot', name);
 };
 await shot('three-rows', X + 8, Z + 3, 95, 0.0, 1.2);

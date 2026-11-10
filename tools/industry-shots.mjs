@@ -15,7 +15,14 @@
  * Usage: node tools/industry-shots.mjs [baseUrl] [outDir]   (a dev server must be running) */
 import { chromium } from 'playwright';
 import { mkdirSync, readFileSync } from 'node:fs';
-import { closeUp, hooksReady, tileCamera } from './shotcam.mjs';
+import {
+  CAMERA_MIN_DISTANCE,
+  cleanShot,
+  closeUp,
+  hooksReady,
+  tileCamera,
+  tileMeters,
+} from './shotcam.mjs';
 
 const base = process.argv[2] ?? 'http://localhost:5173';
 const out = process.argv[3] ?? 'tools/shots-industry';
@@ -30,6 +37,8 @@ const footprint = (id) => {
 
 const SEED = 7;
 const DEFAULT_PITCH = 0.7;
+/** How far up the frame the subject is carried, as a fraction of its height. */
+const LIFT = 0.12;
 const RT = { TwoLane: 1, Gravel: 4 };
 /** Tiles a street takes: the deepest lot (4), the road, and the gap to the next street. */
 const STREET_ROWS = 9;
@@ -37,9 +46,8 @@ const STREET_ROWS = 9;
 const MARGIN = 2;
 /** Tiles across one column of streets. */
 const COLUMN_W = 24;
-/** The eye's distance for a street shot, and the tiles of row that distance frames. */
-const STREET_DISTANCE = 95;
-const STREET_FRAMED_TILES = 9;
+/** The "behind" shots look down steeper, so a stack in front does not hide the plant. */
+const BEHIND_PITCH = 1.25;
 /** The line-up's night: 22:00. */
 const LINEUP_NIGHT = 22 / 24;
 
@@ -260,30 +268,71 @@ try {
   const shoot = async (name, tx, tz, distance, yaw, pitch = DEFAULT_PITCH) => {
     await cam(tx, tz, distance, yaw, pitch);
     await page.waitForTimeout(1200);
-    await page.screenshot({ path: `${out}/${name}.png` });
+    await cleanShot(page, `${out}/${name}.png`);
+  };
+  const T = await tileMeters(page);
+  // A heavy plant's stacks and silos stand well above its catalog roof height.
+  const STACK_M = 45;
+  const heightOf = (id) => {
+    const h = catalog.find((c) => c.id === id).height;
+    return id.startsWith('heavy-') ? Math.max(h, STACK_M) : h;
+  };
+  /** The farmstead, in the north-west strip of its lot: the gate is on the north. */
+  const farmstead = (f) => ({
+    // The orchard's barn and house stand a little off that corner, toward the gate.
+    x: f.x + (f.id.includes('orchard') ? 1.9 : 2.5),
+    z: f.z + (f.id.includes('orchard') ? 0.7 : 1.5),
+    w: 5,
+    d: 3,
+    h: heightOf(f.id),
+  });
+  /** A box of tiles, `h` metres tall, that a shot frames whole. */
+  const boxOf = (placed) => {
+    const x0 = Math.min(...placed.map((b) => b.x));
+    const x1 = Math.max(...placed.map((b) => b.x + b.w));
+    const z0 = Math.min(...placed.map((b) => b.z));
+    const z1 = Math.max(...placed.map((b) => b.z + b.d));
+    return {
+      x: (x0 + x1) / 2,
+      z: (z0 + z1) / 2,
+      w: x1 - x0,
+      d: z1 - z0,
+      h: Math.max(...placed.map((b) => heightOf(b.id))),
+    };
+  };
+  /**
+   * Frame a box whole, roof to ground, about the middle of the frame. The
+   * ground target is where the ray through the box's mid-height meets the
+   * ground, so the box's own tiles, not the street, sit at the centre; the eye
+   * backs off until the box's projected height and width fill `fill` of the
+   * 45 degree view, but never inside the camera's floor.
+   */
+  const frame = async (name, box, yaw, pitch = DEFAULT_PITCH, fill = 0.6) => {
+    const tall = box.h * Math.cos(pitch) + box.d * T * Math.sin(pitch);
+    const wide = box.w * T * Math.abs(Math.cos(yaw)) + box.d * T * Math.abs(Math.sin(yaw));
+    const aspect = 1280 / 800;
+    const distance = Math.max(
+      CAMERA_MIN_DISTANCE,
+      tall / (2 * Math.tan(Math.PI / 8) * fill),
+      wide / (2 * Math.tan(Math.PI / 8) * aspect * fill),
+    );
+    // Aim a tenth of the frame's height short of the box, so its street edge clears
+    // the bottom bar (the lowest 110 px of 800) instead of standing behind it.
+    const lift = (LIFT * 2 * distance * Math.tan(Math.PI / 8)) / Math.sin(pitch) / T;
+    const back = box.h / 2 / Math.tan(pitch) / T - lift;
+    await shoot(
+      name,
+      box.x - 0.5 - Math.sin(yaw) * back,
+      box.z - 0.5 - Math.cos(yaw) * back,
+      distance,
+      yaw,
+      pitch,
+    );
   };
   const find = (street, id, nth = 0) =>
     spans[STREETS.findIndex((s) => s.name === street)].filter((b) => b.id === id)[nth];
-  const centre = (b) => ({ x: b.x + b.w / 2, z: b.z + b.d / 2 });
-  const middleOf = (s) => {
-    const placed = spans[s];
-    const last = placed[placed.length - 1];
-    return (placed[0].x + last.x + last.w) / 2;
-  };
-  /**
-   * The whole row in frame with a margin at each end: the eye backs off with
-   * the row's length, and further again because it orbits the road itself
-   * rather than a point two tiles south of it, which puts it nearer the row
-   * than a street shot's eye.
-   */
-  const rowDistance = (s) => {
-    const tiles = spans[s].reduce((sum, b) => sum + b.w, 0);
-    return (1.6 * STREET_DISTANCE * Math.max(tiles, STREET_FRAMED_TILES)) / STREET_FRAMED_TILES;
-  };
   const lineup = STREETS.findIndex((s) => s.lineup);
-  // Aimed at the road, so the row stands in the upper half of the frame rather than along its top edge.
-  const shootLineup = (suffix) =>
-    shoot(`lineup${suffix}`, middleOf(lineup), roadRow(STREETS[lineup]), rowDistance(lineup), 0.2);
+  const shootLineup = (suffix) => frame(`lineup${suffix}`, boxOf(spans[lineup]), 0.2);
 
   const views = (suffix) => async () => {
     // Each kind from the street, its biggest rung in the middle of the frame.
@@ -298,8 +347,7 @@ try {
       ['paper', 'heavy-paper-2'],
     ];
     for (const [street, id] of subjects) {
-      const c = centre(find(street, id));
-      await shoot(`${street}${suffix}`, c.x, c.z + 2, STREET_DISTANCE, 0.3);
+      await frame(`${street}${suffix}`, boxOf([find(street, id)]), 0.3);
     }
     // The warehouse and the food plant from behind, where the truck court is.
     for (const [street, id] of [
@@ -307,8 +355,7 @@ try {
       ['warehouse', 'ind-warehouse-3'],
       ['food', 'heavy-food-2'],
     ]) {
-      const c = centre(find(street, id));
-      await shoot(`${street}-${id}-court${suffix}`, c.x, c.z, 95, Math.PI + 0.3);
+      await frame(`${street}-${id}-court${suffix}`, boxOf([find(street, id)]), Math.PI + 0.3);
     }
     // The heavy plants from the other quarter, to see what stands behind them.
     for (const [street, id] of [
@@ -317,13 +364,17 @@ try {
       ['steel', 'heavy-metals-2'],
       ['paper', 'heavy-paper-3'],
     ]) {
-      const c = centre(find(street, id));
-      await shoot(`${street}-${id}-behind${suffix}`, c.x, c.z, 110, Math.PI - 0.6);
+      await frame(
+        `${street}-${id}-behind${suffix}`,
+        boxOf([find(street, id)]),
+        Math.PI - 0.6,
+        BEHIND_PITCH,
+        0.45,
+      );
     }
     if (farmsFit) {
-      // The farmstead fills the north-west strip of its lot, the gate being on the north.
       for (const f of farmSpans) {
-        await shoot(`farm-${f.id}${suffix}`, f.x + 2.5, f.z + 1, 90, Math.PI + 0.35);
+        await frame(`farm-${f.id}${suffix}`, farmstead(f), Math.PI + 0.35);
       }
     }
   };
@@ -340,14 +391,12 @@ try {
     ['factory', 'ind-2', 'close-factory'],
     ['chem', 'heavy-chem-2', 'close-chem'],
   ]) {
-    const c = centre(find(street, id));
-    await shoot(label, c.x, c.z + 0.5, 40, 0.3);
+    await frame(label, boxOf([find(street, id)]), 0.3, DEFAULT_PITCH, 0.7);
   }
   if (farmsFit) {
     for (const f of farmSpans.slice(0, 3)) {
-      // The farmstead sits in the north-west of its lot, a farm's gate being on the north.
-      await shoot(`close-${f.id}`, f.x + 2.2, f.z + 0.9, 40, Math.PI + 0.3);
-      await shoot(`close-${f.id}-yard`, f.x + 2.2, f.z + 0.9, 40, Math.PI * 0.5, 0.5);
+      await frame(`close-${f.id}`, farmstead(f), Math.PI + 0.3, DEFAULT_PITCH, 0.7);
+      await frame(`close-${f.id}-yard`, farmstead(f), Math.PI * 0.5, 0.5, 0.7);
     }
   }
   await restore();

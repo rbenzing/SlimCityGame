@@ -11,7 +11,7 @@
  */
 import { chromium } from 'playwright';
 import { mkdirSync } from 'node:fs';
-import { tileCamera } from './shotcam.mjs';
+import { cleanShot, tileCamera, unlimitedMoneyOption } from './shotcam.mjs';
 
 const base = process.argv[2] ?? 'http://localhost:5173';
 const url = base + (base.includes('?') ? '&' : '?') + 'nobloom';
@@ -25,7 +25,6 @@ const TIER = { TwoLane: 1, Avenue: 2, Highway: 3, Gravel: 4, OneWay: 6, FourLane
 const CASES = [
   ['avenue-to-twolane', TIER.Avenue, TIER.TwoLane],
   ['fourlane-to-twolane', TIER.FourLane, TIER.TwoLane],
-  ['highway-to-avenue', TIER.Highway, TIER.Avenue],
   ['fourlane-to-avenue', TIER.FourLane, TIER.Avenue],
   ['avenue-to-oneway', TIER.Avenue, TIER.OneWay],
   ['twolane-to-gravel', TIER.TwoLane, TIER.Gravel],
@@ -48,6 +47,7 @@ await page.addInitScript(() => {
     void e;
   }
 });
+await unlimitedMoneyOption(page);
 await page.goto(url, { waitUntil: 'domcontentloaded' });
 await page.waitForSelector('#viewport canvas', { timeout: 20000 });
 await page.waitForTimeout(4000);
@@ -129,12 +129,12 @@ for (const { name, x } of placed) {
 for (const { name, x } of placed) {
   // The seam itself, and the whole length the change is spread over — a taper
   // that reads fine tile by tile can still be a staircase seen end to end.
-  await cam(X + x, Z + SEAM - 0.5, 30, 0, 1.5);
+  await cam(X + x, Z + SEAM - 0.5, 40, 0, 1.5);
   await page.waitForTimeout(600);
-  await page.screenshot({ path: `${out}/${name}.png` });
+  await cleanShot(page, `${out}/${name}.png`);
   await cam(X + x, Z + SEAM - 2, 72, 0, 1.5);
   await page.waitForTimeout(600);
-  await page.screenshot({ path: `${out}/${name}-run.png` });
+  await cleanShot(page, `${out}/${name}-run.png`);
   console.log('shot', name);
 }
 

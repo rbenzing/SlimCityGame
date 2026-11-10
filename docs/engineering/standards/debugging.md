@@ -64,11 +64,29 @@ directory, which is gitignored (`tools/shots-*/*.png` etc. in
 `.gitignore`) — the harness scripts are tracked, their captured images
 never are.
 
+`tools/shotcam.mjs` holds what every harness shares:
+
+- `cleanShot(page, path)` takes every frame. The game answers a refused
+  command only with a toast titled "… failed", so `cleanShot` reads the
+  toasts first and **fails the run when one says a command failed**: a frame
+  of a town that was never built proves nothing. It logs any other toast it
+  clears, and once a run prints the advisor's alerts as `alert "…"` lines.
+  A frame that is _about_ a refusal passes `{ allowRefusal: /pattern/ }`.
+- `unlimitedMoneyOption(page)`, called before the page loads, sets the saved
+  option the HUD reads. The `setUnlimitedMoney` command alone leaves the red
+  debt badge in every frame.
+- `closeUp` and `tileCamera` aim the camera; the camera floor is 40 m.
+
+A harness that exits non-zero on a refusal has a layout the game's rules
+have moved past. Fix the layout; never loosen the guard. A raw
+`page.screenshot` is kept only where two frames are compared pixel for pixel
+to find a moving vehicle.
+
 There is one harness per feature area — `archetype-shots.mjs`,
 `bridge-shots.mjs`, `corridor-shots.mjs`, `junction-shots.mjs`,
 `lamppower-shots.mjs`, `oneway-shots.mjs`, `powerline-shots.mjs`,
-`roadclip-shots.mjs`, `tramway-shots.mjs`, `transition-shots.mjs`, and about
-two dozen more — rather than one generic harness with flags, matching the
+`roadclip-shots.mjs`, `tramway-shots.mjs`, `transition-shots.mjs`, and some
+three dozen more — rather than one generic harness with flags, matching the
 one-system-per-file convention in `src/render/`.
 
 **Using one to debug a render issue:** run the matching harness (or write a
@@ -202,5 +220,7 @@ and a dropped-in song is discovered and plays.
   than clicking through the UI by hand — it's deterministic and
   scriptable.
 - Adding a new harness: follow `tools/visual-smoke.mjs`'s shape (console
-  capture, `waitForSelector('#viewport canvas')`, a `shot(name)` helper)
-  and put its output directory under the `tools/shots-*` gitignore pattern.
+  capture, `waitForSelector('#viewport canvas')`, a `shot(name)` helper),
+  take every frame through `cleanShot`, check with a `read*` hook that the
+  subject stands before shooting it, and put its output directory under the
+  `tools/shots-*` gitignore pattern.

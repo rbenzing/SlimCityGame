@@ -9,13 +9,13 @@
  * second turned a quarter, a field of twenty farms (with the frame time read),
  * the reactor ghost over dry land, and all of them at night.
  *
- * Usage: node tools/power-shots.mjs [baseUrl]   (a dev server must be running) */
+ * Usage: node tools/power-shots.mjs [baseUrl] [outDir]   (a dev server must be running) */
 import { chromium } from 'playwright';
 import { mkdirSync } from 'node:fs';
-import { hooksReady, tileCamera } from './shotcam.mjs';
+import { cleanShot, hooksReady, tileCamera } from './shotcam.mjs';
 
 const base = process.argv[2] ?? 'http://localhost:5173';
-const out = 'tools/shots-power';
+const out = process.argv[3] ?? 'tools/shots-power';
 mkdirSync(out, { recursive: true });
 
 // Frame time is read over the field, so the browser must not pin frames to the display's refresh.
@@ -37,7 +37,10 @@ const session = (value) =>
 
 await page.addInitScript(() => {
   try {
-    localStorage.setItem('slimcity.settings', JSON.stringify({ sandboxUnlockAll: true }));
+    localStorage.setItem(
+      'slimcity.settings',
+      JSON.stringify({ sandboxUnlockAll: true, unlimitedMoney: true }),
+    );
   } catch (e) {
     void e;
   }
@@ -71,9 +74,9 @@ await page.waitForFunction(() => window.__slimcity.getStats().population > 0, nu
 
 const hook = (fn, arg) => page.evaluate(fn, arg);
 const camera = tileCamera(page);
-const shot = async (name, settle = 1500) => {
+const shot = async (name, settle = 1500, allowRefusal = undefined) => {
   await page.waitForTimeout(settle);
-  await page.screenshot({ path: `${out}/${name}.png` });
+  await cleanShot(page, `${out}/${name}.png`, { allowRefusal });
   console.log('shot', name);
 };
 const yaw = Number(process.env.POWER_YAW ?? 0);
@@ -228,9 +231,9 @@ await camera(reactorX, 77, 200, Math.PI, 0.2);
 await shot('3a-reactor-from-across-the-water', 2000);
 await camera(reactorX, 77, 200, 0, 0.2);
 await shot('3b-reactor-from-the-street-side', 2000);
-await camera(reactorX - 1.5, 74.6, 60, Math.PI, 0.3);
+await camera(saved.t.reactor.x + 1, 74.8, 40, Math.PI, 0.3);
 await shot('3c-reactor-intake-close', 2000);
-await camera(reactorX - 1.5, 74.6, 60, Math.PI + 0.9, 0.3);
+await camera(saved.t.reactor.x + 1, 74.8, 40, Math.PI + 0.9, 0.3);
 await shot('3d-reactor-intake-close-angled', 2000);
 
 // Shot 4: a farm beside houses, then the second turned a quarter.
@@ -301,7 +304,7 @@ const afterDry = await hook(
   dry,
 );
 console.log('reactor on dry land stands after the commit:', afterDry.length > 0);
-await shot('6b-nuclear-commit-over-dry-land', 500);
+await shot('6b-nuclear-commit-over-dry-land', 500, /^Reactor on dry land failed/);
 
 // Shot 7: night. None of the new kits lights.
 await hook(() => window.__slimcity.setSpeed(1));

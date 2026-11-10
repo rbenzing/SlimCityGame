@@ -8,13 +8,13 @@
  * school campuses, the college inside the grid, an elementary coverage lens over
  * the campuses, a campus turned a quarter, and all five at night.
  *
- * Usage: node tools/education-shots.mjs [baseUrl]   (a dev server must be running) */
+ * Usage: node tools/education-shots.mjs [baseUrl] [outDir]   (a dev server must be running) */
 import { chromium } from 'playwright';
 import { mkdirSync } from 'node:fs';
-import { closeUp, hooksReady, tileCamera } from './shotcam.mjs';
+import { cleanShot, closeUp, hooksReady, tileCamera, unlimitedMoneyOption } from './shotcam.mjs';
 
 const base = process.argv[2] ?? 'http://localhost:5173';
-const out = 'tools/shots-education';
+const out = process.argv[3] ?? 'tools/shots-education';
 mkdirSync(out, { recursive: true });
 
 const browser = await chromium.launch({ headless: true, args: ['--use-angle=default'] });
@@ -31,6 +31,7 @@ const session = (value) =>
   }, value);
 
 await session({ screen: 'playing', seed: 1, mode: 'new' });
+await unlimitedMoneyOption(page);
 await page.goto(base, { waitUntil: 'domcontentloaded' });
 await page.waitForSelector('#viewport canvas', { timeout: 30000 });
 await hooksReady(page);
@@ -68,7 +69,7 @@ const hook = (fn, arg) => page.evaluate(fn, arg);
 const camera = tileCamera(page);
 const shot = async (name, settle = 1500) => {
   await page.waitForTimeout(settle);
-  await page.screenshot({ path: `${out}/${name}.png` });
+  await cleanShot(page, `${out}/${name}.png`);
   console.log('shot', name);
 };
 
@@ -99,6 +100,19 @@ await hook(() =>
     { kind: 'placeBuilding', catalogId: 'fire-station', x: 62, z: 113, rotation: 0 },
   ]),
 );
+// The town plants both with their doors on the south side, away from the street
+// they stand beside; a player turns the lot to face the road. A kit's front is
+// local +Z, so a half turn (2) faces north to main street and a three-quarter
+// turn (3) faces west to the avenue.
+await hook(
+  ([lib, el]) =>
+    window.__slimcity.cmd('Face the street', [
+      { kind: 'bulldoze', tiles: [lib, el] },
+      { kind: 'placeBuilding', catalogId: 'library', x: lib.x, z: lib.z, rotation: 2 },
+      { kind: 'placeBuilding', catalogId: 'school', x: el.x, z: el.z, rotation: 3 },
+    ]),
+  [saved.library, elementary],
+);
 await page.waitForTimeout(2500);
 const placed = await hook(() =>
   window.__slimcity
@@ -112,32 +126,36 @@ console.log('education buildings', JSON.stringify(placed));
 
 const T = await hook(() => window.__slimcity.tileMeters());
 const yaw = Number(process.env.EDU_YAW ?? 0);
+// The camera looks at the front of each turned building: yaw 0 is from the south,
+// so the library (door north, to main street) is seen from the north and the
+// elementary school (door west, to the avenue) from the west.
+const libYaw = yaw + Math.PI;
+const elYaw = yaw - Math.PI / 2;
 
 // A car parked at the kerb for scale, 4.0 m beside a 10 m school and a 3.2 m library.
-const parkCar = (x, z) =>
+const parkCar = (x, z, heading) =>
   hook(
-    ([cx, cz, tile]) =>
-      window.__slimcity.setVehicles([
-        { x: cx * tile, z: cz * tile, heading: Math.PI / 2, kind: 0 },
-      ]),
-    [x, z, T],
+    ([cx, cz, tile, h]) =>
+      window.__slimcity.setVehicles([{ x: cx * tile, z: cz * tile, heading: h, kind: 0 }]),
+    [x, z, T, heading],
   );
-await parkCar(elementary.x - 0.5, elementary.z + 1);
-await camera(elementary.x + 1, elementary.z + 1.5, 70, yaw, 0.55);
+await parkCar(elementary.x - 0.5, elementary.z + 1, 0);
+await camera(elementary.x, elementary.z + 1.5, 100, elYaw, 0.55);
 await shot('a-elementary-with-car', 2000);
-await camera(elementary.x + 1, elementary.z + 1.5, 120, yaw + 0.5, 0.45);
+await camera(elementary.x + 1, elementary.z + 1.5, 120, elYaw + 0.5, 0.45);
 await shot('a2-elementary-three-quarter', 2000);
-await parkCar(saved.library.x + 0.5, saved.library.z + 2.5);
-await camera(saved.library.x + 1, saved.library.z + 0.5, 70, yaw, 0.55);
+await parkCar(saved.library.x + 0.5, saved.library.z - 0.3, Math.PI / 2);
+await camera(saved.library.x + 1, saved.library.z + 0.5, 70, libYaw, 0.55);
 await shot('a3-library-with-car', 2000);
-await camera(saved.library.x + 1, saved.library.z + 0.5, 100, yaw + 0.6, 0.4);
+await camera(saved.library.x + 1, saved.library.z + 0.5, 100, libYaw + 0.6, 0.4);
 await shot('a4-library-three-quarter', 2000);
 await hook(() => window.__slimcity.setVehicles([]));
 
 // The middle and high schools side by side, then each close.
 await camera(65.5, 104, 190, yaw, 0.7);
 await shot('b-middle-and-high-campuses');
-await camera(62.5, 104.5, 110, yaw + 0.3, 0.55);
+// From the north, so the college south of it is behind the middle school, not in front.
+await camera(62.5, 104.5, 150, yaw + Math.PI - 0.3, 1.1);
 await shot('b2-middle-school-campus');
 await camera(67, 102.5, 120, yaw + 0.3, 0.55);
 await shot('b3-high-school-campus');
@@ -154,13 +172,16 @@ await shot('c3-college-portico-low');
 
 // Pedestrian scale at twice the resolution: a car in front of the library door.
 const restore = await closeUp(page, 2);
-await camera(saved.library.x + 1, saved.library.z + 1.2, 40, yaw, 0.25);
+await parkCar(saved.library.x + 1.5, saved.library.z - 0.3, Math.PI / 2);
+await camera(saved.library.x + 1.5, saved.library.z + 0.2, 40, libYaw, 0.25);
 await shot('a5-library-door-close', 2500);
 await restore();
 
 // One coverage lens over the campuses.
 await hook(() => window.__slimcity.setOverlay(10));
-await camera(65.5, 106, 200, yaw, 0.7);
+// The Services panel stands over the left quarter whenever a service lens is on,
+// so the camera aims west of the campuses to put them in the clear right of it.
+await camera(62, 106, 200, yaw, 0.7);
 await shot('e-high-school-lens-over-campuses');
 await hook(() => window.__slimcity.setOverlay(null));
 
@@ -175,9 +196,9 @@ await hook(() => window.__slimcity.setSpeed(1));
 await hook(() => window.__slimcity.setDayT(0.96));
 await camera(65.5, 106, 190, yaw, 0.65);
 await shot('d-campuses-night', 2500);
-await camera(elementary.x + 1, elementary.z + 1.5, 100, yaw + 0.3, 0.5);
+await camera(elementary.x + 1, elementary.z + 1.5, 100, elYaw + 0.3, 0.5);
 await shot('d2-elementary-night', 2500);
-await camera(saved.library.x + 1, saved.library.z + 0.5, 90, yaw + 0.3, 0.45);
+await camera(saved.library.x + 1, saved.library.z + 0.5, 90, libYaw + 0.3, 0.45);
 await shot('d3-library-night', 2500);
 
 console.log('page errors', errors.length ? errors : 'none');

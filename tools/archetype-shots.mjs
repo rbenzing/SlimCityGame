@@ -6,7 +6,7 @@
  */
 import { chromium } from 'playwright';
 import { mkdirSync } from 'node:fs';
-import { hooksReady, tileCamera } from './shotcam.mjs';
+import { cleanShot, hooksReady, tileCamera, unlimitedMoneyOption } from './shotcam.mjs';
 
 const base = process.argv[2] ?? 'http://localhost:5173';
 const url = base + (base.includes('?') ? '&' : '?') + 'nobloom';
@@ -29,6 +29,7 @@ await page.addInitScript(() => {
     void e;
   }
 });
+await unlimitedMoneyOption(page);
 await page.goto(url, { waitUntil: 'domcontentloaded' });
 await page.waitForSelector('#viewport canvas', { timeout: 20000 });
 await page.waitForTimeout(4000);
@@ -96,7 +97,7 @@ await page.waitForTimeout(600);
 // plant a few tiles off one supplies nothing.
 await cmd('Utilities', [
   { kind: 'placeBuilding', catalogId: 'coal-plant', x: X + 2, z: Z - 10, rotation: 0 },
-  { kind: 'placeBuilding', catalogId: 'water-tower', x: X + 9, z: Z - 8, rotation: 0 },
+  { kind: 'placeBuilding', catalogId: 'water-tower', x: X + 9, z: Z - 7, rotation: 0 },
 ]);
 await page.waitForTimeout(500);
 const placed = await call(() => window.__slimcity.readBuildings().map((b) => b.catalogId));
@@ -117,7 +118,7 @@ await page.waitForTimeout(600);
 await setSpeed(4);
 for (let i = 0; i < 1800; i++) {
   const s = await stats();
-  if ((s.jobs ?? 0) >= 200) break;
+  if ((s.jobs ?? 0) >= 80) break;
   await page.waitForTimeout(200);
 }
 const s1 = await stats();
@@ -145,6 +146,7 @@ const census = await call(() => {
     kitBuildings: kitIds.length,
     kitOrphans: orphans.length,
     kitByCatalog: byCatalog,
+    at: window.__slimcity.readBuildings().map((b) => ({ id: b.catalogId, x: b.x, z: b.z })),
   };
 });
 console.log('grown buildings:', JSON.stringify(census.buildings));
@@ -166,25 +168,42 @@ if ((census.kit.monitorRoof ?? 0) === 0 && (census.kit.roofArray ?? 0) === 0) {
   console.log('note: no ind-2/ind-3 grew — this city is too small to reach them');
 }
 
-const dayTof = (t) => ((t + 900) % 2400) / 2400;
-for (let i = 0; i < 500; i++) {
-  const d = dayTof((await stats()).tick);
-  if (d >= 0.47 && d <= 0.53) {
-    await setSpeed(0);
-    break;
-  }
-  await page.waitForTimeout(120);
+const total = Object.values(census.buildings).reduce((n, c) => n + c, 0);
+const grown = Object.entries(census.buildings).filter(
+  ([id]) => !['coal-plant', 'water-tower'].includes(id),
+);
+if (grown.length === 0) {
+  console.log(`FAIL: nothing grew (${total} buildings, all utilities)`);
+  await b.close();
+  process.exit(1);
 }
+
+// A paused sim posts a snapshot, which carries the pinned light to the scene,
+// only when a command lands, so a no-op command follows the pin.
+await call(() => {
+  window.__slimcity.setDayT(0.5);
+  window.__slimcity.cmd('Light', [{ kind: 'setUnlimitedMoney', on: true }]);
+});
+await page.waitForTimeout(1500);
 
 const shot = async (name, tx, tz, d, yaw, pitch) => {
   await cam(tx, tz, d, yaw, pitch);
   await page.waitForTimeout(900);
-  await page.screenshot({ path: `${out}/${name}.png` });
+  await cleanShot(page, `${out}/${name}.png`);
   console.log('shot', name);
 };
-await shot('industry', X + 10, Z - 3, 70, 0.5, 0.45);
-await shot('commerce', X + 10, Z + 3, 70, 0.5, 0.45);
-await shot('block', X + 15, Z, 190, 0.5, 0.8);
+// Each close shot aims at a building of its kind that actually grew.
+const firstOf = (prefix) => census.at.find((bl) => bl.id.startsWith(prefix));
+const works = firstOf('ind-');
+const shop = firstOf('com-');
+if (!works || !shop) {
+  console.log(`FAIL: grew no ${works ? 'commerce' : 'industry'}`);
+  await b.close();
+  process.exit(1);
+}
+await shot('industry', works.x + 1, works.z + 1, 80, 0.5, 0.45);
+await shot('commerce', shop.x + 1, shop.z - 0.5, 80, 0.5, 0.45);
+await shot('block', X + 15, Z + 3, 520, 0.5, 1.0);
 
 console.log('done ->', out);
 await b.close();

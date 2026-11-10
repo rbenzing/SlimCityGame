@@ -161,3 +161,29 @@ Back to [the index](../GROUND-TRUTHS.md).
   from the same constants, so the ground's colour and its soil cannot
   disagree. — [world-model.md](../world-sim/world-model.md#soil);
   `src/shared/soil.ts`
+
+- [R-world-049] A placed building stands beside a street. At least one tile on its
+  footprint's edge is orthogonally adjacent to a road that carries general
+  traffic at grade: any tier but a motorway, a ramp, rail track and a tram
+  guideway. A kind that needs rail, tram track or a shore
+  (`requiresAdjacent`) needs it as well as the street, never instead. Four
+  kinds are exempt, marked in the catalog: the wind turbine, the solar farm,
+  the pumping station and the drain stand off the street, where a power line
+  or a pipe reaches them. The worker refuses the placement with a worded
+  reason, the ghost refuses it through the same predicate, and a building an
+  older save holds off the street stays where it is. A zoned lot is grown,
+  not placed, and keeps its own frontage rule. —
+  [municipal-services.md](../specs/municipal-services.md);
+  `cmdPlaceBuilding` in `src/sim/worker.entry.ts`, `src/world/grid.ts`
+- [R-world-050] A placed building fronts its street: the edge its door, drive and car
+  park open on is the edge that touches the street. The ghost turns its front
+  to the street it touches and slides up to a street one tile away; the
+  player's turn chooses between the streets of a corner, never away from all
+  of them. The worker refuses a building whose front touches no street, with
+  a worded reason, by the predicate the ghost uses. A kind that also needs
+  track or a shore keeps that on the side its kit draws it. The four kinds
+  exempt from the street front nothing. A building an older save holds turned
+  away stays as it is. A library and a school once stood with their doors and
+  drives to open grass, the street at their backs. —
+  [municipal-services.md](../specs/municipal-services.md);
+  `src/tools/tools.ts`, `cmdPlaceBuilding` in `src/sim/worker.entry.ts`

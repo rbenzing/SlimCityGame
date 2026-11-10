@@ -10,7 +10,7 @@
  */
 import { chromium } from 'playwright';
 import { mkdirSync } from 'node:fs';
-import { tileCamera } from './shotcam.mjs';
+import { cleanShot, tileCamera } from './shotcam.mjs';
 
 const base = process.argv[2] ?? 'http://localhost:5173';
 const url = base + (base.includes('?') ? '&' : '?') + 'nobloom';
@@ -40,7 +40,7 @@ await page.addInitScript(() => {
       'slimcity.session',
       JSON.stringify({ screen: 'playing', seed: 12345, mode: 'new' }),
     );
-    localStorage.setItem('slimcity.settings', JSON.stringify({ sandboxUnlockAll: true }));
+    localStorage.setItem('slimcity.settings', JSON.stringify({ sandboxUnlockAll: true, unlimitedMoney: true }));
   } catch (e) {
     void e;
   }
@@ -106,7 +106,8 @@ await page.waitForTimeout(800);
  * app which tile is under a pixel rather than searching for a pixel that
  * picks a tile — the same mapping, used the way round it is offered.
  */
-const DRAG_Y = 450;
+// The drawer covers the lower part of the viewport, so the drag runs in the upper part.
+const DRAG_Y = 260;
 const DRAG_FROM_X = 500;
 const DRAG_TO_X = 900;
 const previewAcross = async () => {
@@ -168,7 +169,7 @@ else {
     failures.push(`a two-lane ghost measures ${across.toFixed(2)} m, not ${TWO_LANE_WIDTH_M}`);
   if (across >= TILE_M)
     failures.push('a two-lane ghost fills the whole tile, so it says nothing about the road');
-  await page.screenshot({ path: `${out}/ghost-two-lane.png` });
+  await cleanShot(page, `${out}/ghost-two-lane.png`);
 }
 await endDrag();
 
@@ -189,7 +190,7 @@ else {
     );
   if (across > TILE_M)
     failures.push(`an avenue ghost measures ${across.toFixed(2)} m, overrunning a ${TILE_M} m tile`);
-  await page.screenshot({ path: `${out}/ghost-avenue-over-two-lane.png` });
+  await cleanShot(page, `${out}/ghost-avenue-over-two-lane.png`);
 }
 await endDrag();
 
@@ -199,10 +200,9 @@ await endDrag();
 await pick('Medium', 'Avenue');
 await page.getByRole('group', { name: 'Lanes' }).getByText('6', { exact: true }).click();
 await page.waitForTimeout(300);
-// The drawer covers the lower half of the viewport and the corridor's second
-// row sits behind it, so pull the camera back and aim higher for this one —
-// the point of the shot is that BOTH rows are visible.
-await cam(X + 6, Z + 3, 150, 0.0, 1.25);
+// The second row sits a tile further down the screen, so aim the camera one
+// tile higher — the point of the shot is that BOTH rows are visible.
+await cam(X + 6, Z + 1, 80, 0.0, 1.0);
 await page.waitForTimeout(700);
 const corridor = await previewAcross();
 if (!corridor) failures.push('could not aim the six-lane preview at the row');
@@ -218,8 +218,36 @@ else {
     );
   if (across <= perRow + 0.5)
     failures.push(`a corridor ghost spans ${across.toFixed(2)} m, no more than one carriageway`);
-  await page.screenshot({ path: `${out}/ghost-corridor.png` });
+  await cleanShot(page, `${out}/ghost-corridor.png`);
 }
+await endDrag();
+
+// 4. The other state: a road dragged through a building, which the game
+//    refuses. The building is placed on a clear row and only the preview of the
+//    road over it is shown; the drag is cancelled, never committed.
+await cam(X + 6, Z + 4, 80, 0.0, 1.0);
+await page.waitForTimeout(600);
+const clearRow = await call(
+  ([y, x0, x1]) => {
+    const hook = window.__slimcity;
+    const seen = [];
+    for (let sx = x0; sx <= x1; sx += 2) {
+      const t = hook.screenToTile(sx, y);
+      if (t && !seen.some((s) => s.x === t.x && s.z === t.z)) seen.push(t);
+    }
+    return seen;
+  },
+  [DRAG_Y, DRAG_FROM_X, DRAG_TO_X],
+);
+const mid = clearRow[Math.floor(clearRow.length / 2)];
+await cmd('Water Tower', [
+  { kind: 'placeBuilding', catalogId: 'water-tower', x: mid.x, z: mid.z, rotation: 0 },
+]);
+await page.waitForTimeout(800);
+await pick('Small', 'Two-Lane Road');
+const invalid = await previewAcross();
+if (!invalid) failures.push('could not aim the invalid preview at the row');
+else await cleanShot(page, `${out}/ghost-invalid-over-building.png`);
 await endDrag();
 
 if (pageErrors.length > 0) failures.push(`page errors: ${pageErrors.join(' | ')}`);

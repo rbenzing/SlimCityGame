@@ -35,6 +35,19 @@ again, update the figure here and nowhere else.
 
 **Open:**
 
+- What a review of every shot the tools write found wrong in the game is
+  ranked in [open-visual-defects.md](roadmap/open-visual-defects.md). Two of
+  its lines are rules stated and not yet built: a kit's plot flush with its
+  ground `[R-render-034]`, a building beside a street `[R-world-049]`, its
+  front turned to that street `[R-world-050]`, a fence kept to its own lot's
+  line `[R-render-035]` and a bend drawn as an arc `[R-roads-081]`.
+- Three specs are agreed and not yet built:
+  [power-distribution.md](specs/power-distribution.md), a street's drawn
+  supply, buried cable and the substation `[R-services-039]`;
+  [structured-parking.md](specs/structured-parking.md), a car park for every
+  dense kind and a garage on its lot from level 2 `[R-services-040]`; and
+  [street-furniture.md](specs/street-furniture.md), a furnishing strip, a
+  clear walk and every roadside object in its place `[R-render-036]`.
 - The shipped industrial lots are too shallow for the yard the second pass
   gives the heavy kinds: a body fills 13.6 m of each 20 m lot tile, so no
   warehouse lot has the 18.7 m a 16 m van needs behind a dock door, and no
@@ -92,7 +105,8 @@ again, update the figure here and nowhere else.
 - Placing a district-edge column of road across the street rows in
   `tools/frame-budget.mjs` logs about 27 "road network (command): tile(s)
   derived differently … roadMask" errors at the junctions; the city stands,
-  but the conversion disagrees with itself there.
+  but the conversion disagrees with itself there. `tools/bridge-shots.mjs`
+  logs the same error laying its parallel bridge rows.
 - A multiplex's stoop step stands 0.6 m into its car park's aisle and its
   mail kiosk on the front walk the aisle overlaps by 1.2 m; the lot layout
   should hold the aisle off the entrance walk. The courtyard apartments have

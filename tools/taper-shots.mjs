@@ -8,7 +8,7 @@
  */
 import { chromium } from 'playwright';
 import { mkdirSync } from 'node:fs';
-import { tileCamera } from './shotcam.mjs';
+import { cleanShot, closeUp, tileCamera, unlimitedMoneyOption } from './shotcam.mjs';
 
 const base = process.argv[2] ?? 'http://localhost:5173';
 const url = base + (base.includes('?') ? '&' : '?') + 'nobloom';
@@ -36,6 +36,7 @@ await page.addInitScript(() => {
     void e;
   }
 });
+await unlimitedMoneyOption(page);
 await page.goto(url, { waitUntil: 'domcontentloaded' });
 await page.waitForSelector('#viewport canvas', { timeout: 20000 });
 await page.waitForTimeout(4000);
@@ -182,7 +183,7 @@ await call(() => window.__slimcity.setDayT(0.5));
 const shot = async (name, tx, tz, d, yaw, pitch) => {
   await cam(tx, tz, d, yaw, pitch);
   await page.waitForTimeout(900);
-  await page.screenshot({ path: `${out}/${name}.png` });
+  await cleanShot(page, `${out}/${name}.png`);
   console.log('shot', name);
 };
 await shot('taper-down', X + CX, Z + 9, 90, 0.0, 1.15);
@@ -232,8 +233,12 @@ if (!(narrowMotorway < wideMotorway))
     `the motorway it drops into is ${narrowMotorway} m against ${wideMotorway} m: no narrower road to drop into`,
   );
 
-await shot('gore-down', X + MX, Z + 8, 90, 0.0, 1.15);
-await shot('gore-close', X + MX, Z + 9, 34, 0.0, 1.2);
+// The whole taper is eight tiles (z 4 to 11) long, so it is framed from high
+// enough to hold the lot, then closed on where the lane has finished closing.
+await shot('gore-down', X + MX, Z + 7.5, 230, 0.0, 1.4);
+const restore = await closeUp(page, 2);
+await shot('gore-close', X + MX, Z + 10, 40, 0.0, 1.3);
+await restore();
 
 console.log(failures.length === 0 ? 'PASS' : 'FAIL');
 for (const f of failures) console.log(' -', f);

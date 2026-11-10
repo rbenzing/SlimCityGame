@@ -60,6 +60,16 @@ neighbour's plateau — lift the house, and every dock and bollard with it, off
 the pad it stands on; that is what a hillside house hanging over its downhill
 side, and a works' loading dock floating over its car park, were.
 
+**A plot is flush with the ground round it.** What a kit lays as ground — the
+instancer's pad, a paved yard, a campus lawn, a court, a pond — has its top
+in the same thin band the zoned lots' surfaces use (`LOT_Y_OFFSET` to the
+lane paint, 0.08 to 0.12 m over the terrain), so a drive, a walk and a
+civic crossing meet it without a step and no side wall shows on level
+ground. The slab's footing still runs down under it, which is what covers
+the fall on a slope; only there, on the low side, may a side be seen. A
+kit's walls, stalls, cars and lamps are all placed from that one top, so
+lowering it lowers them together.
+
 **Material palette calibration.** One module (`render/palette.ts`) is the
 single source of truth for every material colour in the world — buildings,
 vehicles and paved surfaces alike. The reference caps albedo brightness so

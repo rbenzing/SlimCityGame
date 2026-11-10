@@ -196,4 +196,31 @@ Back to [the index](../GROUND-TRUTHS.md).
   `currentColor`, `aria-hidden`); no emoji in finished chrome. —
   [ui-style-guide.md](../art/ui-style-guide.md),
   [iconography.md](../art/iconography.md)
+- [R-render-034] Ground a building lays is ground. The top of a pad, plinth, yard, lawn,
+  court or pond stands in the lot-surface band, at most 0.12 m above the
+  terrain it is seated on, and its footing runs down from there, never up:
+  on level ground no vertical side shows round a plot. A kit places its
+  parts from that same top. A footway, and a bus stop's pad on it, stand at
+  kerb height and are not pads. A yard drawn 0.3 m proud of a 0.25 m plinth
+  showed a half-metre step round every civic plot. —
+  [lots-and-paved-ground.md](../art/buildings/lots-and-paved-ground.md);
+  `src/render/utilitykits.ts`, `src/render/buildings.ts`
+- [R-render-035] A fence stands on its own lot's boundary and nowhere else. It never
+  crosses onto another lot, a road, a drive or another fence, and where two
+  lots share a line one fence stands on it. A lot turned to a curved street
+  is fenced to its own outline, cut back where a neighbour's outline meets
+  it; a lot that cannot be fenced without crossing has no fence. A turned
+  lot's rectangle once lay across its neighbours' yards and fences. —
+  [curved-parcels.md](../specs/curved-parcels.md);
+  `src/render/houselot.ts`, `src/render/houses.ts`
+- [R-render-036] Every roadside pole, post, box and tree stands in the furnishing strip,
+  its centre 0.46 m behind the kerb face, and the walk behind it stays clear
+  for 1.2 m. None stands in a bus stop's span, on a drive, a kerb ramp or a
+  crosswalk. Where there is no kerb it stands back from the travelled way by
+  the clear zone, or at the tile's edge. A manhole cover lies in the middle
+  of a lane, never on paint. Agreed and not yet built: a lamp still stands
+  in the middle of the footway, a cover on the centre line. A lamp once stood
+  between a bus stop's pad and the bus door. —
+  [street-furniture.md](../specs/street-furniture.md);
+  `lampLateralOffset` in `src/render/lamps.ts`, `src/render/roadfurniture.ts`
 
