@@ -14,7 +14,14 @@
  * Usage: node tools/storefront-shots.mjs [baseUrl] [outDir]   (a dev server must be running) */
 import { chromium } from 'playwright';
 import { mkdirSync, readFileSync } from 'node:fs';
-import { closeUp, hooksReady, tileCamera } from './shotcam.mjs';
+import {
+  CAMERA_MIN_DISTANCE,
+  cleanShot,
+  closeUp,
+  hooksReady,
+  tileCamera,
+  tileMeters,
+} from './shotcam.mjs';
 
 const base = process.argv[2] ?? 'http://localhost:5173';
 const out = process.argv[3] ?? 'tools/shots-storefronts';
@@ -34,9 +41,6 @@ const STREET_ROWS = 9;
 /** Tiles of road beyond each end of a street's buildings. */
 const MARGIN = 2;
 const LONGEST = 24;
-/** The eye's distance for a street shot, and the tiles of row that distance frames. */
-const STREET_DISTANCE = 95;
-const STREET_FRAMED_TILES = 9;
 /** The line-up's night: 22:00. */
 const LINEUP_NIGHT = 22 / 24;
 
@@ -203,48 +207,76 @@ try {
   const shoot = async (name, tx, tz, distance, yaw, pitch = DEFAULT_PITCH) => {
     await cam(tx, tz, distance, yaw, pitch);
     await page.waitForTimeout(1200);
-    await page.screenshot({ path: `${out}/${name}.png` });
+    await cleanShot(page, `${out}/${name}.png`);
+  };
+  const T = await tileMeters(page);
+  const heightOf = (id) => catalog.find((c) => c.id === id).height;
+  /** A box of tiles, `h` metres tall, that a shot frames whole. */
+  const boxOf = (placed) => {
+    const x0 = Math.min(...placed.map((b) => b.x));
+    const x1 = Math.max(...placed.map((b) => b.x + b.w));
+    const z0 = Math.min(...placed.map((b) => b.z));
+    const z1 = Math.max(...placed.map((b) => b.z + b.d));
+    return {
+      x: (x0 + x1) / 2,
+      z: (z0 + z1) / 2,
+      w: x1 - x0,
+      d: z1 - z0,
+      h: Math.max(...placed.map((b) => heightOf(b.id))),
+    };
+  };
+  /**
+   * Frame a box whole, roof to ground, about the middle of the frame. The
+   * ground target is where the ray through the box's mid-height meets the
+   * ground, so the box's own tiles, not the street, sit at the centre; the eye
+   * backs off until the box's projected height and width fill `fill` of the
+   * 45 degree view, but never inside the camera's floor.
+   */
+  const frame = async (name, box, yaw, pitch = DEFAULT_PITCH, fill = 0.6) => {
+    const tall = box.h * Math.cos(pitch) + box.d * T * Math.sin(pitch);
+    const wide = box.w * T * Math.abs(Math.cos(yaw)) + box.d * T * Math.abs(Math.sin(yaw));
+    const aspect = 1280 / 800;
+    const distance = Math.max(
+      CAMERA_MIN_DISTANCE,
+      tall / (2 * Math.tan(Math.PI / 8) * fill),
+      wide / (2 * Math.tan(Math.PI / 8) * aspect * fill),
+    );
+    const back = box.h / 2 / Math.tan(pitch) / T;
+    await shoot(
+      name,
+      box.x - 0.5 - Math.sin(yaw) * back,
+      box.z - 0.5 - Math.cos(yaw) * back,
+      distance,
+      yaw,
+      pitch,
+    );
   };
   const find = (street, id, nth = 0) =>
     spans[STREETS.findIndex((s) => s.name === street)].filter((b) => b.id === id)[nth];
-  const middleOf = (s) => {
-    const placed = spans[s];
-    const last = placed[placed.length - 1];
-    return (placed[0].x + last.x + last.w) / 2;
-  };
-  const centre = (b) => ({ x: b.x + b.w / 2, z: b.z + b.d / 2 });
-  /**
-   * The whole row in frame with a margin at each end: the eye backs off with
-   * the row's length, and further again because it orbits the road itself
-   * rather than a point two tiles south of it, which puts it nearer the row
-   * than a street shot's eye.
-   */
-  const rowDistance = (s) => {
-    const tiles = spans[s].reduce((sum, b) => sum + b.w, 0);
-    return (1.6 * STREET_DISTANCE * Math.max(tiles, STREET_FRAMED_TILES)) / STREET_FRAMED_TILES;
-  };
+  const rowBox = (s) => boxOf(spans[s]);
   const lineup = STREETS.findIndex((s) => s.lineup);
-  // Aimed at the road, so the row stands in the upper half of the frame rather than along its top edge.
-  const shootLineup = (suffix) =>
-    shoot(`lineup${suffix}`, middleOf(lineup), roadRow(lineup), rowDistance(lineup), 0.2);
+  const shootLineup = (suffix) => frame(`lineup${suffix}`, rowBox(lineup), 0.2);
 
   const views = (suffix) => async () => {
     for (const [s, street] of STREETS.entries()) {
       if (street.lineup) continue;
-      await shoot(`${street.name}${suffix}`, middleOf(s), roadRow(s) + 2, STREET_DISTANCE, 0.3);
+      await frame(`${street.name}${suffix}`, rowBox(s), 0.3);
     }
-    const strip = centre(find('strip', 'com-strip-2'));
-    await shoot(`strip-pylon${suffix}`, strip.x, strip.z + 2, 85, 0.3);
-    const market = centre(find('market', 'com-market-2'));
-    await shoot(`market-car-park${suffix}`, market.x, market.z + 3, 90, 0.2);
-    const eat = centre(find('restaurant', 'com-restaurant-2'));
-    await shoot(`restaurant-above${suffix}`, eat.x, eat.z, 75, 0.3, 1.25);
-    const fuel = centre(find('fuel', 'com-fuel-2'));
-    await shoot(`fuel-station${suffix}`, fuel.x, fuel.z + 2, 75, 0.3);
-    const office = centre(find('downtown', 'com-high-1'));
-    await shoot(`office${suffix}`, office.x, office.z + 1, 90, 0.3);
-    const hotel = centre(find('downtown', 'com-hotel-2'));
-    await shoot(`hotel${suffix}`, hotel.x, hotel.z + 1, 90, 0.3);
+    await frame(`strip-pylon${suffix}`, boxOf([find('strip', 'com-strip-2')]), 0.3);
+    await frame(`market-car-park${suffix}`, boxOf([find('market', 'com-market-2')]), 0.2);
+    await frame(
+      `restaurant-above${suffix}`,
+      // The lot beside it too: framed on its own, the neighbour was cut at the edge.
+      boxOf([
+        find('restaurant', 'com-restaurant-2'),
+        find('restaurant', 'com-restaurant-1-lot2x2'),
+      ]),
+      0.3,
+      1.25,
+    );
+    await frame(`fuel-station${suffix}`, boxOf([find('fuel', 'com-fuel-2')]), 0.3);
+    await frame(`office${suffix}`, boxOf([find('downtown', 'com-high-1')]), 0.3);
+    await frame(`hotel${suffix}`, boxOf([find('downtown', 'com-hotel-2')]), 0.3);
   };
 
   await setPhase(0.5);
@@ -253,14 +285,11 @@ try {
 
   // The close shots, at twice the pixels over the camera's floor distance.
   const restore = await closeUp(page, 2);
-  const shop = centre(find('main', 'com-low-1'));
-  await shoot('close-shop', shop.x, shop.z + 1, 40, 0.3);
-  const strip = centre(find('strip', 'com-strip-2'));
-  await shoot('close-strip', strip.x, strip.z + 1, 40, 0.3);
-  const eat = centre(find('restaurant', 'com-restaurant-2'));
-  await shoot('close-restaurant', eat.x, eat.z, 40, 0.3, 1.0);
-  const fuel = centre(find('fuel', 'com-fuel-2'));
-  await shoot('close-fuel', fuel.x, fuel.z + 1, 40, 0.3);
+  await frame('close-shop', boxOf([find('main', 'com-low-1')]), 0.3);
+  // The pylon and shopfronts from the other side, lower, so these are not the street-level frames again.
+  await frame('close-strip', boxOf([find('strip', 'com-strip-2')]), -0.7, 0.45, 0.8);
+  await frame('close-restaurant', boxOf([find('restaurant', 'com-restaurant-2')]), 0.3, 1.0);
+  await frame('close-fuel', boxOf([find('fuel', 'com-fuel-2')]), 0.9, 0.4, 0.8);
   await restore();
 
   await setPhase(0.96);

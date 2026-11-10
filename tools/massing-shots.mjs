@@ -15,7 +15,7 @@
  */
 import { chromium } from 'playwright';
 import { mkdirSync } from 'node:fs';
-import { hooksReady, tileCamera } from './shotcam.mjs';
+import { cleanShot, hooksReady, tileCamera, unlimitedMoneyOption } from './shotcam.mjs';
 
 const base = process.argv[2] ?? 'http://localhost:5173';
 const url = base + (base.includes('?') ? '&' : '?') + 'nobloom';
@@ -44,6 +44,7 @@ await page.addInitScript(() => {
     void e;
   }
 });
+await unlimitedMoneyOption(page);
 await page.goto(url, { waitUntil: 'domcontentloaded' });
 await page.waitForSelector('#viewport canvas', { timeout: 20000 });
 
@@ -56,7 +57,6 @@ const readGrid = () => call(() => window.__slimcity.readGrid());
 const readBuildings = () => call(() => window.__slimcity.readBuildings());
 const stats = () => call(() => window.__slimcity.getStats());
 const setSpeed = (s) => call((x) => window.__slimcity.setSpeed(x), s);
-const setDayT = (t) => call((x) => window.__slimcity.setDayT(x), t);
 const cam = tileCamera(page);
 
 const g = await readGrid();
@@ -150,37 +150,45 @@ await page.waitForTimeout(5000);
 const s = await stats();
 console.log('pop', s.population, 'jobs', s.jobs);
 
-// Leave the sim running: the pinned clock rides on a snapshot the paused sim
-// never sends.
-await setSpeed(1);
-await setDayT(NOON);
-await page.waitForTimeout(1200);
+// The pinned light rides on a snapshot, which a paused sim posts only when a
+// command lands, so a no-op command follows the pin and the sim then holds still.
+await setSpeed(0);
+await call((t) => {
+  window.__slimcity.setDayT(t);
+  window.__slimcity.cmd('Light', [{ kind: 'setUnlimitedMoney', on: true }]);
+}, NOON);
+await page.waitForTimeout(1500);
 
 // What the buildings actually are, so the picture can be checked against the
 // numbers rather than only admired.
 const built = await readBuildings();
 const near = built.filter(
-  (bl) => bl.x >= X && bl.x <= X + 26 && bl.z >= Z - 1 && bl.z <= Z + 4 && bl.height > 0,
+  (bl) => bl.x >= X && bl.x <= X + 26 && bl.z >= Z - 1 && bl.z <= Z + 4,
 );
 console.log(
   'buildings in frame:',
-  JSON.stringify(
-    near.slice(0, 8).map((bl) => ({ id: bl.catalogId ?? bl.id, h: bl.height })),
-  ),
+  JSON.stringify(near.slice(0, 12).map((bl) => `${bl.catalogId}@${bl.x},${bl.z}`)),
 );
+// The close-ups aim at a building that grew, not at a guessed tile.
+const shopBand = near.filter((bl) => bl.x >= X + 14 && bl.x <= X + 19 && bl.z <= Z + 2);
+if (shopBand.length === 0) {
+  console.log('FAIL: no shop grew in the shop band');
+  process.exitCode = 1;
+}
+const shop = shopBand[0] ?? { x: X + 16, z: Z + 1 };
 
 const shots = [
   // Low and along the street: the angle a plan-vs-height fault shows at.
-  ['street-eye', X + 6, Z + 3, 46, 0.0, 0.32],
+  ['street-eye', X + 11, Z + 3, 56, 0.0, 0.32],
   ['street-oblique', X + 8, Z + 2, 62, 0.85, 0.5],
-  ['homes-close', X + 5, Z + 2, 30, 0.6, 0.42],
-  ['shops-close', X + 16, Z + 2, 30, 0.6, 0.42],
+  ['homes-close', X + 5, Z + 2, 40, 0.6, 0.42],
+  ['shops-close', shop.x + 0.75, shop.z + 0.5, 40, 0.6, 0.42],
   ['block-top', X + 12, Z + 2, 96, 0.0, 1.35],
 ];
 for (const [name, tx, tz, d, yaw, pitch] of shots) {
   await cam(tx, tz, d, yaw, pitch);
   await page.waitForTimeout(900);
-  await page.screenshot({ path: `${out}/${name}.png` });
+  await cleanShot(page, `${out}/${name}.png`);
   console.log('shot', name);
 }
 

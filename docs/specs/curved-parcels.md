@@ -13,6 +13,7 @@
 - Keep every parcel's kerb chord at 10.7 m or more, widening an outer-bend parcel along the kerb; space inner-bend parcels so no two overlap.
 - A kind wider than a lot takes a run of consecutive parcels, only where the road between its ends bends 8° or less.
 - A building with no frame is a grid building and nothing about it changes. `[R-world-040]`
+- Fence a parcel to its own outline, cut back where a neighbour's meets it, or not at all; a fence never crosses another lot or fence. `[R-render-035]`
 
 **Numbers:** the standards are in [the sources](../sources/curved-parcels.md).
 

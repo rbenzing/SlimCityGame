@@ -10,7 +10,7 @@
  */
 import { chromium } from 'playwright';
 import { mkdirSync } from 'node:fs';
-import { CAMERA_MIN_DISTANCE, closeUp, tileCamera } from './shotcam.mjs';
+import { CAMERA_MIN_DISTANCE, cleanShot, closeUp, logAlerts, tileCamera, unlimitedMoneyOption } from './shotcam.mjs';
 
 const base = process.argv[2] ?? 'http://localhost:5173';
 const url = base + (base.includes('?') ? '&' : '?') + 'nobloom';
@@ -29,6 +29,7 @@ page.on('pageerror', (e) => {
   pageErrors.push(e.message);
   console.log('[pageerror]', e.message);
 });
+await unlimitedMoneyOption(page);
 await page.addInitScript(() => {
   try {
     sessionStorage.setItem(
@@ -187,16 +188,19 @@ if (onCorridor.length === 0)
 // tiles before the junction (distance 0 is the last of them) and to no tile
 // beyond them.
 const ZONE = 5;
-for (const [name, x] of [
-  ['left', LEFT_X],
-  ['right', RIGHT_X],
+// A half carries one direction, so it arrives at the junction from one end only
+// and the bay stands there [R-roads-052]: the left half's lanes run south, from
+// the north end, the right half's north, from the south end.
+for (const [name, x, side] of [
+  ['left', LEFT_X, -1],
+  ['right', RIGHT_X, 1],
 ]) {
   const down = [];
   for (let d = 1; d <= ZONE + 1; d++) {
-    const a = await approach(X + x, Z + CROSS_Z - d);
+    const a = await approach(X + x, Z + CROSS_Z + side * d);
     const m = await call(
       ([ax, az]) => window.__slimcity.readDrawn(ax, az),
-      [X + x, Z + CROSS_Z - d],
+      [X + x, Z + CROSS_Z + side * d],
     );
     down.push({
       d,
@@ -239,6 +243,7 @@ for (const [name, x] of [
     );
 }
 
+await logAlerts(page, 'corridor');
 const shots = [
   ['corridor-top', X + 10, Z + 12, 70, 0, 1.45],
   ['corridor-eye', X + 10, Z + 20, 34, 0, 0.3],
@@ -251,7 +256,7 @@ const shots = [
 for (const [name, tx, tz, d, yaw, pitch] of shots) {
   await cam(tx, tz, d, yaw, pitch);
   await page.waitForTimeout(700);
-  await page.screenshot({ path: `${out}/${name}.png` });
+  await cleanShot(page, `${out}/${name}.png`);
   console.log('shot', name);
 }
 
@@ -261,7 +266,7 @@ for (const [name, tx, tz, d, yaw, pitch] of shots) {
 const restore = await closeUp(page, 2);
 await cam(X + LEFT_X, Z + CROSS_Z - 1, CAMERA_MIN_DISTANCE, 0, 1.5);
 await page.waitForTimeout(900);
-await page.screenshot({ path: `${out}/corridor-approach.png` });
+await cleanShot(page, `${out}/corridor-approach.png`);
 console.log('shot corridor-approach');
 await restore();
 

@@ -19,7 +19,7 @@
  */
 import { chromium } from 'playwright';
 import { mkdirSync } from 'node:fs';
-import { closeUp, tileCamera } from './shotcam.mjs';
+import { cleanShot, closeUp, tileCamera } from './shotcam.mjs';
 
 const base = process.argv[2] ?? 'http://localhost:5173';
 const url = base + (base.includes('?') ? '&' : '?') + 'nobloom';
@@ -58,7 +58,10 @@ await page.addInitScript(() => {
       'slimcity.session',
       JSON.stringify({ screen: 'playing', seed: 12345, mode: 'new' }),
     );
-    localStorage.setItem('slimcity.settings', JSON.stringify({ sandboxUnlockAll: true }));
+    localStorage.setItem(
+      'slimcity.settings',
+      JSON.stringify({ sandboxUnlockAll: true, unlimitedMoney: true }),
+    );
   } catch (e) {
     void e;
   }
@@ -434,6 +437,9 @@ const PARADES = [
   { name: 'fall-1.9m', alongX: false, ground: 'built', grade: ROAD_MAX_CLIMB - 0.1 },
 ];
 
+/** The parades shot tier by tier at the kerb: the control, the worst cross-slope and the worst fall. */
+const KERB_SHOT_PARADES = new Set(['flat', 'cross-9.5m', 'fall-1.9m']);
+
 /**
  * Where a parade goes: a dry, road-free footprint with a margin of one tile
  * all round. A sloped parade wants the steepest CONSISTENT grade along z —
@@ -634,6 +640,7 @@ if (runs('parade')) {
           ...run(1).map(() => direction | CORRIDOR | CORRIDOR_RIGHT),
         ];
       }
+      const midRun = at(PARADE_LEN / 2, spec.corridor ? 0.5 : 0);
       row += spec.corridor ? 3 : 2;
       // Only a toast raised by THIS run can say why it was refused.
       await dismissToasts();
@@ -661,6 +668,14 @@ if (runs('parade')) {
         }
         continue;
       }
+      if (KERB_SHOT_PARADES.has(parade.name))
+        paradeShots.push({
+          kind: 'tier',
+          name: parade.name,
+          tier: spec.name,
+          at: midRun,
+          alongX: parade.alongX,
+        });
       const { worst, clipped } = await paradeIntrusion(laid, parade.alongX);
       Object.assign(entry, { clipped, m: worst.m, at: worst.at, where: worst.where });
       const label = `parade ${parade.name} ${spec.name}`;
@@ -720,10 +735,10 @@ if (leftOver > 0) console.log(`note: ${leftOver} toasts still covering the shot`
 if (worstOverall.at) {
   await cam(worstOverall.at.x, worstOverall.at.z, 60, 0.0, 0.55);
   await page.waitForTimeout(900);
-  await page.screenshot({ path: `${out}/worst-intrusion.png` });
+  await cleanShot(page, `${out}/worst-intrusion.png`);
   await cam(worstOverall.at.x, worstOverall.at.z, 90, 0.9, 0.35);
   await page.waitForTimeout(900);
-  await page.screenshot({ path: `${out}/worst-intrusion-low.png` });
+  await cleanShot(page, `${out}/worst-intrusion-low.png`);
 }
 // The parade: one oblique overview of each, then a close-up at the worst
 // tile of every run that clips, looking across the run so the kerb face and
@@ -734,7 +749,18 @@ for (const shot of paradeShots) {
     const reach = Math.max(shot.span.w, shot.span.h) * TILE_M;
     await cam(shot.centre.x - 0.5, shot.centre.z - 0.5, reach * 1.1, shot.alongX ? 0.6 : 2.2, 0.75);
     await page.waitForTimeout(900);
-    await page.screenshot({ path: `${out}/parade-${slug(shot.name)}.png` });
+    await cleanShot(page, `${out}/parade-${slug(shot.name)}.png`);
+    continue;
+  }
+  if (shot.kind === 'tier') {
+    // One road class at the middle of its run, seen from nearly overhead with
+    // the run upright, at the camera's floor on doubled pixels: the kerb line of
+    // the tier is the subject and its neighbours stay out of the frame.
+    const restore = await closeUp(page, 2);
+    await cam(shot.at.x, shot.at.z, 40, shot.alongX ? 1.57 : 0.0, 1.3);
+    await page.waitForTimeout(900);
+    await cleanShot(page, `${out}/kerb-${slug(shot.name)}-${slug(shot.tier)}.png`);
+    await restore();
     continue;
   }
   // Two angles at the worst tile: across the run, which shows the kerb face
@@ -746,9 +772,7 @@ for (const shot of paradeShots) {
   ]) {
     await cam(shot.at.x, shot.at.z, 45, yaw, 0.4);
     await page.waitForTimeout(900);
-    await page.screenshot({
-      path: `${out}/parade-${slug(shot.name)}-${slug(shot.tier)}-${view}.png`,
-    });
+    await cleanShot(page, `${out}/parade-${slug(shot.name)}-${slug(shot.tier)}-${view}.png`);
   }
   await restore();
 }

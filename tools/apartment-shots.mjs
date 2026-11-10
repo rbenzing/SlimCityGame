@@ -10,7 +10,14 @@
  * Usage: node tools/apartment-shots.mjs [baseUrl] [outDir]   (a dev server must be running) */
 import { chromium } from 'playwright';
 import { mkdirSync, readFileSync } from 'node:fs';
-import { closeUp, hooksReady, tileCamera } from './shotcam.mjs';
+import {
+  CAMERA_MIN_DISTANCE,
+  cleanShot,
+  closeUp,
+  hooksReady,
+  tileCamera,
+  tileMeters,
+} from './shotcam.mjs';
 
 const base = process.argv[2] ?? 'http://localhost:5173';
 const out = process.argv[3] ?? 'tools/shots-apartments';
@@ -25,6 +32,8 @@ const footprint = (id) => {
 
 const SEED = 7;
 const DEFAULT_PITCH = 0.7;
+/** How far up the frame the subject is carried, as a fraction of its height. */
+const LIFT = 0.12;
 const RT = { TwoLane: 1 };
 /** Tiles a street takes: the deepest lot (3), the road, and the gap to the next street. */
 const STREET_ROWS = 8;
@@ -165,36 +174,64 @@ try {
   const shoot = async (name, tx, tz, distance, yaw, pitch = DEFAULT_PITCH) => {
     await cam(tx, tz, distance, yaw, pitch);
     await page.waitForTimeout(1200);
-    await page.screenshot({ path: `${out}/${name}.png` });
+    await cleanShot(page, `${out}/${name}.png`);
+  };
+  const T = await tileMeters(page);
+  const heightOf = (id) => catalog.find((c) => c.id === id).height;
+  /** A box of tiles, `h` metres tall, that a shot frames whole. */
+  const boxOf = (placed) => {
+    const x0 = Math.min(...placed.map((b) => b.x));
+    const x1 = Math.max(...placed.map((b) => b.x + b.w));
+    const z0 = Math.min(...placed.map((b) => b.z));
+    const z1 = Math.max(...placed.map((b) => b.z + b.d));
+    return {
+      x: (x0 + x1) / 2,
+      z: (z0 + z1) / 2,
+      w: x1 - x0,
+      d: z1 - z0,
+      h: Math.max(...placed.map((b) => heightOf(b.id))),
+    };
+  };
+  /**
+   * Frame a box whole, roof to ground, about the middle of the frame. The
+   * ground target is where the ray through the box's mid-height meets the
+   * ground, so the box's own tiles, not the street, sit at the centre; the eye
+   * backs off until the box's projected height and width fill `fill` of the
+   * 45 degree view, but never inside the camera's floor.
+   */
+  const frame = async (name, box, yaw, pitch = DEFAULT_PITCH, fill = 0.6) => {
+    const tall = box.h * Math.cos(pitch) + box.d * T * Math.sin(pitch);
+    const wide = box.w * T * Math.abs(Math.cos(yaw)) + box.d * T * Math.abs(Math.sin(yaw));
+    const aspect = 1280 / 800;
+    const distance = Math.max(
+      CAMERA_MIN_DISTANCE,
+      tall / (2 * Math.tan(Math.PI / 8) * fill),
+      wide / (2 * Math.tan(Math.PI / 8) * aspect * fill),
+    );
+    // Aim a tenth of the frame's height short of the box, so its street edge clears
+    // the bottom bar (the lowest 110 px of 800) instead of standing behind it.
+    const lift = (LIFT * 2 * distance * Math.tan(Math.PI / 8)) / Math.sin(pitch) / T;
+    const back = box.h / 2 / Math.tan(pitch) / T - lift;
+    await shoot(
+      name,
+      box.x - 0.5 - Math.sin(yaw) * back,
+      box.z - 0.5 - Math.cos(yaw) * back,
+      distance,
+      yaw,
+      pitch,
+    );
   };
   const find = (street, id) =>
     spans[STREETS.findIndex((s) => s.name === street)].find((b) => b.id === id);
-  const centre = (b) => ({ x: b.x + b.w / 2, z: b.z + b.d / 2 });
-  const middleOf = (s) => {
-    const placed = spans[s];
-    const last = placed[placed.length - 1];
-    return (placed[0].x + last.x + last.w) / 2;
-  };
 
   const views = (suffix) => async () => {
     // Each kind at every level from the street, beside the kerb car; the taller the farther back.
     for (const [s, street] of STREETS.entries()) {
       for (const id of street.ids) {
-        const b = find(street.name, id);
-        const c = centre(b);
-        const tall = catalog.find((e) => e.id === id).height;
-        const distance = Math.max(70, 60 + tall * 1.6);
-        await shoot(`${street.name}-${id}${suffix}`, c.x, c.z + 1.5, distance, 0.3);
+        await frame(`${street.name}-${id}${suffix}`, boxOf([find(street.name, id)]), 0.3);
       }
       // The street of the kind, all three levels in one frame.
-      const tallest = Math.max(...street.ids.map((id) => catalog.find((e) => e.id === id).height));
-      await shoot(
-        `street-${street.name}${suffix}`,
-        middleOf(s),
-        roadRow(s) - 1,
-        Math.max(120, 90 + tallest * 2),
-        0.25,
-      );
+      await frame(`street-${street.name}${suffix}`, boxOf(spans[s]), 0.25);
     }
   };
 
@@ -203,24 +240,26 @@ try {
 
   // The close shots, at twice the pixels over the camera's floor distance.
   const restore = await closeUp(page, 2);
-  const garden = centre(find('garden', 'res-medium-2'));
-  await shoot('close-garden-breezeway', garden.x, garden.z + 1.2, 40, 0.15, 0.55);
-  const tower = centre(find('tower', 'res-tower-1'));
-  await shoot('close-tower-podium', tower.x, tower.z + 1.2, 45, 0.2, 0.5);
-  const multiplex = centre(find('multiplex', 'res-multiplex-2'));
-  await shoot('close-multiplex', multiplex.x, multiplex.z + 1, 40, 0.3, 0.55);
-  const midrise = centre(find('midrise', 'res-high-2'));
-  await shoot('close-midrise', midrise.x, midrise.z + 1.2, 60, 0.25, 0.5);
+  const garden = boxOf([find('garden', 'res-medium-2')]);
+  // The podium is the subject: the tower over it is taller than the camera's floor distance frames.
+  const tower = { ...boxOf([find('tower', 'res-tower-1')]), h: 4 };
+  const multiplex = boxOf([find('multiplex', 'res-multiplex-2')]);
+  // The mid-rise's close shot is of its lower storeys and entrance, for the same reason.
+  const midrise = { ...boxOf([find('midrise', 'res-high-2')]), h: 8 };
+  await frame('close-garden-breezeway', garden, 0.15, 0.35, 0.7);
+  await frame('close-tower-podium', tower, 0.2, 0.5, 0.7);
+  await frame('close-multiplex', multiplex, 0.3, 0.55, 0.7);
+  await frame('close-midrise', midrise, 0.25, 0.5, 0.7);
   // The walk-ups' hips from higher up, where the four pitches meeting at the apex show.
-  await shoot('roof-garden', garden.x, garden.z + 0.5, 60, 0.4, 1.1);
-  await shoot('roof-multiplex', multiplex.x, multiplex.z + 0.5, 60, 0.4, 1.1);
+  await frame('roof-garden', garden, 0.4, 1.1, 0.7);
+  await frame('roof-multiplex', multiplex, 0.4, 1.1, 0.7);
   await restore();
 
   await setPhase(0.96);
   await views('-night')();
   const restoreNight = await closeUp(page, 2);
-  await shoot('close-tower-podium-night', tower.x, tower.z + 1.2, 45, 0.2, 0.5);
-  await shoot('close-garden-breezeway-night', garden.x, garden.z + 1.2, 40, 0.15, 0.55);
+  await frame('close-tower-podium-night', tower, 0.2, 0.5, 0.7);
+  await frame('close-garden-breezeway-night', garden, 0.15, 0.35, 0.7);
   await restoreNight();
 } finally {
   await browser.close();

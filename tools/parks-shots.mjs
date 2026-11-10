@@ -9,14 +9,14 @@
  * worn lawn is put on screen through the dev hook, since it depends on a
  * crowd a screenshot cannot wait for.
  *
- * Usage: node tools/parks-shots.mjs [baseUrl]   (a dev server must be running) */
+ * Usage: node tools/parks-shots.mjs [baseUrl] [outDir]   (a dev server must be running) */
 import { chromium } from 'playwright';
 import { mkdirSync } from 'node:fs';
-import { hooksReady, tileCamera } from './shotcam.mjs';
+import { cleanShot, hooksReady, readToasts, tileCamera, unlimitedMoneyOption } from './shotcam.mjs';
 
 const base = process.argv[2] ?? 'http://localhost:5173';
 const url = base + (base.includes('?') ? '&' : '?') + 'nobloom';
-const out = 'tools/shots-parks';
+const out = process.argv[3] ?? 'tools/shots-parks';
 mkdirSync(out, { recursive: true });
 
 const RT = { TwoLane: 1 };
@@ -60,6 +60,7 @@ await page.addInitScript(() => {
     void e;
   }
 });
+await unlimitedMoneyOption(page);
 await page.goto(url, { waitUntil: 'domcontentloaded' });
 await page.waitForSelector('#viewport canvas', { timeout: 30000 });
 await hooksReady(page);
@@ -70,7 +71,7 @@ const cmd = (label, commands) => hook(([l, c]) => window.__slimcity.cmd(l, c), [
 const camera = tileCamera(page);
 const shot = async (name, settle = 1800) => {
   await page.waitForTimeout(settle);
-  await page.screenshot({ path: `${out}/${name}.png` });
+  await cleanShot(page, `${out}/${name}.png`);
   console.log('shot', name);
 };
 const fail = async (why) => {
@@ -131,13 +132,8 @@ for (const r of RUNGS) {
   await place(r.id, r.x, r.z);
   cursor += r.w + GAP;
 }
-// --- the plaza between two towers on the street at row Z + TOWERS_ROW -------
 const towersZ = Z + TOWERS_ROW;
 const plazaX = X + GAP + TOWER.w + 1;
-await row(towersZ, X, X + GAP + TOWER.w + 1 + PLAZA.w + 1 + TOWER.w + GAP);
-await place(TOWER.id, X + GAP, towersZ + 1);
-await place(PLAZA.id, plazaX, towersZ + 1);
-await place(TOWER.id, plazaX + PLAZA.w + 1, towersZ + 1);
 await page.waitForTimeout(1200);
 
 for (const r of RUNGS) r.building = await buildingAt(r.x, r.z);
@@ -199,6 +195,13 @@ await camera(district.x + district.w - 3, district.z + 2, 120, 0, 0.6);
 await shot('district-pond');
 
 // 6. The plaza between the two towers, from the street at the default pitch.
+// Built only now: standing earlier, the towers would show behind the ladder.
+await row(towersZ, X, X + GAP + TOWER.w + 1 + PLAZA.w + 1 + TOWER.w + GAP);
+await place(TOWER.id, X + GAP, towersZ + 1);
+await place(PLAZA.id, plazaX, towersZ + 1);
+await place(TOWER.id, plazaX + PLAZA.w + 1, towersZ + 1);
+await page.waitForTimeout(1200);
+if (!(await buildingAt(plazaX, towersZ + 1))) await fail('the plaza did not land');
 await camera(plazaX + PLAZA.w / 2 - 0.5, towersZ + 1 + PLAZA.d / 2, 220, 0, PITCH);
 await shot('plaza-towers');
 
@@ -236,10 +239,37 @@ await hook(() => window.__slimcity.setOverlay(null));
 
 // A district park on a slope, where the map has a dry one that is not a
 // cliff: the gentlest-stepped 22-row patch with the widest rise across it.
+// The strip has been built on since the run began, so the search reads the grid
+// as it stands now, not g0.
+const g1 = await hook(() => window.__slimcity.readGrid());
 let slope = null;
 let bestRise = 0;
 const SLOPE_W = district.w + 2;
 const SLOPE_D = district.d + 2;
+// The game's gate for a footprint: every tile dry, free of buildings and roads,
+// and within MAX_BUILD_SLOPE (4 m) of each orthogonal neighbour.
+const MAX_SLOPE = 4;
+const footprintFaults = (g, x0, z0, w, d) => {
+  const faults = [];
+  for (let pz = z0; pz < z0 + d; pz++) {
+    for (let px = x0; px < x0 + w; px++) {
+      const i = idx(px, pz);
+      if (g.water[i]) faults.push(`${px},${pz} water`);
+      if (g.buildingId[i]) faults.push(`${px},${pz} building ${g.buildingId[i]}`);
+      if (g.roadTier[i]) faults.push(`${px},${pz} road`);
+      for (const [nx, nz] of [
+        [px + 1, pz],
+        [px - 1, pz],
+        [px, pz + 1],
+        [px, pz - 1],
+      ]) {
+        const drop = Math.abs(g.height[i] - g.height[idx(nx, nz)]);
+        if (drop > MAX_SLOPE) faults.push(`${px},${pz} slope ${drop.toFixed(1)} m to ${nx},${nz}`);
+      }
+    }
+  }
+  return faults;
+};
 for (let z = 20; z < N - SLOPE_D - 20; z++) {
   for (let x = 20; x < N - SLOPE_W - 20; x++) {
     let lo = Infinity;
@@ -249,18 +279,18 @@ for (let z = 20; z < N - SLOPE_D - 20; z++) {
     for (let pz = 0; pz < SLOPE_D && !bad; pz++) {
       for (let px = 0; px < SLOPE_W; px++) {
         const i = idx(x + px, z + pz);
-        if (g0.water[i] || g0.buildingId[i] || g0.roadTier[i]) {
+        if (g1.water[i] || g1.buildingId[i] || g1.roadTier[i]) {
           bad = true;
           break;
         }
-        const h = g0.height[i];
+        const h = g1.height[i];
         lo = Math.min(lo, h);
         hi = Math.max(hi, h);
-        if (px > 0) step = Math.max(step, Math.abs(h - g0.height[idx(x + px - 1, z + pz)]));
-        if (pz > 0) step = Math.max(step, Math.abs(h - g0.height[idx(x + px, z + pz - 1)]));
+        if (px > 0) step = Math.max(step, Math.abs(h - g1.height[idx(x + px - 1, z + pz)]));
+        if (pz > 0) step = Math.max(step, Math.abs(h - g1.height[idx(x + px, z + pz - 1)]));
       }
     }
-    if (bad || step > 3) continue;
+    if (bad || step > 3 || hi - lo > 12) continue;
     if (hi - lo > bestRise) {
       bestRise = hi - lo;
       slope = { x, z };
@@ -270,6 +300,13 @@ for (let z = 20; z < N - SLOPE_D - 20; z++) {
 if (slope && bestRise >= 6) {
   console.log('slope', JSON.stringify(slope), 'rise', bestRise);
   await row(slope.z, slope.x, slope.x + SLOPE_W - 1);
+  await page.waitForTimeout(1200);
+  const g2 = await hook(() => window.__slimcity.readGrid());
+  const faults = footprintFaults(g2, slope.x + 1, slope.z + 1, district.w, district.d);
+  console.log(
+    `district-slope: footprint faults after the road row: ${faults.length}`,
+    faults.slice(0, 12).join('; '),
+  );
   await place(district.id, slope.x + 1, slope.z + 1);
   await page.waitForTimeout(1200);
   const id = await buildingAt(slope.x + 1, slope.z + 1);
@@ -278,8 +315,13 @@ if (slope && bestRise >= 6) {
     await shot('district-slope');
     await camera(slope.x + 1 + district.w / 2, slope.z + 1 + district.d / 2, 300, Math.PI / 2, 0.3);
     await shot('district-slope-side');
-  } else console.log('district-slope: the park did not land on the slope');
-} else console.log('district-slope: no slope found, rise', bestRise);
+  } else {
+    await fail(
+      `FAIL district-slope: the park did not land on the slope ${JSON.stringify(slope)} ` +
+        JSON.stringify(await readToasts(page)),
+    );
+  }
+} else await fail(`FAIL district-slope: no dry patch with a rise of 6 m or more, best ${bestRise}`);
 
 console.log('page errors', errors.length ? errors : 'none');
 await browser.close();

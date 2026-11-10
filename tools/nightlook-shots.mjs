@@ -20,7 +20,7 @@
 import { chromium } from 'playwright';
 import { mkdirSync, readFileSync } from 'node:fs';
 import { inflateSync } from 'node:zlib';
-import { closeUp, hooksReady, tileCamera } from './shotcam.mjs';
+import { cleanShot, closeUp, hooksReady, logAlerts, tileCamera } from './shotcam.mjs';
 
 const base = process.argv[2] ?? 'http://localhost:5173';
 const out = process.argv[3] ?? 'tools/shots-nightlook';
@@ -272,11 +272,16 @@ async function openTown(bloom) {
     await page.waitForTimeout(2000);
   };
   const cam = tileCamera(page);
+  let alertsLogged = false;
   const shoot = async (name, tx, tz, distance, yaw, pitch) => {
     await cam(tx, tz, distance, yaw, pitch);
     await page.waitForTimeout(1200);
     const path = `${out}/${name}.png`;
-    await page.screenshot({ path });
+    if (!alertsLogged) {
+      alertsLogged = true;
+      await logAlerts(page, 'nightlook');
+    }
+    await cleanShot(page, path);
     return path;
   };
   const lamps = () => page.evaluate(() => window.__slimcity.readLampPoles().length);

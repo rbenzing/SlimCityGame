@@ -4,14 +4,14 @@
  * street; the rail yard with its long side on the railway. Each at the
  * default pitch beside the 4 m car, and the same at night.
  *
- * Usage: node tools/depot-shots.mjs [baseUrl]   (a dev server must be running) */
+ * Usage: node tools/depot-shots.mjs [baseUrl] [outDir]   (a dev server must be running) */
 import { chromium } from 'playwright';
 import { mkdirSync } from 'node:fs';
-import { hooksReady, tileCamera } from './shotcam.mjs';
+import { cleanShot, hooksReady, tileCamera, unlimitedMoneyOption } from './shotcam.mjs';
 
 const base = process.argv[2] ?? 'http://localhost:5173';
 const url = base + (base.includes('?') ? '&' : '?') + 'nobloom';
-const out = 'tools/shots-depots';
+const out = process.argv[3] ?? 'tools/shots-depots';
 mkdirSync(out, { recursive: true });
 
 const RT = { TwoLane: 1, Tram: 10, RailTrack: 11 };
@@ -30,6 +30,7 @@ await page.addInitScript(() => {
     void e;
   }
 });
+await unlimitedMoneyOption(page);
 await page.goto(url, { waitUntil: 'domcontentloaded' });
 await page.waitForSelector('#viewport canvas', { timeout: 30000 });
 await hooksReady(page);
@@ -40,7 +41,7 @@ const cmd = (label, commands) => hook(([l, c]) => window.__slimcity.cmd(l, c), [
 const camera = tileCamera(page);
 const shot = async (name, settle = 1800) => {
   await page.waitForTimeout(settle);
-  await page.screenshot({ path: `${out}/${name}.png` });
+  await cleanShot(page, `${out}/${name}.png`);
   console.log('shot', name);
 };
 
@@ -107,12 +108,14 @@ await page.waitForTimeout(800);
 const place = (catalogId, x, z, rotation) =>
   cmd(catalogId, [{ kind: 'placeBuilding', catalogId, x, z, rotation }]);
 // Power from a turbine at the street's east end. The depots on the south
-// kerb turned to face the street; the stops on the north kerb.
+// kerb turned to face the street; the stops are street furniture on the
+// street's north side (side 0), the depots standing on the south.
 await place('wind-turbine', X + 36, Z - 1, 0);
 await place('bus-depot', X + 2, Z + 1, 2);
 await place('bus-garage', X + 7, Z + 1, 2);
-await place('bus-stop', X + 14, Z - 1, 0);
-await place('bus-stop', X + 24, Z - 1, 0);
+for (const dx of [14, 24]) {
+  await cmd('Stop', [{ kind: 'placeStop', stop: { x: X + dx, z: Z, side: 0, kind: 'shelter' } }]);
+}
 // The tram depot with its long side on the tram street; the rail yard with
 // its long side on the railway.
 await place('tram-depot', X + 12, Z + 11, 1);
@@ -130,8 +133,8 @@ await cmd('Bus line', [
       mode: 'bus',
       vehicles: 12,
       stops: [
-        { x: X + 14, z: Z - 1 },
-        { x: X + 24, z: Z - 1 },
+        { x: X + 14, z: Z },
+        { x: X + 24, z: Z },
       ],
     },
   },

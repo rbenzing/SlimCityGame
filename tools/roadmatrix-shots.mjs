@@ -30,12 +30,27 @@
  */
 import { chromium } from 'playwright';
 import { mkdirSync } from 'node:fs';
-import { hooksReady, tileCamera, closeUp } from './shotcam.mjs';
+import {
+  cleanShot,
+  dismissToasts,
+  hooksReady,
+  logAlerts,
+  readToasts,
+  tileCamera,
+  closeUp,
+  unlimitedMoneyOption,
+} from './shotcam.mjs';
 
 const base = process.argv[2] ?? 'http://localhost:5173';
 const url = base + (base.includes('?') ? '&' : '?') + 'nobloom';
 const out = process.argv[3] ?? 'tools/shots-roadmatrix';
+// Optional fourth argument: a comma-separated list of class names to lay, for a
+// quick look at one or two classes instead of the whole fourteen minutes.
+const only = process.argv[4]?.split(',');
 mkdirSync(out, { recursive: true });
+
+/** The aim sits this far south of the subject so the bottom HUD bar (lowest 80 px) clears the road. */
+const AIM_LIFT_TILES = 0.4;
 
 /** Every laying tier, by the name the audit reports it under. */
 const TIERS = [
@@ -56,6 +71,7 @@ const TIERS = [
 /** The road every mixed junction is crossed by, and what crosses the plain street itself. */
 const CROSSER = 1;
 const CROSSER_ALT = 7;
+const HIGHWAY = 3;
 
 /** Plot geometry. Each scenario gets its own square so no two interfere. */
 const PLOT = 18;
@@ -106,6 +122,7 @@ page.on('pageerror', (e) => {
   pageErrors.push(e.message);
   console.log('[pageerror]', e.message);
 });
+await unlimitedMoneyOption(page);
 await page.addInitScript(() => {
   try {
     sessionStorage.setItem(
@@ -129,6 +146,7 @@ const cam = tileCamera(page);
 await cmd('Sandbox', [{ kind: 'setSandbox', on: true }]);
 await cmd('Money', [{ kind: 'setUnlimitedMoney', on: true }]);
 await call(() => window.__slimcity.setDayT(0.32));
+await logAlerts(page, 'roadmatrix');
 
 const grid = await call(() => {
   const g = window.__slimcity.readGrid();
@@ -160,7 +178,15 @@ for (let pz = 1; (pz + 1) * PLOT < N - PLOT; pz++) {
 
 const SCENARIOS = ['straight', 'turn', 'tee', 'cross', 'mixCross', 'viaduct', 'overpass'];
 const cases = [];
-for (const t of TIERS) for (const s of SCENARIOS) cases.push({ ...t, scenario: s });
+for (const t of TIERS) {
+  if (only && !only.includes(t.name)) continue;
+  for (const s of SCENARIOS) {
+    // A highway meets only a highway or a ramp, so no street can cross it; its
+    // crossing with another highway is the `cross` scenario.
+    if (t.tier === HIGHWAY && s === 'mixCross') continue;
+    cases.push({ ...t, scenario: s });
+  }
+}
 if (plots.length < cases.length) {
   console.log(
     `only ${plots.length} dry plots for ${cases.length} cases; the tail will not be laid`,
@@ -181,17 +207,24 @@ async function lay(kase, X, Z) {
     cmd(label, [{ kind: 'buildRoad', tier, tiles, ...(elevation ? { elevation } : {}) }]);
   const spine = col(X, Z, MID, RUN_FROM, RUN_TO);
   const measured = { axis: 'x', x: X + MID, from: Z + RUN_FROM, to: Z + RUN_TO };
+  const spineEnd = { x: X + MID, z: Z + RUN_TO };
   switch (kase.scenario) {
     case 'straight':
       await build(`${kase.name} straight`, kase.tier, spine);
-      return { measured, junctions: [] };
+      return { measured, junctions: [], end: spineEnd };
     case 'turn':
       // The corner sits at the far end of the measured run rather than in the
       // middle of it, so the whole column belongs to the turn's own arm and
       // there is straight road either side of the bend to compare against.
       await build(`${kase.name} turn arm`, kase.tier, spine);
       await build(`${kase.name} turn leg`, kase.tier, rowOf(X, Z, RUN_TO, MID, RUN_TO));
-      return { measured, junctions: [{ x: X + MID, z: Z + RUN_TO }] };
+      // The free end of the leg is the cap worth looking at; the corner is
+      // already the focus of the other shot.
+      return {
+        measured,
+        junctions: [{ x: X + MID, z: Z + RUN_TO }],
+        end: { x: X + RUN_TO, z: Z + RUN_TO },
+      };
     case 'tee':
       await build(`${kase.name} tee spine`, kase.tier, spine);
       await build(`${kase.name} tee stem`, kase.tier, rowOf(X, Z, MID, MID, RUN_TO));
@@ -208,7 +241,7 @@ async function lay(kase, X, Z) {
     }
     case 'viaduct':
       await build(`${kase.name} viaduct`, kase.tier, spine, VIADUCT_HEIGHT_M);
-      return { measured, junctions: [] };
+      return { measured, junctions: [], end: spineEnd };
     case 'overpass':
       // The road at grade goes down first, then the deck is asked to cross
       // it — the case a player creates. It crosses over on the crossing
@@ -301,8 +334,15 @@ for (let i = 0; i < ordered.length && i < plots.length; i++) {
     deferredPlan.push(entry);
     continue;
   }
-  const { measured, junctions } = await lay(kase, X, Z);
-  plan.push({ ...entry, measured, junctions });
+  const { measured, junctions, end } = await lay(kase, X, Z);
+  // A refused drag leaves the subject unbuilt; say which case it was rather
+  // than letting the toast surface on a later, unrelated shot.
+  await page.waitForTimeout(250);
+  for (const t of (await readToasts(page)).filter((x) => / failed$/.test(x.title))) {
+    failures.push(`${entry.tag}: the game refused it — ${t.title}: ${t.body}`);
+  }
+  await dismissToasts(page);
+  plan.push({ ...entry, measured, junctions, end });
   console.log(`laid ${kase.name}-${kase.scenario} at (${X},${Z})`);
 }
 
@@ -323,7 +363,7 @@ const framedRead = async (focus, measured) => {
   }
 };
 
-for (const { kase, tag, measured, junctions } of plan) {
+for (const { kase, tag, measured, junctions, end } of plan) {
   const focus = junctions[0] ?? {
     x: measured.x,
     z: Math.round((measured.from + measured.to) / 2),
@@ -511,18 +551,24 @@ for (const { kase, tag, measured, junctions } of plan) {
   for (const [suffix, at] of [
     ['', focus],
     // The cap, which no measurement here holds to a rule: the only way it gets
-    // checked is by being looked at.
-    [
-      '-end',
-      {
-        x: measured.axis === 'x' ? measured.x : measured.to,
-        z: measured.axis === 'x' ? measured.to : measured.z,
-      },
-    ],
+    // checked is by being looked at. Only a scenario with a free end of its own
+    // has one; a junction's arms end in the same cap the straight run shows.
+    ...(end ? [['-end', end]] : []),
   ]) {
-    await cam(at.x, at.z, 64, 0, 1.5);
+    await cam(at.x, at.z + AIM_LIFT_TILES, 64, 0, 1.5);
     await page.waitForTimeout(600);
-    await page.screenshot({ path: `${out}/${tag}${suffix}.png` });
+    // Daylight is pinned on every shot: the sim keeps running between them, so
+    // a light set once leaves later classes shot at dusk.
+    await call(() => window.__slimcity.setDayT(0.5));
+    await page.waitForTimeout(150);
+    await cleanShot(page, `${out}/${tag}${suffix}.png`);
+    // Straight down no height can be judged: a deck's piers, parapets and the
+    // ground under a dead end only show from the side.
+    if (kase.scenario === 'viaduct') {
+      await cam(at.x, at.z + AIM_LIFT_TILES, 64, 0, 0.6);
+      await page.waitForTimeout(600);
+      await cleanShot(page, `${out}/${tag}${suffix}-oblique.png`);
+    }
   }
   await restore();
 }

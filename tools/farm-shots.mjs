@@ -8,13 +8,13 @@
  * when its dirt road is taken away. Prints what the kit drew, lit windows and
  * trucks included, and every page error.
  *
- * Usage: node tools/farm-shots.mjs [baseUrl]   (a dev server must be running) */
+ * Usage: node tools/farm-shots.mjs [baseUrl] [outDir]   (a dev server must be running) */
 import { chromium } from 'playwright';
 import { mkdirSync } from 'node:fs';
-import { hooksReady, tileCamera } from './shotcam.mjs';
+import { cleanShot, hooksReady, tileCamera, unlimitedMoneyOption } from './shotcam.mjs';
 
 const base = process.argv[2] ?? 'http://localhost:5173';
-const out = 'tools/shots-farms';
+const out = process.argv[3] ?? 'tools/shots-farms';
 mkdirSync(out, { recursive: true });
 const RT = { TwoLane: 1, Gravel: 4 };
 const ZONE = { ResLow: 1, Agriculture: 9 };
@@ -33,6 +33,7 @@ await page.addInitScript(() => {
     void e;
   }
 });
+await unlimitedMoneyOption(page);
 await page.goto(base, { waitUntil: 'domcontentloaded' });
 await page.waitForSelector('#viewport canvas', { timeout: 30000 });
 await hooksReady(page);
@@ -41,7 +42,7 @@ const cmd = (label, commands) => hook(([l, c]) => window.__slimcity.cmd(l, c), [
 const camera = tileCamera(page);
 const shot = async (name) => {
   await page.waitForTimeout(1500);
-  await page.screenshot({ path: `${out}/${name}.png` });
+  await cleanShot(page, `${out}/${name}.png`);
   console.log('shot', name);
 };
 
@@ -97,7 +98,7 @@ await cmd('Plant', [
   { kind: 'placeBuilding', catalogId: 'coal-plant', x: X + 2, z: Z - 4, rotation: 0 },
 ]);
 await cmd('Tower', [
-  { kind: 'placeBuilding', catalogId: 'water-tower', x: X + 8, z: Z - 2, rotation: 0 },
+  { kind: 'placeBuilding', catalogId: 'water-tower', x: X + 8, z: Z - 1, rotation: 0 },
 ]);
 await cmd('Homes', [
   { kind: 'paintZone', zone: ZONE.ResLow, tiles: rect(X + 12, Z - 3, W - 12, 3) },
@@ -153,6 +154,11 @@ console.log(
   farms.map((b) => `${b.catalogId}@${b.x},${b.z} s${b.state} p${b.problems}`).join(' '),
 );
 console.log('kit', JSON.stringify(await hook(() => window.__slimcity.farmKit())));
+if (!farms.some((b) => b.state === 1)) {
+  console.log('FAIL: no farm building stands');
+  await browser.close();
+  process.exit(1);
+}
 
 await hook(() => window.__slimcity.setDayT(0.5));
 await camera(X + W / 2, dirtZ, 700, Math.PI / 5, 0.95);
@@ -197,12 +203,18 @@ await hook(() => window.__slimcity.setDayT(0.5));
 
 // Take the dirt road away from the farms at the east end and let them lapse:
 // three growth passes cut off abandons a farm, and ten more clear it away.
-const east = farms.filter((b) => b.x > X + W / 2);
 await cmd('Bulldoze', [
   { kind: 'bulldoze', tiles: row(X + Math.floor(W / 2), dirtZ, Math.ceil(W / 2)) },
 ]);
-// At speed 1 three passes take 1.5 s and clearing it away another 5 s.
-await page.waitForTimeout(3000);
+// At speed 1 three passes take 1.5 s and clearing it away another 5 s, so the
+// city is held the moment a farm is abandoned, before it is cleared.
+const NO_ROAD = 4;
+for (let i = 0; i < 40; i++) {
+  await page.waitForTimeout(250);
+  const now = await hook(() => window.__slimcity.readBuildings());
+  if (now.some((b) => b.catalogId.startsWith('farm-') && b.state === 2)) break;
+}
+await hook(() => window.__slimcity.setSpeed(0));
 const cut = await hook(() => window.__slimcity.readGrid());
 console.log(
   'dirt road east of the cut:',
@@ -213,7 +225,6 @@ console.log(
 const after = await hook(() => window.__slimcity.readBuildings());
 // A farm that grew a level since the list above was taken has a new id, so
 // the cut-off farms are found by where they stand and what they report.
-const NO_ROAD = 4;
 const lapsed = after.filter(
   (b) => b.catalogId.startsWith('farm-') && (b.state === 2 || (b.problems & NO_ROAD) !== 0),
 );
@@ -228,11 +239,14 @@ console.log(
   'farms after losing their road',
   lapsed.map((b) => `${b.catalogId}@${b.x},${b.z} s${b.state} p${b.problems}`).join(' ') || 'none',
 );
-const one = lapsed.find((b) => b.state === 2) ?? lapsed[0] ?? east[0];
-if (one) {
-  await camera(one.x + 3, one.z + 3, 190, Math.PI / 4, 0.75);
-  await shot('abandoned');
+const one = lapsed.find((b) => b.state === 2);
+if (!one) {
+  console.log('FAIL: no farm lapsed after its road was taken away');
+  await browser.close();
+  process.exit(1);
 }
+await camera(one.x + 3, one.z + 3, 190, Math.PI / 4, 0.75);
+await shot('abandoned');
 
 console.log(errors.length ? 'PAGE ERRORS:\n' + errors.slice(0, 8).join('\n') : 'no page errors');
 await browser.close();

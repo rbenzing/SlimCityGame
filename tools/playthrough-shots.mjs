@@ -22,7 +22,7 @@
  */
 import { chromium } from 'playwright';
 import { mkdirSync, readdirSync, readFileSync } from 'node:fs';
-import { hooksReady, tileCamera } from './shotcam.mjs';
+import { hooksReady, logAlerts, tileCamera } from './shotcam.mjs';
 
 const base = process.argv[2] ?? 'http://localhost:5173';
 const url = base + (base.includes('?') ? '&' : '?') + 'nobloom';
@@ -106,14 +106,16 @@ const check = (name, ok, detail = '') => {
 
 // ---- the controls, each found where the player finds it
 const button = (name) => page.getByRole('button', { name, exact: true }).first();
+// Long enough for a page rendering in software on a busy machine to settle under the pointer.
+const CLICK_MS = 15000;
 const click = async (name) => {
-  await button(name).click({ timeout: 4000 });
+  await button(name).click({ timeout: CLICK_MS });
   await page.waitForTimeout(300);
 };
 const dockButton = (name) =>
   page.getByRole('toolbar', { name: 'Main dock' }).getByRole('button', { name, exact: true });
 const dock = async (name) => {
-  await dockButton(name).click({ timeout: 4000 });
+  await dockButton(name).click({ timeout: CLICK_MS });
   await page.waitForTimeout(300);
 };
 const card = async (name) => {
@@ -122,13 +124,13 @@ const card = async (name) => {
     .getByRole('button', { name })
     .first();
   if (await c.isDisabled()) throw new Error(`card ${name} is disabled`);
-  await c.click({ timeout: 4000 });
+  await c.click({ timeout: CLICK_MS });
   await page.waitForTimeout(300);
 };
 const lensMenu = () => page.getByRole('menu', { name: 'Infoviews' });
 const lens = async (name) => {
   if (!(await lensMenu().isVisible())) await dock('Infoviews');
-  await lensMenu().getByRole('button', { name, exact: true }).click({ timeout: 4000 });
+  await lensMenu().getByRole('button', { name, exact: true }).click({ timeout: CLICK_MS });
   await page.waitForTimeout(500);
 };
 const toasts = async () =>
@@ -219,9 +221,13 @@ const tap = async (t, button = 'left') => {
   await page.mouse.click(ax, ay, { button });
   await page.waitForTimeout(800);
 };
+/**
+ * Runs `seconds` of 4× time at 2×. At 4× the page stalls for seconds at a
+ * time, longer on a busy machine, and a read-back taken then times out.
+ */
 const run = async (seconds) => {
-  await click('4×');
-  await page.waitForTimeout(seconds * 1000);
+  await click('2×');
+  await page.waitForTimeout(seconds * 2000);
   await click('Pause');
 };
 
@@ -231,6 +237,7 @@ const SOUTH = { x: X + 8, z: Z + 21, d: 900 };
 await call(() => window.__slimcity.setSpeed(0));
 await call(() => window.__slimcity.setDayT(0.5));
 await view(TOWN);
+await logAlerts(page, 'playthrough');
 await step('start', async () => {
   check('a new game opens on an empty map', (await stats()).population === 0);
 });
@@ -266,8 +273,8 @@ await step('wind-turbine', async () => {
 await step('water-tower', async () => {
   await dock('Water');
   await card(/^Water Tower/);
-  await tap(T(3, -2));
-  check('a water tower is placed by click', (await grid()).buildingId[idx(X + 3, Z - 2)] > 0);
+  await tap(T(3, -1));
+  check('a water tower is placed by click', (await grid()).buildingId[idx(X + 3, Z - 1)] > 0);
 });
 
 // ---- zoning
@@ -356,7 +363,7 @@ await step('grown-on-the-line', async () => {
 
 // ---- inspecting
 await step('building-info', async () => {
-  await tap(T(3, -2));
+  await tap(T(3, -1));
   check(
     'clicking a building opens its info panel',
     await page.getByRole('button', { name: 'Close building info' }).isVisible(),
@@ -431,9 +438,35 @@ await step('landfill', async () => {
   const failed = await refused();
   check('a landfill is painted', failed.length === 0, failed.join(' | '));
 });
+/** A stop is furniture on a street's side, not a building: it shows as money spent, not a building id. */
+const placeStop = async (name, cost, at, label) => {
+  await tidy();
+  await dock('Transit');
+  await card(name);
+  const before = (await stats()).funds;
+  await tap(at);
+  const spent = before - (await stats()).funds;
+  check(
+    `${label} is placed`,
+    spent === cost,
+    `spent ${spent} of ${cost}; ${(await refused()).join(' | ')}`,
+  );
+};
 await step('bus-stops', async () => {
-  await place('Transit', /^Bus Stop/, T(18, 13), 'the first bus stop');
-  await place('Transit', /^Bus Stop/, T(28, 15), 'the second bus stop');
+  await placeStop(/^Bus shelter/, 150, T(18, 13), 'the first bus stop');
+  await placeStop(/^Bus stop sign/, 2, T(28, 15), 'the second bus stop');
+});
+// A mode with no depot runs nothing, so the line needs its buses to come from one, and a
+// depot fields only with power: the second street reaches the first only down gravel,
+// which carries none, so the power line is run on to it.
+const depotAt = T(22, 12);
+await step('bus-depot', async () => {
+  await dock('Electricity');
+  await card(/^Power Line/);
+  await drag(T(15, 12), T(15, 13));
+  const strung = countOn(await grid(), rect(15, 12, 15, 13), 'powerLine');
+  check('the power line is run on to the second street', strung === 2, `${strung}/2`);
+  await place('Transit', /^Bus Depot/, depotAt, 'a bus depot');
 });
 await step('bus-line', async () => {
   await dock('Transit');
@@ -461,7 +494,7 @@ await step('town-at-work', async () => {
   check(
     'the bus carries riders',
     (transit.ridership[0] ?? 0) > 0,
-    JSON.stringify(transit.ridership),
+    JSON.stringify({ ridership: transit.ridership, served: transit.served }),
   );
 });
 
@@ -566,11 +599,15 @@ for (const name of [
   'Traffic',
   'Crime',
   'Fire Risk',
-  'Education',
+  'Elementary',
+  'Middle',
+  'High School',
+  'College',
   'Health',
   'Happiness',
   'Power',
   'Water',
+  'Sewer',
   'Trash',
   'Soil',
   'Transit',
@@ -710,5 +747,6 @@ console.log(
     : 'FAIL:\n - ' + failed.map((f) => `${f.name} ${f.detail ?? ''}`).join('\n - '),
 );
 console.log('done ->', out);
+await logAlerts(page, 'playthrough (end)');
 await b.close();
 process.exitCode = failed.length === 0 ? 0 : 1;

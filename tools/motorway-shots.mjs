@@ -14,7 +14,7 @@
  */
 import { chromium } from 'playwright';
 import { mkdirSync } from 'node:fs';
-import { tileCamera, closeUp } from './shotcam.mjs';
+import { cleanShot, tileCamera, closeUp } from './shotcam.mjs';
 
 const base = process.argv[2] ?? 'http://localhost:5173';
 const url = base + (base.includes('?') ? '&' : '?') + 'nobloom';
@@ -35,7 +35,7 @@ await page.addInitScript(() => {
       'slimcity.session',
       JSON.stringify({ screen: 'playing', seed: 12345, mode: 'new' }),
     );
-    localStorage.setItem('slimcity.settings', JSON.stringify({ sandboxUnlockAll: true }));
+    localStorage.setItem('slimcity.settings', JSON.stringify({ sandboxUnlockAll: true, unlimitedMoney: true }));
   } catch (e) {
     void e;
   }
@@ -118,18 +118,18 @@ const restore = await closeUp(page, 3);
 // side by side without perspective deciding which line looks wider.
 await cam(X + 5, Z + 8, 60, 0, 1.45);
 await page.waitForTimeout(1000);
-await page.screenshot({ path: `${out}/dual-carriageway-top.png` });
+await cleanShot(page, `${out}/dual-carriageway-top.png`);
 
 await cam(X + 5, Z + 14, 45, 0, 0.35);
 await page.waitForTimeout(900);
-await page.screenshot({ path: `${out}/dual-carriageway-eye.png` });
+await cleanShot(page, `${out}/dual-carriageway-eye.png`);
 
 // The whole 24-tile street in one frame. Covers sit every 6 tiles, so a frame
 // holding only a few tiles can miss all of them — and then the control proves
 // nothing, because "no covers here" reads the same as "no covers anywhere".
 await cam(X + 12, Z + 12, 150, 0, 1.5);
 await page.waitForTimeout(900);
-await page.screenshot({ path: `${out}/street-control-covers.png` });
+await cleanShot(page, `${out}/street-control-covers.png`);
 await restore();
 
 console.log('done');

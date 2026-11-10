@@ -267,4 +267,22 @@ Back to [the index](../GROUND-TRUTHS.md).
   The smallest facility of a ladder must be affordable to a city that has just
   unlocked it, and that one rule overrides the derivation. —
   [municipal-services.md](../specs/municipal-services.md)
+- [R-services-039] A powered street shows what carries its power: a pole line by default, a
+  buried cable with its boxes where the player paid to bury it. A pole stands
+  behind the kerb and outside the footway, never in a carriageway, a median,
+  a junction tile or a drive. A line or a cable the player lays starts at a
+  power station, a substation or a line already live; a cable costs more to
+  build and less to keep. Agreed and not yet built: a line's pole still
+  stands at its tile's centre, and a street draws no supply. —
+  [power-distribution.md](../specs/power-distribution.md);
+  `src/render/powerlines.ts`, `src/world/powerline.ts`
+- [R-services-040] Every building parks where it shows: on its lot, at the kerb it is
+  credited, or in its garage; none stands on a bare pad. A level-1 office,
+  hotel, mixed-use block and mid-rise parks on a surface lot to code; from
+  level 2 those kinds and every tower park in a garage on their own lot,
+  tiers in the podium or a deck behind the body, and no floor is cut for it.
+  Agreed and not yet built: it replaces the downtown exemption in
+  `[R-services-033]` slice by slice. —
+  [structured-parking.md](../specs/structured-parking.md);
+  `src/shared/parkingcode.ts`, `src/render/utilitykits.ts`
 

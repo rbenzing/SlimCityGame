@@ -9,7 +9,7 @@
  */
 import { chromium } from 'playwright';
 import { mkdirSync } from 'node:fs';
-import { tileCamera } from './shotcam.mjs';
+import { cleanShot, tileCamera, unlimitedMoneyOption } from './shotcam.mjs';
 
 const base = process.argv[2] ?? 'http://localhost:5173';
 const url = base + (base.includes('?') ? '&' : '?') + 'nobloom';
@@ -35,6 +35,7 @@ await page.addInitScript(() => {
     void e;
   }
 });
+await unlimitedMoneyOption(page);
 await page.goto(url, { waitUntil: 'domcontentloaded' });
 await page.waitForSelector('#viewport canvas', { timeout: 20000 });
 await page.waitForTimeout(4000);
@@ -82,7 +83,12 @@ console.log('anchor', JSON.stringify(anchor));
 await cmd('Sandbox', [{ kind: 'setSandbox', on: true }]);
 await cmd('Money', [{ kind: 'setUnlimitedMoney', on: true }]);
 // Night, so the lamps that ARE there read as lit rather than as grey poles.
-await call(() => window.__slimcity.setTimeOfDay?.(0.05));
+// The pin only takes effect while the sim is running a snapshot, so it is set
+// while the sim runs and the clock is left alone.
+await call(() => {
+  window.__slimcity.setSpeed(1);
+  window.__slimcity.setDayT(3 / 24);
+});
 await page.waitForTimeout(400);
 
 const failures = [];
@@ -98,7 +104,7 @@ if (dark !== 0) failures.push(`an unsupplied street stood ${dark} lamps; it shou
 
 await cam(X + 10, Z + 10, 90, 0.6, 0.9);
 await page.waitForTimeout(800);
-await page.screenshot({ path: `${out}/unsupplied.png` });
+await cleanShot(page, `${out}/unsupplied.png`);
 
 // Now a generator at one end. Nobody touches the road.
 await cmd('plant', [
@@ -113,10 +119,10 @@ if (lit === 0)
 
 await cam(X + 10, Z + 10, 90, 0.6, 0.9);
 await page.waitForTimeout(800);
-await page.screenshot({ path: `${out}/supplied.png` });
+await cleanShot(page, `${out}/supplied.png`);
 await cam(X + 10, Z + 10, 40, 0.7, 1.0);
 await page.waitForTimeout(800);
-await page.screenshot({ path: `${out}/supplied-close.png` });
+await cleanShot(page, `${out}/supplied-close.png`);
 
 await b.close();
 for (const e of pageErrors) failures.push(`page error: ${e}`);

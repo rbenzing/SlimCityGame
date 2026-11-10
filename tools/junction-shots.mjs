@@ -13,7 +13,7 @@
  */
 import { chromium } from 'playwright';
 import { mkdirSync } from 'node:fs';
-import { tileCamera, tileMeters } from './shotcam.mjs';
+import { cleanShot, closeUp, tileCamera, tileMeters, unlimitedMoneyOption } from './shotcam.mjs';
 
 const base = process.argv[2] ?? 'http://localhost:5173';
 const url = base + (base.includes('?') ? '&' : '?') + 'nobloom';
@@ -40,6 +40,7 @@ await page.addInitScript(() => {
     void e;
   }
 });
+await unlimitedMoneyOption(page);
 await page.goto(url, { waitUntil: 'domcontentloaded' });
 await page.waitForSelector('#viewport canvas', { timeout: 20000 });
 await page.waitForTimeout(4000);
@@ -133,18 +134,24 @@ if (slots.size !== heads.length) failures.push('two signal heads share one tile'
 
 if (pageErrors.length > 0) failures.push(`page errors: ${pageErrors.join(' | ')}`);
 
-const shot = async (name, tx, tz, d, yaw, pitch) => {
+await call(() => window.__slimcity.setSpeed(0));
+await call(() => window.__slimcity.setDayT(0.5));
+const shot = async (name, tx, tz, d, yaw, pitch, scale = 1) => {
+  const restore = scale > 1 ? await closeUp(page, scale) : null;
   await cam(tx, tz, d, yaw, pitch);
   await page.waitForTimeout(800);
-  await page.screenshot({ path: `${out}/${name}.png` });
+  await cleanShot(page, `${out}/${name}.png`);
+  await restore?.();
   console.log('shot', name);
 };
 await shot('junction-top', X + JX, Z + JZ, 105, 0.0, 1.15);
 await shot('junction-close', X + JX, Z + JZ, 48, 0.0, 1.25);
-await shot('junction-eye', X + JX, Z + JZ + 3, 40, 0.0, 0.75);
+// Eye level: the junction itself at the middle of the frame, all four arms
+// round it, seen from low and from the south.
+await shot('junction-eye', X + JX, Z + JZ, 40, 0.0, 0.6);
 // The north-west corner, where the avenue's kerb strip has to meet the
-// street's wider footway.
-await shot('junction-corner', X + JX - 1, Z + JZ - 1, 22, 0.0, 1.3);
+// street's wider footway: the corner at the middle, on doubled pixels.
+await shot('junction-corner', X + JX - 0.5, Z + JZ - 0.5, 40, 0.0, 1.1, 2);
 
 await b.close();
 if (failures.length > 0) {

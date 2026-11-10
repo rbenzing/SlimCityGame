@@ -14,7 +14,7 @@
  */
 import { chromium } from 'playwright';
 import { mkdirSync } from 'node:fs';
-import { tileCamera, closeUp } from './shotcam.mjs';
+import { tileCamera, closeUp, cleanShot } from './shotcam.mjs';
 
 const base = process.argv[2] ?? 'http://localhost:5173';
 const url = base + (base.includes('?') ? '&' : '?') + 'nobloom';
@@ -34,7 +34,10 @@ await page.addInitScript(() => {
       'slimcity.session',
       JSON.stringify({ screen: 'playing', seed: 12345, mode: 'new' }),
     );
-    localStorage.setItem('slimcity.settings', JSON.stringify({ sandboxUnlockAll: true }));
+    localStorage.setItem(
+      'slimcity.settings',
+      JSON.stringify({ sandboxUnlockAll: true, unlimitedMoney: true }),
+    );
   } catch (e) {
     void e;
   }
@@ -110,15 +113,15 @@ await cmd('Power', [
   { kind: 'placeBuilding', catalogId: 'wind-turbine', x: X + 22, z: Z - 1, rotation: 0 },
 ]);
 await cmd('Water', [
-  { kind: 'placeBuilding', catalogId: 'water-tower', x: X + 19, z: Z - 2, rotation: 0 },
+  { kind: 'placeBuilding', catalogId: 'water-tower', x: X + 19, z: Z - 1, rotation: 0 },
 ]);
 
 // Two shelters on the same street: idling people stand at them deterministically,
-// which is the only way to guarantee a person in frame beside a car.
-await cmd('Stops', [
-  { kind: 'placeBuilding', catalogId: 'bus-stop', x: X + 6, z: Z - 1, rotation: 0 },
-  { kind: 'placeBuilding', catalogId: 'bus-stop', x: X + 18, z: Z - 1, rotation: 0 },
-]);
+// which is the only way to guarantee a person in frame beside a car. A stop is
+// sidewalk furniture on a street tile, so each goes down as its own command.
+for (const dx of [6, 18]) {
+  await cmd('Stop', [{ kind: 'placeStop', stop: { x: X + dx, z: Z, side: 1, kind: 'shelter' } }]);
+}
 await cmd('Bus line', [
   {
     kind: 'createTransitLine',
@@ -144,12 +147,12 @@ console.log(`pop ${s.population} jobs ${s.jobs} — a shot of an empty map prove
 if (s.population === 0) {
   console.log('NOTHING GREW: the shots below are of bare ground, do not read them as a pass');
 }
-await setSpeed(0);
-await page.waitForTimeout(600);
-
 // Midday, pinned. The sim clock had these at dusk, where a 1.75 m figure is a
-// dark smudge against dark grass and the shot cannot be read at all.
-await call(() => window.__slimcity.setDayT(0.45));
+// dark smudge against dark grass and the shot cannot be read at all. The pin is
+// applied on the next snapshot, so it goes in while the sim still runs.
+await call(() => window.__slimcity.setDayT(0.5));
+await page.waitForTimeout(1500);
+await setSpeed(0);
 await page.waitForTimeout(600);
 
 // Three times the pixels over the same ground: the camera has a 40 m floor, so
@@ -158,20 +161,28 @@ const restore = await closeUp(page, 3);
 // A person's height reads against a car only from near ground level.
 await cam(X + 6, Z, 40, 0, 0.18);
 await page.waitForTimeout(900);
-await page.screenshot({ path: `${out}/shelter-and-car.png` });
+await cleanShot(page, `${out}/shelter-and-car.png`);
 
 await cam(X + 18, Z, 40, Math.PI / 2, 0.15);
 await page.waitForTimeout(900);
-await page.screenshot({ path: `${out}/shelter-along-street.png` });
+await cleanShot(page, `${out}/shelter-along-street.png`);
 
-await cam(X + 12, Z + 1, 40, 0, 0.3);
+// The shelter's idler (people stand only at shelters) and the house nearest it,
+// together. What grows varies run to run, so the house is looked up, not assumed.
+const homes = (await call(() => window.__slimcity.readBuildings())).filter(
+  (h) => h.z > Z && h.z <= Z + 4 && h.state === 1,
+);
+if (homes.length === 0) throw new Error('no house grew beside the shelter');
+const home = homes.sort((p, q) => Math.abs(p.x - (X + 6)) - Math.abs(q.x - (X + 6)))[0];
+console.log('house', JSON.stringify({ x: home.x, z: home.z, id: home.catalogId }));
+await cam((X + 6 + home.x + 1) / 2, Z + 0.8, 40, 0, 0.3);
 await page.waitForTimeout(900);
-await page.screenshot({ path: `${out}/houses-and-people.png` });
+await cleanShot(page, `${out}/houses-and-people.png`);
 await restore();
 
 await cam(X + 12, Z, 120, 0, 0.5);
 await page.waitForTimeout(900);
-await page.screenshot({ path: `${out}/overview.png` });
+await cleanShot(page, `${out}/overview.png`);
 
 console.log('done');
 await b.close();

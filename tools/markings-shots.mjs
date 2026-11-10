@@ -14,7 +14,7 @@
  */
 import { chromium } from 'playwright';
 import { mkdirSync } from 'node:fs';
-import { tileCamera } from './shotcam.mjs';
+import { cleanShot, closeUp, tileCamera, unlimitedMoneyOption } from './shotcam.mjs';
 
 const base = process.argv[2] ?? 'http://localhost:5173';
 const url = base + (base.includes('?') ? '&' : '?') + 'nobloom';
@@ -41,6 +41,7 @@ await page.addInitScript(() => {
     void e;
   }
 });
+await unlimitedMoneyOption(page);
 await page.goto(url, { waitUntil: 'domcontentloaded' });
 await page.waitForSelector('#viewport canvas', { timeout: 20000 });
 await page.waitForTimeout(4000);
@@ -120,24 +121,37 @@ const taperTile = await approach(X + 32, Z + 12);
 console.log('taper tile:', JSON.stringify(taperTile));
 if (taperTile) notes.push(`narrowing tile draws ${taperTile.lanes} lanes at ${taperTile.width}m`);
 
+await call(() => window.__slimcity.setSpeed(0));
+await call(() => window.__slimcity.setDayT(0.5));
+
+// The first terrain chunk edge inside run A: the world tile row that is a
+// multiple of the chunk size, which a dash phase has to carry across.
+const CHUNK_TILES = 16;
+const seamZ = Math.ceil((Z + 8) / CHUNK_TILES) * CHUNK_TILES;
+// Camera targets are tile centres, so half a tile back lands on the edge between
+// two tiles: the row boundary at seamZ, and the one where the wide road ends.
 const shots = [
-  // A: down the run, close enough to count dashes over a seam.
-  ['A-straight-top', X + 4, Z + 16, 46, 0, 1.5],
-  ['A-straight-seam', X + 4, Z + 16, 26, 0, 1.5],
+  // A: the whole run from above, then the chunk seam on doubled pixels.
+  ['A-straight-top', X + 4, Z + 18, 150, 0, 1.5, 1],
+  ['A-straight-seam', X + 4, seamZ - 0.5, 40, 0, 1.5, 2],
   // B: the corner, top-down and from an eye height.
-  ['B-turn-top', X + 12, Z + 16, 40, 0, 1.5],
-  ['B-turn-oblique', X + 12, Z + 16, 34, 0.7, 0.55],
-  // C: the narrowing, top-down — the paint against the bending kerb.
-  ['C-narrow-top', X + 32, Z + 12, 40, 0, 1.5],
-  ['C-narrow-close', X + 32, Z + 12, 24, 0, 1.5],
+  ['B-turn-top', X + 12, Z + 16, 40, 0, 1.5, 1],
+  ['B-turn-oblique', X + 12, Z + 16, 34, 0.7, 0.55, 1],
+  // C: the narrowing, top-down — the whole transition, then the paint against
+  // the bending kerb on doubled pixels. The kerb eases in over the
+  // six tiles before the narrow road starts at row 13, so the middle of the taper is row 9.
+  ['C-narrow-top', X + 32, Z + 9.5, 160, 0, 1.5, 1],
+  ['C-narrow-close', X + 32, Z + 9.5, 40, 0, 1.5, 2],
   // D: the crossroads.
-  ['D-cross-top', X + 22, Z + 31, 52, 0, 1.5],
-  ['D-cross-close', X + 22, Z + 31, 30, 0, 1.5],
+  ['D-cross-top', X + 22, Z + 31, 52, 0, 1.5, 1],
+  ['D-cross-close', X + 22, Z + 31, 30, 0, 1.5, 1],
 ];
-for (const [name, tx, tz, d, yaw, pitch] of shots) {
+for (const [name, tx, tz, d, yaw, pitch, scale] of shots) {
+  const restore = scale > 1 ? await closeUp(page, scale) : null;
   await cam(tx, tz, d, yaw, pitch);
   await page.waitForTimeout(700);
-  await page.screenshot({ path: `${out}/${name}.png` });
+  await cleanShot(page, `${out}/${name}.png`);
+  await restore?.();
   console.log('shot', name);
 }
 

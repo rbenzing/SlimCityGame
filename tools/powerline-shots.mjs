@@ -9,7 +9,7 @@
  */
 import { chromium } from 'playwright';
 import { mkdirSync } from 'node:fs';
-import { tileCamera } from './shotcam.mjs';
+import { cleanShot, tileCamera, unlimitedMoneyOption } from './shotcam.mjs';
 
 const base = process.argv[2] ?? 'http://localhost:5173';
 const url = base + (base.includes('?') ? '&' : '?') + 'nobloom';
@@ -33,6 +33,7 @@ await page.addInitScript(() => {
     void e;
   }
 });
+await unlimitedMoneyOption(page);
 await page.goto(url, { waitUntil: 'domcontentloaded' });
 await page.waitForSelector('#viewport canvas', { timeout: 20000 });
 await page.waitForTimeout(4000);
@@ -84,19 +85,21 @@ await page.waitForTimeout(300);
 const failures = [];
 const row = (z, a, c) => Array.from({ length: c - a + 1 }, (_, i) => ({ x: X + a + i, z: Z + z }));
 
-// A generator, and an island of road far off with nothing joining the two.
+// A generator on a short street of its own (a building off every street is cut
+// off), and an island of road far off with nothing joining the two.
 await cmd('plant', [
   { kind: 'placeBuilding', catalogId: 'coal-plant', x: X + 1, z: Z + 10, rotation: 0 },
 ]);
+await cmd('plant street', [{ kind: 'buildRoad', tier: 1, tiles: row(14, 1, 4) }]);
 await cmd('island', [{ kind: 'buildRoad', tier: 1, tiles: row(10, 20, 26) }]);
 await page.waitForTimeout(3000);
 
 const before = await readGrid();
 console.log('island powered before the line:', before.power?.[idx(X + 23, Z + 10)]);
 
-await cam(X + 13, Z + 10, 130, 0.55, 0.85);
+await cam(X + 14, Z + 10, 420, 0.55, 0.85);
 await page.waitForTimeout(800);
-await page.screenshot({ path: `${out}/before.png` });
+await cleanShot(page, `${out}/before.png`);
 
 // The wire, from beside the plant out to the island's road.
 await cmd('Power line', [{ kind: 'stringPowerLine', tiles: row(10, 3, 20), on: true }]);
@@ -119,12 +122,12 @@ if (stood.length !== strung)
 if (after.power?.[idx(X + 23, Z + 10)] !== 1)
   failures.push('the island road is still unpowered — the line carried nothing');
 
-await cam(X + 13, Z + 10, 130, 0.55, 0.85);
+await cam(X + 14, Z + 10, 420, 0.55, 0.85);
 await page.waitForTimeout(800);
-await page.screenshot({ path: `${out}/after.png` });
+await cleanShot(page, `${out}/after.png`);
 await cam(X + 8, Z + 10, 45, 0.6, 0.55);
 await page.waitForTimeout(800);
-await page.screenshot({ path: `${out}/close.png` });
+await cleanShot(page, `${out}/close.png`);
 
 // SPEC 30 slice 1, in the running game: a gravel lane carries no cable, so
 // nothing down it is supplied. The remedy is to run the line ALONG the lane —
@@ -149,7 +152,7 @@ if (remedied.power?.[idx(X + 10, Z + 20)] !== 1)
 
 await cam(X + 8, Z + 20, 70, 0.6, 0.8);
 await page.waitForTimeout(800);
-await page.screenshot({ path: `${out}/gravel-remedied.png` });
+await cleanShot(page, `${out}/gravel-remedied.png`);
 
 await b.close();
 for (const e of pageErrors) failures.push(`page error: ${e}`);

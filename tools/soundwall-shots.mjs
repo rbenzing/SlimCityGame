@@ -8,7 +8,7 @@
  */
 import { chromium } from 'playwright';
 import { mkdirSync } from 'node:fs';
-import { closeUp, hooksReady, tileCamera } from './shotcam.mjs';
+import { cleanShot, closeUp, hooksReady, tileCamera, unlimitedMoneyOption } from './shotcam.mjs';
 
 const base = process.argv[2] ?? 'http://localhost:5173';
 const url = base + (base.includes('?') ? '&' : '?') + 'nobloom';
@@ -67,6 +67,7 @@ await page.addInitScript(() => {
     JSON.stringify({ screen: 'playing', seed: 12345, mode: 'new' }),
   );
 });
+await unlimitedMoneyOption(page);
 await page.goto(url, { waitUntil: 'domcontentloaded' });
 await page.waitForSelector('#viewport canvas', { timeout: 30000 });
 await hooksReady(page);
@@ -193,7 +194,7 @@ await call(() => window.__slimcity.setDayT(0.45));
 const shot = async (name, tx, tz, d, yaw, pitch) => {
   await cam(tx, tz, d, yaw, pitch);
   await page.waitForTimeout(1000);
-  await page.screenshot({ path: `${out}/${name}.png` });
+  await cleanShot(page, `${out}/${name}.png`);
   console.log('shot', name);
 };
 await shot('overview', X + 18, Z + 14, 520, 0.4, 1.0);
@@ -228,7 +229,7 @@ await page
   .getByRole('button', { name: 'Both' })
   .click();
 await page.waitForTimeout(400);
-await page.screenshot({ path: `${out}/panel.png` });
+await cleanShot(page, `${out}/panel.png`);
 console.log('shot panel');
 
 console.log(failures.length === 0 ? 'PASS' : 'FAIL:\n - ' + failures.join('\n - '));

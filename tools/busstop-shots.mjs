@@ -11,7 +11,7 @@
  * Usage: node tools/busstop-shots.mjs [baseUrl] [outDir]   (a dev server must be running) */
 import { chromium } from 'playwright';
 import { mkdirSync } from 'node:fs';
-import { closeUp, hooksReady, tileCamera } from './shotcam.mjs';
+import { cleanShot, closeUp, hooksReady, tileCamera } from './shotcam.mjs';
 
 const base = process.argv[2] ?? 'http://localhost:5173';
 const out = process.argv[3] ?? 'tools/shots-busstops';
@@ -22,7 +22,7 @@ const TWO_LANE = 1;
 const GRAVEL = 4;
 const LENGTH = 14;
 /** Rows between the kerbed street and the gravel road. */
-const GAP = 8;
+const GAP = 3;
 const DEFAULT_PITCH = 0.7;
 /** A stop's own tiles along each road: a lone sign, then a shelter with a sign across from it. */
 const SIGN_AT = 3;
@@ -103,19 +103,119 @@ try {
     await stop(BOTH_AT, 1, 'shelter');
     await stop(BOTH_AT, 0, 'sign');
   }
+  // A bus for the stops: a depot and a turbine on the kerbed street's north kerb,
+  // and a line between the sign tile and the shelter tile. Nothing runs without a
+  // powered depot of its mode on the street network.
+  const plop = (catalogId, x, z, rotation) =>
+    send(catalogId, [{ kind: 'placeBuilding', catalogId, x, z, rotation }]);
+  await plop('wind-turbine', X + 1, Z - 1, 0);
+  await plop('bus-depot', X + 11, Z - 2, 0);
+  await send('Bus line', [
+    {
+      kind: 'createTransitLine',
+      line: {
+        id: 0,
+        color: 0xef5350,
+        vehicles: 2,
+        stops: [
+          { x: X + SIGN_AT, z: Z },
+          { x: X + BOTH_AT, z: Z },
+        ],
+      },
+    },
+  ]);
   await page.waitForTimeout(1500);
+  // Let the depot field its buses, then hold the city still for the shots.
+  await page.evaluate(() => window.__slimcity.setSpeed(4));
+  await page.waitForTimeout(10000);
+  await page.evaluate(() => window.__slimcity.setSpeed(0));
+  await page.waitForTimeout(500);
+  console.log(
+    'depot',
+    JSON.stringify(
+      await page.evaluate(() =>
+        window.__slimcity
+          .readBuildings()
+          .filter((b) => ['bus-depot', 'wind-turbine'].includes(b.catalogId))
+          .map((b) => `${b.catalogId}@${b.x},${b.z} state ${b.state} problems ${b.problems}`),
+      ),
+    ),
+  );
+  console.log(
+    'transit',
+    JSON.stringify(await page.evaluate(() => window.__slimcity.readTransit().served)),
+  );
 
   const shoot = async (name, tx, tz, distance, yaw, pitch = DEFAULT_PITCH) => {
     await cam(tx, tz, distance, yaw, pitch);
     await page.waitForTimeout(1200);
-    await page.screenshot({ path: `${out}/${name}.png` });
+    await cleanShot(page, `${out}/${name}.png`);
   };
-  const midX = X + LENGTH / 2;
   const midZ = Z + GAP / 2;
 
-  await shoot('overview', midX, midZ, 90, 0);
+  // A bus at the shelter: a line's buses are drawn only under the transit lens,
+  // and no hook says where they are, so two frames a beat apart differ where one
+  // moves (the city is held still). Shoot once that movement is wholly in frame.
+  const motion = (a, b) =>
+    page.evaluate(
+      async ([pa, pb]) => {
+        const load = async (b64) => {
+          const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+          const bmp = await createImageBitmap(new Blob([bytes], { type: 'image/png' }));
+          const c = document.createElement('canvas');
+          c.width = bmp.width;
+          c.height = bmp.height;
+          const ctx = c.getContext('2d');
+          ctx.drawImage(bmp, 0, 0);
+          return ctx.getImageData(0, 0, c.width, c.height);
+        };
+        const [ia, ib] = await Promise.all([load(pa), load(pb)]);
+        let n = 0;
+        let x0 = ia.width;
+        let x1 = 0;
+        // Clear of the lens panel (top-left), the buttons and the bottom bar.
+        for (let y = 280; y < ia.height - 110; y++) {
+          for (let x = 0; x < ia.width; x++) {
+            const i = (y * ia.width + x) * 4;
+            const d =
+              Math.abs(ia.data[i] - ib.data[i]) +
+              Math.abs(ia.data[i + 1] - ib.data[i + 1]) +
+              Math.abs(ia.data[i + 2] - ib.data[i + 2]);
+            if (d > 60) {
+              n++;
+              if (x < x0) x0 = x;
+              if (x > x1) x1 = x;
+            }
+          }
+        }
+        return { n, x0, x1, width: ia.width };
+      },
+      [a.toString('base64'), b.toString('base64')],
+    );
+  await page.evaluate(() => window.__slimcity.setOverlay('transit'));
+  await cam(X + BOTH_AT, Z, 70, 0, DEFAULT_PITCH);
+  await page.waitForTimeout(1500);
+  let shot = false;
+  for (let i = 0; i < 150 && !shot; i++) {
+    const a = await page.screenshot();
+    await page.waitForTimeout(150);
+    const m = await motion(a, await page.screenshot());
+    if (m.n >= 300 && m.x0 > 320 && m.x1 < m.width - 160) {
+      console.log('bus motion', m.n, m.x0, m.x1);
+      await cleanShot(page, `${out}/bus-at-shelter.png`);
+      shot = true;
+    }
+  }
+  if (!shot) {
+    await page.screenshot({ path: `${out}/bus-at-shelter-missing.png` });
+    throw new Error('no bus came into frame for bus-at-shelter');
+  }
+  await page.evaluate(() => window.__slimcity.setOverlay(null));
 
   const back = await closeUp(page, 2);
+  // Both roads and the stops on them, close enough to read.
+  await shoot('overview', X + (SIGN_AT + BOTH_AT) / 2, midZ, 112, 0, 1);
+
   const plates = [
     { name: 'sign', at: SIGN_AT },
     { name: 'shelter-and-sign', at: BOTH_AT },
