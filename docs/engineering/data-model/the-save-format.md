@@ -34,7 +34,7 @@ month's regional count). Each is covered in
 
 ### Save version and per-tile width
 
-The current `SAVE_VERSION` is **18** (`src/shared/types.ts`), and the
+The current `SAVE_VERSION` is **19** (`src/shared/types.ts`), and the
 current per-tile width is **40 bytes** (`BYTES_PER_TILE_V16` in
 `src/world/grid.ts`), followed by the road network. The width for every version is exported as
 `BYTES_PER_TILE_BY_VERSION` (`src/world/grid.ts`) — a single array, indexed
@@ -60,7 +60,8 @@ read rather than each keeping its own count. Reproduced exactly:
 | 15             | 37         | No layer: the v14 layout. Marks landfill fill counted in 0.25 kg trash units, rescaled on load from older saves.  |
 | 16             | 40         | `fields[9..11]`, the middle, high and college education planes (+3 bytes), appended after `waterPipe`.            |
 | 17             | 40         | No layer: the v16 layout. A building may carry a parcel frame; an older save loads with every building unframed.  |
-| 18 (current)   | 40         | No layer: the v17 layout. `powerLine` gains a second value, 2, a line laid to the source-end rule; older lines stay 1. |
+| 18             | 40         | No layer: the v17 layout. `powerLine` gains a second value, 2, a line laid to the source-end rule; older lines stay 1. |
+| 19 (current)   | 40         | No layer: the v18 layout. `powerLine` gains a third value, 3, a buried cable.                                     |
 
 Up to v12, every new layer was appended as the last thing the serializer
 wrote, in version order: an older save's tile record is exactly a

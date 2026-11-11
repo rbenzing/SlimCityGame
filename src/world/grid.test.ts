@@ -825,6 +825,31 @@ describe('the flow layer survives a save (v7)', () => {
     expect(back.powerLine[19]).toBe(2);
   });
 
+  it('round-trips a buried cable (3) beside a line and a held line, each to its own byte', () => {
+    const g = createGrid(5);
+    fillDeterministic(g);
+    g.powerLine[6] = PowerLineKind.Cable;
+    g.powerLine[7] = PowerLineKind.Held;
+    g.powerLine[8] = PowerLineKind.Strung;
+    const back = deserializeGrid(serializeGridV12(g));
+    expect([back.powerLine[6], back.powerLine[7], back.powerLine[8]]).toEqual([3, 1, 2]);
+    expect(SAVE_VERSION).toBe(19);
+  });
+
+  it('loads a v18 save, whose lines are 1 and 2, unchanged: the same bytes as v19', () => {
+    const size = 5;
+    const n = size * size;
+    const g = createGrid(size);
+    fillDeterministic(g);
+    g.powerLine[7] = PowerLineKind.Held;
+    g.powerLine[8] = PowerLineKind.Strung;
+    const older = olderTileRecord(saveGrid(g, createRoadNetwork()), 18, n);
+    expect(new DataView(older).getUint32(0, true)).toBe(18);
+    const loaded = loadGrid(older).grid;
+    expect([loaded.powerLine[7], loaded.powerLine[8]]).toEqual([1, 2]);
+    expect(BYTES_PER_TILE_BY_VERSION[18]).toBe(BYTES_PER_TILE_BY_VERSION[SAVE_VERSION]);
+  });
+
   it('loads an older-version save with its lines as 1: a v17 buffer is the same bytes', () => {
     const size = 5;
     const n = size * size;

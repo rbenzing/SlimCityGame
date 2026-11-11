@@ -1255,3 +1255,109 @@ describe('recomputeUtilities: a line starts at a source', () => {
     expect(totals.powerSupply).toBe(10);
   });
 });
+
+describe('recomputeUtilities: a buried cable', () => {
+  const substation: BuildingCatalogEntry = {
+    ...powerPlant,
+    id: 'substation',
+    name: 'Substation',
+    footprint: { w: 2, d: 2 },
+    utility: { substation: true },
+  };
+  const withSubstation = [...catalog, substation];
+  const cable = (g: GridState, x0: number, x1: number, z: number): void => {
+    for (let x = x0; x <= x1; x++) g.powerLine[tileIndex(x, z)] = PowerLineKind.Cable;
+  };
+  const strung = (g: GridState, x0: number, x1: number, z: number): void => {
+    for (let x = x0; x <= x1; x++) g.powerLine[tileIndex(x, z)] = PowerLineKind.Strung;
+  };
+  const powered = (g: GridState, x: number, z: number): number => g.power[tileIndex(x, z)]!;
+
+  /** A plant at (5, 5) and a street along row 5 from 6 to 14. */
+  function streetTown(): { g: GridState; buildings: BuildingInstance[] } {
+    const g = makeGrid();
+    const buildings: BuildingInstance[] = [];
+    placeBuilding(g, buildings, 1, 'power-plant', 5, 5, 1, 1);
+    paintRoadRow(g, 6, 14, 5);
+    return { g, buildings };
+  }
+
+  it('delivers nothing from a street: a cable beside one is not fed by it', () => {
+    const { g, buildings } = streetTown();
+    cable(g, 6, 14, 6);
+    placeBuilding(g, buildings, 2, 'house', 12, 7, 1, 1);
+    recomputeUtilities(g, buildings, withSubstation);
+    expect(powered(g, 12, 7)).toBe(0);
+  });
+
+  it('delivers from a generator, to what stands beside it', () => {
+    const g = makeGrid();
+    const buildings: BuildingInstance[] = [];
+    placeBuilding(g, buildings, 1, 'power-plant', 5, 5, 1, 1);
+    cable(g, 6, 13, 5);
+    placeBuilding(g, buildings, 2, 'house', 12, 6, 1, 1);
+    recomputeUtilities(g, buildings, withSubstation);
+    expect(powered(g, 12, 6)).toBe(1);
+  });
+
+  it('delivers from a substation its street supplies, and nothing once it is gone', () => {
+    const { g, buildings } = streetTown();
+    placeBuilding(g, buildings, 3, 'substation', 15, 5, 2, 2);
+    cable(g, 17, 24, 5);
+    placeBuilding(g, buildings, 4, 'house', 23, 6, 1, 1);
+    recomputeUtilities(g, buildings, withSubstation);
+    expect(powered(g, 23, 6)).toBe(1);
+
+    for (const tile of [15, 16].flatMap((x) => [5, 6].map((z) => tileIndex(x, z)))) {
+      g.buildingId[tile] = 0;
+    }
+    buildings.splice(
+      buildings.findIndex((b) => b.id === 3),
+      1,
+    );
+    recomputeUtilities(g, buildings, withSubstation);
+    expect(powered(g, 23, 6)).toBe(0);
+  });
+
+  it('hands on from a live line to a cable and from a live cable to a line', () => {
+    const g = makeGrid();
+    const buildings: BuildingInstance[] = [];
+    placeBuilding(g, buildings, 1, 'power-plant', 5, 5, 1, 1);
+    strung(g, 6, 8, 5);
+    cable(g, 9, 12, 5);
+    strung(g, 13, 16, 5);
+    placeBuilding(g, buildings, 2, 'house', 11, 6, 1, 1);
+    placeBuilding(g, buildings, 3, 'house', 15, 6, 1, 1);
+    recomputeUtilities(g, buildings, withSubstation);
+    expect(powered(g, 11, 6)).toBe(1);
+    expect(powered(g, 15, 6)).toBe(1);
+  });
+
+  it('conducts under a sealed street as the street does, and hands nothing on beyond it', () => {
+    const { g, buildings } = streetTown();
+    // The first street tiles are bare, so the cable is fed by the street, not the plant.
+    cable(g, 8, 14, 5);
+    placeBuilding(g, buildings, 2, 'house', 12, 6, 1, 1);
+    // A run of cable on open ground off the street's end, with no source of its own.
+    cable(g, 15, 18, 5);
+    placeBuilding(g, buildings, 3, 'house', 17, 6, 1, 1);
+    recomputeUtilities(g, buildings, withSubstation);
+    expect(powered(g, 10, 5)).toBe(1);
+    expect(powered(g, 12, 6)).toBe(1);
+    expect(powered(g, 17, 6)).toBe(0);
+  });
+
+  it('powers the houses on a gravel lane it lies under, which carried none', () => {
+    const g = makeGrid();
+    const buildings: BuildingInstance[] = [];
+    placeBuilding(g, buildings, 1, 'power-plant', 5, 5, 1, 1);
+    for (let x = 6; x <= 14; x++) paintRoad(g, x, 5, RoadTier.Gravel);
+    placeBuilding(g, buildings, 2, 'house', 12, 6, 1, 1);
+    recomputeUtilities(g, buildings, withSubstation);
+    expect(powered(g, 12, 6)).toBe(0);
+
+    cable(g, 6, 14, 5);
+    recomputeUtilities(g, buildings, withSubstation);
+    expect(powered(g, 12, 6)).toBe(1);
+  });
+});

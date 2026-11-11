@@ -10,6 +10,7 @@ import { EDUCATION_KINDS } from '../shared/schooling';
 import { RoadTier as RoadTierValue } from '../shared/types';
 import {
   LANDFILL_PAINT_COST_PER_TILE,
+  POWER_CABLE_COST_PER_TILE,
   POWER_LINE_COST_PER_TILE,
   WATER_PIPE_COST_PER_TILE,
 } from '../shared/constants';
@@ -237,6 +238,17 @@ const POWER_LINE_CARD: AssetCard = {
 };
 
 /**
+ * Buried cable (strings the same layer as the line, as a cable); cost is per
+ * tile of run, shown live on the cursor chip like the line's.
+ */
+const POWER_CABLE_CARD: AssetCard = {
+  id: 'power.cable',
+  name: 'Buried Cable',
+  cost: POWER_CABLE_COST_PER_TILE,
+  unlockMilestone: 0,
+};
+
+/**
  * Water pipe (lays GridState.waterPipe); one pipe carries water out and
  * sewage back. Cost is per tile of run, shown live on the cursor chip like the
  * power line's.
@@ -343,6 +355,7 @@ const RAW_GROUPS: Record<DockCategory, AssetSubTab[]> = {
         ...catalogCards((e) => e.category === 'utility' && e.utility?.powerMW !== undefined),
         // The wire that carries what the generators make, listed with them.
         POWER_LINE_CARD,
+        POWER_CABLE_CARD,
         // Where a line may start that is not a power station.
         ...catalogCards((e) => e.utility?.substation === true),
       ],

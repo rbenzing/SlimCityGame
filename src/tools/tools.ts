@@ -13,6 +13,7 @@ import {
   TERRAFORM_STRENGTH_MAX,
   TERRAFORM_STRENGTH_MIN,
   LANDFILL_PAINT_COST_PER_TILE,
+  POWER_CABLE_COST_PER_TILE,
   POWER_LINE_COST_PER_TILE,
   WATER_PIPE_COST_PER_TILE,
   BRIDGE_MAX_ELEVATION,
@@ -43,6 +44,7 @@ import {
   corridorHalfOf,
   flowsAlong,
   isStreetTier,
+  PowerLineKind,
   RoadTier as RoadTierValue,
   ZoneType as ZoneTypeValue,
 } from '../shared/types';
@@ -254,12 +256,15 @@ export interface ToolEnv {
    * quotes the whole run, which is what a fresh one costs anyway.
    */
   powerLineAt?(x: number, z: number): boolean;
+  /** Whether the line layer holds a buried cable on a tile, which a line replaces. */
+  cableAt?(x: number, z: number): boolean;
   /**
-   * The sentence refusing a run of line the world would refuse, or null: the
-   * cursor shows the words the toast will say. Optional: an env that omits it
-   * never refuses on the cursor and leaves the refusal to the world.
+   * The sentence refusing a run of line (or, with `cable`, of buried cable) the
+   * world would refuse, or null: the cursor shows the words the toast will say.
+   * Optional: an env that omits it never refuses on the cursor and leaves the
+   * refusal to the world.
    */
-  powerLineRefusal?(tiles: readonly TilePoint[]): string | null;
+  powerLineRefusal?(tiles: readonly TilePoint[], cable?: boolean): string | null;
   /** Whether a water pipe is already laid on a tile, for the same reason. */
   waterPipeAt?(x: number, z: number): boolean;
   /**
@@ -920,7 +925,7 @@ function isPaintLandfillTool(tool: ToolId): boolean {
  * somewhere, so it takes the same straight/elbow path a road drag does.
  */
 function isPowerLineTool(tool: ToolId): boolean {
-  return tool === 'power.line';
+  return tool === 'power.line' || tool === 'power.cable';
 }
 
 /** Water-pipe tool: the power line's drag, for the mains. */
@@ -2321,15 +2326,21 @@ export class ToolManager {
       const tiles = this.roadPath(startTile, current);
       // Only the tiles that would actually change are quoted, so dragging back
       // over a run already strung shows what it costs: nothing.
-      const fresh = tiles.filter((t) => !this.env.powerLineAt?.(t.x, t.z));
-      const cost = fresh.length * POWER_LINE_COST_PER_TILE;
+      // A line replaces a cable and a cable a line, so those are quoted too.
+      const cable = tool === 'power.cable';
+      const fresh = tiles.filter((t) =>
+        cable
+          ? !this.env.cableAt?.(t.x, t.z)
+          : !this.env.powerLineAt?.(t.x, t.z) || this.env.cableAt?.(t.x, t.z),
+      );
+      const cost = fresh.length * (cable ? POWER_CABLE_COST_PER_TILE : POWER_LINE_COST_PER_TILE);
       const evaluated = this.evaluate(tiles, cost, 0, true);
-      const refusal = this.env.powerLineRefusal?.(tiles) ?? null;
+      const refusal = this.env.powerLineRefusal?.(tiles, cable) ?? null;
       this.env.onPreview({
         tiles,
         valid: evaluated.valid && refusal === null,
         cost,
-        label: 'Power line',
+        label: cable ? 'Buried cable' : 'Power line',
         invalidReason: refusal ?? evaluated.invalidReason,
       });
       return;
@@ -2736,8 +2747,14 @@ export class ToolManager {
     } else if (isPowerLineTool(tool)) {
       // String the run the drag traced; the sim gates each tile and charges
       // only for the ones that change.
-      this.env.send('Power line', [
-        { kind: 'stringPowerLine', tiles: this.roadPath(start, end), on: true },
+      const cable = tool === 'power.cable';
+      this.env.send(cable ? 'Buried cable' : 'Power line', [
+        {
+          kind: 'stringPowerLine',
+          tiles: this.roadPath(start, end),
+          on: true,
+          ...(cable ? { lineKind: PowerLineKind.Cable } : {}),
+        },
       ]);
     } else if (isWaterPipeTool(tool)) {
       // A street along the run already carries a main: only the rest is laid.

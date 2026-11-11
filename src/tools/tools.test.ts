@@ -1,9 +1,18 @@
 import { describe, expect, it } from 'vitest';
-import { corridorHalfOf, flowDirection, RoadFlow, RoadTier, ZoneType } from '../shared/types';
+import {
+  corridorHalfOf,
+  flowDirection,
+  PowerLineKind,
+  RoadFlow,
+  RoadTier,
+  ZoneType,
+} from '../shared/types';
 import type { BuildingCatalogEntry, Command, RoadSpec, TilePoint } from '../shared/types';
 import {
   BRIDGE_COST_PER_METER_TILE,
   EXHUMATION_FEE_PER_INTERMENT,
+  POWER_CABLE_COST_PER_TILE,
+  POWER_LINE_COST_PER_TILE,
   TERRAFORM_COST_PER_METER_TILE,
   TILE_METERS,
   WATER_PIPE_COST_PER_TILE,
@@ -640,6 +649,63 @@ describe('zone rectangle preview + commit', () => {
     expect(sent[0]?.label).toBe('Water pipe');
     expect(sent[0]?.commands[0]).toMatchObject({ kind: 'layWaterPipe', on: true });
     expect((sent[0]?.commands[0] as { tiles: unknown[] }).tiles).toHaveLength(4);
+  });
+
+  it('buries a cable along the drag at 96 a tile, quoting the tiles a cable does not already cover', () => {
+    const { env, previews, sent } = makeEnv();
+    // A cable lies on (1, 0); a line, which the cable replaces, on (2, 0).
+    env.cableAt = (x, z) => x === 1 && z === 0;
+    env.powerLineAt = (x, z) => (x === 1 || x === 2) && z === 0;
+    const tm = new ToolManager(env);
+    tm.setTool('power.cable');
+    tm.pointerDown(0, 0, 0);
+    tm.pointerMove(3, 0, 0);
+    const preview = previews.at(-1)!;
+    expect(preview.label).toBe('Buried cable');
+    expect(preview.tiles).toHaveLength(4);
+    expect(preview.cost).toBe(3 * POWER_CABLE_COST_PER_TILE);
+    expect(POWER_CABLE_COST_PER_TILE).toBe(96);
+    tm.pointerUp(3, 0, 0);
+    expect(sent[0]?.label).toBe('Buried cable');
+    expect(sent[0]?.commands[0]).toMatchObject({
+      kind: 'stringPowerLine',
+      on: true,
+      lineKind: PowerLineKind.Cable,
+    });
+  });
+
+  it('asks the world for the cable sentence, and the line tool for the line sentence', () => {
+    const { env, previews } = makeEnv();
+    env.powerLineRefusal = (_tiles, cable) => (cable ? 'cable refusal' : 'line refusal');
+    const tm = new ToolManager(env);
+    tm.setTool('power.cable');
+    tm.pointerDown(0, 0, 0);
+    tm.pointerMove(2, 0, 0);
+    expect(previews.at(-1)?.valid).toBe(false);
+    expect(previews.at(-1)?.invalidReason).toBe('cable refusal');
+    tm.cancel();
+    tm.setTool('power.line');
+    tm.pointerDown(0, 0, 0);
+    tm.pointerMove(2, 0, 0);
+    expect(previews.at(-1)?.invalidReason).toBe('line refusal');
+  });
+
+  it('a line quotes the cable tiles it would replace, and sends no kind', () => {
+    const { env, previews, sent } = makeEnv();
+    env.powerLineAt = (x, z) => x <= 1 && z === 0;
+    env.cableAt = (x, z) => x === 1 && z === 0;
+    const tm = new ToolManager(env);
+    tm.setTool('power.line');
+    tm.pointerDown(0, 0, 0);
+    tm.pointerMove(2, 0, 0);
+    // (0,0) holds a line already; (1,0) a cable, which is replaced; (2,0) is bare.
+    expect(previews.at(-1)?.cost).toBe(2 * POWER_LINE_COST_PER_TILE);
+    tm.pointerUp(2, 0, 0);
+    expect(sent[0]?.commands[0]).toEqual({
+      kind: 'stringPowerLine',
+      tiles: expect.any(Array),
+      on: true,
+    });
   });
 
   it('underground, snaps a pipe drag onto the system, lays nothing under a street, and says what it joins', () => {

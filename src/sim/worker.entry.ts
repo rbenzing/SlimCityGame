@@ -25,6 +25,7 @@ import {
   LANDFILL_CAPACITY_PER_TILE,
   LANDFILL_MIN_AREA_TILES,
   LANDFILL_PAINT_COST_PER_TILE,
+  POWER_CABLE_COST_PER_TILE,
   POWER_LINE_COST_PER_TILE,
   WATER_PIPE_COST_PER_TILE,
   SEWAGE_POLLUTION_PER_KL,
@@ -56,6 +57,7 @@ import {
   TRASH_UNIT_SAVE_VERSION,
   BuildingState,
   FieldId,
+  PowerLineKind,
   Problem,
   flowsAlong,
   RoadFlow,
@@ -71,7 +73,6 @@ import {
   VehicleKind,
 } from '../shared/types';
 import type {
-  PowerLineKind,
   BuildingCatalogEntry,
   BuildingInstance,
   BusStop,
@@ -230,7 +231,13 @@ import { ServiceSim, nearestRoadTile, openSpaceOf } from './services';
 import { EconomySystem, buildingMonthlyTax, type Occupancy } from './economy';
 import { DeathCareSystem, type DeathCareFacility } from './deathcare';
 import { occupiedResidents } from '../shared/occupancy';
-import { bordersUtilityNetwork, recomputeUtilities, sewageOf, tierIsSealed } from './network';
+import {
+  bordersUtilityNetwork,
+  recomputeUtilities,
+  sewageOf,
+  tierIsSealed,
+  tierIsSealedStreet,
+} from './network';
 import { TrafficSystem } from './traffic';
 import {
   TransitSystem,
@@ -254,7 +261,7 @@ import {
 } from '../world/landfill';
 import {
   alongStreetRefusal,
-  canStringLine,
+  lineChanges,
   feedsLines,
   restoreLineCommands,
   sourceEndRefusal,
@@ -2857,7 +2864,12 @@ class SimWorld implements WorkerSim {
       case 'paintLandfill':
         return this.cmdPaintLandfill(command.tiles, command.on);
       case 'stringPowerLine':
-        return this.cmdStringPowerLine(command.tiles, command.on, command.lineKind);
+        return this.cmdStringPowerLine(
+          command.tiles,
+          command.on,
+          command.lineKind,
+          command.restore,
+        );
       case 'layWaterPipe':
         return this.cmdLayWaterPipe(command.tiles, command.on);
       case 'setDistrictPolicy': {
@@ -2987,26 +2999,35 @@ class SimWorld implements WorkerSim {
     tiles: TilePoint[],
     on: boolean,
     lineKind?: PowerLineKind,
+    restore?: boolean,
   ): CommandResult {
     const g = this.grid;
+    const cable = lineKind === PowerLineKind.Cable;
     // A restore (an undo) puts back what stood; only a new run answers to the rules.
-    if (on && lineKind === undefined) {
-      // A street already carries power: a line is not strung along one.
-      const along = alongStreetRefusal(g, tiles, tierIsSealed);
-      if (along !== null) return { ok: false, cost: 0, inverse: [], reason: along };
-      // And a line that would carry nothing is not strung at all.
-      const dead = sourceEndRefusal(g, tiles, (x, z) => this.feedsLinesAt(x, z));
+    // A new cable is the one run that names its kind and is not a restore.
+    if (on && (lineKind === undefined || (cable && restore !== true))) {
+      // A street already carries power: a line is not strung along one, but a
+      // cable is buried along it, which is how the street's supply goes underground.
+      if (!cable) {
+        const along = alongStreetRefusal(g, tiles, tierIsSealed);
+        if (along !== null) return { ok: false, cost: 0, inverse: [], reason: along };
+      }
+      // And a run that would carry nothing is not laid at all.
+      const dead = sourceEndRefusal(
+        g,
+        tiles,
+        (x, z) => this.feedsLinesAt(x, z),
+        cable ? PowerLineKind.Cable : PowerLineKind.Strung,
+        (x, z) => tierIsSealedStreet(g.roadTier[tileIndex(x, z)] ?? 0),
+      );
       if (dead !== null) return { ok: false, cost: 0, inverse: [], reason: dead };
     }
     // Cost is quoted for the tiles that would change, which is what the tool
     // has already shown the player on the cursor.
-    let wouldChange = 0;
-    for (const t of tiles) {
-      if (!inBounds(t.x, t.z)) continue;
-      const now = (g.powerLine[tileIndex(t.x, t.z)] ?? 0) !== 0;
-      if (now !== on && (!on || canStringLine(g, t.x, t.z))) wouldChange += 1;
-    }
-    const cost = on ? wouldChange * POWER_LINE_COST_PER_TILE : 0;
+    const wouldChange = lineChanges(g, tiles, on, lineKind).length;
+    const cost = on
+      ? wouldChange * (cable ? POWER_CABLE_COST_PER_TILE : POWER_LINE_COST_PER_TILE)
+      : 0;
     if (on && !this.unlimitedMoney && cost > this.stats.funds) {
       return { ok: false, cost: 0, inverse: [], reason: 'funds' };
     }
@@ -3023,16 +3044,15 @@ class SimWorld implements WorkerSim {
     // Supply travels along the line, so the coverage it changes has to be
     // worked out again rather than waiting for the utility cadence.
     this.utilitiesDirty = true;
-    // Stringing is undone by pulling down; pulling down by putting each tile back as its own kind.
+    // Each tile goes back as what it held: bare ground pulled down, a line or a
+    // cable under another laid over it put back as its own kind.
     return {
       ok: true,
       cost,
-      inverse: on
-        ? [{ kind: 'stringPowerLine', tiles: changed, on: false }]
-        : restoreLineCommands(
-            changed,
-            changed.map((t) => heldBefore.get(tileIndex(t.x, t.z)) ?? 0),
-          ),
+      inverse: restoreLineCommands(
+        changed,
+        changed.map((t) => heldBefore.get(tileIndex(t.x, t.z)) ?? 0),
+      ),
     };
   }
 
@@ -3765,7 +3785,13 @@ class SimWorld implements WorkerSim {
     );
     const pulledDown = stringPowerLine(g, clearedTiles, false);
     if (pulledDown.length > 0) {
-      refund += pulledDown.length * POWER_LINE_COST_PER_TILE * BULLDOZE_REFUND_RATE;
+      for (const t of pulledDown) {
+        const price =
+          lineKinds.get(tileIndex(t.x, t.z)) === PowerLineKind.Cable
+            ? POWER_CABLE_COST_PER_TILE
+            : POWER_LINE_COST_PER_TILE;
+        refund += price * BULLDOZE_REFUND_RATE;
+      }
       this.powerLineDirty = growRect(this.powerLineDirty, pulledDown);
       inverse.push(
         ...restoreLineCommands(

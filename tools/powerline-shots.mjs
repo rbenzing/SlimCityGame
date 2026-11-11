@@ -268,9 +268,102 @@ await page.waitForTimeout(800);
 await cleanShot(page, `${out}/substation-night.png`);
 await call(() => window.__slimcity.setDayT(0.5));
 
+// The buried cable. A new street with its supply buried along the middle of it:
+// the overhead pole line ends on a riser at each end of the buried stretch, no pole
+// and no wire shows over it, and a pad transformer stands every fourth tile.
+// A connector off the live line at z+10 powers it.
+const CABLE = 3;
+const cableRow = (z, a, c) => row(z, a, c);
+await cmd('Buried street', [
+  { kind: 'buildRoad', tier: 1, tiles: row(15, 6, 28) },
+  { kind: 'buildRoad', tier: 1, tiles: col(12, 11, 14) },
+]);
+await page.waitForTimeout(3000);
+const preBury = await poles();
+await cmd('Buried cable under the street', [
+  { kind: 'stringPowerLine', tiles: cableRow(15, 15, 22), on: true, lineKind: CABLE },
+]);
+// A substation on the overhead half, a cable from it over open ground into a gravel
+// lane, boxes at both ends; a gravel lane for it to run under.
+await cmd('Gravel lane', [{ kind: 'buildRoad', tier: 4, tiles: col(14, 17, 22) }]);
+await cmd('Substation for the cable', [
+  { kind: 'placeBuilding', catalogId: 'substation', x: X + 8, z: Z + 16, rotation: 2 },
+]);
+await page.waitForTimeout(3000);
+await cmd('Cable to the lane', [
+  {
+    kind: 'stringPowerLine',
+    tiles: [...row(17, 10, 14), ...col(14, 18, 22)],
+    on: true,
+    lineKind: CABLE,
+  },
+]);
+// A cable continuing the open line past its end: the line's last pole is a riser.
+await cmd('Cable from the line', [
+  { kind: 'stringPowerLine', tiles: row(24, 26, 29), on: true, lineKind: CABLE },
+]);
+await page.waitForTimeout(4500);
+const buried = await readGrid();
+const cables = await call(() => window.__slimcity.readPowerCables());
+const nowPoles = await poles();
+console.log('cable tiles:', buried.powerLine.filter((v) => v === CABLE).length);
+console.log('boxes:', cables.boxes.length, 'riser guards:', cables.guards);
+console.log(
+  'box tiles:',
+  JSON.stringify(cables.boxes.map((bx) => [Math.floor(bx.x / 20) - X, Math.floor(bx.z / 20) - Z])),
+);
+if (buried.powerLine[idx(X + 18, Z + 15)] !== CABLE) failures.push('the street cable was not laid');
+if (buried.powerLine[idx(X + 14, Z + 20)] !== CABLE) failures.push('the lane cable was not laid');
+if (buried.power?.[idx(X + 14, Z + 20)] !== 1)
+  failures.push('the cable under the gravel lane does not power it');
+for (const p of nowPoles) {
+  const tx = Math.floor(p.x / 20) - X;
+  const tz = Math.floor(p.z / 20) - Z;
+  if (tz === 15 && tx >= 15 && tx <= 22)
+    failures.push(`a pole stands on the buried street at ${tx},${tz}`);
+}
+// Risers at both ends of the buried stretch, boxes at the cable ends, transformers every fourth tile.
+if (cables.guards < 3)
+  failures.push(`${cables.guards} riser guards: wanted 2 on the street and 1 on the line`);
+if (cables.boxes.length < 5)
+  failures.push(`${cables.boxes.length} boxes: wanted 2 transformers and 3 ends`);
+void preBury;
+for (const bx of cables.boxes) {
+  const tx = Math.floor(bx.x / 20) - X;
+  const tz = Math.floor(bx.z / 20) - Z;
+  // A box never stands in a carriageway: on the street row its centre is off the centre line.
+  if (tz === 15 && Math.abs(bx.z - world(Z + 15)) < 5.5)
+    failures.push(`a box stands in the carriageway at ${tx},${tz}`);
+}
+
+await cam(X + 19, Z + 15, 60, 0.6, 0.55);
+await page.waitForTimeout(800);
+await cleanShot(page, `${out}/buried-street-oblique.png`);
+await cam(X + 19, Z + 15, 60, 0, 1.45);
+await page.waitForTimeout(800);
+await cleanShot(page, `${out}/buried-street-above.png`);
+await cam(X + 14, Z + 15, 40, 0.9, 0.5);
+await page.waitForTimeout(800);
+await cleanShot(page, `${out}/buried-street-riser.png`);
+await cam(X + 12, Z + 19, 60, 0.6, 0.55);
+await page.waitForTimeout(800);
+await cleanShot(page, `${out}/cable-substation-lane.png`);
+await cam(X + 14, Z + 21, 40, 0.4, 0.55);
+await page.waitForTimeout(800);
+await cleanShot(page, `${out}/cable-lane-end.png`);
+await cam(X + 11, Z + 17, 35, 0.6, 0.5);
+await page.waitForTimeout(800);
+await cleanShot(page, `${out}/cable-substation-end.png`);
+await cam(X + 27, Z + 24, 80, 0.4, 0.5);
+await page.waitForTimeout(800);
+await cleanShot(page, `${out}/cable-meets-line.png`);
+await cam(X + 26, Z + 24, 30, 0.4, 0.6);
+await page.waitForTimeout(800);
+await cleanShot(page, `${out}/cable-meets-line-close.png`);
+
 // The refusal: with the Power Line tool in hand, the cursor over open ground that
 // touches no source and no line says why the run would not stand.
-await cam(X + 14, Z + 14, 200, 0, 1.45);
+await cam(X + 14, Z - 12, 200, 0, 1.45);
 await call(() => window.__slimcity.setTool('power.line'));
 await page.waitForTimeout(800);
 const view = page.viewportSize();

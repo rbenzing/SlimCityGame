@@ -167,6 +167,7 @@ describe('subTabsFor', () => {
         'plop.combined-cycle',
         'plop.nuclear-plant',
         'power.line',
+        'power.cable',
         'plop.substation',
       ].sort(),
     );

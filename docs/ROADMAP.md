@@ -25,7 +25,7 @@ current behavior only and carry no dates of their own._
 
 ## Status (2026-09-29)
 
-**Test suite:** 7,933 tests passing across 233 test files, run 2026-11-11.
+**Test suite:** 7,984 tests passing across 235 test files, run 2026-11-11.
 This is the only test count in the documentation set. When the suite changes
 again, update the figure here and nowhere else.
 
@@ -46,11 +46,10 @@ again, update the figure here and nowhere else.
 - A home's fence is cut back against other homes only `[R-render-035]`: a
   turned home beside a shop's or a civic plot's lot is cut to its own
   outline and no further.
-- One spec is agreed and partly built:
-  [power-distribution.md](specs/power-distribution.md), a street's drawn
-  supply, buried cable and the substation `[R-services-039]` (the pole
-  lines, the source-end rule and the substation are built; the cable is
-  not).
+- [Power distribution](specs/power-distribution.md) is built
+  `[R-services-039]`; what it leaves is in its Open line: a line whose
+  source is removed stays and delivers nothing, and at a junction the cable
+  underground lies on the sewer's strip.
 - [Structured parking](specs/structured-parking.md) is built
   `[R-services-040]`; what it leaves is in its Open line: a mid-rise or a
   mixed-use block on open ground takes a 2 × 2 lot for its car park, so a

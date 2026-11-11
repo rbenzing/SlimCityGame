@@ -24,6 +24,13 @@
   anywhere else it is refused. A substation stands beside a street, takes
   its power from that street and is where a line out to a gravel lane, a farm
   or a pump begins. A line you strung before this rule stays live.
+- **Buried Cable** (Electricity) does what a line does and cannot be seen. It
+  costs eight times a line to lay and half as much to keep, runs under open
+  ground and under any road, and must start at a source as a line does. Laid
+  along a paved street it buries that street's supply: the poles go, a green
+  transformer stands every few lots, and the street costs a little less to
+  keep. Its ends show as green boxes, and a riser pole stands where it meets
+  an overhead line. The underground view shows the cable beside the pipes.
 - Keep commercial and industrial in proportion to residential; if a demand bar is
   empty, stop zoning that type.
 - Services and parks raise happiness and land value in a radius — spread them out

@@ -45,11 +45,13 @@ import {
   FieldId,
   INACTIVE_VEHICLE_X,
   MAX_VEHICLES,
+  PowerLineKind,
   RoadFlow,
   RoadTier,
   VEHICLE_STRIDE,
   ZoneType,
   flowDirection,
+  isFrontageTier,
   isRailTier,
   isStreetTier,
   isTramTier,
@@ -156,8 +158,10 @@ import { ZoneGridRenderer } from './render/zonegrid';
 import { LampRenderer, STOP_CLEAR_HALF_M } from './render/lamps';
 import { FREE_ROAD_SLOT, PowerLineRenderer, STRUNG_LINE_SLOT } from './render/powerlines';
 import {
+  cableBoxSpots,
   chunksAroundTile,
   layStreetChunk,
+  cablePlaceOf,
   layStrungLine,
   streetPoleSpots,
   type PowerWorld,
@@ -173,6 +177,7 @@ import {
   type Spot,
 } from './render/roadsidespace';
 import { PipeOverlayRenderer, type PipeConnection, type PipeLead } from './render/pipes';
+import { CableOverlayRenderer } from './render/cables';
 import { UndergroundView } from './render/underground';
 import {
   buildTileSet,
@@ -421,6 +426,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
   const lamps = new LampRenderer(world.scene, roadSurfaceAt);
   const powerLines = new PowerLineRenderer(world.scene, roadSurfaceAt);
   const pipes = new PipeOverlayRenderer(world.scene, heightAt);
+  const cableOverlay = new CableOverlayRenderer(world.scene, heightAt);
   // The surface goes to glass while the player works on the water, so the
   // pipes under it show.
   const underground = new UndergroundView(world.scene);
@@ -1132,6 +1138,20 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
           const pole = powerLines.polePosition(slot);
           return { x: pole?.x ?? 0, z: pole?.z ?? 0 };
         }),
+      // Where every junction box and transformer of a buried cable stands, how
+      // many riser guards stand, and what the underground view draws of the cable.
+      readPowerCables: (): {
+        boxes: { x: number; z: number }[];
+        guards: number;
+        overlay: { tiles: number; feet: number; visible: boolean };
+      } => ({
+        boxes: Array.from({ length: powerLines.boxCount() }, (_, slot) => {
+          const box = powerLines.boxPosition(slot);
+          return { x: box?.x ?? 0, z: box?.z ?? 0 };
+        }),
+        guards: powerLines.guardCount(),
+        overlay: { ...cableOverlay.counts(), visible: cableOverlay.isVisible() },
+      }),
       // Who gives way where, and the boards that follow from it. A screenshot
       // shows a post beside a road but not which board it is or why, so a
       // check that the right junction got the right control reads it here.
@@ -1331,13 +1351,18 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
     // The city goes underground while the player works on the water: a water
     // lens, the pipe tool, or any building of the Water tab in hand. The
     // pipes show only there.
+    // Laying a buried cable takes the city underground too, where the pipes
+    // it must keep clear of show beside it.
     const onWater =
       overlay === 'watered' ||
       overlay === 'sewered' ||
       selectedTool === 'water.pipe' ||
+      selectedTool === 'power.cable' ||
       selectedTool.startsWith('plop.water-');
     if (onWater && !pipes.isVisible()) flushPipes(true);
+    if (onWater && !cableOverlay.isVisible()) flushCables(true);
     pipes.setVisible(onWater);
+    cableOverlay.setVisible(onWater);
     underground.setActive(onWater);
   };
   refreshEpicVisibility(); // start hidden until their lens/tool is selected
@@ -1438,11 +1463,34 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
   /** Where those stood when the poles were last laid, by place, so a change re-lays only its own chunks. */
   let upperSpots = new Map<string, Spot>();
   let upperStops: ReadonlySet<number> = new Set();
+  /**
+   * Where a buried cable lies and where a line on poles stands, as the pole
+   * layout keys tiles. Read off the mirror once, and again after the layer moves.
+   */
+  type CableWorld = { cables: Set<number>; lines: Set<number>; built: Set<number> };
+  let cableTiles: CableWorld | null = null;
+  const cableWorld = (): CableWorld => {
+    if (cableTiles) return cableTiles;
+    const cables = new Set<number>();
+    const lines = new Set<number>();
+    const built = new Set<number>();
+    for (const t of clientGrid.cableTiles()) cables.add(tileKey(t.x, t.z));
+    for (const t of clientGrid.powerLineTiles()) lines.add(tileKey(t.x, t.z));
+    // A box never stands in a building's lot.
+    for (let i = 0; i < clientGrid.buildingId.length; i++) {
+      if (clientGrid.buildingId[i] !== 0) {
+        built.add(tileKey(i % clientGrid.size, Math.floor(i / clientGrid.size)));
+      }
+    }
+    cableTiles = { cables, lines, built };
+    return cableTiles;
+  };
   const poleWorld = (): PowerWorld => ({
     tileSet: latestRoadTileSet,
     keepOff: poleKeepOff,
     closed: poleClosed,
     roadside: roadsideUpper,
+    ...cableWorld(),
   });
   const markPolesAt = (x: number, z: number): void => {
     for (const key of chunksAroundTile(x, z)) dirtyPoleChunks.add(key);
@@ -1469,6 +1517,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
   });
   const flushPoles = (sourcesMoved: boolean): void => {
     if (sourcesMoved) {
+      cableTiles = null;
       const { keepOff, closed } = poleSources();
       markPoleKeysChanged(poleKeepOff, keepOff);
       markPoleKeysChanged(poleClosed, closed);
@@ -1501,6 +1550,8 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
     poleSlots.line = false;
     poleSlots.free = false;
     powerLines.commit();
+    // The underground cable marks the feet of the boxes and risers just laid.
+    rebuildCables();
   };
   /**
    * Every object beside a street, laid in the order they take their places:
@@ -1568,11 +1619,14 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
     if (moved && clientGrid.roads) poleSlots.free = true;
     keepTreesOffRoadside();
     // The places the lower objects find taken include the power poles'.
-    const poleSpots = streetPoleSpots({
+    const poleSpotWorld: PowerWorld = {
       tileSet: latestRoadTileSet,
       ...poleSources(),
       roadside: roadsideUpper,
-    });
+      ...cableWorld(),
+    };
+    // A cable's boxes and transformers hold their places like a pole.
+    const poleSpots = [...streetPoleSpots(poleSpotWorld), ...cableBoxSpots(poleSpotWorld)];
     roadFurniture.rebuild(latestRoadTiles, freeJunctionTiles, {
       clear,
       taken: upper.clone().addAll(poleSpots),
@@ -1878,6 +1932,21 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
     pipesDirty = true;
     flushPipes();
   };
+  /** The drawn cable is behind what the mirror knows until the next flush. */
+  let cablesDirty = true;
+  /** Rebuilds the drawn cable if it is out of date, and only while it can be seen. */
+  const flushCables = (showing = cableOverlay.isVisible()): void => {
+    if (!cablesDirty || !showing) return;
+    // Boxes and riser poles stand on the cable; their feet are marked on it.
+    const feet = [...powerLines.footings()];
+    const world = poleWorld();
+    cableOverlay.rebuild(clientGrid.cableTiles(), feet, (x, z) => cablePlaceOf(world, x, z));
+    cablesDirty = false;
+  };
+  const rebuildCables = (): void => {
+    cablesDirty = true;
+    flushCables();
+  };
 
   const ghostKindFor = (tool: ToolId): GhostKind => {
     if (tool === 'bulldoze') return 'bulldoze';
@@ -2147,15 +2216,28 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
     powerLineAt: (x, z) => clientGrid.powerLineAt(x, z),
     // The cursor says what the world will: a street already carries power,
     // and a line must start at a source.
-    powerLineRefusal: (tiles) =>
-      alongStreetRefusal(clientGrid, tiles, (tier) =>
-        isPaved(presetProfileForTier(tier as RoadTier)),
-      ) ??
-      sourceEndRefusal(clientGrid, tiles, (x, z) => {
-        const id = clientGrid.buildingId[z * clientGrid.size + x] ?? 0;
-        const b = id === 0 ? undefined : knownBuildings.get(id);
-        return b !== undefined && feedsLines(catalogById.get(b.catalogId));
-      }),
+    cableAt: (x, z) => clientGrid.cableAt(x, z),
+    powerLineRefusal: (tiles, cable) => {
+      const sealed = (tier: number): boolean => isPaved(presetProfileForTier(tier as RoadTier));
+      return (
+        // A cable is laid along a street freely: it buries the street's supply.
+        (cable ? null : alongStreetRefusal(clientGrid, tiles, sealed)) ??
+        sourceEndRefusal(
+          clientGrid,
+          tiles,
+          (x, z) => {
+            const id = clientGrid.buildingId[z * clientGrid.size + x] ?? 0;
+            const b = id === 0 ? undefined : knownBuildings.get(id);
+            return b !== undefined && feedsLines(catalogById.get(b.catalogId));
+          },
+          cable ? PowerLineKind.Cable : PowerLineKind.Strung,
+          (x, z) => {
+            const tier = clientGrid.roadTier[z * clientGrid.size + x] ?? 0;
+            return isFrontageTier(tier) && sealed(tier);
+          },
+        )
+      );
+    },
     waterPipeAt: (x, z) => clientGrid.waterPipeAt(x, z),
     // Underground, a pipe drag snaps onto the system and says what it joins.
     pipeWorld: {
@@ -2562,6 +2644,14 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
     if (snap.zones || snap.roads || snap.roadNet || snap.buildings) rebuildPlat();
     if (snap.powerLines) {
       clientGrid.applyPowerLinePatches(snap.powerLines);
+      cableTiles = null;
+      // A cable under a street takes its poles away, and a run's ends and
+      // branches carry boxes: the chunks around every changed tile are laid again.
+      for (const patch of snap.powerLines) {
+        for (let dz = 0; dz < patch.h; dz++) {
+          for (let dx = 0; dx < patch.w; dx++) markPolesAt(patch.x + dx, patch.z + dz);
+        }
+      }
       poleSlots.line = true;
     }
     // A pipe's drawn joins read the roads and buildings beside it, so the

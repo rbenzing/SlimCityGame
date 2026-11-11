@@ -19,11 +19,20 @@ import type {
   RoadProfile,
   RoadSpec,
 } from '../shared/types';
-import { BuildingState, FieldId, RoadTier, SHELTER_AD_INCOME, fundingKeyOf } from '../shared/types';
+import {
+  BuildingState,
+  FieldId,
+  PowerLineKind,
+  RoadTier,
+  SHELTER_AD_INCOME,
+  fundingKeyOf,
+} from '../shared/types';
+import { tierIsSealedStreet } from './network';
 import { occupiedResidents } from '../shared/occupancy';
 import { isPresetProfileId, roadPriceOf } from '../shared/roadprofile';
 import {
   LANDFILL_UPKEEP_PER_TILE,
+  POWER_CABLE_UPKEEP_PER_TILE,
   POWER_LINE_UPKEEP_PER_TILE,
   WATER_PIPE_UPKEEP_PER_TILE,
   LOAN_MONTHLY_INTEREST,
@@ -302,18 +311,25 @@ export class EconomySystem {
 
       // Counted by (size, cross-section) rather than by size alone, so a
       // street with a bus lane down it is not billed as the plain street.
-      const tileCounts = new Map<string, { tier: number; profileId: number; count: number }>();
+      const tileCounts = new Map<
+        string,
+        { tier: number; profileId: number; count: number; buried: number }
+      >();
       for (let i = 0; i < MAP_TILES; i++) {
         const tier = g.roadTier[i]!;
         if (tier === RoadTier.None) continue;
         const profileId = g.roadProfile[i] ?? tier;
         const key = `${tier}:${profileId}`;
+        // A cable under a sealed street is that street's own supply, underground.
+        const buried = g.powerLine[i] === PowerLineKind.Cable && tierIsSealedStreet(tier) ? 1 : 0;
         const seen = tileCounts.get(key);
-        if (seen) seen.count++;
-        else tileCounts.set(key, { tier, profileId, count: 1 });
+        if (seen) {
+          seen.count++;
+          seen.buried += buried;
+        } else tileCounts.set(key, { tier, profileId, count: 1, buried });
       }
       let roadUpkeep = 0;
-      for (const { tier, profileId, count } of tileCounts.values()) {
+      for (const { tier, profileId, count, buried } of tileCounts.values()) {
         const spec = this.roadSpecs.get(tier);
         if (!spec) continue;
         const profile = input.profileOf?.(profileId) ?? null;
@@ -323,7 +339,7 @@ export class EconomySystem {
           profile && !isPresetProfileId(profileId)
             ? roadPriceOf(spec, profile).upkeepPerTile
             : (this.roadSpecs.get(profileId)?.upkeepPerTile ?? spec.upkeepPerTile);
-        roadUpkeep += perTile * count;
+        roadUpkeep += perTile * count - Math.min(perTile, POWER_CABLE_UPKEEP_PER_TILE) * buried;
       }
 
       // Landfill: monthly upkeep scales with the painted area.
@@ -333,7 +349,11 @@ export class EconomySystem {
       let waterPipeUpkeep = 0;
       for (let i = 0; i < MAP_TILES; i++) {
         if (g.landfill[i] === 1) landfillUpkeep += LANDFILL_UPKEEP_PER_TILE;
-        if (g.powerLine[i] !== 0) powerLineUpkeep += POWER_LINE_UPKEEP_PER_TILE;
+        const line = g.powerLine[i]!;
+        if (line === PowerLineKind.Cable) {
+          // Under a sealed street the cable's upkeep is the street's saving above.
+          if (!tierIsSealedStreet(g.roadTier[i]!)) powerLineUpkeep += POWER_CABLE_UPKEEP_PER_TILE;
+        } else if (line !== 0) powerLineUpkeep += POWER_LINE_UPKEEP_PER_TILE;
         if (g.waterPipe[i] === 1) waterPipeUpkeep += WATER_PIPE_UPKEEP_PER_TILE;
       }
 
