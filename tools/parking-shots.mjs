@@ -68,6 +68,7 @@ const PARKED_PROFILE = 30;
 const STREETS = [
   { name: 'commercial', subjects: ['com-strip-2', 'com-market-2', 'com-restaurant-1-lot2x2'] },
   { name: 'fuel-downtown', subjects: ['com-fuel-2', 'com-high-1', 'com-hotel-2'] },
+  { name: 'garage-downtown', subjects: ['com-office-2', 'com-hotel-3', 'res-tower-3'] },
   { name: 'dense-homes', subjects: ['res-medium-2', 'res-high-2', 'res-tower-1'] },
   { name: 'mixed-industry', subjects: ['mixed-2', 'ind-flex-2', 'ind-warehouse-2'] },
   { name: 'health', subjects: ['clinic', 'hospital'] },
@@ -282,6 +283,20 @@ try {
   for (const s of spots) {
     if (s.street === 'kerb') continue;
     await above(s);
+  }
+
+  // The dense kinds that park in a garage on their lot: from the rear (the open
+  // tiers, the ramp and the stair tower) and from the street (the body on the
+  // street line, the entry and its sign), each at 80 m, and the office again from
+  // 300 m. The street runs along the north side of each lot, so the drive and
+  // its entry stand on the east flank.
+  const GARAGE_SUBJECTS = ['com-office-2', 'com-hotel-3', 'mixed-2', 'res-high-2', 'res-tower-3'];
+  for (const s of spots.filter((n) => GARAGE_SUBJECTS.includes(n.id))) {
+    const cx = s.x + s.w / 2 - 0.5;
+    const cz = s.z + s.d / 2 - 0.5;
+    await shoot(`${frameName(s.id)}-rear`, cx, cz, 80, 0.5, 0.5);
+    await shoot(`${frameName(s.id)}-street`, cx + 1, s.z, 80, Math.PI - 0.55, 0.35);
+    if (s.id === 'com-office-2') await shoot(`${frameName(s.id)}-rear-far`, cx, cz, 300, 0.5, 0.6);
   }
 
   // The commercial row from the street side, looking south over the road.

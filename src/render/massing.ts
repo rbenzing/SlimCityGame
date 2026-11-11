@@ -50,7 +50,8 @@ import { deriveFacadeParams, windowGrid } from './facade';
 import { materialUnit } from './palette';
 import { maxHeightUnderBody } from './footprint';
 import { findStreetFacingEdge, NO_STREETS, type StreetLookup } from './frontage';
-import { lotPlanFor, lotPointToWorld } from './lotplan';
+import { garagePlanAt, lotPlanFor, lotPointToWorld, type GaragePlan } from './lotplan';
+import { parksInGarage, PODIUM_OVERHANG_M } from '../shared/garage';
 import { isApartmentEntry, isFarmEntry, isHouseEntry } from './archetypes';
 import type { KerbSurroundings } from '../shared/kerblayout';
 
@@ -195,7 +196,19 @@ export function frontageSetbackFor(
   if (isHouseEntry(entry)) return houseFrontShift(entry, x, z, street, rotation);
   if (isFarmEntry(entry)) return ZERO_FRONTAGE_SETBACK;
   const plan = lotPlanFor(entry, x, z, roadAt, rotation, kerb);
-  if (!plan) return ZERO_FRONTAGE_SETBACK;
+  if (!plan) {
+    // A dense block slides to the street line and leaves the lot's rear to its garage.
+    const garage = garagePlanAt(entry, { x, z, rotation }, roadAt);
+    if (!garage) return ZERO_FRONTAGE_SETBACK;
+    const lot = footprintForRotation(entry, rotation);
+    const at = garageBodyCentre(garage);
+    return {
+      spanXM: 0,
+      spanZM: 0,
+      centerXM: at.x - (x + lot.w / 2) * TILE_METERS,
+      centerZM: at.z - (z + lot.d / 2) * TILE_METERS,
+    };
+  }
 
   const { body } = plan.layout;
   const centre = lotPointToWorld(plan.frame, (body.u0 + body.u1) / 2, (body.v0 + body.v1) / 2);
@@ -206,6 +219,12 @@ export function frontageSetbackFor(
     centerXM: centre.x - (x + lot.w / 2) * TILE_METERS,
     centerZM: centre.z - (z + lot.d / 2) * TILE_METERS,
   };
+}
+
+/** Where a dense block's body stands on its lot, in world metres: against the street line, its garage behind it. */
+export function garageBodyCentre(plan: GaragePlan): { x: number; z: number } {
+  const { body } = plan.garage;
+  return lotPointToWorld(plan.frame, (body.u0 + body.u1) / 2, (body.v0 + body.v1) / 2);
 }
 
 /** The body's size along the map's x and z axes once the building is turned. */
@@ -329,10 +348,18 @@ export function computeSetbacks(
   const podiumH = podiumHeightOf(entry);
   if (podiumH === null) return { boxes };
   // The podium fills the lot to the ceiling every body keeps, less the same
-  // frontage span the slab gives up.
+  // frontage span the slab gives up. A block that parks in a garage on its lot
+  // keeps a podium a hand wider than its slab instead: the lot's rear is the garage's.
+  const garaged = parksInGarage(entry);
+  const podiumW = garaged
+    ? body.w + 2 * PODIUM_OVERHANG_M
+    : entry.footprint.w * TILE_METERS * MAX_FOOTPRINT_FILL;
+  const podiumD = garaged
+    ? body.d + 2 * PODIUM_OVERHANG_M
+    : entry.footprint.d * TILE_METERS * MAX_FOOTPRINT_FILL;
   const podium: SetbackBox = {
-    w: entry.footprint.w * TILE_METERS * MAX_FOOTPRINT_FILL - (frontage?.spanXM ?? 0),
-    d: entry.footprint.d * TILE_METERS * MAX_FOOTPRINT_FILL - (frontage?.spanZM ?? 0),
+    w: podiumW - (frontage?.spanXM ?? 0),
+    d: podiumD - (frontage?.spanZM ?? 0),
     h: Math.min(totalHeight, podiumH),
     yOffset: 0,
   };

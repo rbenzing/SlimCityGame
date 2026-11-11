@@ -55,13 +55,19 @@ import {
 } from './parked';
 import type { KerbSurroundings } from '../shared/kerblayout';
 import { lotPaving } from '../shared/lotlayout';
+import { ENTRANCE_WALK_M } from '../shared/parkingcode';
 import {
   framedLotPlanFor,
+  garagePlanAt,
   lotPlanFor,
   lotPointToWorld,
+  type GaragePlan,
   type KerbCreditOf,
   type LotPlan,
 } from './lotplan';
+
+/** The walk down a dense block's side to its garage's stair, 8 ft. */
+const GARAGE_WALK_M = ENTRANCE_WALK_M;
 
 /**
  * Pads ride just above the terrain overlays and BELOW everything that sits on
@@ -284,6 +290,13 @@ export class LotRenderer {
 
     const surface = lotSurfaceFor(entry);
     if (surface === null) return;
+    // A dense block's lot is its drive, its walk and planting round the body and its garage.
+    const garage = garagePlanAt(entry, building, this.roadAt);
+    if (garage) {
+      this.layGarageLot(building, garage, positions, colors, tinted);
+      this.store(building, positions, colors);
+      return;
+    }
     const plan = planHouseLot(building, entry, this.roadAt, this.street);
     if (building.frame && plan) {
       // A home on a curve: its pad is its lot turned with its street, and
@@ -461,6 +474,65 @@ export class LotRenderer {
         color,
         this.heightAt,
       );
+    }
+  }
+
+  /**
+   * A dense block's lot: planted, with the drive down its side from the street
+   * to the garage's entry and the walk down the other side to the stair, each
+   * carried across the road tile's verge. The body and the garage cover the rest.
+   */
+  private layGarageLot(
+    building: BuildingInstance,
+    plan: GaragePlan,
+    positions: number[],
+    colors: number[],
+    tinted: (name: MaterialName) => readonly [number, number, number],
+  ): void {
+    const { garage, frame, edge } = plan;
+    const lay = (rect: LotRect, y: number, name: MaterialName): void => {
+      if (building.frame) {
+        pushConformingTurnedQuad(
+          positions,
+          colors,
+          (u, v) => lotPointToWorld(frame, u, v),
+          rect.u0,
+          rect.v0,
+          rect.u1,
+          rect.v1,
+          y,
+          tinted(name),
+          this.heightAt,
+        );
+        return;
+      }
+      const a = lotPointToWorld(frame, rect.u0, rect.v0);
+      const b = lotPointToWorld(frame, rect.u1, rect.v1);
+      pushConformingQuad(
+        positions,
+        colors,
+        Math.min(a.x, b.x),
+        Math.min(a.z, b.z),
+        Math.max(a.x, b.x),
+        Math.max(a.z, b.z),
+        y,
+        tinted(name),
+        this.heightAt,
+      );
+    };
+    const verge = building.frame ? 0 : (this.street(edge.roadTileX, edge.roadTileZ)?.vergeM ?? 0);
+    const walk: LotRect = {
+      u0: garage.body.u0 - GARAGE_WALK_M,
+      u1: garage.body.u0,
+      v0: 0,
+      v1: garage.deck.v0,
+    };
+    lay({ u0: 0, u1: garage.lotW, v0: 0, v1: garage.lotD }, LOT_Y_OFFSET, 'mownLawn');
+    lay(garage.drive, DRIVE_Y_OFFSET, 'darkAsphalt');
+    lay(walk, WALK_Y_OFFSET, 'cleanConcrete');
+    if (verge > 0) {
+      lay({ ...garage.drive, v0: -verge, v1: 0 }, DRIVE_Y_OFFSET, 'darkAsphalt');
+      lay({ ...walk, v0: -verge, v1: 0 }, WALK_Y_OFFSET, 'cleanConcrete');
     }
   }
 

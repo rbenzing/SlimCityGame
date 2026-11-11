@@ -31,8 +31,10 @@
 | Tier height | 3.35 (`DECK_STOREY_M`) | m | the hospital deck's; 10.5–11.5 ft, [the garage](../sources/structured-parking.md#the-garage) |
 | Stall, aisle, module | 9 × 18, 24, 60 (42 single row) | ft | `src/shared/parkingcode.ts` |
 | Structural bay | 36 × 60 | ft | [the garage](../sources/structured-parking.md#the-garage) |
-| Deck on a 2 × 2 lot | 12.8 × 40, one row, about 14 stalls a tier | m | the lot's rear margin |
-| Deck on a 3 × 3 lot | 18.3 × 60, two rows, about 36 stalls a tier | m | the lot's rear margin |
+| Deck on a 2 × 2 lot | the margin behind the body, 40 long: one row, 12 to 14 stalls a tier | m | the lot's rear margin |
+| Deck on a 3 × 3 lot | the margin behind the body, 60 long: two rows, 38 stalls a tier (21 behind a hotel) | m | the lot's rear margin |
+| Body back from the street line | what its street face reaches: 1.5 a lobby portal, 1.8 balconies, 6 a porte-cochère | m | `GARAGE_FRONT_PROJECTION_M`; every part stays on its lot |
+| Deck aisle | 7.32 (24 ft); 5.4 one-way where the margin is short | m | `GARAGE_MIN_AISLE_M`, a dial |
 | Podium tiers | 1 to 2 | tiers | [built in](../sources/structured-parking.md#built-into-a-building) |
 | Deck tiers, most | 6 | tiers | dial |
 | Parked ramp | 5, never over 6.67 | % | [the garage](../sources/structured-parking.md#the-garage) |
@@ -42,11 +44,11 @@
 | Vehicle barrier | 0.84 | m | same |
 | Street face lined | 70 % at least, 4.6 m deep | share, m | [built in](../sources/structured-parking.md#built-into-a-building) |
 
-**Code:** `src/shared/parkingcode.ts` `drawsLotParking`, the rates; `src/shared/lotparking.ts`, `src/shared/lotlayout.ts` the lot; `src/render/utilitykits.ts` `computeHospitalLayout`, `layDeck`, `buildHospitalDeckGeometry` the deck that exists; `src/render/archetypes.ts` `PODIUM_BAND_PARTS`, `src/render/massing.ts` `PODIUM_STOREYS` the podium; `src/render/lots.ts` `lotSurfaceFor` the pad this retires; `src/data/catalog.json` the larger lots.
+**Code:** `src/shared/garage.ts` which kinds take a garage, what each needs, the deck's plan and tiers; `src/render/garagekit.ts`, `src/render/garages.ts` the deck drawn and laid; `src/shared/parkingcode.ts` `drawsLotParking`, `stallsInRow`, the rates; `src/render/lotplan.ts` `garagePlanAt`; `src/render/massing.ts` the body's slide and `PODIUM_STOREYS`; `src/render/parked.ts` the garage's cars and counts; `src/render/lots.ts` the lot's ground; `src/shared/lotparking.ts`, `src/shared/lotlayout.ts` the surface lot; `src/render/utilitykits.ts` the hospital's deck, which shares the tier height and the row count. Not yet: `src/data/catalog.json` the larger level-1 lots.
 
-**Tests:** `src/render/parkedstalls.test.ts`, `civicstalls.test.ts` hold one car a stall, none in an aisle, and a reported count equal to the stalls drawn. To be written with the garages: every dense kind at every level holds its spaces at four turns; no body plate or height changes; a garage's stall count equals its rows'; a tier is open to the rule.
+**Tests:** `src/render/parkedstalls.test.ts`, `civicstalls.test.ts` hold one car a stall, none in an aisle, and a reported count equal to the stalls drawn. `src/shared/garage.test.ts`, `src/render/garages.test.ts` hold, for every garaged kind at four turns and every street side: plate and height unchanged, the deck inside the lot behind the body, a tier's stalls equal to its rows', tiers the requirement over a tier's stalls and six at most, each tier open to the rule, one car a stall and none on a ramp, and the level-1 kinds unchanged.
 
-**Open:** a level-1 kind on a larger lot levelling up onto a smaller footprint (growth skips a lot smaller on either axis). The audit of stall sizes found the walk-up, the hospital deck, the station and the library on the shared module; the clinic (2.74 × 5.5 m) and the recycling yard (2.7 × 5.5 m, 7.3 m aisle) round it; a row house parks on a 3 m drive; the rail station's car park was not measured.
+**Open:** the level-1 surface car parks and their larger lots are not built. A podium's faces are not opened as tiers: the deck behind carries every stall. A level-2 hotel on a 2 × 2 lot has no garage, its porte-cochère leaving no room behind. A garage's tiers carry no lights at night; the kerb's cars are not cut to a garage's shortfall; a garage on a turned parcel is wired and not yet tested. A level-1 kind on a larger lot levelling up onto a smaller footprint (growth skips a lot smaller on either axis). The audit of stall sizes found the walk-up, the hospital deck, the station and the library on the shared module; the clinic (2.74 × 5.5 m) and the recycling yard (2.7 × 5.5 m, 7.3 m aisle) round it; a row house parks on a 3 m drive; the rail station's car park was not measured.
 
 ## Why the rules are what they are
 

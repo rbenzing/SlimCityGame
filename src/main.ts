@@ -117,6 +117,7 @@ import {
   type HouseLotPlan,
 } from './render/houselot';
 import { LotRenderer } from './render/lots';
+import { GarageRenderer } from './render/garages';
 import { BuildingKitRenderer } from './render/buildingkit';
 import { LandmarkRenderer } from './render/landmarks';
 import { chunksOver, RoadMeshRenderer } from './render/roadsmesh';
@@ -489,6 +490,8 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
     kerb,
     kerbCreditOf,
   );
+  // The garage a dense block parks in on its own lot, behind the body.
+  const garages = new GarageRenderer(world.scene, heightAt, catalog, roadAt);
   const parkedCars = new ParkedCarRenderer(
     world.scene,
     heightAt,
@@ -858,7 +861,10 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
           stalls: ownStalls + civic.stalls,
           // How many of them hold a car at this hour: the kerb's rule is about
           // when, which a count of stalls cannot show.
-          occupied: (kerbStalls > 0 ? 0 : occupiedAll) + civic.occupied,
+          occupied:
+            (kerbStalls > 0 ? 0 : occupiedAll) +
+            parkedCars.garageOccupiedCount(buildingId) +
+            civic.occupied,
           kerbStalls,
           kerbOccupied: kerbStalls > 0 ? occupiedAll : 0,
           category: entry?.category ?? '?',
@@ -2165,6 +2171,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
     massing.setNightFactor(nightFactor);
     roofProps.setNightFactor(nightFactor);
     houseRoofs.setNightFactor(nightFactor);
+    garages.setNightFactor(nightFactor);
     roadsMesh.setNightFactor(nightFactor); // dim the unlit road so lamp pools stay the bright spots
     freeRoads.setNightFactor(nightFactor);
     lamps.setTimeOfDay(dayT); // lamps run their own dusk-to-dawn schedule, not the night ramp
@@ -2317,6 +2324,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       roofProps.apply(faced);
       buildingKit.apply(faced);
       houseRoofs.apply(snap.buildings);
+      garages.apply(snap.buildings);
       parkedCars.apply(snap.buildings);
       landmarks.apply(snap.buildings);
       utilityKits.apply(snap.buildings);
@@ -2391,6 +2399,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
         roofProps.apply(relaidFaced);
         buildingKit.apply(relaidFaced);
         houseRoofs.apply(relaid);
+        garages.apply(relaid);
         parkedCars.apply(relaid);
         pedestrianRenderer.apply({ stops: latestStopPoints, buildings: relaid });
       }

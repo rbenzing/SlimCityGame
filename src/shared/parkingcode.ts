@@ -96,6 +96,11 @@ export function adaAccessibleSpaces(provided: number): number {
   return 20 + Math.ceil((provided - 1_000) / 100);
 }
 
+/** How many 9 ft stalls a straight run of `runM` metres holds: the count a deck's row and a garage's tier are made of. */
+export function stallsInRow(runM: number): number {
+  return Math.max(0, Math.floor(runM / STALL_WIDTH_M));
+}
+
 /** Of a lot's accessible spaces, how many are van-accessible: one in six, or a fraction of six (ADA 2010 §208.2.4). */
 export function adaVanSpaces(accessible: number): number {
   return Math.ceil(accessible / 6);

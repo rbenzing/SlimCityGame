@@ -13,9 +13,11 @@ import { footprintForRotation } from '../shared/footprint';
 import type { KerbSurroundings } from '../shared/kerblayout';
 import type { LotLayout } from '../shared/lotlayout';
 import { lotLayoutFor, lotParkingAt } from '../shared/lotparking';
+import { garageFor, type Garage } from '../shared/garage';
 import {
   edgeFrameFor,
   edgeFrameOfParcel,
+  findRoadFacingEdge,
   frameToWorld,
   type EdgeFrame,
   type RoadFacingEdge,
@@ -103,6 +105,43 @@ export function lotPlanAt(
 ): LotPlan | null {
   if (site.frame) return framedLotPlanFor(entry, site.frame, kerbCreditOf);
   return lotPlanFor(entry, site.x, site.z, roadAt, site.rotation, kerb);
+}
+
+/** A dense building's garage on the map: its street edge, the frame its lot is laid in, and the garage itself. */
+export interface GaragePlan {
+  edge: RoadFacingEdge;
+  frame: EdgeFrame;
+  garage: Garage;
+}
+
+/**
+ * The garage a dense building parks in where it stands, or null for a kind that
+ * parks otherwise, a lot with no room behind the body, or a lot fronting no
+ * road. A building on a curve is laid in its parcel's frame, as its lot plan is.
+ */
+export function garagePlanAt(
+  entry: BuildingCatalogEntry,
+  site: LotSite,
+  roadAt: (tileX: number, tileZ: number) => boolean,
+): GaragePlan | null {
+  const garage = garageFor(entry);
+  if (!garage) return null;
+  if (site.frame) {
+    const frame = edgeFrameOfParcel(site.frame);
+    const wM = entry.footprint.w * TILE_METERS;
+    const road = frameToWorld(frame, wM / 2, ROAD_TILE_PROBE);
+    const edge: RoadFacingEdge = {
+      side: 'N',
+      edgeTiles: entry.footprint.w,
+      roadTileX: Math.floor(road.x / TILE_METERS),
+      roadTileZ: Math.floor(road.z / TILE_METERS),
+    };
+    return { edge, frame, garage };
+  }
+  const lot = footprintForRotation(entry, site.rotation);
+  const edge = findRoadFacingEdge(site.x, site.z, lot.w, lot.d, roadAt);
+  if (!edge) return null;
+  return { edge, frame: edgeFrameFor(edge.side, site.x, site.z, lot.w, lot.d), garage };
 }
 
 /** A lot point in world metres. */
