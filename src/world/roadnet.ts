@@ -14,13 +14,17 @@
 
 import { TILE_METERS } from '../shared/constants';
 import {
+  MAX_SETBACK_SHARE,
+  bendBetween,
   isGridSegment,
   isTileCentre,
   sampleCentreLine,
+  segmentLengthM,
   tileCentreCm,
   tileOfCm,
 } from '../shared/roadgeom';
-import type { CmPoint, SegmentGeom } from '../shared/roadgeom';
+import type { Bend, BendRun, CmPoint, MPoint, SegmentGeom } from '../shared/roadgeom';
+import { bendRadiusOf, isPresetProfileId, presetProfileForTier } from '../shared/roadprofile';
 import { RoadTier } from '../shared/types';
 import type { GridState, RoadNet } from '../shared/types';
 import { deserializeGrid, savedRoadNetwork, serializeGrid } from './grid';
@@ -198,6 +202,78 @@ export function isGridNode(net: RoadNet, s: number): boolean {
 /** Whether a live segment is off the grid: at an angle, curved, or ending off a tile centre. */
 export function isFreeSegment(net: RoadNet, s: number): boolean {
   return !isGridSegment(segmentGeom(net, s));
+}
+
+/** A bend, and the two segments it joins in the order the bend is driven. */
+export interface BendAt {
+  bend: Bend;
+  first: number;
+  second: number;
+  /** The segment whose drawn direction the bend runs in, and whose cross-section it is laid in. */
+  frame: number;
+}
+
+/**
+ * Every node where exactly two free segments of one road meet: the road turns
+ * there on an arc, not at a junction. The two must be one class and profile
+ * and carry one flow, and a one-way road must run through the node. The arc's
+ * centre-line radius for a segment comes from `radiusOf`, or null where the
+ * segment has no profile to draw a bend from.
+ */
+export function bendsOf(
+  net: RoadNet,
+  radiusOf: (seg: number) => number | null,
+): Map<number, BendAt> {
+  const arms = new Map<number, number[]>();
+  for (let seg = 0; seg < net.segSlots; seg++) {
+    if (net.segLive[seg] !== 1) continue;
+    for (const node of [net.segA[seg]!, net.segB[seg]!]) {
+      const list = arms.get(node);
+      if (list) list.push(seg);
+      else arms.set(node, [seg]);
+    }
+  }
+  const out = new Map<number, BendAt>();
+  for (const [node, list] of arms) {
+    if (list.length !== 2 || list[0] === list[1]) continue;
+    const [p, q] = list as [number, number];
+    const grid = [p, q].filter((s) => !isFreeSegment(net, s));
+    // Two free runs, or one grid run ending on its tile and one free run off it.
+    if (grid.length > 1 || isGridNode(net, node) !== (grid.length === 1)) continue;
+    if (net.segProfile[p] !== net.segProfile[q] || net.segTier[p] !== net.segTier[q]) continue;
+    // A grid road stores the direction it was drawn in even when it is two-way, a
+    // free one only whether it is one-way, so across the two only the free road's
+    // flow says anything: it must be two-way, as the one class and profile are.
+    if (grid.length === 1) {
+      const free = grid[0] === p ? q : p;
+      if (net.segFlow[free] !== 0) continue;
+    } else if (net.segFlow[p] !== net.segFlow[q]) continue;
+    const ending = [p, q].filter((s) => net.segB[s] === node);
+    if (grid.length === 0 && net.segFlow[p] !== 0 && ending.length !== 1) continue;
+    // The bend is driven the way its free segment was drawn, so the cross-section
+    // laid across the first run carries on across the second.
+    const free = grid.length === 1 ? (grid[0] === p ? q : p) : null;
+    const first = free !== null ? (net.segB[free] === node ? free : grid[0]!) : (ending[0] ?? q);
+    const second = first === p ? q : p;
+    const radius = radiusOf(free ?? first);
+    if (radius === null) continue;
+    const run = (seg: number): BendRun => ({
+      geom: segmentGeom(net, seg),
+      atA: net.segA[seg] === node,
+    });
+    // A grid run gives up no more than the half tile to its tile's edge.
+    const share = (seg: number): number =>
+      isFreeSegment(net, seg)
+        ? segmentLengthM(segmentGeom(net, seg)) * MAX_SETBACK_SHARE
+        : TILE_METERS / 2;
+    out.set(node, {
+      bend: bendBetween(run(first), run(second), radius, [share(first), share(second)]),
+      first,
+      second,
+      frame: free ?? (ending.length > 0 ? first : second),
+    });
+  }
+  return out;
 }
 
 /** Live node slots, in slot order. */
@@ -452,6 +528,12 @@ export interface RoadCells {
    * node's own cell holds the node's one point.
    */
   freeShape: Float32Array[];
+  /**
+   * Per grid tile where a free road bends off its end: the centre line the
+   * tile's cell is driven along, world metres, from the grid road's side to the
+   * free road's.
+   */
+  gridBend: Map<number, MPoint[]>;
 }
 
 /** How far apart the points of a free cell's shape are, metres. */
@@ -510,9 +592,17 @@ interface FreeCell extends RoadFacts {
   shape: Float32Array;
 }
 
-/** Centre-line samples thinned to about `SHAPE_STEP_M` apart, both ends kept, as x, z pairs. */
-function thinShape(points: readonly { x: number; z: number; s: number }[]): Float32Array {
+/**
+ * Centre-line samples thinned to about `SHAPE_STEP_M` apart, both ends kept, as
+ * x, z pairs, with the points of a bend's arc before and after them kept whole.
+ */
+function thinShape(
+  points: readonly { x: number; z: number; s: number }[],
+  before: readonly MPoint[] = [],
+  after: readonly MPoint[] = [],
+): Float32Array {
   const kept: number[] = [];
+  for (const p of before) kept.push(p.x, p.z);
   let last = -Infinity;
   points.forEach((p, i) => {
     if (i === points.length - 1 || p.s - last >= SHAPE_STEP_M) {
@@ -520,10 +610,38 @@ function thinShape(points: readonly { x: number; z: number; s: number }[]): Floa
       last = p.s;
     }
   });
+  for (const p of after) kept.push(p.x, p.z);
   return Float32Array.from(kept);
 }
 
-export function buildRoadCells(net: RoadNet, size: number): RoadCells {
+/** A segment's bend radius from the preset cross-section its profile or its tier names. */
+const presetBendRadius =
+  (net: RoadNet) =>
+  (seg: number): number | null => {
+    const id = net.segProfile[seg]!;
+    try {
+      return bendRadiusOf(
+        presetProfileForTier((isPresetProfileId(id) ? id : net.segTier[seg]!) as RoadTier),
+      );
+    } catch {
+      return null;
+    }
+  };
+
+/** The bend's half that belongs to `seg`: from where the segment's end gives way to the arc, to the arc's middle. */
+function bendHalf(at: BendAt, seg: number): MPoint[] {
+  const { path, middle } = at.bend;
+  return seg === at.first ? path.slice(0, middle + 1) : path.slice(middle).reverse();
+}
+
+export function buildRoadCells(
+  net: RoadNet,
+  size: number,
+  radiusOf: (seg: number) => number | null = presetBendRadius(net),
+): RoadCells {
+  const bends = bendsOf(net, radiusOf);
+  const gridBendOf = (at: BendAt): boolean =>
+    !isFreeSegment(net, at.first) || !isFreeSegment(net, at.second);
   const n = size * size;
   const keys = 2 * n;
   const gridTier = new Uint8Array(keys);
@@ -577,6 +695,9 @@ export function buildRoadCells(net: RoadNet, size: number): RoadCells {
     if (isGridNode(net, slot) && gridTier[tile] !== 0) return tile;
     const known = nodeCells.get(slot);
     if (known !== undefined) return known;
+    // A bend's node cell holds the middle of its arc, where both runs meet.
+    const bend = bends.get(slot);
+    const middle = bend ? bend.bend.path[bend.bend.middle]! : null;
     const id = keys + free.length;
     free.push({
       ...facts,
@@ -586,7 +707,7 @@ export function buildRoadCells(net: RoadNet, size: number): RoadCells {
       seg: -1,
       seq: 0,
       towardB: NO_CELL,
-      shape: Float32Array.of(p.x / 100, p.z / 100),
+      shape: middle ? Float32Array.of(middle.x, middle.z) : Float32Array.of(p.x / 100, p.z / 100),
     });
     nodeCells.set(slot, id);
     return id;
@@ -599,7 +720,14 @@ export function buildRoadCells(net: RoadNet, size: number): RoadCells {
     const samples = sampleCentreLine(geom);
     const total = samples[samples.length - 1]!.s;
     // Runs of samples on one tile, each with the length of centre line it covers.
-    type Group = { tile: number; length: number; points: typeof samples };
+    type Group = {
+      tile: number;
+      length: number;
+      points: typeof samples;
+      /** Where a bend at the segment's first end or its second joins the line, kept as drawn. */
+      before: MPoint[];
+      after: MPoint[];
+    };
     const groups: Group[] = [];
     for (let i = 0; i < samples.length; i++) {
       const p = samples[i]!;
@@ -609,7 +737,7 @@ export function buildRoadCells(net: RoadNet, size: number): RoadCells {
       if (last && last.tile === tile) {
         last.length += upTo - p.s;
         last.points.push(p);
-      } else groups.push({ tile, length: upTo - p.s, points: [p] });
+      } else groups.push({ tile, length: upTo - p.s, points: [p], before: [], after: [] });
     }
     const aCell = cellOfNode(net.segA[s]!, facts);
     const bCell = cellOfNode(net.segB[s]!, facts);
@@ -629,6 +757,22 @@ export function buildRoadCells(net: RoadNet, size: number): RoadCells {
       groups[groups.length - 1]!.length += tail.length;
       groups[groups.length - 1]!.points.push(...tail.points);
     }
+    // Where a bend takes the end of the line, the line stops where the arc
+    // begins and the arc carries on to its middle, point for point.
+    const atBend = (node: number): BendAt | undefined => bends.get(node);
+    // Where the bend is on a grid tile the tile's own cell carries the whole arc.
+    const bendA = atBend(net.segA[s]!);
+    const bendB = atBend(net.segB[s]!);
+    if (bendA) {
+      const take = bendA.bend.setback[0];
+      for (const group of groups) group.points = group.points.filter((p) => p.s >= take);
+      if (!gridBendOf(bendA)) groups[0]!.before = bendHalf(bendA, s).reverse();
+    }
+    if (bendB) {
+      const take = total - bendB.bend.setback[0];
+      for (const group of groups) group.points = group.points.filter((p) => p.s <= take);
+      if (!gridBendOf(bendB)) groups[groups.length - 1]!.after = bendHalf(bendB, s);
+    }
     const first = keys + free.length;
     let prev = aCell;
     groups.forEach((group, seq) => {
@@ -641,7 +785,7 @@ export function buildRoadCells(net: RoadNet, size: number): RoadCells {
         seg: s,
         seq,
         towardB,
-        shape: thinShape(group.points),
+        shape: thinShape(group.points, group.before, group.after),
       });
       link(prev, id);
       prev = id;
@@ -649,6 +793,15 @@ export function buildRoadCells(net: RoadNet, size: number): RoadCells {
     link(prev, bCell);
   }
 
+  // A grid tile a free road bends off: its cell is driven along the arc, from
+  // the grid road's side to the free road's.
+  const gridBend = new Map<number, MPoint[]>();
+  for (const [node, at] of bends) {
+    if (!gridBendOf(at)) continue;
+    const tile = tileOfCm(net.nodeZ[node]!) * size + tileOfCm(net.nodeX[node]!);
+    const path = at.bend.path.map((p): MPoint => ({ x: p.x, z: p.z }));
+    gridBend.set(tile, isFreeSegment(net, at.first) ? path.reverse() : path);
+  }
   const count = keys + free.length;
   const tier = new Uint8Array(count);
   const profile = new Uint16Array(count);
@@ -680,6 +833,7 @@ export function buildRoadCells(net: RoadNet, size: number): RoadCells {
     more,
     freeOnTile,
     freeShape: free.map((c) => c.shape),
+    gridBend,
   };
 }
 
@@ -698,6 +852,12 @@ export function cellRoute(
   const keys = 2 * cells.size * cells.size;
   if (id < keys) {
     const tile = id % (cells.size * cells.size);
+    const arc = cells.gridBend.get(tile);
+    if (arc) {
+      // Driven toward the free road when it is next, or the grid road was where it came from.
+      const toFree = next !== undefined ? next >= keys : prev === undefined || prev < keys;
+      return toFree ? arc : [...arc].reverse();
+    }
     return [
       {
         x: ((tile % cells.size) + 0.5) * TILE_METERS,

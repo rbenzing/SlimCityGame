@@ -7,6 +7,7 @@ import { canPlaceFootprint, createGrid, setZones } from './grid';
 import { computeZonableMask } from './zonable';
 import { applyRoad, removeRoad } from './roads';
 import {
+  bendsOf,
   deriveRoadLayers,
   encodeRoadNetwork,
   isFreeSegment,
@@ -35,7 +36,12 @@ import {
   splitSegment,
 } from './freeroads';
 import { RoadNetwork } from './roadgraph';
-import { composeProfile, NO_EDITS, presetProfileForTier } from '../shared/roadprofile';
+import {
+  bendRadiusOf,
+  composeProfile,
+  NO_EDITS,
+  presetProfileForTier,
+} from '../shared/roadprofile';
 
 const SIZE = 48;
 const noCustom = (): null => null;
@@ -626,6 +632,13 @@ describe('roads off the grid: the graph routes along them', () => {
           ...Array.from({ length: 6 }, (_, i) => [20 + i, 25]),
         ].map(([x, z]) => `${(x! + 0.5) * 20},${(z! + 0.5) * 20}`),
       );
+      // Where the curve leaves a grid street it turns on the bend's arc, which is
+      // driven in place of the curve's first and last metres.
+      const arcs = [
+        ...bendsOf(g.roads!, () => bendRadiusOf(presetProfileForTier(RoadTier.TwoLane))).values(),
+      ].flatMap((b) => b.bend.path);
+      const onBend = (p: { x: number; z: number }): boolean =>
+        arcs.some((a) => Math.hypot(a.x - p.x, a.z - p.z) < 1e-3);
       const net = new RoadNetwork();
       net.rebuild(g);
       for (const [from, to] of [
@@ -644,7 +657,10 @@ describe('roads off the grid: the graph routes along them', () => {
         for (let i = 0; i < route.length; i++) {
           const p = route[i]!;
           const onCurve = curve.some((c) => Math.hypot(c.x - p.x, c.z - p.z) < 1e-3);
-          expect(onCurve || street.has(`${p.x},${p.z}`), `point ${i} at ${p.x},${p.z}`).toBe(true);
+          expect(
+            onCurve || onBend(p) || street.has(`${p.x},${p.z}`),
+            `point ${i} at ${p.x},${p.z}`,
+          ).toBe(true);
           if (i > 0) {
             const q = route[i - 1]!;
             expect(Math.hypot(p.x - q.x, p.z - q.z)).toBeLessThanOrEqual(20 + 1e-6);
@@ -653,7 +669,7 @@ describe('roads off the grid: the graph routes along them', () => {
         // The curve is driven closely, not cut across by a chord or two, and
         // steadily from one end to the other, never doubling back.
         const along = route
-          .filter((p) => !street.has(`${p.x},${p.z}`))
+          .filter((p) => !street.has(`${p.x},${p.z}`) && !onBend(p))
           .map((p) => curve.find((c) => Math.hypot(c.x - p.x, c.z - p.z) < 1e-3)!.s);
         expect(along.length).toBeGreaterThan(curve.at(-1)!.s / 6);
         const rising = along[along.length - 1]! > along[0]!;
@@ -694,7 +710,8 @@ describe('roads off the grid: the land reads them', () => {
     // A tile whose centre is on the road's pavement is never zonable.
     for (let tz = 0; tz < SIZE; tz++) {
       for (let tx = 6; tx < 34; tx++) {
-        const offLine = Math.abs((tz + 0.5) * 20 - line((tx + 0.5) * 20)) * Math.cos(Math.atan(1 / 6));
+        const offLine =
+          Math.abs((tz + 0.5) * 20 - line((tx + 0.5) * 20)) * Math.cos(Math.atan(1 / 6));
         if (offLine <= 4) expect(mask[tz * SIZE + tx]).toBe(0);
       }
     }

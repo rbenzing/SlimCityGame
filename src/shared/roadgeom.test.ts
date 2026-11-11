@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   SAMPLE_STEP_M,
+  bendBetween,
   footprintTiles,
   headingAt,
   isGridSegment,
@@ -14,7 +15,7 @@ import {
   wideEnoughApart,
   withinMergeAngle,
 } from './roadgeom';
-import type { SegmentGeom } from './roadgeom';
+import type { BendRun, SegmentGeom } from './roadgeom';
 
 const m = (metres: number): number => Math.round(metres * 100);
 const dirAt = (deg: number): { x: number; z: number } => ({
@@ -172,5 +173,101 @@ describe('a kerb line', () => {
       expect(Math.sin(headingAt(g, 1))).toBeCloseTo(-b.z, 9);
     }
     expect(headingAt(straight, 0.5)).toBeCloseTo(Math.atan2(60, 80), 12);
+  });
+});
+
+describe('a bend', () => {
+  const NODE = { x: 500, z: 500 };
+  /** Two straight runs meeting at the node, the second turned `deg` degrees off the first's line. */
+  function runs(deg: number, first = 120, second = 120): [BendRun, BendRun] {
+    const d = dirAt(deg);
+    return [
+      {
+        geom: {
+          a: { x: m(NODE.x - first), z: m(NODE.z) },
+          b: { x: m(NODE.x), z: m(NODE.z) },
+          control: null,
+        },
+        atA: false,
+      },
+      {
+        geom: {
+          a: { x: m(NODE.x), z: m(NODE.z) },
+          b: { x: m(NODE.x + d.x * second), z: m(NODE.z + d.z * second) },
+          control: null,
+        },
+        atA: true,
+      },
+    ];
+  }
+  const RADIUS = 9.5;
+  const angleBetween = (u: { x: number; z: number }, v: { x: number; z: number }): number =>
+    (Math.acos(Math.min(1, Math.max(-1, u.x * v.x + u.z * v.z))) * 180) / Math.PI;
+
+  for (const deg of [15, 30, 60, 90, 120]) {
+    it(`turns ${deg} degrees on an arc tangent to both runs, at the radius it was asked`, () => {
+      const [p, q] = runs(deg);
+      const bend = bendBetween(p, q, RADIUS, [54, 54]);
+      const first = bend.path[0]!;
+      const last = bend.path[bend.path.length - 1]!;
+      expect(angleBetween({ x: first.hx, z: first.hz }, { x: 1, z: 0 })).toBeLessThanOrEqual(1);
+      expect(angleBetween({ x: last.hx, z: last.hz }, dirAt(deg))).toBeLessThanOrEqual(1);
+      expect(bend.radius).toBeCloseTo(RADIUS, 6);
+      // The tangent length is the radius times tan(deflection / 2), on both runs.
+      const take = RADIUS * Math.tan((deg * Math.PI) / 360);
+      // Whole centimetres on the second run's end turn it a hair, hence a tenth of a millimetre.
+      expect(bend.setback[0]).toBeCloseTo(take, 3);
+      expect(first.x).toBeCloseTo(NODE.x - take, 2);
+      for (const k of bend.path.slice(bend.arc[0], bend.arc[1] + 1)) {
+        expect(Math.hypot(k.x - bend.centre.x, k.z - bend.centre.z)).toBeCloseTo(RADIUS, 6);
+      }
+      // Headings change by a few degrees at a time, never at a corner.
+      for (let k = 1; k < bend.path.length; k++) {
+        const a = bend.path[k - 1]!;
+        const b = bend.path[k]!;
+        expect(angleBetween({ x: a.hx, z: a.hz }, { x: b.hx, z: b.hz })).toBeLessThanOrEqual(5);
+      }
+    });
+  }
+
+  it('shrinks the arc to what the shorter run holds', () => {
+    const [p, q] = runs(120, 10, 120);
+    const bend = bendBetween(p, q, RADIUS, [4.5, 54]);
+    expect(bend.setback[0]).toBeCloseTo(4.5, 9);
+    expect(bend.setback[1]).toBeCloseTo(4.5, 9);
+    expect(bend.radius).toBeCloseTo(4.5 / Math.tan(Math.PI / 3), 3);
+    for (const k of bend.path) expect(Number.isFinite(k.x + k.z + k.hx + k.hz + k.s)).toBe(true);
+  });
+
+  it('runs straight through where the runs meet in line', () => {
+    const [p, q] = runs(0);
+    const bend = bendBetween(p, q, RADIUS, [54, 54]);
+    expect(bend.turn).toBe(0);
+    expect(bend.setback[0]).toBeCloseTo(0, 9);
+    for (const k of bend.path) expect(k.z).toBeCloseTo(NODE.z, 6);
+  });
+
+  it('joins a curved run to a straight one without a kink', () => {
+    // The first run curves 20 degrees before it reaches the node.
+    const curved: BendRun = {
+      geom: {
+        a: { x: m(NODE.x - 100), z: m(NODE.z + 20) },
+        b: { x: m(NODE.x), z: m(NODE.z) },
+        control: { x: m(NODE.x - 50), z: m(NODE.z - 10) },
+      },
+      atA: false,
+    };
+    const [, q] = runs(25);
+    const bend = bendBetween(curved, q, RADIUS, [45, 54]);
+    const into = leavingDirection(curved.geom, 'b');
+    const first = bend.path[0]!;
+    // The path leaves the curved run on the run's own heading where the run is cut.
+    expect(first.hx * -into.x + first.hz * -into.z).toBeGreaterThan(0.95);
+    for (let k = 1; k < bend.path.length; k++) {
+      const a = bend.path[k - 1]!;
+      const b = bend.path[k]!;
+      expect(angleBetween({ x: a.hx, z: a.hz }, { x: b.hx, z: b.hz })).toBeLessThanOrEqual(5);
+      expect(Number.isFinite(b.x + b.z)).toBe(true);
+    }
   });
 });

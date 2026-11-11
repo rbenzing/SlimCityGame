@@ -432,6 +432,15 @@ export function kerbReturnRadiusOf(profile: RoadProfile): number {
 }
 
 /**
+ * The radius a bend in this road turns its centre line on, metres: the inner
+ * edge of the carriageway takes the class's kerb return, so the bend holds
+ * the ground a corner of the same road would.
+ */
+export function bendRadiusOf(profile: RoadProfile): number {
+  return carriagewayHalfWidthOf(profile) + kerbReturnRadiusOf(profile);
+}
+
+/**
  * Width of the kerb strip a profile draws outside its carriageway.
  *
  * A road that SAYS how wide its pavement is gets exactly that. A road that
