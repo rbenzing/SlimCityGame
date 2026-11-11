@@ -160,7 +160,8 @@ describe('the plat along the kerbs of a straight road at 30 degrees', () => {
         expect(seen.has(k)).toBe(false);
         seen.add(k);
       }
-      for (const t of p.tiles) expect(plat.parcelAt[tileIndex(t.x, t.z)]).toBe(plat.parcels.length + n);
+      for (const t of p.tiles)
+        expect(plat.parcelAt[tileIndex(t.x, t.z)]).toBe(plat.parcels.length + n);
     });
     expect(plat.parcels).toHaveLength(0);
   });
@@ -237,7 +238,8 @@ describe('the plat along the kerbs of a bend', () => {
     const kerb = kerbLine(wideGeom, 1, HALF);
     const sAt = (p: Pt): number => {
       let best = kerb[0]!;
-      for (const k of kerb) if (Math.hypot(k.x - p.x, k.z - p.z) < Math.hypot(best.x - p.x, best.z - p.z)) best = k;
+      for (const k of kerb)
+        if (Math.hypot(k.x - p.x, k.z - p.z) < Math.hypot(best.x - p.x, best.z - p.z)) best = k;
       return best.s;
     };
     const gaps: number[] = [];
@@ -337,7 +339,10 @@ function sBend(X: number, Z: number): { g: GridState; net: RoadNet; zoned: TileP
   g.fields[FieldId.LandValue]!.fill(119);
   const GRID_Z = Z + 2;
   for (let i = 0; i < 24; i++) g.roadTier[tileIndex(X + 2 + i, GRID_Z)] = RoadTier.TwoLane;
-  const centre = (tx: number, tz: number): Pt => ({ x: (tx + 0.5) * TILE_METERS, z: (tz + 0.5) * TILE_METERS });
+  const centre = (tx: number, tz: number): Pt => ({
+    x: (tx + 0.5) * TILE_METERS,
+    z: (tz + 0.5) * TILE_METERS,
+  });
   const join = centre(X + 25, GRID_Z);
   const mid = centre(X + 19, GRID_Z + 12);
   const end = centre(X + 27, GRID_Z + 24);
@@ -490,22 +495,25 @@ describe('every zone but farmland takes the kerb plat on a curve', () => {
     ['mixed use', ZoneType.Mixed],
     ['industry', ZoneType.Industrial],
     ['heavy industry', ZoneType.IndHeavy],
-  ])('cuts %s into framed parcels by its own ladder, and no grid parcel against the curve', (_, zone) => {
-    const { g, seg, plat } = zonedWorld(zone);
-    expect(plat.parcels).toHaveLength(0);
-    const sides = bySide(g, plat, seg);
-    expect(sides[1].length).toBeGreaterThanOrEqual(7);
-    expect(sides[-1].length).toBeGreaterThanOrEqual(7);
-    const allowed = lotsOfZone(zone);
-    for (const p of plat.framed) {
-      expect(allowed).toContain(p.lot);
-      expect(p.seg).toBe(seg);
-      for (const t of p.tiles) expect(g.zone[tileIndex(t.x, t.z)]).toBe(zone);
-    }
-    // The normal-lot zones are normal whatever the standing; the rest read the land.
-    const expected = warrantedLot(zone, 119);
-    for (const p of plat.framed) expect(p.lot).toBe(expected);
-  });
+  ])(
+    'cuts %s into framed parcels by its own ladder, and no grid parcel against the curve',
+    (_, zone) => {
+      const { g, seg, plat } = zonedWorld(zone);
+      expect(plat.parcels).toHaveLength(0);
+      const sides = bySide(g, plat, seg);
+      expect(sides[1].length).toBeGreaterThanOrEqual(7);
+      expect(sides[-1].length).toBeGreaterThanOrEqual(7);
+      const allowed = lotsOfZone(zone);
+      for (const p of plat.framed) {
+        expect(allowed).toContain(p.lot);
+        expect(p.seg).toBe(seg);
+        for (const t of p.tiles) expect(g.zone[tileIndex(t.x, t.z)]).toBe(zone);
+      }
+      // The normal-lot zones are normal whatever the standing; the rest read the land.
+      const expected = warrantedLot(zone, 119);
+      for (const p of plat.framed) expect(p.lot).toBe(expected);
+    },
+  );
 
   it('records the kerb each parcel was cut on, in arc-length order', () => {
     const { g, seg, plat } = zonedWorld(ZoneType.ComLow);
@@ -581,8 +589,15 @@ describe('runs of parcels along a kerb', () => {
   it('allows no run wider than one lot on a 40 m bend', () => {
     const r = 40 / (Math.SQRT2 / 2);
     const at = { x: 100, z: 100 };
-    const bend = world(at, { x: at.x + r, z: at.z + r }, { x: at.x + r, z: at.z }, { x0: 0, z0: 0, w: 20, d: 20 }, 10);
-    for (let i = 0; i < bend.g.zone.length; i++) if (bend.g.zone[i] !== 0) bend.g.zone[i] = ZoneType.ComLow;
+    const bend = world(
+      at,
+      { x: at.x + r, z: at.z + r },
+      { x: at.x + r, z: at.z },
+      { x0: 0, z0: 0, w: 20, d: 20 },
+      10,
+    );
+    for (let i = 0; i < bend.g.zone.length; i++)
+      if (bend.g.zone[i] !== 0) bend.g.zone[i] = ZoneType.ComLow;
     const bent = platFor(bend.g, ZoneType.ComLow);
     expect(bent.framed.length).toBeGreaterThan(2);
     expect(bent.framed.every((p) => p.w === TILE_METERS)).toBe(true);
@@ -611,7 +626,7 @@ describe('a band painted through the zoning gate beside the 30° straight', () =
       const sides = bySide(g, plat, seg);
       for (const side of [1, -1] as const) {
         expect(sides[side].length).toBeGreaterThanOrEqual(7);
-        const s =sides[side].map((p) => p.s);
+        const s = sides[side].map((p) => p.s);
         for (let i = 1; i < s.length; i++) expect(s[i]! - s[i - 1]!).toBeCloseTo(TILE_METERS, 6);
       }
       for (const p of plat.framed) expect(p).toMatchObject({ lot: 'normal', w: 20, d: 40 });
@@ -646,7 +661,10 @@ describe('the S-bend plats every zone', () => {
 });
 
 describe('a gentle 400 m bend painted ComLow at one land value', () => {
-  const tile = (tx: number, tz: number): Pt => ({ x: (tx + 0.5) * TILE_METERS, z: (tz + 0.5) * TILE_METERS });
+  const tile = (tx: number, tz: number): Pt => ({
+    x: (tx + 0.5) * TILE_METERS,
+    z: (tz + 0.5) * TILE_METERS,
+  });
   const X = 20;
   const Z = 20;
   const a = tile(X + 19, Z + 12.5);
@@ -685,7 +703,9 @@ describe('a gentle 400 m bend painted ComLow at one land value', () => {
     for (const p of plat.framed) expect(p).toMatchObject({ lot: 'normal', w: 20, d: 40 });
     const runs = runsAlongKerbs(plat, 2 * TILE_METERS);
     for (const side of [1, -1] as const) {
-      expect(runs.filter((r) => plat.framed[r.parcels[0]!]!.side === side).length).toBeGreaterThan(0);
+      expect(runs.filter((r) => plat.framed[r.parcels[0]!]!.side === side).length).toBeGreaterThan(
+        0,
+      );
     }
   });
 });

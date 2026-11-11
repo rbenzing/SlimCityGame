@@ -42,10 +42,7 @@ export const MIN_INSTANCE_CAPACITY = 2048;
  * each one. Pools are allocated up front all over this renderer, so a young
  * city otherwise issues dozens of them every frame.
  */
-export function setInstanceCount(
-  mesh: { count: number; visible: boolean },
-  count: number,
-): void {
+export function setInstanceCount(mesh: { count: number; visible: boolean }, count: number): void {
   mesh.count = count;
   mesh.visible = count > 0;
 }
@@ -95,17 +92,7 @@ export function pushConformingQuad(
     for (let ix = 0; ix < nx; ix++) {
       const cx0 = x0 + ix * stepX;
       const cz0 = z0 + iz * stepZ;
-      pushCell(
-        positions,
-        colors,
-        cx0,
-        cz0,
-        cx0 + stepX,
-        cz0 + stepZ,
-        yOffset,
-        color,
-        heightAt,
-      );
+      pushCell(positions, colors, cx0, cz0, cx0 + stepX, cz0 + stepZ, yOffset, color, heightAt);
     }
   }
 }

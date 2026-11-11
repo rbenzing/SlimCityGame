@@ -20,7 +20,6 @@ import {
 import { useCityStore } from './store';
 import { PANEL_ROUNDED } from './theme';
 
-
 function isTerraformTool(tool: string): boolean {
   return tool.startsWith('terraform.');
 }

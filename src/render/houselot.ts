@@ -29,12 +29,7 @@ import {
   type StreetLookup,
 } from './frontage';
 import { RoadTier } from '../shared/types';
-import {
-  bodyMetresFor,
-  frontageSetbackFor,
-  HOUSE_FRONT_YARD_M,
-  tierHeightOf,
-} from './massing';
+import { bodyMetresFor, frontageSetbackFor, HOUSE_FRONT_YARD_M, tierHeightOf } from './massing';
 import { isHouseEntry } from './archetypes';
 import { framedLotPlanFor, type KerbCreditOf } from './lotplan';
 import { garageFor } from '../shared/garage';
@@ -203,13 +198,7 @@ export const SPLIT_UPPER_STOREY_M = 2.5;
  * is a row.
  */
 export type HouseStyle =
-  | 'ranch'
-  | 'craftsman'
-  | 'splitLevel'
-  | 'cape'
-  | 'colonial'
-  | 'attached'
-  | 'row';
+  'ranch' | 'craftsman' | 'splitLevel' | 'cape' | 'colonial' | 'attached' | 'row';
 
 const ONE_STOREY_FORMS: readonly HouseStyle[] = ['ranch', 'craftsman', 'splitLevel'];
 

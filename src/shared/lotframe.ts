@@ -72,7 +72,12 @@ export function frameOfGridLot(
 
 /** The four world corners of the rectangle [0, wM] × [0, dM] in the frame, front-left first, clockwise from the street. */
 export function frameCorners(frame: ParcelFrame, wM: number, dM: number): WorldPoint[] {
-  return [toWorld(frame, 0, 0), toWorld(frame, wM, 0), toWorld(frame, wM, dM), toWorld(frame, 0, dM)];
+  return [
+    toWorld(frame, 0, 0),
+    toWorld(frame, wM, 0),
+    toWorld(frame, wM, dM),
+    toWorld(frame, 0, dM),
+  ];
 }
 
 /**
@@ -84,7 +89,12 @@ export function frameCorners(frame: ParcelFrame, wM: number, dM: number): WorldP
  * corner of belongs to the neighbour whose rectangle holds its centre, or to
  * nobody. Sorted by z then x.
  */
-export function claimedTiles(frame: ParcelFrame, wM: number, dM: number, size: number): TilePoint[] {
+export function claimedTiles(
+  frame: ParcelFrame,
+  wM: number,
+  dM: number,
+  size: number,
+): TilePoint[] {
   const corners = frameCorners(frame, wM, dM);
   let minX = Infinity;
   let minZ = Infinity;

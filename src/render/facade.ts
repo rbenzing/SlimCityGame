@@ -354,10 +354,7 @@ const SIDING_COLOUR_WEIGHTS: readonly MaterialShare[] = [
 ];
 
 /** `weights` scaled so they sum to `total`. */
-function scaledToShare(
-  weights: readonly MaterialShare[],
-  total: number,
-): readonly MaterialShare[] {
+function scaledToShare(weights: readonly MaterialShare[], total: number): readonly MaterialShare[] {
   const sum = weights.reduce((acc, w) => acc + w.share, 0);
   return weights.map((w) => ({ material: w.material, share: (total * w.share) / sum }));
 }

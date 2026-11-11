@@ -21,12 +21,7 @@
 import { inBounds, TILE_METERS, tileIndex } from '../shared/constants';
 import { claimedTiles, frameCorners, toWorld, type WorldPoint } from '../shared/lotframe';
 import { LOT_EXTENT, LOT_SIZES, lotsOfZone, PLATTED_ZONES, warrantedLot } from '../shared/lots';
-import {
-  footprintTiles,
-  kerbLine,
-  type KerbSample,
-  type SegmentGeom,
-} from '../shared/roadgeom';
+import { footprintTiles, kerbLine, type KerbSample, type SegmentGeom } from '../shared/roadgeom';
 import {
   isStreetTier,
   ZoneType,
@@ -492,12 +487,7 @@ function junctionHalfWidthM(kerbs: KerbSource, node: number): number {
  * front-left corner as seen from the street, turned to the road's heading at
  * the frontage's middle and facing away from the road.
  */
-function frameOnKerb(
-  kerb: readonly KerbSample[],
-  side: 1 | -1,
-  s: number,
-  w: number,
-): ParcelFrame {
+function frameOnKerb(kerb: readonly KerbSample[], side: 1 | -1, s: number, w: number): ParcelFrame {
   const heading = kerbAt(kerb, s + w / 2).heading;
   const from = kerbAt(kerb, s);
   // Local v runs to the left of the heading, which on the left kerb is away

@@ -1424,27 +1424,32 @@ export class GrowthSystem {
         BuildingCatalogEntry,
         { entry: BuildingCatalogEntry } & Placement
       >();
-      const fitting = spawnCandidates(this.catalog, zone, this.unlockLevel(milestoneLevel), (kind) => {
-        for (const e of footprintsOf(this.catalog, kind)) {
-          const at =
-            frontageZone && e.lot === undefined
-              ? frontagePlacement(plat, e, x, z)
-              : ({ x, z, rotation: 0 } as const);
-          if (at === null) continue;
-          const { w, d } = footprintForRotation(e, at.rotation);
-          if (
-            !isZonedLot(g, zone, at.x, at.z, w, d) ||
-            !this.canPlace(g, at.x, at.z, w, d) ||
-            coversFramedParcel(plat, at.x, at.z, w, d)
-          ) {
-            continue;
+      const fitting = spawnCandidates(
+        this.catalog,
+        zone,
+        this.unlockLevel(milestoneLevel),
+        (kind) => {
+          for (const e of footprintsOf(this.catalog, kind)) {
+            const at =
+              frontageZone && e.lot === undefined
+                ? frontagePlacement(plat, e, x, z)
+                : ({ x, z, rotation: 0 } as const);
+            if (at === null) continue;
+            const { w, d } = footprintForRotation(e, at.rotation);
+            if (
+              !isZonedLot(g, zone, at.x, at.z, w, d) ||
+              !this.canPlace(g, at.x, at.z, w, d) ||
+              coversFramedParcel(plat, at.x, at.z, w, d)
+            ) {
+              continue;
+            }
+            if (!parks(e, at.x, at.z, at.rotation)) continue;
+            placements.set(kind, { entry: e, ...at });
+            return true;
           }
-          if (!parks(e, at.x, at.z, at.rotation)) continue;
-          placements.set(kind, { entry: e, ...at });
-          return true;
-        }
-        return false;
-      });
+          return false;
+        },
+      );
       // A house stands on a parcel of the plat cut from its street, or, where
       // no street's plat reaches the tile, on the lot the land warrants.
       // A kind takes whole parcels of its lot, never half of one.
@@ -1465,7 +1470,9 @@ export class GrowthSystem {
       // side of the building the street happens to sit (see footprintServed).
       // Once the town is off septic tanks, a lot a drain does not reach grows
       // nothing: its sewage would have nowhere to go.
-      if (!this.servedOn(g, entry, standingTiles(g.size, ax, az, w, d, undefined), milestoneLevel)) {
+      if (
+        !this.servedOn(g, entry, standingTiles(g.size, ax, az, w, d, undefined), milestoneLevel)
+      ) {
         continue;
       }
 
@@ -1536,7 +1543,10 @@ export class GrowthSystem {
     const siteFor = (e: BuildingCatalogEntry): FramedSite | null => {
       const wM = e.footprint.w * TILE_METERS;
       const dM = e.footprint.d * TILE_METERS;
-      if (e.lot !== undefined && (e.lot !== parcel.lot || e.footprint.d !== LOT_EXTENT[e.lot].depth)) {
+      if (
+        e.lot !== undefined &&
+        (e.lot !== parcel.lot || e.footprint.d !== LOT_EXTENT[e.lot].depth)
+      ) {
         return null;
       }
       const run = plats.runsFor(zone, wM).find((r) => r.parcels[0] === index);
@@ -1562,15 +1572,20 @@ export class GrowthSystem {
       return { entry: e, frame: run.frame, tiles };
     };
     const sites = new Map<BuildingCatalogEntry, FramedSite>();
-    const fitting = spawnCandidates(this.catalog, zone, this.unlockLevel(milestoneLevel), (kind) => {
-      for (const e of footprintsOf(this.catalog, kind)) {
-        const site = siteFor(e);
-        if (site === null) continue;
-        sites.set(kind, site);
-        return true;
-      }
-      return false;
-    });
+    const fitting = spawnCandidates(
+      this.catalog,
+      zone,
+      this.unlockLevel(milestoneLevel),
+      (kind) => {
+        for (const e of footprintsOf(this.catalog, kind)) {
+          const site = siteFor(e);
+          if (site === null) continue;
+          sites.set(kind, site);
+          return true;
+        }
+        return false;
+      },
+    );
     const candidates = withinRoom(fitting, sector, room);
     if (candidates.length === 0) return;
     const kind = drawKind(candidates, candidates.length > 1 ? this.rng.next() : 0);

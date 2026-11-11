@@ -270,7 +270,6 @@ describe('geometry budget: triangles per building, every part', () => {
     const farm = kitRows.find((r) => r.entry.id === 'solar-farm')!;
     expect(farm.triangles).toBeLessThanOrEqual(SOLAR_FARM_CEILING);
   });
-
 });
 
 describe('geometry budget: triangles per tree species and yard part', () => {

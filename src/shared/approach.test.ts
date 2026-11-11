@@ -368,7 +368,9 @@ describe('the turn pocket an approach earns', () => {
 });
 
 describe('per-lane movement sets', () => {
-  const L = Movement.Left, T = Movement.Through, R = Movement.Right;
+  const L = Movement.Left,
+    T = Movement.Through,
+    R = Movement.Right;
 
   it('reads a lane back as it was set, and the untouched ones as null', () => {
     let packed = 0;
@@ -387,8 +389,10 @@ describe('per-lane movement sets', () => {
 
   it('keeps each lane in its own nibble', () => {
     let packed = 0;
-    for (let lane = 0; lane < MAX_EDITABLE_LANES; lane++) packed = withLaneAllowed(packed, lane, L | T);
-    for (let lane = 0; lane < MAX_EDITABLE_LANES; lane++) expect(laneAllowed(packed, lane)).toBe(L | T);
+    for (let lane = 0; lane < MAX_EDITABLE_LANES; lane++)
+      packed = withLaneAllowed(packed, lane, L | T);
+    for (let lane = 0; lane < MAX_EDITABLE_LANES; lane++)
+      expect(laneAllowed(packed, lane)).toBe(L | T);
     // Setting one lane never disturbs its neighbours.
     packed = withLaneAllowed(packed, 1, R);
     expect(laneAllowed(packed, 0)).toBe(L | T);

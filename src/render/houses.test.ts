@@ -811,8 +811,17 @@ describe('a house on a framed parcel', () => {
     r.getPartMatrix('roof', slot, m);
     const pos = new THREE.Vector3().setFromMatrixPosition(m);
     inside(pos.x, pos.z, 'roof');
-    const plan = planHouseLot(home, catalog[0]!, () => false, () => null)!;
-    const centre = lotToWorld(plan.frame, (plan.body.u0 + plan.body.u1) / 2, (plan.body.v0 + plan.body.v1) / 2);
+    const plan = planHouseLot(
+      home,
+      catalog[0]!,
+      () => false,
+      () => null,
+    )!;
+    const centre = lotToWorld(
+      plan.frame,
+      (plan.body.u0 + plan.body.u1) / 2,
+      (plan.body.v0 + plan.body.v1) / 2,
+    );
     expect(pos.x).toBeCloseTo(centre.x, 3);
     expect(pos.z).toBeCloseTo(centre.z, 3);
     const ridge = new THREE.Vector3(1, 0, 0).applyMatrix4(new THREE.Matrix4().extractRotation(m));
@@ -824,7 +833,12 @@ describe('a house on a framed parcel', () => {
     const r = new HouseRoofRenderer(new THREE.Scene(), flatHeightAt, catalog);
     const home = instance({ id: 1, x: 10, z: 17, frame: parcel });
     r.apply({ added: [home], updated: [], removed: [] });
-    const plan = planHouseLot(home, catalog[0]!, () => false, () => null)!;
+    const plan = planHouseLot(
+      home,
+      catalog[0]!,
+      () => false,
+      () => null,
+    )!;
     expect(plan.drives.length).toBeGreaterThan(0);
     expect(r.carSlotsFor(1)).toHaveLength(plan.drives.length);
     const m = new THREE.Matrix4();

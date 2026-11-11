@@ -117,11 +117,7 @@ export default function App() {
           <DistrictPanel />
           <TransitLinesPanel />
           <ServicesPanel />
-          <StatsPanel
-            open={statsOpen}
-            onClose={() => setStatsOpen(false)}
-            samples={statsSamples}
-          />
+          <StatsPanel open={statsOpen} onClose={() => setStatsOpen(false)} samples={statsSamples} />
           <AdvisorPanel
             open={advisorOpen}
             onClose={() => useCityStore.getState().setAdvisorOpen(false)}

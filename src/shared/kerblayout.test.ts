@@ -62,7 +62,8 @@ describe('kerbCreditAlongFrame', () => {
     const geom = segmentGeom(net, seg);
     const frameOn = (side: 1 | -1, s: number, wM: number): ParcelFrame => {
       const kerb = kerbLine(geom, side, half);
-      const at = (along: number) => kerb.reduce((p, q) => (Math.abs(q.s - along) < Math.abs(p.s - along) ? q : p));
+      const at = (along: number) =>
+        kerb.reduce((p, q) => (Math.abs(q.s - along) < Math.abs(p.s - along) ? q : p));
       if (side === 1) return { x: at(s).x, z: at(s).z, heading: at(s).heading };
       const far = at(s + wM);
       return { x: far.x, z: far.z, heading: far.heading + Math.PI };
