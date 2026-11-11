@@ -315,6 +315,20 @@ if (slope && bestRise >= 6) {
     await shot('district-slope');
     await camera(slope.x + 1 + district.w / 2, slope.z + 1 + district.d / 2, 300, Math.PI / 2, 0.3);
     await shot('district-slope-side');
+    // The pond is centred on the lowest ground inside the ring path: aim close frames at the
+    // lowest tile of the park's interior, from its downhill side and from above.
+    let low = null;
+    for (let pz = slope.z + 1 + 3; pz < slope.z + 1 + district.d - 3; pz++) {
+      for (let px = slope.x + 1 + 3; px < slope.x + 1 + district.w - 3; px++) {
+        if (!low || g2.height[idx(px, pz)] < g2.height[idx(low.x, low.z)]) low = { x: px, z: pz };
+      }
+    }
+    await camera(low.x, low.z, 110, Math.PI / 2, 0.3);
+    await shot('district-slope-pond-side');
+    await camera(low.x, low.z, 110, -Math.PI / 2, 0.3);
+    await shot('district-slope-pond-side-far');
+    await camera(low.x, low.z, 130, 0, 1.3);
+    await shot('district-slope-pond-above');
   } else {
     await fail(
       `FAIL district-slope: the park did not land on the slope ${JSON.stringify(slope)} ` +

@@ -171,7 +171,7 @@ import { markingPlan } from './roadmarkings';
 import { presetProfileForTier } from '../shared/roadprofile';
 import { RoadTier, type RoadProfile } from '../shared/types';
 import { maxHeightOverRect } from './footprint';
-import { PLOT_SURFACE_M, PLOT_YARD_TOP } from './plotground';
+import { PLOT_BAND_TOP, PLOT_SURFACE_M, PLOT_YARD_TOP } from './plotground';
 import { InstancedSlotPool } from './massing';
 import { sunDirection } from './sun';
 import { SHALLOW_WATER_COLOR } from './water';
@@ -6336,7 +6336,7 @@ const PLAY_SURFACE_RGB: RGB = [0.78, 0.63, 0.42];
 const PLAY_FRAME_RGB: RGB = [0.9, 0.3, 0.1];
 const PITCH_RGB: RGB = [0.13, 0.38, 0.17];
 const PITCH_LINE_RGB: RGB = [0.95, 0.95, 0.93];
-const POND_BANK_RGB: RGB = [0.44, 0.35, 0.24];
+export const POND_BANK_RGB: RGB = [0.44, 0.35, 0.24];
 const PAVILION_WALL_RGB: RGB = [0.8, 0.78, 0.72];
 const PAVILION_ROOF_RGB: RGB = [0.38, 0.38, 0.4];
 const FENCE_RGB: RGB = [0.45, 0.47, 0.5];
@@ -6355,9 +6355,13 @@ export const DISTRICT_RING_INSET_M = 10;
 /**
  * The pond's water lies `lift` above the highest ground under it, under the
  * lawn's own lift: the terrain cannot be cut, so a surface sunk below the
- * ground would be hidden by it.
+ * ground would be hidden by it. Where the ground under the pond varies by
+ * more than `POND_FLAT_RELIEF_M` a flat surface would stand over the lot band
+ * on its downhill side, so the water and its banks follow the ground instead.
  */
 export const DISTRICT_POND = { w: 40, d: 30, lift: 0.08 } as const;
+/** The most the ground under the pond may vary for its water to lie flat and stay in the lot band. */
+export const POND_FLAT_RELIEF_M = PLOT_BAND_TOP - DISTRICT_POND.lift;
 const POND_LATTICE_M = 10;
 /** How finely the ground under the pond is sampled for its highest point. */
 const POND_SAMPLE_M = 5;
@@ -6675,6 +6679,8 @@ export interface DistrictParkLayout {
   pondLowest: number;
   /** The highest ground sampled under the pond itself. */
   pondHighest: number;
+  /** The highest ground under the pond less the lowest, over the same samples. */
+  pondRelief: number;
   /** The pond's flat surface: just above the highest ground under it, below the lawn there. */
   pondY: number;
   specimens: Vec2[];
@@ -6762,6 +6768,7 @@ export function computeDistrictParkLayout(
     z1: centre.z + halfPondD,
   };
   let pondHighest = -Infinity;
+  let pondGroundLowest = Infinity;
   const nx = Math.ceil(DISTRICT_POND.w / POND_SAMPLE_M);
   const nz = Math.ceil(DISTRICT_POND.d / POND_SAMPLE_M);
   for (let iz = 0; iz <= nz; iz++) {
@@ -6771,6 +6778,7 @@ export function computeDistrictParkLayout(
         pond.z0 + (DISTRICT_POND.d * iz) / nz,
       );
       if (ground > pondHighest) pondHighest = ground;
+      if (ground < pondGroundLowest) pondGroundLowest = ground;
     }
   }
   const lawnPieces: Rect[] = [
@@ -6797,6 +6805,7 @@ export function computeDistrictParkLayout(
     pond,
     pondLowest: centre.height,
     pondHighest,
+    pondRelief: pondHighest - pondGroundLowest,
     pondY: pondHighest + DISTRICT_POND.lift,
     specimens,
     trees,
@@ -12148,11 +12157,15 @@ export class UtilityKitRenderer {
     };
     const pathLift = PARK_LAWN_HEIGHT + PARK_PATH_Y_OFFSET;
     const pond = toWorld(layout.pond);
+    // Ground that varies more than the lot band allows carries the water and
+    // its banks with it, so no side wall shows on the downhill side; nearly
+    // level ground keeps one flat surface.
+    const follows = layout.pondRelief > POND_FLAT_RELIEF_M;
     const pondSurface = drapedQuad(pond.x0, pond.z0, pond.x1, pond.z1, {
-      step: DISTRICT_POND.w,
-      lift: 0,
+      step: follows ? DISTRICT_DRAPE_STEP_M : DISTRICT_POND.w,
+      lift: follows ? DISTRICT_POND.lift : 0,
       rgb: SHALLOW_WATER_COLOR,
-      heightAt: () => layout.pondY,
+      heightAt: follows ? this.heightAt : () => layout.pondY,
     });
     // The banks run from the lawn to the water, which lies below it on the
     // high side and may stand above it on the low side of a slope, so each
@@ -12161,7 +12174,7 @@ export class UtilityKitRenderer {
       step: DISTRICT_DRAPE_STEP_M,
       rgb: POND_BANK_RGB,
       topAt: (x, z) => this.heightAt(x, z) + PARK_LAWN_HEIGHT,
-      bottomAt: () => layout.pondY,
+      bottomAt: follows ? (x, z) => this.heightAt(x, z) + DISTRICT_POND.lift : () => layout.pondY,
     };
     const banks = rectLoop(pond).flatMap((s) => [
       drapedWall(s, bankOptions),

@@ -1711,6 +1711,12 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
         litWindows: farms.litWindowCount(),
         trucks: farms.truckCount(),
       });
+      // Holds every building's construction countdown where it is, so a tool
+      // can photograph a building going up; false releases it.
+      (hook as Record<string, unknown>).holdConstruction = (hold: boolean): void => {
+        const msg: MainToWorker = { type: 'devHoldConstruction', hold };
+        worker.postMessage(msg);
+      };
       (hook as Record<string, unknown>).soilAt = (x: number, z: number): number =>
         clientGrid.soil[z * clientGrid.size + x] ?? 0;
       (hook as Record<string, unknown>).ghostBounds = (): {

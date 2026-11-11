@@ -101,8 +101,10 @@ import {
   PARK_MOUTH_CLEARANCE_M,
   PARK_RING_PATH_WIDTH_M,
   PITCH,
+  POND_BANK_RGB,
   SCUFFED_EARTH_RGB,
 } from './utilitykits';
+import { PLOT_BAND_TOP } from './plotground';
 import { SHALLOW_WATER_COLOR } from './water';
 import { adaAccessibleSpaces } from '../shared/parkingcode';
 import catalogData from '../data/catalog.json';
@@ -1722,7 +1724,8 @@ describe('the park kits in the renderer', () => {
 
   it('lays the district pond as one flat water-coloured rect over the ground under it, both triangles facing up', () => {
     const basin = { x: 400 - 90, z: 400 + 60 };
-    const heightAt = (x: number, z: number): number => 10 + 0.01 * distance({ x, z }, basin);
+    // A shallow basin: its 0.025 m of relief under the pond is inside what a flat surface may span.
+    const heightAt = (x: number, z: number): number => 10 + 0.001 * distance({ x, z }, basin);
     const renderer = new UtilityKitRenderer(new THREE.Scene(), heightAt, [DISTRICT]);
     renderer.apply(deltaAdd(makeInstance(1, 'district-park', { x: 10, z: 10 })));
     const geometry = renderer.drapedMesh(1)!.geometry;
@@ -1757,7 +1760,7 @@ describe('the park kits in the renderer', () => {
     expect(waterYs.size).toBe(1);
     // The water lies over the highest ground under the pond, never under the terrain, and under the lawn there.
     const pondY = [...waterYs][0]!;
-    expect(pondY).toBeCloseTo(10.25 + DISTRICT_POND.lift, 3);
+    expect(pondY).toBeCloseTo(10.025 + DISTRICT_POND.lift, 3);
     for (const [x, z] of [
       [basin.x - 20, basin.z - 15],
       [basin.x + 20, basin.z - 15],
@@ -1767,7 +1770,34 @@ describe('the park kits in the renderer', () => {
     ]) {
       expect(pondY).toBeGreaterThan(heightAt(x!, z!));
     }
-    expect(pondY).toBeLessThan(10.25 + 0.15);
+    expect(pondY).toBeLessThan(10.025 + 0.15);
+  });
+
+  it('lays the pond and its banks in a sloped park within the lot band of the ground at every vertex', () => {
+    const slope = (x: number, z: number): number => 10 + 0.05 * x + 0.02 * z;
+    const renderer = new UtilityKitRenderer(new THREE.Scene(), slope, [DISTRICT]);
+    renderer.apply(deltaAdd(makeInstance(1, 'district-park', { x: 10, z: 10 })));
+    const geometry = renderer.drapedMesh(1)!.geometry;
+    const position = geometry.getAttribute('position');
+    const color = geometry.getAttribute('color');
+    const isBank = (i: number): boolean =>
+      Math.abs(color.getX(i) - POND_BANK_RGB[0]) < 0.02 &&
+      Math.abs(color.getY(i) - POND_BANK_RGB[1]) < 0.02 &&
+      Math.abs(color.getZ(i) - POND_BANK_RGB[2]) < 0.02;
+    const isWater = (i: number): boolean =>
+      Math.abs(color.getX(i) - SHALLOW_WATER_COLOR[0]) < 0.02 &&
+      Math.abs(color.getY(i) - SHALLOW_WATER_COLOR[1]) < 0.02 &&
+      Math.abs(color.getZ(i) - SHALLOW_WATER_COLOR[2]) < 0.02;
+    let samples = 0;
+    for (let i = 0; i < position.count; i++) {
+      if (!isWater(i) && !isBank(i)) continue;
+      const above = position.getY(i) - slope(position.getX(i), position.getZ(i));
+      expect(above).toBeGreaterThanOrEqual(-1e-4);
+      expect(above).toBeLessThanOrEqual(PLOT_BAND_TOP + 1e-4);
+      samples++;
+    }
+    // Water over the 40 × 30 m pond in 10 m cells, and a bank round it, are all in the check.
+    expect(samples).toBeGreaterThan(20);
   });
 
   it('frees every slot a removed park owned and disposes its draped plate', () => {

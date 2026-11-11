@@ -47,13 +47,13 @@ What a review of every screenshot the shot tools write found wrong in the game, 
 
 ## Major: buildings and lots
 
-- A farm truck was seen through a barn wall and could not be found again: the tool's farm frames aim at empty ground, and a test walks the truck's lap clear of every farm building. — `shots-industry/close-farm-orchard-2-yard`
+- A building under construction is a low dark slab with no progress cue: nothing shows what is going up or how far it has got, and a house reads as a black hole in its lot. — `shots-construction/house-street`
 - Flare stacks stand alone on open ground; a food plant's stack stands in its car park; steel tanks and pipe poles cross the side drive. — `shots-industry/chem`, `food-heavy-food-2-court`
 - The office entrance is a slab two storeys tall. — `shots-storefronts/office`
 - A garden walk-up's stair reaches only its lower landing; a tower's roof plant covers half the roof; its shopfront band and lobby stay dark at night; lit panes are slabs over whole bays. `[R-render-021]` — `shots-apartments/close-garden-breezeway`, `garden-res-medium-3-night`
 - A colonial's chimney is a thin post leaning from the ridge to the ground; a car parks through a porch's columns. — `shots-houses/street-colonial-west`
 - A row house's roof carries two loose diagonal bars; its stoop stairs stand at the head of its parking bays; a person stands inside a parked car. — `shots-houses/street-attached-west`
-- A park's pond is a raised slab; trees stand on a pitch's touchline; a perimeter path has gaps. — `shots-parks/district-pond`, `sports`
+- In a park trees stand on a pitch's touchline, and a perimeter path has gaps. — `shots-parks/sports`
 - A cemetery's gatehouse is a blank box; a civic crossing's kerb is not dropped. — `shots-cemetery/b-cemetery-pedestrian-scale`
 - A restaurant's sign bar hangs skewed off its frame, and a black arch stands alone in grass beside it. — `shots-storefronts/close-restaurant`
 - A street's light pool ends in a hard edge mid-road at night, and stall paint glows brighter than the buildings. — `shots-storefronts/main-night`

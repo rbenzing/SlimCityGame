@@ -351,6 +351,53 @@ describe('GrowthSystem', () => {
     expect(finishDelta.removed).toEqual([]);
   });
 
+  describe('the dev hold on construction', () => {
+    const fullResDemand: DemandLevels = { res: 1, com: 0, ind: 0 };
+    const strip = (): GridState => {
+      const g = makeGrid();
+      for (let x = 0; x < 5; x++) serviceTile(g, x, 0, ZoneType.ResLow);
+      g.fields[FieldId.LandValue]!.fill(255);
+      return g;
+    };
+
+    it('keeps a building under construction while held and finishes it on schedule once released', () => {
+      const g = makeGrid();
+      serviceTile(g, 0, 0, ZoneType.ResLow);
+      const registry = new BuildingRegistry(growthCatalog);
+      const growth = new GrowthSystem(growthCatalog, constantRng(0), alwaysTrue);
+      const id = growth.tick(g, registry, fullResDemand, 0, 0).added[0]!.id;
+      for (let t = 1; t <= 40; t++) growth.tick(g, registry, fullResDemand, 0, t);
+      growth.holdConstruction = true;
+      for (let t = 41; t <= 400; t++) growth.tick(g, registry, fullResDemand, 0, t);
+      expect(registry.get(id)!.state).toBe(BuildingState.Constructing);
+      growth.holdConstruction = false;
+      // 40 of the 100 ticks were spent before the hold: 60 remain.
+      for (let t = 401; t < 460; t++) growth.tick(g, registry, fullResDemand, 0, t);
+      expect(registry.get(id)!.state).toBe(BuildingState.Constructing);
+      growth.tick(g, registry, fullResDemand, 0, 460);
+      expect(registry.get(id)!.state).toBe(BuildingState.Active);
+    });
+
+    it('a hold that is set and released changes nothing, tick for tick', () => {
+      const run = (toggle: boolean): string[] => {
+        const g = strip();
+        const registry = new BuildingRegistry(growthCatalog);
+        const growth = new GrowthSystem(growthCatalog, seededRng(20260721), alwaysTrue);
+        if (toggle) {
+          growth.holdConstruction = true;
+          growth.holdConstruction = false;
+        }
+        const log: string[] = [];
+        for (let t = 0; t < 400; t++) {
+          log.push(JSON.stringify(growth.tick(g, registry, fullResDemand, 0, t)));
+        }
+        log.push(JSON.stringify(registry.all()));
+        return log;
+      };
+      expect(run(true)).toEqual(run(false));
+    });
+  });
+
   describe('level up', () => {
     it('levels up an Active building once land value clears the L2 threshold', () => {
       const g = makeGrid();

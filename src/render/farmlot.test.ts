@@ -223,6 +223,44 @@ describe('planFarm', () => {
         expect(plan.truckStop).toBeGreaterThan(0);
         expect(plan.truckStop).toBeLessThan(route.length - 1);
       });
+
+      it('keeps the whole truck body, turned to its heading, off every wall along its round', () => {
+        const route = plan.truckRoute;
+        if (!route) return;
+        const halfW = TRUCK_SIZE_M[0] / 2;
+        const halfL = TRUCK_SIZE_M[2] / 2;
+        for (let i = 1; i < route.length; i++) {
+          const a = route[i - 1]!;
+          const b = route[i]!;
+          const length = Math.hypot(b.x - a.x, b.z - a.z);
+          if (length === 0) continue;
+          const fx = (b.x - a.x) / length;
+          const fz = (b.z - a.z) / length;
+          for (let s = 0; s <= length; s += 0.25) {
+            const cx = a.x + fx * s;
+            const cz = a.z + fz * s;
+            // The body's outline, walked every 0.25 m, must stay out of each wall box.
+            for (const wall of [plan.barn, plan.house]) {
+              for (let u = -halfL; u <= halfL; u += 0.25) {
+                for (const v of [-halfW, halfW]) {
+                  const x = cx + fx * u - fz * v;
+                  const z = cz + fz * u + fx * v;
+                  const inWall = x > wall.x0 && x < wall.x1 && z > wall.z0 && z < wall.z1;
+                  expect(inWall).toBe(false);
+                }
+              }
+              for (let v = -halfW; v <= halfW; v += 0.25) {
+                for (const u of [-halfL, halfL]) {
+                  const x = cx + fx * u - fz * v;
+                  const z = cz + fz * u + fx * v;
+                  const inWall = x > wall.x0 && x < wall.x1 && z > wall.z0 && z < wall.z1;
+                  expect(inWall).toBe(false);
+                }
+              }
+            }
+          }
+        }
+      });
     });
   });
 

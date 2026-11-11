@@ -326,6 +326,40 @@ describe('auto-flatten: the ground levels under a placed footprint', () => {
     GROWTH_TIMEOUT_MS,
   );
 
+  it(
+    'a grown house levels the open ground on its west side too, so its west edge does not tilt',
+    () => {
+      const h = initializedVaried();
+      send(h, 1, [
+        { kind: 'buildRoad', tier: RoadTier.TwoLane, tiles: roadRow(50, 60, 20) },
+        { kind: 'placeBuilding', catalogId: 'wind-turbine', x: 50, z: 59, rotation: 0 },
+        { kind: 'placeBuilding', catalogId: 'water-tower', x: 52, z: 59, rotation: 0 },
+        { kind: 'paintZone', zone: ZoneType.ResLow, tiles: rows(56, 61, 12, 2) },
+      ]);
+      h.ticks(1500);
+      h.sim.handleMessage({ type: 'requestSave' });
+      const grid = latestSaveGrid(h);
+      const houses = [...standingBuildings(h).values()].filter((b) =>
+        b.catalogId.startsWith('res-'),
+      );
+      expect(houses.length).toBeGreaterThan(0);
+      // The westmost house has no neighbour whose own ring reaches its west column.
+      const west = houses.reduce((a, b) => (b.x < a.x ? b : a));
+      const entry = entryOf(west);
+      const plateau = grid.height[tileIndex(west.x, west.z)]!;
+      let checked = 0;
+      for (let dz = 0; dz < entry.footprint.d; dz++) {
+        const i = tileIndex(west.x - 1, west.z + dz);
+        if (grid.roadTier[i] !== RoadTier.None || grid.buildingId[i] !== 0 || grid.water[i] !== 0)
+          continue;
+        expect(grid.height[i]).toBeCloseTo(plateau, 5);
+        checked++;
+      }
+      expect(checked).toBeGreaterThan(0);
+    },
+    GROWTH_TIMEOUT_MS,
+  );
+
   /** Linear ramp climbing along +x (slope 1m/tile, well under ROAD_MAX_SLOPE=10). */
   function rampMap(): MapData {
     const height = new Float32Array(MAP_TILES);
