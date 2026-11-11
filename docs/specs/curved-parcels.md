@@ -60,6 +60,7 @@
 - `src/sim/network.ts` `standingTiles`: the tiles water, sewage and service readers use instead of `x, z, w, d`.
 - `kerblayout.ts` and `growth.ts`: the credit and the spawner named above.
 - `src/render/houselot.ts`, `buildingkit.ts`, `houses.ts`, `houseroofs.ts`, `roofprops.ts`: house parts, drive, walk, garage, yard, roof, car park and curb cut in the frame; `driveRoadTiles` keeps a lamp off the drive mouth.
+- `src/render/fencelines.ts` `trimFence`, `FenceBook`: a home's fence cut to its outline, its neighbours' lots, houses and drives, and roads; one fence on a shared line.
 - `src/render/parked.ts`, `pedestrians.ts`: the car on the drive and the walker's home anchor read the frame.
 - `src/render/zonegrid.ts`: the lens draws a framed parcel's outline turned.
 - `tools/curve-shots.mjs`: an S-bend zoned, shot from above, close on a drive, and through the lens.
@@ -71,6 +72,7 @@
 - `src/world/plat.kerbs.test.ts` — a 30° straight cut end to end with no shared claims; outer-bend chords above 10.7 m; inner-bend rectangles never overlap; nothing within the junction clearance; runs of two and three lots on a straight, none wider than one on a 40 m bend.
 - `src/sim/growth.test.ts` — a house spawns on a framed parcel with `frame` and rotation 0, claims its tiles and frees them on bulldoze; a save round-trips `frame`.
 - `src/render/frontage.test.ts`, `src/render/houselot.test.ts`, `src/shared/kerblayout.test.ts` — a framed building's body, drive kerb end and roof lie in the frame's rectangle; the kerb credit follows the parking lane.
+- `src/render/fencelines.test.ts` — turned lots on an inner and an outer bend: no fence crosses a neighbour's outline, house, drive or fence; a shared line draws one run; arrival order changes nothing.
 - Browser check, `tools/curve-shots.mjs` — an S-bend zoned both sides from above, close on a drive, through the lens, with a grid street beside it unchanged.
 
 **Open:**
@@ -78,6 +80,7 @@
 - Beside a curve an industrial box can still grow on verge tiles outside any framed parcel, since industry has no frontage rule on the grid.
 - A framed building never levels up into a larger footprint.
 - A framed lot that lays no car park still reads its kerbside allowance from grid edges.
+- A fence is cut against other homes only: a shop's or a civic plot's lot beside a turned home is not read.
 
 ## Why the rules are what they are
 
