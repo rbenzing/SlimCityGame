@@ -458,6 +458,10 @@ export class InstancedSlotPool {
       new Float32Array(capacity * 3).fill(1),
       3,
     );
+    // A region-masked vehicle reads its tint through its own attribute, aliased to this buffer.
+    if (this.geometry.getAttribute('vehicleRegion')) {
+      this.geometry.setAttribute('vehicleInstanceTint', mesh.instanceColor);
+    }
     return mesh;
   }
 

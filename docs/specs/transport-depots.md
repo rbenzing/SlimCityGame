@@ -55,7 +55,8 @@
 - `src/sim/economy.ts` — the `transitRunning` monthly expense beside building upkeep.
 - `src/sim/traffic.ts` — edges take volume at pull-out and pull-in.
 - `src/shared/roadprofile.ts` `TRANSIT_PIECE_CAPACITY` — the 48 and 150 the capacity figures reuse.
-- `src/render/transit.ts` — vehicle count from `served`, spacing `1 / served`, commercial speed, tram-car and train-car builders; `ridershipToBusCount` and `MODE_VEHICLE.countFor` retired.
+- `src/render/transit.ts` — vehicle count from `served`, spacing `1 / served`, commercial speed, `TRAIN_SET` and `TRAM_SET`; `ridershipToBusCount` and `MODE_VEHICLE.countFor` retired.
+- `src/render/railcars.ts` — a train's cars and a tram's sections, in service and stabled; the art is [the vehicle kit](../art/props-and-vehicles/vehicle-kit.md#rail-and-tram-cars).
 - `src/render/utilitykits.ts` `UtilityKitRenderer.setDepotFleets`, `UTILITY_KIT_CATALOG_IDS` — the three depot kits (`busBase*`, `tramDepot*`, `railYard*`).
 - `src/render/vehicles.ts` `buildVehicleGeometry(VehicleKind.Bus)` — the bus the stalls park.
 - `src/ui/` — headway, served over requested, depot and running cost in the line panel; "no depot" at served 0; four cards in the Transit category.
@@ -67,6 +68,7 @@
 - `src/sim/depots.test.ts`, `src/sim/transit.test.ts` — pool, gates, served, running cost, assignment and spill by cost.
 - `src/sim/deadruns.test.ts` — volume on exactly the path's edges at the two crossings, once each; tram and rail add none; determinism.
 - `src/render/transit.test.ts`, `src/render/depotkits.test.ts` — count equals `served`; kit ids, stalls, bays, parked fleet equals holds minus in service, lead at four rotations, every part inside the lot.
+- `src/render/railcars.test.ts` — a car's shell is its size, bogies at 0.70 of its length, a cab on end cars only, outward faces, the bus builder never called.
 - `tests/interaction/transit.test.ts`, `tests/interaction/depottrucks.test.ts` — a pre-depot save loads idle and says "no depot"; a bus depot is placeable at milestone 1; fixtures carry a depot. `tests/interaction/firsttown.test.ts` is untouched.
 
 **Open:**

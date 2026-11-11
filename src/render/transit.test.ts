@@ -11,12 +11,13 @@ import {
   computeStopHeading,
   computeShelterLayout,
   shelterSide,
-  buildTramCarGeometry,
   TRAM_CAR_SIZE,
   TRAM_FLOOR_ABOVE_ORIGIN_M,
   type TransitSnapshot,
 } from './transit';
 import { BUS_SHELTER } from './busshelter';
+import { buildTramTailSectionGeometry } from './railcars';
+import { RAILWAY_RAIL_Y_OFFSET, TRAM_RAIL_Y_OFFSET } from './roadsmesh';
 import {
   computeGuideway,
   GUIDEWAY_BEAM_TOP_M,
@@ -797,18 +798,12 @@ describe('rail lines (SPEC 26)', () => {
     const renderer = new TransitRenderer(scene, flatHeightAt);
     renderer.apply({ lines: [railLine(1, longRoute)], ridership: [220], served: [1] });
 
-    const mesh = scene.children.find(
-      (c): c is THREE.InstancedMesh =>
-        c instanceof THREE.InstancedMesh && c.count === TRAIN_CARS_PER_SET,
-    );
-    expect(mesh).toBeDefined();
-
     const gaps = (): number[] => {
       const m = new THREE.Matrix4();
       const p = new THREE.Vector3();
       const xs: number[] = [];
       for (let i = 0; i < TRAIN_CARS_PER_SET; i++) {
-        mesh!.getMatrixAt(i, m);
+        renderer.getCarMatrix(i, m);
         p.setFromMatrixPosition(m);
         xs.push(p.x);
       }
@@ -863,13 +858,10 @@ describe('tram lines (SPEC 27)', () => {
         ridership: [220],
         served: [1],
       });
-      const mesh = scene.children.find(
-        (c): c is THREE.InstancedMesh => c instanceof THREE.InstancedMesh && c.count === cars,
-      );
-      expect(mesh).toBeDefined();
+      expect(renderer.busCount()).toBe(cars);
       const m = new THREE.Matrix4();
       const p = new THREE.Vector3();
-      mesh!.getMatrixAt(0, m);
+      renderer.getCarMatrix(0, m);
       p.setFromMatrixPosition(m);
       return p.z;
     };
@@ -909,13 +901,9 @@ describe('a tram on the guideway', () => {
     const renderer = new TransitRenderer(scene, flatHeightAt);
     renderer.setGuideway(sampler);
     renderer.apply({ lines: [line], ridership: [90], served: [1] });
-    const mesh = scene.children.find(
-      (c): c is THREE.InstancedMesh =>
-        c instanceof THREE.InstancedMesh && c.count === TRAM_CARS_PER_SET,
-    )!;
     const m = new THREE.Matrix4();
     return Array.from({ length: TRAM_CARS_PER_SET }, (_, i) => {
-      mesh.getMatrixAt(i, m);
+      renderer.getCarMatrix(i, m);
       return new THREE.Vector3().setFromMatrixPosition(m);
     });
   };
@@ -933,24 +921,35 @@ describe('a tram on the guideway', () => {
   });
 
   it('stays on the street without a guideway under it', () => {
-    for (const p of carPositions(null)) expect(p.y).toBeCloseTo(TRAM_CAR_SIZE[1] / 2, 6);
+    // The wheels stand on the street rail's head, a hair over the ground.
+    for (const p of carPositions(null)) {
+      expect(p.y).toBeCloseTo(TRAM_CAR_SIZE[1] / 2 + TRAM_RAIL_Y_OFFSET, 6);
+    }
   });
 
   it('sets the car by the floor the drawn car has, over its wheels', () => {
-    const geometry = buildTramCarGeometry();
+    const geometry = buildTramTailSectionGeometry();
     const position = geometry.getAttribute('position');
     const color = geometry.getAttribute('color');
+    const region = geometry.getAttribute('vehicleRegion');
     let bottom = Infinity;
     let wheelTop = -Infinity;
+    let glassBottom = Infinity;
     for (let i = 0; i < position.count; i++) {
       bottom = Math.min(bottom, position.getY(i));
-      const wheel =
-        Math.abs(color.getX(i) - 0x0d / 255) < 1e-6 &&
-        Math.abs(color.getY(i) - 0x0e / 255) < 1e-6 &&
-        Math.abs(color.getZ(i) - 0x10 / 255) < 1e-6;
-      if (wheel) wheelTop = Math.max(wheelTop, position.getY(i));
+      const isColor = (r: number, g: number, b: number): boolean =>
+        Math.abs(color.getX(i) - r / 255) < 1e-6 &&
+        Math.abs(color.getY(i) - g / 255) < 1e-6 &&
+        Math.abs(color.getZ(i) - b / 255) < 1e-6;
+      if (isColor(0x0d, 0x0e, 0x10)) wheelTop = Math.max(wheelTop, position.getY(i));
+      if (isColor(0x1a, 0x1f, 0x26) && region.getX(i) === 0) {
+        glassBottom = Math.min(glassBottom, position.getY(i));
+      }
     }
-    expect(wheelTop - bottom).toBeCloseTo(TRAM_FLOOR_ABOVE_ORIGIN_M, 2);
+    // The low floor stands over the wheels, and the glass over the floor.
+    expect(bottom).toBeCloseTo(0, 6);
+    expect(wheelTop).toBeLessThan(TRAM_FLOOR_ABOVE_ORIGIN_M);
+    expect(glassBottom).toBeGreaterThan(TRAM_FLOOR_ABOVE_ORIGIN_M);
     geometry.dispose();
   });
 });
@@ -981,10 +980,6 @@ describe('a vehicle set stays together across the end of its route', () => {
       served: [1],
     });
     expect(renderer.busCount()).toBe(cars);
-    const mesh = scene.children.find(
-      (c): c is THREE.InstancedMesh => c instanceof THREE.InstancedMesh && c.count === cars,
-    );
-    expect(mesh).toBeDefined();
 
     const m = new THREE.Matrix4();
     const p = new THREE.Vector3();
@@ -995,7 +990,7 @@ describe('a vehicle set stays together across the end of its route', () => {
       renderer.update(0.25);
       const xs: number[] = [];
       for (let i = 0; i < cars; i += 1) {
-        mesh!.getMatrixAt(i, m);
+        renderer.getCarMatrix(i, m);
         p.setFromMatrixPosition(m);
         xs.push(p.x);
       }
@@ -1016,5 +1011,147 @@ describe('a vehicle set stays together across the end of its route', () => {
 
   it('never strands a tram car at the far end of the line', () => {
     expect(widestSpan('tram', TRAM_CARS_PER_SET)).toBeLessThan(15);
+  });
+});
+
+describe('a train is a train and a tram is a tram', () => {
+  const bendRoute = [
+    { x: 0, z: 0 },
+    { x: 6, z: 0 },
+    { x: 6, z: 6 },
+  ];
+  const drawn = (mode: 'rail' | 'tram', served = 1) => {
+    const scene = new THREE.Scene();
+    const renderer = new TransitRenderer(scene, flatHeightAt);
+    renderer.apply({
+      lines: [{ id: 1, stops: bendRoute, color: 0x3366cc, mode }],
+      ridership: [100],
+      served: [served],
+    });
+    return { scene, renderer };
+  };
+  const matrix = (renderer: TransitRenderer, slot: number): THREE.Matrix4 => {
+    const m = new THREE.Matrix4();
+    renderer.getCarMatrix(slot, m);
+    return m;
+  };
+  /** The sign of z across the lamp vertices of a car's geometry: which end its cab is on. */
+  const cabSide = (geometry: THREE.BufferGeometry): number => {
+    const region = geometry.getAttribute('vehicleRegion');
+    const position = geometry.getAttribute('position');
+    let sum = 0;
+    for (let i = 0; i < region.count; i += 1) if (region.getX(i) === 2) sum += position.getZ(i);
+    return Math.sign(sum);
+  };
+
+  it('draws a train from an end car, a middle car and the end car turned about, not from the bus box', () => {
+    const { renderer, scene } = drawn('rail');
+    const lead = renderer.getCarGeometry(0)!;
+    const middle = renderer.getCarGeometry(1)!;
+    const tail = renderer.getCarGeometry(2)!;
+    expect(lead).toBe(tail);
+    expect(lead).not.toBe(middle);
+    expect(cabSide(lead)).toBe(1);
+    expect(cabSide(middle)).toBe(0);
+    // One instanced mesh per geometry: the end cars' pair and the middle car.
+    const counts = scene.children
+      .filter((c): c is THREE.InstancedMesh => c instanceof THREE.InstancedMesh)
+      .map((m) => m.count)
+      .sort();
+    expect(counts).toEqual([1, 2]);
+  });
+
+  it('draws a tram from a lead section with the pantograph and its tail turned about', () => {
+    const { renderer } = drawn('tram');
+    const lead = renderer.getCarGeometry(0)!;
+    const tail = renderer.getCarGeometry(1)!;
+    expect(lead).not.toBe(tail);
+    expect(cabSide(lead)).toBe(1);
+    expect(cabSide(tail)).toBe(1);
+    const top = (g: THREE.BufferGeometry): number => {
+      g.computeBoundingBox();
+      return g.boundingBox!.max.y;
+    };
+    expect(top(lead)).toBeGreaterThan(top(tail) + 1);
+  });
+
+  it('faces the cabs outward at both ends of a set, down every bend of the route', () => {
+    for (const [mode, cars] of [
+      ['rail', TRAIN_CARS_PER_SET],
+      ['tram', TRAM_CARS_PER_SET],
+    ] as const) {
+      const { renderer } = drawn(mode);
+      for (let step = 0; step < 40; step += 1) {
+        renderer.update(0.5);
+        const lead = matrix(renderer, 0);
+        const tail = matrix(renderer, cars - 1);
+        const axis = new THREE.Vector3()
+          .setFromMatrixPosition(lead)
+          .sub(new THREE.Vector3().setFromMatrixPosition(tail));
+        if (axis.lengthSq() < 1) continue;
+        const nose = (slot: number): number => {
+          const m = matrix(renderer, slot);
+          const dir = new THREE.Vector3(0, 0, cabSide(renderer.getCarGeometry(slot)!));
+          return dir.transformDirection(m).dot(axis.clone().normalize());
+        };
+        // Down a bend the set's ends are not in line, but each cab still points away from the other.
+        expect(nose(0), `${mode} lead at step ${step}`).toBeGreaterThan(0);
+        expect(nose(cars - 1), `${mode} tail at step ${step}`).toBeLessThan(0);
+      }
+    }
+  });
+
+  it('joins the cars with no daylight: neighbouring bellows faces meet on straight track', () => {
+    for (const [mode, cars] of [
+      ['rail', TRAIN_CARS_PER_SET],
+      ['tram', TRAM_CARS_PER_SET],
+    ] as const) {
+      // The set starts on the route's first, straight leg.
+      const { renderer } = drawn(mode);
+      /** The two end faces of a car on the centreline, in world space. */
+      const faces = (slot: number): THREE.Vector3[] => {
+        const g = renderer.getCarGeometry(slot)!;
+        g.computeBoundingBox();
+        const m = matrix(renderer, slot);
+        return [g.boundingBox!.min.z, g.boundingBox!.max.z].map((z) =>
+          new THREE.Vector3(0, 0, z).applyMatrix4(m),
+        );
+      };
+      for (let slot = 0; slot + 1 < cars; slot += 1) {
+        const gap = Math.min(
+          ...faces(slot).flatMap((a) => faces(slot + 1).map((b) => a.distanceTo(b))),
+        );
+        expect(gap, `${mode} cars ${slot} and ${slot + 1}`).toBeLessThan(0.02);
+      }
+    }
+  });
+
+  it('never mirrors a car: every instance transform keeps a positive determinant', () => {
+    for (const mode of ['rail', 'tram'] as const) {
+      const { renderer } = drawn(mode, 2);
+      const cars = renderer.busCount();
+      for (let step = 0; step < 60; step += 1) {
+        renderer.update(0.5);
+        for (let slot = 0; slot < cars; slot += 1) {
+          expect(matrix(renderer, slot).determinant(), `${mode} slot ${slot}`).toBeGreaterThan(0);
+        }
+      }
+    }
+  });
+
+  it('stands the wheels on the rail head, at its own size and unscaled', () => {
+    for (const [mode, railHead] of [
+      ['rail', RAILWAY_RAIL_Y_OFFSET],
+      ['tram', TRAM_RAIL_Y_OFFSET],
+    ] as const) {
+      const { renderer } = drawn(mode);
+      const geometry = renderer.getCarGeometry(0)!;
+      geometry.computeBoundingBox();
+      const m = matrix(renderer, 0);
+      expect(new THREE.Vector3().setFromMatrixScale(m).toArray()).toEqual([1, 1, 1]);
+      const wheelFoot =
+        new THREE.Vector3().setFromMatrixPosition(m).y + geometry.boundingBox!.min.y;
+      expect(wheelFoot).toBeCloseTo(railHead, 6);
+    }
   });
 });

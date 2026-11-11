@@ -75,6 +75,26 @@ A dead run of `d` minutes each way over an 18-hour service span costs `2d / (60 
 
 A visual hour is a hundred ticks, five seconds at normal speed, and a bus drives at its commercial 5.56 m/s in real seconds, so a 15-tile pull-out leaving at 05:00 is still on the road at 06:00 and a 23:00 pull-in can still be driving at 03:00.
 
+## Rail and tram cars
+
+The game's car is 14 m, shorter than a real coach, and is proportioned as one.
+
+| Figure | Value | Source |
+| ------ | ----- | ------ |
+| Coach, length × width × height | 25.9 × 3.0 × 4.85 m (85 ft) | [Bombardier BiLevel Coach](https://en.wikipedia.org/wiki/Bombardier_BiLevel_Coach) |
+| Bogie centres on an 85 ft car | 18.1 m (59 ft 6 in), 0.70 of the length | an uncited table on [Talk:Amfleet](https://en.wikipedia.org/wiki/Talk:Amfleet): one source, weak |
+| Bogie wheelbase, coach | 2.59 m (8 ft 6 in) | same table; the BiLevel page gives 2,590 mm |
+| Wheel, coach | 0.914 m (36 in) | same table |
+| Floor over the rail, single level | 1.3 m (51 in) | [Horizon](https://en.wikipedia.org/wiki/Horizon_(railcar)) |
+| Tram, three sections | 29.1 m long, two articulations | [Siemens S70](https://en.wikipedia.org/wiki/Siemens_S700_and_S70) |
+| Tram bogie wheelbase, power / centre | 1.9 / 1.8 m | same |
+| Tram wheel, new | 0.66 m | same |
+
+What tells a rail car from a bus at a glance (bogies under an overhanging
+body, no wheel arch, a cab only at a set's ends, a gangway between cars) is
+the game's own reading and has no source. The pantograph's height over the
+roof is a dial: no data sheet read gave it.
+
 ## Looked at in a browser
 
 1. A 2×2 bus depot from the street at the default pitch: the bay doors identify it, and a bus at a door is visibly shorter than the door.

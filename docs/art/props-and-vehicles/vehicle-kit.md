@@ -60,3 +60,36 @@ ambulance (white, red light-bar, 2.7 m tall) by height and colour, and from a ca
 
 Like every kind it is one InstancedMesh, in the service-vehicle renderer.
 
+## Rail and tram cars
+
+A train and a tram have their own geometry. Neither is a bus made longer.
+
+- **A rail car** is a flat-sided body over two bogies set in from its ends,
+  the body overhanging both. No wheel arch cuts its side. One window band
+  runs its length, broken by two doors a side.
+- **A train** is three cars. Each end car carries a cab: a raked nose, a
+  windscreen, lights under it and a coupler. An inner end is blunt and meets
+  the next through a gangway bellows; no cab faces another car.
+- **A tram** is two low-floor sections joined at a bellows over a shared
+  middle bogie, three bogies in all. Skirts cover its wheels, a cab stands at
+  each end, and one pantograph stands raised on its roof.
+- **The roof** carries equipment pods narrower than the body and nothing
+  else.
+- **Colour.** The body takes the line's colour. Glass, bogies, bellows,
+  couplers and roof gear keep their own.
+- A set stabled in a yard or a depot is the same geometry as one in service.
+
+| Part | Size | Source |
+| ---- | ---- | ------ |
+| Train car (w × h × l) | 3.2 × 3.8 × 14.0 m, three to a set at 15.2 m | `TRAIN_CAR_SIZE`, `TRAIN_CAR_PITCH` |
+| Bogie centres | 0.70 of the car's length, 9.8 m | [rail cars](../../sources/transport-depots.md#rail-and-tram-cars) |
+| Bogie wheelbase, wheel | 2.6 m, 0.91 m | same |
+| Floor over the rail | 1.3 m | same |
+| Tram section (w × h × l) | 2.6 × 3.4 × 11.0 m, two to a set at 11.4 m | `TRAM_CAR_SIZE`, `TRAM_CAR_PITCH` |
+| Tram bogie wheelbase, wheel | 1.9 m, 0.66 m | same |
+| Pantograph head over the roof | 1.6 m | dial |
+| Bellows past a blunt end | half the gap: 0.6 m on a train, 0.2 m on a tram | the pitch less the car |
+
+Code: the builders in `src/render/railcars.ts`; `TRAIN_SET`, `TRAM_SET` in
+`src/render/transit.ts`; the stabled sets in `src/render/utilitykits.ts`.
+

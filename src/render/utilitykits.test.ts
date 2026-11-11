@@ -2748,8 +2748,11 @@ describe('multiple kits coexisting', () => {
     expect(renderer.partSlotsFor(29, 'depotGroundsLong')).toHaveLength(0);
     expect(renderer.partSlotsFor(31, 'busBaseBus')).toHaveLength(10);
     expect(renderer.partSlotsFor(32, 'busBaseBus')).toHaveLength(36);
-    expect(renderer.partSlotsFor(33, 'tramDepotCar')).toHaveLength(16);
-    expect(renderer.partSlotsFor(34, 'railYardCar')).toHaveLength(15);
+    // Eight two-section tram sets and five three-car train sets: a train's end cars share a pool.
+    expect(renderer.partSlotsFor(33, 'tramDepotCar')).toHaveLength(8);
+    expect(renderer.partSlotsFor(33, 'tramDepotCarTail')).toHaveLength(8);
+    expect(renderer.partSlotsFor(34, 'railYardCar')).toHaveLength(10);
+    expect(renderer.partSlotsFor(34, 'railYardCarMid')).toHaveLength(5);
     expect(renderer.partSlotsFor(33, 'railYardCar')).toHaveLength(0);
     expect(renderer.partSlotsFor(35, 'plazaGround')).toHaveLength(1);
     expect(renderer.partSlotsFor(36, 'playFrame')).toHaveLength(2);

@@ -379,7 +379,7 @@ const RAILWAY_SLEEPER_HALF_W_M = 0.16;
 const RAILWAY_SLEEPER_PERIOD_M = 1.6;
 /** Sleepers sit on the bed; rails ride a hair above the sleepers, both below the marking layer. */
 const RAILWAY_SLEEPER_Y_OFFSET = ROAD_Y_OFFSET + 0.004;
-const RAILWAY_RAIL_Y_OFFSET = ROAD_Y_OFFSET + 0.012;
+export const RAILWAY_RAIL_Y_OFFSET = ROAD_Y_OFFSET + 0.012;
 /**
  * Street track's concrete slab: the clean-concrete swatch's warm neutral a
  * shade over the asphalt, and well under the raised median's concrete, so it
@@ -400,7 +400,7 @@ const TRAM_GROOVE_W_M = 0.042;
 /** Slab on the road, groove on the slab, rail head 4 mm proud of it; all under the paint. */
 const TRAM_SLAB_Y_OFFSET = ROAD_Y_OFFSET + 0.004;
 const TRAM_GROOVE_Y_OFFSET = TRAM_SLAB_Y_OFFSET + 0.002;
-const TRAM_RAIL_Y_OFFSET = TRAM_SLAB_Y_OFFSET + 0.004;
+export const TRAM_RAIL_Y_OFFSET = TRAM_SLAB_Y_OFFSET + 0.004;
 /** Rail Track ballast bed: dark crushed-stone grey, distinct from asphalt tiers and gravel's tan. */
 const RAIL_BALLAST_COLOR: readonly [number, number, number] = [0.34, 0.33, 0.31];
 /** Painted bus-lane surface (terracotta red — the universal transit-lane tint). */

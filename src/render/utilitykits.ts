@@ -136,12 +136,13 @@
  *    pair of rails ("tramDepotTrack" or "tramDepotTrackEnd"), the catenary
  *    poles and crossarms ("tramDepotPoles"), the shop hall and office
  *    ("tramDepotShop"), their panes ("tramDepotLit") and the stabled sets'
- *    cars ("tramDepotCar", refit by setDepotFleets).
+ *    cars ("tramDepotCar" the lead sections, "tramDepotCarTail" the tails,
+ *    refit by setDepotFleets).
  *  - rail-yard: the same in the railway's frame with ballast under every
  *    road and the drive and fuelling stand ("railYardYard" or
  *    "railYardYardEnd", "railYardTrack" or "railYardTrackEnd"), the shop and
  *    office ("railYardShop"), their panes ("railYardLit") and the train sets'
- *    cars ("railYardCar").
+ *    cars ("railYardCar" the end cars, "railYardCarMid" the middle ones).
  *
  * Every placement is a PURE function of (catalog footprint[, buildingId]) —
  * no THREE/DOM dependency, no Math.random/Date.now anywhere — mirroring
@@ -152,14 +153,14 @@
  * renderer's swap/free convention.
  */
 import * as THREE from 'three';
-import { uniform } from 'three/tsl';
+import { materialColor, uniform } from 'three/tsl';
 import {
   BuildingCatalogEntry,
   BuildingDelta,
   BuildingInstance,
   VehicleKind,
 } from '../shared/types';
-import { nightBodyMaterial } from './nightlook';
+import { nightBodyMaterial, nightTintNode } from './nightlook';
 import { TILE_METERS } from '../shared/constants';
 import { footprintForRotation } from '../shared/footprint';
 import { depotFrame, railSideOf, waterSideOf, yardFrame } from '../shared/kitfront';
@@ -172,7 +173,12 @@ import { InstancedSlotPool } from './massing';
 import { sunDirection } from './sun';
 import { SHALLOW_WATER_COLOR } from './water';
 import { buildServiceVehicleGeometry, type ServiceVehicleKind } from './servicevehicles';
-import { buildVehicleGeometry, sizeForKind, VEHICLE_PALETTE_HEX } from './vehicles';
+import {
+  VehiclePartMaterial,
+  buildVehicleGeometry,
+  sizeForKind,
+  VEHICLE_PALETTE_HEX,
+} from './vehicles';
 import {
   ACCESSIBLE_AISLE_M,
   ACCESSIBLE_CAR_WIDTH_M,
@@ -189,14 +195,14 @@ import {
 } from './roadsmesh';
 import { UNIT_HEIGHT_M, UNIT_LENGTH_M, UNIT_WIDTH_M } from './buildingkit';
 import {
-  buildTrainCarGeometry,
-  buildTramCarGeometry,
   TRAIN_CAR_PITCH,
   TRAIN_CAR_SIZE,
   TRAIN_CARS_PER_SET,
+  TRAIN_SET,
   TRAM_CAR_PITCH,
   TRAM_CAR_SIZE,
   TRAM_CARS_PER_SET,
+  TRAM_SET,
 } from './transit';
 
 // ---------------------------------------------------------------------------
@@ -352,13 +358,15 @@ export type UtilityKitPartKind =
   | 'tramDepotShop'
   | 'tramDepotLit'
   | 'tramDepotCar'
+  | 'tramDepotCarTail'
   | 'railYardYard'
   | 'railYardYardEnd'
   | 'railYardTrack'
   | 'railYardTrackEnd'
   | 'railYardShop'
   | 'railYardLit'
-  | 'railYardCar';
+  | 'railYardCar'
+  | 'railYardCarMid';
 
 // ---------------------------------------------------------------------------
 // Shared pure helpers (each render/*.ts file keeps its own local copy of
@@ -8988,6 +8996,32 @@ export const YARD_CARS = {
   rail: { perSet: TRAIN_CARS_PER_SET, length: TRAIN_CAR_SIZE[2], pitch: TRAIN_CAR_PITCH },
 } as const;
 
+/** The pools a yard's cars stand in: one per distinct car geometry of the set, in the order the set first uses them. */
+const YARD_CAR_KINDS = {
+  tram: ['tramDepotCar', 'tramDepotCarTail'],
+  rail: ['railYardCar', 'railYardCarMid'],
+} as const;
+
+/**
+ * Which pool each car of a stabled set stands in, and the half turn it takes over
+ * its berth. A berth's own turn points a car's nose toward +X, the set's far end,
+ * so the lead car, standing at the near end, turns about to face -X; the set's
+ * flipped car already faces +X.
+ */
+function yardCarParts(mode: 'tram' | 'rail'): {
+  geometries: (() => THREE.BufferGeometry)[];
+  carPart: number[];
+  carTurn: (0 | 2)[];
+} {
+  const set = mode === 'tram' ? TRAM_SET : TRAIN_SET;
+  const geometries: (() => THREE.BufferGeometry)[] = [];
+  const carPart = set.map((car) => {
+    const at = geometries.indexOf(car.geometry);
+    return at >= 0 ? at : geometries.push(car.geometry) - 1;
+  });
+  return { geometries, carPart, carTurn: set.map((car) => (car.flip ? 0 : 2)) };
+}
+
 // ---------------------------------------------------------------------------
 // UtilityKitRenderer
 // ---------------------------------------------------------------------------
@@ -9032,7 +9066,12 @@ interface DepotPlacement {
   floorY: number;
   centerZ: number;
   turn: 0 | 1 | 2 | 3;
-  kind: 'busBaseBus' | 'tramDepotCar' | 'railYardCar';
+  /** The pools the set's cars stand in; a bus depot has the one. */
+  carKinds: UtilityKitPartKind[];
+  /** The pool (an index into carKinds) each car of a set takes, in set order. */
+  carPart: number[];
+  /** The half turn a car takes over its berth's, so a set's two cabs face outward. */
+  carTurn: (0 | 2)[];
   /** Each berth in fill order: the cars of the set that stands in it, centre and nose turn in the kit frame. */
   berths: { x: number; z: number; turn: 0 | 1 | 2 | 3 }[][];
   /** The catalog's holding, parked whole when the sim lists no fleet for the depot. */
@@ -9226,8 +9265,14 @@ export class UtilityKitRenderer {
     }
     for (const kit of this.kits.values()) {
       kit.pools.busBaseBus?.commit();
-      kit.pools.tramDepotCar?.commit();
-      kit.pools.railYardCar?.commit();
+      for (const kind of [
+        'tramDepotCar',
+        'tramDepotCarTail',
+        'railYardCar',
+        'railYardCarMid',
+      ] as const) {
+        kit.pools[kind]?.commit();
+      }
     }
   }
 
@@ -9235,8 +9280,10 @@ export class UtilityKitRenderer {
   parkedFleets(): Record<number, number> {
     const out: Record<number, number> = {};
     for (const [id, placement] of this.depots) {
-      const cars = placement.berths[0]?.length ?? 1;
-      out[id] = (this.instances.get(id)?.slots[placement.kind]?.length ?? 0) / cars;
+      const firstPart = placement.carPart.filter((part) => part === 0).length;
+      out[id] =
+        (this.instances.get(id)?.slots[placement.carKinds[0]!]?.length ?? 0) /
+        Math.max(1, firstPart);
     }
     return out;
   }
@@ -9306,6 +9353,14 @@ export class UtilityKitRenderer {
   /** A part's material, plate or body: its vertex and instance colours, shaded toward the one night tint. */
   private bodyMaterial(): THREE.Material {
     return nightBodyMaterial(this.nightFactorUniform, { vertexColors: true });
+  }
+
+  /** A stabled rail car's material: the livery tints the body alone, and every surface takes the night tint. */
+  private railCarMaterial(): THREE.Material {
+    const material = new VehiclePartMaterial();
+    material.vertexColors = true;
+    material.colorNode = materialColor.mul(nightTintNode(this.nightFactorUniform));
+    return material;
   }
 
   partEmissiveHex(catalogId: string, kind: UtilityKitPartKind): number | null {
@@ -9435,12 +9490,15 @@ export class UtilityKitRenderer {
     const footprint = yardFootprint(entry);
     const side = computeYardLayout(footprint, spec, false, YARD_CARS[mode]);
     const end = computeYardLayout(footprint, spec, true, YARD_CARS[mode]);
-    const cars = YARD_CARS[mode];
-    const carPool = pool(
-      mode === 'tram' ? buildTramCarGeometry() : buildTrainCarGeometry(),
-      lambert(),
-      INITIAL_KIT_CAPACITY * spec.roads * cars.perSet,
+    const { geometries, carPart } = yardCarParts(mode);
+    const carPools = geometries.map((geometry, part) =>
+      pool(
+        geometry(),
+        this.railCarMaterial(),
+        INITIAL_KIT_CAPACITY * spec.roads * carPart.filter((p) => p === part).length,
+      ),
     );
+    const carKinds = YARD_CAR_KINDS[mode];
     const pools: KitDefinition['pools'] =
       mode === 'tram'
         ? {
@@ -9451,7 +9509,8 @@ export class UtilityKitRenderer {
             tramDepotPoles: pool(buildYardPolesGeometry(side)),
             tramDepotShop: pool(buildYardShopGeometry(side, entry.height)),
             tramDepotLit: pool(buildYardLitGeometry(side), this.stationLightMaterial),
-            tramDepotCar: carPool,
+            [carKinds[0]]: carPools[0]!,
+            [carKinds[1]]: carPools[1]!,
           }
         : {
             railYardYard: pool(buildYardYardGeometry(footprint, side, spec)),
@@ -9460,7 +9519,8 @@ export class UtilityKitRenderer {
             railYardTrackEnd: pool(buildYardTrackGeometry(end, spec)),
             railYardShop: pool(buildYardShopGeometry(side, entry.height)),
             railYardLit: pool(buildYardLitGeometry(side), this.stationLightMaterial),
-            railYardCar: carPool,
+            [carKinds[0]]: carPools[0]!,
+            [carKinds[1]]: carPools[1]!,
           };
     return { entry, pavesLot: true, pools };
   }
@@ -10111,7 +10171,9 @@ export class UtilityKitRenderer {
       floorY: yardTop + EDU_ASPHALT_M,
       centerZ,
       turn: rotation,
-      kind: 'busBaseBus',
+      carKinds: ['busBaseBus'],
+      carPart: [0],
+      carTurn: [0],
       berths: layout.stalls.map((s) => [{ x: s.x, z: s.z, turn: s.turn }]),
       fleet: entry.depot?.fleet ?? layout.stalls.length,
       liveryHex: BUS_LIVERY_HEX,
@@ -10156,13 +10218,14 @@ export class UtilityKitRenderer {
     const trackKind = `${prefix}Track${frame.fromEnd ? 'End' : ''}` as UtilityKitPartKind;
     const shopKind = `${prefix}Shop` as UtilityKitPartKind;
     const litKind = `${prefix}Lit` as UtilityKitPartKind;
-    const carKind = mode === 'tram' ? 'tramDepotCar' : 'railYardCar';
+    const carKinds: UtilityKitPartKind[] = [...YARD_CAR_KINDS[mode]];
     const yard = kit.pools[yardKind];
     const track = kit.pools[trackKind];
     const shop = kit.pools[shopKind];
     const lit = kit.pools[litKind];
     const poles = kit.pools.tramDepotPoles;
-    if (!yard || !track || !shop || !lit || !kit.pools[carKind]) return;
+    if (!yard || !track || !shop || !lit || carKinds.some((kind) => !kit.pools[kind])) return;
+    const { carPart, carTurn } = yardCarParts(mode);
     const { turn } = frame;
     const yardTop = groundY + RECYCLING_YARD_HEIGHT;
     const railTop =
@@ -10174,7 +10237,9 @@ export class UtilityKitRenderer {
       floorY: railTop,
       centerZ,
       turn,
-      kind: carKind,
+      carKinds,
+      carPart,
+      carTurn,
       berths: layout.sets,
       fleet: entry.depot?.fleet ?? layout.sets.length,
       liveryHex: mode === 'tram' ? TRAM_LIVERY_HEX : TRAIN_LIVERY_HEX,
@@ -10184,8 +10249,8 @@ export class UtilityKitRenderer {
       [trackKind]: [this.placeAt(track, centerX, groundY, centerZ, turn)],
       [shopKind]: [this.placeAt(shop, centerX, yardTop, centerZ, turn)],
       [litKind]: [this.placeAt(lit, centerX, yardTop, centerZ, turn)],
-      [carKind]: [],
     };
+    for (const kind of carKinds) slots[kind] = [];
     if (poles && mode === 'tram') {
       slots.tramDepotPoles = [this.placeAt(poles, centerX, yardTop, centerZ, turn)];
     }
@@ -10201,30 +10266,39 @@ export class UtilityKitRenderer {
   private fitFleet(buildingId: number): void {
     const record = this.instances.get(buildingId);
     const placement = this.depots.get(buildingId);
-    const pool = record
-      ? this.kits.get(record.catalogId)?.pools[placement?.kind ?? 'busBaseBus']
-      : undefined;
-    const slots = placement ? record?.slots[placement.kind] : undefined;
-    if (!record || !placement || !pool || !slots) return;
+    const kit = record ? this.kits.get(record.catalogId) : undefined;
+    if (!record || !placement || !kit) return;
+    // Each car of a set stands in the pool of its own geometry; the cars are
+    // counted in fill order across them, so the tail of the fill is the last
+    // car of the last set whichever pool holds it.
+    const pools = placement.carKinds.map((kind) => kit.pools[kind]);
+    const lists = placement.carKinds.map((kind) => record.slots[kind]);
+    if (pools.some((pool) => !pool) || lists.some((list) => !list)) return;
 
     const cars = placement.berths[0]?.length ?? 0;
     const home = Math.min(this.fleets.get(buildingId) ?? placement.fleet, placement.berths.length);
     const want = home * cars;
-    while (slots.length > want) pool.free(slots.pop()!);
-    while (slots.length < want) {
-      const i = slots.length;
+    const have = (): number => lists.reduce((total, list) => total + list!.length, 0);
+    while (have() > want) {
+      const part = placement.carPart[(have() - 1) % cars]!;
+      pools[part]!.free(lists[part]!.pop()!);
+    }
+    while (have() < want) {
+      const i = have();
       const car = placement.berths[Math.floor(i / cars)]![i % cars]!;
+      const part = placement.carPart[i % cars]!;
+      const pool = pools[part]!;
       const rotated = rotateLocalXZ(car.x, car.z, placement.turn);
       const slot = this.placeAt(
         pool,
         placement.centerX + rotated.x,
         placement.floorY,
         placement.centerZ + rotated.z,
-        ((placement.turn + car.turn) % 4) as 0 | 1 | 2 | 3,
+        ((placement.turn + car.turn + placement.carTurn[i % cars]!) % 4) as 0 | 1 | 2 | 3,
       );
       _carColor.setHex(placement.liveryHex);
       pool.setColorAt(slot, _carColor);
-      slots.push(slot);
+      lists[part]!.push(slot);
     }
   }
 
