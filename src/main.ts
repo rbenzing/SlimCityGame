@@ -59,7 +59,9 @@ import { PLATTED_ZONES } from './shared/lots';
 import {
   carriagewayHalfWidthOf,
   carriagewayWidth,
+  isPaved,
   kerbWidthOf,
+  presetProfileForTier,
   profilesEqual,
 } from './shared/roadprofile';
 import { laneMovementsFor, pocketLaneMovements } from './shared/approach';
@@ -78,6 +80,7 @@ import {
 } from './world/freeroads';
 import { solveElevationProfile } from './world/bridges';
 import { isRoadBuildable } from './world/grid';
+import { alongStreetRefusal } from './world/powerline';
 import { roundaboutGroundOf } from './world/roundabouts';
 import { platOf, platSourceOf, type Parcel } from './world/plat';
 import { buildRoadCells, type RoadCells } from './world/roadnet';
@@ -117,7 +120,7 @@ import { LotRenderer } from './render/lots';
 import { BuildingKitRenderer } from './render/buildingkit';
 import { LandmarkRenderer } from './render/landmarks';
 import { chunksOver, RoadMeshRenderer } from './render/roadsmesh';
-import { FreeRoadRenderer, freeRoadLampStands } from './render/freeroadmesh';
+import { FreeRoadRenderer, freeRoadLampStands, freeRoadPoleLay } from './render/freeroadmesh';
 import type { BandSpan } from './render/roadsmesh';
 import { BridgeRenderer } from './render/bridges';
 import { GuidewayRenderer } from './render/guideway';
@@ -150,7 +153,8 @@ import { BusStopRenderer, stopRoadAt } from './render/busstops';
 import { FarmRenderer } from './render/farms';
 import { ZoneGridRenderer } from './render/zonegrid';
 import { LampRenderer } from './render/lamps';
-import { PowerLineRenderer } from './render/powerlines';
+import { FREE_ROAD_SLOT, PowerLineRenderer, STRUNG_LINE_SLOT } from './render/powerlines';
+import { chunksAroundTile, layStreetChunk, layStrungLine } from './render/powerpoles';
 import { PipeOverlayRenderer, type PipeConnection, type PipeLead } from './render/pipes';
 import { UndergroundView } from './render/underground';
 import {
@@ -390,7 +394,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
   const ghosts = new GhostRenderer(world.scene, heightAt);
   const zoneGrid = new ZoneGridRenderer(world.scene, heightAt, (id) => clientGrid.profileById(id));
   const lamps = new LampRenderer(world.scene, roadSurfaceAt);
-  const powerLines = new PowerLineRenderer(world.scene, heightAt);
+  const powerLines = new PowerLineRenderer(world.scene, roadSurfaceAt);
   const pipes = new PipeOverlayRenderer(world.scene, heightAt);
   // The surface goes to glass while the player works on the water, so the
   // pipes under it show.
@@ -1361,6 +1365,59 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       tramStations.isStation,
     );
   };
+  /**
+   * The street's own power line, kept by terrain chunk. A change re-lays only
+   * the chunks its poles and spans reach — a tile whose supply moved, a road
+   * delta, a drive or a station that came or went — never the whole city.
+   */
+  const dirtyPoleChunks = new Set<number>();
+  const poleSlots = { line: false, free: false };
+  let poleKeepOff: ReadonlySet<number> = new Set();
+  let poleClosed: ReadonlySet<number> = new Set();
+  const markPolesAt = (x: number, z: number): void => {
+    for (const key of chunksAroundTile(x, z)) dirtyPoleChunks.add(key);
+  };
+  const markPoleKeysChanged = (a: ReadonlySet<number>, b: ReadonlySet<number>): void => {
+    for (const key of a) if (!b.has(key)) markPolesAt(Math.floor(key / 100_000), key % 100_000);
+    for (const key of b) if (!a.has(key)) markPolesAt(Math.floor(key / 100_000), key % 100_000);
+  };
+  /**
+   * Lays what has been marked and nothing else. `sourcesMoved` says the tiles
+   * that keep poles off, or carry the supply inside a structure, may have
+   * changed since the last flush.
+   */
+  const flushPoles = (sourcesMoved: boolean): void => {
+    if (sourcesMoved) {
+      const keepOff = new Set([...drivewayTiles, ...freeJunctionTiles, ...tramStations.tiles()]);
+      const closed = new Set(guideway.structure()?.tiles.keys() ?? []);
+      markPoleKeysChanged(poleKeepOff, keepOff);
+      markPoleKeysChanged(poleClosed, closed);
+      poleKeepOff = keepOff;
+      poleClosed = closed;
+    }
+    if (dirtyPoleChunks.size === 0 && !poleSlots.line && !poleSlots.free) return;
+    const world = { tileSet: latestRoadTileSet, keepOff: poleKeepOff, closed: poleClosed };
+    for (const key of dirtyPoleChunks) powerLines.setSlot(key, layStreetChunk(world, key));
+    dirtyPoleChunks.clear();
+    if (poleSlots.line) {
+      powerLines.setSlot(STRUNG_LINE_SLOT, layStrungLine(world, clientGrid.powerLineTiles()));
+    }
+    if (poleSlots.free) {
+      powerLines.setSlot(
+        FREE_ROAD_SLOT,
+        clientGrid.roads
+          ? freeRoadPoleLay(
+              clientGrid.roads,
+              (id) => clientGrid.profileById(id),
+              (wx, wz) => clientGrid.poweredAt(worldToTile(wx), worldToTile(wz)),
+            )
+          : null,
+      );
+    }
+    poleSlots.line = false;
+    poleSlots.free = false;
+    powerLines.commit();
+  };
   /** Every street lamp: the grid's, from its road tiles, and those along roads off the grid. */
   const rebuildLamps = (): void => {
     const free = clientGrid.roads
@@ -1944,6 +2001,11 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
     },
     // So the cursor quotes only the tiles a power-line or pipe drag would change.
     powerLineAt: (x, z) => clientGrid.powerLineAt(x, z),
+    // The cursor says what the world will: a street already carries power.
+    powerLineRefusal: (tiles) =>
+      alongStreetRefusal(clientGrid, tiles, (tier) =>
+        isPaved(presetProfileForTier(tier as RoadTier)),
+      ),
     waterPipeAt: (x, z) => clientGrid.waterPipeAt(x, z),
     // Underground, a pipe drag snaps onto the system and says what it joins.
     pipeWorld: {
@@ -2162,6 +2224,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
     if (snap.roadProfiles) clientGrid.applyRoadProfiles(snap.roadProfiles);
     if (snap.roadNet) {
       clientGrid.applyRoadNetwork(snap.roadNet);
+      poleSlots.free = true;
       freeRoads.rebuild(clientGrid.roads);
       syncFreeJunctions();
       // A road off the grid fronts lots and covers tiles with no road tile
@@ -2212,6 +2275,9 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       utilityKits.relayBeside(snap.roads.map((d) => ({ x: d.x, z: d.z })));
       const roadTiles = clientGrid.roadTiles();
       setLatestRoadTiles(roadTiles);
+      // The street's power line follows the tiles the road edit touched.
+      for (const delta of snap.roads) markPolesAt(delta.x, delta.z);
+      poleSlots.line = true;
       // A stop stands on its tile's own cross-section, so it follows the road.
       if (latestStops.length > 0) redrawStops();
       // The guideway and its stations go before the lamps, which keep off the stations.
@@ -2230,7 +2296,10 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       // roundabout came or went, the lamps.
       setLatestRoadTiles(clientGrid.roadTiles());
       roadFurniture.rebuild(latestRoadTiles, freeJunctionTiles);
-      if (snap.roundabouts) rebuildLamps();
+      if (snap.roundabouts) {
+        rebuildLamps();
+        for (const block of snap.roundabouts) markPolesAt(block.x, block.z);
+      }
     }
     if (snap.buildings) {
       // A plain body is drawn turned to its street, decided once for each
@@ -2332,7 +2401,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
     if (snap.zones || snap.roads || snap.roadNet || snap.buildings) rebuildPlat();
     if (snap.powerLines) {
       clientGrid.applyPowerLinePatches(snap.powerLines);
-      powerLines.rebuild(clientGrid.powerLineTiles());
+      poleSlots.line = true;
     }
     // A pipe's drawn joins read the roads and buildings beside it, so the
     // overlay follows those too.
@@ -2348,9 +2417,13 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       // Supply also decides which streets carry a lamp, so the mirror keeps it
       // and the lamps are rebuilt when it moves — a district coming on line
       // lights up without waiting for someone to touch a road.
-      clientGrid.applyPowerPatches(snap.power);
+      const moved = clientGrid.applyPowerPatches(snap.power);
       setLatestRoadTiles(clientGrid.roadTiles());
       rebuildLamps();
+      // The poles follow only the tiles whose supply moved: a snapshot that
+      // restates the same supply lays none of them again.
+      for (const tile of moved) markPolesAt(tile.x, tile.z);
+      if (moved.length > 0) poleSlots.free = true;
     }
     if (snap.watered) overlays.setCoverage('watered', snap.watered);
     if (snap.sewered) overlays.setCoverage('sewered', snap.sewered);
@@ -2436,6 +2509,9 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
     if (snap.serviceLoad) state.setServiceLoad(snap.serviceLoad);
     state.setResponders(snap.responders ?? null);
     state.setOpenSpace(snap.openSpace ?? null);
+    flushPoles(
+      Boolean(snap.roads || snap.roadNet || snap.buildings || snap.transit || snap.roundabouts),
+    );
   };
 
   worker.onmessage = (ev: MessageEvent<WorkerToMain>) => {

@@ -26,7 +26,7 @@ What a review of every screenshot the shot tools write found wrong in the game, 
 - Crosswalk ladders overlap inside a tram junction; a one-way arm carries turn arrows and no stop line. — `shots-roadmatrix/tram-cross`, `one-way-mixCross`
 - A roundabout sits to one side of the crossing it replaces: its arms meet the ring along one edge, not toward its centre. An entry carries no crosswalk, and the ring has no lamp of its own. — `shots-roundabouts/fourway-above`, `fourway-night`
 - Where a slip road leaves a motorway there is no gore paint, and the slip road's lines begin with a kink; the deck over the motorway is dark between its end lamps. `[R-roads-064]` — `shots-interchanges/gore-close`, `diamond-night`
-- A power line's pole stands in the carriageway of the road it follows. — `shots-powerline/gravel-remedied`
+- A power pole can stand at a bus stop's pad, a metre from a lamp, or beside a tram's contact pole: it yields to none of them yet. `[R-services-039]` — `shots-powerline/two-lane-oblique`
 
 ## Major: transit
 

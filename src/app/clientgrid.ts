@@ -231,17 +231,24 @@ export class ClientGridMirror {
    * as the zone patches, and sent on change rather than on a cycle, so the
    * mirror holds the last thing the worker said until it says otherwise.
    */
-  applyPowerPatches(patches: readonly ZonePatch[]): void {
+  applyPowerPatches(patches: readonly ZonePatch[]): TilePoint[] {
+    const changed: TilePoint[] = [];
     for (const patch of patches) {
       for (let dz = 0; dz < patch.h; dz++) {
         for (let dx = 0; dx < patch.w; dx++) {
           const x = patch.x + dx;
           const z = patch.z + dz;
           if (!this.inBounds(x, z)) continue;
-          this.power[this.idx(x, z)] = patch.data[dz * patch.w + dx] ?? 0;
+          const next = patch.data[dz * patch.w + dx] ?? 0;
+          const i = this.idx(x, z);
+          // Only a tile whose supply actually moved is reported: a patch that
+          // restates the grid names nothing for the poles to redo.
+          if ((this.power[i] !== 0) !== (next !== 0)) changed.push({ x, z });
+          this.power[i] = next;
         }
       }
     }
+    return changed;
   }
 
   /** Replaces the mirror's custom-profile table with the worker's full table. */

@@ -1,213 +1,241 @@
 /**
- * Power lines: wooden poles with wire slung between them.
+ * Power lines drawn: wooden poles, their crossarms, the guys that hold a
+ * corner or a dead end up, and the wires slung between them.
  *
- * A line's tiles come from the sim as a membership layer, with no notion of
- * which pole joins which. The shape is recovered here, from the layer itself:
- * a pole stands on every line tile, and a span is drawn to its neighbour to
- * the east and to the south — each ordered pair once, so no span is drawn
- * twice — which yields exactly the run the player dragged.
+ * Where the poles stand is decided in powerpoles.ts; this file turns a lay
+ * into instances. A lay is kept per slot — a terrain chunk of the street's own
+ * line, the player's strung line, the lines along streets off the grid — so a
+ * change lays again only the slot it touches, and the pools the instances live
+ * in are repacked from what each slot holds.
  *
- * The wire hangs. A span is a shallow catenary rather than a straight bar,
- * approximated by a few segments, because a dead-straight wire between two
- * poles is the single clearest tell that a power line is a diagram and not a
- * thing in the world.
+ * A wire is geometry, never a line a pixel wide: a thin box per segment of its
+ * sag, so it keeps a real thickness at every zoom.
  */
 
 import * as THREE from 'three';
-import type { TilePoint } from '../shared/types';
-import { TILE_METERS } from '../shared/constants';
+import { MIN_INSTANCE_CAPACITY, setInstanceCount } from './groundquad';
+import { wirePoints } from './powerpoles';
+import type { PowerLay } from './powerpoles';
 
-/** Pole height above the ground it stands on, metres. */
-const POLE_HEIGHT = 9;
-const POLE_RADIUS_TOP = 0.11;
-const POLE_RADIUS_BOTTOM = 0.16;
-const POLE_RADIAL_SEGMENTS = 6;
+/** Where the player's strung line is kept; the street's chunks are numbered from 0. */
+export const STRUNG_LINE_SLOT = -1;
+/** Where the lines along streets off the grid are kept. */
+export const FREE_ROAD_SLOT = -2;
+
 /** Creosoted timber, brown enough to read against both grass and asphalt. */
 const POLE_COLOR = 0x5c4a38;
+const WIRE_COLOR = 0x26262a;
+/** Thick enough to read at street zoom and to keep a pixel's worth at a few hundred metres. */
+const WIRE_THICKNESS_M = 0.1;
+const GUY_THICKNESS_M = 0.06;
+const ARM_THICKNESS_M = 0.14;
+/** A guy meets its pole this far under the crossarm. */
+const GUY_BELOW_ARM_M = 0.4;
+/** The foot of a pole is this much wider than its top. */
+const POLE_TAPER = 0.6;
+const POLE_RADIAL_SEGMENTS = 6;
 
-/** The crossarm the wires hang off, across the run. */
-const ARM_LENGTH = 2.2;
-const ARM_THICKNESS = 0.12;
-const ARM_HEIGHT = POLE_HEIGHT - 0.9;
-
-/** Lateral offsets of the wires along the crossarm, metres from the pole. */
-const WIRE_OFFSETS: readonly number[] = [-0.85, 0, 0.85];
-const WIRE_COLOR = 0x2a2a2c;
-/** How far the middle of a span dips below its ends, metres. */
-const WIRE_SAG = 0.55;
-/** Segments per span — enough for the sag to read as a curve, not a kink. */
-const WIRE_SEGMENTS = 6;
-
-const tileKey = (x: number, z: number): number => z * 4096 + x;
-
-/** Where a pole stands in world space, and how high its crossarm sits. */
-export interface PolePlacement {
-  x: number;
-  z: number;
-  /** True when the run continues east, so a span is drawn that way. */
-  spanEast: boolean;
-  /** True when the run continues south. */
-  spanSouth: boolean;
+/** What one slot lays: the instance matrices of each part, and where its poles stand. */
+interface Slot {
+  poles: Float32Array;
+  arms: Float32Array;
+  cables: Float32Array;
+  /** x, y, z of every pole's foot, in instance order. */
+  feet: number[];
 }
 
-/**
- * Works out which poles carry a span to which, from the line layer alone.
- * Each span is claimed by its west/north end so a run of N poles yields N-1
- * spans rather than 2(N-1) overlapping ones.
- */
-export function computePolePlacements(tiles: readonly TilePoint[]): PolePlacement[] {
-  const present = new Set<number>();
-  for (const t of tiles) present.add(tileKey(t.x, t.z));
-  return tiles.map((t) => ({
-    x: t.x,
-    z: t.z,
-    spanEast: present.has(tileKey(t.x + 1, t.z)),
-    spanSouth: present.has(tileKey(t.x, t.z + 1)),
-  }));
+const _matrix = new THREE.Matrix4();
+const _position = new THREE.Vector3();
+const _scale = new THREE.Vector3();
+const _quat = new THREE.Quaternion();
+const _from = new THREE.Vector3();
+const _to = new THREE.Vector3();
+const _along = new THREE.Vector3();
+const _east = new THREE.Vector3(1, 0, 0);
+const _up = new THREE.Vector3(0, 1, 0);
+
+/** Appends a box that runs from `a` to `b`, `thickness` square, to a matrix list. */
+function pushSegment(out: number[], a: THREE.Vector3, b: THREE.Vector3, thickness: number): void {
+  _along.subVectors(b, a);
+  const length = _along.length();
+  if (length < 1e-6) return;
+  _quat.setFromUnitVectors(_east, _along.divideScalar(length));
+  _position.addVectors(a, b).multiplyScalar(0.5);
+  _scale.set(length, thickness, thickness);
+  _matrix.compose(_position, _quat, _scale);
+  out.push(..._matrix.elements);
 }
 
-/**
- * A catenary's points between two ends, as a fraction of the way along. The
- * sag is a simple parabola — indistinguishable from a real catenary over a
- * span this short, and far cheaper to evaluate.
- */
-function sagAt(t: number): number {
-  return -WIRE_SAG * 4 * t * (1 - t);
-}
+/** One mesh's instances, in a pool that only grows and is replaced, disposed, when it must. */
+class InstancePool {
+  private mesh: THREE.InstancedMesh | null = null;
+  private capacity = 0;
 
-export class PowerLineRenderer {
-  private readonly scene: THREE.Scene;
-  private readonly heightAt: (x: number, z: number) => number;
+  constructor(
+    private readonly scene: THREE.Scene,
+    private readonly geometry: THREE.BufferGeometry,
+    private readonly material: THREE.Material,
+    private readonly castsShadow: boolean,
+  ) {}
 
-  private readonly poleGeometry: THREE.CylinderGeometry;
-  private readonly armGeometry: THREE.BoxGeometry;
-  private readonly poleMaterial: THREE.MeshLambertMaterial;
-  private readonly wireMaterial: THREE.MeshBasicMaterial;
-
-  private poleMesh: THREE.InstancedMesh | null = null;
-  private armMesh: THREE.InstancedMesh | null = null;
-  private wireMesh: THREE.LineSegments | null = null;
-  private placements: PolePlacement[] = [];
-
-  constructor(scene: THREE.Scene, heightAt: (x: number, z: number) => number) {
-    this.scene = scene;
-    this.heightAt = heightAt;
-    this.poleGeometry = new THREE.CylinderGeometry(
-      POLE_RADIUS_TOP,
-      POLE_RADIUS_BOTTOM,
-      POLE_HEIGHT,
-      POLE_RADIAL_SEGMENTS,
-    );
-    this.poleGeometry.translate(0, POLE_HEIGHT / 2, 0);
-    this.armGeometry = new THREE.BoxGeometry(ARM_LENGTH, ARM_THICKNESS, ARM_THICKNESS);
-    this.poleMaterial = new THREE.MeshLambertMaterial({ color: POLE_COLOR });
-    this.wireMaterial = new THREE.MeshBasicMaterial({ color: WIRE_COLOR });
-  }
-
-  /** Full rebuild from the current set of line tiles. */
-  rebuild(tiles: readonly TilePoint[]): void {
-    this.dispose();
-    this.placements = computePolePlacements(tiles);
-    const count = this.placements.length;
-    if (count === 0) return;
-
-    this.poleMesh = new THREE.InstancedMesh(this.poleGeometry, this.poleMaterial, count);
-    this.armMesh = new THREE.InstancedMesh(this.armGeometry, this.poleMaterial, count);
-    this.poleMesh.castShadow = true;
-    this.armMesh.castShadow = true;
-
-    const m = new THREE.Matrix4();
-    const q = new THREE.Quaternion();
-    const scale = new THREE.Vector3(1, 1, 1);
-    for (let i = 0; i < count; i++) {
-      const p = this.placements[i]!;
-      const wx = (p.x + 0.5) * TILE_METERS;
-      const wz = (p.z + 0.5) * TILE_METERS;
-      const base = this.heightAt(wx, wz);
-      m.compose(new THREE.Vector3(wx, base, wz), new THREE.Quaternion(), scale);
-      this.poleMesh.setMatrixAt(i, m);
-      // The crossarm lies across the run: north-south where the line runs
-      // east, east-west otherwise, so the wires never run through the timber.
-      q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), p.spanEast ? Math.PI / 2 : 0);
-      m.compose(new THREE.Vector3(wx, base + ARM_HEIGHT, wz), q, scale);
-      this.armMesh.setMatrixAt(i, m);
+  /** Fills the pool with each slot's matrices, one after another. */
+  write(parts: readonly Float32Array[]): void {
+    let count = 0;
+    for (const part of parts) count += part.length / 16;
+    if (count > this.capacity) {
+      this.dispose();
+      // Below this a doubling compiles the shader again; see MIN_INSTANCE_CAPACITY.
+      this.capacity = Math.max(MIN_INSTANCE_CAPACITY, this.capacity);
+      while (this.capacity < count) this.capacity *= 2;
+      this.mesh = new THREE.InstancedMesh(this.geometry, this.material, this.capacity);
+      this.mesh.castShadow = this.castsShadow;
+      this.scene.add(this.mesh);
     }
-    this.poleMesh.instanceMatrix.needsUpdate = true;
-    this.armMesh.instanceMatrix.needsUpdate = true;
-
-    const points = this.buildWirePoints();
-    if (points.length > 0) {
-      const geometry = new THREE.BufferGeometry();
-      geometry.setAttribute('position', new THREE.Float32BufferAttribute(points, 3));
-      this.wireMesh = new THREE.LineSegments(geometry, this.wireMaterial);
+    const mesh = this.mesh;
+    if (!mesh) return;
+    let at = 0;
+    for (const part of parts) {
+      mesh.instanceMatrix.array.set(part, at);
+      at += part.length;
     }
-
-    this.scene.add(this.poleMesh, this.armMesh);
-    if (this.wireMesh) this.scene.add(this.wireMesh);
+    setInstanceCount(mesh, count);
+    // The instances moved: a bound from an earlier set would cull them.
+    mesh.boundingSphere = null;
+    mesh.instanceMatrix.needsUpdate = true;
   }
 
-  /** Flat [x,y,z, x,y,z, ...] pairs, two per wire segment. */
-  private buildWirePoints(): number[] {
-    const out: number[] = [];
-    for (const p of this.placements) {
-      const here = { x: (p.x + 0.5) * TILE_METERS, z: (p.z + 0.5) * TILE_METERS };
-      const spans: TilePoint[] = [];
-      if (p.spanEast) spans.push({ x: p.x + 1, z: p.z });
-      if (p.spanSouth) spans.push({ x: p.x, z: p.z + 1 });
-      for (const n of spans) {
-        const there = { x: (n.x + 0.5) * TILE_METERS, z: (n.z + 0.5) * TILE_METERS };
-        const yA = this.heightAt(here.x, here.z) + ARM_HEIGHT;
-        const yB = this.heightAt(there.x, there.z) + ARM_HEIGHT;
-        // An offset moves the wire ACROSS the run, so the three wires sit
-        // side by side along the crossarm rather than one behind another.
-        const eastward = n.x !== p.x;
-        const acrossX = eastward ? 0 : 1;
-        const acrossZ = eastward ? 1 : 0;
-        for (const off of WIRE_OFFSETS) {
-          for (let s = 0; s < WIRE_SEGMENTS; s++) {
-            const t0 = s / WIRE_SEGMENTS;
-            const t1 = (s + 1) / WIRE_SEGMENTS;
-            for (const t of [t0, t1]) {
-              out.push(
-                here.x + (there.x - here.x) * t + acrossX * off,
-                yA + (yB - yA) * t + sagAt(t),
-                here.z + (there.z - here.z) * t + acrossZ * off,
-              );
-            }
-          }
-        }
-      }
-    }
-    return out;
-  }
-
-  /** Number of poles standing after the last rebuild. */
-  poleCount(): number {
-    return this.placements.length;
-  }
-
-  /** World position of a pole's base, for a harness to read back. */
-  polePosition(index: number): { x: number; y: number; z: number } | null {
-    const p = this.placements[index];
-    if (!p) return null;
-    const x = (p.x + 0.5) * TILE_METERS;
-    const z = (p.z + 0.5) * TILE_METERS;
-    return { x, y: this.heightAt(x, z), z };
+  count(): number {
+    return this.mesh?.count ?? 0;
   }
 
   dispose(): void {
-    for (const mesh of [this.poleMesh, this.armMesh]) {
-      if (!mesh) continue;
-      this.scene.remove(mesh);
-      mesh.dispose();
+    if (!this.mesh) return;
+    this.scene.remove(this.mesh);
+    this.mesh.dispose();
+    this.mesh = null;
+  }
+}
+
+export class PowerLineRenderer {
+  private readonly slots = new Map<number, Slot>();
+  private readonly poleGeometry = new THREE.CylinderGeometry(
+    POLE_TAPER,
+    1,
+    1,
+    POLE_RADIAL_SEGMENTS,
+  ).translate(0, 0.5, 0);
+  private readonly armGeometry = new THREE.BoxGeometry(1, ARM_THICKNESS_M, ARM_THICKNESS_M);
+  private readonly cableGeometry = new THREE.BoxGeometry(1, 1, 1);
+  private readonly timber = new THREE.MeshLambertMaterial({ color: POLE_COLOR });
+  private readonly wire = new THREE.MeshLambertMaterial({ color: WIRE_COLOR });
+  private readonly polePool: InstancePool;
+  private readonly armPool: InstancePool;
+  private readonly cablePool: InstancePool;
+  /** Slots laid since construction; a test reads it to see what a change re-laid. */
+  private laid = 0;
+
+  constructor(
+    scene: THREE.Scene,
+    private readonly heightAt: (x: number, z: number) => number,
+  ) {
+    this.polePool = new InstancePool(scene, this.poleGeometry, this.timber, true);
+    this.armPool = new InstancePool(scene, this.armGeometry, this.timber, true);
+    this.cablePool = new InstancePool(scene, this.cableGeometry, this.wire, false);
+  }
+
+  /** Lays one slot anew, or empties it when given no lay. Nothing shows until commit(). */
+  setSlot(slot: number, lay: PowerLay | null): void {
+    this.laid += 1;
+    if (!lay || (lay.poles.length === 0 && lay.spans.length === 0)) {
+      this.slots.delete(slot);
+      return;
     }
-    if (this.wireMesh) {
-      this.scene.remove(this.wireMesh);
-      this.wireMesh.geometry.dispose();
+    const poles: number[] = [];
+    const arms: number[] = [];
+    const cables: number[] = [];
+    const feet: number[] = [];
+    for (const pole of lay.poles) {
+      const ground = this.heightAt(pole.x, pole.z);
+      feet.push(pole.x, ground, pole.z);
+      _scale.set(pole.radius, pole.height, pole.radius);
+      _matrix.compose(_position.set(pole.x, ground, pole.z), _quat.identity(), _scale);
+      poles.push(..._matrix.elements);
+      _quat.setFromAxisAngle(_up, Math.atan2(-pole.armZ, pole.armX));
+      _scale.set(pole.armLength, 1, 1);
+      _matrix.compose(_position.set(pole.x, ground + pole.arm, pole.z), _quat, _scale);
+      arms.push(..._matrix.elements);
+      if (pole.guy) {
+        _from.set(pole.guy.x, this.heightAt(pole.guy.x, pole.guy.z), pole.guy.z);
+        _to.set(pole.x, ground + pole.arm - GUY_BELOW_ARM_M, pole.z);
+        pushSegment(cables, _from, _to, GUY_THICKNESS_M);
+      }
     }
-    this.poleMesh = null;
-    this.armMesh = null;
-    this.wireMesh = null;
-    this.placements = [];
+    for (const span of lay.spans) {
+      for (const which of [-1, 0, 1] as const) {
+        const points = wirePoints(span.a, span.b, which, this.heightAt);
+        for (let i = 1; i < points.length; i++) {
+          const a = points[i - 1]!;
+          const b = points[i]!;
+          pushSegment(cables, _from.set(a.x, a.y, a.z), _to.set(b.x, b.y, b.z), WIRE_THICKNESS_M);
+        }
+      }
+    }
+    this.slots.set(slot, {
+      poles: Float32Array.from(poles),
+      arms: Float32Array.from(arms),
+      cables: Float32Array.from(cables),
+      feet,
+    });
+  }
+
+  /** Repacks the pools from every slot's instances. */
+  commit(): void {
+    const all = [...this.slots.values()];
+    this.polePool.write(all.map((s) => s.poles));
+    this.armPool.write(all.map((s) => s.arms));
+    this.cablePool.write(all.map((s) => s.cables));
+  }
+
+  /** Number of poles standing after the last commit. */
+  poleCount(): number {
+    return this.polePool.count();
+  }
+
+  /** World position of a pole's foot, for a harness to read back. */
+  polePosition(index: number): { x: number; y: number; z: number } | null {
+    let left = index;
+    for (const slot of this.slots.values()) {
+      const here = slot.feet.length / 3;
+      if (left < here)
+        return {
+          x: slot.feet[left * 3]!,
+          y: slot.feet[left * 3 + 1]!,
+          z: slot.feet[left * 3 + 2]!,
+        };
+      left -= here;
+    }
+    return null;
+  }
+
+  /** Cable segments (wires and guys) standing after the last commit. */
+  cableCount(): number {
+    return this.cablePool.count();
+  }
+
+  /** Slots laid so far; a change that re-lays only its own chunk raises it by one a chunk. */
+  slotsLaid(): number {
+    return this.laid;
+  }
+
+  /** The slots that hold anything. */
+  slotKeys(): number[] {
+    return [...this.slots.keys()];
+  }
+
+  dispose(): void {
+    this.slots.clear();
+    this.polePool.dispose();
+    this.armPool.dispose();
+    this.cablePool.dispose();
   }
 }

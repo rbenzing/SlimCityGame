@@ -33,12 +33,14 @@ import {
   presetProfileForTier,
   worldOrderedProfile,
 } from '../shared/roadprofile';
-import { RoadFlow } from '../shared/types';
-import type { RoadNet, RoadProfile, RoadTier, TilePoint } from '../shared/types';
+import { RoadFlow, RoadTier } from '../shared/types';
+import type { RoadNet, RoadProfile, TilePoint } from '../shared/types';
 import { bendsOf, isFreeSegment, isGridNode, segmentGeom, segmentsAt } from '../world/roadnet';
 import type { BendAt } from '../world/roadnet';
 import { lampLateralOffset, tierGetsLamp } from './lamps';
 import type { LampStand } from './lamps';
+import { POLE_SPECS, layFromLinks, poleLateralOffset } from './powerpoles';
+import type { PoleSite, PowerLay } from './powerpoles';
 import { markingPlan } from './roadmarkings';
 import type { MarkingLine, MarkingPlan } from './roadmarkings';
 import {
@@ -893,6 +895,51 @@ export function freeRoadLampStands(
     }
   }
   return out;
+}
+
+/**
+ * The street's own power line along every road off the grid that carries
+ * power: a pole every pole spacing between its junctions, on one side of the
+ * road, behind its kerb and outside its footway, with the wires hung from pole
+ * to pole. A motorway, a slip road and an unmade road carry none.
+ */
+export function freeRoadPoleLay(
+  net: RoadNet,
+  lookup: ProfileFor,
+  powered: (x: number, z: number) => boolean,
+): PowerLay {
+  const spacing = POLE_SPECS.street.spacingTiles * TILE_METERS;
+  const sites: PoleSite[] = [];
+  const links: [number, number][] = [];
+  for (const span of layout(net, lookup).spans) {
+    if (!isFreeSegment(net, span.seg)) continue;
+    const tier = net.segTier[span.seg] as RoadTier;
+    if (!tierGetsLamp(tier) || tier === RoadTier.Highway || tier === RoadTier.Ramp) continue;
+    if (!isPaved(span.lay.profile)) continue;
+    const offset = poleLateralOffset(span.lay.profile);
+    const samples = sampleCentreLine(segmentGeom(net, span.seg));
+    // One side for the whole segment, so the line keeps it between junctions.
+    const side = span.seg % 2 === 0 ? 1 : -1;
+    const first = span.from + Math.min(spacing, span.to - span.from) / 2;
+    let previous = -1;
+    for (let s = first; s <= span.to; s += spacing) {
+      const st = stations(samples, s, s)[0];
+      if (!st || !powered(st.x, st.z)) {
+        previous = -1;
+        continue;
+      }
+      const index = sites.length;
+      sites.push({
+        key: index,
+        kind: 'street',
+        x: st.x + st.nx * offset * side,
+        z: st.z + st.nz * offset * side,
+      });
+      if (previous >= 0) links.push([previous, index]);
+      previous = index;
+    }
+  }
+  return layFromLinks(sites, links);
 }
 
 /** Draws the roads off the grid, rebuilt whole whenever the network or the ground changes. */

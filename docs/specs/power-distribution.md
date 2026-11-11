@@ -35,11 +35,11 @@
 | Poles replaced | 2.7 | % a year | [upkeep](../sources/power-distribution.md#what-it-costs-to-keep) |
 | Upkeep a cable avoids | 370 | $ a mile a year | trees and pole inspection, [upkeep](../sources/power-distribution.md#what-it-costs-to-keep) |
 
-**Code:** `src/world/powerline.ts` the line layer and where a line may go; `src/sim/network.ts` `conductsPower` and the reach; `src/render/powerlines.ts` poles and wires; `src/render/underground.ts` the buried view; `src/data/catalog.json` the substation.
+**Code:** `src/world/powerline.ts` the line layer, where a line may go and `alongStreetRefusal`; `src/sim/network.ts` `conductsPower` and the reach; `src/render/powerpoles.ts` where a pole, a wire and a guy stand; `src/render/powerlines.ts` the renderer, a slot a terrain chunk; `src/render/freeroadmesh.ts` `freeRoadPoleLay` the line along a curved street; `src/shared/placement.ts` `POWER_LINE_REFUSALS`; `tools/powerline-shots.mjs`. Not yet built: `src/render/underground.ts` the buried view; `src/data/catalog.json` the substation.
 
-**Tests:** to be written with the build: pole placement by road class, the source-end rule, cable price and upkeep, the underground view's cables.
+**Tests:** `src/render/powerpoles.test.ts` pole placement by road class, the side kept, spans, guys and the wire's height over a road; `tests/interaction/powerlinerefusal.test.ts` a line along a sealed street refused, a crossing accepted, an older save's line kept. To be written with the build: the source-end rule, cable price and upkeep, the underground view's cables.
 
-**Open:** the monthly figures in the game's own money; alley pole practice, homes per transformer and manhole spacing have no citable figure and are dials.
+**Open:** the monthly figures in the game's own money; alley pole practice, homes per transformer and manhole spacing have no citable figure and are dials. A pole does not yet yield to a lamp, a tram's contact pole or a bus stop's pad, nor keep off a tile an overpass crosses; a curved street's wires end guyed at each node; a wire is drawn 0.1 m thick so it reads from afar.
 
 ## Why the rules are what they are
 

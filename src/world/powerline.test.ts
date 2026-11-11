@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { createGrid } from './grid';
+import { POWER_LINE_REFUSALS } from '../shared/placement';
 import {
+  alongStreetRefusal,
   canStringLine,
   lineAt,
   powerLineCount,
@@ -86,6 +88,70 @@ describe('stringPowerLine', () => {
         true,
       ),
     ).toEqual([{ x: 0, z: 0 }]);
+  });
+
+  describe('alongStreetRefusal', () => {
+    // Mask bits: east and west.
+    const E = 2;
+    const W = 8;
+    const sealed = (tier: number): boolean => tier !== RoadTier.Gravel;
+    /** An east-west street along row 3 from x = 0 to x = 7. */
+    const streetGrid = (tier: number = RoadTier.TwoLane) => {
+      const g = createGrid(SIZE);
+      for (let x = 0; x < SIZE; x++) {
+        g.roadTier[idx(x, 3)] = tier;
+        g.roadMask[idx(x, 3)] = (x > 0 ? W : 0) | (x < SIZE - 1 ? E : 0);
+      }
+      return g;
+    };
+    const along = [1, 2, 3].map((x) => ({ x, z: 3 }));
+    const across = [1, 2, 3, 4, 5].map((z) => ({ x: 4, z }));
+
+    it('refuses two new tiles in a row along a sealed street, with its own sentence', () => {
+      expect(alongStreetRefusal(streetGrid(), along, sealed)).toBe(POWER_LINE_REFUSALS.alongStreet);
+    });
+
+    it('allows a run that crosses the street at right angles', () => {
+      expect(alongStreetRefusal(streetGrid(), across, sealed)).toBeNull();
+    });
+
+    it('allows a single tile on the street', () => {
+      expect(alongStreetRefusal(streetGrid(), [{ x: 2, z: 3 }], sealed)).toBeNull();
+    });
+
+    it('allows a run along a street that carries no power of its own', () => {
+      expect(alongStreetRefusal(streetGrid(RoadTier.Gravel), along, sealed)).toBeNull();
+    });
+
+    it('allows a run along a railway, which is not a street', () => {
+      expect(alongStreetRefusal(streetGrid(RoadTier.RailTrack), along, sealed)).toBeNull();
+    });
+
+    it('leaves a line already strung along the street alone', () => {
+      const g = streetGrid();
+      stringPowerLine(g, along, true);
+      expect(alongStreetRefusal(g, along, sealed)).toBeNull();
+    });
+
+    it('refuses a run on the street that turns off it after one tile too many', () => {
+      const bend = [
+        { x: 4, z: 1 },
+        { x: 4, z: 2 },
+        { x: 4, z: 3 },
+        { x: 5, z: 3 },
+      ];
+      expect(alongStreetRefusal(streetGrid(), bend, sealed)).toBe(POWER_LINE_REFUSALS.alongStreet);
+    });
+
+    it('reads a road beside the run as no street the run is on', () => {
+      const g = createGrid(SIZE);
+      // A street one row over, running the same way: the run lies beside it, not on it.
+      for (let x = 0; x < SIZE; x++) {
+        g.roadTier[idx(x, 4)] = RoadTier.TwoLane;
+        g.roadMask[idx(x, 4)] = E | W;
+      }
+      expect(alongStreetRefusal(g, along, sealed)).toBeNull();
+    });
   });
 
   it('lists its tiles row-major, which is the order the renderer walks', () => {

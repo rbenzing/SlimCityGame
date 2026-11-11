@@ -116,9 +116,12 @@ console.log('island powered after the line:', after.power?.[idx(X + 23, Z + 10)]
 let strung = 0;
 for (let i = 0; i < after.powerLine.length; i++) if (after.powerLine[i] === 1) strung += 1;
 console.log('tiles carrying line:', strung);
+// A strung line stands a pole every five tiles on open ground, and one at each end.
 if (stood.length === 0) failures.push('the line went up but no poles stand on it');
-if (stood.length !== strung)
-  failures.push(`${strung} tiles carry line but ${stood.length} poles stand`);
+if (stood.length >= strung)
+  failures.push(
+    `${strung} tiles carry line but ${stood.length} poles stand: one a tile is the old drawing`,
+  );
 if (after.power?.[idx(X + 23, Z + 10)] !== 1)
   failures.push('the island road is still unpowered — the line carried nothing');
 
@@ -146,13 +149,86 @@ await cmd('Power line', [
 ]);
 await page.waitForTimeout(3000);
 const remedied = await readGrid();
-console.log('gravel lane powered once a line runs along it:', remedied.power?.[idx(X + 10, Z + 20)]);
+console.log(
+  'gravel lane powered once a line runs along it:',
+  remedied.power?.[idx(X + 10, Z + 20)],
+);
 if (remedied.power?.[idx(X + 10, Z + 20)] !== 1)
   failures.push('a line run along the gravel lane did not supply it — the remedy does not work');
 
 await cam(X + 8, Z + 20, 70, 0.6, 0.8);
 await page.waitForTimeout(800);
 await cleanShot(page, `${out}/gravel-remedied.png`);
+
+// The street's own supply: a spine off the supplied line, a two-lane street and an
+// avenue across it. They are powered by the line they touch, and carry their own
+// pole line behind the kerb; nothing is strung along them.
+await cmd('spine', [{ kind: 'buildRoad', tier: 1, tiles: col(12, 1, 9) }]);
+await cmd('two-lane street', [{ kind: 'buildRoad', tier: 1, tiles: row(2, 4, 22) }]);
+await cmd('avenue', [{ kind: 'buildRoad', tier: 2, tiles: row(6, 4, 22) }]);
+// A line over open ground, and another down a gravel road.
+await cmd('open line', [{ kind: 'stringPowerLine', tiles: row(24, 0, 25), on: true }]);
+await cmd('gravel road', [{ kind: 'buildRoad', tier: 4, tiles: row(28, 0, 20) }]);
+await cmd('roadside line', [{ kind: 'stringPowerLine', tiles: row(28, 0, 20), on: true }]);
+await page.waitForTimeout(4000);
+
+const streets = await readGrid();
+const poweredAvenue = streets.power?.[idx(X + 8, Z + 6)];
+console.log(
+  'avenue powered:',
+  poweredAvenue,
+  'two-lane powered:',
+  streets.power?.[idx(X + 8, Z + 2)],
+);
+if (poweredAvenue !== 1 || streets.power?.[idx(X + 8, Z + 2)] !== 1)
+  failures.push('the streets off the supplied line carry no power, so there is nothing to show');
+const stands = await poles();
+console.log('poles standing now:', stands.length);
+const world = (t) => (t + 0.5) * 20;
+const junctions = [
+  [12, 2],
+  [12, 6],
+];
+for (const p of stands) {
+  const tx = Math.floor(p.x / 20) - X;
+  const tz = Math.floor(p.z / 20) - Z;
+  if (junctions.some(([jx, jz]) => jx === tx && jz === tz))
+    failures.push(`a pole stands on the junction at ${tx},${tz}`);
+  // Along the two-lane street and the avenue no pole may stand in the carriageway.
+  for (const [row0, half] of [
+    [2, 5.5],
+    [6, 8],
+  ]) {
+    if (tx >= 4 && tx <= 22 && tz === row0 && Math.abs(p.z - world(Z + row0)) < half)
+      failures.push(`a pole stands in the carriageway of row ${row0} at ${p.x},${p.z}`);
+  }
+}
+
+// Oblique from about 60 m, straight above, and the junction between them.
+for (const [name, tz] of [
+  ['two-lane', 2],
+  ['avenue', 6],
+]) {
+  await cam(X + 8, Z + tz, 60, 0.6, 0.55);
+  await page.waitForTimeout(800);
+  await cleanShot(page, `${out}/${name}-oblique.png`);
+  await cam(X + 8, Z + tz, 60, 0, 1.45);
+  await page.waitForTimeout(800);
+  await cleanShot(page, `${out}/${name}-above.png`);
+  await cam(X + 12, Z + tz, 60, 0.9, 0.5);
+  await page.waitForTimeout(800);
+  await cleanShot(page, `${out}/${name}-junction.png`);
+}
+await cam(X + 14, Z + 14, 400, 0.55, 0.85);
+await page.waitForTimeout(800);
+await cleanShot(page, `${out}/wide-400m.png`);
+// The line over open ground and the roadside line down the gravel road.
+await cam(X + 12, Z + 24, 110, 0.4, 0.45);
+await page.waitForTimeout(800);
+await cleanShot(page, `${out}/open-line.png`);
+await cam(X + 10, Z + 28, 90, 0.5, 0.4);
+await page.waitForTimeout(800);
+await cleanShot(page, `${out}/gravel-line.png`);
 
 await b.close();
 for (const e of pageErrors) failures.push(`page error: ${e}`);

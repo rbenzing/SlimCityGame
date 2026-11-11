@@ -18,4 +18,4 @@ the [documentation map](../README.md) — chiefly the [documentation map](../REA
 | [Reading your city](reading-your-city.md) | 3,985 B |
 | [Camera & controls](camera--controls.md) | 1,707 B |
 | [Sound and music](sound-and-music.md) | 1,079 B |
-| [Tips](tips.md) | 2,039 B |
+| [Tips](tips.md) | 2,313 B |

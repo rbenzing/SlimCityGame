@@ -229,7 +229,7 @@ import { ServiceSim, nearestRoadTile, openSpaceOf } from './services';
 import { EconomySystem, buildingMonthlyTax, type Occupancy } from './economy';
 import { DeathCareSystem, type DeathCareFacility } from './deathcare';
 import { occupiedResidents } from '../shared/occupancy';
-import { bordersUtilityNetwork, recomputeUtilities, sewageOf } from './network';
+import { bordersUtilityNetwork, recomputeUtilities, sewageOf, tierIsSealed } from './network';
 import { TrafficSystem } from './traffic';
 import {
   TransitSystem,
@@ -251,7 +251,7 @@ import {
   paintLandfill,
   type LandfillArea,
 } from '../world/landfill';
-import { canStringLine, stringPowerLine } from '../world/powerline';
+import { alongStreetRefusal, canStringLine, stringPowerLine } from '../world/powerline';
 import { canLayPipe, layWaterPipe } from '../world/waterpipe';
 import { regradeSoil, soilGrades } from '../shared/soil';
 import {
@@ -2974,6 +2974,9 @@ class SimWorld implements WorkerSim {
    */
   private cmdStringPowerLine(tiles: TilePoint[], on: boolean): CommandResult {
     const g = this.grid;
+    // A street already carries power: a line is not strung along one.
+    const along = on ? alongStreetRefusal(g, tiles, tierIsSealed) : null;
+    if (along !== null) return { ok: false, cost: 0, inverse: [], reason: along };
     // Cost is quoted for the tiles that would change, which is what the tool
     // has already shown the player on the cursor.
     let wouldChange = 0;

@@ -17,6 +17,14 @@ export const PLACEMENT_REFUSALS = {
   blocked: 'It cannot be placed there.',
 } as const;
 
+/**
+ * What the player is told when a power line cannot be strung. One table, read
+ * by the worker's command and by the cursor, so both say the same sentence.
+ */
+export const POWER_LINE_REFUSALS = {
+  alongStreet: 'The street already carries power.',
+} as const;
+
 /** The refusal for each thing a kind can need beside it besides a street. */
 export const PLACEMENT_NEEDS = {
   rail: 'needsRail',

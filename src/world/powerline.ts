@@ -11,6 +11,8 @@
  * src/sim/network.ts, which walks this layer alongside the roads.
  */
 
+import { POWER_LINE_REFUSALS } from '../shared/placement';
+import { isStreetTier } from '../shared/types';
 import type { GridState, TilePoint } from '../shared/types';
 
 /** The subset of the grid a power-line edit reads and writes. */
@@ -69,6 +71,56 @@ export function stringPowerLine(
     changed.push({ x, z });
   }
   return changed;
+}
+
+/** The road layers a refusal reads, besides the line layer itself. */
+export interface StreetLineGridSource extends PowerLineGridSource {
+  readonly roadTier: Uint8Array;
+  readonly roadMask: Uint8Array;
+}
+
+/** The mask bit a step leaves a tile by, and the one it arrives by: N=1 E=2 S=4 W=8. */
+function stepBits(dx: number, dz: number): { leave: number; arrive: number } {
+  if (dz < 0) return { leave: 1, arrive: 4 };
+  if (dx > 0) return { leave: 2, arrive: 8 };
+  if (dz > 0) return { leave: 4, arrive: 1 };
+  return { leave: 8, arrive: 2 };
+}
+
+/**
+ * The sentence refusing a run that strings a line ALONG a sealed street, or
+ * null. Two new line tiles that follow one another over sealed street tiles
+ * the street itself runs through are along it; a single tile, or a run that
+ * crosses at right angles, is not, and neither is a tile that already carries
+ * a line. `sealed` says which street tiers are made up, since a cable lies in
+ * those and not in a dirt track.
+ */
+export function alongStreetRefusal(
+  g: StreetLineGridSource,
+  tiles: readonly TilePoint[],
+  sealed: (tier: number) => boolean,
+): string | null {
+  const isNew = (t: TilePoint): boolean =>
+    inBoundsOf(g.size, t.x, t.z) &&
+    g.powerLine[indexOf(g.size, t.x, t.z)] !== 1 &&
+    canStringLine(g, t.x, t.z);
+  const street = (t: TilePoint): boolean => {
+    const tier = g.roadTier[indexOf(g.size, t.x, t.z)] ?? 0;
+    return isStreetTier(tier) && sealed(tier);
+  };
+  for (let i = 1; i < tiles.length; i++) {
+    const a = tiles[i - 1]!;
+    const b = tiles[i]!;
+    const dx = b.x - a.x;
+    const dz = b.z - a.z;
+    if (Math.abs(dx) + Math.abs(dz) !== 1 || !isNew(a) || !isNew(b)) continue;
+    if (!street(a) || !street(b)) continue;
+    const { leave, arrive } = stepBits(dx, dz);
+    const maskA = g.roadMask[indexOf(g.size, a.x, a.z)] ?? 0;
+    const maskB = g.roadMask[indexOf(g.size, b.x, b.z)] ?? 0;
+    if ((maskA & leave) !== 0 && (maskB & arrive) !== 0) return POWER_LINE_REFUSALS.alongStreet;
+  }
+  return null;
 }
 
 /** Every tile carrying a line, row-major — what the renderer stands poles on. */
