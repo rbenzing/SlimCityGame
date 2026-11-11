@@ -70,6 +70,7 @@ import {
   type KitBox,
   type LotRect,
 } from './houselot';
+import { FenceBook, fenceLotOf, trimFence } from './fencelines';
 import { DRIVE_Y_OFFSET } from './lots';
 import {
   buildBroadleafGeometry,
@@ -509,6 +510,8 @@ export class HouseRoofRenderer {
   private readonly pools: Record<HousePart, InstancedSlotPool>;
   private readonly carPool: VehicleKitPool;
   private readonly buildingSlots = new Map<number, HouseSlots>();
+  private readonly lotPlans = new Map<number, { plan: HouseLotPlan; state: BuildingState }>();
+  private readonly fenceBook = new FenceBook();
 
   constructor(
     scene: THREE.Scene,
@@ -571,9 +574,30 @@ export class HouseRoofRenderer {
 
   /** Consumes one BuildingDelta: removed ids free their kit; added/updated recompute theirs. */
   apply(delta: BuildingDelta): void {
-    for (const id of delta.removed) this.freeBuilding(id);
+    const changed = [
+      ...delta.removed,
+      ...delta.added.map((b) => b.id),
+      ...delta.updated.map((b) => b.id),
+    ];
+    // Fences answer to the lots beside them: re-lay the changed lots and their neighbours, before and after.
+    const relay = new Set<number>();
+    const nearOld = (id: number): void => {
+      const lot = this.fenceBook.get(id);
+      if (lot) for (const n of this.fenceBook.neighboursOf(lot)) relay.add(n.id);
+    };
+    for (const id of changed) nearOld(id);
+    for (const id of delta.removed) {
+      this.freeBuilding(id);
+      this.fenceBook.remove(id);
+      this.lotPlans.delete(id);
+    }
     for (const building of delta.added) this.applyOne(building);
     for (const building of delta.updated) this.applyOne(building);
+    for (const id of changed) {
+      nearOld(id);
+      relay.add(id);
+    }
+    for (const id of relay) this.layFence(id);
     for (const pool of Object.values(this.pools)) pool.commit();
     this.carPool.finalize();
   }
@@ -620,6 +644,44 @@ export class HouseRoofRenderer {
     this.carPool.mesh.getMatrixAt(slot, out);
   }
 
+  /** Frees a home's fence and stands it again, cut back to the lot's own line by the lots beside it. */
+  private layFence(id: number): void {
+    const slots = this.buildingSlots.get(id);
+    const lot = this.fenceBook.get(id);
+    const owned = this.lotPlans.get(id);
+    if (!slots || !lot || !owned) return;
+    for (const p of slots.parts) if (p.part === 'fence') this.pools.fence.free(p.slot);
+    slots.parts = slots.parts.filter((p) => p.part !== 'fence');
+    if (owned.state === BuildingState.Constructing) return;
+    const { plan } = owned;
+    const runs = trimFence(lot, this.fenceBook.neighboursOf(lot), this.roadAt);
+    const fenceHex = FENCE_COLOR[plan.yard.fenceColour];
+    const pool = this.pools.fence;
+    for (const run of runs) {
+      const alongU = run.v0 === run.v1;
+      const length = alongU ? run.u1 - run.u0 : run.v1 - run.v0;
+      const panels = Math.max(1, Math.ceil(length / FENCE_PANEL_MAX_M));
+      for (let p = 0; p < panels; p++) {
+        const a = (alongU ? run.u0 : run.v0) + (p / panels) * length;
+        const b = (alongU ? run.u0 : run.v0) + ((p + 1) / panels) * length;
+        const t = FENCE_THICKNESS_M / 2;
+        const rect = alongU
+          ? { u0: a, u1: b, v0: run.v0 - t, v1: run.v0 + t }
+          : { u0: run.u0 - t, u1: run.u0 + t, v0: a, v1: b };
+        const f = worldBox(plan, rect);
+        const slot = pool.allocate();
+        _position.set(f.x, this.heightAt(f.x, f.z), f.z);
+        _quaternion.setFromAxisAngle(_yAxis, f.yaw);
+        _scale.set(f.sx, FENCE_HEIGHT_M, f.sz);
+        _matrix.compose(_position, _quaternion, _scale);
+        pool.setMatrixAt(slot, _matrix);
+        _color.setHex(fenceHex);
+        pool.setColorAt(slot, _color);
+        slots.parts.push({ part: 'fence', slot });
+      }
+    }
+  }
+
   private freeBuilding(buildingId: number): void {
     const slots = this.buildingSlots.get(buildingId);
     if (!slots) return;
@@ -630,11 +692,17 @@ export class HouseRoofRenderer {
 
   private applyOne(building: BuildingInstance): void {
     this.freeBuilding(building.id);
+    this.fenceBook.remove(building.id);
+    this.lotPlans.delete(building.id);
 
     const entry = this.catalogById.get(building.catalogId);
     if (!entry || !isHouseEntry(entry)) return;
     const plan = planHouseLot(building, entry, this.roadAt, this.street);
     if (!plan) return;
+    this.lotPlans.set(building.id, { plan, state: building.state });
+    this.fenceBook.set(
+      fenceLotOf(building.id, plan, building.state !== BuildingState.Constructing),
+    );
 
     const slots: HouseSlots = { parts: [], cars: [] };
     this.buildingSlots.set(building.id, slots);
@@ -847,7 +915,18 @@ export class HouseRoofRenderer {
       // Each leaf at its own width — a row's 8 ft single, a house's 9 ft single or 16 ft double — proud of the face.
       for (const d of drive.garageDoors) {
         const b = worldBox(plan, { u0: d.u0, u1: d.u1, v0: d.v - GARAGE_LEAF_DEPTH_M, v1: d.v });
-        put('garageLeaf', b.x, doorGround, b.z, b.yaw, b.sx, GARAGE_LEAF_HEIGHT_M, b.sz, trim, true);
+        put(
+          'garageLeaf',
+          b.x,
+          doorGround,
+          b.z,
+          b.yaw,
+          b.sx,
+          GARAGE_LEAF_HEIGHT_M,
+          b.sz,
+          trim,
+          true,
+        );
       }
     }
 
@@ -882,33 +961,6 @@ export class HouseRoofRenderer {
     // stands in the ground and loses what its family took with them.
     if (building.state === BuildingState.Constructing) return;
     const { yard } = plan;
-    const fenceHex = FENCE_COLOR[yard.fenceColour];
-    for (const run of yard.fence) {
-      const alongU = run.v0 === run.v1;
-      const length = alongU ? run.u1 - run.u0 : run.v1 - run.v0;
-      const panels = Math.max(1, Math.ceil(length / FENCE_PANEL_MAX_M));
-      for (let p = 0; p < panels; p++) {
-        const a = (alongU ? run.u0 : run.v0) + (p / panels) * length;
-        const b = (alongU ? run.u0 : run.v0) + ((p + 1) / panels) * length;
-        const t = FENCE_THICKNESS_M / 2;
-        const rect = alongU
-          ? { u0: a, u1: b, v0: run.v0 - t, v1: run.v0 + t }
-          : { u0: run.u0 - t, u1: run.u0 + t, v0: a, v1: b };
-        const f = worldBox(plan, rect);
-        put(
-          'fence',
-          f.x,
-          this.heightAt(f.x, f.z),
-          f.z,
-          f.yaw,
-          f.sx,
-          FENCE_HEIGHT_M,
-          f.sz,
-          fenceHex,
-          false,
-        );
-      }
-    }
     const yardYaw = boxYaw(plan.frame);
     const stand = (part: HousePart, u: number, v: number, scale: number, lift = 0): void => {
       const at = lotToWorld(plan.frame, u, v);

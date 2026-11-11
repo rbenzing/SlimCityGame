@@ -22,7 +22,6 @@ What a review of every screenshot the shot tools write found wrong in the game, 
 - A ramp meets its motorway through a dogleg with kinked kerbs and notched corners; at a ramp's T an edge line runs diagonally through the box. `[R-roads-061]` — `shots-ramps/ramp-merge`, `shots-roadmatrix/ramp-tee`
 - Kerbs and footways step at a width change where they should bend; a gore's chevrons run along both edges of one carriageway. `[R-roads-064]` — `shots-tapers/taper-head`, `gore-close`
 - Where two straight runs of a road meet at an angle the outer edge is a sharp corner, not an arc, so neither lane can round it; a road off the grid begins its bend with a kink. `[R-roads-081]` — `shots-curve/1-bend-from-above`
-- A turned lot's fence lies across its neighbours' lots and fences; two fences stand side by side on one line; a fence runs through a neighbour's drive. `[R-render-035]` — `shots-curve/1-bend-from-above`, `shots-houses/close-porch`
 - A sound wall ends blunt at a slip road, leaving gaps. `[R-roads-056]` — `shots-soundwalls/walled-far-side`
 - A street lamp stands in the middle of the footway, and before a bus stop's pad; thin posts stand in the parking strip, on the road side of the kerb. `[R-render-036]` — `shots-furniture/kerb-close`
 - A raised deck on a slope stands on dark slabs that miss the ground; the rail truss bridge reads as loose members; a four-lane road at grade carries a dark wall strip along its footway past a bend, and a shaded seam across its lanes. `[R-roads-004]` — `shots-roadclip/worst-intrusion`, `shots-bridges/rail-truss-side`, `shots-roadmatrix/four-lane-turn`
@@ -67,7 +66,6 @@ What a review of every screenshot the shot tools write found wrong in the game, 
 - A refused bridge or raised road says only that it cannot be built there.
 - A mixed-use block stands on a bare grey slab with no stalls, kerb or walk, and grass lies between the footway and the slab. Its shopfront is plain glass with a black rectangle for a door, no sign and no awning. — `shots-mixeduse/street`, `close-mixed-1`
 - A walk-up, a mid-rise, a tower and a mixed-use block each report four stalls and draw none; the hospital and the clinic draw their car parks and report none; the hospital's rows hold two or three cars to a stall. `[R-services-040]` — `shots-parking/res-tower-1-above`, `shots-healthcare/hospital-above`
-- On estate and acre lots one home draws its fence and its neighbour none, and no fence opens where the drive passes. `[R-render-035]` — `shots-lotsizes/estate-above`
 - A reactor's intake house stands about 6 m back from the water on bare beach; a drain one tile square lies on a 20 m pad. — `shots-power/3c-reactor-intake-close`, `shots-earliest-kits/h-drain-street`
 
 ## Lesser

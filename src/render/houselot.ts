@@ -1076,7 +1076,7 @@ function segment(alongU: boolean, line: number, a: number, b: number): FenceRun 
 }
 
 /** Everything a car drives over or parks in, which no fence and no yard part may stand in. */
-function driveFootprints(drives: readonly HomeDrive[]): LotRect[] {
+export function driveFootprints(drives: readonly HomeDrive[]): LotRect[] {
   return drives.flatMap((d) => (d.coverRect ? [d.rect, d.coverRect] : [d.rect]));
 }
 

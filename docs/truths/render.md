@@ -213,7 +213,7 @@ Back to [the index](../GROUND-TRUTHS.md).
   it; a lot that cannot be fenced without crossing has no fence. A turned
   lot's rectangle once lay across its neighbours' yards and fences. —
   [curved-parcels.md](../specs/curved-parcels.md);
-  `src/render/houselot.ts`, `src/render/houses.ts`
+  `trimFence` in `src/render/fencelines.ts`, `src/render/houses.ts`
 - [R-render-036] Every roadside pole, post, box and tree stands in the furnishing strip,
   its centre 0.46 m behind the kerb face, and the walk behind it stays clear
   for 1.2 m. None stands in a bus stop's span, on a drive, a kerb ramp or a
