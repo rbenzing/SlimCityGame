@@ -2797,6 +2797,9 @@ export const ACCESSIBLE_SPACE_M = {
   aisle: ACCESSIBLE_AISLE_M,
 };
 const PAINT_LINE_M = 0.1;
+/** A deck's stall lines are 6 in wide, and ride this far above the slab. */
+const DECK_LINE_M = 6 * 0.0254;
+const DECK_LINE_LIFT_M = 0.02;
 const PAINT_HATCH_SPACING_M = 0.6;
 
 const HOSPITAL_CLADDING_RGB: RGB = [0.8, 0.79, 0.75];
@@ -2873,6 +2876,17 @@ export function hospitalAccessibleSpaces(deckSpaces: number): { total: number; v
 /** The deck's spaces at every level: four rows a level, less the cores. */
 export function hospitalDeckSpaces(footprint: FootprintSize): number {
   return computeHospitalLayout(footprint).stalls.length;
+}
+
+/** The accessible spaces a hospital marks by its entrance, each with a car's room to park in. */
+function hospitalAccessibleStalls(layout: HospitalLayout): AccessiblePiece[] {
+  return layout.accessible.filter((piece) => piece.kind !== 'aisle');
+}
+
+/** Every stall a hospital draws: the deck's, and the accessible spaces by its entrance. */
+export function hospitalStallCount(footprint: FootprintSize): number {
+  const layout = computeHospitalLayout(footprint);
+  return layout.stalls.length + hospitalAccessibleStalls(layout).length;
 }
 
 /**
@@ -3175,13 +3189,14 @@ function buildHospitalDeckGeometry(footprint: FootprintSize): THREE.BufferGeomet
   // Stall lines on both levels, either side of every stall, each line once.
   const drawn = new Set<string>();
   for (const s of stalls) {
-    const floor = y0 + s.level * DECK_STOREY_M + 0.005;
+    // Lifted a hand's breadth clear of the slab so a line never flickers under it from afar.
+    const floor = y0 + s.level * DECK_STOREY_M + DECK_LINE_LIFT_M;
     for (const side of [-1, 1]) {
       const z = s.z + (side * DECK_STALL.w) / 2;
       const key = `${s.level}:${s.x.toFixed(2)}:${z.toFixed(2)}`;
       if (drawn.has(key)) continue;
       drawn.add(key);
-      const half = PAINT_LINE_M / 2;
+      const half = DECK_LINE_M / 2;
       const along = { x0: s.x - DECK_STALL.l / 2, x1: s.x + DECK_STALL.l / 2 };
       parts.push(box({ ...along, z0: z - half, z1: z + half }, floor, floor + 0.01, MARKING_COLOR));
     }
@@ -9331,6 +9346,35 @@ export class UtilityKitRenderer {
     return this.instances.get(buildingId)?.slots[kind] ?? [];
   }
 
+  /**
+   * The stalls a civic building draws on its own lot or in its own deck, and
+   * how many hold a car: a hospital's, a clinic's, a station's or a school's.
+   * Zero for a building that draws none.
+   */
+  ownStalls(buildingId: number): { stalls: number; occupied: number } {
+    const record = this.instances.get(buildingId);
+    const entry = record ? this.kits.get(record.catalogId)?.entry : undefined;
+    if (!record || !entry) return { stalls: 0, occupied: 0 };
+    const { slots } = record;
+    const held = (kind: UtilityKitPartKind): number => slots[kind]?.length ?? 0;
+    if (slots.hospitalCar) {
+      return { stalls: hospitalStallCount(entry.footprint), occupied: held('hospitalCar') };
+    }
+    if (slots.clinicCar) {
+      return {
+        stalls: computeClinicLayout(entry.footprint).stalls.length,
+        occupied: held('clinicCar'),
+      };
+    }
+    if (slots.stationCar) {
+      return { stalls: computeStationLayout(entry).stalls.length, occupied: held('stationCar') };
+    }
+    if (slots.schoolCar) {
+      return { stalls: computeEducationLayout(entry).stalls.length, occupied: held('schoolCar') };
+    }
+    return { stalls: 0, occupied: 0 };
+  }
+
   getPartMatrix(
     catalogId: string,
     kind: UtilityKitPartKind,
@@ -10705,6 +10749,19 @@ export class UtilityKitRenderer {
       if (!deckStallTaken(building.id, i)) return;
       const turn = ((rotation + (stall.noseX > 0 ? 1 : 3)) % 4) as 0 | 1 | 2 | 3;
       const slot = placeLocal(hospitalCar, stall, floor + stall.level * DECK_STOREY_M, turn);
+      _carColor.setHex(
+        VEHICLE_PALETTE_HEX[Math.floor(hash1(building.id * 31 + i) * VEHICLE_PALETTE_HEX.length)]!,
+      );
+      hospitalCar.setColorAt(slot, _carColor);
+      cars.push(slot);
+    });
+    // A car stands in an accessible space by the entrance, nose to the building.
+    const accessibleZ = (layout.accessibleZ.z0 + layout.accessibleZ.z1) / 2;
+    hospitalAccessibleStalls(layout).forEach((piece, k) => {
+      const i = layout.stalls.length + k;
+      if (!deckStallTaken(building.id, i)) return;
+      const at = { x: (piece.x0 + piece.x1) / 2, z: accessibleZ };
+      const slot = placeLocal(hospitalCar, at, floor, ((rotation + 2) % 4) as 0 | 1 | 2 | 3);
       _carColor.setHex(
         VEHICLE_PALETTE_HEX[Math.floor(hash1(building.id * 31 + i) * VEHICLE_PALETTE_HEX.length)]!,
       );

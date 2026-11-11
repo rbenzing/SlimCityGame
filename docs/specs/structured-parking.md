@@ -44,9 +44,9 @@
 
 **Code:** `src/shared/parkingcode.ts` `drawsLotParking`, the rates; `src/shared/lotparking.ts`, `src/shared/lotlayout.ts` the lot; `src/render/utilitykits.ts` `computeHospitalLayout`, `layDeck`, `buildHospitalDeckGeometry` the deck that exists; `src/render/archetypes.ts` `PODIUM_BAND_PARTS`, `src/render/massing.ts` `PODIUM_STOREYS` the podium; `src/render/lots.ts` `lotSurfaceFor` the pad this retires; `src/data/catalog.json` the larger lots.
 
-**Tests:** to be written with the build: every dense kind at every level holds its spaces at four turns; no body plate or height changes; a garage's stall count equals its rows'; a tier is open to the rule; one car a stall.
+**Tests:** `src/render/parkedstalls.test.ts`, `civicstalls.test.ts` hold one car a stall, none in an aisle, and a reported count equal to the stalls drawn. To be written with the garages: every dense kind at every level holds its spaces at four turns; no body plate or height changes; a garage's stall count equals its rows'; a tier is open to the rule.
 
-**Open:** a level-1 kind on a larger lot levelling up onto a smaller footprint (growth skips a lot smaller on either axis); whether a walk-up, a row house and each civic kit already park to one standard, an audit owed before the first slice.
+**Open:** a level-1 kind on a larger lot levelling up onto a smaller footprint (growth skips a lot smaller on either axis). The audit of stall sizes found the walk-up, the hospital deck, the station and the library on the shared module; the clinic (2.74 × 5.5 m) and the recycling yard (2.7 × 5.5 m, 7.3 m aisle) round it; a row house parks on a 3 m drive; the rail station's car park was not measured.
 
 ## Why the rules are what they are
 

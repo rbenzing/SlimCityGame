@@ -9,8 +9,10 @@
  * bottom fifth empty for the toolbar), `row-oblique` (the commercial row from
  * the street side), `kerb-parking` (the parking-lane street from above) and
  * `kerb-parking-close` (40 m at the parked cars on the lane).
- * Before any frame it prints one table from readParking(): catalogId, stalls,
- * occupied, and whether the kind is one the lot-parking rule names.
+ * Before any frame it prints one table from readParking(): catalogId, the
+ * stalls drawn on the building's own lot or in its own kit and how many hold a
+ * car, the kerb stalls its cars stand in (the street's, apart from its own)
+ * and how many hold a car, and whether the kind is one the lot-parking rule names.
  * Buildings are placed by command on flat dry ground with the sim paused; the
  * rows stand on the SOUTH side of their street because a generic building's
  * entrance is on a fixed world face. Parked cars come from the sim's
@@ -224,6 +226,8 @@ try {
         catalogId: s.id,
         stalls: p?.stalls ?? 'null',
         occupied: p?.occupied ?? 'null',
+        kerbStalls: p?.kerbStalls ?? 'null',
+        kerbOccupied: p?.kerbOccupied ?? 'null',
         drawsLotParking: drawsLotParking(entryOf(s.id)),
         houseCars: cars,
       });

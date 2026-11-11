@@ -260,8 +260,12 @@ const ISLAND_KERB_Y_OFFSET = 0.14;
 const ISLAND_GRASS_Y_OFFSET = 0.145;
 const ISLAND_KERB_COLOR: readonly [number, number, number] = materialUnit('cleanConcrete');
 const ISLAND_GRASS_COLOR: readonly [number, number, number] = materialUnit('mownLawn');
-/** A lot's trees are planted young: the broadleaf at the scale a home's yard tree stands. */
-const LOT_TREE_SCALE = 0.8;
+/**
+ * A lot's trees are planted young, small enough that the crown (the broadleaf's
+ * canopy reaches 1.85 m from the trunk at full size) stays within the island's
+ * half width and the margin a car leaves in its stall.
+ */
+export const LOT_TREE_SCALE = 0.5;
 /** The hatching across an access aisle, bar to bar. */
 const HATCH_SPACING_M = 0.6;
 
@@ -291,19 +295,21 @@ export function stallYawJitter(buildingId: number, stallIndex: number): number {
   return (frac * 2 - 1) * YAW_JITTER_MAX;
 }
 
-/**
- * Deterministic vehicle kind for a stall: commercial lots park customer CARS;
- * industrial lots mix box-trucks/pickups with workers' cars (~40% cars).
- */
-export function stallKind(category: LotCategory, buildingId: number, stallIndex: number): number {
-  if (category !== 'ind') return VehicleKind.Car;
-  return hash2(buildingId, stallIndex * 3 + 2) % 5 < 2 ? VehicleKind.Car : VehicleKind.Truck;
-}
-
-/** Deterministic kit silhouette variant (sedan/wagon/hatch, box-truck/pickup) for a stall. */
+/** Deterministic kit silhouette variant (sedan/wagon/hatch, box-truck/pickup) for a stall or berth. */
 export function stallVariantIndex(buildingId: number, stallIndex: number, kind: number): number {
   const count = kind === VehicleKind.Truck ? 2 : 3;
   return hash2(buildingId, stallIndex * 5 + 4) % count;
+}
+
+/** A parked vehicle's width, height and length in metres: its kind's size at its silhouette's scale. */
+function vehicleDims(
+  buildingId: number,
+  index: number,
+  kind: number,
+): readonly [number, number, number] {
+  const size = sizeForKind(kind);
+  const variant = variantScaleForKind(kind, stallVariantIndex(buildingId, index, kind));
+  return [size[0] * variant[0], size[1] * variant[1], size[2] * variant[2]];
 }
 
 // ---------------------------------------------------------------------------
@@ -824,6 +830,10 @@ interface Stall {
 interface LotRecord {
   category: OccupancyRhythm;
   stalls: Stall[];
+  /** Whether the stalls are the street's, at the kerb, rather than the building's own. */
+  kerb: boolean;
+  /** An industrial lot's trucks, one standing in each loading berth. */
+  berthTrucks: Stall[];
 }
 
 /** Occupancy is re-evaluated when the day advances by more than this fraction. */
@@ -920,8 +930,9 @@ export class ParkedCarRenderer {
 
   /** Writes each stall's real or hidden transform for the current time of day. */
   private applyOccupancy(buildingId: number, lot: LotRecord): void {
-    for (let i = 0; i < lot.stalls.length; i++) {
-      const stall = lot.stalls[i]!;
+    const vehicles = [...lot.stalls, ...lot.berthTrucks];
+    for (let i = 0; i < vehicles.length; i++) {
+      const stall = vehicles[i]!;
       const occupied = stallOccupied(lot.category, buildingId, i, this.dayFraction);
       const pool = this.pools.get(stall.ref.kind);
       pool?.mesh.setMatrixAt(stall.ref.slot, occupied ? stall.matrix : HIDDEN_MATRIX);
@@ -962,6 +973,23 @@ export class ParkedCarRenderer {
   /** Stall refs ({kind, slot}) currently owned by a building (empty if it has no cars). */
   stallSlotsFor(buildingId: number): readonly StallRef[] {
     return (this.buildingSlots.get(buildingId)?.stalls ?? []).map((s) => s.ref);
+  }
+
+  /** The stalls drawn on the building's own lot; none for a building that parks at the kerb. */
+  ownStallCount(buildingId: number): number {
+    const lot = this.buildingSlots.get(buildingId);
+    return lot && !lot.kerb ? lot.stalls.length : 0;
+  }
+
+  /** The kerb stalls the building's cars stand in; they belong to the street, not the building. */
+  kerbStallCount(buildingId: number): number {
+    const lot = this.buildingSlots.get(buildingId);
+    return lot?.kerb ? lot.stalls.length : 0;
+  }
+
+  /** The trucks standing in a building's loading berths. */
+  berthTruckSlotsFor(buildingId: number): readonly StallRef[] {
+    return (this.buildingSlots.get(buildingId)?.berthTrucks ?? []).map((s) => s.ref);
   }
 
   /**
@@ -1054,39 +1082,33 @@ export class ParkedCarRenderer {
     }
 
     const stalls: Stall[] = [];
+    const berthTrucks: Stall[] = [];
     const touchedPools = new Set<VehicleKitPool>();
-    for (let i = 0; i < plan.layout.stalls.length; i++) {
-      const kind = stallKind(category, building.id, i);
-      const pool = this.poolFor(kind);
-      const slot = pool.allocate();
-
-      const size = sizeForKind(kind);
-      const variant = variantScaleForKind(kind, stallVariantIndex(building.id, i, kind));
-      const sx = size[0] * variant[0];
-      const sy = size[1] * variant[1];
-      const sz = size[2] * variant[2];
-      const placement = lotStallPlacement(plan.frame, plan.layout.stalls[i]!, sz);
-
-      // Cars stand ON the apron pavement (terrain + APRON_Y_OFFSET), not on
-      // the bare terrain underneath it — otherwise wheels clip into the slab.
-      const groundY = this.heightAt(placement.worldX, placement.worldZ) + APRON_Y_OFFSET;
-      const yaw = placement.baseYaw + stallYawJitter(building.id, i);
-
-      // Kit geometry is a unit cube with its base at y=-0.5: instance scale
-      // sets real meters, and the center rides at ground + half height.
-      _position.set(placement.worldX, groundY + sy / 2, placement.worldZ);
-      _quaternion.setFromAxisAngle(_yAxis, yaw);
-      _scale.set(sx, sy, sz);
-      _matrix.compose(_position, _quaternion, _scale);
-
-      _tmpColor.setHex(CAR_PALETTE[stallColorIndex(building.id, i)]!);
-      pool.mesh.setColorAt(slot, _tmpColor);
-
-      stalls.push({ ref: { kind, slot }, matrix: _matrix.clone() });
-      touchedPools.add(pool);
+    // A stall holds one car, whatever the lot: a car standing on the apron.
+    plan.layout.stalls.forEach((stall, i) => {
+      stalls.push(
+        this.parkVehicle(building.id, i, VehicleKind.Car, APRON_Y_OFFSET, touchedPools, (length) =>
+          lotStallPlacement(plan.frame, stall, length),
+        ),
+      );
+    });
+    // An industrial lot's trucks stand in its loading berths, never in a car stall or aisle.
+    if (category === 'ind') {
+      plan.layout.berths.forEach((berth, b) => {
+        berthTrucks.push(
+          this.parkVehicle(
+            building.id,
+            stalls.length + b,
+            VehicleKind.Truck,
+            APRON_Y_OFFSET,
+            touchedPools,
+            (length) => lotStallPlacement(plan.frame, { rect: berth, nose: 'v-', accessible: null }, length),
+          ),
+        );
+      });
     }
 
-    const lot: LotRecord = { category, stalls };
+    const lot: LotRecord = { category, stalls, kerb: false, berthTrucks };
     this.buildingSlots.set(building.id, lot);
     // Seed the new lot at the current hour, so a shop that finishes building
     // overnight opens with an empty forecourt rather than a full one.
@@ -1170,11 +1192,7 @@ export class ParkedCarRenderer {
     for (let i = 0; i < placements.length; i++) {
       const placement = placements[i]!;
       const kind = VehicleKind.Car; // a resident's car, never a box truck
-      const size = sizeForKind(kind);
-      const variant = variantScaleForKind(kind, stallVariantIndex(building.id, i, kind));
-      const sx = size[0] * variant[0];
-      const sy = size[1] * variant[1];
-      const sz = size[2] * variant[2];
+      const [sx, , sz] = vehicleDims(building.id, i, kind);
       // No car stands inside a junction's no-parking zone, nose or tail.
       const tileX = Math.floor(placement.worldX / TILE_METERS);
       const tileZ = Math.floor(placement.worldZ / TILE_METERS);
@@ -1189,32 +1207,50 @@ export class ParkedCarRenderer {
         setbacks,
       );
       if (!clear) continue;
-      const pool = this.poolFor(kind);
-      const slot = pool.allocate();
-
       // A kerbside car stands on the carriageway, not on an apron.
-      const groundY = this.heightAt(placement.worldX, placement.worldZ) + ROAD_Y_OFFSET;
-      const yaw = placement.baseYaw + stallYawJitter(building.id, i);
-
-      _position.set(placement.worldX, groundY + sy / 2, placement.worldZ);
-      _quaternion.setFromAxisAngle(_yAxis, yaw);
-      _scale.set(sx, sy, sz);
-      _matrix.compose(_position, _quaternion, _scale);
-
-      _tmpColor.setHex(CAR_PALETTE[stallColorIndex(building.id, i)]!);
-      pool.mesh.setColorAt(slot, _tmpColor);
-
-      stalls.push({ ref: { kind, slot }, matrix: _matrix.clone() });
-      touchedPools.add(pool);
+      stalls.push(
+        this.parkVehicle(building.id, i, kind, ROAD_Y_OFFSET, touchedPools, () => placement),
+      );
     }
 
     const lot: LotRecord = {
       category: allowance === 'anyHour' ? 'residents' : 'shortStay',
       stalls,
+      kerb: true,
+      berthTrucks: [],
     };
     this.buildingSlots.set(building.id, lot);
     this.applyOccupancy(building.id, lot);
     for (const pool of touchedPools) pool.finalize();
+  }
+
+  /**
+   * Puts one vehicle of `kind` where `place` says (given its length), standing
+   * `surfaceY` above the ground, and returns its stall. Kit geometry is a unit
+   * cube with its base at y=-0.5: instance scale sets real metres, and the
+   * centre rides at ground plus half the height.
+   */
+  private parkVehicle(
+    buildingId: number,
+    index: number,
+    kind: number,
+    surfaceY: number,
+    touched: Set<VehicleKitPool>,
+    place: (length: number) => StallPlacement,
+  ): Stall {
+    const pool = this.poolFor(kind);
+    const slot = pool.allocate();
+    const [sx, sy, sz] = vehicleDims(buildingId, index, kind);
+    const placement = place(sz);
+    const groundY = this.heightAt(placement.worldX, placement.worldZ) + surfaceY;
+    _position.set(placement.worldX, groundY + sy / 2, placement.worldZ);
+    _quaternion.setFromAxisAngle(_yAxis, placement.baseYaw + stallYawJitter(buildingId, index));
+    _scale.set(sx, sy, sz);
+    _matrix.compose(_position, _quaternion, _scale);
+    _tmpColor.setHex(CAR_PALETTE[stallColorIndex(buildingId, index)]!);
+    pool.mesh.setColorAt(slot, _tmpColor);
+    touched.add(pool);
+    return { ref: { kind, slot }, matrix: _matrix.clone() };
   }
 
   /**
@@ -1411,7 +1447,9 @@ export class ParkedCarRenderer {
   private freeBuilding(buildingId: number): void {
     const lot = this.buildingSlots.get(buildingId);
     if (lot) {
-      for (const stall of lot.stalls) this.pools.get(stall.ref.kind)?.free(stall.ref.slot);
+      for (const stall of [...lot.stalls, ...lot.berthTrucks]) {
+        this.pools.get(stall.ref.kind)?.free(stall.ref.slot);
+      }
       this.buildingSlots.delete(buildingId);
     }
 
