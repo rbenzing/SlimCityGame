@@ -63,6 +63,10 @@ export interface LotLayoutInput {
   berths: number;
   /** Ground the body keeps clear in front of itself across its own width: a filling station's forecourt. */
   forecourtDepth?: number;
+  /** The least the body stands back from the street line, for the parts its street face reaches out with; nothing is paved there. */
+  frontSetback?: number;
+  /** The least the body stands in from every lot line, for a podium that stands proud of it. */
+  bodyMargin?: number;
   /** Ground the body keeps behind itself: a plant's tank farm. */
   rearYard?: number;
   /** Lay a drive-through lane round the body, where the ground left over holds one. */
@@ -672,11 +676,12 @@ export function layoutLot(input: LotLayoutInput): LotLayout {
 export function computeLotLayout(input: LotLayoutInput): LotLayout {
   const { along, depth, bodyAlong, bodyDepth } = input;
   const rear = input.rearYard ?? 0;
-  const front = input.forecourtDepth ?? 0;
+  const margin = input.bodyMargin ?? 0;
+  const front = input.forecourtDepth ?? Math.max(margin, input.frontSetback ?? 0);
   const centreU = (along - bodyAlong) / 2;
   const centreV = (depth - bodyDepth) / 2;
-  const us = slides(bodyAlong, 0, along);
-  const vs = slides(bodyDepth, front, depth - rear);
+  const us = slides(bodyAlong, margin, along - margin);
+  const vs = slides(bodyDepth, front, depth - rear - margin);
 
   const candidates: { c: Candidate; cost: number; order: number }[] = [];
   for (const u0 of us) {

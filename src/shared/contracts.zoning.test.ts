@@ -27,6 +27,7 @@ import type {
 import { ZoneType } from './types';
 import { MILESTONES } from './constants';
 import { bodyPlateM2, grossFloorM2, SQ_FT_PER_M2, storeysOf } from './floorarea';
+import { isDenseLotKind } from './parkingcode';
 import catalogData from '../data/catalog.json';
 
 const catalog = (catalogData as { buildings: BuildingCatalogEntry[] }).buildings;
@@ -558,7 +559,13 @@ const INDUSTRIAL_KINDS: ReadonlyArray<{
 describe('Residential kinds (building-types): three levels per kind, every figure derived', () => {
   const ofKind = (kind: ResidentialKind, lot?: LotSize, turned = false) =>
     catalog
-      .filter((e) => e.kind === kind && e.lot === lot && e.id.includes('-t-') === turned)
+      .filter(
+        (e) =>
+          e.kind === kind &&
+          e.lot === lot &&
+          e.id.includes('-t-') === turned &&
+          e.bodyFootprint === undefined,
+      )
       .sort((a, b) => (a.level ?? 0) - (b.level ?? 0));
 
   it('gives every residential and farm entry a kind and its homes', () => {
@@ -655,10 +662,51 @@ const kindEntries = (kind: BuildingKind): BuildingCatalogEntry[] =>
 describe('a larger lot for a kind is the same building on more car park', () => {
   const lots = catalog.filter((e) => e.bodyFootprint !== undefined);
 
-  it('exists only for the suburban kinds whose lot falls short of its code', () => {
+  it('exists only for the suburban kinds whose lot falls short of its code, and the dense kinds that park to code at level 1', () => {
     expect(new Set(lots.map((e) => e.kind))).toEqual(
-      new Set(['shop', 'restaurant', 'strip', 'supermarket', 'flex']),
+      new Set([
+        'shop',
+        'restaurant',
+        'strip',
+        'supermarket',
+        'flex',
+        'office',
+        'hotel',
+        'mixed',
+        'midrise',
+      ]),
     );
+  });
+
+  it('appends the dense kinds’ level-1 car-park lots and their next levels to the catalog, whose saved ids never move', () => {
+    expect(catalog.slice(-7).map((e) => e.id)).toEqual([
+      'res-high-1-lot2x2',
+      'mixed-1-lot2x2',
+      'com-high-1-lot4x4',
+      'com-office-2-lot4x4',
+      'com-high-2-lot4x4',
+      'com-hotel-1-lot3x3',
+      'com-hotel-2-lot3x3',
+    ]);
+    expect(new Set(catalog.map((e) => e.id)).size).toBe(catalog.length);
+  });
+
+  it('gives every level-1 dense lot a next level on the same lot wherever the next level’s own body is smaller than it', () => {
+    for (const e of lots.filter((l) => l.level === 1 && isDenseLotKind(l.kind))) {
+      for (let level = 2; level <= 3; level++) {
+        const next = kindEntries(e.kind!).find((k) => k.level === level);
+        if (!next) continue;
+        const smaller = next.footprint.w < e.footprint.w || next.footprint.d < e.footprint.d;
+        const onLot = lots.some(
+          (l) =>
+            l.kind === e.kind &&
+            l.level === level &&
+            l.footprint.w === e.footprint.w &&
+            l.footprint.d === e.footprint.d,
+        );
+        expect(!smaller || onLot, `${e.id} level ${level}`).toBe(true);
+      }
+    }
   });
 
   it.each(lots.map((e) => [e.id, e] as const))(
@@ -672,6 +720,14 @@ describe('a larger lot for a kind is the same building on more car park', () => 
         Object.entries(x).filter(([key]) => !own.has(key));
       expect(Object.fromEntries(figures(e))).toEqual(Object.fromEntries(figures(base)));
       expect(grossFloorM2(e)).toBeCloseTo(grossFloorM2(base), 9);
+      if (isDenseLotKind(e.kind)) {
+        // A dense kind's car-park lot is a square no smaller than its body on either axis.
+        expect(e.footprint.w).toBe(e.footprint.d);
+        expect(e.footprint.w).toBeGreaterThanOrEqual(base.footprint.w);
+        expect(e.footprint.d).toBeGreaterThanOrEqual(base.footprint.d);
+        expect(e.footprint.w * e.footprint.d).toBeGreaterThan(base.footprint.w * base.footprint.d);
+        return;
+      }
       // Larger along the street, never shallower.
       expect(e.footprint.w).toBeGreaterThan(base.footprint.w);
       expect(e.footprint.d).toBe(base.footprint.d);
@@ -973,7 +1029,7 @@ describe('Medium Density Housing catalog (zone 7, §6.21)', () => {
 });
 
 describe('Mixed Housing catalog (zone 8, §6.21)', () => {
-  const mixed = catalog.filter((e) => e.zone === ZoneType.Mixed);
+  const mixed = catalog.filter((e) => e.zone === ZoneType.Mixed && e.bodyFootprint === undefined);
 
   it('has exactly 3 levels, res category (res-sector demand), M3 gated', () => {
     expect(mixed).toHaveLength(3);

@@ -1,6 +1,6 @@
 # Structured parking
 
-- **Status:** Agreed
+- **Status:** Built
 
 **Owns:** how the dense kinds park (office, hotel, mixed-use, mid-rise, tower): a surface car park at level 1, a garage inside the building's own lot from level 2, and the garage kit both use. The suburban shop's and works' car park stays with [parking-to-code.md](parking-to-code.md).
 
@@ -8,6 +8,8 @@
 
 - Park every building where it shows: on its lot, at the kerb it is credited, or in its garage. No kind stands on a bare pad. `[R-services-040]`
 - Give a level-1 office, hotel, mixed-use block and mid-rise a surface car park to code, from the lot layout a shop uses, on the smallest catalog lot that holds it. `[R-services-040]`
+- Where a zone holds no lot that large, grow the level-1 kind on its own footprint, parked at the kerb as before: a car park is never a reason a dense zone stops growing. `[R-services-040]`
+- Let a building on a larger lot level up on that lot: the next level's body and its garage stand on the lot the car park held.
 - From level 2, park those kinds and every tower in a garage on the lot they already have: tiers in the podium where the kind has one, a deck behind the body otherwise. `[R-services-040]`
 - Never cut a floor for parking: the body keeps its plate and its height, and slides to the street to free the rear. `[R-services-040]`
 - Size a garage from the stall module: tiers times the stalls a tier's rows hold, never an area count.
@@ -25,6 +27,9 @@
 | Apartments, level 1 | 1.4 | per home | the walk-up rate, [building-detail.md](building-detail.md) |
 | Hotel, level 1 | 1 | per room | [codes](../sources/structured-parking.md#what-a-building-needs) |
 | Hotel room | 45 | m² of floor | dial, until the catalog counts rooms |
+| Mixed-use, level 1 | its homes at the apartment rate and its shop floor at the shop's 5 per 1,000 sq ft, less the shop's exemption | | [parking-to-code.md](parking-to-code.md) |
+| Level-1 lots | office block 4 × 4 (120 spaces), motor inn 3 × 3 (66), mid-rise flats 2 × 2 (24), shopfront flats 2 × 2 (19): the smallest square whose layout holds the code | tiles | catalog variants with `bodyFootprint`; a test lays each |
+| Next levels on those lots | office 4 × 4 at levels 2 and 3, hotel 3 × 3 at level 2 | tiles | catalog variants, offered only to a building already on that lot |
 | Office, levels 2–3 | 1 | per 1,000 sq ft | [downtown](../sources/structured-parking.md#downtown) |
 | Apartments, levels 2–3 | 0.71 | per home | [downtown](../sources/structured-parking.md#downtown) |
 | Hotel, levels 2–3 | 0.5 | per room | [downtown](../sources/structured-parking.md#downtown) |
@@ -44,11 +49,11 @@
 | Vehicle barrier | 0.84 | m | same |
 | Street face lined | 70 % at least, 4.6 m deep | share, m | [built in](../sources/structured-parking.md#built-into-a-building) |
 
-**Code:** `src/shared/garage.ts` which kinds take a garage, what each needs, the deck's plan and tiers; `src/render/garagekit.ts`, `src/render/garages.ts` the deck drawn and laid; `src/shared/parkingcode.ts` `drawsLotParking`, `stallsInRow`, the rates; `src/render/lotplan.ts` `garagePlanAt`; `src/render/massing.ts` the body's slide and `PODIUM_STOREYS`; `src/render/parked.ts` the garage's cars and counts; `src/render/lots.ts` the lot's ground; `src/shared/lotparking.ts`, `src/shared/lotlayout.ts` the surface lot; `src/render/utilitykits.ts` the hospital's deck, which shares the tier height and the row count. Not yet: `src/data/catalog.json` the larger level-1 lots.
+**Code:** `src/shared/garage.ts` which kinds take a garage, what each needs, the deck's plan and tiers; `src/render/garagekit.ts`, `src/render/garages.ts` the deck drawn and laid; `src/shared/parkingcode.ts` `drawsLotParking`, `stallsInRow`, the rates; `src/render/lotplan.ts` `garagePlanAt`; `src/render/massing.ts` the body's slide and `PODIUM_STOREYS`; `src/render/parked.ts` the garage's cars and counts; `src/render/lots.ts` the lot's ground; `src/shared/lotparking.ts`, `src/shared/lotlayout.ts` the surface lot; `src/render/utilitykits.ts` the hospital's deck, which shares the tier height and the row count; `src/shared/parkingcode.ts` `denseLotRequirement` the level-1 rates; `src/data/catalog.json` the seven larger-lot variants; `src/sim/growth.ts` `footprintsOf` the larger lot first and the kind's own footprint last, `tryLevelUp` the next level on the same lot.
 
-**Tests:** `src/render/parkedstalls.test.ts`, `civicstalls.test.ts` hold one car a stall, none in an aisle, and a reported count equal to the stalls drawn. `src/shared/garage.test.ts`, `src/render/garages.test.ts` hold, for every garaged kind at four turns and every street side: plate and height unchanged, the deck inside the lot behind the body, a tier's stalls equal to its rows', tiers the requirement over a tier's stalls and six at most, each tier open to the rule, one car a stall and none on a ramp, and the level-1 kinds unchanged.
+**Tests:** `src/render/parkedstalls.test.ts`, `civicstalls.test.ts` hold one car a stall, none in an aisle, and a reported count equal to the stalls drawn. `src/shared/garage.test.ts`, `src/render/garages.test.ts` hold, for every garaged kind at four turns and every street side: plate and height unchanged, the deck inside the lot behind the body, a tier's stalls equal to its rows', tiers the requirement over a tier's stalls and six at most, each tier open to the rule, one car a stall and none on a ramp. `src/shared/parkingcode.test.ts`, `src/sim/growth.test.ts` hold the level-1 rates, the smallest lot that holds each, growth picking it on open ground, a block too shallow for it growing exactly what it grew before, a standing building untouched, and a level-up on the larger lot.
 
-**Open:** the level-1 surface car parks and their larger lots are not built. A podium's faces are not opened as tiers: the deck behind carries every stall. A level-2 hotel on a 2 × 2 lot has no garage, its porte-cochère leaving no room behind. A garage's tiers carry no lights at night; the kerb's cars are not cut to a garage's shortfall; a garage on a turned parcel is wired and not yet tested. A level-1 kind on a larger lot levelling up onto a smaller footprint (growth skips a lot smaller on either axis). The audit of stall sizes found the walk-up, the hospital deck, the station and the library on the shared module; the clinic (2.74 × 5.5 m) and the recycling yard (2.7 × 5.5 m, 7.3 m aisle) round it; a row house parks on a 3 m drive; the rail station's car park was not measured.
+**Open:** a mid-rise or a mixed-use block takes its 2 × 2 lot wherever a block is two tiles deep and two wide, so such a block now holds half the level-1 buildings it did, each in its car park. A podium's faces are not opened as tiers: the deck behind carries every stall. A level-2 hotel on its own 2 × 2 footprint has no garage, its porte-cochère leaving no room behind; on the 3 × 3 lot it has one. A garage's tiers carry no lights at night; the kerb's cars are not cut to a garage's shortfall; a garage or a larger lot on a turned parcel is wired and not yet tested; no test loads an older save with a standing level-1 building. The audit of stall sizes found the walk-up, the hospital deck, the station and the library on the shared module; the clinic (2.74 × 5.5 m) and the recycling yard (2.7 × 5.5 m, 7.3 m aisle) round it; a row house parks on a 3 m drive; the rail station's car park was not measured.
 
 ## Why the rules are what they are
 

@@ -52,6 +52,7 @@ import { maxHeightUnderBody } from './footprint';
 import { findStreetFacingEdge, NO_STREETS, type StreetLookup } from './frontage';
 import { garagePlanAt, lotPlanFor, lotPointToWorld, type GaragePlan } from './lotplan';
 import { parksInGarage, PODIUM_OVERHANG_M } from '../shared/garage';
+import { isDenseLotEntry } from '../shared/parkingcode';
 import { isApartmentEntry, isFarmEntry, isHouseEntry } from './archetypes';
 import type { KerbSurroundings } from '../shared/kerblayout';
 
@@ -348,9 +349,9 @@ export function computeSetbacks(
   const podiumH = podiumHeightOf(entry);
   if (podiumH === null) return { boxes };
   // The podium fills the lot to the ceiling every body keeps, less the same
-  // frontage span the slab gives up. A block that parks in a garage on its lot
-  // keeps a podium a hand wider than its slab instead: the lot's rear is the garage's.
-  const garaged = parksInGarage(entry);
+  // frontage span the slab gives up. A block that parks in a garage or a car
+  // park on its lot keeps a podium a hand wider than its slab instead: the lot's rear is the parking's.
+  const garaged = parksInGarage(entry) || isDenseLotEntry(entry);
   const podiumW = garaged
     ? body.w + 2 * PODIUM_OVERHANG_M
     : entry.footprint.w * TILE_METERS * MAX_FOOTPRINT_FILL;

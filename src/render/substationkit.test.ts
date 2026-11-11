@@ -29,9 +29,10 @@ function bounds(g: THREE.BufferGeometry): THREE.Box3 {
 }
 
 describe('the substation catalog entry', () => {
-  it('is appended last, so no id moved', () => {
-    expect(ids[ids.length - 1]).toBe('substation');
-    expect(ids.slice(-10, -1)).toEqual([
+  it('is appended after every entry that shipped before it, so no id moved', () => {
+    const at = ids.indexOf('substation');
+    expect(at).toBe(176);
+    expect(ids.slice(at - 9, at)).toEqual([
       'sports-ground',
       'airport',
       'bus-stop',

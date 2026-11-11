@@ -7,7 +7,7 @@
  */
 import { ZoneType } from './types';
 import type { BuildingCatalogEntry, BuildingKind } from './types';
-import { grossFloorSqFt } from './floorarea';
+import { grossFloorM2, grossFloorSqFt, storeysOf } from './floorarea';
 import { isWalkUpKind } from './buildingkind';
 
 /**
@@ -15,8 +15,8 @@ import { isWalkUpKind } from './buildingkind';
  * municipal codes (St Charles MO, Wadsworth OH, Stacy MN, Canby OR, North
  * Reading MA, Columbus IN, Medfield MA). A filling station counts its kiosk's
  * floor; its pumps earn none. Flex space is half office at 3 and half
- * warehouse at 1. Office is the downtown kind and parks at the kerb, so its
- * figure stands for reference only.
+ * warehouse at 1. An office parks to this rate only at level 1 on its larger
+ * lot; on its own footprint and from level 2 it parks at the kerb or in a garage.
  */
 export const SPACES_PER_1000_SQ_FT: Readonly<Partial<Record<BuildingKind, number>>> = {
   shop: 5,
@@ -106,8 +106,29 @@ export function adaVanSpaces(accessible: number): number {
   return Math.ceil(accessible / 6);
 }
 
-/** Whether a building parks on its own lot to code: suburban commerce and industry, never downtown or a farm. */
+/** The dense kinds that stand at level 1 in a car park on a larger catalog lot than their body. */
+const DENSE_LOT_KINDS: ReadonlySet<BuildingKind> = new Set(['office', 'hotel', 'mixed', 'midrise']);
+
+/** An office, hotel, mixed-use block or mid-rise: the kinds that park in a car park at level 1 where the lot is large enough. */
+export function isDenseLotKind(kind: BuildingKind | undefined): boolean {
+  return kind !== undefined && DENSE_LOT_KINDS.has(kind);
+}
+
+/** A hotel room's floor, a dial until the catalog counts rooms. */
+export const HOTEL_ROOM_M2 = 45;
+
+/**
+ * Whether `entry` is a level-1 office, hotel, mixed-use block or mid-rise on a
+ * lot larger than its body, the one lot where it parks to code. On its own
+ * footprint such a kind parks at the kerb, as before.
+ */
+export function isDenseLotEntry(entry: BuildingCatalogEntry): boolean {
+  return entry.bodyFootprint !== undefined && entry.level === 1 && isDenseLotKind(entry.kind);
+}
+
+/** Whether a building parks on its own lot to code: suburban commerce and industry and a dense kind on its larger lot, never a farm. */
 export function drawsLotParking(entry: BuildingCatalogEntry): boolean {
+  if (isDenseLotEntry(entry)) return true;
   if (entry.category !== 'com' && entry.category !== 'ind') return false;
   if (entry.zone === ZoneType.Agriculture) return false;
   if (entry.zone === ZoneType.ComHigh || entry.zone === ZoneType.Mixed) return false;
@@ -190,9 +211,36 @@ export interface ParkingRequirement {
   berths: number;
 }
 
+/**
+ * What a level-1 dense kind owes on its larger lot: an office its floor at the
+ * office rate, apartments their homes at the walk-up rate, a hotel a space a
+ * room, and a mixed-use block its homes plus its shop floor (the ground
+ * storey's plate) at the shop's rate with the shop's exemption.
+ */
+function denseLotRequirement(entry: BuildingCatalogEntry): ParkingRequirement {
+  const grossSqFt = grossFloorSqFt(entry);
+  const homes = Math.ceil(WALK_UP_SPACES_PER_HOME * (entry.units ?? 0) - 1e-9);
+  let spaces: number;
+  switch (entry.kind) {
+    case 'office':
+      spaces = requiredSpaces('office', grossSqFt);
+      break;
+    case 'hotel':
+      spaces = Math.ceil(grossFloorM2(entry) / HOTEL_ROOM_M2 - 1e-9);
+      break;
+    case 'mixed':
+      spaces = homes + requiredSpaces('shop', grossSqFt / storeysOf(entry));
+      break;
+    default:
+      spaces = homes;
+  }
+  return { grossSqFt, spaces, berths: 0 };
+}
+
 /** The requirement a building's floor sets, or null for one that parks at the kerb or nowhere. */
 export function lotParkingRequirement(entry: BuildingCatalogEntry): ParkingRequirement | null {
   if (!drawsLotParking(entry)) return null;
+  if (isDenseLotEntry(entry)) return denseLotRequirement(entry);
   const category = entry.category === 'ind' ? 'ind' : 'com';
   const grossSqFt = grossFloorSqFt(entry);
   return {

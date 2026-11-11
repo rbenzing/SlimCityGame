@@ -17,16 +17,28 @@ import { STALL_LENGTH_M, STALL_WIDTH_M, stallsInRow } from './parkingcode';
 
 const catalog = (catalogData as { buildings: BuildingCatalogEntry[] }).buildings;
 const dense = catalog.filter((e) => parksInGarage(e));
-const LEVEL_ONE = ['com-high-1', 'com-hotel-1', 'mixed-1', 'res-high-1'];
+const LEVEL_ONE = [
+  'com-high-1',
+  'com-high-1-lot4x4',
+  'com-hotel-1',
+  'com-hotel-1-lot3x3',
+  'mixed-1',
+  'mixed-1-lot2x2',
+  'res-high-1',
+  'res-high-1-lot2x2',
+];
 
 describe('which kinds park in a garage', () => {
   it('is every tower and the office, hotel, mixed-use block and mid-rise from level 2', () => {
     expect(dense.map((e) => e.id).sort()).toEqual(
       [
         'com-high-2',
+        'com-high-2-lot4x4',
         'com-hotel-2',
+        'com-hotel-2-lot3x3',
         'com-hotel-3',
         'com-office-2',
+        'com-office-2-lot4x4',
         'mixed-2',
         'mixed-3',
         'res-high-2',
@@ -95,10 +107,11 @@ describe('a garage on its lot', () => {
     }
   });
 
-  it('lays one single row on a 2 x 2 lot and a double module on a 3 x 3', () => {
+  it('lays one single row on a 2 x 2 lot and a double module on a 3 x 3, a hotel body filling its 3 x 3 lot leaving one row', () => {
     for (const e of garaged) {
       const g = garageFor(e)!;
-      const rows = e.footprint.w === 2 ? 1 : e.id.startsWith('com-hotel') ? 1 : 2;
+      const hotelOnItsOwnLot = e.id.startsWith('com-hotel') && e.bodyFootprint === undefined;
+      const rows = e.footprint.w === 2 || hotelOnItsOwnLot ? 1 : 2;
       expect(g.rows, e.id).toHaveLength(rows);
     }
   });
