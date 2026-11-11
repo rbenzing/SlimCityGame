@@ -97,7 +97,8 @@ await hook(() =>
 await hook(
   (t) =>
     window.__slimcity.cmd('Turned campus', [
-      { kind: 'placeBuilding', catalogId: 'high-school', x: t.x, z: t.z, rotation: 1 },
+      // Its front is the west edge, where the stub meets it.
+      { kind: 'placeBuilding', catalogId: 'high-school', x: t.x, z: t.z, rotation: 3 },
     ]),
   turned,
 );
@@ -106,16 +107,16 @@ await hook(
 // on the one-way street's east kerb.
 await hook(() =>
   window.__slimcity.cmd('College neighbours', [
-    { kind: 'placeBuilding', catalogId: 'clinic', x: 69, z: 108, rotation: 0 },
-    { kind: 'placeBuilding', catalogId: 'police-station', x: 68, z: 112, rotation: 0 },
-    { kind: 'placeBuilding', catalogId: 'small-park', x: 69, z: 111, rotation: 0 },
-    { kind: 'placeBuilding', catalogId: 'fire-station', x: 61, z: 113, rotation: 0 },
+    // Each front faces its kerb: east to the alley, west to the one-way street.
+    { kind: 'placeBuilding', catalogId: 'clinic', x: 68, z: 108, rotation: 1 },
+    { kind: 'placeBuilding', catalogId: 'police-station', x: 68, z: 112, rotation: 1 },
+    { kind: 'placeBuilding', catalogId: 'small-park', x: 69, z: 111, rotation: 1 },
+    { kind: 'placeBuilding', catalogId: 'fire-station', x: 61, z: 113, rotation: 3 },
   ]),
 );
-// The town plants both with their doors on the south side, away from the street
-// they stand beside; a player turns the lot to face the road. A kit's front is
-// local +Z, so a half turn (2) faces north to main street and a three-quarter
-// turn (3) faces west to the avenue.
+// A kit's front is local +Z, so a half turn (2) faces north to main street and a
+// three-quarter turn (3) faces west to the avenue; the school is turned to the
+// avenue here, the library keeps its face to main street.
 await hook(
   ([lib, el]) =>
     window.__slimcity.cmd('Face the street', [

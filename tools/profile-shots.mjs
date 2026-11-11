@@ -104,8 +104,8 @@ await cmd('Two-Lane Road', [
 // A lamp stands only on a street the grid supplies, so each row needs a plant
 // butted against its end: the two 4x4 plants touch the three rows (Z, Z+3, Z+6).
 await cmd('Plants', [
-  { kind: 'placeBuilding', catalogId: 'coal-plant', x: X + 14, z: Z - 1, rotation: 0 },
-  { kind: 'placeBuilding', catalogId: 'coal-plant', x: X + 14, z: Z + 3, rotation: 0 },
+  { kind: 'placeBuilding', catalogId: 'coal-plant', x: X + 14, z: Z - 1, rotation: 3 },
+  { kind: 'placeBuilding', catalogId: 'coal-plant', x: X + 14, z: Z + 3, rotation: 3 },
 ]);
 await page.waitForTimeout(4000);
 

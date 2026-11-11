@@ -197,7 +197,7 @@ try {
       const spot = { id, street: street.name, x: cursor, z: site.z + 1, w: fp.w, d: fp.d };
       spots.push(spot);
       await send('Building', [
-        { kind: 'placeBuilding', catalogId: id, x: spot.x, z: spot.z, rotation: 0 },
+        { kind: 'placeBuilding', catalogId: id, x: spot.x, z: spot.z, rotation: 2 },
       ]);
       cursor += fp.w + (street.parkingLanes ? 2 : GAP);
     }

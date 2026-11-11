@@ -132,7 +132,7 @@ await cmd('Wind Turbine', [
   { kind: 'placeBuilding', catalogId: 'wind-turbine', x: X + 2, z: Z + 4, rotation: 0 },
 ]);
 await cmd('Water Tower', [
-  { kind: 'placeBuilding', catalogId: 'water-tower', x: X + 6, z: Z + 4, rotation: 0 },
+  { kind: 'placeBuilding', catalogId: 'water-tower', x: X + 6, z: Z + 4, rotation: 2 },
 ]);
 await page.waitForTimeout(600);
 console.log('utilities placed:', (await readBuildings()).length);

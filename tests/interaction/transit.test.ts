@@ -117,7 +117,7 @@ describe('a bus line’s dead runs', () => {
       { kind: 'placeBuilding', catalogId: 'wind-turbine', x: 60, z: STREET_Z - 1, rotation: 0 },
       shelterAt(stops[0]!),
       shelterAt(stops[1]!),
-      { kind: 'placeBuilding', catalogId: 'bus-depot', ...DEPOT, rotation: 0 },
+      { kind: 'placeBuilding', catalogId: 'bus-depot', ...DEPOT, rotation: 2 },
       {
         kind: 'createTransitLine',
         line: { id: 0, stops, color: 0xd23c3c, mode: 'bus', vehicles: 1 },
@@ -278,7 +278,7 @@ describe('a bus line and the depot that fields it', () => {
     expect(idle.served).toEqual([0]);
 
     const placed = run(h, 3, [
-      { kind: 'placeBuilding', catalogId: 'bus-depot', ...DEPOT, rotation: 0 },
+      { kind: 'placeBuilding', catalogId: 'bus-depot', ...DEPOT, rotation: 2 },
     ]);
     expect(placed.ok).toBe(true);
     h.ticks(10);
@@ -294,8 +294,8 @@ describe('a bus line and the depot that fields it', () => {
     const h = lineWithoutDepot();
     expect(
       run(h, 2, [
-        { kind: 'placeBuilding', catalogId: 'bus-depot', ...DEPOT, rotation: 0 },
-        { kind: 'placeBuilding', catalogId: 'bus-depot', x: 74, z: 81, rotation: 0 },
+        { kind: 'placeBuilding', catalogId: 'bus-depot', ...DEPOT, rotation: 2 },
+        { kind: 'placeBuilding', catalogId: 'bus-depot', x: 74, z: 81, rotation: 2 },
         { kind: 'buildRoad', tier: RoadTier.RailTrack, tiles: roadRow(60, 90, 20) },
         // The yard also stands beside a street, along its far side.
         { kind: 'buildRoad', tier: RoadTier.TwoLane, tiles: roadRow(64, 94, 4) },
@@ -317,7 +317,7 @@ describe('a bus line and the depot that fields it', () => {
 
   it('lets the player set a line’s fleet, carried through the line and its undo', () => {
     const h = lineWithoutDepot();
-    run(h, 2, [{ kind: 'placeBuilding', catalogId: 'bus-depot', ...DEPOT, rotation: 0 }]);
+    run(h, 2, [{ kind: 'placeBuilding', catalogId: 'bus-depot', ...DEPOT, rotation: 2 }]);
     h.ticks(5);
     const id = transit(h).lines[0]!.id;
     const set = run(h, 3, [
@@ -456,7 +456,7 @@ describe('a bus line down a long block', () => {
           { kind: 'paintZone', zone: ZoneType.ComLow, tiles: rows(56, 77, 50, 2) },
           shelterAt({ x: 54, z: 80 }),
           shelterAt({ x: 80, z: 80 }),
-          { kind: 'placeBuilding', catalogId: 'bus-depot', x: 106, z: 81, rotation: 0 },
+          { kind: 'placeBuilding', catalogId: 'bus-depot', x: 106, z: 81, rotation: 2 },
           {
             kind: 'createTransitLine',
             line: {
@@ -509,7 +509,7 @@ describe('a tramway crossing another street', () => {
     expect(run(h, 3, [{ kind: 'buildRoad', tier: RoadTier.Tram, tiles: tramway }]).ok).toBe(true);
     run(h, 4, [
       { kind: 'placeBuilding', catalogId: 'wind-turbine', x: AVENUE_X - 1, z: 60, rotation: 0 },
-      { kind: 'placeBuilding', catalogId: 'water-tower', x: AVENUE_X - 1, z: 61, rotation: 0 },
+      { kind: 'placeBuilding', catalogId: 'water-tower', x: AVENUE_X - 1, z: 61, rotation: 1 },
       // The depot that fields the tram, on the tramway west of the avenue.
       { kind: 'placeBuilding', catalogId: 'tram-depot', x: 70, z: TRAM_Z - 3, rotation: 0 },
       {

@@ -183,11 +183,15 @@ Back to [the index](../GROUND-TRUTHS.md).
   of them. The worker refuses a building whose front touches no street, with
   a worded reason, by the predicate the ghost uses. A kind that also needs
   track or a shore keeps that on the side its kit draws it. The four kinds
-  exempt from the street front nothing. A building an older save holds turned
-  away stays as it is. A library and a school once stood with their doors and
-  drives to open grass, the street at their backs. —
+  exempt from the street front nothing, nor does a tram depot, whose gate
+  faces its track. A building an older save holds turned away stays as it is.
+  A building a zone grew keeps the turn growth gave it, and its door is drawn
+  on the side its street is on. A library and a school once stood with their
+  doors and drives to open grass, the street at their backs. —
   [municipal-services.md](../specs/municipal-services.md);
-  `src/tools/tools.ts`, `cmdPlaceBuilding` in `src/sim/worker.entry.ts`
+  `frontSideOf` in `src/shared/kitfront.ts`, `frontTouchesStreet` in
+  `src/world/grid.ts`, `plopPose` in `src/tools/tools.ts`, `faceStreet` in
+  `src/render/frontfacing.ts`
 - [R-world-051] A placed building's ground is levelled to its street, not to itself: the
   footprint takes the height of the highest street edge it touches, so the
   plot meets the footway there without a step and stands above it elsewhere

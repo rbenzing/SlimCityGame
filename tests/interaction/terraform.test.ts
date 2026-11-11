@@ -273,7 +273,7 @@ describe('auto-flatten: the ground levels under a placed footprint', () => {
 
     send(h, 2, [
       { kind: 'setSandbox', on: true },
-      { kind: 'placeBuilding', catalogId: twoByTwo.id, x, z, rotation: 0 },
+      { kind: 'placeBuilding', catalogId: twoByTwo.id, x, z, rotation: 1 },
     ]);
     h.ticks(2);
     expect(h.ackFor(2)!.ok).toBe(true);
@@ -690,7 +690,7 @@ describe('auto-flatten: the ground levels under a placed footprint', () => {
     ];
     const beforeHeights = footprintTiles.map((t) => before.height[tileIndex(t.x, t.z)]!);
 
-    send(h, 1, [{ kind: 'placeBuilding', catalogId: 'water-tower', x, z, rotation: 0 }]);
+    send(h, 1, [{ kind: 'placeBuilding', catalogId: 'water-tower', x, z, rotation: 2 }]);
     h.ticks(2);
     const ack = h.ackFor(1)!;
     expect(ack.ok).toBe(true);
@@ -730,7 +730,7 @@ describe('auto-flatten: the ground levels under a placed footprint', () => {
 
     send(h, 1, [
       { kind: 'setSandbox', on: true },
-      { kind: 'placeBuilding', catalogId: park.id, x, z, rotation: 0 },
+      { kind: 'placeBuilding', catalogId: park.id, x, z, rotation: 2 },
     ]);
     h.ticks(2);
     const ack = h.ackFor(1)!;
@@ -764,7 +764,7 @@ describe('auto-flatten: the ground levels under a placed footprint', () => {
 
     send(h, 1, [
       { kind: 'setSandbox', on: true },
-      { kind: 'placeBuilding', catalogId: plaza.id, x, z, rotation: 0 },
+      { kind: 'placeBuilding', catalogId: plaza.id, x, z, rotation: 2 },
     ]);
     h.ticks(2);
     const ack = h.ackFor(1)!;
@@ -790,7 +790,7 @@ describe('auto-flatten: the ground levels under a placed footprint', () => {
 
     send(h, 1, [
       { kind: 'setSandbox', on: true },
-      { kind: 'placeBuilding', catalogId: park.id, x, z, rotation: 0 },
+      { kind: 'placeBuilding', catalogId: park.id, x, z, rotation: 2 },
     ]);
     h.ticks(2);
     const ack = h.ackFor(1)!;
@@ -814,7 +814,7 @@ describe('auto-flatten: the ground levels under a placed footprint', () => {
     const h2 = initializedVaried();
     const batch: Command[] = [
       streetNorthOf(80, 90, 4),
-      { kind: 'placeBuilding', catalogId: 'water-tower', x: 80, z: 90, rotation: 0 },
+      { kind: 'placeBuilding', catalogId: 'water-tower', x: 80, z: 90, rotation: 2 },
     ];
     send(h1, 1, batch);
     send(h2, 1, batch);

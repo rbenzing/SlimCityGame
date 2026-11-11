@@ -17,6 +17,7 @@ import {
   hash,
   hue,
   mix,
+  normalGeometry,
   normalLocal,
   saturation,
   select,
@@ -754,15 +755,13 @@ export class BuildingInstancer {
       wallWithWindows = select(isAccentBand, accentColor, wallWithWindows);
     }
 
-    // Entrance rectangle: one fixed local face. `normalLocal` is the
-    // per-instance ROTATED normal for InstancedMesh (three.js's node
-    // material auto-wires an `instance()` vertex stage that reassigns
-    // normalLocal by the instance matrix before any material graph runs —
-    // see three's nodes/accessors/Instance.js), so "local -Z" here means
-    // "whichever physical face THIS instance's rotation turned to face
-    // world -Z" — correct for any of the 4 rotation values without needing
-    // to read rotation directly (rotation-aware).
-    const isEntranceFace = normalLocal.z.lessThan(-0.5);
+    // Entrance rectangle: the box's local +Z face, its front. `normalGeometry`
+    // is the unrotated vertex normal (`normalLocal` is the one three.js turns
+    // by the instance matrix), and the instance matrix turns the box by
+    // rotation * 90 degrees, so the door rides the building's front to whichever
+    // side that turn puts it on, as a kit's street side does (shared/kitfront.ts),
+    // with no per-instance data and no change to the one draw per bucket.
+    const isEntranceFace = normalGeometry.z.greaterThan(0.5);
     const isEntranceX = uvNode.x
       .greaterThan(0.5 - ENTRANCE_HALF_WIDTH)
       .and(uvNode.x.lessThan(0.5 + ENTRANCE_HALF_WIDTH));

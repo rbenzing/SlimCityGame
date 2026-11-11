@@ -59,16 +59,56 @@ export function findRoadFacingEdge(
   const longest = Math.max(north.count, east.count, south.count, west.count);
   if (longest === 0) return null;
 
-  if (north.count === longest) {
-    return { side: 'N', edgeTiles: w, roadTileX: x + north.first, roadTileZ: z - 1 };
+  if (north.count === longest) return edgeOf('N', x, z, w, d, north.first);
+  if (east.count === longest) return edgeOf('E', x, z, w, d, east.first);
+  if (south.count === longest) return edgeOf('S', x, z, w, d, south.first);
+  return edgeOf('W', x, z, w, d, west.first);
+}
+
+/** The edge of a footprint on one named side, with the first road tile along it. */
+function edgeOf(
+  side: Side,
+  x: number,
+  z: number,
+  w: number,
+  d: number,
+  first: number,
+): RoadFacingEdge {
+  switch (side) {
+    case 'N':
+      return { side, edgeTiles: w, roadTileX: x + first, roadTileZ: z - 1 };
+    case 'E':
+      return { side, edgeTiles: d, roadTileX: x + w, roadTileZ: z + first };
+    case 'S':
+      return { side, edgeTiles: w, roadTileX: x + first, roadTileZ: z + d };
+    case 'W':
+      return { side, edgeTiles: d, roadTileX: x - 1, roadTileZ: z + first };
   }
-  if (east.count === longest) {
-    return { side: 'E', edgeTiles: d, roadTileX: x + w, roadTileZ: z + east.first };
-  }
-  if (south.count === longest) {
-    return { side: 'S', edgeTiles: w, roadTileX: x + south.first, roadTileZ: z + d };
-  }
-  return { side: 'W', edgeTiles: d, roadTileX: x - 1, roadTileZ: z + west.first };
+}
+
+/**
+ * The footprint's edge on `side` when any road tile lies along it, whatever
+ * the other sides hold: a lot whose front is decided elsewhere (the building's
+ * own front, not the longest street). Null when that side has no road.
+ */
+export function roadEdgeOnSide(
+  x: number,
+  z: number,
+  w: number,
+  d: number,
+  side: Side,
+  roadAt: (x: number, z: number) => boolean,
+): RoadFacingEdge | null {
+  if (w < 1 || d < 1) return null;
+  const strip =
+    side === 'N'
+      ? roadsInStrip(x, z - 1, w, 'x', roadAt)
+      : side === 'S'
+        ? roadsInStrip(x, z + d, w, 'x', roadAt)
+        : side === 'E'
+          ? roadsInStrip(x + w, z, d, 'z', roadAt)
+          : roadsInStrip(x - 1, z, d, 'z', roadAt);
+  return strip.count === 0 ? null : edgeOf(side, x, z, w, d, strip.first);
 }
 
 /** The side of the street a kerb is on, in world order: `low` is the low-coordinate kerb. */

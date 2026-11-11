@@ -30,15 +30,18 @@ const entryNamed = (id: string): BuildingCatalogEntry => {
 };
 const milestoneNamed = (name: string): number => MILESTONES.findIndex((m) => m.name === name);
 
-const place = (catalogId: string, x: number, z: number): Command => ({
+/** A building's front is its south edge at rotation 0, its north at 2, its west at 3. */
+const NORTH = 2;
+const WEST = 3;
+const place = (catalogId: string, x: number, z: number, rotation: 0 | 1 | 2 | 3 = 0): Command => ({
   kind: 'placeBuilding',
   catalogId,
   x,
   z,
-  rotation: 0,
+  rotation,
 });
 
-/** A two-lane street `len` tiles long down the column just west of (x, z): a building put at (x, z) stands beside it. */
+/** A two-lane street `len` tiles long down the column just west of (x, z): a building put at (x, z) and turned to front west stands beside it. */
 const streetWestOf = (x: number, z: number, len: number): Command => ({
   kind: 'buildRoad',
   tier: RoadTier.TwoLane,
@@ -87,9 +90,9 @@ function cityBeforeTheLadder(): Harness {
     { kind: 'buildRoad', tier: RoadTier.TwoLane, tiles: roadRow(60, 60, 30) },
     place('coal-plant', 60, 56),
     place('wind-turbine', 66, 59),
-    place('police-station', 72, 61),
-    place('clinic', 76, 61),
-    place('school', 80, 61),
+    place('police-station', 72, 61, NORTH),
+    place('clinic', 76, 61, NORTH),
+    place('school', 80, 61, NORTH),
   ]);
   expect(ack.ok).toBe(true);
   h.ticks(20);
@@ -182,7 +185,7 @@ describe('each new plant adds its average output to the supply', () => {
       run(h, 1, [
         { kind: 'buildRoad', tier: RoadTier.TwoLane, tiles: roadRow(60, 60, 30) },
         place('wind-turbine', 66, 59),
-        place('school', 72, 61),
+        place('school', 72, 61, NORTH),
       ]).ok,
     ).toBe(true);
     h.ticks(8);
@@ -192,7 +195,7 @@ describe('each new plant adds its average output to the supply', () => {
 
     const entry = entryNamed(p.id);
     expect(averageOutputMW(entry.utility!)).toBeCloseTo(p.MW, 6);
-    expect(run(h, 2, [streetWestOf(p.at.x, p.at.z, 6), place(p.id, p.at.x, p.at.z)]).ok).toBe(
+    expect(run(h, 2, [streetWestOf(p.at.x, p.at.z, 6), place(p.id, p.at.x, p.at.z, WEST)]).ok).toBe(
       true,
     );
     h.ticks(8);
@@ -224,16 +227,22 @@ describe('the nuclear station stands on a shore, and the other shore and rail ga
     const h = sandboxOn(lakeMap());
     // A street down the reactor's west side, so only the shore is in question.
     expect(run(h, 0, [streetWestOf(100, 75, 6)]).ok).toBe(true);
-    expect(run(h, 1, [place('nuclear-plant', 100, 76)]).ok).toBe(false);
-    expect(run(h, 2, [place('nuclear-plant', 100, 72)]).ok).toBe(false);
-    expect(run(h, 3, [place('nuclear-plant', 100, 69)]).ok).toBe(false);
-    expect(run(h, 4, [place('nuclear-plant', 100, 75)]).ok).toBe(true);
+    expect(run(h, 1, [place('nuclear-plant', 100, 76, WEST)]).ok).toBe(false);
+    expect(run(h, 2, [place('nuclear-plant', 100, 72, WEST)]).ok).toBe(false);
+    expect(run(h, 3, [place('nuclear-plant', 100, 69, WEST)]).ok).toBe(false);
+    expect(run(h, 4, [place('nuclear-plant', 100, 75, WEST)]).ok).toBe(true);
   });
 
   it('takes a reactor whose side, not its end, touches the water', () => {
     const h = sandboxOn(lakeMap());
-    // Footprint x 94–99, z 70–74: standing on land, with the lake against its east edge.
-    expect(run(h, 1, [streetWestOf(94, 70, 5), place('nuclear-plant', 94, 70)]).ok).toBe(true);
+    // Footprint x 94–99, z 70–74: standing on land, with the lake against its east edge,
+    // and its front to a street along its south side.
+    const street: Command = {
+      kind: 'buildRoad',
+      tier: RoadTier.TwoLane,
+      tiles: roadRow(94, 75, 6),
+    };
+    expect(run(h, 1, [street, place('nuclear-plant', 94, 70)]).ok).toBe(true);
   });
 
   it('still holds the pumping station, the drain and the treatment works to a shore', () => {
@@ -242,7 +251,11 @@ describe('the nuclear station stands on a shore, and the other shore and rail ga
       const x = 105 + i * 8;
       // The works, unlike the other two, also needs a street: one along its south side.
       if (id === 'sewage-works') {
-        const street: Command = { kind: 'buildRoad', tier: RoadTier.TwoLane, tiles: roadRow(x, 77, 2) };
+        const street: Command = {
+          kind: 'buildRoad',
+          tier: RoadTier.TwoLane,
+          tiles: roadRow(x, 77, 2),
+        };
         expect(run(h, 20, [street]).ok).toBe(true);
       }
       expect(run(h, i * 2 + 1, [place(id, x, 78)]).ok).toBe(false);
@@ -252,7 +265,11 @@ describe('the nuclear station stands on a shore, and the other shore and rail ga
 
   it('still holds a rail station to the track, and to a street as well', () => {
     const h = sandboxOn(lakeMap());
-    const street: Command = { kind: 'buildRoad', tier: RoadTier.TwoLane, tiles: roadRow(60, 104, 2) };
+    const street: Command = {
+      kind: 'buildRoad',
+      tier: RoadTier.TwoLane,
+      tiles: roadRow(60, 104, 2),
+    };
     expect(run(h, 0, [street]).ok).toBe(true);
     expect(run(h, 1, [place('rail-station', 60, 101)]).ok).toBe(false);
     expect(
@@ -280,7 +297,7 @@ describe('a short grid is cut from the far end and a new plant gives it back', (
       run(h, 1, [
         { kind: 'buildRoad', tier: RoadTier.TwoLane, tiles: roadRow(60, 60, 40) },
         place('solar-farm', 60, 54),
-        ...schoolXs.map((x) => place('school', x, 61)),
+        ...schoolXs.map((x) => place('school', x, 61, NORTH)),
       ]).ok,
     ).toBe(true);
     h.ticks(60);
@@ -306,7 +323,7 @@ describe('what a plant puts in the air', () => {
   function firstEmission(id: string): number {
     const h = sandboxOn();
     send(h, 0, [streetWestOf(100, 100, 6)]);
-    send(h, 1, [place(id, 100, 100)]);
+    send(h, 1, [place(id, 100, 100, WEST)]);
     const i = tileIndex(100, 100);
     for (let tick = 0; tick < 24; tick++) {
       h.ticks(1);
@@ -329,7 +346,7 @@ describe('what a plant puts in the air', () => {
     expect(firstEmission('solar-farm')).toBe(0);
     const h = sandboxOn(lakeMap());
     expect(run(h, 0, [streetWestOf(100, 75, 6)]).ok).toBe(true);
-    expect(run(h, 1, [place('nuclear-plant', 100, 75)]).ok).toBe(true);
+    expect(run(h, 1, [place('nuclear-plant', 100, 75, WEST)]).ok).toBe(true);
     h.ticks(24);
     expect(fieldNow(h, FieldId.Pollution).every((v) => v === 0)).toBe(true);
   });
@@ -354,10 +371,23 @@ describe('the reactor’s 6x5 finds a shore on generated maps', () => {
     expect(sites.length).toBeGreaterThan(0);
 
     // The sim agrees with the scan: a shore site it found takes the station once a street is
-    // laid down its west side (a site where no street can go refuses the whole batch, so the
-    // next is tried).
+    // laid along its south side, or its north (a site where no street can go refuses the
+    // whole batch, so the next is tried).
     const taken = sites.slice(0, 400).some((s, k) => {
-      return run(h, k + 1, [streetWestOf(s.x, s.z, d), place('nuclear-plant', s.x, s.z)]).ok;
+      const south: Command = {
+        kind: 'buildRoad',
+        tier: RoadTier.TwoLane,
+        tiles: roadRow(s.x, s.z + d, w),
+      };
+      const north: Command = {
+        kind: 'buildRoad',
+        tier: RoadTier.TwoLane,
+        tiles: roadRow(s.x, s.z - 1, w),
+      };
+      return (
+        run(h, 2 * k + 1, [south, place('nuclear-plant', s.x, s.z)]).ok ||
+        run(h, 2 * k + 2, [north, place('nuclear-plant', s.x, s.z, NORTH)]).ok
+      );
     });
     expect(taken).toBe(true);
   });

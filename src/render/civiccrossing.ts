@@ -25,21 +25,18 @@ import {
   frameToWorld,
   type EdgeFrame,
   type RoadFacingEdge,
-  type Side,
   type StreetLookup,
 } from './frontage';
-import { depotFrame, railSideOf, waterSideOf, yardFrame } from './utilitykits';
+import {
+  civicEdgeSide,
+  frontSideOf,
+  kitFrameOf,
+  NO_SENSORS,
+  type KitSensors,
+} from '../shared/kitfront';
+import { roadEdgeOnSide } from '../shared/roadedge';
 
-/** The terrain a kit turns to face: the water beside a shore kit, the track beside a station or a rail yard. */
-export interface KitSensors {
-  waterAt: (tileX: number, tileZ: number) => boolean;
-  railAt: (tileX: number, tileZ: number) => boolean;
-}
-
-/** Sensors that find neither water nor track: every kit takes its placed rotation. */
-export const NO_SENSORS: KitSensors = { waterAt: () => false, railAt: () => false };
-
-type Turn = 0 | 1 | 2 | 3;
+export { civicEdgeSide, NO_SENSORS, type KitSensors };
 
 /** One crossing, in metres along the lot edge. */
 export interface CivicCrossing {
@@ -55,41 +52,6 @@ export interface CivicSite {
   /** A parcel on a curve: its front line is the back of its free road's footway, so it has no verge. */
   framed: boolean;
   crossings: CivicCrossing[];
-}
-
-const SIDES_CLOCKWISE: readonly Side[] = ['N', 'E', 'S', 'W'];
-
-/** The map side a kit's access edge lies on when the kit stands turned `turn` quarter turns. */
-export function civicEdgeSide(access: CivicAccess, turn: Turn): Side {
-  const front = (2 - turn + 4) % 4;
-  return SIDES_CLOCKWISE[access.edge === 'back' ? (front + 2) % 4 : front]!;
-}
-
-/** The turn a kit stands at, and the width of its own frame in tiles. */
-function kitFrameOf(
-  entry: BuildingCatalogEntry,
-  access: CivicAccess,
-  building: Pick<BuildingInstance, 'x' | 'z' | 'rotation'>,
-  sensors: KitSensors,
-): { turn: Turn; widthTiles: number } {
-  const { x, z, rotation } = building;
-  const lot = footprintForRotation(entry, rotation);
-  switch (access.turn ?? 'placed') {
-    case 'water':
-      return { turn: waterSideOf(x, z, lot, sensors.waterAt), widthTiles: entry.footprint.w };
-    case 'station': {
-      const facing = railSideOf(x, z, lot, sensors.railAt) ?? (((rotation + 2) % 4) as Turn);
-      const frame = depotFrame(entry, rotation, facing);
-      return { turn: frame.turn, widthTiles: frame.footprint.w };
-    }
-    case 'yard': {
-      const facing = railSideOf(x, z, lot, sensors.railAt) ?? (((rotation + 2) % 4) as Turn);
-      const frame = yardFrame(entry, rotation, facing);
-      return { turn: frame.turn, widthTiles: frame.footprint.w };
-    }
-    default:
-      return { turn: rotation, widthTiles: entry.footprint.w };
-  }
 }
 
 /**
@@ -143,7 +105,14 @@ export function civicSiteFor(
     return { edge, frame, framed: true, crossings: crossingsOf(access, lengthM, lengthM, true) };
   }
   const lot = footprintForRotation(entry, building.rotation);
-  const edge = findStreetFacingEdge(building.x, building.z, lot.w, lot.d, street);
+  // The edge the sim calls the building's front, wherever the longest street runs;
+  // a building with no front takes the street it has the most of.
+  const front = frontSideOf(entry, building.x, building.z, building.rotation, sensors);
+  const isStreet = (tx: number, tz: number): boolean => street(tx, tz) !== null;
+  const edge =
+    front === null
+      ? findStreetFacingEdge(building.x, building.z, lot.w, lot.d, street)
+      : roadEdgeOnSide(building.x, building.z, lot.w, lot.d, front, isStreet);
   if (!edge) return null;
   const { turn, widthTiles } = kitFrameOf(entry, access, building, sensors);
   if (civicEdgeSide(access, turn) !== edge.side) return null;

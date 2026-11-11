@@ -162,13 +162,16 @@ export interface TownStep {
 }
 
 const span = (a: number, b: number): number => b - a + 1;
-const place = (catalogId: string, at: TilePoint): Command => ({
+/** A building stands with its front to the street: 0 south, 1 east, 2 north, 3 west. */
+const place = (catalogId: string, at: TilePoint, rotation: 0 | 1 | 2 | 3 = 0): Command => ({
   kind: 'placeBuilding',
   catalogId,
   x: at.x,
   z: at.z,
-  rotation: 0,
+  rotation,
 });
+const NORTH = 2;
+const WEST = 3;
 const zone = (z: ZoneType, tiles: TilePoint[]): Command => ({ kind: 'paintZone', zone: z, tiles });
 
 /** Every step of building the town, in the order a player would build it. */
@@ -357,13 +360,13 @@ export function townSteps(): TownStep[] {
     {
       label: 'power and water',
       commands: [
-        place('coal-plant', { x: 110, z: 131 }),
+        place('coal-plant', { x: 110, z: 131 }, NORTH),
         place('wind-turbine', { x: 131, z: 99 }),
         place('solar-farm', t.solarFarm),
-        place('gas-turbine', t.gasTurbine),
-        place('combined-cycle', t.combinedCycle),
-        place('water-tower', { x: 102, z: 101 }),
-        place('water-tower', { x: 106, z: 101 }),
+        place('gas-turbine', t.gasTurbine, NORTH),
+        place('combined-cycle', t.combinedCycle, NORTH),
+        place('water-tower', { x: 102, z: 101 }, NORTH),
+        place('water-tower', { x: 106, z: 101 }, NORTH),
       ],
     },
     {
@@ -382,7 +385,7 @@ export function townSteps(): TownStep[] {
     },
     {
       label: 'a nuclear station on the south bank, beside the avenue',
-      commands: [place('nuclear-plant', t.reactor)],
+      commands: [place('nuclear-plant', t.reactor, WEST)],
     },
     {
       // The bank drops 8 m to the riverbed, too steep to build on, so the
@@ -441,39 +444,39 @@ export function townSteps(): TownStep[] {
     {
       label: 'services and the parks',
       commands: [
-        place('police-station', { x: 61, z: 101 }),
-        place('fire-station', { x: 71, z: 105 }),
-        place('clinic', { x: 91, z: 101 }),
-        place('hospital', t.hospital),
-        place('cemetery', t.cemetery),
-        place('crematorium', t.crematorium),
+        place('police-station', { x: 61, z: 101 }, NORTH),
+        place('fire-station', { x: 71, z: 105 }, WEST),
+        place('clinic', { x: 91, z: 101 }, NORTH),
+        place('hospital', t.hospital, NORTH),
+        place('cemetery', t.cemetery, NORTH),
+        place('crematorium', t.crematorium, NORTH),
         place('police-station-district', t.policeDistrict),
         place('fire-station-district', t.fireDistrict),
-        place('school', { x: 91, z: 116 }),
-        place('middle-school', t.middleSchool),
-        place('high-school', t.highSchool),
-        place('college', t.college),
-        place('library', t.library),
-        place('small-park', { x: 100, z: 101 }),
-        place('small-park', { x: 56, z: 86 }),
-        place('civic-plaza', t.plaza),
+        place('school', { x: 91, z: 116 }, NORTH),
+        place('middle-school', t.middleSchool, WEST),
+        place('high-school', t.highSchool, NORTH),
+        place('college', t.college, WEST),
+        place('library', t.library, NORTH),
+        place('small-park', { x: 100, z: 101 }, NORTH),
+        place('small-park', { x: 56, z: 86 }, NORTH),
+        place('civic-plaza', t.plaza, WEST),
         place('sports-ground', t.sportsGround),
-        place('district-park', t.districtPark),
-        place('neighbourhood-park', t.neighbourhoodPark),
+        place('district-park', t.districtPark, 1),
+        place('neighbourhood-park', t.neighbourhoodPark, WEST),
       ],
     },
     {
       label: 'an airfield',
-      commands: [place('airport', t.airport)],
+      commands: [place('airport', t.airport, 1)],
     },
     {
       label:
         'garbage: an incinerator, a recycling depot, a recovery facility, a transfer station and a landfill',
       commands: [
         place('incinerator', t.incinerator),
-        place('recycling-depot', t.recyclingDepot),
-        place('materials-recovery-facility', t.recoveryFacility),
-        place('transfer-station', t.transferStation),
+        place('recycling-depot', t.recyclingDepot, NORTH),
+        place('materials-recovery-facility', t.recoveryFacility, NORTH),
+        place('transfer-station', t.transferStation, NORTH),
         {
           kind: 'paintLandfill',
           tiles: rows(t.landfill.x0, t.landfill.z0, t.landfill.w, t.landfill.d),
@@ -533,8 +536,8 @@ export function townSteps(): TownStep[] {
       // along the track between it and the station road, which powers it.
       label: 'the depots that field the lines',
       commands: [
-        place('bus-depot', t.busDepot),
-        place('bus-garage', t.busGarage),
+        place('bus-depot', t.busDepot, NORTH),
+        place('bus-garage', t.busGarage, NORTH),
         place('tram-depot', t.tramDepot),
         { kind: 'placeBuilding', catalogId: 'rail-yard', ...t.railYard, rotation: 1 },
       ],

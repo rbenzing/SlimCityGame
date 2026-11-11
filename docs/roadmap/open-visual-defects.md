@@ -65,8 +65,6 @@ What a review of every screenshot the shot tools write found wrong in the game, 
 - A restaurant's sign bar hangs skewed off its frame, and a black arch stands alone in grass beside it. — `shots-storefronts/close-restaurant`
 - A street's light pool ends in a hard edge mid-road at night, and stall paint glows brighter than the buildings. — `shots-storefronts/main-night`
 - A refused bridge or raised road says only that it cannot be built there.
-- A placed building keeps the turn in hand: beside a street at its back it stands with its door, drive and car park facing away. `[R-world-050]` — `src/tools/tools.ts`
-- A plain building's door is drawn on the face that looks north, whichever way the building is turned: on the north side of a street the door is at the back. `[R-world-050]` — `src/render/buildings.ts`, `shots-mixeduse/close-mixed-1`
 - A mixed-use block stands on a bare grey slab with no stalls, kerb or walk, and grass lies between the footway and the slab. Its shopfront is plain glass with a black rectangle for a door, no sign and no awning. — `shots-mixeduse/street`, `close-mixed-1`
 - A walk-up, a mid-rise, a tower and a mixed-use block each report four stalls and draw none; the hospital and the clinic draw their car parks and report none; the hospital's rows hold two or three cars to a stall. `[R-services-040]` — `shots-parking/res-tower-1-above`, `shots-healthcare/hospital-above`
 - On estate and acre lots one home draws its fence and its neighbour none, and no fence opens where the drive passes. `[R-render-035]` — `shots-lotsizes/estate-above`

@@ -80,9 +80,7 @@ function expectFlush(h: Harness, before: GridState['height'], target: number): v
   // A street's own cells rise past the target along its fall; that is the street's, not the plot's.
   const cell = (x: number, z: number): number => {
     const i = tileIndex(x, z);
-    return grid.roadTier[i] !== RoadTier.None
-      ? Math.min(grid.height[i]!, target)
-      : grid.height[i]!;
+    return grid.roadTier[i] !== RoadTier.None ? Math.min(grid.height[i]!, target) : grid.height[i]!;
   };
   for (let cz = Z; cz <= Z + 2; cz++) {
     for (let cx = X; cx <= X + 2; cx++) {
@@ -120,7 +118,8 @@ describe('a placed building is levelled to its street [R-world-051]', () => {
     const target = Math.max(...edge);
     expect(footprint.some((t) => before[tileIndex(t.x, t.z)] !== target)).toBe(true);
 
-    expect(run(h, 3, [place]).ok).toBe(true);
+    // Turned to front the street at its north.
+    expect(run(h, 3, [{ ...place, rotation: 2 }]).ok).toBe(true);
     const after = heightsOf(h);
     for (const t of footprint) expect(after[tileIndex(t.x, t.z)]).toBe(target);
     expectFlush(h, before, target);
@@ -150,7 +149,13 @@ describe('a placed building is levelled to its street [R-world-051]', () => {
   // A building that touches no street can only be a kind marked off-street: the solar farm.
   const solar = catalog.find((e) => e.id === 'solar-farm')!; // 6 x 6
   const solarFootprint = rows(X, Z, 6, 6);
-  const placeSolar: Command = { kind: 'placeBuilding', catalogId: solar.id, x: X, z: Z, rotation: 0 };
+  const placeSolar: Command = {
+    kind: 'placeBuilding',
+    catalogId: solar.id,
+    x: X,
+    z: Z,
+    rotation: 0,
+  };
 
   it('takes the mean of its own ground when no street touches it', () => {
     expect(solar.offStreet).toBe(true);
@@ -190,7 +195,7 @@ describe('a placed building is levelled to its street [R-world-051]', () => {
     run(h, 2, [{ kind: 'buildRoad', tier: RoadTier.TwoLane, tiles: roadRow(X - 3, Z - 1, 40) }]);
     const before = heightsOf(h).slice();
 
-    const ack = run(h, 3, [{ kind: 'placeBuilding', catalogId: park.id, x: X, z: Z, rotation: 0 }]);
+    const ack = run(h, 3, [{ kind: 'placeBuilding', catalogId: park.id, x: X, z: Z, rotation: 2 }]);
     expect(ack.ok).toBe(true);
     expect(heightsOf(h)).toEqual(before);
   });

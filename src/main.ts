@@ -104,6 +104,7 @@ import {
 } from './render/parked';
 import { findRoadFacingEdge, streetLookupOf } from './render/frontage';
 import { DrivewayTiles } from './render/drivewaytiles';
+import { faceStreets } from './render/frontfacing';
 import { civicAccessFor } from './shared/civicaccess';
 import { civicCutTiles, civicSiteFor, type KitSensors } from './render/civiccrossing';
 import {
@@ -1893,24 +1894,27 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       store.getState().settings.sandboxUnlockAll
         ? Number.POSITIVE_INFINITY
         : store.getState().stats.milestoneLevel,
-    canPlace: (tiles) => {
+    canPlace: (tiles, rotation = 0) => {
       const tool = store.getState().selectedTool;
       // A stop stands on the street's side, never on a lot.
       if (isStopTool(tool)) return true;
       if (tool.startsWith('plop.')) {
         return (
           clientGrid.isFreeForPlop(tiles) &&
-          clientGrid.placeRefusal(catalogById.get(tool.slice('plop.'.length)), tiles) === null
+          clientGrid.placeRefusal(catalogById.get(tool.slice('plop.'.length)), tiles, rotation) ===
+            null
         );
       }
       if (tool in ROAD_TOOL_TO_TIER) return clientGrid.isClearOfBuildings(tiles);
       return true;
     },
     // The sentence the worker would refuse a plop with, for the cursor chip.
-    placeRefusal: (catalogId, tiles) =>
+    placeRefusal: (catalogId, tiles, rotation) =>
       clientGrid.isFreeForPlop(tiles)
-        ? clientGrid.placeRefusal(catalogById.get(catalogId), tiles)
+        ? clientGrid.placeRefusal(catalogById.get(catalogId), tiles, rotation)
         : null,
+    // The turns a plop fronts a street at, for the ghost to turn itself by.
+    frontingTurns: (catalogId, x, z) => clientGrid.frontingTurns(catalogById.get(catalogId), x, z),
     // Terraform hooks: the Level tool's drag-start height sample (tile
     // center, same anchor the camera/buildings use) and the road/building
     // structure-exclusion check backing the brush validity chip.
@@ -2208,12 +2212,15 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       if (snap.roundabouts) rebuildLamps();
     }
     if (snap.buildings) {
+      // A plain body is drawn turned to its street, decided once for each
+      // building the delta carries; the lot, the cars and the sim keep its stored turn.
+      const faced = faceStreets(snap.buildings, catalogById, street);
       lots.apply(snap.buildings);
-      instancer.apply(snap.buildings);
+      instancer.apply(faced);
       farms.apply(snap.buildings);
-      massing.apply(snap.buildings);
-      roofProps.apply(snap.buildings);
-      buildingKit.apply(snap.buildings);
+      massing.apply(faced);
+      roofProps.apply(faced);
+      buildingKit.apply(faced);
       houseRoofs.apply(snap.buildings);
       parkedCars.apply(snap.buildings);
       landmarks.apply(snap.buildings);
@@ -2280,11 +2287,12 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       }
       if (updated.length > 0) {
         const relaid = { added: [], removed: [], updated };
+        const relaidFaced = faceStreets(relaid, catalogById, street);
         lots.apply(relaid);
-        instancer.apply(relaid);
-        massing.apply(relaid);
-        roofProps.apply(relaid);
-        buildingKit.apply(relaid);
+        instancer.apply(relaidFaced);
+        massing.apply(relaidFaced);
+        roofProps.apply(relaidFaced);
+        buildingKit.apply(relaidFaced);
         houseRoofs.apply(relaid);
         parkedCars.apply(relaid);
         pedestrianRenderer.apply({ stops: latestStopPoints, buildings: relaid });

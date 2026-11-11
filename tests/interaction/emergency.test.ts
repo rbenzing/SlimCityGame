@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { MILESTONES, tileIndex } from '../../src/shared/constants';
+import { RoadTier } from '../../src/shared/types';
 import { decodeSave, encodeSave } from '../../src/app/persist';
 import {
+  column,
   entryOf,
   initialized,
   initializedAtMilestone,
@@ -23,7 +25,9 @@ describe('the station ladder, in play', () => {
     const before = initializedAtMilestone(1);
     expect(
       run(before, 1, [
-        streetNorthOf(60, 60, 20),
+        // The fire station fronts east on the street at x 62, the police station west on x 69.
+        { kind: 'buildRoad', tier: RoadTier.TwoLane, tiles: column(62, 60, 2) },
+        { kind: 'buildRoad', tier: RoadTier.TwoLane, tiles: column(69, 60, 2) },
         { kind: 'placeBuilding', catalogId: 'fire-station', x: 60, z: 60, rotation: 1 },
         { kind: 'placeBuilding', catalogId: 'police-station', x: 70, z: 60, rotation: 3 },
       ]).ok,
@@ -77,7 +81,7 @@ describe('the station ladder, in play', () => {
       expect(
         run(early, 1, [
           streetNorthOf(60, 60, 10),
-          { kind: 'placeBuilding', catalogId, x: 60, z: 60, rotation: 0 },
+          { kind: 'placeBuilding', catalogId, x: 60, z: 60, rotation: 2 },
         ]),
       ).toMatchObject({ ok: false, reason: 'locked' });
 
@@ -85,7 +89,7 @@ describe('the station ladder, in play', () => {
       expect(
         run(open, 1, [
           streetNorthOf(60, 60, 10),
-          { kind: 'placeBuilding', catalogId, x: 60, z: 60, rotation: 0 },
+          { kind: 'placeBuilding', catalogId, x: 60, z: 60, rotation: 2 },
         ]).ok,
       ).toBe(true);
     }

@@ -663,7 +663,7 @@ describe('a road dragged through a building — refused whole, never laid around
     const h = sandboxed();
     run(h, 1, [
       { kind: 'buildRoad', tier: RoadTier.TwoLane, tiles: roadRow(10, 10, 20) },
-      { kind: 'placeBuilding', catalogId: 'water-tower', x: 20, z: 11, rotation: 0 },
+      { kind: 'placeBuilding', catalogId: 'water-tower', x: 20, z: 11, rotation: 2 },
     ]);
     const fundsBefore = h.lastSnapshot()!.stats.funds;
     const ack = run(h, 2, [

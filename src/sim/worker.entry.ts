@@ -143,6 +143,7 @@ import {
   footprintBlocker,
   GROUND_HUGGING_LIFT_M,
   touchesStreet,
+  frontTouchesStreet,
   ARMS_PER_TILE,
   hasAdjacentRoad,
   hasAdjacentTier,
@@ -3934,6 +3935,11 @@ class SimWorld implements WorkerSim {
     // water it draws from or empties into orthogonally beside it.
     if (entry.requiresAdjacent === 'water' && !hasAdjacentWater(this.grid, x, z, w, d)) {
       return refused(PLACEMENT_REFUSALS.needsShore);
+    }
+    // Its door, drive and car park open on the edge that touches the street. A
+    // kit turned to its track or its water has the side it was just given.
+    if (!restore && !frontTouchesStreet(this.grid, entry, x, z, rotation)) {
+      return refused(PLACEMENT_REFUSALS.frontsAway);
     }
     // A turbine keeps its rotor out of its neighbour's: nothing of the same
     // entry within its spacing, in any direction.

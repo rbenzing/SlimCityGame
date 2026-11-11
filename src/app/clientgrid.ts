@@ -36,7 +36,7 @@ import { runsAlongZ, type BridgeDeckTile } from '../render/bridges';
 import type { PlacedWall } from '../render/soundwalls';
 import { soundWallsAt, type SoundWallReader } from '../shared/soundwallsites';
 import { PLACEMENT_NEEDS, PLACEMENT_REFUSALS } from '../shared/placement';
-import { touchesStreet } from '../world/grid';
+import { frontingTurns, frontTouchesStreet, touchesStreet, type FrontingTurn } from '../world/grid';
 import { deriveRoadFootprint } from '../world/freeroads';
 import { decodeRoadNetwork } from '../world/roadnet';
 import { axisOfFlow } from '../shared/overpass';
@@ -868,20 +868,37 @@ export class ClientGridMirror {
   }
 
   /**
-   * The sentence the worker would refuse `entry` standing on `tiles` with for
-   * want of a street or of the track or shore it needs, or null when it has
-   * both. The slope and the overlap stay the worker's to judge.
+   * The sentence the worker would refuse `entry` standing on `tiles` turned
+   * `rotation` with for want of a street, of the track or shore it needs, or of
+   * a street along its front; null when it has all of them. The slope and the
+   * overlap stay the worker's to judge.
    */
-  placeRefusal(entry: BuildingCatalogEntry | undefined, tiles: TilePoint[]): string | null {
+  placeRefusal(
+    entry: BuildingCatalogEntry | undefined,
+    tiles: TilePoint[],
+    rotation: 0 | 1 | 2 | 3,
+  ): string | null {
     if (!entry || tiles.length === 0) return null;
     if (!entry.offStreet && !touchesStreet(this, tiles)) return PLACEMENT_REFUSALS.needsStreet;
-    if (!entry.requiresAdjacent) return null;
     const x0 = Math.min(...tiles.map((t) => t.x));
     const z0 = Math.min(...tiles.map((t) => t.z));
-    const w = Math.max(...tiles.map((t) => t.x)) - x0 + 1;
-    const d = Math.max(...tiles.map((t) => t.z)) - z0 + 1;
-    if (this.hasAdjacent(entry.requiresAdjacent, x0, z0, w, d)) return null;
-    return PLACEMENT_REFUSALS[PLACEMENT_NEEDS[entry.requiresAdjacent]];
+    if (entry.requiresAdjacent) {
+      const w = Math.max(...tiles.map((t) => t.x)) - x0 + 1;
+      const d = Math.max(...tiles.map((t) => t.z)) - z0 + 1;
+      if (!this.hasAdjacent(entry.requiresAdjacent, x0, z0, w, d)) {
+        return PLACEMENT_REFUSALS[PLACEMENT_NEEDS[entry.requiresAdjacent]];
+      }
+    }
+    return frontTouchesStreet(this, entry, x0, z0, rotation) ? null : PLACEMENT_REFUSALS.frontsAway;
+  }
+
+  /** The turns at which `entry` at (x, z) fronts a street, or null for a building with no front on one. */
+  frontingTurns(
+    entry: BuildingCatalogEntry | undefined,
+    x: number,
+    z: number,
+  ): FrontingTurn[] | null {
+    return entry ? frontingTurns(this, entry, x, z) : null;
   }
 
   /**

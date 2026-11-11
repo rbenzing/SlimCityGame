@@ -9,6 +9,7 @@ export const PLACEMENT_REFUSALS = {
   steep: 'The ground is too steep here.',
   occupied: 'Something already stands here.',
   needsStreet: 'It needs a street beside it.',
+  frontsAway: 'Its front must face a street.',
   needsRail: 'It must stand beside a railway.',
   needsTram: 'It must stand beside a tram track.',
   needsShore: 'It must stand on a shore.',

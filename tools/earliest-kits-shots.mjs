@@ -89,7 +89,7 @@ await hook(
     }
     window.__slimcity.cmd('Pond', [{ kind: 'terraformSet', x, z, w, h, heights }]);
   },
-  [X - 3, Z - 12, 44, 23, 17],
+  [X - 3, Z - 12, 44, 23, 15],
 );
 await page.waitForTimeout(1500);
 
@@ -102,14 +102,6 @@ const row = (z, tier, x0, x1) =>
     },
   ]);
 await row(Z, RT.TwoLane, X - 1, X + 36);
-// A stub south off the street along the sewage works' west edge: its street.
-await cmd('Road', [
-  {
-    kind: 'buildRoad',
-    tier: RT.TwoLane,
-    tiles: [1, 2, 3].map((dz) => ({ x: X + 6, z: Z + dz })),
-  },
-]);
 await page.waitForTimeout(800);
 
 const place = (catalogId, x, z, rotation) =>
@@ -121,10 +113,11 @@ const sites = {
   mrf: { id: 'materials-recovery-facility', x: X + 11, z: Z - 6, w: 5, d: 6 },
   transfer: { id: 'transfer-station', x: X + 17, z: Z - 5, w: 4, d: 5 },
   depot: { id: 'recycling-depot', x: X + 22, z: Z - 3, w: 2, d: 3 },
-  // South of the street, on the pond's north bank.
-  pump: { id: 'water-pump', x: X + 1, z: Z + 3, w: 2, d: 2 },
-  works: { id: 'sewage-works', x: X + 7, z: Z + 3, w: 2, d: 2 },
-  drain: { id: 'water-drain', x: X + 13, z: Z + 4, w: 1, d: 1 },
+  // South of the street, on the pond's north bank: land side (front) on the
+  // street to the north, water on the south edge.
+  pump: { id: 'water-pump', x: X + 1, z: Z + 1, w: 2, d: 2 },
+  works: { id: 'sewage-works', x: X + 7, z: Z + 1, w: 2, d: 2 },
+  drain: { id: 'water-drain', x: X + 13, z: Z + 2, w: 1, d: 1 },
 };
 for (const s of Object.values(sites)) await place(s.id, s.x, s.z, 0);
 await page.waitForTimeout(1200);

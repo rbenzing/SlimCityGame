@@ -204,7 +204,7 @@ const UTILITIES = [
     catalogId: 'coal-plant',
     x: X + 61,
     z: Z + 1 + i * 6,
-    rotation: 0,
+    rotation: 3,
   })),
   // A tower is 2x2 and supplies 378 units; four stalled the city at 3,447 people
   // with water fully drawn and the next milestone (3,500) out of reach, so the
@@ -214,16 +214,17 @@ const UTILITIES = [
     catalogId: 'water-tower',
     x: X + 61,
     z: Z + 41 + i * 2,
-    rotation: 0,
+    rotation: 3,
   })),
 ];
 // One of each capped service, plus the park that deliberately has no capacity.
 const SERVICES = [
-  { kind: 'placeBuilding', catalogId: 'school', x: X + 31, z: Z + 31, rotation: 0 },
-  { kind: 'placeBuilding', catalogId: 'clinic', x: X + 25, z: Z + 31, rotation: 0 },
-  { kind: 'placeBuilding', catalogId: 'police-station', x: X + 31, z: Z + 25, rotation: 0 },
-  { kind: 'placeBuilding', catalogId: 'fire-station', x: X + 37, z: Z + 31, rotation: 0 },
-  { kind: 'placeBuilding', catalogId: 'small-park', x: X + 25, z: Z + 25, rotation: 0 },
+  // Each stands on the south edge of its block, front (local +Z) on the street below.
+  { kind: 'placeBuilding', catalogId: 'school', x: X + 31, z: Z + 33, rotation: 0 },
+  { kind: 'placeBuilding', catalogId: 'clinic', x: X + 25, z: Z + 34, rotation: 0 },
+  { kind: 'placeBuilding', catalogId: 'police-station', x: X + 31, z: Z + 28, rotation: 0 },
+  { kind: 'placeBuilding', catalogId: 'fire-station', x: X + 37, z: Z + 34, rotation: 0 },
+  { kind: 'placeBuilding', catalogId: 'small-park', x: X + 25, z: Z + 29, rotation: 0 },
 ];
 // The water loop on the quay, south of the grid: a street stub down to the shore
 // (rows Z+61..Z+66; the pond's first row is Z+67), the pump on its east side and
@@ -235,7 +236,9 @@ await cmd('Quay street', [
     tiles: Array.from({ length: 6 }, (_, i) => ({ x: X + 30, z: Z + 61 + i })),
   },
 ]);
-// A short branch west off the stub, along the works' north edge: its street.
+// A shore kit's front is its land side, opposite the water, so each stands
+// with its north edge on a street: a branch along row Z+64 either side of the
+// stub, and one tile down to the drain.
 await cmd('Works street', [
   {
     kind: 'buildRoad',
@@ -243,9 +246,17 @@ await cmd('Works street', [
     tiles: [27, 28, 29].map((dx) => ({ x: X + dx, z: Z + 64 })),
   },
 ]);
+await cmd('Pump street', [
+  {
+    kind: 'buildRoad',
+    tier: TWO_LANE,
+    tiles: [31, 32, 33].map((dx) => ({ x: X + dx, z: Z + 64 })),
+  },
+  { kind: 'buildRoad', tier: TWO_LANE, tiles: [{ x: X + 33, z: Z + 65 }] },
+]);
 const SEWAGE = [
   { kind: 'placeBuilding', catalogId: 'water-pump', x: X + 31, z: Z + 65, rotation: 0 },
-  { kind: 'placeBuilding', catalogId: 'water-drain', x: X + 29, z: Z + 66, rotation: 0 },
+  { kind: 'placeBuilding', catalogId: 'water-drain', x: X + 33, z: Z + 66, rotation: 0 },
   { kind: 'placeBuilding', catalogId: 'sewage-works', x: X + 27, z: Z + 65, rotation: 0 },
 ];
 const EXPECTED = UTILITIES.length + SERVICES.length + SEWAGE.length;

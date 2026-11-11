@@ -9,13 +9,18 @@ import {
   CORE_FIELD_COUNT,
   FIELD_COUNT,
   isFrontageTier,
+  isRailTier,
   RoadFlow,
   RoadTier,
   SAVE_VERSION,
   ZoneType,
+  type BuildingCatalogEntry,
   type GridState,
   type TilePoint,
 } from '../shared/types';
+import { footprintForRotation } from '../shared/footprint';
+import { frontSideOf, type KitSensors } from '../shared/kitfront';
+import type { Side } from '../shared/roadedge';
 import { zonableMaskFor } from './zonable';
 import type { ProfileLookup } from './freeroads';
 
@@ -720,10 +725,7 @@ export const GROUND_HUGGING_LIFT_M = 0.5;
  * a tile touching only at a corner do not count. The one test the worker's
  * placement and the ghost both ask.
  */
-export function touchesStreet(
-  g: Pick<GridState, 'size' | 'roadTier' | 'roadElevation'>,
-  tiles: readonly TilePoint[],
-): boolean {
+export function touchesStreet(g: StreetGrid, tiles: readonly TilePoint[]): boolean {
   const own = new Set<number>();
   for (const t of tiles) own.add(indexOf(g.size, t.x, t.z));
   for (const t of tiles) {
@@ -733,12 +735,102 @@ export function touchesStreet(
       if (!inBoundsOf(g.size, nx, nz)) continue;
       const n = indexOf(g.size, nx, nz);
       if (own.has(n)) continue;
-      if (!isFrontageTier(g.roadTier[n] ?? RoadTier.None)) continue;
-      if ((g.roadElevation[n] ?? 0) >= GROUND_HUGGING_LIFT_M) continue;
-      return true;
+      if (isStreetTile(g, n)) return true;
     }
   }
   return false;
+}
+
+type StreetGrid = Pick<GridState, 'size' | 'roadTier' | 'roadElevation'>;
+
+/** A tile that carries a street a building stands beside, by the one test `touchesStreet` reads. */
+function isStreetTile(g: StreetGrid, i: number): boolean {
+  return (
+    isFrontageTier(g.roadTier[i] ?? RoadTier.None) &&
+    (g.roadElevation[i] ?? 0) < GROUND_HUGGING_LIFT_M
+  );
+}
+
+/** What a kit turns to face, read off the grid: the water beside it, the rail track beside it. */
+function kitSensorsOf(g: StreetGrid & Pick<GridState, 'water'>): KitSensors {
+  return {
+    waterAt: (x, z) => inBoundsOf(g.size, x, z) && g.water[indexOf(g.size, x, z)] === 1,
+    railAt: (x, z) =>
+      inBoundsOf(g.size, x, z) && isRailTier(g.roadTier[indexOf(g.size, x, z)] ?? RoadTier.None),
+  };
+}
+
+/** True when a street runs along the `side` edge of the w x d footprint at (x, z). */
+function streetAlongSide(
+  g: StreetGrid,
+  x: number,
+  z: number,
+  w: number,
+  d: number,
+  side: Side,
+): boolean {
+  const horizontal = side === 'N' || side === 'S';
+  const length = horizontal ? w : d;
+  for (let i = 0; i < length; i++) {
+    const tx = horizontal ? x + i : side === 'E' ? x + w : x - 1;
+    const tz = horizontal ? (side === 'S' ? z + d : z - 1) : z + i;
+    if (inBoundsOf(g.size, tx, tz) && isStreetTile(g, indexOf(g.size, tx, tz))) return true;
+  }
+  return false;
+}
+
+/**
+ * True when the front of `entry` placed at (x, z) turned `rotation` (the edge
+ * its door, drive and car park open on, `frontSideOf`) has a street along it,
+ * by the test `touchesStreet` asks. A building with no front on a street
+ * (off-street kinds, a depot whose gate faces its track) always passes. The one
+ * test the worker's placement and the ghost both ask.
+ */
+export function frontTouchesStreet(
+  g: StreetGrid & Pick<GridState, 'water'>,
+  entry: BuildingCatalogEntry,
+  x: number,
+  z: number,
+  rotation: 0 | 1 | 2 | 3,
+): boolean {
+  const side = frontSideOf(entry, x, z, rotation, kitSensorsOf(g));
+  if (side === null) return true;
+  const { w, d } = footprintForRotation(entry, rotation);
+  return streetAlongSide(g, x, z, w, d, side);
+}
+
+/** A turn of a building whose front has a street along it, and the side that front is on. */
+export interface FrontingTurn {
+  rotation: 0 | 1 | 2 | 3;
+  side: Side;
+}
+
+/**
+ * The turns, in rotation order, at which `entry` placed at (x, z) fronts a
+ * street, one per distinct front and footprint (a kit that turns to its water
+ * or its track shows the same front at several rotations). Null for a building
+ * with no front on a street.
+ */
+export function frontingTurns(
+  g: StreetGrid & Pick<GridState, 'water'>,
+  entry: BuildingCatalogEntry,
+  x: number,
+  z: number,
+): FrontingTurn[] | null {
+  const sensors = kitSensorsOf(g);
+  const turns: FrontingTurn[] = [];
+  const seen = new Set<string>();
+  for (const rotation of [0, 1, 2, 3] as const) {
+    const side = frontSideOf(entry, x, z, rotation, sensors);
+    if (side === null) return null;
+    const { w, d } = footprintForRotation(entry, rotation);
+    if (!streetAlongSide(g, x, z, w, d, side)) continue;
+    const key = `${side}${w}x${d}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    turns.push({ rotation, side });
+  }
+  return turns;
 }
 
 /**
@@ -796,8 +888,7 @@ export function setZones(
   const applied: TilePoint[] = [];
   // Putting back what a command took away asks only what the tile holds, not
   // whether the zone could be painted there now.
-  const zonable =
-    zone === ZoneType.None || restore ? null : zonableMaskFor(g, zone, profileOf);
+  const zonable = zone === ZoneType.None || restore ? null : zonableMaskFor(g, zone, profileOf);
 
   for (const t of tiles) {
     const { x, z } = t;
