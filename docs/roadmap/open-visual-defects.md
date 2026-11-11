@@ -7,7 +7,6 @@ What a review of every screenshot the shot tools write found wrong in the game, 
 - Roofs, back fences, sound walls, trampolines, bus tops and shop canopies render near-black in daylight. The shingle colours are the roofs' cause: charcoal reads about (9, 11, 13) at noon, and `nightlook-shots` fails on it. `[R-render-020]` — `shots-town/04b-tram-crossing`, `shots-soundwalls/walled-oblique`
 - Rail draws no rails through a crossing, a junction or a bend, only a ballast box. — `shots-roadmatrix/rail-cross`
 - Tram track ends at a bend tile and at a junction box. — `shots-roadmatrix/tram-turn`
-- A rail yard's and a tram depot's tracks stop at their own fence and never join the line beside them; a rail station's platform stands about 8 m from its track. — `shots-depots/c-rail-yard-track`, `shots-ploppables/b3-station-long-track`
 - Loose dark slabs lie on the grass both sides of a tram guideway's ramp; a raised station's lift tower hangs above the ground and its stair lands on grass. `[R-roads-011]` — `shots-tramways/guideway-ramp`, `station-junction`
 - A divided corridor draws its right half's turn bay on the side its lanes leave by; the grid has it where they arrive. `corridor-shots` fails on it. `[R-roads-052]`
 

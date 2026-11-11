@@ -167,6 +167,9 @@ import { depotFrame, railSideOf, waterSideOf, yardFrame } from '../shared/kitfro
 
 // The kits' turn to track and water lives in shared/kitfront.ts, where the worker reads it too.
 export { depotFrame, railSideOf, waterSideOf, yardFrame };
+import { markingPlan } from './roadmarkings';
+import { presetProfileForTier } from '../shared/roadprofile';
+import { RoadTier, type RoadProfile } from '../shared/types';
 import { maxHeightOverRect } from './footprint';
 import { PLOT_SURFACE_M, PLOT_YARD_TOP } from './plotground';
 import { InstancedSlotPool } from './massing';
@@ -189,6 +192,7 @@ import {
 import {
   ACCESSIBLE_SYMBOL_M,
   accessibilitySymbolPaint,
+  CURB_Y_OFFSET,
   MARKING_COLOR,
   ROAD_Y_OFFSET,
   YELLOW_MARKING_COLOR,
@@ -366,7 +370,24 @@ export type UtilityKitPartKind =
   | 'railYardShop'
   | 'railYardLit'
   | 'railYardCar'
-  | 'railYardCarMid';
+  | 'railYardCarMid'
+  | YardVariantKind
+  | DepotTracksideKind;
+
+type YardPrefix = 'tramDepot' | 'railYard';
+/**
+ * A yard's parts for a lead that reaches the line another way than the full
+ * curve: the short curve, a buffer stop inside the fence, or the whole yard
+ * laid mirrored along its track. Built the first time a yard needs one.
+ */
+export type YardVariantKind =
+  | `${YardPrefix}${'Yard' | 'Track'}${'' | 'End'}${'Short' | 'Stop'}`
+  | `${YardPrefix}${'Yard' | 'Track'}Mirror${'' | 'Short'}`
+  | `${YardPrefix}${'Shop' | 'Lit'}Mirror`
+  | `${YardPrefix}Track${'' | 'End'}${'' | 'Mirror'}${'' | 'Short'}R${number}`
+  | 'tramDepotPolesMirror';
+/** The paving and canopy a station lays out to its track, by frame and by which tiles of the edge carry rail. */
+export type DepotTracksideKind = `depotTrackside${'' | 'Long'}${number}${'' | `R${number}`}`;
 
 // ---------------------------------------------------------------------------
 // Shared pure helpers (each render/*.ts file keeps its own local copy of
@@ -7860,6 +7881,141 @@ function buildDepotGroundsGeometry(footprint: FootprintSize): THREE.BufferGeomet
   return mergeParts(parts);
 }
 
+/** A platform's edge stands this far from the centre of the straight track it serves. */
+export const DEPOT_TRACK_EDGE_M = 1.55;
+
+/** What a station lays out beyond its lot edge to the track: the paving, the tactile strip, the canopy over it and its posts, and the lot-edge strip it repaves. */
+export interface DepotTrackside {
+  platform: Rect[];
+  tactile: Rect[];
+  canopy: Rect[];
+  posts: Vec2[];
+  repave: Rect[];
+}
+
+/**
+ * The platform carried from the lot's -Z edge out to DEPOT_TRACK_EDGE_M from
+ * the track's centre, along every tile of the edge that has track beside it
+ * (`tiles[i]`, from the frame's -X end). The tactile strip lies at the new
+ * edge, and the canopy's track-side edge moves with it. Pure.
+ */
+export function computeDepotTrackside(
+  footprint: FootprintSize,
+  tiles: readonly boolean[],
+): DepotTrackside {
+  const { halfW, halfD } = footprintHalfExtents(footprint);
+  const lay = computeDepotLayout(footprint);
+  const edge = -halfD - TILE_METERS / 2 + DEPOT_TRACK_EDGE_M;
+  const out: DepotTrackside = { platform: [], tactile: [], canopy: [], posts: [], repave: [] };
+  tiles.forEach((onTrack, i) => {
+    if (!onTrack) return;
+    const x0 = -halfW + i * TILE_METERS;
+    const x1 = x0 + TILE_METERS;
+    out.platform.push({ x0, x1, z0: edge, z1: -halfD });
+    out.tactile.push({ x0, x1, z0: edge, z1: edge + DEPOT_PLATFORM.tactile });
+    const cx0 = Math.max(x0, lay.canopy.x0);
+    const cx1 = Math.min(x1, lay.canopy.x1);
+    if (cx1 > cx0) {
+      out.canopy.push({ x0: cx0, x1: cx1, z0: edge, z1: -halfD });
+      for (let x = cx0 + DEPOT_CANOPY.postPitch / 2; x < cx1; x += DEPOT_CANOPY.postPitch) {
+        out.posts.push({ x, z: edge + DEPOT_CANOPY.post / 2 + 0.3 });
+      }
+    }
+    const rx0 = Math.max(x0, lay.platform.x0);
+    const rx1 = Math.min(x1, lay.platform.x1);
+    if (rx1 > rx0) out.repave.push({ x0: rx0, x1: rx1, z0: lay.tactile.z0, z1: lay.tactile.z1 });
+  });
+  return out;
+}
+
+/** The station's platform out to its track, its tactile strip and canopy; local Y=0 is the highest ground under the lot. */
+function buildDepotTracksideGeometry(
+  footprint: FootprintSize,
+  tiles: readonly boolean[],
+  rise = 0,
+): THREE.BufferGeometry {
+  const layout = computeDepotTrackside(footprint, tiles);
+  const lotTop = RECYCLING_YARD_HEIGHT + DEPOT_PLATFORM.h;
+  // The track edge stands 0.2 m over the line's rail; the paving ramps evenly to the lot's platform across its depth.
+  const edgeTop = rise + ROAD_Y_OFFSET + 0.012 + DEPOT_PLATFORM.h;
+  const bottom = Math.min(-0.3, rise - 0.3);
+  const { halfD } = footprintHalfExtents(footprint);
+  const edgeZ = layout.platform[0]?.z0 ?? -halfD;
+  const topAt = (z: number): number =>
+    edgeTop + (lotTop - edgeTop) * Math.min(1, Math.max(0, (z - edgeZ) / (-halfD - edgeZ)));
+  const parts: THREE.BufferGeometry[] = [];
+  const centre = (r: Rect): Vec2 => ({ x: (r.x0 + r.x1) / 2, z: (r.z0 + r.z1) / 2 });
+  // The paving runs down to the ground, so it never floats over the verge.
+  for (const r of layout.platform) {
+    parts.push(slopedSlab(r, bottom, topAt(r.z0), topAt(r.z1), DEPOT_PLATFORM_RGB));
+  }
+  for (const r of layout.repave) {
+    const c = centre(r);
+    parts.push(flatQuad(r.x1 - r.x0, r.z1 - r.z0, c.x, lotTop + 0.01, c.z, DEPOT_PLATFORM_RGB));
+  }
+  for (const r of layout.tactile) {
+    parts.push(slopedQuad(r, topAt(r.z0) + 0.005, topAt(r.z1) + 0.005, YELLOW_MARKING_COLOR));
+  }
+  // The canopy stands level over the higher of the platform's two ends.
+  const slabY = Math.max(lotTop, edgeTop) + DEPOT_CANOPY.clear;
+  for (const r of layout.canopy) {
+    const c = centre(r);
+    parts.push(
+      standingBox(r.x1 - r.x0, DEPOT_CANOPY.slab, r.z1 - r.z0, c.x, slabY, c.z, DEPOT_CANOPY_RGB),
+    );
+  }
+  for (const p of layout.posts) {
+    const base = topAt(p.z);
+    parts.push(
+      standingBox(
+        DEPOT_CANOPY.post,
+        slabY - base,
+        DEPOT_CANOPY.post,
+        p.x,
+        base,
+        p.z,
+        DEPOT_POST_RGB,
+      ),
+    );
+  }
+  return mergeParts(parts);
+}
+
+/** A slab over `r` from `bottom` up to a top that slopes along Z from `topAtZ0` to `topAtZ1`. */
+function slopedSlab(
+  r: Rect,
+  bottom: number,
+  topAtZ0: number,
+  topAtZ1: number,
+  rgb: RGB,
+): THREE.BufferGeometry {
+  const length = r.z1 - r.z0;
+  const box = new THREE.BoxGeometry(r.x1 - r.x0, 1, length);
+  const pos = box.getAttribute('position');
+  for (let i = 0; i < pos.count; i++) {
+    const t = (pos.getZ(i) + length / 2) / length;
+    pos.setY(i, pos.getY(i) > 0 ? topAtZ0 + (topAtZ1 - topAtZ0) * t : bottom);
+  }
+  box.translate((r.x0 + r.x1) / 2, 0, (r.z0 + r.z1) / 2);
+  box.computeVertexNormals();
+  return paintVertexColor(box, hexFromRgb(rgb));
+}
+
+/** A flat-shaded strip over `r` whose height slopes along Z from `yAtZ0` to `yAtZ1`, facing up. */
+function slopedQuad(r: Rect, yAtZ0: number, yAtZ1: number, rgb: RGB): THREE.BufferGeometry {
+  const length = r.z1 - r.z0;
+  const quad = new THREE.PlaneGeometry(r.x1 - r.x0, length);
+  quad.rotateX(-Math.PI / 2);
+  const pos = quad.getAttribute('position');
+  for (let i = 0; i < pos.count; i++) {
+    const t = (pos.getZ(i) + length / 2) / length;
+    pos.setY(i, yAtZ0 + (yAtZ1 - yAtZ0) * t);
+  }
+  quad.translate((r.x0 + r.x1) / 2, 0, (r.z0 + r.z1) / 2);
+  quad.computeVertexNormals();
+  return paintVertexColor(quad, hexFromRgb(rgb));
+}
+
 /** The canopy over the platform: its slab at the clear height above the platform, on its posts. */
 function buildDepotCanopyGeometry(footprint: FootprintSize): THREE.BufferGeometry {
   const { canopy, posts } = computeDepotLayout(footprint);
@@ -8500,6 +8656,10 @@ export interface YardSpec {
   officeM2: number;
   /** The turnout lead from the track edge to the first road. */
   lead: number;
+  /** The lead's curve where the line gives one tile before the corner: tighter than the full curve, which is as wide as the lead's rise allows. */
+  shortRadius: number;
+  /** How far the track the lead joins lies from its tile's centre toward the lot: a street's tram track lies in its own lane. */
+  trackOffset: number;
   /** Catenary poles over the roads: a tram takes its current from the wire. */
   poles: boolean;
   /** Ballast under the rails, as the railway lays them; a tram's rails lie in a concrete apron. */
@@ -8508,6 +8668,21 @@ export interface YardSpec {
   fuelStand: boolean;
   drive: boolean;
 }
+
+/**
+ * How far from a street's centre the tram track nearer a lot lies: a tram
+ * street lays one track in each lane, at the lane's centre, and the depot joins
+ * the nearer. Read from the street's own profile; a profile with no lane track
+ * (a reservation) gives the preset street's.
+ */
+export function tramLaneOffsetOf(profile: RoadProfile | null): number {
+  const centres = markingPlan(profile ?? presetProfileForTier(RoadTier.Tram))
+    .bands.filter((band) => band.kind === 'tram')
+    .map((band) => Math.abs((band.from + band.to) / 2));
+  return centres.length > 0 ? Math.max(...centres) : TRAM_PRESET_LANE_M;
+}
+const TRAM_PRESET_LANE_M = 1.875;
+const TRAM_STREET_TRACK_ACROSS_M = tramLaneOffsetOf(null);
 
 /** Eight roads at 3.5 m centres, 22.4 m long: two 11 m cars and a coupling; the hall over a maintenance and a wash road. */
 export const TRAM_DEPOT_SPEC: YardSpec = {
@@ -8519,6 +8694,8 @@ export const TRAM_DEPOT_SPEC: YardSpec = {
   doorClear: 4.6,
   officeM2: 97,
   lead: 20,
+  shortRadius: 18,
+  trackOffset: TRAM_STREET_TRACK_ACROSS_M,
   poles: true,
   ballast: false,
   fuelStand: false,
@@ -8534,6 +8711,8 @@ export const RAIL_YARD_SPEC: YardSpec = {
   doorClear: 4.6,
   officeM2: 125,
   lead: 20,
+  shortRadius: 24,
+  trackOffset: 0,
   poles: false,
   ballast: true,
   fuelStand: true,
@@ -8555,6 +8734,8 @@ const YARD_WALL_M = 0.3;
 const YARD_OFFICE_H = 3.6;
 const YARD_OFFICE_W = { tram: 10, rail: 13.3 };
 const YARD_FENCE_GAP_M = 3.5;
+/** A lead's curve is laid in chords turning this much each, so no chord strays 1° from the curve's tangent. */
+const YARD_CURVE_STEP = (1.5 * Math.PI) / 180;
 const YARD_DRIVE_M = 7.2;
 const YARD_FUEL_STAND = { tankR: 0.8, tankL: 5, cabinetW: 0.8, cabinetH: 1.2, cabinetD: 0.6 };
 const YARD_WINDOW = { w: 1.6, h: 1.3, sill: 1.1, pitch: 3.2 };
@@ -8569,9 +8750,40 @@ const YARD_OFFICE_RGB: RGB = [0.72, 0.7, 0.65];
 const YARD_DOOR_RGB: RGB = [0.84, 0.85, 0.83];
 const YARD_TANK_RGB: RGB = [0.62, 0.62, 0.6];
 
+/** How far a yard's lead reaches the line: the full curve, the tighter one, or none (a buffer stop inside the fence). */
+export type YardReach = 'full' | 'short' | 'stop';
+
+/** How a yard is laid to meet its line: how far its lead reaches, and whether the yard lies mirrored along its track. */
+export interface YardJoin {
+  reach: YardReach;
+  mirror: boolean;
+}
+
+export const YARD_JOIN_FULL: YardJoin = { reach: 'full', mirror: false };
+
+/** The points where a lead leaves the line, in the yard's frame. */
+export interface YardTurnout {
+  /** The tangent point on the line's centre. */
+  at: Vec2;
+  /** The line's direction toward the lead, and across it toward the lot. */
+  along: Vec2;
+  across: Vec2;
+  radius: number;
+  /** How far the track joined lies from its tile's centre toward the lot. */
+  lane: number;
+}
+
 export interface YardLayout {
   fromEnd: boolean;
-  /** The turnout lead from the track edge to the ladder, one or two straight segments. */
+  join: YardJoin;
+  /** The lead from the line's tangent point to the lead's start inside the lot: a curve in short chords and, on the short curve, a 45° straight. Empty at a buffer stop. */
+  joinPath: Vec2[];
+  turnout: YardTurnout | null;
+  /** Where the line's tangent run lies along the line's axis (x, or z where the line is off the end): the tiles the curve needs rail on. */
+  arc: { lo: number; hi: number } | null;
+  /** The buffer stop that ends a lead with no room to reach the line: where, and the way the track runs into it. */
+  stop: { at: Vec2; dir: Vec2 } | null;
+  /** The lead's climb to the ladder: one 45° segment starting just inside the lot. */
   lead: TrackSeg[];
   ladder: TrackSeg;
   /** The stabling roads in fill order, each from its turnout to its buffer. */
@@ -8625,6 +8837,60 @@ export function computeYardLayout(
   spec: YardSpec,
   fromEnd: boolean,
   cars: { perSet: number; length: number; pitch: number },
+  join: YardJoin = YARD_JOIN_FULL,
+  lane: number = spec.trackOffset,
+): YardLayout {
+  const mirror = join.mirror && !fromEnd;
+  const base = layoutYard(footprint, spec, fromEnd, cars, join.reach, lane);
+  const laid = mirror ? mirrorYard(base, spec) : base;
+  const lead = laid.lead[0]!;
+  const path = laid.joinPath.length > 0 ? laid.joinPath : [{ x: lead.x0, z: lead.z0 }];
+  const gaps = fenceGapsAlong(laid.fence, [...path, { x: lead.x1, z: lead.z1 }]);
+  return { ...laid, join: { reach: join.reach, mirror }, fenceGaps: [...gaps, ...laid.fenceGaps] };
+}
+
+/** Where a path crosses the fence, a gap of the fence's own width about each crossing, merged where they meet. */
+function fenceGapsAlong(fence: Rect, path: readonly Vec2[]): FenceGap[] {
+  const gaps: FenceGap[] = [];
+  const open = (side: 0 | 1 | 2 | 3, at: number, lo: number, hi: number): void => {
+    const a = Math.max(lo, at - YARD_FENCE_GAP_M);
+    const b = Math.min(hi, at + YARD_FENCE_GAP_M);
+    const near = gaps.find((g) => g.side === side && a <= g.b && b >= g.a);
+    if (near) {
+      near.a = Math.min(near.a, a);
+      near.b = Math.max(near.b, b);
+    } else gaps.push({ side, a, b });
+  };
+  for (let i = 1; i < path.length; i++) {
+    const p = path[i - 1]!;
+    const q = path[i]!;
+    const cross = (from: number, to: number, line: number): number | null =>
+      (from - line) * (to - line) < 0 ? (line - from) / (to - from) : null;
+    const sides: [0 | 1 | 2 | 3, number | null, boolean][] = [
+      [0, cross(p.z, q.z, fence.z1), true],
+      [1, cross(p.x, q.x, fence.x1), false],
+      [2, cross(p.z, q.z, fence.z0), true],
+      [3, cross(p.x, q.x, fence.x0), false],
+    ];
+    for (const [side, t, alongX] of sides) {
+      if (t === null) continue;
+      const x = p.x + (q.x - p.x) * t;
+      const z = p.z + (q.z - p.z) * t;
+      if (alongX && x >= fence.x0 && x <= fence.x1) open(side, x, fence.x0, fence.x1);
+      if (!alongX && z >= fence.z0 && z <= fence.z1) open(side, z, fence.z0, fence.z1);
+    }
+  }
+  return gaps.sort((p, q) => p.side - q.side);
+}
+
+/** One yard's layout with its lead reaching the line as `reach` says; never mirrored. */
+function layoutYard(
+  footprint: FootprintSize,
+  spec: YardSpec,
+  fromEnd: boolean,
+  cars: { perSet: number; length: number; pitch: number },
+  leadReach: YardReach,
+  lane: number,
 ): YardLayout {
   const { halfW, halfD } = footprintHalfExtents(footprint);
   const inset = GEN_FENCE_INSET_M;
@@ -8650,16 +8916,48 @@ export function computeYardLayout(
   // The climb's outer rail reaches a bed's corner past its start.
   const reach = xL0 + halfW - bed * Math.SQRT1_2 - 0.1 + edge;
   const z0 = Math.max(hall.z1 + bed + 0.3, Math.min(edge + climb, roomZ, reach));
-  const lead: TrackSeg[] = [];
-  if (!fromEnd) {
-    lead.push({ x0: xL0 - (z0 - edge), z0: edge, x1: xL0, z1: z0 });
+  // The climb is one 45° segment starting a bed's width inside the lot: off
+  // the long edge it starts at the track side's edge, off the end at the -X edge.
+  const lead: TrackSeg[] = fromEnd
+    ? [{ x0: -halfW + bed + 0.2, z0: z0 - (xL0 + halfW - bed - 0.2), x1: xL0, z1: z0 }]
+    : [{ x0: xL0 - (z0 - edge), z0: edge, x1: xL0, z1: z0 }];
+  const lineOff = TILE_METERS / 2 - lane;
+  const toUV = (x: number, z: number): { u: number; v: number } =>
+    fromEnd ? { u: z, v: x + halfW + lineOff } : { u: x, v: z + halfD + lineOff };
+  const fromUV = (u: number, v: number): Vec2 =>
+    fromEnd ? { x: v - halfW - lineOff, z: u } : { x: u, z: v - halfD - lineOff };
+  const start = lead[0]!;
+  const startUV = toUV(start.x0, start.z0);
+  const cos45 = Math.SQRT1_2;
+  let joinPath: Vec2[] = [];
+  let turnout: YardTurnout | null = null;
+  let arc: { lo: number; hi: number } | null = null;
+  let stop: { at: Vec2; dir: Vec2 } | null = null;
+  if (leadReach === 'stop') {
+    stop = { at: { x: start.x0, z: start.z0 }, dir: { x: -cos45, z: -cos45 } };
   } else {
-    // Off the end: straight in from the -X edge, then the climb.
-    const xB = xL0 - (z0 - edge);
-    lead.push(
-      { x0: -halfW + m, z0: edge, x1: xB, z1: edge },
-      { x0: xB, z0: edge, x1: xL0, z1: z0 },
-    );
+    // One curve tangent to the line turns 45° into the climb: as wide as the
+    // climb's rise allows, or the tighter radius with a 45° straight finishing the climb.
+    const widest = startUV.v / (1 - cos45);
+    const radius = leadReach === 'full' ? widest : Math.min(spec.shortRadius, widest);
+    const straight = startUV.v - radius * (1 - cos45);
+    const arcEnd = startUV.u - straight;
+    const tangent = arcEnd - radius * cos45;
+    const steps = Math.ceil(Math.PI / 4 / YARD_CURVE_STEP);
+    const points = Array.from({ length: steps + 1 }, (_, k) => {
+      const theta = ((Math.PI / 4) * k) / steps;
+      return fromUV(tangent + radius * Math.sin(theta), radius * (1 - Math.cos(theta)));
+    });
+    if (straight > 0.01) points.push({ x: start.x0, z: start.z0 });
+    joinPath = points;
+    turnout = {
+      at: fromUV(tangent, 0),
+      along: fromEnd ? { x: 0, z: 1 } : { x: 1, z: 0 },
+      across: fromEnd ? { x: 1, z: 0 } : { x: 0, z: 1 },
+      radius,
+      lane,
+    };
+    arc = { lo: tangent, hi: arcEnd };
   }
   const ladder: TrackSeg = { x0: xL0, z0, x1: xL0 + span, z1: z0 + span };
   const roads: TrackSeg[] = [];
@@ -8768,22 +9066,8 @@ export function computeYardLayout(
   }
 
   const fence = lotRect(footprint, inset);
+  // The lead's own gaps are cut where its path crosses; only the gate is here.
   const fenceGaps: FenceGap[] = [];
-  const first = lead[0]!;
-  if (!fromEnd) {
-    const at = first.x0 + (fence.z0 - first.z0);
-    fenceGaps.push({
-      side: 2,
-      a: Math.max(fence.x0, at - YARD_FENCE_GAP_M),
-      b: at + YARD_FENCE_GAP_M,
-    });
-  } else {
-    fenceGaps.push({
-      side: 3,
-      a: Math.max(fence.z0, first.z0 - YARD_FENCE_GAP_M),
-      b: first.z0 + YARD_FENCE_GAP_M,
-    });
-  }
   // The gate opens across the office's frontage and the drive beside it.
   if (drive) fenceGaps.push({ side: 0, a: office.x0 - 1, b: drive.x1 });
 
@@ -8799,6 +9083,11 @@ export function computeYardLayout(
 
   return {
     fromEnd,
+    join: { reach: leadReach, mirror: false },
+    joinPath,
+    turnout,
+    arc,
+    stop,
     lead,
     ladder,
     roads,
@@ -8820,6 +9109,53 @@ export function computeYardLayout(
     drive,
     fuel: spec.fuelStand ? { x: -halfW + 1.8, z: -halfD + 8 } : null,
     sets,
+  };
+}
+
+/**
+ * The yard laid mirrored along its track (x to -x), by computing mirrored
+ * coordinates, never a negative scale. The track side's parts mirror: the
+ * lead, ladder, roads, shop, poles, cars and fuelling stand. What belongs to
+ * the street side stays: a rail yard's office, drive and gate.
+ */
+function mirrorYard(layout: YardLayout, spec: YardSpec): YardLayout {
+  const seg = (s: TrackSeg): TrackSeg => ({ x0: -s.x0, z0: s.z0, x1: -s.x1, z1: s.z1 });
+  const rect = (r: Rect): Rect => ({ x0: -r.x1, x1: -r.x0, z0: r.z0, z1: r.z1 });
+  const vec = (p: Vec2): Vec2 => ({ x: -p.x, z: p.z });
+  const door = (d: YardDoor): YardDoor => ({
+    ...d,
+    x: -d.x,
+    nx: (d.nx === 0 ? 0 : -d.nx) as -1 | 0 | 1,
+  });
+  const pane = (p: DepotPane): DepotPane => ({
+    ...p,
+    x: -p.x,
+    nx: (p.nx === 0 ? 0 : -p.nx) as -1 | 0 | 1,
+  });
+  const hallPanes = layout.hallDoors.length * 4;
+  const withOffice = !spec.drive;
+  return {
+    ...layout,
+    joinPath: layout.joinPath.map(vec),
+    turnout: layout.turnout && {
+      ...layout.turnout,
+      at: vec(layout.turnout.at),
+      along: vec(layout.turnout.along),
+    },
+    arc: layout.arc && { lo: -layout.arc.hi, hi: -layout.arc.lo },
+    stop: layout.stop && { at: vec(layout.stop.at), dir: vec(layout.stop.dir) },
+    lead: layout.lead.map(seg),
+    ladder: seg(layout.ladder),
+    roads: layout.roads.map(seg),
+    hallRoads: layout.hallRoads.map(seg),
+    hall: rect(layout.hall),
+    office: withOffice ? rect(layout.office) : layout.office,
+    hallDoors: layout.hallDoors.map(door),
+    officeDoor: withOffice ? door(layout.officeDoor) : layout.officeDoor,
+    panes: layout.panes.map((p, i) => (i < hallPanes || withOffice ? pane(p) : p)),
+    poles: layout.poles.map(vec),
+    fuel: layout.fuel && vec(layout.fuel),
+    sets: layout.sets.map((set) => set.map((car) => ({ x: -car.x, z: car.z, turn: 3 as const }))),
   };
 }
 
@@ -8914,6 +9250,53 @@ function trackParts(
   }
 }
 
+/** The tile along a yard's line that a point `u` along the line's axis lies in, 0 at the lot's first tile; below 0 before its corner. */
+function lineTileIndex(u: number, half: number, up: boolean): number {
+  const t = (u + half) / TILE_METERS;
+  return Math.floor(up ? t - 1e-6 : t + 1e-6);
+}
+
+/**
+ * How a yard meets its line, decided by which tiles of the line carry track.
+ * `lineAt(i)` says whether the tile beside the lot at index i along its edge
+ * does (0 the lot's first tile at the frame's -X or -Z end, negative before
+ * its corner). In order: the full curve; the tighter curve where the line
+ * gives only one tile before the corner; each of those with the yard mirrored
+ * along its track where the line runs only the other way; else a buffer stop
+ * inside the fence. A yard whose line is off its end is never mirrored: its
+ * street side would land on the track's. A pure function of the tiles.
+ */
+export function chooseYardJoin(
+  footprint: FootprintSize,
+  spec: YardSpec,
+  fromEnd: boolean,
+  lineAt: (i: number) => boolean,
+  lane: number = spec.trackOffset,
+): YardJoin {
+  const half = ((fromEnd ? footprint.d : footprint.w) * TILE_METERS) / 2;
+  const candidates: YardJoin[] = [
+    { reach: 'full', mirror: false },
+    { reach: 'short', mirror: false },
+    ...(fromEnd
+      ? []
+      : ([
+          { reach: 'full', mirror: true },
+          { reach: 'short', mirror: true },
+        ] as YardJoin[])),
+  ];
+  const cars = { perSet: 1, length: 1, pitch: 1 };
+  for (const join of candidates) {
+    const arc = computeYardLayout(footprint, spec, fromEnd, cars, join, lane).arc;
+    if (!arc) continue;
+    const first = lineTileIndex(arc.lo, half, false);
+    const last = lineTileIndex(arc.hi, half, true);
+    let onLine = true;
+    for (let i = first; i <= last; i++) onLine = onLine && lineAt(i);
+    if (onLine) return join;
+  }
+  return { reach: 'stop', mirror: false };
+}
+
 /** Every segment of a yard's track in the order it is reached: the lead, the ladder, the stabling roads and the shop's roads. */
 export function yardSegments(layout: YardLayout): TrackSeg[] {
   return [...layout.lead, layout.ladder, ...layout.roads, ...layout.hallRoads];
@@ -8967,11 +9350,261 @@ function buildYardYardGeometry(
   return mergeParts(parts);
 }
 
+/** The turnout's switch blades: this long, tapering from a needle to a rail. */
+const YARD_BLADE = { length: 5.5, tip: 0.04 };
+/** The line's own track is drawn on the road surface, 12 mm under its rail tops; the lead rises from that level to the yard's. */
+const YARD_LINE_SURFACE_M = ROAD_Y_OFFSET;
+const YARD_BLADE_RGB: RGB = [0.84, 0.85, 0.88];
+const YARD_FROG_RGB: RGB = [0.22, 0.22, 0.24];
+const YARD_STAND_RGB: RGB = [0.24, 0.25, 0.27];
+const YARD_STAND_TARGET_RGB: RGB = [0.78, 0.2, 0.16];
+const YARD_GROOVE_RGB: RGB = [0.16, 0.16, 0.17];
+/** The apron a tram lead crosses the footway and kerb on: as wide as the street's slab where it leaves the street, wider at the lot. */
+const YARD_LEAD_APRON_W = { street: 2.8, lot: 4.8 };
+/** A tram street's carriageway half-width: its two lanes. */
+const YARD_CARRIAGEWAY_HALF_M = 3.75;
+
+/** A segment grown by `by` metres at each end along itself, so chords laid end to end close their joints. */
+function grownSegment(seg: TrackSeg, by: number): TrackSeg {
+  const dx = seg.x1 - seg.x0;
+  const dz = seg.z1 - seg.z0;
+  const len = Math.hypot(dx, dz);
+  const gx = (dx / len) * by;
+  const gz = (dz / len) * by;
+  return { x0: seg.x0 - gx, z0: seg.z0 - gz, x1: seg.x1 + gx, z1: seg.z1 + gz };
+}
+
+/**
+ * The lead from the line to the yard: rails and sleepers on ballast (a paved
+ * apron with grooved rails on a tram's), rising from the line's level to the
+ * yard's over the length outside the lot, with the turnout at the line.
+ */
+function joinParts(
+  parts: THREE.BufferGeometry[],
+  layout: YardLayout,
+  spec: YardSpec,
+  lot: Rect,
+  y0: number,
+  rise: number,
+): void {
+  const path = layout.joinPath;
+  if (path.length < 2 || !layout.turnout) return;
+  const { at, along, across, radius, lane } = layout.turnout;
+  // The line's surface where the lead leaves it: the ground it stands on, not the lot's.
+  const lineY = YARD_LINE_SURFACE_M + rise;
+  // Where the lead's outer rail crosses the line's near rail: the frog.
+  const gauge = YARD_GAUGE_HALF_M;
+  const frogAngle = Math.acos((radius - gauge) / (radius + gauge));
+  const frogU = (radius + gauge) * Math.sin(frogAngle);
+  const turnoutLength = frogU + 3;
+  const cum = [0];
+  for (let i = 1; i < path.length; i++) {
+    cum.push(cum[i - 1]! + Math.hypot(path[i]!.x - path[i - 1]!.x, path[i]!.z - path[i - 1]!.z));
+  }
+  const total = cum[cum.length - 1]!;
+  const entered = path.findIndex(
+    (p) => p.x >= lot.x0 && p.x <= lot.x1 && p.z >= lot.z0 && p.z <= lot.z1,
+  );
+  const rampTo = entered > 0 ? cum[entered]! : total;
+  // How far s along the lead is from the line's centre, toward the lot.
+  const awayAt = (s: number): number => {
+    let i = 1;
+    while (i < path.length - 1 && cum[i]! < s) i++;
+    const a = path[i - 1]!;
+    const b = path[i]!;
+    const t = (s - cum[i - 1]!) / Math.max(1e-9, cum[i]! - cum[i - 1]!);
+    const x = a.x + (b.x - a.x) * t;
+    const z = a.z + (b.z - a.z) * t;
+    return (x - at.x) * across.x + (z - at.z) * across.z;
+  };
+  // The lead rises evenly with its distance from the line, from the line's level to the lot's at the fence.
+  const awayToLot = Math.max(1e-6, awayAt(rampTo));
+  const level = (s: number): number => Math.min(1, Math.max(0, awayAt(s) / awayToLot));
+  // A paved apron's top, and the rail's foot on it or on the sleepers, at s along the lead.
+  // Past the carriageway the apron crosses the footway and kerb, so it stands as high as the kerb there.
+  const lateralAt = (s: number): number => awayAt(s) + lane;
+  const apronTop = (s: number): number => {
+    const base = lineY + 0.008 + (y0 - lineY - 0.008) * level(s);
+    return entered > 0 && s < rampTo && lateralAt(s) > YARD_CARRIAGEWAY_HALF_M
+      ? Math.max(base, rise + CURB_Y_OFFSET + 0.004)
+      : base;
+  };
+  const lotRailBottom = y0 + YARD_BALLAST.h + YARD_SLEEPER.h;
+  const railBottom = (s: number): number =>
+    spec.ballast ? lineY + 0.01 + (lotRailBottom - lineY - 0.01) * level(s) : apronTop(s) + 0.01;
+  const railH = (s: number): number => 0.012 + (YARD_RAIL.h - 0.012) * level(s);
+  const railW = (s: number): number =>
+    s >= YARD_BLADE.length
+      ? YARD_RAIL.w
+      : YARD_BLADE.tip + (YARD_RAIL.w - YARD_BLADE.tip) * (s / YARD_BLADE.length);
+
+  for (let i = 1; i < path.length; i++) {
+    const chord = grownSegment(
+      { x0: path[i - 1]!.x, z0: path[i - 1]!.z, x1: path[i]!.x, z1: path[i]!.z },
+      0.03,
+    );
+    const mid = (cum[i - 1]! + cum[i]!) / 2;
+    const bottom = railBottom(mid);
+    if (spec.ballast) {
+      // The bed runs down below the terrain; at the points it is flush with the line's own surface.
+      const bed = Math.min(-0.3, rise - 0.3);
+      const bedTop = Math.min(bottom - YARD_SLEEPER.h, mid < turnoutLength ? lineY : Infinity);
+      parts.push(
+        alongSegment(chord, 2 * YARD_BALLAST.halfW, bedTop - bed, bed, 0, YARD_BALLAST_RGB),
+      );
+    } else {
+      const top = apronTop(mid);
+      const width =
+        YARD_LEAD_APRON_W.street + (YARD_LEAD_APRON_W.lot - YARD_LEAD_APRON_W.street) * level(mid);
+      const base = Math.min(-0.2, rise - 0.2);
+      parts.push(alongSegment(chord, width, top - base, base, 0, YARD_APRON_RGB));
+      parts.push(alongSegment(chord, 2 * YARD_TRACKBED_HALF_M, 0.004, top, 0, YARD_TRACKBED_RGB));
+    }
+    const bladeRail = mid < YARD_BLADE.length;
+    for (const side of [-1, 1]) {
+      parts.push(
+        alongSegment(
+          chord,
+          railW(mid),
+          railH(mid),
+          bottom,
+          side * YARD_GAUGE_HALF_M,
+          bladeRail ? YARD_BLADE_RGB : YARD_RAIL_RGB,
+        ),
+      );
+      if (!spec.ballast) {
+        // The groove on the gauge side of each rail, in the paving.
+        parts.push(
+          alongSegment(
+            chord,
+            0.05,
+            0.002,
+            bottom + railH(mid),
+            side * (YARD_GAUGE_HALF_M - YARD_RAIL.w / 2 - 0.03),
+            YARD_GROOVE_RGB,
+          ),
+        );
+      }
+    }
+  }
+
+  if (spec.ballast) {
+    // Sleepers every 1.6 m along the curve, but where the turnout's longer ones lie.
+    for (let s = YARD_SLEEPER.pitch / 2; s < total; s += YARD_SLEEPER.pitch) {
+      if (s < turnoutLength) continue;
+      let i = 1;
+      while (i < path.length - 1 && cum[i]! < s) i++;
+      const a = path[i - 1]!;
+      const b = path[i]!;
+      const t = (s - cum[i - 1]!) / Math.max(1e-9, cum[i]! - cum[i - 1]!);
+      const sleeper = new THREE.BoxGeometry(YARD_SLEEPER.l, YARD_SLEEPER.h, YARD_SLEEPER.w);
+      sleeper.rotateY(Math.atan2(b.x - a.x, b.z - a.z));
+      sleeper.translate(
+        a.x + (b.x - a.x) * t,
+        railBottom(s) - YARD_SLEEPER.h / 2,
+        a.z + (b.z - a.z) * t,
+      );
+      parts.push(paintVertexColor(sleeper, hexFromRgb(YARD_SLEEPER_RGB)));
+    }
+  }
+  const place = (u: number, v: number): Vec2 => ({
+    x: at.x + along.x * u + across.x * v,
+    z: at.z + along.z * u + across.z * v,
+  });
+  const offsetAt = (u: number): number => radius - Math.sqrt(Math.max(0, radius * radius - u * u));
+  const yawOf = (dir: Vec2): number => Math.atan2(dir.x, dir.z);
+
+  if (spec.ballast) {
+    // Longer sleepers carry both routes from the points to just past the frog.
+    // Their tops lie a hair over the line's surface and under its sleepers and rails,
+    // so the line's own track reads over them and only their ends show.
+    const top = lineY + 0.002;
+    for (let s = YARD_SLEEPER.pitch; s < turnoutLength; s += YARD_SLEEPER.pitch) {
+      const off = offsetAt(s);
+      const sleeper = new THREE.BoxGeometry(YARD_SLEEPER.w, 0.15, YARD_SLEEPER.l + off);
+      sleeper.rotateY(yawOf(across));
+      const c = place(s, off / 2);
+      sleeper.translate(c.x, top - 0.075, c.z);
+      parts.push(paintVertexColor(sleeper, hexFromRgb(YARD_SLEEPER_RGB)));
+    }
+  }
+  // The frog: a heavy casting where the two rails cross, along the angle between the routes.
+  const frogDir = {
+    x: along.x * Math.cos(frogAngle / 2) + across.x * Math.sin(frogAngle / 2),
+    z: along.z * Math.cos(frogAngle / 2) + across.z * Math.sin(frogAngle / 2),
+  };
+  const frogAt = place(frogU, gauge);
+  const frogS = Math.min(total, frogU * (1 + (frogAngle * frogAngle) / 6));
+  const frogBottom = railBottom(frogS);
+  parts.push(
+    alongSegment(
+      {
+        x0: frogAt.x - frogDir.x * 0.9,
+        z0: frogAt.z - frogDir.z * 0.9,
+        x1: frogAt.x + frogDir.x * 0.9,
+        z1: frogAt.z + frogDir.z * 0.9,
+      },
+      0.3,
+      railH(frogS) + 0.02,
+      frogBottom,
+      0,
+      YARD_FROG_RGB,
+    ),
+  );
+  // The switch stand beside the points, on the side away from the lead, its target a red lamp head.
+  if (spec.ballast) {
+    const stand = place(2.2, -2.1);
+    parts.push(standingBox(0.3, 0.5, 0.3, stand.x, lineY - 0.02, stand.z, YARD_STAND_RGB));
+    parts.push(standingBox(0.5, 0.08, 0.5, stand.x, lineY + 0.48, stand.z, YARD_STAND_TARGET_RGB));
+  }
+}
+
+/** A buffer stop closing a lead that has no room to reach the line: a beam across the rails on two posts. */
+function bufferStopParts(
+  parts: THREE.BufferGeometry[],
+  stop: { at: Vec2; dir: Vec2 },
+  y0: number,
+  ballast: boolean,
+): void {
+  const rail = y0 + (ballast ? YARD_BALLAST.h + YARD_SLEEPER.h : 0.01) + YARD_RAIL.h;
+  const yaw = Math.atan2(stop.dir.x, stop.dir.z);
+  const side = { x: Math.cos(yaw), z: -Math.sin(yaw) };
+  for (const s of [-1, 1]) {
+    parts.push(
+      standingBox(
+        0.2,
+        0.7,
+        0.2,
+        stop.at.x + side.x * s * 0.95,
+        rail - 0.12,
+        stop.at.z + side.z * s * 0.95,
+        YARD_STAND_RGB,
+      ),
+    );
+  }
+  const beam = new THREE.BoxGeometry(2.3, 0.22, 0.25);
+  beam.rotateY(yaw);
+  beam.translate(stop.at.x, rail + 0.4, stop.at.z);
+  parts.push(paintVertexColor(beam, hexFromRgb(YARD_STAND_TARGET_RGB)));
+}
+
 /** Every rail of the yard as one geometry; local Y=0 is the highest ground under the lot. */
-function buildYardTrackGeometry(layout: YardLayout, spec: YardSpec): THREE.BufferGeometry {
+function buildYardTrackGeometry(
+  layout: YardLayout,
+  spec: YardSpec,
+  rise = 0,
+): THREE.BufferGeometry {
   const parts: THREE.BufferGeometry[] = [];
   const y0 = RECYCLING_YARD_HEIGHT + (spec.ballast ? 0 : EDU_ASPHALT_M);
   for (const seg of yardSegments(layout)) trackParts(parts, seg, y0, spec.ballast);
+  const lot: Rect = {
+    x0: layout.fence.x0 - GEN_FENCE_INSET_M,
+    x1: layout.fence.x1 + GEN_FENCE_INSET_M,
+    z0: layout.fence.z0 - GEN_FENCE_INSET_M,
+    z1: layout.fence.z1 + GEN_FENCE_INSET_M,
+  };
+  joinParts(parts, layout, spec, lot, y0, rise);
+  if (layout.stop) bufferStopParts(parts, layout.stop, y0, spec.ballast);
   return mergeParts(parts);
 }
 
@@ -9126,6 +9759,8 @@ export class UtilityKitRenderer {
   private readonly railAt: (x: number, z: number) => boolean;
   /** Whether a tile carries tram track, so a tram depot runs its lead to it; the default sees none. */
   private readonly tramAt: (x: number, z: number) => boolean;
+  /** How far a tram street's lane track lies from its tile's centre, at a tile; the default is the preset street's. */
+  private readonly tramLaneAt: (x: number, z: number) => number;
   private readonly registryIds = new Set(UTILITY_KIT_CATALOG_IDS);
   private readonly kits = new Map<string, KitDefinition>();
   private readonly instances = new Map<number, InstanceRecord>();
@@ -9138,6 +9773,8 @@ export class UtilityKitRenderer {
   private readonly fleets = new Map<number, number>();
   /** Where each placed depot stands, so its parked fleet can be refit without a building delta. */
   private readonly depots = new Map<number, DepotPlacement>();
+  /** The yards, depots and stations as placed: each lays itself against the track beside it, so a change to that track lays it again. */
+  private readonly trackKits = new Map<number, BuildingInstance>();
   /** Catchment load on each park, by building id: kept for a park whose building arrives after its load. */
   private readonly parkLoads = new Map<number, number>();
   /** Parts whose geometry does not depend on the footprint, one pool across every kit that stands them. */
@@ -9170,7 +9807,9 @@ export class UtilityKitRenderer {
     waterAt?: (x: number, z: number) => boolean,
     railAt?: (x: number, z: number) => boolean,
     tramAt?: (x: number, z: number) => boolean,
+    tramLaneAt?: (x: number, z: number) => number,
   ) {
+    this.tramLaneAt = tramLaneAt ?? ((): number => TRAM_DEPOT_SPEC.trackOffset);
     this.scene = scene;
     this.heightAt = heightAt;
     this.waterAt = waterAt ?? ((): boolean => false);
@@ -9179,6 +9818,32 @@ export class UtilityKitRenderer {
     for (const entry of catalog) {
       if (this.registryIds.has(entry.id)) this.kits.set(entry.id, this.buildKit(entry));
     }
+  }
+
+  /**
+   * Lays again every yard, depot and station whose line changed: those with a
+   * changed track tile within reach of their lot (three tiles for a lead that
+   * curves out beyond the corner, one for a platform). Only those kits are
+   * touched. Returns the ids laid again.
+   */
+  relayBeside(tiles: readonly { x: number; z: number }[]): number[] {
+    const relaid: BuildingInstance[] = [];
+    for (const building of this.trackKits.values()) {
+      const entry = this.kits.get(building.catalogId)?.entry;
+      if (!entry) continue;
+      const lot = footprintForRotation(entry, building.rotation);
+      const reach = building.catalogId === 'rail-station' ? 1 : 3;
+      const near = tiles.some(
+        (t) =>
+          t.x >= building.x - reach &&
+          t.x < building.x + lot.w + reach &&
+          t.z >= building.z - reach &&
+          t.z < building.z + lot.d + reach,
+      );
+      if (near) relaid.push(building);
+    }
+    if (relaid.length > 0) this.apply({ added: [], removed: [], updated: relaid });
+    return relaid.map((b) => b.id);
   }
 
   /** Consumes one BuildingDelta: non-registry catalog ids are ignored entirely (BuildingInstancer still draws their plinth/box). */
@@ -10091,6 +10756,9 @@ export class UtilityKitRenderer {
     if (!kit) return; // registry says kit-owned, but no matching catalog entry was provided — nothing to build
 
     const entry = kit.entry;
+    if (['rail-yard', 'tram-depot', 'rail-station'].includes(entry.id)) {
+      this.trackKits.set(building.id, building);
+    }
     const rotation = building.rotation;
     const lot = footprintForRotation(entry, rotation);
     const centerX = (building.x + lot.w / 2) * TILE_METERS;
@@ -10186,10 +10854,10 @@ export class UtilityKitRenderer {
         this.applyBusBase(kit, building, entry, centerX, groundY, centerZ, rotation);
         return;
       case 'tram-depot':
-        this.applyYard(kit, building, entry, 'tram', centerX, groundY, centerZ, rotation);
+        this.applyYard(kit, building, entry, 'tram', centerX, groundY, centerZ);
         return;
       case 'rail-yard':
-        this.applyYard(kit, building, entry, 'rail', centerX, groundY, centerZ, rotation);
+        this.applyYard(kit, building, entry, 'rail', centerX, groundY, centerZ);
         return;
       default:
         // Unreachable: kit is only non-null for entry.ids covered above (see buildKit's switch).
@@ -10235,11 +10903,127 @@ export class UtilityKitRenderer {
   }
 
   /**
+   * Whether the tile beside the lot at index i along its track edge carries
+   * track, for a kit in the frame turned `turn` and centred on (centerX,
+   * centerZ): index 0 is the frame's first tile at its -X (or, off the end, -Z)
+   * end, and an index below 0 lies before the lot's corner.
+   */
+  private lineTileAt(
+    trackAt: (x: number, z: number) => boolean,
+    centerX: number,
+    centerZ: number,
+    footprint: { w: number; d: number },
+    fromEnd: boolean,
+    turn: 0 | 1 | 2 | 3,
+  ): (i: number) => boolean {
+    const { halfW, halfD } = footprintHalfExtents(footprint);
+    const off = TILE_METERS / 2;
+    return (i) => {
+      const along = (i + 0.5) * TILE_METERS;
+      const local = fromEnd
+        ? { x: -halfW - off, z: -halfD + along }
+        : { x: -halfW + along, z: -halfD - off };
+      const turned = rotateLocalXZ(local.x, local.z, turn);
+      return trackAt(
+        Math.floor((centerX + turned.x) / TILE_METERS),
+        Math.floor((centerZ + turned.z) / TILE_METERS),
+      );
+    };
+  }
+
+  /**
    * A yard is laid out in its frame: the track and grounds of whichever frame
    * the lot takes, turned so the lead meets the edge the track runs by — never
    * the rotation the player placed it at. With no track beside it the lead
    * takes the back of the lot as placed.
    */
+  /** How a yard stands against the track beside it: its frame, how its lead reaches the line, and the layout that follows. */
+  private yardPlan(
+    building: BuildingInstance,
+    entry: BuildingCatalogEntry,
+    mode: 'tram' | 'rail',
+    centerX: number,
+    centerZ: number,
+  ) {
+    const lot = footprintForRotation(entry, building.rotation);
+    const trackAt = mode === 'tram' ? this.tramAt : this.railAt;
+    const facing =
+      railSideOf(building.x, building.z, lot, trackAt) ??
+      (((building.rotation + 2) % 4) as 0 | 1 | 2 | 3);
+    const frame = yardFrame(entry, building.rotation, facing);
+    const spec = mode === 'tram' ? TRAM_DEPOT_SPEC : RAIL_YARD_SPEC;
+    // A tram lead joins the lane its street's own profile lays, read at the tile beside the lot.
+    const beside = this.lineTileAt(
+      trackAt,
+      centerX,
+      centerZ,
+      frame.footprint,
+      frame.fromEnd,
+      frame.turn,
+    );
+    const lane = mode === 'tram' ? this.tramLaneAt(...this.tileBeside(centerX, centerZ, frame)) : 0;
+    const join = chooseYardJoin(frame.footprint, spec, frame.fromEnd, beside, lane);
+    const layout = computeYardLayout(
+      frame.footprint,
+      spec,
+      frame.fromEnd,
+      YARD_CARS[mode],
+      join,
+      lane,
+    );
+    return { frame, spec, join, layout, lane };
+  }
+
+  /** The world tile at the middle of the edge the track runs along, one tile out from the lot. */
+  private tileBeside(
+    centerX: number,
+    centerZ: number,
+    frame: { footprint: { w: number; d: number }; fromEnd: boolean; turn: 0 | 1 | 2 | 3 },
+  ): [number, number] {
+    const { halfW, halfD } = footprintHalfExtents(frame.footprint);
+    const local = frame.fromEnd
+      ? { x: -halfW - TILE_METERS / 2, z: 0 }
+      : { x: 0, z: -halfD - TILE_METERS / 2 };
+    const t = rotateLocalXZ(local.x, local.z, frame.turn);
+    return [Math.floor((centerX + t.x) / TILE_METERS), Math.floor((centerZ + t.z) / TILE_METERS)];
+  }
+
+  /**
+   * The street tiles a tram depot's lead crosses outside its lot: the apron
+   * lies over them, so nothing else may stand there. Empty for any other kit
+   * and for a lead that ends at a buffer stop.
+   */
+  leadTiles(building: BuildingInstance): { x: number; z: number }[] {
+    const kit = this.kits.get(building.catalogId);
+    if (!kit || building.catalogId !== 'tram-depot') return [];
+    const lot = footprintForRotation(kit.entry, building.rotation);
+    const centerX = (building.x + lot.w / 2) * TILE_METERS;
+    const centerZ = (building.z + lot.d / 2) * TILE_METERS;
+    const { frame, layout } = this.yardPlan(building, kit.entry, 'tram', centerX, centerZ);
+    const seen = new Map<number, { x: number; z: number }>();
+    const path = layout.joinPath;
+    for (let i = 1; i < path.length; i++) {
+      for (let k = 0; k <= 4; k++) {
+        const p = {
+          x: path[i - 1]!.x + ((path[i]!.x - path[i - 1]!.x) * k) / 4,
+          z: path[i - 1]!.z + ((path[i]!.z - path[i - 1]!.z) * k) / 4,
+        };
+        const t = rotateLocalXZ(p.x, p.z, frame.turn);
+        const tile = {
+          x: Math.floor((centerX + t.x) / TILE_METERS),
+          z: Math.floor((centerZ + t.z) / TILE_METERS),
+        };
+        const inLot =
+          tile.x >= building.x &&
+          tile.x < building.x + lot.w &&
+          tile.z >= building.z &&
+          tile.z < building.z + lot.d;
+        if (!inLot) seen.set(tile.x * 100_000 + tile.z, tile);
+      }
+    }
+    return [...seen.values()];
+  }
+
   private applyYard(
     kit: KitDefinition,
     building: BuildingInstance,
@@ -10248,27 +11032,40 @@ export class UtilityKitRenderer {
     centerX: number,
     groundY: number,
     centerZ: number,
-    rotation: 0 | 1 | 2 | 3,
   ): void {
-    const lot = footprintForRotation(entry, rotation);
-    const trackAt = mode === 'tram' ? this.tramAt : this.railAt;
-    const facing =
-      railSideOf(building.x, building.z, lot, trackAt) ?? (((rotation + 2) % 4) as 0 | 1 | 2 | 3);
-    const frame = yardFrame(entry, rotation, facing);
-    const spec = mode === 'tram' ? TRAM_DEPOT_SPEC : RAIL_YARD_SPEC;
-    const layout = computeYardLayout(frame.footprint, spec, frame.fromEnd, YARD_CARS[mode]);
+    const { frame, spec, join, layout } = this.yardPlan(building, entry, mode, centerX, centerZ);
+    // The line's own ground, where the lead leaves it, against the lot's levelled ground: the
+    // lead, its bed and the turnout stand on it, to the nearest 2 cm.
+    let rise = 0;
+    if (layout.turnout) {
+      const t = rotateLocalXZ(layout.turnout.at.x, layout.turnout.at.z, frame.turn);
+      rise = Math.round((this.heightAt(centerX + t.x, centerZ + t.z) - groundY) * 50) / 50;
+    }
     const prefix = mode === 'tram' ? 'tramDepot' : 'railYard';
-    const yardKind = `${prefix}Yard${frame.fromEnd ? 'End' : ''}` as UtilityKitPartKind;
-    const trackKind = `${prefix}Track${frame.fromEnd ? 'End' : ''}` as UtilityKitPartKind;
-    const shopKind = `${prefix}Shop` as UtilityKitPartKind;
-    const litKind = `${prefix}Lit` as UtilityKitPartKind;
+    const reachName = join.reach === 'short' ? 'Short' : join.reach === 'stop' ? 'Stop' : '';
+    const suffix = join.mirror ? `Mirror${reachName}` : `${frame.fromEnd ? 'End' : ''}${reachName}`;
+    const riseName = rise === 0 ? '' : `R${Math.round(rise * 100)}`;
+    const side = join.mirror ? 'Mirror' : '';
+    const yardKind = `${prefix}Yard${suffix}` as UtilityKitPartKind;
+    const trackKind = `${prefix}Track${suffix}${riseName}` as UtilityKitPartKind;
+    const shopKind = `${prefix}Shop${side}` as UtilityKitPartKind;
+    const litKind = `${prefix}Lit${side}` as UtilityKitPartKind;
+    const polesKind = `tramDepotPoles${side}` as UtilityKitPartKind;
     const carKinds: UtilityKitPartKind[] = [...YARD_CAR_KINDS[mode]];
-    const yard = kit.pools[yardKind];
-    const track = kit.pools[trackKind];
-    const shop = kit.pools[shopKind];
-    const lit = kit.pools[litKind];
-    const poles = kit.pools.tramDepotPoles;
-    if (!yard || !track || !shop || !lit || carKinds.some((kind) => !kit.pools[kind])) return;
+    const fresh = (kind: UtilityKitPartKind, make: () => THREE.BufferGeometry, lit = false) =>
+      (kit.pools[kind] ??= new InstancedSlotPool(
+        this.scene,
+        make(),
+        lit ? this.stationLightMaterial : this.bodyMaterial(),
+        INITIAL_KIT_CAPACITY,
+      ));
+    const yard = fresh(yardKind, () => buildYardYardGeometry(frame.footprint, layout, spec));
+    const track = fresh(trackKind, () => buildYardTrackGeometry(layout, spec, rise));
+    const shop = fresh(shopKind, () => buildYardShopGeometry(layout, entry.height));
+    const lit = fresh(litKind, () => buildYardLitGeometry(layout), true);
+    const poles =
+      mode === 'tram' ? fresh(polesKind, () => buildYardPolesGeometry(layout)) : undefined;
+    if (carKinds.some((kind) => !kit.pools[kind])) return;
     const { carPart, carTurn } = yardCarParts(mode);
     const { turn } = frame;
     const yardTop = groundY + RECYCLING_YARD_HEIGHT;
@@ -10295,9 +11092,7 @@ export class UtilityKitRenderer {
       [litKind]: [this.placeAt(lit, centerX, yardTop, centerZ, turn)],
     };
     for (const kind of carKinds) slots[kind] = [];
-    if (poles && mode === 'tram') {
-      slots.tramDepotPoles = [this.placeAt(poles, centerX, yardTop, centerZ, turn)];
-    }
+    if (poles) slots[polesKind] = [this.placeAt(poles, centerX, yardTop, centerZ, turn)];
     this.instances.set(building.id, { catalogId: building.catalogId, slots });
     this.fitFleet(building.id);
   }
@@ -10440,9 +11235,35 @@ export class UtilityKitRenderer {
       depotCar.setColorAt(slot, _carColor);
       cars.push(slot);
     });
+    // The platform runs out to the track along each tile of the edge that has track beside it.
+    const onLine = this.lineTileAt(this.railAt, centerX, centerZ, frame.footprint, false, turn);
+    const tiles = Array.from({ length: frame.footprint.w }, (_, i) => onLine(i));
+    const mask = tiles.reduce((bits, on, i) => (on ? bits | (1 << i) : bits), 0);
+    // The track's own ground, at its first tile, against the lot's levelled ground, to the nearest 2 cm.
+    const first = tiles.indexOf(true);
+    let rise = 0;
+    if (first >= 0) {
+      const { halfW, halfD } = footprintHalfExtents(frame.footprint);
+      const t = rotateLocalXZ(-halfW + (first + 0.5) * TILE_METERS, -halfD - TILE_METERS / 2, turn);
+      rise = Math.round((this.heightAt(centerX + t.x, centerZ + t.z) - groundY) * 50) / 50;
+    }
+    const riseName = rise === 0 ? '' : `R${Math.round(rise * 100)}`;
+    const tracksideKind =
+      `depotTrackside${frame.long ? 'Long' : ''}${mask}${riseName}` as DepotTracksideKind;
+    const trackside: Partial<Record<UtilityKitPartKind, number[]>> = {};
+    if (mask !== 0) {
+      const pool = (kit.pools[tracksideKind] ??= new InstancedSlotPool(
+        this.scene,
+        buildDepotTracksideGeometry(frame.footprint, tiles, rise),
+        this.bodyMaterial(),
+        INITIAL_KIT_CAPACITY,
+      ));
+      trackside[tracksideKind] = [this.placeAt(pool, centerX, groundY, centerZ, turn)];
+    }
     this.instances.set(building.id, {
       catalogId: building.catalogId,
       slots: {
+        ...trackside,
         [frame.long ? 'depotGroundsLong' : 'depotGrounds']: [
           this.placeAt(grounds, centerX, groundY, centerZ, turn),
         ],
@@ -11486,5 +12307,6 @@ export class UtilityKitRenderer {
     this.turbineAnims.delete(buildingId);
     this.cemeteries.delete(buildingId);
     this.depots.delete(buildingId);
+    this.trackKits.delete(buildingId);
   }
 }

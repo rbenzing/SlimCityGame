@@ -145,7 +145,7 @@ import { PhotoModeController } from './render/photomode';
 import { StatsHistory } from './ui/statshistory';
 import { ADVISOR_REFRESH_SNAPSHOTS, cityIssues } from './ui/advisor';
 import { GhostRenderer, type GhostKind, type SetPreviewOptions } from './render/ghosts';
-import { UtilityKitRenderer } from './render/utilitykits';
+import { UtilityKitRenderer, tramLaneOffsetOf } from './render/utilitykits';
 import { BusStopRenderer, stopRoadAt } from './render/busstops';
 import { FarmRenderer } from './render/farms';
 import { ZoneGridRenderer } from './render/zonegrid';
@@ -314,6 +314,8 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
     kitSensors.railAt,
     // A tram depot runs its lead to the tram track beside it.
     (x, z) => inBounds(x, z) && isTramTier(clientGrid.roadTier[z * clientGrid.size + x] ?? 0),
+    // The lane track it joins lies where that street's own profile lays it.
+    (x, z) => tramLaneOffsetOf(clientGrid.profileAt(x, z)),
   );
   // A crossing tile holds two roads; the road passing over it has a surface of
   // its own, which the ordinary sampler — answering for the road beneath —
@@ -2205,6 +2207,9 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       if (raised.length > 0)
         roadsMesh.invalidateHeights(raised.map((t) => ({ x: t.x, z: t.z, w: 1, h: 1 })));
       zoneGrid.rebuild(clientGrid);
+      // A yard, depot or station lays itself against the track beside it, so a
+      // changed tile lays again only the kits within its reach.
+      utilityKits.relayBeside(snap.roads.map((d) => ({ x: d.x, z: d.z })));
       const roadTiles = clientGrid.roadTiles();
       setLatestRoadTiles(roadTiles);
       // A stop stands on its tile's own cross-section, so it follows the road.
@@ -2262,6 +2267,8 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
         if (civic) {
           for (const tile of civicCutTiles(civic, street)) keys.push(tile.x * 100_000 + tile.z);
         }
+        // A tram depot's lead lies on a paved apron over the street tiles it crosses.
+        for (const tile of utilityKits.leadTiles(inst)) keys.push(tile.x * 100_000 + tile.z);
         const home = planHouseGround(inst, entry, roadAt, street);
         if (home) {
           for (const tile of driveRoadTiles(inst, entry, home))

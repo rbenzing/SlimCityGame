@@ -25,7 +25,7 @@ current behavior only and carry no dates of their own._
 
 ## Status (2026-09-29)
 
-**Test suite:** 7,618 tests passing across 225 test files, run 2026-11-11.
+**Test suite:** 7,643 tests passing across 226 test files, run 2026-11-11.
 This is the only test count in the documentation set. When the suite changes
 again, update the figure here and nowhere else.
 
@@ -67,8 +67,11 @@ again, update the figure here and nowhere else.
   The kit omits what does not fit and parks the vans in the lot's trailer
   stalls. The real fix is deeper lots for the heavy kinds in the lot layout
   (truck courts run 120–135 ft), a lots-and-land change.
-- A tram depot declares no crossing (its gate faces the track) and the
-  college no drive (its kit has no car park).
+- The college declares no drive (its kit has no car park).
+- A yard's or a depot's lead ends at a buffer stop inside its fence where the
+  line gives its curve no run, track only along the lot's own edge
+  `[R-roads-082]`; a tram depot's apron lies over a kerb that is not dropped;
+  the lead's fit to sloped ground is tested and not yet shot.
 - A lot a zone grows on is levelled with its east and south neighbours only,
   so on a slope its north and west edges still tilt; a placed building
   levels the whole ring `[R-world-051]`. The ring for grown lots is owed,
