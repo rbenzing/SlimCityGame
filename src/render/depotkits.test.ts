@@ -110,6 +110,7 @@ const PART_KINDS: readonly UtilityKitPartKind[] = [
   'tramDepotShop',
   'tramDepotLit',
   'tramDepotCar',
+  'tramDepotCarTail',
   'railYardYard',
   'railYardYardEnd',
   'railYardTrack',
@@ -117,6 +118,7 @@ const PART_KINDS: readonly UtilityKitPartKind[] = [
   'railYardShop',
   'railYardLit',
   'railYardCar',
+  'railYardCarMid',
 ];
 
 /** Every placed part of the kit lies inside the turned lot, in world metres. */
@@ -373,7 +375,9 @@ describe('the fleet at home', () => {
     renderer.setDepotFleets([{ id: 7, holds: 8, inService: 6 }]);
     renderer.apply(add(instance(7, 'tram-depot')));
     expect(renderer.parkedFleets()).toEqual({ 7: 2 });
-    expect(renderer.partSlotsFor(7, 'tramDepotCar')).toHaveLength(2 * YARD_CARS.tram.perSet);
+    // Two sets stand parked: each a lead section and a tail section, one pool apiece.
+    expect(renderer.partSlotsFor(7, 'tramDepotCar')).toHaveLength(2);
+    expect(renderer.partSlotsFor(7, 'tramDepotCarTail')).toHaveLength(2);
   });
 
   it('stands each bus nose-in on its own stall, the first stalls in fill order', () => {
@@ -756,5 +760,95 @@ describe('the four kits', () => {
     }
     // eslint-disable-next-line no-console
     console.table(table);
+  });
+});
+
+describe('the sets stabled in a depot and a yard', () => {
+  const cabSide = (geometry: THREE.BufferGeometry): number => {
+    const region = geometry.getAttribute('vehicleRegion');
+    const position = geometry.getAttribute('position');
+    let sum = 0;
+    for (let i = 0; i < region.count; i += 1) if (region.getX(i) === 2) sum += position.getZ(i);
+    return Math.sign(sum);
+  };
+
+  it('is the geometry the lines run: its own cars with a region mask, not the bus box', () => {
+    const train = new UtilityKitRenderer(new THREE.Scene(), flat, [RAIL]);
+    train.apply(add(instance(1, 'rail-yard')));
+    const end = train.partGeometry('rail-yard', 'railYardCar')!;
+    const middle = train.partGeometry('rail-yard', 'railYardCarMid')!;
+    expect(end).not.toBe(middle);
+    expect(cabSide(end)).toBe(1);
+    expect(cabSide(middle)).toBe(0);
+    expect(end.getAttribute('vehicleRegion')).toBeDefined();
+    end.computeBoundingBox();
+    // A car and half a gap: its bellows reach to the middle of the gap to the next car.
+    expect(end.boundingBox!.max.z - end.boundingBox!.min.z).toBeCloseTo(14.6, 2);
+
+    const tram = new UtilityKitRenderer(new THREE.Scene(), flat, [TRAM]);
+    tram.apply(add(instance(1, 'tram-depot')));
+    expect(cabSide(tram.partGeometry('tram-depot', 'tramDepotCar')!)).toBe(1);
+    expect(cabSide(tram.partGeometry('tram-depot', 'tramDepotCarTail')!)).toBe(1);
+  });
+
+  it('turns each set’s cabs outward and never mirrors a car', () => {
+    for (const [entry, kinds, order] of [
+      [RAIL, ['railYardCar', 'railYardCarMid', 'railYardCar'], 3],
+      [TRAM, ['tramDepotCar', 'tramDepotCarTail'], 2],
+    ] as const) {
+      const renderer = new UtilityKitRenderer(new THREE.Scene(), flat, [entry]);
+      renderer.apply(add(instance(1, entry.id)));
+      // The first set stands in the first slot of each pool, in set order.
+      const next = new Map<UtilityKitPartKind, number>();
+      const cars = Array.from({ length: order }, (_, car) => {
+        const kind = kinds[car]!;
+        const at = next.get(kind) ?? 0;
+        next.set(kind, at + 1);
+        const slot = renderer.partSlotsFor(1, kind)[at]!;
+        const m = new THREE.Matrix4();
+        renderer.getPartMatrix(entry.id, kind, slot, m);
+        expect(m.determinant()).toBeGreaterThan(0);
+        const geometry = renderer.partGeometry(entry.id, kind)!;
+        geometry.computeBoundingBox();
+        const faces = [geometry.boundingBox!.min.z, geometry.boundingBox!.max.z].map((z) =>
+          new THREE.Vector3(0, 0, z).applyMatrix4(m),
+        );
+        return { m, side: cabSide(geometry), faces };
+      });
+      // The bellows of neighbouring cars meet: no daylight in a stabled set either.
+      for (let car = 0; car + 1 < order; car += 1) {
+        const gap = Math.min(
+          ...cars[car]!.faces.flatMap((a) => cars[car + 1]!.faces.map((b) => a.distanceTo(b))),
+        );
+        expect(gap, `${entry.id} cars ${car} and ${car + 1}`).toBeLessThan(0.02);
+      }
+      const axis = new THREE.Vector3()
+        .setFromMatrixPosition(cars[0]!.m)
+        .sub(new THREE.Vector3().setFromMatrixPosition(cars[order - 1]!.m))
+        .normalize();
+      const nose = (car: { m: THREE.Matrix4; side: number }): number =>
+        new THREE.Vector3(0, 0, car.side).transformDirection(car.m).dot(axis);
+      expect(nose(cars[0]!)).toBeGreaterThan(0.99);
+      expect(nose(cars[order - 1]!)).toBeLessThan(-0.99);
+    }
+  });
+
+  it('stands the wheels on the rail head', () => {
+    const renderer = new UtilityKitRenderer(new THREE.Scene(), flat, [RAIL]);
+    renderer.apply(add(instance(1, 'rail-yard')));
+    const slot = renderer.partSlotsFor(1, 'railYardCar')[0]!;
+    // The lot takes the track on its long edge or its end: whichever frame the yard stands in.
+    const trackKind = renderer.partSlotsFor(1, 'railYardTrack').length
+      ? 'railYardTrack'
+      : 'railYardTrackEnd';
+    const track = placedBounds(
+      renderer,
+      'rail-yard',
+      trackKind,
+      renderer.partSlotsFor(1, trackKind)[0]!,
+    );
+    const car = placedBounds(renderer, 'rail-yard', 'railYardCar', slot);
+    // Y = 0 of the car is the wheel foot, set on the rail's top; the track part's highest point is that rail head.
+    expect(car.min.y).toBeCloseTo(track.max.y, 2);
   });
 });

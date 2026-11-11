@@ -412,7 +412,7 @@ export function paletteColorForSlot(
 // ---------------------------------------------------------------------------
 
 /** Tags every vertex of `geo` with a fixed baked color and region code, in place. */
-function tagGeometry(
+export function tagGeometry(
   geo: THREE.BufferGeometry,
   colorRGB: readonly [number, number, number],
   region: number,

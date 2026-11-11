@@ -39,7 +39,17 @@
  */
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { buildVehicleGeometry, laneOffset } from './vehicles';
+import { VehiclePartMaterial, buildVehicleGeometry, laneOffset } from './vehicles';
+import {
+  TRAIN_CAR_SIZE,
+  TRAM_CAR_SIZE,
+  TRAM_FLOOR_M,
+  buildTrainEndCarGeometry,
+  buildTrainMidCarGeometry,
+  buildTramLeadSectionGeometry,
+  buildTramTailSectionGeometry,
+} from './railcars';
+import { RAILWAY_RAIL_Y_OFFSET, TRAM_RAIL_Y_OFFSET } from './roadsmesh';
 import { BUS_SHELTER, buildBusShelterGeometry } from './busshelter';
 import catalogData from '../data/catalog.json';
 import {
@@ -126,37 +136,39 @@ const BUS_SIZE: readonly [number, number, number] = [2.5, 3.0, 10.0];
 
 // --- Trains -------------------------------------------------------------------
 
-/** A train car is longer and taller than a bus; several of them make a train. */
-export const TRAIN_CAR_SIZE: readonly [number, number, number] = [3.2, 3.8, 14];
+export { TRAIN_CAR_SIZE, TRAM_CAR_SIZE };
 export const TRAIN_CARS_PER_SET = 3;
 /** Nose-to-nose spacing down the polyline: a car plus a coupling gap. */
 export const TRAIN_CAR_PITCH = TRAIN_CAR_SIZE[2] + 1.2;
 
 // --- Trams --------------------------------------------------------------------
 
-/** A tram car is longer and taller than a bus, and narrower than a train car. */
-export const TRAM_CAR_SIZE: readonly [number, number, number] = [2.6, 3.4, 11];
 /** Two cars, articulated — they sit closer together than a train's are coupled. */
 export const TRAM_CARS_PER_SET = 2;
 export const TRAM_CAR_PITCH = TRAM_CAR_SIZE[2] + 0.4;
 
-/** One car at its real size, nose to +Z, standing on its own origin: the body the lines run, so a stabled set reads as the sets on the track. */
-function buildCarGeometry(size: readonly [number, number, number]): THREE.BufferGeometry {
-  const car = buildVehicleGeometry(VehicleKind.Bus);
-  car.scale(size[0], size[1], size[2]);
-  car.translate(0, size[1] / 2, 0);
-  return car;
+/**
+ * One car of a set: its geometry (built at real size, standing on its origin,
+ * nose to +Z) and whether the set turns it about, so a cab stands at each end.
+ * The lines and the yards' stabled sets build their cars from these alone.
+ */
+export interface SetCar {
+  readonly geometry: () => THREE.BufferGeometry;
+  readonly flip: boolean;
 }
 
-/** A tram car as the lines draw it, for a depot's stabled sets. */
-export function buildTramCarGeometry(): THREE.BufferGeometry {
-  return buildCarGeometry(TRAM_CAR_SIZE);
-}
+/** A train: an end car, a middle car, the end car turned about. */
+export const TRAIN_SET: readonly SetCar[] = [
+  { geometry: buildTrainEndCarGeometry, flip: false },
+  { geometry: buildTrainMidCarGeometry, flip: false },
+  { geometry: buildTrainEndCarGeometry, flip: true },
+];
 
-/** A train car as the lines draw it, for a yard's stabled sets. */
-export function buildTrainCarGeometry(): THREE.BufferGeometry {
-  return buildCarGeometry(TRAIN_CAR_SIZE);
-}
+/** A tram: the lead section with the pantograph, the tail turned about. */
+export const TRAM_SET: readonly SetCar[] = [
+  { geometry: buildTramLeadSectionGeometry, flip: false },
+  { geometry: buildTramTailSectionGeometry, flip: true },
+];
 
 /**
  * Everything that differs between a bus, a train and a tram on screen. A mode is
@@ -168,48 +180,57 @@ export function buildTrainCarGeometry(): THREE.BufferGeometry {
 interface ModeVehicle {
   readonly size: readonly [number, number, number];
   readonly carsPerSet: number;
+  /** The cars of a set in order, lead first; null for a bus, which is one scaled box of the bus kit. */
+  readonly set: readonly SetCar[] | null;
   /** Nose-to-nose spacing between cars of one set; unused for a single-car mode. */
   readonly pitch: number;
   readonly speed: number;
   readonly keepsRight: boolean;
   /** Rides the elevated guideway where its line runs over one. */
   readonly ridesGuideway: boolean;
+  /** How far the rail head stands over the ground the wheels roll on. */
+  readonly railHeadY: number;
 }
 
 const MODE_VEHICLE: Record<TransitMode, ModeVehicle> = {
   bus: {
     size: BUS_SIZE,
     carsPerSet: 1,
+    set: null,
     pitch: 0,
     speed: COMMERCIAL_SPEED_MPS.bus,
     keepsRight: true,
     ridesGuideway: false,
+    railHeadY: 0,
   },
   rail: {
     size: TRAIN_CAR_SIZE,
     carsPerSet: TRAIN_CARS_PER_SET,
+    set: TRAIN_SET,
     pitch: TRAIN_CAR_PITCH,
     speed: COMMERCIAL_SPEED_MPS.rail,
     keepsRight: false,
     ridesGuideway: false,
+    railHeadY: RAILWAY_RAIL_Y_OFFSET,
   },
   tram: {
     size: TRAM_CAR_SIZE,
     carsPerSet: TRAM_CARS_PER_SET,
+    set: TRAM_SET,
     pitch: TRAM_CAR_PITCH,
     speed: COMMERCIAL_SPEED_MPS.tram,
     keepsRight: true,
     ridesGuideway: true,
+    railHeadY: TRAM_RAIL_Y_OFFSET,
   },
 };
 
 /**
- * How high the drawn tram car's floor stands above its own bottom: over its
- * wheels, whose tops are there once the bus body is stretched to a tram's
- * height. On the guideway the car is set by its floor, so the body hangs
- * down either side of the beam it straddles.
+ * How high the drawn tram car's floor stands above its own bottom (the foot of
+ * its wheels): the low floor, over its wheels. On the guideway the car is set
+ * by its floor, so the body hangs down either side of the beam it straddles.
  */
-export const TRAM_FLOOR_ABOVE_ORIGIN_M = 0.95;
+export const TRAM_FLOOR_ABOVE_ORIGIN_M = TRAM_FLOOR_M;
 
 /** Fixed-capacity pool sizing: the largest fleet one depot holds, on every line, every car drawn. */
 const MAX_TRANSIT_LINES = 32;
@@ -389,9 +410,22 @@ interface ActiveVehicle {
   /** Buses keep right; a train sits on the track it runs on. */
   readonly keepsRight: boolean;
   readonly ridesGuideway: boolean;
+  /** The car of the set this slot draws; null for a bus. */
+  readonly car: SetCar | null;
+  /** Turned half about its heading, so the set's far cab faces away from the near one. */
+  readonly flip: boolean;
+  /** The instance scale: the bus kit's unit box scales to the bus, a rail car is drawn at its own size. */
+  readonly drawScale: readonly [number, number, number];
+  /** Rail head over the ground the wheels stand on. */
+  readonly railHeadY: number;
+  /** The mesh this slot is drawn by (an index into the renderer's car meshes) and its instance there. */
+  mesh: number;
+  index: number;
 }
 
 const _matrix = new THREE.Matrix4();
+/** A half turn about the up axis: a car that faces the other way. */
+const _flipQuat = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI);
 const _position = new THREE.Vector3();
 const _quaternion = new THREE.Quaternion();
 const _identityQuat = new THREE.Quaternion();
@@ -419,6 +453,12 @@ function flatPlaneGeometry(w: number, d: number): THREE.PlaneGeometry {
   const geo = new THREE.PlaneGeometry(w, d);
   geo.rotateX(-Math.PI / 2);
   return geo;
+}
+
+function railCarMaterial(): VehiclePartMaterial {
+  const material = new VehiclePartMaterial();
+  material.vertexColors = true;
+  return material;
 }
 
 export class TransitRenderer {
@@ -452,13 +492,20 @@ export class TransitRenderer {
   private readonly busGeometry = buildVehicleGeometry(VehicleKind.Bus);
   private readonly busMaterial = new THREE.MeshLambertMaterial({ vertexColors: true });
 
+  // A train or tram car is tinted through the vehicle kit's region mask: the
+  // line's colour reaches the body alone, never the glass, bogies, bellows or roof gear.
+  private readonly railMaterial = railCarMaterial();
+
   private shelterMesh: THREE.InstancedMesh | null = null;
   private signPoleMesh: THREE.InstancedMesh | null = null;
   private signMesh: THREE.InstancedMesh | null = null;
   private ribbonMesh: THREE.Mesh | null = null;
-  private busMesh: THREE.InstancedMesh | null = null;
+  /** One instanced mesh per distinct car geometry in play: the bus box, a train's end and middle car, a tram's two sections. */
+  private carMeshes: THREE.InstancedMesh[] = [];
+  /** The geometries built for the rail cars; the bus's is the renderer's own. */
+  private carGeometries: THREE.BufferGeometry[] = [];
 
-  private buses: (ActiveVehicle | null)[] = [];
+  private buses: ActiveVehicle[] = [];
   private busColors: number[] = [];
   private visible = true;
   /** The clock hour the lines are drawn at; they run only inside the service span. */
@@ -516,13 +563,14 @@ export class TransitRenderer {
 
   /** Advances every cosmetic bus along its line's polyline by `deltaSeconds` worth of travel. */
   update(deltaSeconds: number): void {
-    if (!this.busMesh) return;
+    if (this.carMeshes.length === 0) return;
     const running = this.isRunning();
 
     for (let slot = 0; slot < this.buses.length; slot += 1) {
       const bus = this.buses[slot];
-      if (!bus || !running) {
-        this.busMesh.setMatrixAt(slot, HIDDEN_MATRIX);
+      if (!bus) continue;
+      if (!running) {
+        this.carMeshes[bus.mesh]!.setMatrixAt(bus.index, HIDDEN_MATRIX);
         continue;
       }
 
@@ -566,20 +614,36 @@ export class TransitRenderer {
         const renderX = sample.x + offset.dx;
         const renderZ = sample.z + offset.dz;
         const groundY = this.heightAt(renderX, renderZ);
-        _position.set(renderX, groundY + bus.size[1] / 2, renderZ);
+        _position.set(renderX, groundY + bus.railHeadY + bus.size[1] / 2, renderZ);
         _quaternion.setFromAxisAngle(_yAxis, sample.heading);
       }
-      _vehicleScale.set(bus.size[0], bus.size[1], bus.size[2]);
+      if (bus.flip) _quaternion.multiply(_flipQuat);
+      _vehicleScale.set(bus.drawScale[0], bus.drawScale[1], bus.drawScale[2]);
       _matrix.compose(_position, _quaternion, _vehicleScale);
-      this.busMesh.setMatrixAt(slot, _matrix);
+      const mesh = this.carMeshes[bus.mesh]!;
+      mesh.setMatrixAt(bus.index, _matrix);
 
       const [r, g, b] = hexToRGB(this.busColors[slot] ?? 0xffffff);
       _color.setRGB(r, g, b);
-      this.busMesh.setColorAt(slot, _color);
+      mesh.setColorAt(bus.index, _color);
     }
 
-    this.busMesh.instanceMatrix.needsUpdate = true;
-    if (this.busMesh.instanceColor) this.busMesh.instanceColor.needsUpdate = true;
+    for (const mesh of this.carMeshes) {
+      mesh.instanceMatrix.needsUpdate = true;
+      if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+    }
+  }
+
+  /** The instance transform of vehicle `slot` (a bus, or one car of a set in lead-first order), for a test reading where it stands. */
+  getCarMatrix(slot: number, out: THREE.Matrix4): void {
+    const car = this.buses[slot];
+    if (car) this.carMeshes[car.mesh]?.getMatrixAt(car.index, out);
+  }
+
+  /** The geometry vehicle `slot` is drawn with, for a test reading what the set shows. */
+  getCarGeometry(slot: number): THREE.BufferGeometry | null {
+    const car = this.buses[slot];
+    return car ? (this.carMeshes[car.mesh]?.geometry ?? null) : null;
   }
 
   /** Transit-lens visibility toggle: hides/shows every owned mesh without disposing them. */
@@ -633,7 +697,7 @@ export class TransitRenderer {
     if (this.signPoleMesh) this.signPoleMesh.visible = this.visible;
     if (this.signMesh) this.signMesh.visible = this.visible;
     if (this.ribbonMesh) this.ribbonMesh.visible = this.visible;
-    if (this.busMesh) this.busMesh.visible = this.visible;
+    for (const mesh of this.carMeshes) mesh.visible = this.visible;
   }
 
   private buildShelters(
@@ -782,7 +846,7 @@ export class TransitRenderer {
 
   /** One set per vehicle the sim says the line runs, spaced at 1/served of the route. */
   private buildBuses(lines: readonly TransitLine[], served: readonly number[]): void {
-    const buses: (ActiveVehicle | null)[] = [];
+    const buses: ActiveVehicle[] = [];
     const colors: number[] = [];
 
     for (let i = 0; i < lines.length; i += 1) {
@@ -807,6 +871,7 @@ export class TransitRenderer {
         const lead = setLength + (runway * b) / count; // sets evenly spaced along the runway
         for (let car = 0; car < vehicle.carsPerSet; car += 1) {
           if (buses.length >= MAX_TRANSIT_VEHICLE_SLOTS) break;
+          const setCar = vehicle.set?.[car] ?? null;
           buses.push({
             points: worldPoints,
             totalLength,
@@ -816,6 +881,12 @@ export class TransitRenderer {
             speed: vehicle.speed,
             keepsRight: vehicle.keepsRight,
             ridesGuideway: vehicle.ridesGuideway,
+            car: setCar,
+            flip: setCar?.flip ?? false,
+            drawScale: setCar ? [1, 1, 1] : vehicle.size,
+            railHeadY: vehicle.railHeadY,
+            mesh: 0,
+            index: 0,
           });
           colors.push(line.color);
         }
@@ -827,24 +898,65 @@ export class TransitRenderer {
     this.busColors = colors;
     if (buses.length === 0) return;
 
-    const mesh = new THREE.InstancedMesh(this.busGeometry, this.busMaterial, buses.length);
-    mesh.count = buses.length;
-    for (let i = 0; i < buses.length; i += 1) mesh.setMatrixAt(i, HIDDEN_MATRIX);
-    mesh.instanceMatrix.needsUpdate = true;
-    this.busMesh = mesh;
-    this.scene.add(mesh);
+    // One mesh per distinct geometry: every bus shares the bus kit's box, and a
+    // train's two end cars share one geometry between them.
+    const meshOf = new Map<unknown, number>();
+    const members: ActiveVehicle[][] = [];
+    for (const bus of buses) {
+      const key = bus.car ? bus.car.geometry : this.busGeometry;
+      let at = meshOf.get(key);
+      if (at === undefined) {
+        at = members.length;
+        meshOf.set(key, at);
+        members.push([]);
+      }
+      bus.mesh = at;
+      bus.index = members[at]!.length;
+      members[at]!.push(bus);
+    }
+    for (const group of members) {
+      const car = group[0]!.car;
+      const geometry = car ? this.railGeometry(car, group[0]!.size[1]) : this.busGeometry;
+      const material = car ? this.railMaterial : this.busMaterial;
+      const mesh = new THREE.InstancedMesh(geometry, material, group.length);
+      mesh.count = group.length;
+      if (car) {
+        // The tint rides the same buffer as instanceColor, read by the region-masked material.
+        const tint = new THREE.InstancedBufferAttribute(
+          new Float32Array(group.length * 3).fill(1),
+          3,
+        );
+        mesh.instanceColor = tint;
+        geometry.setAttribute('vehicleInstanceTint', tint);
+      }
+      for (let i = 0; i < group.length; i += 1) mesh.setMatrixAt(i, HIDDEN_MATRIX);
+      mesh.instanceMatrix.needsUpdate = true;
+      this.carMeshes.push(mesh);
+      this.scene.add(mesh);
+    }
 
     // Places every bus at its initial position immediately, so a fresh
     // apply() reads correctly even before the next update(dt) call.
     this.update(0);
   }
 
+  /** A rail car's geometry about its middle height, so the instance sits where a bus's does: centred over the track. */
+  private railGeometry(car: SetCar, height: number): THREE.BufferGeometry {
+    const geometry = car.geometry();
+    geometry.translate(0, -height / 2, 0);
+    this.carGeometries.push(geometry);
+    return geometry;
+  }
+
   private disposeMeshes(): void {
-    for (const mesh of [this.shelterMesh, this.signPoleMesh, this.signMesh, this.busMesh]) {
+    for (const mesh of [this.shelterMesh, this.signPoleMesh, this.signMesh, ...this.carMeshes]) {
       if (!mesh) continue;
       this.scene.remove(mesh);
       mesh.dispose();
     }
+    for (const geometry of this.carGeometries) geometry.dispose();
+    this.carMeshes = [];
+    this.carGeometries = [];
     if (this.ribbonMesh) {
       this.scene.remove(this.ribbonMesh);
       this.ribbonMesh.geometry.dispose();
@@ -855,7 +967,6 @@ export class TransitRenderer {
     this.signPoleMesh = null;
     this.signMesh = null;
     this.ribbonMesh = null;
-    this.busMesh = null;
     this.buses = [];
     this.busColors = [];
     this.stopTotal = 0;
