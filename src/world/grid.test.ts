@@ -6,6 +6,7 @@ import {
   FieldId,
   isRailTier,
   isStreetTier,
+  PowerLineKind,
   RoadTier,
   SAVE_VERSION,
   ZoneType,
@@ -810,6 +811,30 @@ describe('the flow layer survives a save (v7)', () => {
     g.powerLine[19] = 1;
     const back = deserializeGrid(serializeGridV12(g));
     expect(Array.from(back.powerLine)).toEqual(Array.from(g.powerLine));
+  });
+
+  it('round-trips a line laid from a source (2) beside one an older save holds (1), each to its own byte', () => {
+    const g = createGrid(5);
+    fillDeterministic(g);
+    g.powerLine[7] = PowerLineKind.Held;
+    g.powerLine[8] = PowerLineKind.Strung;
+    g.powerLine[19] = PowerLineKind.Strung;
+    const back = deserializeGrid(serializeGridV12(g));
+    expect(back.powerLine[7]).toBe(1);
+    expect(back.powerLine[8]).toBe(2);
+    expect(back.powerLine[19]).toBe(2);
+  });
+
+  it('loads an older-version save with its lines as 1: a v17 buffer is the same bytes', () => {
+    const size = 5;
+    const n = size * size;
+    const g = createGrid(size);
+    fillDeterministic(g);
+    g.powerLine[7] = PowerLineKind.Held;
+    const older = olderTileRecord(saveGrid(g, createRoadNetwork()), 17, n);
+    expect(new DataView(older).getUint32(0, true)).toBe(17);
+    expect(loadGrid(older).grid.powerLine[7]).toBe(PowerLineKind.Held);
+    expect(BYTES_PER_TILE_BY_VERSION[17]).toBe(BYTES_PER_TILE_BY_VERSION[SAVE_VERSION]);
   });
 
   it('round-trips the junction controls the player set', () => {

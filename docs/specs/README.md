@@ -23,7 +23,7 @@ One spec a built feature, card first; the template is [_template.md](_template.m
 | [service-capacity.md](service-capacity.md) | A facility's capacity in people, the load it carries, smooth degradation, per-tile pooling and the Services panel |
 | [education-ladder.md](education-ladder.md) | Four schools and a library, the field each writes, the level-3 gates by zone, and sourced capacity and price |
 | [power-generation.md](power-generation.md) | The six generators, what the grid counts each for, the shoreline gate, and sourced rating, size and price |
-| [power-distribution.md](power-distribution.md) | Agreed, its first slice built (a street's pole line, a strung line's poles): the street's drawn supply (poles or buried cable), strung lines and cables, the substation, and sourced size, build cost and upkeep |
+| [power-distribution.md](power-distribution.md) | Agreed, all built but the buried cable: the street's drawn supply (poles or buried cable), strung lines and cables, the substation, and sourced size, build cost and upkeep |
 | [street-furniture.md](street-furniture.md) | A furnishing strip and a clear walk, and where lamps, signs, signals, covers, meters and trees stand on streets with a footway, a kerb only or neither |
 | [structured-parking.md](structured-parking.md) | Agreed, its stall faults and garages built: dense kinds park on a surface lot at level 1 and in a deck or podium garage on their own lot from level 2, drawn to read as a garage |
 | [water-and-sewage.md](water-and-sewage.md) | Pipes, pumping station, tower, drain and treatment works; sewage as the third utility and the septic era |

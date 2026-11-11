@@ -71,6 +71,7 @@ import {
   VehicleKind,
 } from '../shared/types';
 import type {
+  PowerLineKind,
   BuildingCatalogEntry,
   BuildingInstance,
   BusStop,
@@ -251,7 +252,14 @@ import {
   paintLandfill,
   type LandfillArea,
 } from '../world/landfill';
-import { alongStreetRefusal, canStringLine, stringPowerLine } from '../world/powerline';
+import {
+  alongStreetRefusal,
+  canStringLine,
+  feedsLines,
+  restoreLineCommands,
+  sourceEndRefusal,
+  stringPowerLine,
+} from '../world/powerline';
 import { canLayPipe, layWaterPipe } from '../world/waterpipe';
 import { regradeSoil, soilGrades } from '../shared/soil';
 import {
@@ -2849,7 +2857,7 @@ class SimWorld implements WorkerSim {
       case 'paintLandfill':
         return this.cmdPaintLandfill(command.tiles, command.on);
       case 'stringPowerLine':
-        return this.cmdStringPowerLine(command.tiles, command.on);
+        return this.cmdStringPowerLine(command.tiles, command.on, command.lineKind);
       case 'layWaterPipe':
         return this.cmdLayWaterPipe(command.tiles, command.on);
       case 'setDistrictPolicy': {
@@ -2975,17 +2983,27 @@ class SimWorld implements WorkerSim {
    * are charged for and put back by the undo, so dragging back over a run you
    * have already strung costs nothing.
    */
-  private cmdStringPowerLine(tiles: TilePoint[], on: boolean): CommandResult {
+  private cmdStringPowerLine(
+    tiles: TilePoint[],
+    on: boolean,
+    lineKind?: PowerLineKind,
+  ): CommandResult {
     const g = this.grid;
-    // A street already carries power: a line is not strung along one.
-    const along = on ? alongStreetRefusal(g, tiles, tierIsSealed) : null;
-    if (along !== null) return { ok: false, cost: 0, inverse: [], reason: along };
+    // A restore (an undo) puts back what stood; only a new run answers to the rules.
+    if (on && lineKind === undefined) {
+      // A street already carries power: a line is not strung along one.
+      const along = alongStreetRefusal(g, tiles, tierIsSealed);
+      if (along !== null) return { ok: false, cost: 0, inverse: [], reason: along };
+      // And a line that would carry nothing is not strung at all.
+      const dead = sourceEndRefusal(g, tiles, (x, z) => this.feedsLinesAt(x, z));
+      if (dead !== null) return { ok: false, cost: 0, inverse: [], reason: dead };
+    }
     // Cost is quoted for the tiles that would change, which is what the tool
     // has already shown the player on the cursor.
     let wouldChange = 0;
     for (const t of tiles) {
       if (!inBounds(t.x, t.z)) continue;
-      const now = (g.powerLine[tileIndex(t.x, t.z)] ?? 0) === 1;
+      const now = (g.powerLine[tileIndex(t.x, t.z)] ?? 0) !== 0;
       if (now !== on && (!on || canStringLine(g, t.x, t.z))) wouldChange += 1;
     }
     const cost = on ? wouldChange * POWER_LINE_COST_PER_TILE : 0;
@@ -2993,18 +3011,36 @@ class SimWorld implements WorkerSim {
       return { ok: false, cost: 0, inverse: [], reason: 'funds' };
     }
 
-    const changed = stringPowerLine(g, tiles, on);
+    const heldBefore = new Map<number, number>();
+    for (const t of tiles) {
+      if (inBounds(t.x, t.z))
+        heldBefore.set(tileIndex(t.x, t.z), g.powerLine[tileIndex(t.x, t.z)]!);
+    }
+    const changed = stringPowerLine(g, tiles, on, lineKind);
     if (changed.length === 0) return { ok: false, cost: 0, inverse: [], reason: 'invalid' };
 
     this.powerLineDirty = growRect(this.powerLineDirty, changed);
     // Supply travels along the line, so the coverage it changes has to be
     // worked out again rather than waiting for the utility cadence.
     this.utilitiesDirty = true;
+    // Stringing is undone by pulling down; pulling down by putting each tile back as its own kind.
     return {
       ok: true,
       cost,
-      inverse: [{ kind: 'stringPowerLine', tiles: changed, on: !on }],
+      inverse: on
+        ? [{ kind: 'stringPowerLine', tiles: changed, on: false }]
+        : restoreLineCommands(
+            changed,
+            changed.map((t) => heldBefore.get(tileIndex(t.x, t.z)) ?? 0),
+          ),
     };
+  }
+
+  /** Whether the building standing at (x, z) is a generator or a substation. */
+  private feedsLinesAt(x: number, z: number): boolean {
+    const id = this.grid.buildingId[tileIndex(x, z)] ?? 0;
+    const b = id === 0 ? undefined : this.registry.get(id);
+    return b !== undefined && feedsLines(this.catalogById.get(b.catalogId));
   }
 
   /**
@@ -3724,11 +3760,19 @@ class SimWorld implements WorkerSim {
 
     // Power line last: the bulldozer takes down the wire over the tiles it
     // clears, and the undo strings back exactly the run that was there.
+    const lineKinds = new Map(
+      clearedTiles.map((t) => [tileIndex(t.x, t.z), g.powerLine[tileIndex(t.x, t.z)] ?? 0]),
+    );
     const pulledDown = stringPowerLine(g, clearedTiles, false);
     if (pulledDown.length > 0) {
       refund += pulledDown.length * POWER_LINE_COST_PER_TILE * BULLDOZE_REFUND_RATE;
       this.powerLineDirty = growRect(this.powerLineDirty, pulledDown);
-      inverse.push({ kind: 'stringPowerLine', tiles: pulledDown, on: true });
+      inverse.push(
+        ...restoreLineCommands(
+          pulledDown,
+          pulledDown.map((t) => lineKinds.get(tileIndex(t.x, t.z)) ?? 0),
+        ),
+      );
     }
     // And the pipe under them, the same way.
     const pulledUp = layWaterPipe(g, clearedTiles, false);

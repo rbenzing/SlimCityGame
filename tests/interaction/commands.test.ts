@@ -119,6 +119,10 @@ describe('worker sim', () => {
   });
 
   it('sandbox waives no price: a power line is refused for funds unless unlimited money is on', () => {
+    // A turbine for the lines to start beside, bought while the city can afford it.
+    send(h, 19, [{ kind: 'placeBuilding', catalogId: 'wind-turbine', x: 20, z: 21, rotation: 0 }]);
+    h.ticks(1);
+    expect(h.ackFor(19)!.ok).toBe(true);
     h.sim.handleMessage({ type: 'requestSave' });
     const saveMsg = h.messages.find((m) => m.type === 'save');
     if (!saveMsg || saveMsg.type !== 'save') throw new Error('no save message');

@@ -335,6 +335,19 @@ await step('power-lens', async () => {
   await lens('Power');
   check('the Power lens turns on', await dockButton('Turn off overlay').isEnabled());
 });
+// A line starts at a source: a substation on the street takes the street's supply
+// and the line is strung from it down beside the homes on the gravel road.
+await step('substation', async () => {
+  await dock('Electricity');
+  await card(/^Substation/);
+  await tap(T(16, 1));
+  check(
+    'a substation is placed by click',
+    (await grid()).buildingId[idx(X + 16, Z + 1)] > 0,
+    (await refused()).join(' | '),
+  );
+  await tidy();
+});
 await step(
   'power-line',
   async () => {

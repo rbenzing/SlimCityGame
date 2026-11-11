@@ -71,8 +71,8 @@ export const WALLED_MOTORWAY = composeProfile(presetProfileForTier(RoadTier.High
  *              z 136–144
  *   z 146–151  an airfield beside the avenue
  *   z 160      dirt road, x 50–130, farms south of it — joined to the town by a
- *              power line down from the avenue's end and along it, and by no
- *              road, so no water main reaches it
+ *              power line down from the avenue's end and along it, starting at
+ *              a turbine at x 89, and by no road, so no water main reaches it
  *   x  90      the avenue, z 44–150, joining the rest
  *   x 150      the motorway, z 60–160, southbound, fed by a ramp at x 151,
  *              walled both sides from z 80 down past the town
@@ -102,6 +102,8 @@ export const TOWN = {
   bikeLane: { z: 115, x0: 91, x1: 119 },
   fourLane: { z: 130, x0: 50, x1: 130 },
   dirt: { z: 160, x0: 50, x1: 130 },
+  lineSource: { x: 89, z: 156 },
+  substation: { x: 91, z: 56 },
   motorway: { x: 150, z0: 60, z1: 160 },
   soundWall: { z0: 80 },
   ramp: { x: 151, z0: 58, z1: 62 },
@@ -365,6 +367,8 @@ export function townSteps(): TownStep[] {
         place('solar-farm', t.solarFarm),
         place('gas-turbine', t.gasTurbine, NORTH),
         place('combined-cycle', t.combinedCycle, NORTH),
+        // A substation beside the avenue, its front to it, which takes the avenue's supply.
+        place('substation', t.substation, WEST),
         place('water-tower', { x: 102, z: 101 }, NORTH),
         place('water-tower', { x: 106, z: 101 }, NORTH),
       ],
@@ -429,8 +433,10 @@ export function townSteps(): TownStep[] {
       ],
     },
     {
-      label: 'a power line from the avenue out along the dirt road',
+      label: 'a power line from the avenue out along the dirt road, starting at a turbine',
       commands: [
+        // A line starts at a source: this turbine stands beside it where it leaves the avenue.
+        place('wind-turbine', t.lineSource),
         {
           kind: 'stringPowerLine',
           tiles: [

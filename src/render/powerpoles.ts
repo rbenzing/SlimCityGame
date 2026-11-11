@@ -144,10 +144,15 @@ export interface PowerWorld {
    * moves along its strip off any of them, or is not stood.
    */
   roadside?: Roadside;
+  /** Tiles a generator or a substation stands on: a strung line that ends beside one ends on a pole at its edge. */
+  sources?: ReadonlySet<number>;
 }
 
 /** How far a pole slides along its tile's strip to find a free place, metres. */
 const POLE_SLIDE_LIMIT_M = TILE_METERS / 2 - 1;
+
+/** How far outside a source's edge the pole that ends a line beside it stands. */
+export const SOURCE_POLE_SETBACK_M = 0.8;
 
 /** How hard a span sags at its middle, metres: half a metre at the 40 m street span. */
 export function wireSagM(lengthM: number): number {
@@ -443,13 +448,18 @@ export function layStrungLine(w: PowerWorld, line: readonly TilePoint[]): PowerL
   const siteAt = (x: number, z: number): TileSite | null => {
     const tile = w.tileSet.get(tileKey(x, z));
     if (!tile) {
+      // Where the line ends against a source, its pole stands at that edge.
+      const source = isNode({ x, z })
+        ? DIRS.find((d) => w.sources?.has(tileKey(x + d.dx, z + d.dz)))
+        : undefined;
+      const reach = TILE_METERS / 2 - SOURCE_POLE_SETBACK_M;
       return {
         key: tileKey(x, z),
         kind: 'country',
         tx: x,
         tz: z,
-        x: tileToWorld(x),
-        z: tileToWorld(z),
+        x: tileToWorld(x) + (source ? source.dx * reach : 0),
+        z: tileToWorld(z) + (source ? source.dz * reach : 0),
       };
     }
     if (

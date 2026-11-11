@@ -131,9 +131,13 @@ describe('zoning down a gravel road, which carries no power', () => {
 
   it('reports nothing once a power line runs along the gravel', () => {
     const h = townDownAGravelRoad();
-    expect(run(h, 2, [{ kind: 'stringPowerLine', tiles: column(72, 50, 10), on: true }]).ok).toBe(
-      true,
-    );
+    // The line starts at a substation beside the street, which feeds it from the street.
+    expect(
+      run(h, 2, [
+        { kind: 'placeBuilding', catalogId: 'substation', x: 73, z: 50, rotation: 2 },
+        { kind: 'stringPowerLine', tiles: column(72, 50, 10), on: true },
+      ]).ok,
+    ).toBe(true);
     h.ticks(4);
     expect(h.lastSnapshot()!.zonedUnserved).toEqual({ power: 0, water: 0, sewer: 0 });
   });

@@ -285,6 +285,21 @@ describe('the line a player strings', () => {
     expect(spans).toHaveLength(2);
   });
 
+  it('ends on a pole at the edge of the source it starts from, not a tile away', () => {
+    // A substation on tiles 0..1 x 2..3; the line leaves east from x = 2.
+    const sources = new Set([keyOf(0, 2), keyOf(1, 2), keyOf(0, 3), keyOf(1, 3)]);
+    const line = Array.from({ length: 6 }, (_, i) => ({ x: 2 + i, z: 2 }));
+    const { poles } = layStrungLine({ ...none(), sources }, line);
+    const first = [...poles].sort((a, b) => a.x - b.x)[0]!;
+    const edge = 2 * TILE_METERS;
+    expect(first.x).toBeLessThan(edge + 1.5);
+    expect(first.x).toBeGreaterThanOrEqual(edge);
+    expect(first.z).toBe(tileToWorld(2));
+    // Without the source the same pole stands in the middle of its tile.
+    const bare = [...layStrungLine(none(), line).poles].sort((a, b) => a.x - b.x)[0]!;
+    expect(bare.x).toBe(tileToWorld(2));
+  });
+
   it('guys the poles at its ends and not those between', () => {
     const line = Array.from({ length: 11 }, (_, i) => ({ x: i, z: 3 }));
     const poles = [...layStrungLine(none(), line).poles].sort((a, b) => a.x - b.x);

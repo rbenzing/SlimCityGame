@@ -80,7 +80,7 @@ import {
 } from './world/freeroads';
 import { solveElevationProfile } from './world/bridges';
 import { isRoadBuildable } from './world/grid';
-import { alongStreetRefusal } from './world/powerline';
+import { alongStreetRefusal, feedsLines, sourceEndRefusal } from './world/powerline';
 import { roundaboutGroundOf } from './world/roundabouts';
 import { platOf, platSourceOf, type Parcel } from './world/plat';
 import { buildRoadCells, type RoadCells } from './world/roadnet';
@@ -1416,6 +1416,18 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
    */
   const dirtyPoleChunks = new Set<number>();
   const poleSlots = { line: false, free: false };
+  /** The tiles a generator or a substation stands on, as the pole layout keys them. */
+  const sourceTiles = (): Set<number> => {
+    const out = new Set<number>();
+    for (let z = 0; z < clientGrid.size; z++) {
+      for (let x = 0; x < clientGrid.size; x++) {
+        const id = clientGrid.buildingId[z * clientGrid.size + x] ?? 0;
+        const b = id === 0 ? undefined : knownBuildings.get(id);
+        if (b && feedsLines(catalogById.get(b.catalogId))) out.add(tileKey(x, z));
+      }
+    }
+    return out;
+  };
   let poleKeepOff: ReadonlySet<number> = new Set();
   let poleClosed: ReadonlySet<number> = new Set();
   /**
@@ -1464,7 +1476,10 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       poleClosed = closed;
     }
     if (dirtyPoleChunks.size === 0 && !poleSlots.line && !poleSlots.free) return;
-    const world = poleWorld();
+    const world: PowerWorld = {
+      ...poleWorld(),
+      sources: poleSlots.line ? sourceTiles() : new Set<number>(),
+    };
     for (const key of dirtyPoleChunks) powerLines.setSlot(key, layStreetChunk(world, key));
     dirtyPoleChunks.clear();
     if (poleSlots.line) {
@@ -2130,11 +2145,17 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
     },
     // So the cursor quotes only the tiles a power-line or pipe drag would change.
     powerLineAt: (x, z) => clientGrid.powerLineAt(x, z),
-    // The cursor says what the world will: a street already carries power.
+    // The cursor says what the world will: a street already carries power,
+    // and a line must start at a source.
     powerLineRefusal: (tiles) =>
       alongStreetRefusal(clientGrid, tiles, (tier) =>
         isPaved(presetProfileForTier(tier as RoadTier)),
-      ),
+      ) ??
+      sourceEndRefusal(clientGrid, tiles, (x, z) => {
+        const id = clientGrid.buildingId[z * clientGrid.size + x] ?? 0;
+        const b = id === 0 ? undefined : knownBuildings.get(id);
+        return b !== undefined && feedsLines(catalogById.get(b.catalogId));
+      }),
     waterPipeAt: (x, z) => clientGrid.waterPipeAt(x, z),
     // Underground, a pipe drag snaps onto the system and says what it joins.
     pipeWorld: {
@@ -2450,6 +2471,16 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       clientGrid.applyBuildingDelta(snap.buildings, (catalogId) => catalogById.get(catalogId));
       for (const inst of snap.buildings.added) knownBuildings.set(inst.id, inst);
       for (const inst of snap.buildings.updated) knownBuildings.set(inst.id, inst);
+      // A strung line ends on a pole at the edge of the source it meets, so a
+      // source coming or going lays the line again.
+      const sourceMoved = (b: BuildingInstance | undefined): boolean =>
+        b !== undefined && feedsLines(catalogById.get(b.catalogId));
+      if (
+        snap.buildings.added.some(sourceMoved) ||
+        snap.buildings.removed.some((id) => sourceMoved(knownBuildings.get(id)))
+      ) {
+        poleSlots.line = true;
+      }
       for (const id of snap.buildings.removed) knownBuildings.delete(id);
 
       // A lot's driveway is decided by its building, so the tiles kerb furniture

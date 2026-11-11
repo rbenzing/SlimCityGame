@@ -167,6 +167,7 @@ describe('subTabsFor', () => {
         'plop.combined-cycle',
         'plop.nuclear-plant',
         'power.line',
+        'plop.substation',
       ].sort(),
     );
     expect(subTabsFor('water')).toHaveLength(1);

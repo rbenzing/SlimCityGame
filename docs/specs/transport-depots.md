@@ -48,7 +48,7 @@
 | Platform height, tactile strip | 0.2 (8 in), 0.61 (24 in) | m | same; `DEPOT_PLATFORM` |
 | Old cosmetic bus speed | `TILE_METERS * 2` = 40 m/s, 144 km/h | m/s | removed |
 | `MAX_BUSES_PER_LINE` (old) | 6; 192 render slots | buses | removed |
-| Utility kit catalog ids | 34 | ids | `UTILITY_KIT_CATALOG_IDS` |
+| Utility kit catalog ids | 38 | ids | `UTILITY_KIT_CATALOG_IDS` |
 
 **Code:**
 

@@ -27,6 +27,9 @@
 | Cross-country pole, above ground | 21 | m | 69 kV, 70 to 80 ft, [sub-transmission](../sources/power-distribution.md#the-cross-country-line) |
 | Cross-country span | 100 | m | 300 to 400 ft, [same](../sources/power-distribution.md#the-cross-country-line) |
 | Substation footprint | 2 × 2 | tiles | 25 MVA on half an acre, [substation](../sources/power-distribution.md#the-substation) |
+| Substation price, upkeep | ¢300, ¢6 a month, from the first milestone | | $3 million, the least a 69 kV substation costs, at the wind turbine's ¢100 to the $1 million; upkeep a dial, [substation](../sources/power-distribution.md#the-substation) |
+| Line layer's values | 1 a line an older save holds, live as before; 2 a line laid to the source-end rule; 3 kept for the cable | byte | `PowerLineKind`, `src/shared/types.ts` |
+| Where power enters a line | a generator's or a substation's footprint, or a live line; never a street | | the source-end rule |
 | Junction box | 1.9 × 1.8 × 1.15 | m | pad-mounted switchgear, [boxes](../sources/power-distribution.md#boxes-on-the-surface) |
 | Pad-mounted transformer | 1.0 × 0.9 × 0.8 | m | [boxes](../sources/power-distribution.md#boxes-on-the-surface) |
 | Clear space before a box's doors | 3 | m | 10 ft, [boxes](../sources/power-distribution.md#boxes-on-the-surface) |
@@ -35,11 +38,11 @@
 | Poles replaced | 2.7 | % a year | [upkeep](../sources/power-distribution.md#what-it-costs-to-keep) |
 | Upkeep a cable avoids | 370 | $ a mile a year | trees and pole inspection, [upkeep](../sources/power-distribution.md#what-it-costs-to-keep) |
 
-**Code:** `src/world/powerline.ts` the line layer, where a line may go and `alongStreetRefusal`; `src/sim/network.ts` `conductsPower` and the reach; `src/render/powerpoles.ts` where a pole, a wire and a guy stand; `src/render/powerlines.ts` the renderer, a slot a terrain chunk; `src/render/freeroadmesh.ts` `freeRoadPoleLay` the line along a curved street; `src/shared/placement.ts` `POWER_LINE_REFUSALS`; `tools/powerline-shots.mjs`. Not yet built: `src/render/underground.ts` the buried view; `src/data/catalog.json` the substation.
+**Code:** `src/world/powerline.ts` the line layer, where a line may go and `alongStreetRefusal`; `src/sim/network.ts` `conductsPower` and the reach; `src/render/powerpoles.ts` where a pole, a wire and a guy stand; `src/render/powerlines.ts` the renderer, a slot a terrain chunk; `src/render/freeroadmesh.ts` `freeRoadPoleLay` the line along a curved street; `src/shared/placement.ts` `POWER_LINE_REFUSALS`; `src/sim/network.ts` the source-end rule: a line laid to it is entered only from a generator, a supplied substation or a live line; `src/data/catalog.json` `substation`; `src/render/substationkit.ts` its kit; `tools/powerline-shots.mjs`. Not yet built: `src/render/underground.ts` the buried view.
 
-**Tests:** `src/render/powerpoles.test.ts` pole placement by road class, the side kept, spans, guys and the wire's height over a road; `tests/interaction/powerlinerefusal.test.ts` a line along a sealed street refused, a crossing accepted, an older save's line kept. To be written with the build: the source-end rule, cable price and upkeep, the underground view's cables.
+**Tests:** `src/render/powerpoles.test.ts` pole placement by road class, the side kept, spans, guys and the wire's height over a road; `tests/interaction/powerlinerefusal.test.ts` a line along a sealed street refused, a crossing accepted, an older save's line kept; `src/sim/network.test.ts`, `tests/interaction/powerlinesource.test.ts` the source-end rule, its refusal, undo and redo of mixed lines, a line whose source is gone; `src/world/grid.test.ts` both values saved and an older save's lines kept; `src/render/substationkit.test.ts` the kit. To be written with the build: cable price and upkeep, the underground view's cables.
 
-**Open:** the monthly figures in the game's own money; alley pole practice, homes per transformer and manhole spacing have no citable figure and are dials. A pole sees only its own tile's strip when it keeps 1.5 m from a lamp or a mast; a curved street's wires end guyed at each node; a wire is drawn 0.1 m thick so it reads from afar.
+**Open:** a line whose source is removed stays and delivers nothing; only the Power lens and the advisor say so. The cable's monthly figures in the game's own money; alley pole practice, homes per transformer and manhole spacing have no citable figure and are dials. A pole sees only its own tile's strip when it keeps 1.5 m from a lamp or a mast; a curved street's wires end guyed at each node; a wire is drawn 0.1 m thick so it reads from afar.
 
 ## Why the rules are what they are
 

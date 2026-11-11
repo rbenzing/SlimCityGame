@@ -36,7 +36,7 @@ import type {
   TilePoint,
   UtilitySpec,
 } from '../shared/types';
-import { BuildingState, RoadTier, ZoneType, isStreetTier } from '../shared/types';
+import { BuildingState, PowerLineKind, RoadTier, ZoneType, isStreetTier } from '../shared/types';
 import {
   MAP_SIZE,
   ROAD_CHECK_RADIUS,
@@ -247,11 +247,34 @@ function reachableNetworkTiles(
   seeds: readonly number[],
   conducts: Conducts,
   isLine: IsLine,
+  hubs: readonly (readonly number[])[] | null = null,
 ): Map<number, number> {
   const steps = new Map<number, number>(seeds.map((s) => [s, 1]));
   const queue: number[] = [...seeds];
   const n = MAP_SIZE * MAP_SIZE;
   const keys = 2 * n;
+  // Power only: a strung line is fed by a source or a live line, never a street.
+  const directed = hubs !== null;
+  const lineKind = (cell: number): number => (cell < n ? g.powerLine[cell]! : 0);
+  // Cells on a street tile that a live line handed power to.
+  const lineFed = new Set<number>();
+  const isLive = (cell: number): boolean => {
+    const kind = lineKind(cell);
+    return (
+      kind !== 0 && (kind === PowerLineKind.Held || cells.tier[cell] === 0 || lineFed.has(cell))
+    );
+  };
+  if (directed) for (const s of seeds) if (lineKind(s) !== 0) lineFed.add(s);
+  const mayEnter = (cur: number, next: number): boolean =>
+    !directed ||
+    lineKind(next) !== PowerLineKind.Strung ||
+    isLive(cur) ||
+    (cells.tier[next] !== 0 && streetCarriesPower(cells.tier[next]!));
+  // A substation takes its supply from any cell beside it and feeds every
+  // street and line beside it; the footprint is reached at the same distance.
+  const hubAt = new Map<number, number>();
+  hubs?.forEach((tiles, h) => tiles.forEach((t) => hubAt.set(t, h)));
+  const hubSteps = new Map<number, number>();
   const onward = (cur: number): number[] => {
     if (cells.tier[cur] === 0) {
       // A line: the roads and lines next to it, on the grid or off it.
@@ -280,9 +303,33 @@ function reachableNetworkTiles(
     head += 1;
     const further = steps.get(cur)! + 1;
     for (const next of onward(cur)) {
-      if (steps.has(next) || !conducts(cells, next)) continue;
+      if (!conducts(cells, next) || !mayEnter(cur, next)) continue;
+      const handedOn = directed && isLive(cur) && lineKind(next) !== 0;
+      if (steps.has(next)) {
+        // A street tile a line crosses may have been reached from the street
+        // first; the line still hands on from it.
+        if (handedOn && !lineFed.has(next)) {
+          lineFed.add(next);
+          queue.push(next);
+        }
+        continue;
+      }
       steps.set(next, further);
       queue.push(next);
+      if (handedOn) lineFed.add(next);
+    }
+    if (directed && hubAt.size > 0) {
+      for (const tile of besideTile(cellTile(cells, cur))) {
+        const h = hubAt.get(tile);
+        if (h === undefined || hubSteps.has(h)) continue;
+        hubSteps.set(h, further - 1);
+        for (const s of networkCellsAdjacentTo(cells, hubs![h]!, conducts)) {
+          if (steps.has(s)) continue;
+          steps.set(s, further);
+          queue.push(s);
+          if (lineKind(s) !== 0) lineFed.add(s);
+        }
+      }
     }
   }
   // Coverage is per tile; an overpass supplies the tile it stands over, from
@@ -293,6 +340,7 @@ function reachableNetworkTiles(
     const held = byTile.get(tile);
     if (held === undefined || s < held) byTile.set(tile, s);
   }
+  for (const [h, s] of hubSteps) for (const tile of hubs![h]!) byTile.set(tile, s);
   return byTile;
 }
 
@@ -306,11 +354,12 @@ function computeReach(
   footprintTiles: readonly number[],
   conducts: Conducts,
   isLine: IsLine,
+  hubs: readonly (readonly number[])[] | null = null,
 ): Int32Array {
   if (footprintTiles.length === 0) return new Int32Array(MAP_SIZE * MAP_SIZE).fill(-1);
   const cells = roadCellsOf(g);
   const seeds = networkCellsAdjacentTo(cells, footprintTiles, conducts);
-  const sources = reachableNetworkTiles(g, cells, seeds, conducts, isLine);
+  const sources = reachableNetworkTiles(g, cells, seeds, conducts, isLine, hubs);
   for (const tile of footprintTiles) sources.set(tile, 0);
   return radiate(g, sources);
 }
@@ -319,7 +368,7 @@ function computeReach(
 const isPowerLine =
   (g: GridState): IsLine =>
   (tile) =>
-    g.roadTier[tile] === 0 && g.powerLine[tile] === 1;
+    g.roadTier[tile] === 0 && g.powerLine[tile] !== 0;
 
 /** A bare tile carrying a water pipe. */
 const isWaterPipe =
@@ -337,8 +386,12 @@ const isWaterPipe =
  * either, so a lot reached only down a dirt lane needs a line run to it.
  */
 function conductsPower(g: GridState, cells: RoadCells, id: number): boolean {
-  if (id < g.size * g.size && g.powerLine[id] === 1) return true;
-  const tier = cells.tier[id] ?? 0;
+  if (id < g.size * g.size && g.powerLine[id] !== 0) return true;
+  return streetCarriesPower(cells.tier[id] ?? 0);
+}
+
+/** Whether a road of this tier is a sealed street, which carries a cable of its own. */
+function streetCarriesPower(tier: number): boolean {
   return isStreetTier(tier) && tierIsSealed(tier as RoadTier);
 }
 
@@ -416,7 +469,13 @@ export function cityWaterUse(
 ): number {
   if (entry.waterUse <= 0 || entry.zone !== ZoneType.ResLow) return entry.waterUse;
   const onMap = tiles.filter((t) => inBounds(t.x, t.z));
-  if (mainBeside(g, onMap.map((t) => tileIndex(t.x, t.z)))) return entry.waterUse;
+  if (
+    mainBeside(
+      g,
+      onMap.map((t) => tileIndex(t.x, t.z)),
+    )
+  )
+    return entry.waterUse;
   return dirtRoadWithinReachOf(g, onMap) ? 0 : entry.waterUse;
 }
 
@@ -640,12 +699,14 @@ export function recomputeUtilities(
   const sewerFootprints: number[] = [];
   const sources: { b: BuildingInstance; spec: UtilitySpec; tiles: number[] }[] = [];
   const drains: { spec: UtilitySpec; tiles: number[] }[] = [];
+  const substations: number[][] = [];
   for (const b of buildings) {
     if (b.state !== BuildingState.Active && b.state !== BuildingState.Constructing) continue;
     const spec = catalogMap.get(b.catalogId);
     if (!spec || !spec.utility) continue;
     const tiles = footprints.get(b.id);
     if (!tiles) continue;
+    if (spec.utility.substation) substations.push(tiles);
     if (spec.utility.powerMW) {
       powerSupply += averageOutputMW(spec.utility);
       powerFootprints.push(...tiles);
@@ -667,6 +728,7 @@ export function recomputeUtilities(
     powerFootprints,
     (c, i) => conductsPower(g, c, i),
     isPowerLine(g),
+    substations,
   );
   const { demand: powerDemand, ...powerLine } = cutFromTheFarEnd(
     g.power,

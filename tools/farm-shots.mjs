@@ -114,10 +114,19 @@ await cmd('Lane', [
   },
 ]);
 await cmd('Dirt', [{ kind: 'buildRoad', tier: RT.Gravel, tiles: row(X, dirtZ, W) }]);
+// A line starts at a source: a substation on the street takes the street's
+// supply and the line runs from it to the lane and down it.
+await cmd('Substation', [
+  { kind: 'placeBuilding', catalogId: 'substation', x: X + 3, z: Z + 1, rotation: 2 },
+]);
 await cmd('Line', [
   {
     kind: 'stringPowerLine',
-    tiles: Array.from({ length: 12 }, (_, i) => ({ x: X, z: Z + i })),
+    tiles: [
+      { x: X + 2, z: Z + 1 },
+      { x: X + 1, z: Z + 1 },
+      ...Array.from({ length: 11 }, (_, i) => ({ x: X, z: Z + 1 + i })),
+    ],
     on: true,
   },
 ]);
