@@ -22,6 +22,7 @@ import {
 } from './massing';
 import { lotPlanFor, lotPointToWorld } from './lotplan';
 import { bodyPlateM2 } from '../shared/floorarea';
+import { PODIUM_OVERHANG_M } from '../shared/garage';
 import { deriveFacadeParams, FLOOR_HEIGHT_METERS, windowGrid } from './facade';
 import { materialUnit } from './palette';
 import {
@@ -784,9 +785,9 @@ describe('MassingRenderer frontage setback (optional roadAt)', () => {
   });
 
   it('leaves a road-adjacent RES building untouched even with roadAt wired', () => {
+    // A block of no kind parks nowhere on its lot, so a road beside it moves nothing.
     const res = entry({
       category: 'res',
-      kind: 'tower',
       footprint: { w: 2, d: 2 },
       level: 3,
       height: 40,
@@ -1001,14 +1002,14 @@ describe('a tower stands on a podium', () => {
       height: 38.4,
     }) as BuildingCatalogEntry;
 
-  it('adds a tier two of the tower’s own floors tall at ground that fills the lot to the ceiling, under the slab', () => {
+  it('adds a tier two of the tower’s own floors tall at ground, a hand wider than the slab each side where its garage takes the lot behind', () => {
     const { boxes, podium } = computeSetbacks(tower(1), 7);
     expect(boxes).toHaveLength(1);
     // 38.4 m cuts into eleven floors of 3.6 m, so the podium's top is the second floor line.
     const floor = 38.4 / windowGrid(tower(1), 38.4).rows;
     expect(floor).toBeCloseTo(38.4 / 11, 9);
-    expect(podium!.w).toBe(2 * TILE_METERS * MAX_FOOTPRINT_FILL);
-    expect(podium!.d).toBe(2 * TILE_METERS * MAX_FOOTPRINT_FILL);
+    expect(podium!.w).toBeCloseTo(boxes[0]!.w + 2 * PODIUM_OVERHANG_M, 9);
+    expect(podium!.d).toBeCloseTo(boxes[0]!.d + 2 * PODIUM_OVERHANG_M, 9);
     expect(podium!.h).toBeCloseTo(2 * floor, 9);
     expect(podium!.yOffset).toBe(0);
     expect(podium!.w).toBeGreaterThan(boxes[0]!.w);
@@ -1017,7 +1018,7 @@ describe('a tower stands on a podium', () => {
   it('keeps the podium out of the bay row the slab keeps out of', () => {
     const frontage = { spanXM: 0, spanZM: 4, centerXM: 0, centerZM: 2 };
     const { podium } = computeSetbacks(tower(2), 7, frontage);
-    expect(podium!.d).toBeCloseTo(2 * TILE_METERS * MAX_FOOTPRINT_FILL - 4, 9);
+    expect(podium!.d).toBeCloseTo(computeSetbacks(tower(2), 7).podium!.d - 4, 9);
   });
 
   it('stands a mid-rise on a one-storey podium of 4.6 m, the retail floor-to-floor, at the same fill', () => {

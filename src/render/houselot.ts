@@ -37,6 +37,7 @@ import {
 } from './massing';
 import { isHouseEntry } from './archetypes';
 import { framedLotPlanFor, type KerbCreditOf } from './lotplan';
+import { garageFor } from '../shared/garage';
 import { housePaneMargins, MULLION_MARGIN_PUNCHED, windowGrid } from './facade';
 import { homesAcrossFrontage } from '../shared/buildingkind';
 
@@ -517,6 +518,12 @@ function framedLotBodyCentre(
   const kerb = edgeFrameOfParcel(parcel);
   const plan = framedLotPlanFor(entry, parcel, kerbCreditOf);
   if (!plan) {
+    // A dense block stands against the kerb line, its garage behind it.
+    const garage = garageFor(entry);
+    if (garage) {
+      const { body } = garage;
+      return lotToWorld(kerb, (body.u0 + body.u1) / 2, (body.v0 + body.v1) / 2);
+    }
     return lotToWorld(
       kerb,
       (entry.footprint.w * TILE_METERS) / 2,

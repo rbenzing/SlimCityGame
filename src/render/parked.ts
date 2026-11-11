@@ -34,7 +34,9 @@ import { footprintForRotation } from '../shared/footprint';
 import { ACCESSIBLE_SYMBOL_M, accessibilitySymbolPaint, ROAD_Y_OFFSET } from './roadsmesh';
 import { clearOfNoParking, type KerbStall, type ParkingSetbacks } from '../shared/kerbstalls';
 import type { LotRect, LotStall, StallNose } from '../shared/lotlayout';
+import { garageGroundY, tierFloorY } from './garagekit';
 import {
+  garagePlanAt,
   lotPlanAt,
   lotPointToWorld,
   type KerbCreditOf,
@@ -861,6 +863,8 @@ export class ParkedCarRenderer {
 
   private readonly pools = new Map<number, VehicleKitPool>();
   private readonly buildingSlots = new Map<number, LotRecord>();
+  /** The cars standing in a dense block's garage, kept apart from the kerb cars it may also have. */
+  private readonly garageSlots = new Map<number, LotRecord>();
   private readonly buildingStripes = new Map<number, THREE.Mesh>();
   /** The car parks' island trees: the broadleaf of the wild and the yards, one instanced bucket. */
   private readonly treePool: InstancedSlotPool;
@@ -925,6 +929,7 @@ export class ParkedCarRenderer {
     if (Math.abs(next - this.dayFraction) < OCCUPANCY_STEP) return;
     this.dayFraction = next;
     for (const [buildingId, lot] of this.buildingSlots) this.applyOccupancy(buildingId, lot);
+    for (const [buildingId, lot] of this.garageSlots) this.applyOccupancy(buildingId, lot);
     for (const pool of this.pools.values()) pool.finalize();
   }
 
@@ -975,10 +980,31 @@ export class ParkedCarRenderer {
     return (this.buildingSlots.get(buildingId)?.stalls ?? []).map((s) => s.ref);
   }
 
-  /** The stalls drawn on the building's own lot; none for a building that parks at the kerb. */
+  /** The stalls drawn on the building's own lot or in its garage; none for a building that parks only at the kerb. */
   ownStallCount(buildingId: number): number {
     const lot = this.buildingSlots.get(buildingId);
-    return lot && !lot.kerb ? lot.stalls.length : 0;
+    return (lot && !lot.kerb ? lot.stalls.length : 0) + this.garageStallCount(buildingId);
+  }
+
+  /** The stalls of the building's garage, every tier's. */
+  garageStallCount(buildingId: number): number {
+    return this.garageSlots.get(buildingId)?.stalls.length ?? 0;
+  }
+
+  /** Where a garage's cars are, by stall: the refs the pools hold them under. */
+  garageStallSlotsFor(buildingId: number): readonly StallRef[] {
+    return (this.garageSlots.get(buildingId)?.stalls ?? []).map((s) => s.ref);
+  }
+
+  /** How many of a garage's stalls hold a car right now. */
+  garageOccupiedCount(buildingId: number): number {
+    const lot = this.garageSlots.get(buildingId);
+    if (!lot) return 0;
+    let n = 0;
+    for (let i = 0; i < lot.stalls.length; i++) {
+      if (stallOccupied(lot.category, buildingId, i, this.dayFraction)) n += 1;
+    }
+    return n;
   }
 
   /** The kerb stalls the building's cars stand in; they belong to the street, not the building. */
@@ -1058,6 +1084,8 @@ export class ParkedCarRenderer {
     const entry = this.catalogById.get(building.catalogId);
     // A farm's truck stands in its own yard, never in a painted bay or at a kerb.
     if (!entry || isFarmEntry(entry)) return;
+    // A dense block's cars stand in its garage; what the garage cannot hold is the kerb's.
+    this.parkGarage(building, entry);
     // Parked-car bays + frontage apron are for COMMERCIAL and INDUSTRIAL lots
     // and the two walk-ups. Homes park off-street (garage/driveway,
     // render/houses.ts); utilities (water tower, wind turbine, power, etc.),
@@ -1117,6 +1145,51 @@ export class ParkedCarRenderer {
 
     this.rebuildStripes(building, plan);
     this.plantTrees(building, plan);
+  }
+
+  /**
+   * One car in every stall of a dense block's garage, tier by tier, each
+   * standing on its tier's floor. Filled by the hour as a lot is, and never
+   * in an aisle, on the ramp or in the stair tower's footprint.
+   */
+  private parkGarage(building: BuildingInstance, entry: BuildingCatalogEntry): void {
+    const plan = garagePlanAt(entry, building, this.roadAt);
+    if (!plan) return;
+    const { garage, frame } = plan;
+    const groundY = garageGroundY(this.heightAt, frame, garage);
+    const stalls: Stall[] = [];
+    const touchedPools = new Set<VehicleKitPool>();
+    for (let tier = 0; tier < garage.tiers; tier++) {
+      for (const s of garage.stalls) {
+        const at = lotPointToWorld(frame, s.u, s.v);
+        const placement: StallPlacement = {
+          worldX: at.x,
+          worldZ: at.z,
+          baseYaw: noseYaw(frame, s.nose),
+          along: s.u,
+        };
+        const surfaceY = groundY - this.heightAt(at.x, at.z) + tierFloorY(tier);
+        stalls.push(
+          this.parkVehicle(
+            building.id,
+            stalls.length,
+            VehicleKind.Car,
+            surfaceY,
+            touchedPools,
+            () => placement,
+          ),
+        );
+      }
+    }
+    const lot: LotRecord = {
+      category: entry.category === 'com' ? 'com' : 'res',
+      stalls,
+      kerb: false,
+      berthTrucks: [],
+    };
+    this.garageSlots.set(building.id, lot);
+    this.applyOccupancy(building.id, lot);
+    for (const pool of touchedPools) pool.finalize();
   }
 
   /**
@@ -1445,12 +1518,13 @@ export class ParkedCarRenderer {
   }
 
   private freeBuilding(buildingId: number): void {
-    const lot = this.buildingSlots.get(buildingId);
-    if (lot) {
+    for (const slots of [this.buildingSlots, this.garageSlots]) {
+      const lot = slots.get(buildingId);
+      if (!lot) continue;
       for (const stall of [...lot.stalls, ...lot.berthTrucks]) {
         this.pools.get(stall.ref.kind)?.free(stall.ref.slot);
       }
-      this.buildingSlots.delete(buildingId);
+      slots.delete(buildingId);
     }
 
     const trees = this.buildingTrees.get(buildingId);

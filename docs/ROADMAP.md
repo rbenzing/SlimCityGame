@@ -25,7 +25,7 @@ current behavior only and carry no dates of their own._
 
 ## Status (2026-09-29)
 
-**Test suite:** 7,732 tests passing across 228 test files, run 2026-11-11.
+**Test suite:** 7,764 tests passing across 230 test files, run 2026-11-11.
 This is the only test count in the documentation set. When the suite changes
 again, update the figure here and nowhere else.
 
@@ -51,8 +51,9 @@ again, update the figure here and nowhere else.
   supply, buried cable and the substation `[R-services-039]` (its first
   slice, the pole lines, is built);
   [structured-parking.md](specs/structured-parking.md), a car park for every
-  dense kind and a garage on its lot from level 2 `[R-services-040]` (its
-  first slice, the stall faults, is built); and
+  dense kind and a garage on its lot from level 2 `[R-services-040]` (the
+  stall faults and the garages are built; the level-1 car parks are not);
+  and
   [street-furniture.md](specs/street-furniture.md), a furnishing strip, a
   clear walk and every roadside object in its place `[R-render-036]` (its
   lamps are built).

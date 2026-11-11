@@ -188,7 +188,9 @@ import {
   ACCESSIBLE_VAN_WIDTH_M,
   adaAccessibleSpaces,
   adaVanSpaces,
+  stallsInRow,
 } from '../shared/parkingcode';
+import { GARAGE_TIER_M } from '../shared/garage';
 import {
   ACCESSIBLE_SYMBOL_M,
   accessibilitySymbolPaint,
@@ -2779,7 +2781,7 @@ const HOSPITAL_FACADE_WALK_M = 0.5;
 
 /** The deck: ground and roof, 11 ft floor to floor. */
 export const DECK_LEVELS = 2;
-export const DECK_STOREY_M = 3.35;
+export const DECK_STOREY_M = GARAGE_TIER_M;
 export const DECK_SLAB_M = 0.3;
 /** ADA 2010 §502.5: 98 in clear along a van's route. */
 export const VAN_CLEARANCE_M = 2.49;
@@ -2878,7 +2880,7 @@ export interface HospitalLayout {
 }
 
 function stallsInDeckRow(deck: Rect): number {
-  return Math.floor((deck.z1 - deck.z0 - DECK_WALL_M - DECK_AISLE_M) / DECK_STALL.w);
+  return stallsInRow(deck.z1 - deck.z0 - DECK_WALL_M - DECK_AISLE_M);
 }
 
 /**

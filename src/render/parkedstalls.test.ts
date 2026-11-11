@@ -296,7 +296,8 @@ describe('a lot car park, one vehicle to a stall', () => {
 
 describe('a building that parks at the kerb', () => {
   it('reports no stall of its own, and its kerb stalls apart', () => {
-    const tower = catalog.find((e) => e.id === 'res-tower-1')!;
+    // A level-1 mid-rise keeps today's look: no garage, its cars at the kerb.
+    const tower = catalog.find((e) => e.id === 'res-high-1')!;
     const road = roadBeside('S', X, Z, tower.footprint.w, tower.footprint.d);
     const roadAt = (tx: number, tz: number): boolean => road.has(`${tx},${tz}`);
     const renderer = new ParkedCarRenderer(new THREE.Scene(), () => 0, [tower], roadAt);

@@ -35,6 +35,7 @@ import {
   type LotRect,
 } from '../shared/lotlayout';
 import { lotYardsFor } from '../shared/lotparking';
+import { garageFor } from '../shared/garage';
 import { hasPart } from './archetypes';
 import type { EdgeFrame } from './frontage';
 import { framedLotPlanFor, lotLayoutFor, lotPlanAt, lotPlanFor, lotPointToWorld } from './lotplan';
@@ -354,12 +355,19 @@ describe('the lot plan on the map', () => {
     expect(downtown.length).toBeGreaterThan(0);
     for (const e of downtown) {
       expect(lotPlanFor(e, 10, 10, roads.N(e.footprint.w, e.footprint.d)), e.id).toBeNull();
-      expect(frontageSetbackFor(e, 10, 10, roads.N(e.footprint.w, e.footprint.d))).toEqual({
-        spanXM: 0,
-        spanZM: 0,
-        centerXM: 0,
-        centerZM: 0,
-      });
+      const setback = frontageSetbackFor(e, 10, 10, roads.N(e.footprint.w, e.footprint.d));
+      const garage = garageFor(e);
+      // A block that parks in a garage slides to its street, which is north here; the rest stand centred.
+      expect(setback.centerXM, e.id).toBe(0);
+      if (garage) {
+        const bodyMid = (garage.body.v0 + garage.body.v1) / 2;
+        expect(setback.centerZM, e.id).toBeCloseTo(bodyMid - garage.lotD / 2, 9);
+        expect(setback.centerZM, e.id).toBeLessThan(0);
+      } else {
+        expect(setback.centerZM, e.id).toBe(0);
+      }
+      expect(setback.spanXM).toBe(0);
+      expect(setback.spanZM).toBe(0);
     }
   });
 });
