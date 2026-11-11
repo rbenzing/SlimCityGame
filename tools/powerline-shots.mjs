@@ -114,7 +114,7 @@ console.log('island powered after the line:', after.power?.[idx(X + 23, Z + 10)]
 // own footprint, which refuses a pole — correctly, the ground is taken — so
 // the count is read from the line layer rather than from the tiles asked for.
 let strung = 0;
-for (let i = 0; i < after.powerLine.length; i++) if (after.powerLine[i] === 1) strung += 1;
+for (let i = 0; i < after.powerLine.length; i++) if (after.powerLine[i] !== 0) strung += 1;
 console.log('tiles carrying line:', strung);
 // A strung line stands a pole every five tiles on open ground, and one at each end.
 if (stood.length === 0) failures.push('the line went up but no poles stand on it');
@@ -166,10 +166,16 @@ await cleanShot(page, `${out}/gravel-remedied.png`);
 await cmd('spine', [{ kind: 'buildRoad', tier: 1, tiles: col(12, 1, 9) }]);
 await cmd('two-lane street', [{ kind: 'buildRoad', tier: 1, tiles: row(2, 4, 22) }]);
 await cmd('avenue', [{ kind: 'buildRoad', tier: 2, tiles: row(6, 4, 22) }]);
-// A line over open ground, and another down a gravel road.
-await cmd('open line', [{ kind: 'stringPowerLine', tiles: row(24, 0, 25), on: true }]);
+// A line over open ground, and another down a gravel road. Each starts at a
+// line already live: the open one at the end of the gravel lane's line, the
+// roadside one at the end of the open one.
+await cmd('open line', [
+  { kind: 'stringPowerLine', tiles: [...col(3, 21, 24), ...row(24, 4, 25)], on: true },
+]);
 await cmd('gravel road', [{ kind: 'buildRoad', tier: 4, tiles: row(28, 0, 20) }]);
-await cmd('roadside line', [{ kind: 'stringPowerLine', tiles: row(28, 0, 20), on: true }]);
+await cmd('roadside line', [
+  { kind: 'stringPowerLine', tiles: [...col(3, 25, 28), ...row(28, 4, 20)], on: true },
+]);
 await page.waitForTimeout(4000);
 
 const streets = await readGrid();
@@ -229,6 +235,81 @@ await cleanShot(page, `${out}/open-line.png`);
 await cam(X + 10, Z + 28, 90, 0.5, 0.4);
 await page.waitForTimeout(800);
 await cleanShot(page, `${out}/gravel-line.png`);
+
+// A substation beside the two-lane street, its front to the street. It takes the
+// street's supply and feeds a line that leaves it over open ground.
+await cmd('Substation', [
+  { kind: 'placeBuilding', catalogId: 'substation', x: X + 16, z: Z, rotation: 0 },
+]);
+await cmd('Line from the substation', [
+  { kind: 'stringPowerLine', tiles: row(0, 18, 29), on: true },
+]);
+await page.waitForTimeout(4000);
+const subGrid = await readGrid();
+if (subGrid.buildingId[idx(X + 16, Z)] === 0) failures.push('the substation was not placed');
+if (subGrid.power?.[idx(X + 27, Z)] !== 1)
+  failures.push('the line leaving the substation carries no power');
+await cam(X + 17, Z + 1, 60, 0.6, 0.55);
+await page.waitForTimeout(800);
+await cleanShot(page, `${out}/substation-60m.png`);
+await cam(X + 17, Z + 1, 60, 0, 1.45);
+await page.waitForTimeout(800);
+await cleanShot(page, `${out}/substation-above.png`);
+await cam(X + 22, Z + 1, 300, 0.6, 0.6);
+await page.waitForTimeout(800);
+await cleanShot(page, `${out}/substation-300m.png`);
+await cam(X + 24, Z + 1, 110, 0.9, 0.4);
+await page.waitForTimeout(800);
+await cleanShot(page, `${out}/substation-line.png`);
+await call(() => window.__slimcity.setDayT(0.96));
+await page.waitForTimeout(2500);
+await cam(X + 17, Z + 1, 60, 0.6, 0.55);
+await page.waitForTimeout(800);
+await cleanShot(page, `${out}/substation-night.png`);
+await call(() => window.__slimcity.setDayT(0.5));
+
+// The refusal: with the Power Line tool in hand, the cursor over open ground that
+// touches no source and no line says why the run would not stand.
+await cam(X + 14, Z + 14, 200, 0, 1.45);
+await call(() => window.__slimcity.setTool('power.line'));
+await page.waitForTimeout(800);
+const view = page.viewportSize();
+const open = await call(
+  ([w, h, size, grid]) => {
+    for (let sy = 140; sy < h - 140; sy += 16)
+      for (let sx = 80; sx < w - 80; sx += 16) {
+        const t = window.__slimcity.screenToTile(sx, sy);
+        if (!t) continue;
+        let clear = true;
+        for (let dz = -2; dz <= 2 && clear; dz++)
+          for (let dx = -2; dx <= 2 && clear; dx++) {
+            const x = t.x + dx;
+            const z = t.z + dz;
+            if (x < 0 || z < 0 || x >= size || z >= size) {
+              clear = false;
+              break;
+            }
+            const i = z * size + x;
+            if (grid.water[i] || grid.roadTier[i] || grid.buildingId[i] || grid.powerLine[i])
+              clear = false;
+          }
+        if (clear) return { sx, sy, t };
+      }
+    return null;
+  },
+  [view.width, view.height, N, await readGrid()],
+);
+if (!open) failures.push('no open ground to hover the refusal on');
+else {
+  await page.mouse.move(open.sx - 4, open.sy - 4);
+  await page.mouse.move(open.sx, open.sy);
+  await page.waitForTimeout(800);
+  await cleanShot(page, `${out}/refusal-chip.png`);
+  const chip = await page.locator('body').innerText();
+  if (!chip.includes('A line must start at a power station, a substation or a live line.'))
+    failures.push('the cursor chip does not say where a line must start');
+}
+await call(() => window.__slimcity.setTool('select'));
 
 await b.close();
 for (const e of pageErrors) failures.push(`page error: ${e}`);

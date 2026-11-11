@@ -4,12 +4,15 @@ import { POWER_LINE_REFUSALS } from '../shared/placement';
 import {
   alongStreetRefusal,
   canStringLine,
+  feedsLines,
   lineAt,
   powerLineCount,
   powerLineTiles,
+  restoreLineCommands,
+  sourceEndRefusal,
   stringPowerLine,
 } from './powerline';
-import { RoadTier } from '../shared/types';
+import { PowerLineKind, RoadTier } from '../shared/types';
 
 const SIZE = 8;
 const idx = (x: number, z: number): number => z * SIZE + x;
@@ -170,5 +173,65 @@ describe('stringPowerLine', () => {
       { x: 3, z: 2 },
       { x: 5, z: 2 },
     ]);
+  });
+});
+
+describe('a line starts at a source', () => {
+  const row = (x0: number, x1: number, z: number) =>
+    Array.from({ length: x1 - x0 + 1 }, (_, i) => ({ x: x0 + i, z }));
+  const noSource = (): boolean => false;
+
+  it('refuses a run that touches no source and no line, with the sentence', () => {
+    const g = createGrid(SIZE);
+    expect(sourceEndRefusal(g, row(1, 4, 3), noSource)).toBe(POWER_LINE_REFUSALS.mustStartAtSource);
+  });
+
+  it('accepts a run whose end touches a source tile', () => {
+    const g = createGrid(SIZE);
+    const source = (x: number, z: number): boolean => x === 0 && z === 3;
+    expect(sourceEndRefusal(g, row(1, 4, 3), source)).toBeNull();
+  });
+
+  it('accepts a run that joins a line already standing, of either kind', () => {
+    for (const kind of [PowerLineKind.Held, PowerLineKind.Strung]) {
+      const g = createGrid(SIZE);
+      g.powerLine[idx(0, 3)] = kind;
+      expect(sourceEndRefusal(g, row(1, 4, 3), noSource)).toBeNull();
+    }
+  });
+
+  it('asks every stretch of a run for its own source', () => {
+    const g = createGrid(SIZE);
+    g.powerLine[idx(3, 3)] = PowerLineKind.Strung;
+    // The run's two new stretches are 1..2 (touching the line at 3) and 4..6 (also touching it): live.
+    expect(sourceEndRefusal(g, row(1, 6, 3), noSource)).toBeNull();
+    // Far from it, the same run is dead.
+    expect(sourceEndRefusal(g, row(1, 6, 6), noSource)).toBe(POWER_LINE_REFUSALS.mustStartAtSource);
+  });
+
+  it('strings the kind it is asked for, and keeps the kind a tile already holds', () => {
+    const g = createGrid(SIZE);
+    g.powerLine[idx(2, 1)] = PowerLineKind.Held;
+    stringPowerLine(g, row(1, 3, 1), true);
+    expect(Array.from(g.powerLine.slice(idx(1, 1), idx(4, 1)))).toEqual([2, 1, 2]);
+    stringPowerLine(g, row(1, 1, 5), true, PowerLineKind.Held);
+    expect(g.powerLine[idx(1, 5)]).toBe(1);
+  });
+
+  it('puts old and new tiles back each to its own kind', () => {
+    const tiles = row(1, 4, 2);
+    const commands = restoreLineCommands(tiles, [1, 2, 2, 1]);
+    expect(commands).toEqual([
+      { kind: 'stringPowerLine', tiles: [tiles[0], tiles[3]], on: true, lineKind: 1 },
+      { kind: 'stringPowerLine', tiles: [tiles[1], tiles[2]], on: true, lineKind: 2 },
+    ]);
+  });
+
+  it('knows a generator and a substation feed lines, and a house does not', () => {
+    expect(feedsLines({ utility: { powerMW: 10 } })).toBe(true);
+    expect(feedsLines({ utility: { substation: true } })).toBe(true);
+    expect(feedsLines({ utility: { waterKL: 10 } })).toBe(false);
+    expect(feedsLines({})).toBe(false);
+    expect(feedsLines(undefined)).toBe(false);
   });
 });

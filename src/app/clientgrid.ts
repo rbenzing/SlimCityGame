@@ -175,7 +175,7 @@ export class ClientGridMirror {
 
   /** Whether a power line stands at (x, z); false off the map. */
   powerLineAt(x: number, z: number): boolean {
-    return this.inBounds(x, z) && this.powerLine[this.idx(x, z)] === 1;
+    return this.inBounds(x, z) && this.powerLine[this.idx(x, z)] !== 0;
   }
 
   /** Every tile carrying a line, row-major — what the renderer stands poles on. */
@@ -220,7 +220,7 @@ export class ClientGridMirror {
     const out: TilePoint[] = [];
     for (let z = 0; z < this.size; z++) {
       for (let x = 0; x < this.size; x++) {
-        if (layer[this.idx(x, z)] === 1) out.push({ x, z });
+        if (layer[this.idx(x, z)] !== 0) out.push({ x, z });
       }
     }
     return out;

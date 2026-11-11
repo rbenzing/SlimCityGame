@@ -157,6 +157,10 @@ const DEPOTS = (catalogData as { buildings: BuildingCatalogEntry[] }).buildings.
   ['bus-depot', 'bus-garage', 'tram-depot', 'rail-yard'].includes(e.id),
 );
 
+const SUBSTATIONS = (catalogData as { buildings: BuildingCatalogEntry[] }).buildings.filter(
+  (e) => e.id === 'substation',
+);
+
 const PARKS = (catalogData as { buildings: BuildingCatalogEntry[] }).buildings.filter((e) =>
   ['civic-plaza', 'neighbourhood-park', 'district-park', 'sports-ground'].includes(e.id),
 );
@@ -562,6 +566,7 @@ describe('UTILITY_KIT_CATALOG_IDS', () => {
       'bus-garage',
       'tram-depot',
       'rail-yard',
+      'substation',
     ]);
   });
 });
@@ -2700,11 +2705,13 @@ describe('multiple kits coexisting', () => {
       ...GENERATORS,
       ...PLOPPABLES,
       ...DEPOTS,
+      ...SUBSTATIONS,
       makeSmallParkEntry(),
       ...PARKS,
     ]);
     renderer.apply(
       deltaAdd(
+        makeInstance(39, 'substation', { x: 60, z: 40 }),
         makeInstance(35, 'civic-plaza', { x: 0, z: 40 }),
         makeInstance(36, 'neighbourhood-park', { x: 10, z: 40 }),
         makeInstance(37, 'district-park', { x: 20, z: 40 }),
@@ -2795,6 +2802,7 @@ describe('multiple kits coexisting', () => {
     expect(renderer.partSlotsFor(36, 'playFrame')).toHaveLength(2);
     expect(renderer.partSlotsFor(37, 'pavilionBlock')).toHaveLength(1);
     expect(renderer.partSlotsFor(38, 'pitchGoal')).toHaveLength(2);
+    expect(renderer.partSlotsFor(39, 'substationEquipment')).toHaveLength(1);
     expect(renderer.partSlotsFor(5, 'parkTree').length).toBeGreaterThan(0);
     expect(renderer.drapedMeshCount()).toBe(2);
   });

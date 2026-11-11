@@ -173,6 +173,7 @@ import { RoadTier, type RoadProfile } from '../shared/types';
 import { maxHeightOverRect } from './footprint';
 import { PLOT_BAND_TOP, PLOT_SURFACE_M, PLOT_YARD_TOP } from './plotground';
 import { InstancedSlotPool } from './massing';
+import { buildSubstationGeometry, type SubstationPart } from './substationkit';
 import { sunDirection } from './sun';
 import { SHALLOW_WATER_COLOR } from './water';
 import { buildServiceVehicleGeometry, type ServiceVehicleKind } from './servicevehicles';
@@ -254,6 +255,7 @@ export const UTILITY_KIT_CATALOG_IDS: readonly string[] = [
   'bus-garage',
   'tram-depot',
   'rail-yard',
+  'substation',
 ];
 
 export type UtilityKitPartKind =
@@ -373,6 +375,7 @@ export type UtilityKitPartKind =
   | 'railYardLit'
   | 'railYardCar'
   | 'railYardCarMid'
+  | SubstationPart
   | YardVariantKind
   | DepotTracksideKind;
 
@@ -10165,6 +10168,8 @@ export class UtilityKitRenderer {
         return this.buildYardKit(entry, 'tram');
       case 'rail-yard':
         return this.buildYardKit(entry, 'rail');
+      case 'substation':
+        return this.buildSubstationKit(entry);
       default:
         // Unreachable: the constructor only calls buildKit() for ids already
         // filtered through this.registryIds, which is exactly this switch's
@@ -10196,6 +10201,48 @@ export class UtilityKitRenderer {
         ),
       },
     };
+  }
+
+  /** The substation's yard, equipment and lit panes, all in the lot's own frame. */
+  private buildSubstationKit(entry: BuildingCatalogEntry): KitDefinition {
+    const pool = (part: SubstationPart): InstancedSlotPool =>
+      new InstancedSlotPool(
+        this.scene,
+        buildSubstationGeometry(part),
+        part === 'substationLit' ? this.stationLightMaterial : this.bodyMaterial(),
+        INITIAL_KIT_CAPACITY,
+      );
+    return {
+      entry,
+      pavesLot: true,
+      pools: {
+        substationYard: pool('substationYard'),
+        substationEquipment: pool('substationEquipment'),
+        substationLit: pool('substationLit'),
+      },
+    };
+  }
+
+  private applySubstation(
+    kit: KitDefinition,
+    building: BuildingInstance,
+    centerX: number,
+    groundY: number,
+    centerZ: number,
+    rotation: 0 | 1 | 2 | 3,
+  ): void {
+    const { substationYard, substationEquipment, substationLit } = kit.pools;
+    if (!substationYard || !substationEquipment || !substationLit) return;
+    this.instances.set(building.id, {
+      catalogId: building.catalogId,
+      slots: {
+        substationYard: [this.placeAt(substationYard, centerX, groundY, centerZ, rotation)],
+        substationEquipment: [
+          this.placeAt(substationEquipment, centerX, groundY, centerZ, rotation),
+        ],
+        substationLit: [this.placeAt(substationLit, centerX, groundY, centerZ, rotation)],
+      },
+    });
   }
 
   /** A yard's track and grounds come in the two frames its lot can take, the lead off the long edge or off the end; the rest is one geometry. */
@@ -10869,6 +10916,9 @@ export class UtilityKitRenderer {
         return;
       case 'rail-yard':
         this.applyYard(kit, building, entry, 'rail', centerX, groundY, centerZ);
+        return;
+      case 'substation':
+        this.applySubstation(kit, building, centerX, groundY, centerZ, rotation);
         return;
       default:
         // Unreachable: kit is only non-null for entry.ids covered above (see buildKit's switch).

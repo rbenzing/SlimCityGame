@@ -339,7 +339,7 @@ function unservedIssues(unserved: ZonedUnserved): CityIssue[] {
       severity: 'warning',
       title: tiles(unserved.power, 'power'),
       detail:
-        'Nothing can grow there. A gravel road carries no power — string a power line along it, or join the road to a plant.',
+        'Nothing can grow there. A gravel road carries no power — string a power line along it from a power station, a substation or a live line, or join the road to a plant.',
       count: unserved.power,
       focus: unserved.powerAt,
     });

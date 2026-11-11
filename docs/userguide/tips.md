@@ -19,6 +19,11 @@
   A paved street already carries power and shows it as a pole line along its
   footway, so a line strung along one is refused ("The street already carries
   power."); a line may still cross a street.
+- **A line starts at a source.** A power line must begin at a power station,
+  a **Substation** (Electricity) or a line that is already live; begun
+  anywhere else it is refused. A substation stands beside a street, takes
+  its power from that street and is where a line out to a gravel lane, a farm
+  or a pump begins. A line you strung before this rule stays live.
 - Keep commercial and industrial in proportion to residential; if a demand bar is
   empty, stop zoning that type.
 - Services and parks raise happiness and land value in a radius — spread them out

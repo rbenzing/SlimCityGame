@@ -82,6 +82,18 @@ export const RoadFlow = {
 export type RoadFlow = (typeof RoadFlow)[keyof typeof RoadFlow];
 
 /**
+ * What a byte of GridState.powerLine holds. These are save bytes: never
+ * reorder or reuse one, only append (3 is kept for the buried cable).
+ * Held is a line an older save kept, which a street may feed; Strung is a
+ * line laid from a source, which only a source or a live line feeds.
+ */
+export const PowerLineKind = {
+  Held: 1,
+  Strung: 2,
+} as const;
+export type PowerLineKind = (typeof PowerLineKind)[keyof typeof PowerLineKind];
+
+/**
  * The bits of a stored `roadFlow` byte that hold the direction. Everything
  * above them says something else about the tile, so a reader that wants the
  * direction must mask — reading the byte raw and comparing it to a RoadFlow
@@ -380,7 +392,7 @@ export interface GridState {
    * It is a network of its own and never a road: nothing drives along it, it
    * carries no traffic and no water, and it has no tier.
    * ADDITIVE layer: serialized LAST in the grid save (SAVE_VERSION 10); older
-   * saves load with no lines anywhere.
+   * saves load with no lines anywhere. A byte is a PowerLineKind; 0 no line.
    */
   powerLine: Uint8Array;
   /**
@@ -750,7 +762,9 @@ export type Command =
   | { kind: 'paintLandfill'; tiles: TilePoint[]; on: boolean }
   // Power: string (on) or pull down (off) a run of power line. Charged per
   // tile that actually changes, so dragging back over a run is free.
-  | { kind: 'stringPowerLine'; tiles: TilePoint[]; on: boolean }
+  // `lineKind` set means a restore (an undo): the tiles take that byte, and
+  // the run need not start at a source.
+  | { kind: 'stringPowerLine'; tiles: TilePoint[]; on: boolean; lineKind?: PowerLineKind }
   // Water: lay (on) or pull up (off) a run of pipe, which carries water and
   // sewage. Charged per tile that actually changes, like the power line.
   | { kind: 'layWaterPipe'; tiles: TilePoint[]; on: boolean }
@@ -1301,6 +1315,11 @@ export interface OpenSpace {
 }
 
 export interface UtilitySpec {
+  /**
+   * A substation: makes no power and limits none, but passes the supply its
+   * street or line brings on to the streets and lines that touch it.
+   */
+  substation?: boolean;
   /** Nameplate generation, MW: what the plant is rated for. */
   powerMW?: number;
   /**
@@ -1902,9 +1921,11 @@ export interface ReversibleEdit {
  * appends the middle, high and college education planes after the pipe layer,
  * which an older save loads zero; v17 is the v16 byte layout, the version
  * whose building registry may carry a parcel frame, which a build without
- * frames would stand on the grid wrongly.
+ * frames would stand on the grid wrongly; v18 is the v16 byte layout, the
+ * version whose powerLine byte may be 2 (a line laid from a source), which a
+ * build that reads only 1 would not draw or conduct.
  */
-export const SAVE_VERSION = 17;
+export const SAVE_VERSION = 18;
 /** The first save version whose landfill fill is in 0.25 kg trash units. */
 export const TRASH_UNIT_SAVE_VERSION = 15;
 

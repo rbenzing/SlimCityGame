@@ -40,6 +40,8 @@ A tile is 66 ft wide, so the line's corridor is one tile; a 100 m span is 328 ft
 
 Half an acre is 2,023 m²; two tiles by two is 1,600 m², 0.4 acre. No source gave homes served by a substation or a feeder, so the substation limits nothing.
 
+The game's price is the least of that range, $3 million, at the rate its wind turbine sets: about $1.9 million for one megawatt at ¢190, ¢100 to the $1 million, so ¢300. Its upkeep of ¢6 a month is a dial: two parts in a hundred, a little over the turbine's, for equipment nobody attends.
+
 ## Boxes on the surface
 
 - Pad-mounted switchgear stands about 45 in high on a 6 in base, 75 in wide and 70 to 73 in long. — [Ameren, standard 53](https://ameren.com/-/media/corporate-site/files/safetypartners/dist-construction-standards/53-equipment-switch.ashx), _relayed_.

@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { tileIndex } from '../../src/shared/constants';
 import { POWER_LINE_REFUSALS } from '../../src/shared/placement';
-import { RoadTier } from '../../src/shared/types';
+import { PowerLineKind, RoadTier } from '../../src/shared/types';
 import type { Command } from '../../src/shared/types';
-import { column, initialized, latestSaveGrid, roadRow, run } from '../support/sim';
+import { column, holdOlderLine, initialized, latestSaveGrid, roadRow, run } from '../support/sim';
 import type { Harness } from '../support/sim';
 import { guardRoadNetwork } from '../support/guard';
 
@@ -19,6 +19,15 @@ const line = (tiles: { x: number; z: number }[]): Command => ({
   kind: 'stringPowerLine',
   tiles,
   on: true,
+});
+
+/** A wind turbine on (x, z): a source a line may start beside. */
+const turbine = (x: number, z: number): Command => ({
+  kind: 'placeBuilding',
+  catalogId: 'wind-turbine',
+  x,
+  z,
+  rotation: 0,
 });
 
 /** A new town with a two-lane street along row 60 from x = 58 to x = 77. */
@@ -50,13 +59,14 @@ describe('stringing a power line past a street that already carries power', () =
 
   it('allows a line that crosses the street at right angles, and undoes it exactly', () => {
     const h = townWithAStreet();
+    expect(run(h, 2, [turbine(64, 56)]).ok).toBe(true);
     const tiles = column(65, 56, 9);
-    const ack = run(h, 2, [line(tiles)]);
+    const ack = run(h, 3, [line(tiles)]);
     expect(ack.ok).toBe(true);
     expect(ack.inverse).toEqual([{ kind: 'stringPowerLine', tiles, on: false }]);
-    expect(savedGrid(h).powerLine[tileIndex(65, 60)]).toBe(1);
+    expect(savedGrid(h).powerLine[tileIndex(65, 60)]).toBe(PowerLineKind.Strung);
 
-    expect(run(h, 3, ack.inverse).ok).toBe(true);
+    expect(run(h, 4, ack.inverse).ok).toBe(true);
     const grid = savedGrid(h);
     for (const t of tiles) expect(grid.powerLine[tileIndex(t.x, t.z)]).toBe(0);
   });
@@ -66,24 +76,25 @@ describe('stringing a power line past a street that already carries power', () =
     expect(
       run(h, 1, [{ kind: 'buildRoad', tier: RoadTier.Gravel, tiles: roadRow(58, 60, 20) }]).ok,
     ).toBe(true);
-    expect(run(h, 2, [line(roadRow(62, 60, 8))]).ok).toBe(true);
+    expect(run(h, 2, [turbine(62, 59)]).ok).toBe(true);
+    expect(run(h, 3, [line(roadRow(62, 60, 8))]).ok).toBe(true);
   });
 
   it('keeps a line an older save holds along a street, live, and leaves it alone', () => {
     const h = initialized();
     const along = roadRow(60, 60, 6);
-    expect(run(h, 1, [line(along)]).ok).toBe(true);
-    // The street is laid over the line afterwards: the state an older save holds.
+    // The state an older save holds: a line, then a street laid over it.
+    holdOlderLine(h, along);
     expect(
       run(h, 2, [{ kind: 'buildRoad', tier: RoadTier.TwoLane, tiles: roadRow(58, 60, 10) }]).ok,
     ).toBe(true);
     const grid = savedGrid(h);
-    for (const t of along) expect(grid.powerLine[tileIndex(t.x, t.z)]).toBe(1);
+    for (const t of along) expect(grid.powerLine[tileIndex(t.x, t.z)]).toBe(PowerLineKind.Held);
 
     // Dragging over it again changes nothing, and is not the new refusal.
     const again = run(h, 3, [line(along)]);
     expect(again.reason).not.toBe(POWER_LINE_REFUSALS.alongStreet);
     const after = savedGrid(h);
-    for (const t of along) expect(after.powerLine[tileIndex(t.x, t.z)]).toBe(1);
+    for (const t of along) expect(after.powerLine[tileIndex(t.x, t.z)]).toBe(PowerLineKind.Held);
   });
 });

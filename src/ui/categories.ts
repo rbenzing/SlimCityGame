@@ -343,6 +343,8 @@ const RAW_GROUPS: Record<DockCategory, AssetSubTab[]> = {
         ...catalogCards((e) => e.category === 'utility' && e.utility?.powerMW !== undefined),
         // The wire that carries what the generators make, listed with them.
         POWER_LINE_CARD,
+        // Where a line may start that is not a power station.
+        ...catalogCards((e) => e.utility?.substation === true),
       ],
     },
   ],

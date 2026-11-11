@@ -218,7 +218,8 @@
   with cattle. Beaches, the water's edge, rock and steep slopes grow nothing.
   A farm's gate opens only onto a dirt road, though its fields may run right
   up to a paved one. A dirt road carries no power, so string a **power line**
-  along it out to the farms. A farm needs no water: it has its own well. Farm
+  along it out to the farms, starting at a power station or a substation. A
+  farm needs no water: it has its own well. Farm
   work counts as industry on the RCI bars, so the industrial bar asks for farms
   and workshops alike. A farm grows larger as the town wants more work, but
   only onto land as good as its kind needs.

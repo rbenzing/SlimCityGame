@@ -89,6 +89,7 @@ export const CIVIC_ACCESS_BY_ID: Readonly<Record<string, CivicAccess>> = {
   'bus-garage': { spans: [drive(33, 40.2)] },
   'tram-depot': { turn: 'yard', spans: [] },
   'rail-yard': { turn: 'yard', spans: [drive(71.2, 78.4)] },
+  substation: { spans: [drive(17, 23)] },
   airport: { edge: 'back', spans: [drive(76.35, 83.65)] },
 };
 

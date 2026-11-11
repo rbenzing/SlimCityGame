@@ -5,7 +5,7 @@
  * town the tests do.
  */
 import { MAP_SIZE, MAP_TILES, SPEED_MULTIPLIERS, TICK_MS } from '../../src/shared/constants';
-import { FieldId, RoadTier } from '../../src/shared/types';
+import { FieldId, PowerLineKind, RoadTier } from '../../src/shared/types';
 import type {
   BuildingCatalogEntry,
   BuildingInstance,
@@ -23,7 +23,7 @@ import catalogData from '../../src/data/catalog.json';
 import roadsData from '../../src/data/roads.json';
 import { decodeSave, encodeSave } from '../../src/app/persist';
 import type { ClientGridMirror } from '../../src/app/clientgrid';
-import { loadGrid } from '../../src/world/roadnet';
+import { loadGrid, saveGrid } from '../../src/world/roadnet';
 import {
   composeProfile,
   FIRST_CUSTOM_PROFILE_ID,
@@ -228,6 +228,21 @@ export function latestSaveGrid(h: Harness): GridState {
   const payload = decodeSave(latestSaveData(h));
   const table = (payload.meta.roadProfiles ?? []).map((e) => [e.id, e.profile] as const);
   return loadGrid(payload.grid, oneCarriagewayIds(table)).grid;
+}
+
+/**
+ * Loads the city again with a line standing on `tiles` as an older save holds
+ * it (a line the street may feed), whatever stood there. The worker only ever
+ * strings the newer kind, so this is the one way a test gets the older one.
+ */
+export function holdOlderLine(h: Harness, tiles: readonly TilePoint[]): void {
+  h.sim.handleMessage({ type: 'requestSave' });
+  const payload = decodeSave(latestSaveData(h));
+  const table = (payload.meta.roadProfiles ?? []).map((e) => [e.id, e.profile] as const);
+  const { grid, roads } = loadGrid(payload.grid, oneCarriagewayIds(table));
+  for (const t of tiles) grid.powerLine[t.z * MAP_SIZE + t.x] = PowerLineKind.Held;
+  payload.grid = saveGrid(grid, roads);
+  h.sim.handleMessage({ type: 'loadSave', data: encodeSave(payload) });
 }
 
 /** Latest full-map Noise field posted by the harness, or null. */

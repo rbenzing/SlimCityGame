@@ -333,7 +333,7 @@ export class EconomySystem {
       let waterPipeUpkeep = 0;
       for (let i = 0; i < MAP_TILES; i++) {
         if (g.landfill[i] === 1) landfillUpkeep += LANDFILL_UPKEEP_PER_TILE;
-        if (g.powerLine[i] === 1) powerLineUpkeep += POWER_LINE_UPKEEP_PER_TILE;
+        if (g.powerLine[i] !== 0) powerLineUpkeep += POWER_LINE_UPKEEP_PER_TILE;
         if (g.waterPipe[i] === 1) waterPipeUpkeep += WATER_PIPE_UPKEEP_PER_TILE;
       }
 

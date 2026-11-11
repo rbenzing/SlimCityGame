@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { BuildingCatalogEntry, BuildingInstance, GridState, TilePoint } from '../shared/types';
-import { BuildingState, RoadTier } from '../shared/types';
+import { BuildingState, PowerLineKind, RoadTier } from '../shared/types';
 import {
   SEWAGE_RETURN_FRACTION,
   SEWER_MILESTONE,
@@ -137,8 +137,8 @@ describe('recomputeUtilities: only a sealed road carries a cable', () => {
     recomputeUtilities(g, buildings, catalog);
     expect(g.power[tileIndex(12, 6)]).toBe(0);
 
-    // The line runs beside the lane and reaches what the lane could not.
-    for (let x = 6; x <= 13; x++) g.powerLine[tileIndex(x, 5)] = 1;
+    // The line starts at the plant and runs beside the lane, reaching what the lane could not.
+    for (let x = 6; x <= 13; x++) g.powerLine[tileIndex(x, 5)] = PowerLineKind.Strung;
     recomputeUtilities(g, buildings, catalog);
     expect(g.power[tileIndex(12, 6)]).toBe(1);
   });
@@ -1122,5 +1122,136 @@ describe('recomputeUtilities along a road off the grid', () => {
     placeBuilding(g, buildings, 2, 'house', 120, 116, 1, 1);
     recomputeUtilities(g, buildings, catalog);
     expect(g.power[tileIndex(120, 116)]).toBe(1);
+  });
+});
+
+describe('recomputeUtilities: a line starts at a source', () => {
+  const substation: BuildingCatalogEntry = {
+    ...powerPlant,
+    id: 'substation',
+    name: 'Substation',
+    footprint: { w: 2, d: 2 },
+    utility: { substation: true },
+  };
+  const withSubstation = [...catalog, substation];
+
+  const string = (
+    g: GridState,
+    x0: number,
+    x1: number,
+    z: number,
+    kind: PowerLineKind = PowerLineKind.Strung,
+  ): void => {
+    for (let x = x0; x <= x1; x++) g.powerLine[tileIndex(x, z)] = kind;
+  };
+
+  /** A plant at (5, 5), a street along row 5 from 6 to 14, and a house two rows off it at (12, 7). */
+  function streetTown(): { g: GridState; buildings: BuildingInstance[] } {
+    const g = makeGrid();
+    const buildings: BuildingInstance[] = [];
+    placeBuilding(g, buildings, 1, 'power-plant', 5, 5, 1, 1);
+    paintRoadRow(g, 6, 14, 5);
+    placeBuilding(g, buildings, 2, 'house', 12, 7, 1, 1);
+    return { g, buildings };
+  }
+
+  it('delivers nothing down a new line a street runs beside, and still does down an older one', () => {
+    const { g, buildings } = streetTown();
+    string(g, 6, 14, 6, PowerLineKind.Strung);
+    recomputeUtilities(g, buildings, withSubstation);
+    expect(g.power[tileIndex(12, 7)]).toBe(0);
+
+    string(g, 6, 14, 6, PowerLineKind.Held);
+    recomputeUtilities(g, buildings, withSubstation);
+    expect(g.power[tileIndex(12, 7)]).toBe(1);
+  });
+
+  it('delivers down a new line that starts at a generator, to what stands beside it', () => {
+    const g = makeGrid();
+    const buildings: BuildingInstance[] = [];
+    placeBuilding(g, buildings, 1, 'power-plant', 5, 5, 1, 1);
+    string(g, 6, 13, 5);
+    placeBuilding(g, buildings, 2, 'house', 12, 6, 1, 1);
+    recomputeUtilities(g, buildings, withSubstation);
+    expect(g.power[tileIndex(12, 6)]).toBe(1);
+  });
+
+  it('delivers nothing when its source is gone, and says so as no power', () => {
+    const g = makeGrid();
+    const buildings: BuildingInstance[] = [];
+    string(g, 6, 13, 5);
+    placeBuilding(g, buildings, 2, 'house', 12, 6, 1, 1);
+    const totals = recomputeUtilities(g, buildings, withSubstation);
+    expect(g.power[tileIndex(12, 6)]).toBe(0);
+    expect(totals.powerSupply).toBe(0);
+  });
+
+  it('lets a live line energise the street it meets and the buildings beside that street', () => {
+    const g = makeGrid();
+    const buildings: BuildingInstance[] = [];
+    placeBuilding(g, buildings, 1, 'power-plant', 5, 5, 1, 1);
+    string(g, 6, 9, 5);
+    for (let z = 2; z <= 8; z++) paintRoad(g, 10, z);
+    placeBuilding(g, buildings, 2, 'house', 11, 7, 1, 1);
+    recomputeUtilities(g, buildings, withSubstation);
+    expect(g.power[tileIndex(10, 5)]).toBe(1);
+    expect(g.power[tileIndex(10, 8)]).toBe(1);
+    expect(g.power[tileIndex(11, 7)]).toBe(1);
+  });
+
+  it('carries a new line across a street at right angles and on to the far side', () => {
+    const g = makeGrid();
+    const buildings: BuildingInstance[] = [];
+    placeBuilding(g, buildings, 1, 'power-plant', 5, 5, 1, 1);
+    for (let z = 2; z <= 8; z++) paintRoad(g, 9, z, RoadTier.Gravel);
+    string(g, 6, 12, 5);
+    placeBuilding(g, buildings, 2, 'house', 13, 5, 1, 1);
+    recomputeUtilities(g, buildings, withSubstation);
+    expect(g.power[tileIndex(13, 5)]).toBe(1);
+  });
+
+  it('feeds a line from a substation its street supplies', () => {
+    const { g, buildings } = streetTown();
+    placeBuilding(g, buildings, 3, 'substation', 15, 5, 2, 2);
+    string(g, 17, 24, 5);
+    placeBuilding(g, buildings, 4, 'house', 23, 6, 1, 1);
+    recomputeUtilities(g, buildings, withSubstation);
+    expect(g.power[tileIndex(23, 6)]).toBe(1);
+
+    // Without the substation the street ends at its own end and the line is dead.
+    for (const tile of [15, 16].flatMap((x) => [5, 6].map((z) => tileIndex(x, z)))) {
+      g.buildingId[tile] = 0;
+    }
+    buildings.splice(
+      buildings.findIndex((b) => b.id === 3),
+      1,
+    );
+    recomputeUtilities(g, buildings, withSubstation);
+    expect(g.power[tileIndex(23, 6)]).toBe(0);
+  });
+
+  it('feeds the streets a substation touches from a line that reaches it', () => {
+    const g = makeGrid();
+    const buildings: BuildingInstance[] = [];
+    placeBuilding(g, buildings, 1, 'power-plant', 5, 5, 1, 1);
+    string(g, 6, 9, 5);
+    placeBuilding(g, buildings, 2, 'substation', 10, 5, 2, 2);
+    paintRoadRow(g, 12, 18, 5);
+    placeBuilding(g, buildings, 3, 'house', 16, 6, 1, 1);
+    recomputeUtilities(g, buildings, withSubstation);
+    expect(g.power[tileIndex(16, 6)]).toBe(1);
+    expect(g.power[tileIndex(11, 5)]).toBe(1);
+  });
+
+  it('makes nothing of its own: a substation no supply reaches delivers nothing', () => {
+    const g = makeGrid();
+    const buildings: BuildingInstance[] = [];
+    placeBuilding(g, buildings, 1, 'power-plant', 5, 5, 1, 1);
+    placeBuilding(g, buildings, 2, 'substation', 30, 30, 2, 2);
+    string(g, 32, 38, 30);
+    placeBuilding(g, buildings, 3, 'house', 36, 31, 1, 1);
+    const totals = recomputeUtilities(g, buildings, withSubstation);
+    expect(g.power[tileIndex(36, 31)]).toBe(0);
+    expect(totals.powerSupply).toBe(10);
   });
 });
