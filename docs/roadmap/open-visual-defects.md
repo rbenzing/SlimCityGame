@@ -55,7 +55,7 @@ What a review of every screenshot the shot tools write found wrong in the game, 
 
 - Parked cars share a stall or stand nose to tail in a column; one stands in a hatched access aisle; pylon signs and trees stand inside stalls. — `shots-storefronts/close-fuel`, `strip-pylon`, `shots-ploppables/a-clinic-street`
 - Trucks jam aisles nose to tail with cabs through walls; one stands through a barn wall. — `shots-industry/flex`, `close-farm-orchard-2-yard`
-- A farm silo is half a cylinder, open down one side, and hovers on its chute; flare stacks stand alone on open ground; a food plant's stack stands in its car park; steel tanks and pipe poles cross the side drive. — `shots-industry/farm-farm-crops-1`, `chem`, `food-heavy-food-2-court`
+- Flare stacks stand alone on open ground; a food plant's stack stands in its car park; steel tanks and pipe poles cross the side drive. — `shots-industry/chem`, `food-heavy-food-2-court`
 - An office and a hotel stand on bare asphalt with no stalls or walk; the office entrance is a slab two storeys tall. — `shots-storefronts/office`
 - A garden walk-up's stair reaches only its lower landing; a tower's roof plant covers half the roof; its shopfront band and lobby stay dark at night; lit panes are slabs over whole bays. `[R-render-021]` — `shots-apartments/close-garden-breezeway`, `garden-res-medium-3-night`
 - A colonial's chimney is a thin post leaning from the ridge to the ground; a car parks through a porch's columns. — `shots-houses/street-colonial-west`
