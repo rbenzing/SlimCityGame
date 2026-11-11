@@ -70,8 +70,6 @@
 
 - The district fire station's second company rolls as a second engine: no ladder-truck vehicle kind yet (an aerial is 51 ft and up, 13 ft high); engines parked on station aprons are decoration and stay put.
 - A fire's on-scene time of 10–30 ticks (1.2–3.6 game hours) is a dial: no US engine on-scene figure was found.
-- A civic kit's plinth leaves a step at the road crossing; the college has no drive.
-
 ## Why the rules are what they are
 
 ### Why it earns its place

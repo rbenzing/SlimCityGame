@@ -64,7 +64,7 @@
 
 **Tests:** `src/sim/garbage.test.ts`, `src/sim/garbage.load.test.ts` (load, rescale), `src/sim/garbagetrucks.test.ts`, `tests/interaction/depottrucks.test.ts`.
 
-**Open:** a civic kit stands on a raised plinth, so its apron meets the road crossing with a step at the footprint's edge (roadmap).
+**Open:** nothing.
 
 ## Why the rules are what they are
 

@@ -67,6 +67,7 @@ import {
 } from './utilitykits';
 import catalogData from '../data/catalog.json';
 import { BuildingInstancer } from './buildings';
+import { PLOT_YARD_TOP } from './plotground';
 import {
   BuildingCatalogEntry,
   BuildingDelta,
@@ -822,6 +823,6 @@ describe('all eight', () => {
     }
     expect(table['water-drain']).toBeLessThan(2000);
     expect(table['recycling-depot']).toBeLessThan(2000);
-    expect(RECYCLING_YARD_HEIGHT).toBe(0.3);
+    expect(RECYCLING_YARD_HEIGHT).toBe(PLOT_YARD_TOP);
   });
 });

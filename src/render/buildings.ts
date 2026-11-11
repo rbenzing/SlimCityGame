@@ -87,6 +87,7 @@ import {
   windowlessBody,
   type MaterialShare,
 } from './facade';
+import { PLINTH_TOP } from './plotground';
 
 const INITIAL_CAPACITY = 64;
 /** Constructing buildings render at this fraction of their final height. */
@@ -99,7 +100,7 @@ const CONSTRUCTING_HEIGHT_SCALE = 0.25;
  * (matching the model) rather than a big raised dark block. Still a real,
  * pickable/outlinable slab through the shared instancer path.
  */
-const PLINTH_PAD_HEIGHT = 0.25;
+const PLINTH_PAD_HEIGHT = PLINTH_TOP;
 /** The one box a barn or a plinth is drawn as; its size is written when the slot is, not read from here. */
 const ONE_BOX: SetbackBox = { w: 1, d: 1, h: 1, yOffset: 0 };
 

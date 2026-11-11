@@ -163,6 +163,7 @@ import { nightBodyMaterial } from './nightlook';
 import { TILE_METERS } from '../shared/constants';
 import { footprintForRotation } from '../shared/footprint';
 import { maxHeightOverRect } from './footprint';
+import { PLOT_SURFACE_M, PLOT_YARD_TOP } from './plotground';
 import { InstancedSlotPool } from './massing';
 import { sunDirection } from './sun';
 import { SHALLOW_WATER_COLOR } from './water';
@@ -1914,8 +1915,8 @@ export const RECYCLING_OFFICE_SIZE = { w: 4, d: 3, h: 3.2 };
 const RECYCLING_ROOF_CAP_HEIGHT = 0.4;
 const RECYCLING_TRUCK_SPACING = 6.5;
 
-/** The paved yard is a slab over the whole lot, standing just proud of the ground plinth so the two never z-fight. */
-export const RECYCLING_YARD_HEIGHT = 0.3;
+/** The paved yard is a slab over the whole lot, flush with the ground and just above the plinth so the two never z-fight. */
+export const RECYCLING_YARD_HEIGHT = PLOT_YARD_TOP;
 /** How far a yard's footing reaches below the highest ground under its lot. */
 export const YARD_FOOTING_DEPTH = 8;
 
@@ -3287,7 +3288,7 @@ const CEMETERY_FENCE_INSET_M = 0.25;
 const CEMETERY_FENCE_CLEAR_M = 0.4;
 /** Headstone sits this far along its grave space from the head end. */
 const HEADSTONE_HEAD_SETBACK_M = 0.2;
-export const CEMETERY_LAWN_HEIGHT = 0.3;
+export const CEMETERY_LAWN_HEIGHT = PLOT_YARD_TOP;
 const CEMETERY_PAVING_PROUD_M = 0.02;
 const CEMETERY_PATCH_PROUD_M = 0.012;
 const CEMETERY_FENCE_POST_SPACING_M = 2.5;
@@ -4140,7 +4141,7 @@ function buildStationYardGeometry(entry: BuildingCatalogEntry): THREE.BufferGeom
     parts.push(
       standingBox(
         r.x1 - r.x0,
-        0.03,
+        PLOT_SURFACE_M,
         r.z1 - r.z0,
         (r.x0 + r.x1) / 2,
         top,
@@ -4380,9 +4381,12 @@ const EDU_WINDOW = { w: 2.2, h: 1.6, sill: 1, pitch: 3.05, end: 1.5, margin: 0.3
 const EDU_GYM_BAND = { y: 5, h: 1.2, end: 1 };
 const EDU_PANE_T = 0.12;
 const EDU_DOOR_SKIP_M = 4.2;
-const EDU_ASPHALT_M = 0.03;
-const EDU_CONCRETE_M = 0.045;
-const EDU_PATCH_M = 0.02;
+// Surfaces laid on the lawn or yard stack in steps of at least 5 mm, each top
+// inside PLOT_SURFACE_M, so none z-fights another and none leaves the band.
+const EDU_PATCH_M = 0.01;
+const EDU_ASPHALT_M = 0.015;
+const EDU_CONCRETE_M = 0.02;
+const EDU_PATH_M = PLOT_SURFACE_M - EDU_PATCH_M;
 const EDU_LINE_M = 0.015;
 const EDU_LINE_W = 0.1;
 const EDU_TREE_CLEAR_M = 3.4;
@@ -5056,7 +5060,9 @@ function buildEducationGroundsGeometry(entry: BuildingCatalogEntry): THREE.Buffe
   if (layout.quad) parts.push(groundPatch(layout.quad, 0, EDU_PATCH_M, EDU_FIELD_RGB));
   for (const r of layout.asphalt) parts.push(groundPatch(r, 0, EDU_ASPHALT_M, EDU_ASPHALT_RGB));
   for (const r of layout.concrete) parts.push(groundPatch(r, 0, EDU_CONCRETE_M, EDU_CONCRETE_RGB));
-  if (layout.mulch) parts.push(groundPatch(layout.mulch, EDU_ASPHALT_M, EDU_LINE_M, EDU_MULCH_RGB));
+  if (layout.mulch) {
+    parts.push(groundPatch(layout.mulch, EDU_ASPHALT_M, EDU_PATCH_M / 2, EDU_MULCH_RGB));
+  }
   if (layout.field) {
     parts.push(groundPatch(layout.field, 0, EDU_PATCH_M, EDU_FIELD_RGB));
     parts.push(...outlineLines(layout.field, EDU_PATCH_M, EDU_LINE_W));
@@ -5067,11 +5073,11 @@ function buildEducationGroundsGeometry(entry: BuildingCatalogEntry): THREE.Buffe
   for (const path of layout.paths) {
     const dx = path.b.x - path.a.x;
     const dz = path.b.z - path.a.z;
-    const slab = new THREE.BoxGeometry(path.w, EDU_ASPHALT_M, Math.hypot(dx, dz));
+    const slab = new THREE.BoxGeometry(path.w, EDU_PATH_M, Math.hypot(dx, dz));
     slab.rotateY(Math.atan2(dx, dz));
     slab.translate(
       (path.a.x + path.b.x) / 2,
-      top + EDU_PATCH_M + EDU_ASPHALT_M / 2,
+      top + EDU_PATCH_M + EDU_PATH_M / 2,
       (path.a.z + path.b.z) / 2,
     );
     parts.push(paintVertexColor(slab, hexFromRgb(EDU_PATH_RGB)));
@@ -5085,7 +5091,7 @@ function educationCap(m: EducationMass): number {
   return m.height > EDU_WING_STOREYS * EDU_STOREY_M + 1e-9 ? EDU_PARAPET_M : EDU_CAP_M;
 }
 
-/** The masses with their caps and belt courses, the door and its canopy or portico; local Y=0 is the ground, the floor 0.3 m up on the lawn plate. */
+/** The masses with their caps and belt courses, the door and its canopy or portico; local Y=0 is the ground, the floor on the lawn plate. */
 function buildEducationBuildingGeometry(entry: BuildingCatalogEntry): THREE.BufferGeometry {
   const layout = computeEducationLayout(entry);
   const y0 = RECYCLING_YARD_HEIGHT;
@@ -5306,7 +5312,7 @@ function buildSchoolBusGeometry(): THREE.BufferGeometry {
 
 /** The plate's top over the highest ground under the lot. */
 export const GEN_PLATE_M = RECYCLING_YARD_HEIGHT;
-const GEN_PROUD_M = 0.03;
+const GEN_PROUD_M = PLOT_SURFACE_M;
 export const GEN_FENCE_HEIGHT_M = 2.1;
 export const GEN_SECURITY_FENCE_HEIGHT_M = 2.4;
 const GEN_FENCE_INSET_M = 0.6;
@@ -6139,10 +6145,10 @@ const GENERATOR_LOT_PARTS: Readonly<Record<string, readonly UtilityKitPartKind[]
 // path cross, 2-3 simple trees (self-contained), 2 benches.
 // ---------------------------------------------------------------------------
 
-const PARK_LAWN_HEIGHT = 0.15; // "~0.15m"
+const PARK_LAWN_HEIGHT = PLOT_YARD_TOP;
 const PARK_PATH_WIDTH_FRACTION = 0.16; // of the tile's shorter side
-const PARK_PATH_Y_OFFSET = 0.03;
-const PARK_PATH_HEIGHT = PARK_LAWN_HEIGHT * 0.6;
+const PARK_PATH_Y_OFFSET = PLOT_SURFACE_M;
+const PARK_PATH_HEIGHT = PLOT_SURFACE_M;
 
 const PARK_LAWN_RGB: RGB = [0.16, 0.42, 0.2]; // lush green
 const PARK_PATH_RGB: RGB = [0.81, 0.78, 0.67];
@@ -6213,7 +6219,7 @@ function buildParkGroundGeometry(footprint: FootprintSize): THREE.BufferGeometry
   paintVertexColor(lawn, hexFromRgb(PARK_LAWN_RGB));
 
   const pathWidth = Math.min(halfW, halfD) * 2 * PARK_PATH_WIDTH_FRACTION;
-  const pathY = PARK_LAWN_HEIGHT + PARK_PATH_Y_OFFSET;
+  const pathY = PARK_LAWN_HEIGHT + PARK_PATH_HEIGHT / 2;
 
   const pathX = new THREE.BoxGeometry(halfW * 2, PARK_PATH_HEIGHT, pathWidth);
   pathX.translate(0, pathY, 0);

@@ -64,7 +64,7 @@
 **Open:**
 
 - The pocket park's 0.2 kL water draw is a dial.
-- A civic kit's plinth leaves a step at the road crossing (parks are draped or plated and not affected).
+- A pond is a flat sheet on a draped park, so on a slope it stands proud of its lawn on the downhill side.
 
 ## Why the rules are what they are
 

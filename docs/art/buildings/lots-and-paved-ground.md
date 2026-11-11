@@ -68,7 +68,9 @@ civic crossing meet it without a step and no side wall shows on level
 ground. The slab's footing still runs down under it, which is what covers
 the fall on a slope; only there, on the low side, may a side be seen. A
 kit's walls, stalls, cars and lamps are all placed from that one top, so
-lowering it lowers them together.
+lowering it lowers them together. The ground under a placed building is
+levelled to its street (`[R-world-051]`), so a yard seated on the highest
+ground under it sits at the back of the footway.
 
 **Material palette calibration.** One module (`render/palette.ts`) is the
 single source of truth for every material colour in the world — buildings,
