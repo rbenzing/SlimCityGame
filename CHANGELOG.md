@@ -1,5 +1,25 @@
 # Changelog
 
+## [1.84.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.83.0...slimcity-v1.84.0) (2026-11-11)
+
+
+### Features
+
+* **growth:** a level-1 dense building stands in a car park ([bdc7132](https://github.com/rbenzing/SlimCityGame/commit/bdc71329cca9d5e4e0ad2dbd99900fed24dc46f9))
+* **growth:** a level-1 dense building stands in a car park ([ec3849e](https://github.com/rbenzing/SlimCityGame/commit/ec3849e49da2579d3689926f42635b7a10f80688))
+* **power:** a line starts at a source, and the substation ([b8234f1](https://github.com/rbenzing/SlimCityGame/commit/b8234f199269bc3d147bb0f4d70560c3d7c5f39d))
+* **power:** a line starts at a source, and the substation ([6fc9ad5](https://github.com/rbenzing/SlimCityGame/commit/6fc9ad551a05e5542c0e49ae6997016c74833ccc))
+* **power:** the buried cable ([9bfbdf6](https://github.com/rbenzing/SlimCityGame/commit/9bfbdf64bd1d41a63cfbfdfa6723ab2fb39e8d4d))
+* **power:** the buried cable ([2a644be](https://github.com/rbenzing/SlimCityGame/commit/2a644be8ad367e4c62c7e6180f32ea4f6171e986))
+* **render:** every roadside object in its place ([8ddb0d9](https://github.com/rbenzing/SlimCityGame/commit/8ddb0d966fbb08298c003d110732cb7cbfda8b3e))
+* **render:** every roadside object in its place ([92a230d](https://github.com/rbenzing/SlimCityGame/commit/92a230d7c198d0904bed81f51a8a94d1d43e2d8b))
+
+
+### Bug Fixes
+
+* **world:** a grown lot levels the ring round it, and three smaller loose ends ([fffe2d6](https://github.com/rbenzing/SlimCityGame/commit/fffe2d6b29e82b033f395eaf1b0fecfb9e31f5bd))
+* **world:** a grown lot levels the ring round it, and three smaller loose ends ([0d09ac2](https://github.com/rbenzing/SlimCityGame/commit/0d09ac28bfea11010b326d160369f0f370f7d45f))
+
 ## [1.83.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.82.0...slimcity-v1.83.0) (2026-11-11)
 
 
