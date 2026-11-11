@@ -29,6 +29,7 @@ import {
   composeProfile,
   corridorHalfProfile,
   NO_EDITS,
+  plainLaneCentres,
   presetProfileForTier,
   withTurnPocket,
 } from '../shared/roadprofile';
@@ -227,12 +228,14 @@ describe('road-furniture placement (pure)', () => {
     }
   });
 
-  it('runs every manhole down the centreline, never out in a running lane', () => {
+  it('lays every cover in the middle of one plain lane of its road, in a line down the run', () => {
     for (const tier of PAVED_TIERS) {
       const manholes = computeManholePlacements(strip(0, 0, 40, 'ew', tier));
-      // A road with a raised median has no centreline to sit on and carries
-      // none; every other paved road gets a line of them.
-      for (const m of manholes) expect(m.lateral).toBe(0);
+      // A road with a raised median carries none; every other paved road gets
+      // a line of them, all in the same lane.
+      const lanes = plainLaneCentres(presetProfileForTier(tier));
+      expect(new Set(manholes.map((m) => m.lateral)).size).toBeLessThanOrEqual(1);
+      for (const m of manholes) expect(lanes).toContain(m.lateral);
     }
   });
 
@@ -1106,17 +1109,19 @@ describe('a street gets a mix of cabinets, not a row of identical boxes', () => 
     expect(new Set(a.map(key))).toEqual(new Set(b.map(key)));
   });
 
-  it('stands each behind the footway on its own depth, never overhanging it', () => {
-    // Each is set back by HALF ITS OWN depth beyond the footway's back edge,
-    // so its near face lands exactly there and its body is out on the verge.
-    // The pedestal's concrete pad is a shade wider than the cabinet, so it
-    // stands a shade further out — each measured from itself, not a constant.
+  it('stands each in the furnishing strip on its own depth, the walk behind it clear', () => {
+    // Each is set back by HALF ITS OWN depth plus 0.1 m from the kerb face, so
+    // its near face lands there and its body fills the 0.6 m strip. The
+    // pedestal's concrete pad is a shade wider than the cabinet, so it stands a
+    // shade further out — each measured from itself, not a constant.
     const boxes = computeBoxPlacements(longRun());
-    const backOfFootway = carriagewayHalfWidthMeters(RoadTier.TwoLane) + SIDEWALK_WIDTH_M;
+    const kerbFace = carriagewayHalfWidthMeters(RoadTier.TwoLane);
+    const stripDepth = 0.6;
     for (const b of boxes) {
-      expect(b.lateralOffset).toBeGreaterThan(backOfFootway);
-      // …and not flung out into the middle of the verge either.
-      expect(b.lateralOffset).toBeLessThan(backOfFootway + 0.5);
+      const depth = b.kind === 'pedestal' ? 0.48 : 0.44;
+      expect(b.lateralOffset - depth / 2).toBeCloseTo(kerbFace + 0.1, 6);
+      // The back of the body is inside the strip, so the walk behind is clear.
+      expect(b.lateralOffset + depth / 2).toBeLessThanOrEqual(kerbFace + stripDepth);
     }
     const cabinet = boxes.find((b) => b.kind === 'cabinet')!;
     const pedestal = boxes.find((b) => b.kind === 'pedestal')!;
@@ -1410,7 +1415,7 @@ describe('an undivided arterial laid across two tiles is furnished as the one ro
       })),
     );
 
-  it('stands a cabinet behind its outer footway, never on the middle of the road', () => {
+  it('stands a cabinet in the strip of its outer kerb, never on the middle of the road', () => {
     const boxes = computeBoxPlacements(corridor());
     expect(boxes.length).toBeGreaterThan(0);
     for (const b of boxes) {
@@ -1420,8 +1425,9 @@ describe('an undivided arterial laid across two tiles is furnished as the one ro
       const kerb = carriagewayShiftOf(half) - half.seam!.side * carriagewayHalfWidthOf(half);
       const across = b.side * b.lateralOffset;
       const behind = (across - kerb) * b.side;
-      expect(behind).toBeGreaterThan(walk.width);
-      expect(behind).toBeLessThan(walk.width + 1);
+      // Behind the kerb face and inside the 0.6 m strip, the walk beyond it clear.
+      expect(behind).toBeGreaterThan(0.1);
+      expect(behind).toBeLessThan(0.6);
     }
   });
 
@@ -1435,13 +1441,17 @@ describe('an undivided arterial laid across two tiles is furnished as the one ro
     }
   });
 
-  it('lays one line of sewer covers down the middle, the edge its halves share', () => {
+  it('lays each half’s covers in the middle of its own first lane, never on the edge they share', () => {
     const covers = computeManholePlacements(corridor());
     expect(covers.length).toBeGreaterThan(0);
     for (const c of covers) {
-      expect(c.z).toBe(4);
+      const half = corridorHalfProfile(arterial, c.z === 4 ? 'left' : 'right');
       expect(c.axis).toBe('z');
-      expect(c.lateral).toBe(TILE_METERS / 2);
+      expect(c.lateral).toBeCloseTo(plainLaneCentres(half)[0]! + carriagewayShiftOf(half), 6);
+      expect(Math.abs(c.lateral)).toBeLessThan(TILE_METERS / 2 - 1);
+    }
+    for (const z of [4, 5]) {
+      expect(new Set(covers.filter((c) => c.z === z).map((c) => c.lateral)).size).toBe(1);
     }
   });
 
@@ -1587,8 +1597,8 @@ describe('a street tramway is hung from contact poles at the kerb', () => {
     // 20 tiles are 400 m of road: a pole at every multiple of 22 m below it.
     expect(poles.map((p) => p.x)).toEqual(Array.from({ length: 19 }, (_, k) => k * 22));
     const centre = tileToWorld(Z);
-    // At the kerb face, half a metre behind the 3.75 m carriageway edge.
-    for (const p of poles) expect(Math.abs(p.z - centre)).toBeCloseTo(3.75 + 0.5, 6);
+    // In the furnishing strip, 0.46 m behind the kerb face of the 3.75 m carriageway.
+    for (const p of poles) expect(Math.abs(p.z - centre)).toBeCloseTo(3.75 + 0.46, 6);
     const sides = poles.map((p) => Math.sign(p.z - centre));
     for (let k = 1; k < sides.length; k++) expect(sides[k]).toBe(-sides[k - 1]!);
     // Every arm reaches back over the road it stands beside.

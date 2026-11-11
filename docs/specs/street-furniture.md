@@ -1,6 +1,6 @@
 # Street furniture placement
 
-- **Status:** Agreed
+- **Status:** Built
 
 **Owns:** where every roadside object stands, across a street's section and along it: the furnishing strip and the clear walk, lamps, signs, signals, manhole covers, meters, cabinets and street trees, on a street with a footway, with a kerb only and with neither. The objects' shapes are [the lamp kit's](../art/props-and-vehicles/street-furniture-and-lamp-kit.md); a bus stop's own furniture is [civic-access-and-bus-stops.md](civic-access-and-bus-stops.md).
 
@@ -45,11 +45,11 @@
 | Tree from a lamp / a stop sign or signal / a drive | 4.6 / 6.1 / 1.8 (15 / 20 / 6 ft) | m | [trees](../sources/street-furniture.md#street-trees) |
 | Between two objects | 1.5 | m | dial |
 
-**Code:** `src/render/lamps.ts` `lampLateralOffset`, `tierGetsLamp`, `computeLampPlacements` the spacing, sides, heights and the stops it keeps clear of; `src/shared/constants.ts` `LAMP_SPACING_TILES`, `LAMP_SPACING_WIDE_TILES`; `src/shared/roadprofile.ts` `postedKmhOf`, `centralReserveOffsetOf`; `src/render/roadfurniture.ts` `POLE_BEHIND_KERB_M`; `src/render/freeroadmesh.ts` lamps along a curve; `src/render/roadfurniture.ts` covers, meters, boards, masts, cabinets; `src/render/busstops.ts` `busStopPlacement`; `src/shared/roadprofile.ts` `kerbWidthOf`, `FOOTWAY_WIDTH_M`; `src/main.ts` what `lamps.rebuild` is told.
+**Code:** `src/render/lamps.ts` `lampLateralOffset`, `tierGetsLamp`, `computeLampPlacements` the spacing, sides, heights and the stops it keeps clear of; `src/shared/constants.ts` `LAMP_SPACING_TILES`, `LAMP_SPACING_WIDE_TILES`; `src/shared/roadprofile.ts` `postedKmhOf`, `centralReserveOffsetOf`; `src/render/roadfurniture.ts` `POLE_BEHIND_KERB_M`; `src/render/roadsidespace.ts` `placeIsFree`, `firstFreeAlong`, `ROADSIDE_ORDER` the one question every placer asks and who gives way; `src/render/freeroadmesh.ts` lamps and poles along a curve; `src/render/roadfurniture.ts` covers, meters, boards, masts, cabinets, `controlSignSpots`; `src/render/trees.ts` `clearNear`; `src/render/roadsmesh.ts` `medianTreeStands`; `src/render/busstops.ts` `busStopPlacement`; `src/shared/roadprofile.ts` `kerbWidthOf`, `FOOTWAY_WIDTH_M`; `src/main.ts` what `lamps.rebuild` is told.
 
-**Tests:** `src/render/lamps.test.ts` holds a lamp 0.46 m behind the kerb face on every profile with the walk clear behind it, the no-kerb clear zone, the spacing and sides of a narrow and a wide street, the three heights, the motorway and the ramp, and no lamp in a stop's span or within 3 m of a crosswalk. To be written with the rest: no cover on a painted line; signs, signals, meters and trees in their places.
+**Tests:** `src/render/lamps.test.ts` holds a lamp 0.46 m behind the kerb face on every profile with the walk clear behind it, the no-kerb clear zone, the spacing and sides of a narrow and a wide street, the three heights, the motorway and the ramp, and no lamp in a stop's span or within 3 m of a crosswalk. `src/render/roadside.test.ts` holds, on every profile: a cover off paint, arrows, crosswalks, bike lanes and rails and in one lane along a run; a sign's post and its board's height; a stop sign at its stop line; a signal's mast at the far right corner with its arm over the lanes; a meter behind its stall's kerb; a tree's distances; the 1.5 m rule and who gives way for each pair; a pole off a stop's span; a curved street's lamps and poles off drives and stops.
 
-**Open:** the lamps are built; covers, signs, signals, meters and trees are not. A curved street's lamps do not yet keep off a drive or a stop. A motorway's median lamp is one pole drawn twice, and no shot shows it lit. Poles of different kinds do not yet keep 1.5 m apart. Hydrants, benches and mailboxes do not exist in the game and are not proposed here.
+**Open:** a power pole stands outside the footway, not in the strip, and sees only its own tile's strip for the 1.5 m rule. A signal on a T with no arm beyond stays at its stop line. A tree cleared from beside a lamp, a sign or a stop is not put back when that goes; a median's trees are not checked against stops or drives. A motorway's median lamp is one pole drawn twice, and no shot shows it lit. Hydrants, benches and mailboxes do not exist in the game and are not proposed here.
 
 ## Why the rules are what they are
 

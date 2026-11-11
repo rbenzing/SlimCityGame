@@ -248,6 +248,11 @@ export class BusStopRenderer {
     private readonly heightAt: (x: number, z: number) => number,
   ) {}
 
+  /** The middle of each drawn stop's pad, world metres. */
+  padSpots(): { x: number; z: number }[] {
+    return this.drawn.map((d) => ({ x: d.placement.pad.x, z: d.placement.pad.z }));
+  }
+
   /** Draws exactly these stops, each on the road `roadAt` reads for its tile; a stop whose road is gone is skipped. */
   apply(stops: readonly BusStop[], roadAt: (x: number, z: number) => StopRoad | null): void {
     this.clearMeshes();

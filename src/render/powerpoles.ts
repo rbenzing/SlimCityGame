@@ -26,6 +26,7 @@ import { RoadTier, isStreetTier } from '../shared/types';
 import type { RoadProfile, TilePoint } from '../shared/types';
 import { flankShift, hasCrossingRoad, joins, lateralAxis, tileKey } from './roadfurniture';
 import type { FurnitureRoadTile, RoadTileIndex } from './roadfurniture';
+import { firstFreeAlong, placeIsFree, type Roadside } from './roadsidespace';
 
 export type PoleKind = 'street' | 'roadside' | 'country';
 
@@ -137,7 +138,16 @@ export interface PowerWorld {
   keepOff: ReadonlySet<number>;
   /** Tiles that carry the supply inside a structure (a tram guideway): nothing is drawn, and no wire crosses. */
   closed: ReadonlySet<number>;
+  /**
+   * What stands before a pole does: the bus stops' spans, the drives, and the
+   * signal masts, stop signs, tram poles and lamps already put down. A pole
+   * moves along its strip off any of them, or is not stood.
+   */
+  roadside?: Roadside;
 }
+
+/** How far a pole slides along its tile's strip to find a free place, metres. */
+const POLE_SLIDE_LIMIT_M = TILE_METERS / 2 - 1;
 
 /** How hard a span sags at its middle, metres: half a metre at the 40 m street span. */
 export function wireSagM(lengthM: number): number {
@@ -303,7 +313,29 @@ function streetSiteAt(w: PowerWorld, x: number, z: number): TileSite | null {
   }
   const side = sideOf(w.tileSet, x, z, axis);
   if (side === null) return null;
-  return roadsideSite(w.tileSet, tile, axis, side, 'street');
+  const site = roadsideSite(w.tileSet, tile, axis, side, 'street');
+  const roadside = w.roadside;
+  if (!roadside) return site;
+  // The pole moves along its strip, nearest its tile's middle, to a place no
+  // stop, drive or other object holds.
+  const at = (along: number): { x: number; z: number } =>
+    axis === 'z' ? { x: site.x + along, z: site.z } : { x: site.x, z: site.z + along };
+  const along = firstFreeAlong((a) => {
+    const p = at(a);
+    return placeIsFree(roadside, p.x, p.z);
+  }, POLE_SLIDE_LIMIT_M);
+  if (along === null) return null;
+  return along === 0 ? site : { ...site, ...at(along) };
+}
+
+/** Every pole the street's own line stands, where the roadside lets it: what the objects below a pole keep clear of. */
+export function streetPoleSpots(w: PowerWorld): { x: number; z: number }[] {
+  const out: { x: number; z: number }[] = [];
+  for (const tile of w.tileSet.values()) {
+    const site = streetSiteAt(w, tile.x, tile.z);
+    if (site) out.push({ x: site.x, z: site.z });
+  }
+  return out;
 }
 
 /**

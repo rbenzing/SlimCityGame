@@ -756,24 +756,30 @@ describe('a tram contact pole stands in place of a lamp beside it', () => {
     tier: RoadTier.Tram,
   }));
 
-  it('drops a lamp within 2 m of a pole and keeps every other', () => {
+  it('moves a lamp within 1.5 m of a pole along its strip and keeps every other', () => {
     const all = computeLampPlacements(row);
     const victim = standOf(all[1]!);
-    // A pole on the same kerb, 1.9 m along: the lamp gives way to it.
-    const near: TramPoleStand = { x: victim.x + 1.9, z: victim.z, reachX: 0, reachZ: 0 };
-    const kept = computeLampPlacements(row, undefined, [near]);
-    expect(kept).toEqual(all.filter((_, i) => i !== 1));
-    // 2.1 m along, it stands its ground.
-    const far: TramPoleStand = { ...near, x: victim.x + 2.1 };
+    // A pole on the same kerb, 1.4 m along: the lamp gives way to it, sliding
+    // along its own strip to the nearest place 1.5 m clear.
+    const near: TramPoleStand = { x: victim.x + 1.4, z: victim.z, reachX: 0, reachZ: 0 };
+    const moved = computeLampPlacements(row, undefined, [near]);
+    expect(moved.length).toBe(all.length);
+    expect(moved.filter((_, i) => i !== 1)).toEqual(all.filter((_, i) => i !== 1));
+    const slid = standOf(moved[1]!);
+    expect(moved[1]!.x).toBe(all[1]!.x);
+    expect(moved[1]!.along).toBeDefined();
+    expect(Math.hypot(near.x - slid.x, near.z - slid.z)).toBeGreaterThanOrEqual(1.5);
+    // 1.6 m along, it stands its ground.
+    const far: TramPoleStand = { ...near, x: victim.x + 1.6 };
     expect(computeLampPlacements(row, undefined, [far])).toEqual(all);
   });
 
-  it('keeps the lamps of a tramway where no pole stands near one', () => {
+  it('keeps the lamps of a tramway 1.5 m from every pole', () => {
     const poles = computeTramPolePlacements(row);
     const lamps = computeLampPlacements(row, undefined, poles).map(standOf);
     for (const lamp of lamps) {
       for (const pole of poles) {
-        expect(Math.hypot(pole.x - lamp.x, pole.z - lamp.z)).toBeGreaterThanOrEqual(2);
+        expect(Math.hypot(pole.x - lamp.x, pole.z - lamp.z)).toBeGreaterThanOrEqual(1.5);
       }
     }
     expect(lamps.length).toBeGreaterThan(0);

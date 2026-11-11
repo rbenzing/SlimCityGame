@@ -219,12 +219,12 @@ Back to [the index](../GROUND-TRUTHS.md).
   for 1.2 m. None stands in a bus stop's span, on a drive, a kerb ramp or a
   crosswalk. Where there is no kerb it stands back from the travelled way by
   the clear zone, or at the tile's edge. A manhole cover lies in the middle
-  of a lane, never on paint. Built for lamps; agreed and not yet built for
-  the rest: a cover still lies on the centre line. A lamp once stood between
-  a bus stop's pad and the bus door. —
+  of a lane, never on paint. One question, "is this place on this kerb
+  free", is asked by every placer of one shared module. A lamp once stood
+  between a bus stop's pad and the bus door. —
   [street-furniture.md](../specs/street-furniture.md);
-  `lampLateralOffset`, `computeLampPlacements` in `src/render/lamps.ts`,
-  `src/render/roadfurniture.ts`
+  `placeIsFree`, `firstFreeAlong` in `src/render/roadsidespace.ts`,
+  `src/render/lamps.ts`, `src/render/roadfurniture.ts`
 - [R-render-037] A snapshot costs the main thread work in proportion to what it changed,
   never to the size of the city. What is derived from a building or a chunk
   is kept for it and redone only for the ones a delta names or a changed road

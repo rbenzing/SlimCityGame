@@ -25,7 +25,7 @@ current behavior only and carry no dates of their own._
 
 ## Status (2026-09-29)
 
-**Test suite:** 7,764 tests passing across 230 test files, run 2026-11-11.
+**Test suite:** 7,818 tests passing across 231 test files, run 2026-11-11.
 This is the only test count in the documentation set. When the suite changes
 again, update the figure here and nowhere else.
 
@@ -46,17 +46,16 @@ again, update the figure here and nowhere else.
 - A home's fence is cut back against other homes only `[R-render-035]`: a
   turned home beside a shop's or a civic plot's lot is cut to its own
   outline and no further.
-- Three specs are agreed and not yet built:
+- Two specs are agreed and partly built:
   [power-distribution.md](specs/power-distribution.md), a street's drawn
   supply, buried cable and the substation `[R-services-039]` (its first
-  slice, the pole lines, is built);
+  slice, the pole lines, is built); and
   [structured-parking.md](specs/structured-parking.md), a car park for every
   dense kind and a garage on its lot from level 2 `[R-services-040]` (the
-  stall faults and the garages are built; the level-1 car parks are not);
-  and
-  [street-furniture.md](specs/street-furniture.md), a furnishing strip, a
-  clear walk and every roadside object in its place `[R-render-036]` (its
-  lamps are built).
+  stall faults and the garages are built; the level-1 car parks are not).
+- [Street furniture](specs/street-furniture.md) is built `[R-render-036]`;
+  what it leaves is in its Open line: a power pole stands outside the
+  footway and not in the strip, and a cleared tree is not put back.
 - At 4× a fast-growing city's longest stall is 1.1 s against a 1 s target
   `[R-render-037]`. What was measured and what was done is in
   [performance-budget.md](engineering/performance-budget.md#the-main-thread-while-a-city-grows).
