@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.80.3](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.80.2...slimcity-v1.80.3) (2026-11-11)
+
+
+### Bug Fixes
+
+* **render:** the page keeps answering while a city grows at 4× ([7cca2d9](https://github.com/rbenzing/SlimCityGame/commit/7cca2d98e7524debcba49efa291636b68c1c06e9))
+* **render:** the page keeps answering while a city grows at 4× ([49c8245](https://github.com/rbenzing/SlimCityGame/commit/49c82453b1cee31521e9885f930e10a84a68d51b))
+
 ## [1.80.2](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.80.1...slimcity-v1.80.2) (2026-10-28)
 
 
