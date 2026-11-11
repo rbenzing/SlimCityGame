@@ -162,6 +162,10 @@ import {
 import { nightBodyMaterial } from './nightlook';
 import { TILE_METERS } from '../shared/constants';
 import { footprintForRotation } from '../shared/footprint';
+import { depotFrame, railSideOf, waterSideOf, yardFrame } from '../shared/kitfront';
+
+// The kits' turn to track and water lives in shared/kitfront.ts, where the worker reads it too.
+export { depotFrame, railSideOf, waterSideOf, yardFrame };
 import { maxHeightOverRect } from './footprint';
 import { PLOT_SURFACE_M, PLOT_YARD_TOP } from './plotground';
 import { InstancedSlotPool } from './massing';
@@ -906,25 +910,6 @@ const RIPRAP_RGBS: readonly RGB[] = [
 ];
 const SCREEN_RGB: RGB = [0.22, 0.25, 0.27];
 const TIMBER_RGB: RGB = [0.4, 0.3, 0.2];
-
-/**
- * Which way a shore building faces: the rotation (as rotateLocalXZ counts it,
- * so local +Z lands on the water) toward the first water tile orthogonally
- * beside the footprint, south first; 0 when none is beside it. Pure.
- */
-export function waterSideOf(
-  x: number,
-  z: number,
-  footprint: FootprintSize,
-  waterAt: (tx: number, tz: number) => boolean,
-): 0 | 1 | 2 | 3 {
-  const { w, d } = footprint;
-  for (let dx = 0; dx < w; dx++) if (waterAt(x + dx, z + d)) return 0; // south: +Z
-  for (let dz = 0; dz < d; dz++) if (waterAt(x + w, z + dz)) return 1; // east: +X
-  for (let dx = 0; dx < w; dx++) if (waterAt(x + dx, z - 1)) return 2; // north: -Z
-  for (let dz = 0; dz < d; dz++) if (waterAt(x - 1, z + dz)) return 3; // west: -X
-  return 0;
-}
 
 /** A horizontal pipe along local +Z from z0 to z1, resting at `y`. */
 function buildPipeAlongZ(radius: number, z0: number, z1: number, y: number): THREE.BufferGeometry {
@@ -8041,56 +8026,6 @@ function buildDepotLitGeometry(): THREE.BufferGeometry {
   );
 }
 
-/**
- * Which edge of a footprint the rail runs along, as the side its track-frame
- * -Z faces: 0 south (+Z), 1 east (+X), 2 north (-Z), 3 west (-X). The edge
- * with the most rail tiles, ties north, east, south, west; null when no rail
- * touches the lot.
- */
-export function railSideOf(
-  x: number,
-  z: number,
-  lot: FootprintSize,
-  railAt: (tx: number, tz: number) => boolean,
-): 0 | 1 | 2 | 3 | null {
-  const { w, d } = lot;
-  const count = (tiles: [number, number][]): number =>
-    tiles.filter(([tx, tz]) => railAt(tx, tz)).length;
-  const row = (tz: number): [number, number][] => Array.from({ length: w }, (_, i) => [x + i, tz]);
-  const col = (tx: number): [number, number][] => Array.from({ length: d }, (_, i) => [tx, z + i]);
-  const sides: [0 | 1 | 2 | 3, number][] = [
-    [2, count(row(z - 1))],
-    [1, count(col(x + w))],
-    [0, count(row(z + d))],
-    [3, count(col(x - 1))],
-  ];
-  let best: 0 | 1 | 2 | 3 | null = null;
-  let most = 0;
-  for (const [side, n] of sides) {
-    if (n > most) {
-      most = n;
-      best = side;
-    }
-  }
-  return best;
-}
-
-/**
- * The station's track frame for a lot: the footprint with its width along
- * the track, and the turn that lays that frame's -Z edge on the track's side.
- * `long` says the track runs along the lot's longer edge.
- */
-export function depotFrame(
-  entry: BuildingCatalogEntry,
-  rotation: 0 | 1 | 2 | 3,
-  facing: 0 | 1 | 2 | 3,
-): { footprint: FootprintSize; turn: 0 | 1 | 2 | 3; long: boolean } {
-  const lot = footprintForRotation(entry, rotation);
-  const alongX = facing % 2 === 0;
-  const footprint = alongX ? { w: lot.w, d: lot.d } : { w: lot.d, d: lot.w };
-  return { footprint, turn: ((facing + 2) % 4) as 0 | 1 | 2 | 3, long: footprint.w > footprint.d };
-}
-
 /** The two track frames a station's lot can take: the track along its catalog width, or along its depth. */
 export function depotFrames(entry: BuildingCatalogEntry): {
   short: FootprintSize;
@@ -8648,27 +8583,6 @@ export interface FenceGap {
 export function yardFootprint(entry: BuildingCatalogEntry): FootprintSize {
   const { w, d } = entry.footprint;
   return w >= d ? { w, d } : { w: d, d: w };
-}
-
-/**
- * A yard's frame: the lot with its long side along X and the track on its -Z
- * edge, or, where the track runs along a short edge of the lot, off its -X
- * end; and the turn that lays that frame on the placed lot.
- */
-export function yardFrame(
-  entry: BuildingCatalogEntry,
-  rotation: 0 | 1 | 2 | 3,
-  facing: 0 | 1 | 2 | 3,
-): { footprint: FootprintSize; turn: 0 | 1 | 2 | 3; fromEnd: boolean } {
-  const lot = footprintForRotation(entry, rotation);
-  const longAlongX = lot.w >= lot.d;
-  const trackAlongX = facing % 2 === 0;
-  const fromEnd = trackAlongX !== longAlongX;
-  return {
-    footprint: longAlongX ? { w: lot.w, d: lot.d } : { w: lot.d, d: lot.w },
-    turn: ((facing + (fromEnd ? 1 : 2)) % 4) as 0 | 1 | 2 | 3,
-    fromEnd,
-  };
 }
 
 /** Which edge of a footprint the tram track runs along, as the station reads the railway. */

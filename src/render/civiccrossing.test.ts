@@ -240,6 +240,20 @@ describe('the spans sit where the kits draw their own way in', () => {
 describe('the crossing on the lot edge', () => {
   const fire = byId('fire-station');
 
+  it('opens onto the building’s front street, not the longer street of a corner lot', () => {
+    // The 2x2 at (10, 10) fronts south at rotation 0. Two tiles of street run along
+    // its north edge and only one along its south, so the longer street is the back.
+    const corner: StreetLookup = (x, z) =>
+      (z === 9 && (x === 10 || x === 11)) || (z === 12 && x === 10)
+        ? { vergeM: VERGE_M, sidewalkM: SIDEWALK_M }
+        : null;
+    const site = civicSiteFor(fire, at(), corner, noSensors)!;
+    expect(site.edge.side).toBe('S');
+    expect([site.edge.roadTileX, site.edge.roadTileZ]).toEqual([10, 12]);
+    // With no street on the front, it opens nowhere rather than onto the back.
+    expect(civicSiteFor(fire, at(), rowStreet(9), noSensors)).toBeNull();
+  });
+
   it('lays a fire apron across the verge and the footway at the width of its bays', () => {
     // A 2x2 at (10, 10) with its street along row 12, just south of it.
     const site = civicSiteFor(fire, at(), rowStreet(12), noSensors)!;

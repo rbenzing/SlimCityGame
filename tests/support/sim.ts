@@ -286,7 +286,7 @@ export function latestLandfillFill(h: Harness): number {
 export const roadRow = (x0: number, z: number, len: number): TilePoint[] =>
   Array.from({ length: len }, (_, i) => ({ x: x0 + i, z }));
 
-/** A two-lane street `len` tiles long along the row just north of (x, z): a building put at (x, z) stands beside it. */
+/** A two-lane street `len` tiles long along the row just north of (x, z): a building put at (x, z) and turned to front north (rotation 2) stands beside it. */
 export const streetNorthOf = (x: number, z: number, len: number): Command => ({
   kind: 'buildRoad',
   tier: RoadTier.TwoLane,

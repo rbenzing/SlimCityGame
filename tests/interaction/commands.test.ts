@@ -161,7 +161,7 @@ describe('worker sim', () => {
     h.ticks(1);
     send(h, 12, [
       { kind: 'buildRoad', tier: RoadTier.TwoLane, tiles: roadRow(110, 109, 8) },
-      { kind: 'placeBuilding', catalogId: 'coal-plant', x: 110, z: 110, rotation: 0 },
+      { kind: 'placeBuilding', catalogId: 'coal-plant', x: 110, z: 110, rotation: 2 },
     ]);
     h.ticks(1);
     const ack = h.ackFor(12)!;

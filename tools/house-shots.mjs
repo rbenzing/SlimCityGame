@@ -40,15 +40,15 @@ const STREETS = [
   {
     name: 'lineup',
     lineup: true,
-    // The turned lots (2 × 1), so each fronts the connector on a 20 m edge.
+    // Placed turned west (rotation 3), the 1 × 2 lots stand 2 × 1, so each fronts the connector on a 20 m edge.
     homes: [
-      { id: 'res-normal-t-1', form: 'ranch' },
-      { id: 'res-normal-t-1', form: 'craftsman' },
-      { id: 'res-normal-t-1', form: 'splitLevel' },
-      { id: 'res-normal-t-2' },
-      { id: 'res-normal-t-3' },
-      { id: 'res-duplex-t-1' },
-      { id: 'res-medium-row-t-2' },
+      { id: 'res-normal-1', form: 'ranch' },
+      { id: 'res-normal-1', form: 'craftsman' },
+      { id: 'res-normal-1', form: 'splitLevel' },
+      { id: 'res-normal-2' },
+      { id: 'res-normal-3' },
+      { id: 'res-duplex-1' },
+      { id: 'res-medium-row-2' },
     ],
   },
 ];
@@ -169,8 +169,9 @@ try {
     },
   ]);
   // One command each: a batch is atomic, and one refused tile would drop the street.
-  const place = (catalogId, x, z) =>
-    send('Home', [{ kind: 'placeBuilding', catalogId, x, z, rotation: 0 }]);
+  // Rows front south onto their street (rotation 0); the line-up fronts west onto the connector (3).
+  const place = (catalogId, x, z, rotation = 0) =>
+    send('Home', [{ kind: 'placeBuilding', catalogId, x, z, rotation }]);
   /**
    * A one-storey home whose seed gives the form asked for: the form hashes off
    * the building id, and each placement takes the next id, so a home of the
@@ -178,7 +179,7 @@ try {
    */
   const placeForm = async (catalogId, x, z, form) => {
     for (let tries = 0; tries < 24; tries++) {
-      await place(catalogId, x, z);
+      await place(catalogId, x, z, 3);
       await page.waitForTimeout(250);
       const placed = (await readBuildings()).find((b) => b.x === x && b.z === z);
       if (!placed) throw new Error(`no home placed at ${x},${z}`);

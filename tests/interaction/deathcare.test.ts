@@ -60,7 +60,7 @@ function selectionOf(h: Harness, buildingId: number): SelectionInfo {
 function withCemetery(h: Harness): number {
   run(h, 10, [{ kind: 'buildRoad', tier: RoadTier.TwoLane, tiles: roadRow(60, 100, 60) }]);
   expect(
-    run(h, 11, [{ kind: 'placeBuilding', catalogId: 'cemetery', x: 80, z: 101, rotation: 0 }]).ok,
+    run(h, 11, [{ kind: 'placeBuilding', catalogId: 'cemetery', x: 80, z: 101, rotation: 2 }]).ok,
   ).toBe(true);
   h.ticks(4);
   return [...standingBuildings(h).values()].find((b) => b.catalogId === 'cemetery')!.id;
@@ -201,7 +201,7 @@ describe('the crematorium through the worker', () => {
     const h = loaded(BIG_TOWN_MILESTONE);
     run(h, 10, [{ kind: 'buildRoad', tier: RoadTier.TwoLane, tiles: roadRow(60, 100, 60) }]);
     expect(
-      run(h, 11, [{ kind: 'placeBuilding', catalogId: 'crematorium', x: 80, z: 101, rotation: 0 }])
+      run(h, 11, [{ kind: 'placeBuilding', catalogId: 'crematorium', x: 80, z: 101, rotation: 2 }])
         .ok,
     ).toBe(true);
     h.ticks(4);

@@ -16,8 +16,8 @@ describe('open-space provision rides every snapshot', () => {
     const ack = run(h, 1, [
       { kind: 'setUnlimitedMoney', on: true },
       { kind: 'buildRoad', tier: RoadTier.TwoLane, tiles: roadRow(80, 99, 40) },
-      { kind: 'placeBuilding', catalogId: 'small-park', x: 80, z: 100, rotation: 0 },
-      { kind: 'placeBuilding', catalogId: districtPark.id, x: 82, z: 100, rotation: 0 },
+      { kind: 'placeBuilding', catalogId: 'small-park', x: 80, z: 100, rotation: 2 },
+      { kind: 'placeBuilding', catalogId: districtPark.id, x: 82, z: 100, rotation: 2 },
       { kind: 'placeBuilding', catalogId: airport.id, x: 104, z: 100, rotation: 0 },
     ]);
     expect(ack.ok).toBe(true);

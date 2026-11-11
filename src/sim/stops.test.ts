@@ -355,7 +355,8 @@ describe('stops in the worker', () => {
             catalogId: 'small-park',
             x: t.x,
             z: t.z,
-            rotation: 0,
+            // Each fronts the street at z 100: the north one south, the south one north.
+            rotation: t === south ? 2 : 0,
             ...(t === lost ? { restore: true as const } : {}),
           },
         ]).ok,

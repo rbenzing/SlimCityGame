@@ -363,9 +363,10 @@ describe('the fouled water', () => {
       expect(run(h, 2, [{ kind: 'bulldoze', tiles: [{ x: 66, z: 45 }] }]).ok).toBe(true);
       // The works is 2×2; it stands on the pond's west bank, where the station
       // stands on the east, and a short pipe joins it to the drain's old run.
-      // A works, unlike the drain, also stands beside a street: a short one along its north side.
+      // A works, unlike the drain, also stands beside a street, and its gate is on its land
+      // side, away from the pond: a short one along its west side.
       const built = run(h, 3, [
-        { kind: 'buildRoad', tier: RoadTier.TwoLane, tiles: roadRow(64, 42, 2) },
+        { kind: 'buildRoad', tier: RoadTier.TwoLane, tiles: column(63, 43, 2) },
         { kind: 'placeBuilding', catalogId: 'sewage-works', x: 64, z: 43, rotation: 0 },
         { kind: 'layWaterPipe', tiles: roadRow(65, 45, 2), on: true },
       ]);

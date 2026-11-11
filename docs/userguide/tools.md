@@ -226,7 +226,10 @@
   connected network. Every building you place must stand beside a street; the
   game refuses one that does not and says why. Four may stand in the open,
   where a power line or a pipe reaches them: the wind turbine, the solar farm,
-  the water pumping station and the drain. A generator counts for what it delivers over a year, not
+  the water pumping station and the drain. A building turns its front, the
+  side its door, drive and car park open on, to the street by itself, and
+  slides one tile to meet a street beside it; on a corner `R` picks which
+  street it faces. A generator counts for what it delivers over a year, not
   the number on the machine: a wind turbine is rated 3.4 MW and delivers about
   1.1, enough for eight hundred houses, and the coal plant is rated 60 and
   delivers about 26. The inspector shows both. If the city asks for more than it makes, the grid gives out

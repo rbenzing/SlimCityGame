@@ -30,6 +30,8 @@ const SUBJECTS = [
 ];
 const SPAN = SUBJECTS.reduce((n, s) => n + s.w + 1, 0);
 /** Rows the buildings and street take: the deepest building (3), the road, clear ground beyond. */
+/** The turn that puts a building's front on its north edge. */
+const FACING_NORTH = 2;
 const ROWS_NORTH = 6;
 const ROWS_SOUTH = 6;
 
@@ -128,7 +130,7 @@ try {
     const spot = { ...s, x: cursor, z: ROAD + 1 };
     spots.push(spot);
     await send('Mixed', [
-      { kind: 'placeBuilding', catalogId: s.id, x: spot.x, z: spot.z, rotation: 0 },
+      { kind: 'placeBuilding', catalogId: s.id, x: spot.x, z: spot.z, rotation: FACING_NORTH },
     ]);
     cursor += s.w + 1;
   }
@@ -162,8 +164,8 @@ try {
   };
   // The row's middle, a tile west: the smallest building stands west and its pad needs room.
   const midX = X + SPAN / 2 - 1;
-  // The entrance and shopfront are drawn on the north (-z) face at every rotation, so the row
-  // stands south of the street and the street-side views look south from the north (yaw pi).
+  // The row stands south of the street, turned half a turn so its front, entrance and shopfront
+  // face north to the street; the street-side views look south from the north (yaw pi).
   const FRONT_YAW = Math.PI + 0.3;
   await setPhase(0.5);
   await shoot('street', midX, ROAD + 1, WIDE, FRONT_YAW);

@@ -250,7 +250,7 @@ await cmd('Street by the tower', [
 ]);
 await page.waitForTimeout(500);
 await cmd('Water Tower', [
-  { kind: 'placeBuilding', catalogId: 'water-tower', x: mid.x, z: mid.z, rotation: 0 },
+  { kind: 'placeBuilding', catalogId: 'water-tower', x: mid.x, z: mid.z, rotation: 2 },
 ]);
 await page.waitForTimeout(800);
 await pick('Small', 'Two-Lane Road');

@@ -14,6 +14,7 @@ import {
   windowHash,
   windowLitFraction,
 } from './buildings';
+import { frontSideOf, NO_SENSORS } from '../shared/kitfront';
 import { decodeId } from './picking';
 import { PLINTH_TOP } from './plotground';
 import { BARN_EAVE_SHARE, planFarm } from './farmlot';
@@ -198,6 +199,21 @@ describe('BuildingInstancer', () => {
     );
     expect(quat.angleTo(expected)).toBeLessThan(1e-6);
   });
+
+  it.each([0, 1, 2, 3] as const)(
+    'turns the box’s local +Z face, where the door is drawn, onto the front side at rotation %i',
+    (rotation) => {
+      const instancer = new BuildingInstancer(new THREE.Scene(), CATALOG, flatHeightAt);
+      instancer.apply({ added: [instanceAt(1, 0, 0, { rotation })], removed: [], updated: [] });
+      const mesh = instancer.getPickables()[0]?.mesh as THREE.InstancedMesh;
+      const door = new THREE.Vector3(0, 0, 1).applyQuaternion(decomposeAt(mesh, 0).quat);
+      const front = frontSideOf(HOUSE, 0, 0, rotation, NO_SENSORS);
+      const toward = { N: [0, -1], E: [1, 0], S: [0, 1], W: [-1, 0] } as const;
+      expect(front).not.toBeNull();
+      expect(door.x).toBeCloseTo(toward[front!][0], 6);
+      expect(door.z).toBeCloseTo(toward[front!][1], 6);
+    },
+  );
 
   it('scales Constructing buildings to 25% height and tints them grey', () => {
     const instancer = new BuildingInstancer(new THREE.Scene(), CATALOG, flatHeightAt);
@@ -639,10 +655,8 @@ describe('a residential body’s shader pick walks the same share table as the C
   // under, which is what this walks on the CPU against pickByShare and the
   // id-hashed residentialBodyMaterial the kits and trim read.
   const kinds = ['detached', 'townhouse', 'multiplex', 'garden', 'midrise', 'tower'] as const;
-  const walk = (
-    thresholds: ReturnType<typeof shareThresholds>,
-    u: number,
-  ): string => thresholds.find((t) => u < t.upTo)?.material ?? thresholds.at(-1)!.material;
+  const walk = (thresholds: ReturnType<typeof shareThresholds>, u: number): string =>
+    thresholds.find((t) => u < t.upTo)?.material ?? thresholds.at(-1)!.material;
 
   it('lands every draw on the material pickByShare gives, and ends at one', () => {
     for (const kind of kinds) {

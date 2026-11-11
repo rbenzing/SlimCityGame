@@ -7,7 +7,7 @@
 | Middle / right drag, wheel | Rotate / zoom-to-cursor; `WASD` + edge-scroll to pan               |
 | `Space`                    | Pause / resume                                                     |
 | `1`–`7`                    | Jump to a tool category (roads / zoning / power / … / landscaping) |
-| `R`                        | Rotate the ploppable you're placing                                |
+| `R`                        | Turn the building you're placing to the next street it can face    |
 | `Esc`                      | Cancel the current tool / deselect                                 |
 | `Ctrl+Z` / `Ctrl+Y`        | Undo / redo (refunds are exact)                                    |
 | `Ctrl+S` / `Ctrl+Shift+L`  | Save / load latest                                                 |

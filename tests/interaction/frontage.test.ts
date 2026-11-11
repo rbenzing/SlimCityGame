@@ -23,12 +23,19 @@ import { guardRoadNetwork } from '../support/guard';
 
 guardRoadNetwork();
 
-const place = (catalogId: string, x: number, z: number): Command => ({
+/** The streets in these tests run along a building's north edge, so it is turned to front north. */
+const NORTH_FRONT = 2;
+const place = (
+  catalogId: string,
+  x: number,
+  z: number,
+  rotation: 0 | 1 | 2 | 3 = NORTH_FRONT,
+): Command => ({
   kind: 'placeBuilding',
   catalogId,
   x,
   z,
-  rotation: 0,
+  rotation,
 });
 const street = (tier: RoadTier, x: number, z: number, len = 4): Command => ({
   kind: 'buildRoad',
@@ -250,11 +257,14 @@ describe('the ghost refuses by the same predicate and says the same sentence', (
     const entry = (id: string) => catalog.find((e) => e.id === id)!;
     const tile = (x: number, z: number) => [{ x, z }];
     const tower = entry('water-tower');
-    expect(mirror.placeRefusal(tower, tile(60, 60))).toBeNull();
-    expect(mirror.placeRefusal(tower, tile(60, 80))).toBe(PLACEMENT_REFUSALS.needsStreet);
-    expect(mirror.placeRefusal(tower, tile(60, 71))).toBe(PLACEMENT_REFUSALS.needsStreet);
-    expect(mirror.placeRefusal(entry('wind-turbine'), tile(60, 80))).toBeNull();
-    expect(mirror.placeRefusal(entry('rail-yard'), tile(60, 60))).toBe(PLACEMENT_REFUSALS.needsRail);
+    const r = NORTH_FRONT;
+    expect(mirror.placeRefusal(tower, tile(60, 60), r)).toBeNull();
+    expect(mirror.placeRefusal(tower, tile(60, 80), r)).toBe(PLACEMENT_REFUSALS.needsStreet);
+    expect(mirror.placeRefusal(tower, tile(60, 71), r)).toBe(PLACEMENT_REFUSALS.needsStreet);
+    expect(mirror.placeRefusal(entry('wind-turbine'), tile(60, 80), r)).toBeNull();
+    expect(mirror.placeRefusal(entry('rail-yard'), tile(60, 60), r)).toBe(
+      PLACEMENT_REFUSALS.needsRail,
+    );
 
     for (const [x, z] of [
       [60, 60],
@@ -262,8 +272,89 @@ describe('the ghost refuses by the same predicate and says the same sentence', (
       [60, 71],
     ] as const) {
       const ack = run(h, 10 + x + z, [place('water-tower', x, z)]);
-      expect(ack.ok).toBe(mirror.placeRefusal(tower, tile(x, z)) === null);
-      if (!ack.ok) expect(ack.reason).toBe(mirror.placeRefusal(tower, tile(x, z)));
+      expect(ack.ok).toBe(mirror.placeRefusal(tower, tile(x, z), r) === null);
+      if (!ack.ok) expect(ack.reason).toBe(mirror.placeRefusal(tower, tile(x, z), r));
+    }
+  });
+});
+
+describe('a placed building fronts its street [R-world-050]', () => {
+  const tower = 'water-tower';
+  const turned = (id: string, x: number, z: number, rotation: 0 | 1 | 2 | 3): Command => ({
+    ...place(id, x, z, rotation),
+  });
+
+  it('takes a building whose front is on the street and refuses one turned away, in words', () => {
+    const h = sandboxed();
+    expect(run(h, 1, [street(RoadTier.TwoLane, 58, 59, 8)]).ok).toBe(true);
+    const away = run(h, 2, [turned(tower, 60, 60, 0)]);
+    expect(away.ok).toBe(false);
+    expect(away.reason).toBe(PLACEMENT_REFUSALS.frontsAway);
+    expect(away.cost).toBe(0);
+    expect(run(h, 3, [turned(tower, 60, 60, 2)]).ok).toBe(true);
+  });
+
+  it('judges a civic kit by the edge it opens on, each turn in turn', () => {
+    const h = sandboxed();
+    expect(run(h, 1, [street(RoadTier.TwoLane, 58, 59, 8)]).ok).toBe(true);
+    const reasons = ([0, 1, 3, 2] as const).map(
+      (r, i) => run(h, 2 + i, [turned('school', 60, 60, r)]).reason,
+    );
+    expect(reasons).toEqual([
+      PLACEMENT_REFUSALS.frontsAway,
+      PLACEMENT_REFUSALS.frontsAway,
+      PLACEMENT_REFUSALS.frontsAway,
+      undefined,
+    ]);
+  });
+
+  it('judges a rail station by the street opposite its track', () => {
+    const h = sandboxed();
+    expect(
+      run(h, 1, [street(RoadTier.RailTrack, 56, 100, 12), street(RoadTier.TwoLane, 60, 104, 2)]).ok,
+    ).toBe(true);
+    // Track north, street south: the station's front faces the street whichever way it was turned.
+    expect(run(h, 2, [turned('rail-station', 60, 101, 0)]).ok).toBe(true);
+  });
+
+  it('puts a demolished building back as it stood, turned away or not', () => {
+    const h = sandboxed();
+    expect(run(h, 1, [street(RoadTier.TwoLane, 58, 59, 8)]).ok).toBe(true);
+    expect(run(h, 2, [{ ...turned(tower, 60, 60, 0), restore: true } as Command]).ok).toBe(true);
+    const gone = run(h, 3, [{ kind: 'bulldoze', tiles: [{ x: 60, z: 60 }] }]);
+    expect(gone.ok).toBe(true);
+    expect(run(h, 4, gone.inverse).ok).toBe(true);
+    expect(standingBuildings(h).size).toBe(1);
+  });
+
+  it('keeps a building an old save holds turned away, through a save and a load', () => {
+    const h = sandboxed();
+    expect(run(h, 1, [street(RoadTier.TwoLane, 58, 59, 8)]).ok).toBe(true);
+    expect(run(h, 2, [{ ...turned(tower, 60, 60, 0), restore: true } as Command]).ok).toBe(true);
+    h.sim.handleMessage({ type: 'requestSave' });
+    const fresh = makeHarness();
+    fresh.sim.handleMessage({ type: 'init', seed: 1337, map: flatMap() });
+    fresh.sim.handleMessage({ type: 'loadSave', data: encodeSave(decodeSave(latestSaveData(h))) });
+    fresh.ticks(2);
+    const kept = [...standingBuildings(fresh).values()].filter((b) => b.catalogId === tower);
+    expect(kept.map((b) => [b.x, b.z, b.rotation])).toEqual([[60, 60, 0]]);
+  });
+
+  it('is judged by the ghost the same way, in the same sentence', () => {
+    const map = flatMap();
+    const mirror = new ClientGridMirror(map);
+    const h = makeHarness(feedMirror(mirror));
+    h.sim.handleMessage({ type: 'init', seed: 1, map });
+    run(h, 0, [{ kind: 'setSandbox', on: true }]);
+    expect(run(h, 1, [street(RoadTier.TwoLane, 58, 59, 8)]).ok).toBe(true);
+    const entry = catalog.find((e) => e.id === 'school')!;
+    const tiles = [0, 1, 2].flatMap((dx) => [0, 1, 2].map((dz) => ({ x: 60 + dx, z: 60 + dz })));
+    for (const rotation of [0, 1, 2, 3] as const) {
+      const ack = run(h, 10 + rotation, [turned('school', 60, 60, rotation)]);
+      const ghost = mirror.placeRefusal(entry, tiles, rotation);
+      expect(ack.ok).toBe(ghost === null);
+      if (!ack.ok) expect(ack.reason).toBe(ghost);
+      if (ack.ok) expect(run(h, 20 + rotation, ack.inverse).ok).toBe(true); // clear the lot for the next turn
     }
   });
 });

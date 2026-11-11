@@ -24,6 +24,7 @@ import {
   tileToWorld,
 } from '../shared/constants';
 import { footprintForRotation } from '../shared/footprint';
+import type { Side } from '../shared/roadedge';
 import type {
   BrushSettings,
   BuildingCatalogEntry,
@@ -215,12 +216,24 @@ export interface ToolEnv {
    * Geometric placement check (grid overlap/water/etc. — beyond simple
    * in-bounds). Optional: an env that omits it never blocks on this check.
    */
-  canPlace?(tiles: TilePoint[]): boolean;
+  canPlace?(tiles: TilePoint[], rotation?: 0 | 1 | 2 | 3): boolean;
   /**
-   * The sentence a plop is refused with for want of a street, track or shore,
-   * or null. Optional: an env that omits it keeps the generic overlap reason.
+   * The sentence a plop turned `rotation` is refused with for want of a street,
+   * track, shore or a street along its front, or null. Optional: an env that
+   * omits it keeps the generic overlap reason.
    */
-  placeRefusal?(catalogId: string, tiles: TilePoint[]): string | null;
+  placeRefusal?(catalogId: string, tiles: TilePoint[], rotation: 0 | 1 | 2 | 3): string | null;
+  /**
+   * The turns at which a plop with its origin at (x, z) fronts a street, one
+   * per distinct front, and the side each front is on; null for a building with
+   * no front on a street. Optional: an env that omits it leaves the plop turned
+   * as the player turned it.
+   */
+  frontingTurns?(
+    catalogId: string,
+    x: number,
+    z: number,
+  ): { rotation: 0 | 1 | 2 | 3; side: Side }[] | null;
   /**
    * Terrain height in meters at a tile. The Level terraform
    * tool samples this once at drag start for its flatten target. Optional:
@@ -767,6 +780,14 @@ export function rectTiles(start: TilePoint, end: TilePoint): TilePoint[] {
   return tiles;
 }
 
+/** The one-tile slides a ghost may take toward a street, north, east, south, west. */
+const SLIDES: readonly TilePoint[] = [
+  { x: 0, z: -1 },
+  { x: 1, z: 0 },
+  { x: 0, z: 1 },
+  { x: -1, z: 0 },
+];
+
 /**
  * Footprint tiles for a ploppable at `origin` (its min-x/min-z corner).
  * Odd rotations (90°/270°) swap width and depth; the origin corner itself
@@ -917,6 +938,8 @@ export class ToolManager {
   private readonly env: ToolEnv;
   private _tool: ToolId = 'select';
   private rotation: 0 | 1 | 2 | 3 = 0;
+  /** The player has turned the building in hand: their turn stands wherever it still fronts a street. */
+  private turned = false;
   private hoverTile: TilePoint | null = null;
   /** The road end the hover tile was snapped to, when it was. */
   private hoverEnd: CmPoint | null = null;
@@ -986,6 +1009,7 @@ export class ToolManager {
 
   setTool(t: ToolId): void {
     this._tool = t;
+    this.turned = false;
     this.curveClicks = [];
     this.dragStart = null;
     this.dragStartEnd = null;
@@ -1912,9 +1936,84 @@ export class ToolManager {
 
   /** Advances the ploppable's rotation a quarter turn and refreshes its preview. */
   rotatePlop(): void {
-    this.rotation = ((this.rotation + 1) % 4) as 0 | 1 | 2 | 3;
-    if (isPlopTool(this._tool) && this.hoverTile) {
-      this.emitPreview(this.hoverTile);
+    const plopAt = isPlopTool(this._tool) ? this.hoverTile : null;
+    const pose = plopAt ? this.plopPose(plopAt) : null;
+    const fronting = pose ? this.frontingAt(pose.at) : null;
+    this.turned = true;
+    if (pose && fronting !== null && fronting.length > 0) {
+      // Only a turn whose front is on a street: the next one round from this.
+      const next = [1, 2, 3, 4]
+        .map((step) => ((pose.rotation + step) % 4) as 0 | 1 | 2 | 3)
+        .find((r) => fronting.some((f) => f.rotation === r));
+      this.rotation = next ?? pose.rotation;
+    } else {
+      this.rotation = ((this.rotation + 1) % 4) as 0 | 1 | 2 | 3;
+    }
+    if (plopAt) this.emitPreview(plopAt);
+  }
+
+  /** The turns the plop in hand fronts a street at, with its origin at `at`; null when it has no front on one or the env cannot say. */
+  private frontingAt(at: TilePoint): { rotation: 0 | 1 | 2 | 3; side: Side }[] | null {
+    const catalogId = catalogIdOf(this._tool);
+    return this.env.frontingTurns?.(catalogId, at.x, at.z) ?? null;
+  }
+
+  /**
+   * Where the plop in hand stands and which way it is turned: its front to a
+   * street. Until the player turns it, it takes the turn whose front is on a
+   * street beside the footprint (the nearer one at a corner); where none is it
+   * slides one tile, and no more, to a spot where one is. Once turned, the
+   * player's turn stands wherever it still fronts a street. Where nothing
+   * fronts a street it stays as asked, and the refusal says why.
+   */
+  private plopPose(current: TilePoint): { at: TilePoint; rotation: 0 | 1 | 2 | 3 } {
+    const entry = this.env.entry(catalogIdOf(this._tool));
+    const asked = { at: current, rotation: this.rotation };
+    if (!entry || !this.env.frontingTurns) return asked;
+    const cursor = this.hoverPoint
+      ? { x: this.hoverPoint.x / 100 / TILE_METERS, z: this.hoverPoint.z / 100 / TILE_METERS }
+      : { x: current.x + 0.5, z: current.z + 0.5 };
+    const spots = [current, ...SLIDES.map((s) => ({ x: current.x + s.x, z: current.z + s.z }))];
+    for (const [i, at] of spots.entries()) {
+      const fronting = this.frontingAt(at);
+      if (fronting === null) return asked;
+      if (fronting.length === 0) continue;
+      const kept = this.turned ? fronting.find((f) => f.rotation === this.rotation) : undefined;
+      const turn =
+        kept ??
+        fronting.reduce((best, f) =>
+          this.frontDistance(entry, at, f, cursor) < this.frontDistance(entry, at, best, cursor)
+            ? f
+            : best,
+        );
+      if (i > 0) {
+        // A slide is worth it only to a spot the building can stand on.
+        const tiles = footprintTiles(at, entry, turn.rotation);
+        if (!tiles.every((t) => inBounds(t.x, t.z))) continue;
+        if (this.env.canPlace?.(tiles, turn.rotation) === false) continue;
+      }
+      return { at, rotation: turn.rotation };
+    }
+    return asked;
+  }
+
+  /** How far the cursor is, in tiles, from the footprint edge a front is on. */
+  private frontDistance(
+    entry: BuildingCatalogEntry,
+    at: TilePoint,
+    front: { rotation: 0 | 1 | 2 | 3; side: Side },
+    cursor: { x: number; z: number },
+  ): number {
+    const { w, d } = footprintForRotation(entry, front.rotation);
+    switch (front.side) {
+      case 'N':
+        return Math.abs(cursor.z - at.z);
+      case 'S':
+        return Math.abs(cursor.z - (at.z + d));
+      case 'W':
+        return Math.abs(cursor.x - at.x);
+      case 'E':
+        return Math.abs(cursor.x - (at.x + w));
     }
   }
 
@@ -2118,12 +2217,13 @@ export class ToolManager {
     cost: number,
     unlockMilestone: number,
     geometryOk: boolean,
+    rotation?: 0 | 1 | 2 | 3,
   ): { valid: boolean; invalidReason?: string } {
     const milestoneLevel = this.env.milestoneLevel?.();
     if (milestoneLevel !== undefined && unlockMilestone > milestoneLevel) {
       return { valid: false, invalidReason: 'Locked' };
     }
-    const placementOk = geometryOk && (this.env.canPlace?.(tiles) ?? true);
+    const placementOk = geometryOk && (this.env.canPlace?.(tiles, rotation) ?? true);
     if (!placementOk) {
       return { valid: false, invalidReason: 'Overlapping items' };
     }
@@ -2146,12 +2246,13 @@ export class ToolManager {
         this.env.onPreview(null);
         return;
       }
-      const tiles = footprintTiles(current, entry, this.rotation);
+      const { at, rotation } = this.plopPose(current);
+      const tiles = footprintTiles(at, entry, rotation);
       const geometryOk = tiles.every((t) => inBounds(t.x, t.z));
-      const judged = this.evaluate(tiles, entry.cost, entry.unlockMilestone, geometryOk);
+      const judged = this.evaluate(tiles, entry.cost, entry.unlockMilestone, geometryOk, rotation);
       const invalidReason =
         judged.invalidReason === 'Overlapping items' && geometryOk
-          ? (this.env.placeRefusal?.(entry.id, tiles) ?? judged.invalidReason)
+          ? (this.env.placeRefusal?.(entry.id, tiles, rotation) ?? judged.invalidReason)
           : judged.invalidReason;
       this.env.onPreview({
         tiles,
@@ -2530,9 +2631,12 @@ export class ToolManager {
       const catalogId = catalogIdOf(tool);
       const entry = this.env.entry(catalogId);
       if (entry) {
+        // Sent where the ghost stood: slid and turned to its street.
+        const { at, rotation } = this.plopPose(end);
         this.env.send(entry.name, [
-          { kind: 'placeBuilding', catalogId, x: end.x, z: end.z, rotation: this.rotation },
+          { kind: 'placeBuilding', catalogId, x: at.x, z: at.z, rotation },
         ]);
+        this.turned = false;
       }
     } else if (tool === 'bulldoze') {
       const tiles = rectTiles(start, end);

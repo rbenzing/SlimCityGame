@@ -94,7 +94,7 @@ await cmd('Wind Turbine', [{ kind: 'placeBuilding', catalogId: 'wind-turbine', x
 await cmd('Water Tower', [{ kind: 'placeBuilding', catalogId: 'water-tower', x: X0 + 3, z: ROADZ1 - 1, rotation: 0 }]);
 // One turbine (0.2 MW) caps a town at about a hundred people; a plant on the
 // street's east end and a second tower carry it to the first milestone.
-await cmd('Coal Plant', [{ kind: 'placeBuilding', catalogId: 'coal-plant', x: X1 + 1, z: ROADZ1 + 2, rotation: 0 }]);
+await cmd('Coal Plant', [{ kind: 'placeBuilding', catalogId: 'coal-plant', x: X1 + 1, z: ROADZ1 + 2, rotation: 3 }]);
 await cmd('Water Tower', [{ kind: 'placeBuilding', catalogId: 'water-tower', x: X0 + 6, z: ROADZ1 - 1, rotation: 0 }]);
 await page.waitForTimeout(1000);
 console.log('after utilities:', JSON.stringify(await stats()));
