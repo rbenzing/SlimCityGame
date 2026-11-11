@@ -39,7 +39,7 @@
 
 **Tests:** `src/render/powerpoles.test.ts` pole placement by road class, the side kept, spans, guys and the wire's height over a road; `tests/interaction/powerlinerefusal.test.ts` a line along a sealed street refused, a crossing accepted, an older save's line kept. To be written with the build: the source-end rule, cable price and upkeep, the underground view's cables.
 
-**Open:** the monthly figures in the game's own money; alley pole practice, homes per transformer and manhole spacing have no citable figure and are dials. A pole does not yet yield to a lamp, a tram's contact pole or a bus stop's pad, nor keep off a tile an overpass crosses; a curved street's wires end guyed at each node; a wire is drawn 0.1 m thick so it reads from afar.
+**Open:** the monthly figures in the game's own money; alley pole practice, homes per transformer and manhole spacing have no citable figure and are dials. A pole sees only its own tile's strip when it keeps 1.5 m from a lamp or a mast; a curved street's wires end guyed at each node; a wire is drawn 0.1 m thick so it reads from afar.
 
 ## Why the rules are what they are
 

@@ -153,17 +153,36 @@ import { UtilityKitRenderer, tramLaneOffsetOf } from './render/utilitykits';
 import { BusStopRenderer, stopRoadAt } from './render/busstops';
 import { FarmRenderer } from './render/farms';
 import { ZoneGridRenderer } from './render/zonegrid';
-import { LampRenderer } from './render/lamps';
+import { LampRenderer, STOP_CLEAR_HALF_M } from './render/lamps';
 import { FREE_ROAD_SLOT, PowerLineRenderer, STRUNG_LINE_SLOT } from './render/powerlines';
-import { chunksAroundTile, layStreetChunk, layStrungLine } from './render/powerpoles';
+import {
+  chunksAroundTile,
+  layStreetChunk,
+  layStrungLine,
+  streetPoleSpots,
+  type PowerWorld,
+} from './render/powerpoles';
+import {
+  KEEP_CLEAR_NONE,
+  keepClearOf,
+  Standing,
+  TREE_FROM_CONTROL_M,
+  TREE_FROM_LAMP_M,
+  TREE_FROM_STOP_M,
+  type Roadside,
+  type Spot,
+} from './render/roadsidespace';
 import { PipeOverlayRenderer, type PipeConnection, type PipeLead } from './render/pipes';
 import { UndergroundView } from './render/underground';
 import {
   buildTileSet,
   computeSignPlacements,
   computeTramPolePlacements,
+  controlSignSpots,
   hasCrossingRoad,
+  lateralAxis,
   RoadFurnitureRenderer,
+  tileKey,
   type RoadTileIndex,
 } from './render/roadfurniture';
 import { SoundWallRenderer } from './render/soundwalls';
@@ -1363,9 +1382,23 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
   let latestStops: readonly BusStopState[] = [];
   /** The tiles holding a bus stop: a line's stop there is the stop's own furniture, not a shelter of the line's. */
   let stopTiles: ReadonlySet<number> = new Set();
+  /** Where every signal mast, stop sign and give-way board stands, as the last roadside laying left it. */
+  let roadsideControl: readonly Spot[] = [];
+  /**
+   * The trees of the scatter that stand over a lamp, a control board or a bus
+   * stop's pad are taken down: a tree beside a street keeps clear of them.
+   */
+  const keepTreesOffRoadside = (): void => {
+    trees.clearNear([
+      ...lamps.standSpots().map((s) => ({ ...s, radius: TREE_FROM_LAMP_M })),
+      ...roadsideControl.map((s) => ({ ...s, radius: TREE_FROM_CONTROL_M })),
+      ...busStops.padSpots().map((s) => ({ ...s, radius: TREE_FROM_STOP_M })),
+    ]);
+  };
   /** Draws the stops on the roads as they stand now. */
   const redrawStops = (): void => {
     busStops.apply(latestStops, (x, z) => stopRoadAt(latestRoadTileSet, x, z));
+    keepTreesOffRoadside();
   };
   /** The lines as the transit renderer draws them: no shelter at a bus stop or under a raised station. */
   const applyTransit = (transit: TransitSnapshot | null): void => {
@@ -1385,6 +1418,20 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
   const poleSlots = { line: false, free: false };
   let poleKeepOff: ReadonlySet<number> = new Set();
   let poleClosed: ReadonlySet<number> = new Set();
+  /**
+   * What stands before a power pole does: the stops' spans, the drives, and the
+   * signal masts, stop signs, tram poles and lamps. A pole gives way to them.
+   */
+  let roadsideUpper: Roadside = { clear: KEEP_CLEAR_NONE, taken: new Standing() };
+  /** Where those stood when the poles were last laid, by place, so a change re-lays only its own chunks. */
+  let upperSpots = new Map<string, Spot>();
+  let upperStops: ReadonlySet<number> = new Set();
+  const poleWorld = (): PowerWorld => ({
+    tileSet: latestRoadTileSet,
+    keepOff: poleKeepOff,
+    closed: poleClosed,
+    roadside: roadsideUpper,
+  });
   const markPolesAt = (x: number, z: number): void => {
     for (const key of chunksAroundTile(x, z)) dirtyPoleChunks.add(key);
   };
@@ -1397,17 +1444,27 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
    * that keep poles off, or carry the supply inside a structure, may have
    * changed since the last flush.
    */
+  /** The tiles that take no pole, and those that carry the supply inside a structure, as they stand now. */
+  const poleSources = (): { keepOff: Set<number>; closed: Set<number> } => ({
+    // A tile an overpass crosses takes no pole: the deck is over the strip.
+    keepOff: new Set([
+      ...drivewayTiles,
+      ...freeJunctionTiles,
+      ...tramStations.tiles(),
+      ...clientGrid.overRoadTiles().map((t) => t.x * 100_000 + t.z),
+    ]),
+    closed: new Set(guideway.structure()?.tiles.keys() ?? []),
+  });
   const flushPoles = (sourcesMoved: boolean): void => {
     if (sourcesMoved) {
-      const keepOff = new Set([...drivewayTiles, ...freeJunctionTiles, ...tramStations.tiles()]);
-      const closed = new Set(guideway.structure()?.tiles.keys() ?? []);
+      const { keepOff, closed } = poleSources();
       markPoleKeysChanged(poleKeepOff, keepOff);
       markPoleKeysChanged(poleClosed, closed);
       poleKeepOff = keepOff;
       poleClosed = closed;
     }
     if (dirtyPoleChunks.size === 0 && !poleSlots.line && !poleSlots.free) return;
-    const world = { tileSet: latestRoadTileSet, keepOff: poleKeepOff, closed: poleClosed };
+    const world = poleWorld();
     for (const key of dirtyPoleChunks) powerLines.setSlot(key, layStreetChunk(world, key));
     dirtyPoleChunks.clear();
     if (poleSlots.line) {
@@ -1421,6 +1478,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
               clientGrid.roads,
               (id) => clientGrid.profileById(id),
               (wx, wz) => clientGrid.poweredAt(worldToTile(wx), worldToTile(wz)),
+              roadsideUpper,
             )
           : null,
       );
@@ -1429,26 +1487,81 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
     poleSlots.free = false;
     powerLines.commit();
   };
-  /** Every street lamp: the grid's, from its road tiles, and those along roads off the grid. */
+  /**
+   * Every object beside a street, laid in the order they take their places:
+   * signal masts and stop signs, tram poles, lamps (those on the grid and along
+   * roads off it), then the power poles' places, then the other boards, meters
+   * and cabinets. Each gives way to the ones before it by moving along its
+   * strip, off every drive and bus stop's span, or is not stood.
+   */
   const rebuildLamps = (): void => {
-    const free = clientGrid.roads
-      ? freeRoadLampStands(
-          clientGrid.roads,
-          (id) => clientGrid.profileById(id),
-          (wx, wz) => clientGrid.poweredAt(worldToTile(wx), worldToTile(wz)),
-        )
-      : [];
     // Nothing kerbside stands on a raised station's stop tile or its landing tile.
     const stationTiles = tramStations.tiles();
     const keepOff =
       freeJunctionTiles.size > 0 || stationTiles.size > 0
         ? new Set([...drivewayTiles, ...freeJunctionTiles, ...stationTiles])
         : drivewayTiles;
+    const clear = keepClearOf(
+      drivewayTiles,
+      latestStops,
+      STOP_CLEAR_HALF_M,
+      (tx, tz) => lateralAxis(latestRoadTileSet, tx, tz),
+      tileKey,
+    );
+    const control = controlSignSpots(latestRoadTiles, freeJunctionTiles);
+    roadsideControl = control;
     // The tram's contact poles keep off the same kerbs, and a lamp beside one
     // gives way to it, so both are placed from the one answer.
-    const poles = computeTramPolePlacements(latestRoadTiles, keepOff);
+    const poles = computeTramPolePlacements(latestRoadTiles, keepOff, {
+      clear,
+      taken: new Standing().addAll(control),
+    });
     roadFurniture.setTramPoles(poles);
-    lamps.rebuild(latestRoadTiles, keepOff, free, poles, latestStops);
+    const ahead = new Standing().addAll(control).addAll(poles);
+    const free = clientGrid.roads
+      ? freeRoadLampStands(
+          clientGrid.roads,
+          (id) => clientGrid.profileById(id),
+          (wx, wz) => clientGrid.poweredAt(worldToTile(wx), worldToTile(wz)),
+          { clear, taken: ahead },
+        )
+      : [];
+    lamps.rebuild(latestRoadTiles, keepOff, free, poles, latestStops, control);
+    const upper = ahead.clone().addAll(lamps.standSpots());
+    roadsideUpper = { clear, taken: upper };
+    // A pole is laid again only where something it keeps clear of has moved.
+    const spots = new Map<string, Spot>();
+    for (const s of [...control, ...poles, ...lamps.standSpots()]) {
+      spots.set(`${Math.round(s.x * 4)}:${Math.round(s.z * 4)}`, s);
+    }
+    let moved = false;
+    for (const [key, s] of spots) {
+      if (upperSpots.has(key)) continue;
+      markPolesAt(worldToTile(s.x), worldToTile(s.z));
+      moved = true;
+    }
+    for (const [key, s] of upperSpots) {
+      if (spots.has(key)) continue;
+      markPolesAt(worldToTile(s.x), worldToTile(s.z));
+      moved = true;
+    }
+    upperSpots = spots;
+    const stopKeys = new Set(latestStops.map((s) => s.x * 100_000 + s.z));
+    markPoleKeysChanged(upperStops, stopKeys);
+    if (!sameTileKeySet(upperStops, stopKeys)) moved = true;
+    upperStops = stopKeys;
+    if (moved && clientGrid.roads) poleSlots.free = true;
+    keepTreesOffRoadside();
+    // The places the lower objects find taken include the power poles'.
+    const poleSpots = streetPoleSpots({
+      tileSet: latestRoadTileSet,
+      ...poleSources(),
+      roadside: roadsideUpper,
+    });
+    roadFurniture.rebuild(latestRoadTiles, freeJunctionTiles, {
+      clear,
+      taken: upper.clone().addAll(poleSpots),
+    });
   };
   /**
    * Grid tiles where a road off the grid meets, keyed as the lamps key tiles.
@@ -1463,7 +1576,6 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
     if (sameTileKeySet(next, freeJunctionTiles)) return;
     freeJunctionTiles = next;
     roadsMesh.setFreeJunctionTiles(tiles);
-    roadFurniture.rebuild(latestRoadTiles, freeJunctionTiles);
     rebuildLamps();
   };
   /** Counts down to the next advisor re-rank (see ADVISOR_REFRESH_SNAPSHOTS). */
@@ -2296,7 +2408,6 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       guideway.rebuild(roadTiles);
       if (rebuildTramStations() && !snap.transit) applyTransit(latestTransit);
       rebuildLamps();
-      roadFurniture.rebuild(roadTiles, freeJunctionTiles);
       bridges.rebuild(clientGrid.deckTiles());
       soundWalls.rebuild(clientGrid.soundWalls());
       // Ground cover follows the road only where the road touches the ground —
@@ -2307,9 +2418,8 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       // traffic through it grew. Only the signs care, and, where a
       // roundabout came or went, the lamps.
       setLatestRoadTiles(clientGrid.roadTiles());
-      roadFurniture.rebuild(latestRoadTiles, freeJunctionTiles);
+      rebuildLamps();
       if (snap.roundabouts) {
-        rebuildLamps();
         for (const block of snap.roundabouts) markPolesAt(block.x, block.z);
       }
     }

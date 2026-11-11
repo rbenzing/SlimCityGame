@@ -47,6 +47,7 @@ import {
 import type { LampStand } from './lamps';
 import { POLE_SPECS, layFromLinks, poleLateralOffset } from './powerpoles';
 import type { PoleSite, PowerLay } from './powerpoles';
+import { firstFreeAlong, placeIsFree, type Roadside } from './roadsidespace';
 import { markingPlan } from './roadmarkings';
 import type { MarkingLine, MarkingPlan } from './roadmarkings';
 import {
@@ -342,6 +343,8 @@ function pointAlong(
  * the edge of the junction's tile, where the tile beside it is drawn.
  */
 const GRID_ARM_REACH = TILE_METERS / 2;
+/** How far a lamp or pole along a curved street slides down its centre line to a free place, metres. */
+const FREE_SLIDE_LIMIT_M = TILE_METERS / 2 - 1;
 
 /** The unit normal a quarter turn from `d`, toward increasing angle. */
 const turn = (d: MPoint): MPoint => ({ x: -d.z, z: d.x });
@@ -878,6 +881,7 @@ export function freeRoadLampStands(
   net: RoadNet,
   lookup: ProfileFor,
   powered: (x: number, z: number) => boolean,
+  roadside?: Roadside,
 ): LampStand[] {
   const out: LampStand[] = [];
   for (const span of layout(net, lookup).spans) {
@@ -909,15 +913,25 @@ export function freeRoadLampStands(
                 { across: -offset, reach: 1 },
               ]
             : [{ across: offset * side, reach: -side }];
-      for (const pole of poles) {
-        out.push({
-          x: st.x + st.nx * pole.across,
-          z: st.z + st.nz * pole.across,
-          reachX: st.nx * pole.reach,
-          reachZ: st.nz * pole.reach,
+      // A lamp keeps off a drive, a stop's span and any object ahead of it: it
+      // slides along the centre line to the nearest place all its poles are free.
+      const stands = (at: number): LampStand[] | null => {
+        const here = at === 0 ? st : stations(samples, s + at, s + at)[0];
+        if (!here) return null;
+        return poles.map((pole) => ({
+          x: here.x + here.nx * pole.across,
+          z: here.z + here.nz * pole.across,
+          reachX: here.nx * pole.reach,
+          reachZ: here.nz * pole.reach,
           height: rule.height,
-        });
-      }
+        }));
+      };
+      const along = firstFreeAlong((at) => {
+        const found = stands(at);
+        return found !== null && (!roadside || found.every((p) => placeIsFree(roadside, p.x, p.z)));
+      }, FREE_SLIDE_LIMIT_M);
+      const placed = along === null ? null : stands(along);
+      if (placed) out.push(...placed);
     }
   }
   return out;
@@ -933,6 +947,7 @@ export function freeRoadPoleLay(
   net: RoadNet,
   lookup: ProfileFor,
   powered: (x: number, z: number) => boolean,
+  roadside?: Roadside,
 ): PowerLay {
   const spacing = POLE_SPECS.street.spacingTiles * TILE_METERS;
   const sites: PoleSite[] = [];
@@ -954,13 +969,22 @@ export function freeRoadPoleLay(
         previous = -1;
         continue;
       }
+      // The pole slides along the centre line off a drive, a stop's span and
+      // any object ahead of it, or is not stood.
+      const stand = (at: number): { x: number; z: number } | null => {
+        const here = at === 0 ? st : stations(samples, s + at, s + at)[0];
+        return here
+          ? { x: here.x + here.nx * offset * side, z: here.z + here.nz * offset * side }
+          : null;
+      };
+      const along = firstFreeAlong((at) => {
+        const p = stand(at);
+        return p !== null && (!roadside || placeIsFree(roadside, p.x, p.z));
+      }, FREE_SLIDE_LIMIT_M);
+      const at = along === null ? null : stand(along);
+      if (!at) continue; // the wire spans the gap to the next pole
       const index = sites.length;
-      sites.push({
-        key: index,
-        kind: 'street',
-        x: st.x + st.nx * offset * side,
-        z: st.z + st.nz * offset * side,
-      });
+      sites.push({ key: index, kind: 'street', x: at.x, z: at.z });
       if (previous >= 0) links.push([previous, index]);
       previous = index;
     }

@@ -829,6 +829,44 @@ export class TreeRenderer {
   }
 
   /**
+   * Hides every tree standing within `radius` metres of a spot, whichever tile
+   * owns it: a tree beside a street grows over the lamp, sign or bus stop that
+   * stands in the next tile. Only the trees it hides change.
+   */
+  clearNear(spots: readonly { x: number; z: number; radius: number }[]): void {
+    const touchedSpecies = new Set<TreeSpecies>();
+    for (const spot of spots) {
+      const x0 = Math.floor((spot.x - spot.radius) / TILE_METERS);
+      const x1 = Math.floor((spot.x + spot.radius) / TILE_METERS);
+      const z0 = Math.floor((spot.z - spot.radius) / TILE_METERS);
+      const z1 = Math.floor((spot.z + spot.radius) / TILE_METERS);
+      for (let tz = z0; tz <= z1; tz++) {
+        for (let tx = x0; tx <= x1; tx++) {
+          const key = tz * this.gridSize + tx;
+          const refs = this.tileToInstances.get(key);
+          if (!refs) continue;
+          const kept = refs.filter((ref) => {
+            const mesh = this.meshes[ref.species];
+            if (!mesh) return true;
+            mesh.getMatrixAt(ref.slot, _matrix);
+            _position.setFromMatrixPosition(_matrix);
+            if (Math.hypot(_position.x - spot.x, _position.z - spot.z) >= spot.radius) return true;
+            mesh.setMatrixAt(ref.slot, HIDDEN_MATRIX);
+            touchedSpecies.add(ref.species);
+            return false;
+          });
+          if (kept.length === 0) this.tileToInstances.delete(key);
+          else this.tileToInstances.set(key, kept);
+        }
+      }
+    }
+    for (const species of touchedSpecies) {
+      const mesh = this.meshes[species];
+      if (mesh) mesh.instanceMatrix.needsUpdate = true;
+    }
+  }
+
+  /**
    * The ground under the patched rects has moved (a loaded save, a terraform,
    * a lot's flatten): a tile now under water loses its trees, and every other
    * tile's trees are re-seated on the new ground. `isWater` is asked per tile

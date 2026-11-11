@@ -145,6 +145,14 @@ await cmd('stop', [
     stop: { x: STREET_X, z: stopZ, side: lampSide === -1 ? 0 : 1, kind: 'shelter' },
   },
 ]);
+// The crossroads of avenue and street is signalised, and a second crossing of
+// two streets is stop-controlled, so a mast and a stop sign can each be judged.
+await cmd('signal', [{ kind: 'setJunctionControl', x: X + 13, z: Z + 16, control: 'signal' }]);
+await cmd('stop-cross', [
+  { kind: 'buildRoad', tier: TWO_LANE, tiles: row(22, 16, 25) },
+  { kind: 'buildRoad', tier: TWO_LANE, tiles: col(20, 18, 26) },
+]);
+await cmd('allway', [{ kind: 'setJunctionControl', x: X + 20, z: Z + 22, control: 'allWayStop' }]);
 await page.waitForTimeout(3500);
 
 const failures = [];
@@ -203,6 +211,18 @@ const shots = [
   // alternate on lower ones.
   ['avenue-lamps', X + 12, Z + 16, 60, 0.45, 0.5],
   ['street-lamps', STREET_X, Z + 21, 50, 0.5, 0.5],
+  // Close frames at the camera's floor of 40 m: a signalised corner (mast, stop
+  // line, crosswalk, lamp), the stop-controlled crossing (the stop sign), the
+  // street with kerb parking (meters), the bus stop with its pole line and
+  // lamps, and a cover in its lane.
+  ['close-signal-corner', X + 14, Z + 17, 40, 0.0, 0.9],
+  ['close-signal-corner-b', X + 12, Z + 15, 40, Math.PI, 0.9],
+  ['close-stop-junction', X + 20, Z + 22, 40, 0.0, 0.9],
+  ['close-stop-junction-b', X + 20, Z + 22, 40, 2.4, 0.7],
+  ['close-meters', X + 10, Z + 28, 40, 0.3, 0.8],
+  ['close-busstop-poles', STREET_X, stopZ, 40, lampSide === 1 ? -Math.PI / 2 : Math.PI / 2, 0.8],
+  ['close-busstop-poles-top', STREET_X, stopZ, 40, 0.0, 1.45],
+  ['close-cover-lane', X + 12, Z + 28, 40, 0.0, 1.5],
 ];
 for (const [name, tx, tz, d, yaw, pitch] of shots) {
   await cam(tx, tz, d, yaw, pitch);

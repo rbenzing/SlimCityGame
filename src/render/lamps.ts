@@ -27,7 +27,6 @@ import {
   LAMP_SPACING_WIDE_TILES,
   TILE_METERS,
   tileToWorld,
-  worldToTile,
 } from '../shared/constants';
 import { ROAD_Y_OFFSET } from './roadsmesh';
 import {
@@ -52,9 +51,7 @@ import {
   type TramPoleStand,
 } from './roadfurniture';
 import { BUS_STOP_PAD } from './busstops';
-
-/** How near a tram contact pole a street lamp may stand before the pole takes its place. */
-export const POLE_CLEARANCE_M = 2;
+import { firstFreeAlong, keepClearOf, Standing, type Spot } from './roadsidespace';
 
 /** Pole heights by the street's width: 20, 30 and 40 ft. */
 export const LAMP_HEIGHTS_M = [6.1, 9.1, 12.2] as const;
@@ -74,9 +71,7 @@ export const CROSSWALK_CLEARANCE_M = 3;
 const BOARDING_ALONG_M = 1.52;
 /** Half the stretch of a tile's kerb a bus stop keeps clear: its pad and its boarding area. */
 export const STOP_CLEAR_HALF_M = BUS_STOP_PAD.along / 2 + BOARDING_ALONG_M / 2;
-/** A lamp slides along its tile's strip in steps of this, to the nearest free place. */
-const SLIDE_STEP_M = 0.5;
-/** And no further from the tile's middle than keeps it clear of a crosswalk in the next tile. */
+/** A lamp slides along its tile's strip, to the nearest free place, no further from the tile's middle than keeps it clear of a crosswalk in the next tile. */
 const SLIDE_LIMIT_M = TILE_METERS / 2 - CROSSWALK_CLEARANCE_M;
 
 /** The reference pole, and the height the arm, housing and lens are modelled for. */
@@ -365,8 +360,9 @@ export function computeLampPlacements(
    */
   drivewayTiles?: ReadonlySet<number>,
   /**
-   * The tram contact poles standing along the roads. A lamp within
-   * POLE_CLEARANCE_M of one is not drawn: the pole stands in its place.
+   * The tram contact poles standing along the roads, and `fixed`, the signal
+   * masts and stop signs: both stand where they are, and a lamp within
+   * OBJECT_GAP_M of one moves along its strip.
    */
   poles: readonly TramPoleStand[] = [],
   /**
@@ -374,34 +370,17 @@ export function computeLampPlacements(
    * its pad or its shelter's path, so a lamp there moves along the strip.
    */
   stops: readonly LampStopSite[] = [],
+  fixed: readonly Spot[] = [],
 ): LampPlacement[] {
   const tileSet = buildTileSet(roadTiles);
-  const stopSides = new Map<number, Set<1 | -1>>();
-  for (const stop of stops) {
-    const key = tileKey(stop.x, stop.z);
-    const here = stopSides.get(key) ?? new Set<1 | -1>();
-    here.add(stop.side === 0 ? -1 : 1);
-    stopSides.set(key, here);
-  }
-  const polesByTile = new Map<number, TramPoleStand[]>();
-  for (const pole of poles) {
-    const key = tileKey(worldToTile(pole.x), worldToTile(pole.z));
-    const here = polesByTile.get(key);
-    if (here) here.push(pole);
-    else polesByTile.set(key, [pole]);
-  }
-  const besidePole = (stand: LampStand): boolean => {
-    const tx = worldToTile(stand.x);
-    const tz = worldToTile(stand.z);
-    for (let dz = -1; dz <= 1; dz++) {
-      for (let dx = -1; dx <= 1; dx++) {
-        for (const pole of polesByTile.get(tileKey(tx + dx, tz + dz)) ?? []) {
-          if (Math.hypot(pole.x - stand.x, pole.z - stand.z) < POLE_CLEARANCE_M) return true;
-        }
-      }
-    }
-    return false;
-  };
+  const clear = keepClearOf(
+    undefined,
+    stops,
+    STOP_CLEAR_HALF_M,
+    (tx, tz) => lateralAxis(tileSet, tx, tz),
+    tileKey,
+  );
+  const taken = new Standing().addAll(poles).addAll(fixed);
 
   const placements: LampPlacement[] = [];
   for (const tile of roadTiles) {
@@ -438,17 +417,13 @@ export function computeLampPlacements(
 
     // A place is free of a bus stop's span, and of a tram pole.
     const slideTo = (base: LampPlacement): LampPlacement | null => {
-      const stopsHere = base.twin ? undefined : stopSides.get(tileKey(tile.x, tile.z));
-      const taken = stopsHere?.has(base.side) ?? false;
-      for (let step = 0; step * SLIDE_STEP_M <= SLIDE_LIMIT_M; step++) {
-        for (const sign of step === 0 ? [1] : [1, -1]) {
-          const offset = sign * step * SLIDE_STEP_M;
-          if (taken && Math.abs(offset) < STOP_CLEAR_HALF_M) continue;
-          const placed = offset === 0 ? base : { ...base, along: offset };
-          return besidePole(standOf(placed)) ? null : placed;
-        }
-      }
-      return null;
+      const along = firstFreeAlong((offset) => {
+        const stand = standOf(offset === 0 ? base : { ...base, along: offset });
+        if (!base.twin && clear.blocks(stand.x, stand.z)) return false;
+        return taken.isFree(stand.x, stand.z);
+      }, SLIDE_LIMIT_M);
+      if (along === null) return null;
+      return along === 0 ? base : { ...base, along };
     };
 
     const centre = centralLampOffsetOf(profile);
@@ -816,9 +791,10 @@ export class LampRenderer {
     freeStands: readonly LampStand[] = [],
     poles: readonly TramPoleStand[] = [],
     stops: readonly LampStopSite[] = [],
+    fixed: readonly Spot[] = [],
   ): void {
     this.stands = [
-      ...computeLampPlacements(roadTiles, drivewayTiles, poles, stops).flatMap(standsOf),
+      ...computeLampPlacements(roadTiles, drivewayTiles, poles, stops, fixed).flatMap(standsOf),
       ...freeStands,
     ];
 
@@ -882,6 +858,11 @@ export class LampRenderer {
     this.housingMaterial.emissiveIntensity = f * HOUSING_EMISSIVE_STRENGTH;
     this.lensMaterial.emissiveIntensity = f * LENS_EMISSIVE_STRENGTH;
     this.poolMaterial.opacity = f * POOL_MAX_OPACITY;
+  }
+
+  /** Where each lamp of the last rebuild() stands, world metres. */
+  standSpots(): readonly Spot[] {
+    return this.stands;
   }
 
   /** Number of lamps placed by the last rebuild(); every layer matches this 1:1. */

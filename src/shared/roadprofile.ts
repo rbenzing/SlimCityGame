@@ -793,6 +793,23 @@ function kerbParkingLane(
   return best;
 }
 
+/**
+ * Metres from the carriageway's centre line to the middle of each plain travel
+ * lane, low side first: a lane that carries no tram rail and is no turn bay,
+ * which is the only kind a manhole cover may lie in.
+ */
+export function plainLaneCentres(profile: RoadProfile): number[] {
+  const centres = pieceCentres(profile);
+  const out: number[] = [];
+  profile.pieces.forEach((piece, i) => {
+    const at = centres[i];
+    if (piece.kind === 'travel' && piece.tram !== true && piece.bay !== true && at != null) {
+      out.push(at);
+    }
+  });
+  return out;
+}
+
 function pieceCentres(profile: RoadProfile): (number | null)[] {
   let offset = -carriagewayHalfWidthOf(profile);
   return profile.pieces.map((piece) => {

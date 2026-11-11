@@ -3711,6 +3711,17 @@ export function hasMedianTree(x: number, z: number): boolean {
   return (h & 1) === 0;
 }
 
+/**
+ * Whether a median tile carries a tree: it is a straight avenue run the hash
+ * picks, and the road runs on both ways. The end of a road is a cap, not a
+ * run: a tree there stands on the cap's turning bulb.
+ */
+export function medianTreeStands(tier: RoadTier, mask: number, x: number, z: number): boolean {
+  const arms =
+    (mask & NORTH ? 1 : 0) + (mask & EAST ? 1 : 0) + (mask & SOUTH ? 1 : 0) + (mask & WEST ? 1 : 0);
+  return isAvenueMedianEligible(tier, mask) && arms >= 2 && hasMedianTree(x, z);
+}
+
 function pushCenterBand(
   positions: number[],
   colors: number[],
@@ -7538,8 +7549,7 @@ export class RoadMeshRenderer {
     // one — an undivided arterial — plants none, rather than one in a lane.
     const treeTiles = tiles.filter(
       (t) =>
-        isAvenueMedianEligible(t.tier, t.mask) &&
-        hasMedianTree(t.x, t.z) &&
+        medianTreeStands(t.tier, t.mask, t.x, t.z) &&
         (this.profileAt(t.x, t.z)?.pieces.some((p) => p.kind === 'median') ?? true),
     );
 

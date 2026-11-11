@@ -31,10 +31,12 @@ import {
   carriagewayHalfWidthOf,
   carriagewayShiftOf,
   carriagewayWidth,
+  hasFootway,
   isOneWayProfile,
   isParkingLane,
   kerbWidthOf,
   parkingSides,
+  plainLaneCentres,
   presetProfileForTier,
   rankForTier,
   roadClass,
@@ -49,6 +51,19 @@ import type { SeparateRoadSurroundings } from '../shared/approachzone';
 import type { JunctionControl, RoadProfile } from '../shared/types';
 import { materialHex } from './palette';
 import { MIN_INSTANCE_CAPACITY, setInstanceCount } from './groundquad';
+import {
+  firstFreeAlong,
+  MAST_BEHIND_KERB_M,
+  MAST_PAST_JUNCTION_M,
+  placeIsFree,
+  SIGN_BEHIND_KERB_M,
+  SIGN_BOTTOM_NO_WALK_M,
+  SIGN_BOTTOM_OVER_WALK_M,
+  SIGN_NO_KERB_M,
+  SLIDE_LIMIT_M,
+  type Roadside,
+  type Spot,
+} from './roadsidespace';
 
 // --- Manhole -----------------------------------------------------------------
 const MANHOLE_RADIUS = 0.5;
@@ -119,26 +134,36 @@ const METER_HEAD_COLOR = 0x9a9ba0; // silver meter head
 const METER_DISPLAY_COLOR = 0x20242a; // dark display face
 const METER_PERIOD = 5; // a meter pair on every (x+z) multiple of 5
 const METER_ALONG = 3; // the pair straddles the tile center by ±3m along the run
-/** How far behind the kerb face a meter stands, so it is beside its bay and clear of the traffic. */
-export const METER_KERB_CLEARANCE_M = 0.45;
-
 /** How far behind the kerb face a roadside pole's centre stands: 18 in, in the furnishing strip. */
 export const POLE_BEHIND_KERB_M = 0.46;
 
-/** How far behind the kerb face a cantilevered mast's own post stands. */
-export const MAST_KERB_CLEARANCE_M = 0.5;
+/** How far behind the kerb face a meter stands, so it is beside its bay and clear of the traffic. */
+export const METER_KERB_CLEARANCE_M = POLE_BEHIND_KERB_M;
+
+/**
+ * A cabinet's near face stands this far behind the kerb face, so its body fills
+ * the 0.6 m furnishing strip and leaves the walk behind it clear.
+ */
+const CABINET_BEHIND_KERB_M = 0.1;
+
+/** A meter pair's ±3 m, and how far a meter slides along its strip to find a free place. */
+const METER_SLIDE_LIMIT_M = 2;
 
 // --- Traffic signs -----------------------------------------------------------
 // Standard road signs, each a recognizable shape+color on the shared pole.
 const SIGN_POLE_RADIUS = 0.04;
-const SIGN_POLE_HEIGHT = 2.2;
 const SIGN_BOARD = 0.6; // board footprint used to seat every type near the pole top
+/** The pole stands so that the bottom of a full-size board is 2.1 m over the ground it stands on. */
+const SIGN_POLE_HEIGHT = SIGN_BOTTOM_OVER_WALK_M + SIGN_BOARD + 0.05;
 const SIGN_BOARD_Y = SIGN_POLE_HEIGHT - SIGN_BOARD / 2 - 0.05; // board center height
+/** The bottom of a full-size board over the ground at its pole's foot: 2.1 m. */
+export const SIGN_BOARD_BOTTOM_M = SIGN_BOARD_Y - SIGN_BOARD / 2;
 const SIGN_POLE_COLOR = 0x50555d; // charcoal pole
 
 // --- Traffic signals ---------------------------------------------------------
 const SIGNAL_MAST_RADIUS = 0.07;
-const SIGNAL_MAST_HEIGHT = 4.2;
+/** Tall enough that the head's bottom hangs 4.6 m over the road: the least a signal head clears. */
+const SIGNAL_MAST_HEIGHT = 5.6;
 const SIGNAL_ARM_LENGTH = 1.9;
 const SIGNAL_ARM_THICKNESS = 0.09;
 const SIGNAL_HEAD_WIDTH = 0.34;
@@ -150,6 +175,11 @@ const SIGNAL_HOUSING_COLOR = 0x2f3338;
 const SIGNAL_RED = 0xd6402f;
 const SIGNAL_AMBER = 0xe8a33a;
 const SIGNAL_GREEN = 0x46b360;
+/** Where a signal head's bottom and top hang over the ground the mast stands on, metres. */
+export const SIGNAL_HEAD_BOTTOM_M = SIGNAL_MAST_HEIGHT - SIGNAL_ARM_THICKNESS - SIGNAL_HEAD_HEIGHT;
+export const SIGNAL_HEAD_TOP_M = SIGNAL_MAST_HEIGHT - SIGNAL_ARM_THICKNESS;
+/** How far a signal's arm reaches out from its mast, metres. */
+export const SIGNAL_ARM_REACH_M = SIGNAL_ARM_LENGTH;
 /** Red, amber and green UNLIT: dark glass, so a head reads as a signal with nothing burning. */
 const SIGNAL_LENS_DARK = [0x4a2620, 0x4d3a1f, 0x1f4a2c] as const;
 
@@ -314,6 +344,8 @@ export interface BoxPlacement {
   lateralOffset: number;
   /** Which of the two cabinets it is; they share a slot and a siting rule. */
   kind: CabinetKind;
+  /** Metres it stands along its strip from the tile's middle, where another object took the middle; absent at 0. */
+  along?: number;
 }
 
 export interface MeterPlacement {
@@ -348,6 +380,14 @@ export interface SignPlacement {
   worldOffsetX?: number;
   worldOffsetZ?: number;
   yaw?: number;
+  /** Metres a kerbside board stands along its strip from the tile's middle, where another object took the middle; absent at 0. */
+  along?: number;
+  /**
+   * How high the bottom of a kerbside board stands over the ground, metres:
+   * 2.1 over a walk, 1.5 with none. Absent on a signal, an exit board and a
+   * gantry, which hang higher.
+   */
+  bottom?: number;
   /**
    * A gantry's reach either side of where it stands, to its legs, metres: its
    * road's own carriageway plus the clearance. Omitted, it is the three-lane
@@ -357,11 +397,9 @@ export interface SignPlacement {
 }
 
 /**
- * Curbside offset (m): the outer edge of whatever curb the tier actually draws,
- * so curbside props (boxes, meters, signs) sit clear of the road on the verge —
- * only manholes belong on the carriageway itself. A motorway's curb is half a
- * metre, not a footway, so its signage stands there rather than a metre and a
- * half out in the grass — or, on a bridge, out over the parapet.
+ * Curbside offset (m): the outer edge of whatever curb the tier actually draws.
+ * Only the exit board, which has no furnishing strip to stand in on a
+ * motorway's half-metre kerb, stands there.
  */
 function curbsideLateralOffset(tile: { tier?: RoadTier; profile?: RoadProfile }): number {
   const { half, kerb } = edgeOf(tile);
@@ -369,40 +407,57 @@ function curbsideLateralOffset(tile: { tier?: RoadTier; profile?: RoadProfile })
 }
 
 /**
- * Where a cabinet with real bulk stands: BEHIND the footway, its near face at
- * the paving's back edge and its body out on the verge. Centring it on that
- * edge instead left half of it overhanging the walking route, and on a road
- * whose footway is thin, overhanging the carriageway.
+ * Where a post stands, metres from the road's centre line: `behind` the kerb
+ * face, which is where the carriageway ends, or `noKerb` from the travelled way
+ * where the road has no kerb to stand behind. Never beyond the tile's edge.
  */
-function behindFootwayOffset(
+function postOffset(
   tile: { tier?: RoadTier; profile?: RoadProfile },
-  depth: number,
+  behind: number,
+  noKerb: number,
 ): number {
-  return curbsideLateralOffset(tile) + depth / 2;
-}
-
-/**
- * Where a meter stands: at the KERB FACE, beside the bay it charges for, not
- * at the back of the footway. A driver pays at the kerb they parked against.
- */
-function kerbFaceOffset(tile: { tier?: RoadTier; profile?: RoadProfile }): number {
   const { half, kerb } = edgeOf(tile);
-  return half + Math.min(METER_KERB_CLEARANCE_M, kerb);
+  return Math.min(half + (kerb > 0 ? behind : noKerb), TILE_METERS / 2);
 }
 
 /**
- * Where a cantilevered mast stands: at the KERB FACE, so its short arm spends
- * its length out over the carriageway instead of crossing the footway to get
- * there.
- *
- * At the back of the footway — where a flat board goes, since a board is read
- * from the road and wants to be out of the way — a 1.9 m arm is used up
- * reaching the kerb, and the head ends up hanging over the kerb line rather
- * than over the lanes it holds. On an avenue that left 3 cm of clearance.
+ * Where a cabinet stands: its near face 0.1 m behind the kerb face, so its
+ * body fills the furnishing strip and the walk behind it stays clear. A box
+ * centred on the strip's pole line overhung the strip into the walk.
+ */
+function cabinetOffset(tile: { tier?: RoadTier; profile?: RoadProfile }, depth: number): number {
+  return postOffset(tile, CABINET_BEHIND_KERB_M + depth / 2, POLE_BEHIND_KERB_M);
+}
+
+/** Where a meter stands: behind the kerb face of the stall it charges for, never on the road side of it. */
+function kerbFaceOffset(tile: { tier?: RoadTier; profile?: RoadProfile }): number {
+  return postOffset(tile, METER_KERB_CLEARANCE_M, METER_KERB_CLEARANCE_M);
+}
+
+/**
+ * Where a cantilevered mast stands: 0.61 m behind the kerb face, so its short
+ * arm spends its length out over the carriageway instead of crossing the
+ * footway to get there.
  */
 function mastKerbOffset(tile: { tier?: RoadTier; profile?: RoadProfile }): number {
-  const { half, kerb } = edgeOf(tile);
-  return half + Math.min(MAST_KERB_CLEARANCE_M, kerb);
+  return postOffset(tile, MAST_BEHIND_KERB_M, SIGN_NO_KERB_M);
+}
+
+/** Where a tram contact pole stands: the lamp's place in the strip, its arm reaching over the track. */
+function tramPoleOffset(tile: { tier?: RoadTier; profile?: RoadProfile }): number {
+  return postOffset(tile, POLE_BEHIND_KERB_M, POLE_BEHIND_KERB_M);
+}
+
+/** Where a sign's post stands: 0.46 m behind the kerb face, or 3.7 m from the travelled way with no kerb. */
+function signOffset(tile: { tier?: RoadTier; profile?: RoadProfile }): number {
+  return postOffset(tile, SIGN_BEHIND_KERB_M, SIGN_NO_KERB_M);
+}
+
+/** How far a board's bottom stands over the ground beside the road: 2.1 m over a walk, 1.5 m with none. */
+function boardBottomOf(tile: { tier?: RoadTier; profile?: RoadProfile }): number {
+  const { kerb } = edgeOf(tile);
+  const profile = tile.profile ?? presetProfileForTier(tile.tier ?? RoadTier.TwoLane);
+  return kerb > 0 && hasFootway(profile) ? SIGN_BOTTOM_OVER_WALK_M : SIGN_BOTTOM_NO_WALK_M;
 }
 
 /**
@@ -816,15 +871,15 @@ function periodHits(x: number, z: number, period: number): boolean {
 // ---------------------------------------------------------------------------
 
 /**
- * Manhole covers down the CENTRELINE of a run, one every
- * MANHOLE_PERIOD_TILES.
+ * Manhole covers down one lane of a run, one every MANHOLE_PERIOD_TILES.
  *
- * A sewer is laid down the middle of the street it serves, so its covers sit
- * on the centreline in a straight line the length of the road — not scattered
- * across the running lanes, which is where a per-tile hash on a random side
- * put them. A road with a raised MEDIAN has no centreline to sit on: its sewer
- * runs under one carriageway rather than under the planting, and rather than
- * guess which, that road carries none.
+ * A cover lies in the middle of a plain travel lane, clear of every painted
+ * line: the first such lane from the low side of the tile's own cross-section,
+ * so the covers of a run stand in one line down the same lane. A lane that
+ * carries tram rails, a turn bay (where arrows, a stop line and a crosswalk
+ * lie), a bike or bus lane and a parking lane take none. A road with a raised
+ * MEDIAN carries none: its sewer runs under one carriageway rather than under
+ * the planting, and rather than guess which, that road has no covers.
  */
 export function computeManholePlacements(
   roadTiles: readonly FurnitureRoadTile[],
@@ -840,24 +895,66 @@ export function computeManholePlacements(
     if (isJunctionTile(tileSet, tile.x, tile.z)) continue; // the box is busy enough
     if (hasCentralMedian(tile)) continue;
     if (!periodHits(tile.x, tile.z, MANHOLE_PERIOD_TILES)) continue;
-    // A corridor's sewer runs under the middle of the whole road, which is the
-    // edge its halves share; the half below it lays the one line of covers.
-    const shared = sharedEdgeOf(tileSet, tile);
-    if (shared && shared.side < 0) continue;
-
+    const profile = profileOf(tile);
+    if (profile.pieces.some((p) => p.bay === true)) continue; // a junction's approach is all paint
+    const lane = plainLaneCentres(profile)[0];
+    if (lane === undefined) continue; // no plain lane to lie in
     out.push({
       x: tile.x,
       z: tile.z,
-      axis: shared?.axis ?? lateralAxis(tileSet, tile.x, tile.z),
-      lateral: shared ? TILE_METERS / 2 : 0,
+      axis: lateralAxis(tileSet, tile.x, tile.z),
+      // The lane's middle, from the tile's middle: half of a corridor's
+      // carriageway is pushed against the edge it shares.
+      lateral: lane + carriagewayShiftOf(profile),
       rotationY: hashTile(tile.x, tile.z, HASH_MANHOLE_ROT) * Math.PI * 2,
     });
   }
   return out;
 }
 
-/** Utility boxes on a sidewalk edge of ~1 in 12 curbed tiles. */
-export function computeBoxPlacements(roadTiles: readonly FurnitureRoadTile[]): BoxPlacement[] {
+/** The world point of an object standing `lateral` from a tile's middle on `side`, `along` its strip. */
+function stripPoint(
+  tile: TilePoint,
+  axis: FurnitureAxis,
+  side: FurnitureSide,
+  lateral: number,
+  along: number,
+): Spot {
+  const off = lateral * side;
+  return axis === 'x'
+    ? { x: tileToWorld(tile.x) + off, z: tileToWorld(tile.z) + along }
+    : { x: tileToWorld(tile.x) + along, z: tileToWorld(tile.z) + off };
+}
+
+/**
+ * How far along its strip an object standing on `tile` slides to find a free
+ * place, from the tile's middle: 0 where the middle is free, null where no place
+ * in the tile is. Without a roadside every place is free.
+ */
+function freeAlong(
+  roadside: Roadside | undefined,
+  tile: TilePoint,
+  axis: FurnitureAxis,
+  side: FurnitureSide,
+  lateral: number,
+  limit = SLIDE_LIMIT_M,
+): number | null {
+  if (!roadside) return 0;
+  return firstFreeAlong((along) => {
+    const p = stripPoint(tile, axis, side, lateral, along);
+    return placeIsFree(roadside, p.x, p.z);
+  }, limit);
+}
+
+/**
+ * Utility boxes on a sidewalk edge of ~1 in 12 curbed tiles. A box takes its
+ * place after every other object, and moves along its strip off a bus stop's
+ * span, a drive or a neighbour's centre, or is not put down.
+ */
+export function computeBoxPlacements(
+  roadTiles: readonly FurnitureRoadTile[],
+  roadside?: Roadside,
+): BoxPlacement[] {
   const tileSet = buildTileSet(roadTiles);
   const out: BoxPlacement[] = [];
   for (const tile of roadTiles) {
@@ -877,18 +974,27 @@ export function computeBoxPlacements(roadTiles: readonly FurnitureRoadTile[]): B
     // Which of the two cabinets, from its own hash so a street gets a mix.
     const kind: CabinetKind =
       hashTile(tile.x, tile.z, HASH_CABINET_KIND) < PEDESTAL_SHARE ? 'pedestal' : 'cabinet';
-    out.push({
+    // Each stands in the strip on its own depth: a pedestal is round, so its
+    // depth is its diameter.
+    const lateralOffset =
+      cabinetOffset(tile, kind === 'pedestal' ? PEDESTAL_PAD_RADIUS * 2 : BOX_DEPTH) +
+      flankShift(tileSet, tile, pick);
+    const along = freeAlong(roadside, tile, pick.axis, pick.side, lateralOffset);
+    if (along === null) continue;
+    const placed: BoxPlacement = {
       x: tile.x,
       z: tile.z,
       axis: pick.axis,
       side: pick.side,
-      // Each stands behind the footway on its own depth: a pedestal is round,
-      // so its depth is its diameter.
-      lateralOffset:
-        behindFootwayOffset(tile, kind === 'pedestal' ? PEDESTAL_PAD_RADIUS * 2 : BOX_DEPTH) +
-        flankShift(tileSet, tile, pick),
+      lateralOffset,
       kind,
-    });
+      ...(along === 0 ? {} : { along }),
+    };
+    out.push(placed);
+    if (roadside) {
+      const p = stripPoint(tile, pick.axis, pick.side, lateralOffset, along);
+      roadside.taken.add(p.x, p.z);
+    }
   }
   return out;
 }
@@ -908,8 +1014,16 @@ function meterSide(tile: FurnitureRoadTile): FurnitureSide {
   return either;
 }
 
-/** Parking meters (two per tile) on curb-parking tiers, every 5th tile along the run. */
-export function computeMeterPlacements(roadTiles: readonly FurnitureRoadTile[]): MeterPlacement[] {
+/**
+ * Parking meters (two per tile) on curb-parking tiers, every 5th tile along the
+ * run. A meter moves along its strip off a bus stop's span, a drive or the
+ * centre of a higher object, or is not put down; each it puts down it adds to
+ * `roadside.taken`.
+ */
+export function computeMeterPlacements(
+  roadTiles: readonly FurnitureRoadTile[],
+  roadside?: Roadside,
+): MeterPlacement[] {
   const tileSet = buildTileSet(roadTiles);
   const out: MeterPlacement[] = [];
   for (const tile of roadTiles) {
@@ -927,8 +1041,19 @@ export function computeMeterPlacements(roadTiles: readonly FurnitureRoadTile[]):
     const side = shared ? (-shared.side as FurnitureSide) : meterSide(tile);
     const lateralOffset =
       kerbFaceOffset(tile) + flankShift(tileSet, tile, { axis: curbAxis, side });
-    for (const along of [METER_ALONG, -METER_ALONG]) {
+    for (const base of [METER_ALONG, -METER_ALONG]) {
+      const slide = firstFreeAlong((a) => {
+        if (!roadside) return true;
+        const p = stripPoint(tile, curbAxis, side, lateralOffset, base + a);
+        return placeIsFree(roadside, p.x, p.z);
+      }, METER_SLIDE_LIMIT_M);
+      if (slide === null) continue;
+      const along = base + slide;
       out.push({ x: tile.x, z: tile.z, curbAxis, side, lateralOffset, along });
+      if (roadside) {
+        const p = stripPoint(tile, curbAxis, side, lateralOffset, along);
+        roadside.taken.add(p.x, p.z);
+      }
     }
   }
   return out;
@@ -969,11 +1094,14 @@ function oneWayPoleSide(tile: FurnitureRoadTile): FurnitureSide | null {
  * two-way road takes them on alternate kerbs; a one-way road on its drivers'
  * right. None stands where road crosses the tile (a junction box or a turn),
  * on a roundabout, on a tile in `keepOff` (a driveway's mouth, or where a road
- * off the grid meets), or on a kerb another road lies against.
+ * off the grid meets), or on a kerb another road lies against. A pole gives way
+ * to a signal mast or a stop sign in `roadside`, and to a bus stop's span, by
+ * moving along its tile's strip, or is not stood.
  */
 export function computeTramPolePlacements(
   roadTiles: readonly FurnitureRoadTile[],
   keepOff?: ReadonlySet<number>,
+  roadside?: Roadside,
 ): TramPoleStand[] {
   const tileSet = buildTileSet(roadTiles);
   const out: TramPoleStand[] = [];
@@ -997,12 +1125,26 @@ export function computeTramPolePlacements(
       const other: FurnitureSide = preferred === 1 ? -1 : 1;
       const side = free(preferred) ? preferred : free(other) ? other : null;
       if (side === null) continue;
-      const lateral = side * (mastKerbOffset(tile) + flankShift(tileSet, tile, { axis, side }));
-      const along = k * TRAM_POLE_SPACING_M;
+      const lateral = side * (tramPoleOffset(tile) + flankShift(tileSet, tile, { axis, side }));
+      const base = k * TRAM_POLE_SPACING_M;
+      const at = (a: number): Spot =>
+        runsAlongX
+          ? { x: a, z: tileToWorld(tile.z) + lateral }
+          : { x: tileToWorld(tile.x) + lateral, z: a };
+      const slide = roadside
+        ? firstFreeAlong((s) => {
+            const a = base + s;
+            if (a < start || a >= start + TILE_METERS) return false;
+            const p = at(a);
+            return placeIsFree(roadside, p.x, p.z);
+          }, SLIDE_LIMIT_M)
+        : 0;
+      if (slide === null) continue;
+      const p = at(base + slide);
       out.push(
         runsAlongX
-          ? { x: along, z: tileToWorld(tile.z) + lateral, reachX: 0, reachZ: -side }
-          : { x: tileToWorld(tile.x) + lateral, z: along, reachX: -side, reachZ: 0 },
+          ? { x: p.x, z: p.z, reachX: 0, reachZ: -side }
+          : { x: p.x, z: p.z, reachX: -side, reachZ: 0 },
       );
     }
   }
@@ -1188,10 +1330,72 @@ function signFacingYaw(tile: FurnitureRoadTile, axis: FurnitureAxis, side: Furni
   return flowFacingYaw(tile) ?? kerbFacingYaw(axis, side);
 }
 
-/** One typed sign per curbed tile whose road-tile role earns it. */
-export function computeSignPlacements(roadTiles: readonly FurnitureRoadTile[]): SignPlacement[] {
+/** The boards a junction's control puts on an approach, which stand where they are whatever else is near. */
+export function isControlSign(type: SignType): boolean {
+  return type === 'signal' || type === 'stop' || type === 'giveway';
+}
+
+/** Where every signal mast, stop sign and give-way board stands, world metres, off the tiles in `keepOff`. */
+export function controlSignSpots(
+  roadTiles: readonly FurnitureRoadTile[],
+  keepOff?: ReadonlySet<number>,
+): Spot[] {
+  return computeSignPlacements(roadTiles)
+    .filter((s) => isControlSign(s.type) && !keepOff?.has(tileKey(s.x, s.z)))
+    .map((s) => {
+      const at = signWorldTransform(s);
+      return { x: at.x, z: at.z };
+    });
+}
+
+/**
+ * Where the far right corner of a junction lies for a driver coming in along
+ * `tile`: on the tile beyond the junction, in its furnishing strip on the
+ * driver's right, MAST_PAST_JUNCTION_M past the junction's edge so it clears
+ * the kerb ramp. Null where nothing straight lies beyond, or a road lies on that
+ * side of it; the mast then stands at the stop line.
+ */
+function farRightCorner(
+  tileSet: RoadTileIndex,
+  tile: FurnitureRoadTile,
+  junction: FurnitureRoadTile,
+  toward: { x: number; z: number },
+  right: { x: number; z: number },
+  pick: SideChoice,
+): { lateral: number; along: number } | null {
+  const far = tileSet.get(tileKey(junction.x + toward.x, junction.z + toward.z));
+  if (!far || far.ring || far.elevated !== tile.elevated) return null;
+  if (!joins(tileSet, junction.x, junction.z, far.x, far.z)) return null;
+  if (neighborCount(tileSet, far.x, far.z) !== 2) return null;
+  if (!isCollinear2(presentSides(tileSet, far.x, far.z))) return null;
+  if (tileSet.has(tileKey(far.x + right.x, far.z + right.z))) return null;
+  return {
+    lateral: mastKerbOffset(far) + flankShift(tileSet, far, pick),
+    along: TILE_METERS * 1.5 + MAST_PAST_JUNCTION_M,
+  };
+}
+
+/** A kerbside board that gives way to the higher objects: it is placed once those are. */
+const MOVABLE_BOARDS: ReadonlySet<SignType> = new Set<SignType>(['oneway', 'speed', 'nothrough']);
+
+/**
+ * One typed sign per curbed tile whose road-tile role earns it. A signal mast
+ * stands at the far right corner of its junction and a stop sign at the stop
+ * line on the near right, both of them where they stand whatever else is near;
+ * every other board takes its place after them and moves along its strip off a
+ * bus stop's span, a drive or the centre of any object in `roadside`, or is not
+ * put down. Each it puts down it adds to `roadside.taken`.
+ */
+export function computeSignPlacements(
+  roadTiles: readonly FurnitureRoadTile[],
+  roadside?: Roadside,
+): SignPlacement[] {
   const tileSet = buildTileSet(roadTiles);
   const out: SignPlacement[] = [];
+  const late: { tile: FurnitureRoadTile; placement: SignPlacement }[] = [];
+  const bottomOf = (tile: FurnitureRoadTile): { bottom: number } => ({
+    bottom: boardBottomOf(tile),
+  });
   for (const tile of roadTiles) {
     if (tile.ring) continue;
     const type = effectiveSign(tileSet, tile);
@@ -1219,6 +1423,7 @@ export function computeSignPlacements(roadTiles: readonly FurnitureRoadTile[]): 
         side: 1,
         lateralOffset: 0,
         type,
+        ...bottomOf(tile),
         worldOffsetX: cornerX + dirX * radius,
         worldOffsetZ: cornerZ + dirZ * radius,
         yaw: Math.atan2(-dirX, -dirZ),
@@ -1270,27 +1475,47 @@ export function computeSignPlacements(roadTiles: readonly FurnitureRoadTile[]): 
       const rightZ = towardX;
       const axis: FurnitureAxis = rightX !== 0 ? 'x' : 'z';
       const side: FurnitureSide = (rightX !== 0 ? rightX : rightZ) > 0 ? 1 : -1;
-      // A signal hangs its head off an arm and so stands at the kerb; a flat
-      // board is read from the road and stands back out of the way. Both are
-      // measured from where the carriageway is.
+      // A signal hangs its head off an arm and stands in the strip 0.61 m behind
+      // the kerb, at the far right corner of the junction where it can be; a
+      // flat board is read from the road and stands 0.46 m behind it at the stop
+      // line. Both are measured from where the carriageway is.
+      const pick: SideChoice = { axis, side };
+      const corner =
+        type === 'signal'
+          ? farRightCorner(
+              tileSet,
+              tile,
+              junction,
+              { x: towardX, z: towardZ },
+              { x: rightX, z: rightZ },
+              pick,
+            )
+          : null;
       const lateral =
-        (isCantilevered(type) ? mastKerbOffset(tile) : curbsideLateralOffset(tile)) +
-        flankShift(tileSet, tile, { axis, side });
-      const along = TILE_METERS / 2 - CONTROL_SIGN_SETBACK_M;
-      out.push({
+        corner?.lateral ??
+        (type === 'signal' ? mastKerbOffset(tile) : signOffset(tile)) +
+          flankShift(tileSet, tile, pick);
+      const along = corner?.along ?? TILE_METERS / 2 - CONTROL_SIGN_SETBACK_M;
+      const control: SignPlacement = {
         x: tile.x,
         z: tile.z,
         axis,
         side,
         lateralOffset: lateral,
         type,
+        ...(type === 'signal' ? {} : bottomOf(tile)),
         worldOffsetX: rightX * lateral + towardX * along,
         worldOffsetZ: rightZ * lateral + towardZ * along,
         // A signal's mast arm reaches out over the road it holds; a flat board
         // faces back at the traffic it is stopping, which is the way it is
         // read. Lying along the run showed drivers its edge.
         yaw: isCantilevered(type) ? signalYaw(axis, side) : kerbFacingYaw(axis, side),
-      });
+      };
+      out.push(control);
+      if (roadside) {
+        const at = signWorldTransform(control);
+        roadside.taken.add(at.x, at.z);
+      }
       continue;
     }
 
@@ -1305,15 +1530,22 @@ export function computeSignPlacements(roadTiles: readonly FurnitureRoadTile[]): 
       : pickSide(flanks.length > 0 ? flanks : free, hashTile(tile.x, tile.z, HASH_SIGN_SIDE));
     if (!pick) continue;
 
-    out.push({
+    const base =
+      type === 'exit'
+        ? curbsideLateralOffset(tile)
+        : isCantilevered(type)
+          ? mastKerbOffset(tile)
+          : signOffset(tile);
+    const placement: SignPlacement = {
       x: tile.x,
       z: tile.z,
       axis: pick.axis,
       side: pick.side,
       // Measured from where the carriageway is, which on half of a corridor
       // nothing divides is off the tile's centre.
-      lateralOffset: curbsideLateralOffset(tile) + flankShift(tileSet, tile, pick),
+      lateralOffset: base + flankShift(tileSet, tile, pick),
       type,
+      ...(isCantilevered(type) ? {} : bottomOf(tile)),
       // Every kerbside board faces the traffic it speaks to. Without this a
       // board took the authored +z facing whatever way its road ran, so half
       // of them stood edge-on to the drivers meant to read them. A cantilever
@@ -1322,7 +1554,25 @@ export function computeSignPlacements(roadTiles: readonly FurnitureRoadTile[]): 
       yaw: isCantilevered(type)
         ? signalYaw(pick.axis, pick.side)
         : signFacingYaw(tile, pick.axis, pick.side),
-    });
+    };
+    if (roadside && MOVABLE_BOARDS.has(type)) late.push({ tile, placement });
+    else out.push(placement);
+  }
+  // The boards that give way go down once everything that does not has.
+  for (const { tile, placement } of late) {
+    const along = freeAlong(
+      roadside,
+      tile,
+      placement.axis,
+      placement.side,
+      placement.lateralOffset,
+    );
+    if (along === null) continue;
+    out.push(along === 0 ? placement : { ...placement, along });
+    if (roadside) {
+      const p = stripPoint(tile, placement.axis, placement.side, placement.lateralOffset, along);
+      roadside.taken.add(p.x, p.z);
+    }
   }
   return out;
 }
@@ -1735,9 +1985,10 @@ export function signWorldTransform(p: SignPlacement): { x: number; z: number; ya
   // facing that ignored which kerb the board stood on, so every board on one
   // side of a road showed drivers its back.
   const off = p.lateralOffset * p.side;
+  const along = p.along ?? 0;
   return {
-    x: p.axis === 'x' ? tileToWorld(p.x) + off : tileToWorld(p.x),
-    z: p.axis === 'z' ? tileToWorld(p.z) + off : tileToWorld(p.z),
+    x: p.axis === 'x' ? tileToWorld(p.x) + off : tileToWorld(p.x) + along,
+    z: p.axis === 'z' ? tileToWorld(p.z) + off : tileToWorld(p.z) + along,
     yaw:
       p.yaw ??
       (isCantilevered(p.type) ? signalYaw(p.axis, p.side) : p.axis === 'x' ? 0 : Math.PI / 2),
@@ -2174,15 +2425,22 @@ export class RoadFurnitureRenderer {
    * grid meets: the tile's own role — a corner, a straight — no longer says
    * where its kerbs are, so nothing it earned is stood there.
    */
-  rebuild(roadTiles: readonly FurnitureRoadTile[], keepOff?: ReadonlySet<number>): void {
+  rebuild(
+    roadTiles: readonly FurnitureRoadTile[],
+    keepOff?: ReadonlySet<number>,
+    roadside?: Roadside,
+  ): void {
     const allowed = <T extends { x: number; z: number }>(placements: T[]): T[] =>
       keepOff && keepOff.size > 0
         ? placements.filter((p) => !keepOff.has(p.x * 100_000 + p.z))
         : placements;
+    // Signs take their places first, then meters, then boxes; each gives way
+    // to what the roadside already holds and to what went down before it.
+    const here = roadside && { clear: roadside.clear, taken: roadside.taken.clone() };
     this.manholes = allowed(computeManholePlacements(roadTiles));
-    this.boxes = allowed(computeBoxPlacements(roadTiles));
-    this.meters = allowed(computeMeterPlacements(roadTiles));
-    this.signs = allowed(computeSignPlacements(roadTiles));
+    this.signs = allowed(computeSignPlacements(roadTiles, here));
+    this.meters = allowed(computeMeterPlacements(roadTiles, here));
+    this.boxes = allowed(computeBoxPlacements(roadTiles, here));
 
     const manholeMesh = this.manholeLayer.fit(this.manholes.length);
     if (manholeMesh) {
@@ -2396,8 +2654,9 @@ export class RoadFurnitureRenderer {
     baseLift: number,
   ): void {
     const off = p.lateralOffset * p.side;
-    const wx = p.axis === 'x' ? tileToWorld(p.x) + off : tileToWorld(p.x);
-    const wz = p.axis === 'z' ? tileToWorld(p.z) + off : tileToWorld(p.z);
+    const along = p.along ?? 0;
+    const wx = p.axis === 'x' ? tileToWorld(p.x) + off : tileToWorld(p.x) + along;
+    const wz = p.axis === 'z' ? tileToWorld(p.z) + off : tileToWorld(p.z) + along;
     _position.set(wx, this.heightAt(wx, wz) + baseLift, wz);
     _matrix.compose(_position, _identityQuat, _scale);
     mesh.setMatrixAt(slot, _matrix);
@@ -2418,7 +2677,10 @@ export class RoadFurnitureRenderer {
   private writeSign(mesh: THREE.InstancedMesh, slot: number, p: SignPlacement): void {
     const { x: wx, z: wz, yaw } = signWorldTransform(p);
     _quat.setFromAxisAngle(_yAxis, yaw);
-    _position.set(wx, this.heightAt(wx, wz), wz);
+    // The pole is modelled for a board 2.1 m up; where there is no walk to
+    // clear it stands 0.6 m shorter, which is the same pole sunk in the ground.
+    const sunk = p.bottom === undefined ? 0 : SIGN_BOTTOM_OVER_WALK_M - p.bottom;
+    _position.set(wx, this.heightAt(wx, wz) - sunk, wz);
     // A gantry is stretched across its own road, which is only a transform.
     const stretch = p.span === undefined ? 1 : p.span / gantryModelReach();
     _matrix.compose(_position, _quat, _stretch.set(stretch, 1, 1));

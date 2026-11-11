@@ -17,16 +17,14 @@ What a review of every screenshot the shot tools write found wrong in the game, 
 - Where an avenue becomes a one-way road the yellow lines cross, and a white line crosses them. `[R-roads-044]` — `shots-transitions/avenue-to-oneway`
 - An alley carries a stop bar and a yellow stub and flares to twice its width; on an avenue it opens the median and takes stop lines, arrows and signals; at a street's dead end its lines run slanted across the whole street. `[R-roads-074]` — `shots-conformity/alley-t-twolane-box`, `alley-t-avenue-box`, `alley-corner-twolane-box`
 - A gravel arm funnels into a junction with a crosswalk and a stop line at its mouth, and gravel changes colour tile to tile. `[R-roads-044]` — `shots-roadmatrix/gravel-mixCross`
-- A one-way road's flow arrow is painted on the lane line between its two lanes; a manhole cover lies on it, and on centre lines generally. `[R-roads-069]` `[R-roads-067]` — `shots-oneway/arrow-northward`
+- A one-way road's flow arrow is painted on the lane line between its two lanes. `[R-roads-069]` — `shots-oneway/arrow-northward`
 - A ramp meets its motorway through a dogleg with kinked kerbs and notched corners; at a ramp's T an edge line runs diagonally through the box. `[R-roads-061]` — `shots-ramps/ramp-merge`, `shots-roadmatrix/ramp-tee`
 - Kerbs and footways step at a width change where they should bend; a gore's chevrons run along both edges of one carriageway. `[R-roads-064]` — `shots-tapers/taper-head`, `gore-close`
 - A sound wall ends blunt at a slip road, leaving gaps. `[R-roads-056]` — `shots-soundwalls/walled-far-side`
-- Thin posts stand in the parking strip, on the road side of the kerb; on a curved street a lamp can stand at a drive's mouth or in a bus stop's span. `[R-render-036]` — `shots-furniture/kerb-close`, `shots-curve/9-lamp-beside-framed-drive`
 - A raised deck on a slope stands on dark slabs that miss the ground; the rail truss bridge reads as loose members; a four-lane road at grade carries a dark wall strip along its footway past a bend, and a shaded seam across its lanes. `[R-roads-004]` — `shots-roadclip/worst-intrusion`, `shots-bridges/rail-truss-side`, `shots-roadmatrix/four-lane-turn`
 - Crosswalk ladders overlap inside a tram junction; a one-way arm carries turn arrows and no stop line. — `shots-roadmatrix/tram-cross`, `one-way-mixCross`
 - A roundabout sits to one side of the crossing it replaces: its arms meet the ring along one edge, not toward its centre. An entry carries no crosswalk, and the ring has no lamp of its own. — `shots-roundabouts/fourway-above`, `fourway-night`
 - Where a slip road leaves a motorway there is no gore paint, and the slip road's lines begin with a kink; the deck over the motorway is dark between its end lamps. `[R-roads-064]` — `shots-interchanges/gore-close`, `diamond-night`
-- A power pole can stand at a bus stop's pad, a metre from a lamp, or beside a tram's contact pole: it yields to none of them yet. `[R-services-039]` — `shots-powerline/two-lane-oblique`
 
 ## Major: transit
 
@@ -69,10 +67,10 @@ What a review of every screenshot the shot tools write found wrong in the game, 
 - Seen once and not since: terrain spiking through the cap of a raised road's dead end, in the frame `shots-roadmatrix/highway-viaduct-end` held before the tools were fixed. The regenerated frame stands clean, and the clipping sweep finds no ground above a deck. `[R-roads-004]`
 - A green hairline shows between carriageway and footway; footway corners carry notches; kerb arcs are faceted.
 - A motorway's gantry carries blank boards where no ramp leaves; dead-end caps carry odd painted arcs; stray dashes lie in lanes.
-- A tree stands on a road's end cap and in a median; a boulder lies on a footway; bins stand on the grass.
+- A tree stands in a median; a boulder lies on a footway; bins stand on the grass.
 - A solar farm's transformer hut straddles its fence; a rail yard's shed stands on the railway.
 - Ploughed field patches have jagged edges; a house lot carries a skewed lawn wedge.
-- A tree grows through a bus shelter; a shelter's roof overhangs a gravel road.
+- A shelter's roof overhangs a gravel road.
 - The landfill reads as loose tiles; the neighbourhood park and the plaza are bare.
 - A viaduct's shadow lies detached from it; a detached garage is a plain box; the season reads Winter over green ground.
 - A street's parking lane is painted with stalls and stands empty beside homes. — `shots-parking/kerb-parking-close`
