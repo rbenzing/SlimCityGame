@@ -69,6 +69,39 @@ By the method of [municipal services](../specs/municipal-services.md): the cover
 | Tram Depot         | 375 m², 4,040 sf | 3.9 kW | 0.6 kL      |
 | Rail Yard          | 737 m², 7,930 sf | 7.6 kW | 1.2 kL      |
 
+## The lead and the turnout
+
+A yard's stabling roads lie parallel to the line beside them, and the lead
+climbs to them at 45°. The lead meets the line on one curve tangent to the
+line that turns through those 45°: the track's centre is 10 m outside the lot
+and the lead starts 1.9 m inside it, 11.9 m apart, so the curve's radius is
+11.9 / (1 − cos 45°), about 40 m, and it leaves the line about 29 m before
+the lot's corner. Where the line gives only one tile before the corner the
+curve tightens to about 24 m and a straight finishes the climb.
+
+No plan of a real turnout was read: the standard plans would not open. A
+turnout is named by its frog number N, the frog angle being atan(1 / N): No. 6
+is 9.5°, No. 8 7.1°, No. 10 5.7°. The game's frog angle follows from its own
+curve, where the lead's inner rail crosses the line's rail one gauge (1.5 m)
+out: cos φ = 1 − 1.5 / radius, 15.6° at 40 m. That is sharper than a No. 6,
+as a yard's own turnouts are, and it is the game's figure, not a standard's.
+
+Parallel yard tracks stand at least 13 ft (3.96 m) apart, centre to centre
+([Cal. Code Regs. tit. 8 §3739](https://dir.ca.gov/Title8/3739.html)); the
+yard's 4.5 m pitch clears it. A tram's lead curve is a dial of 18 m: no
+figure for a depot's curve was read.
+
+## The platform
+
+A low platform stands 8 in (205 mm) over the rail at least
+([49 CFR 37, Appendix A, 810.5.3](https://www.law.cornell.edu/cfr/text/49/appendix-A_to_part_37)),
+the 0.2 m the station already draws. Its edge stands 5 ft 1 in (1.55 m) from
+the centre of a straight track; the figure is one operator's platform
+guideline quoted second-hand
+([a forum post](https://amtraktrains.com/goto/post?id=379946)), a single weak
+source. A boarding edge carries a detectable warning 24 in (610 mm) deep
+([ADA 705](https://www.corada.com/documents/ada-aba-guidelines-preamble/705)).
+
 ## Dead-run arithmetic
 
 A dead run of `d` minutes each way over an 18-hour service span costs `2d / (60 × 18)` of a vehicle's availability. Across the 5.12 km map at 20 km/h the worst case is 15 minutes each way, or **2.8% of a fleet, one vehicle in thirty-six**. The fleet effect at this map size is small, so moving a depot two tiles closer buys nothing; if it wants more weight the lever is the service span, not a fudge on the availability term.

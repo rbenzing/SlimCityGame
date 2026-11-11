@@ -14,6 +14,8 @@
 - Load the road graph twice a clock day with a bus line's dead run (05:00, 23:00); the buses are sim-animated, tram and rail load nothing. `[R-roads-039]`
 - Charge every vehicle in service its running cost beside the depot's upkeep, never capacity. `[R-roads-038]`
 - Never delete, re-route or strip a line because of a depot: it runs fewer vehicles or none, and says so.
+- Join a yard's and a depot's lead to the line beside it through a turnout on that line; a lead never ends at its own fence. `[R-roads-082]`
+- Stand a station's platform at its track, along every tile of track beside the lot. `[R-roads-082]`
 
 **Numbers:** derivations and sources are in [the sources](../sources/transport-depots.md).
 
@@ -39,6 +41,11 @@
 | Hysteresis on `defaultFleet` | 1 | vehicle | dial |
 | Bus stall / aisle | 11.5 × 3.6 / 12.2 | m | [sizes](../sources/transport-depots.md#depot-sizes-from-the-vehicles-inside-them) |
 | Tram set / train set length | 22.4 / 45.6 | m | same |
+| Lead curve, rail yard | 40; 24 where the line gives one tile | m radius | dial, [the lead](../sources/transport-depots.md#the-lead-and-the-turnout) |
+| Lead curve, tram depot | 18 at least | m radius | dial, same |
+| Turnout frog angle | cos φ = 1 − 1.5 / radius: 15.6 at 40 m | ° | derived, same |
+| Platform edge from the track's centre | 1.55 (5 ft 1 in) | m | [the platform](../sources/transport-depots.md#the-platform) |
+| Platform height, tactile strip | 0.2 (8 in), 0.61 (24 in) | m | same; `DEPOT_PLATFORM` |
 | Old cosmetic bus speed | `TILE_METERS * 2` = 40 m/s, 144 km/h | m/s | removed |
 | `MAX_BUSES_PER_LINE` (old) | 6; 192 render slots | buses | removed |
 | Utility kit catalog ids | 34 | ids | `UTILITY_KIT_CATALOG_IDS` |
@@ -58,6 +65,7 @@
 - `src/render/transit.ts` — vehicle count from `served`, spacing `1 / served`, commercial speed, `TRAIN_SET` and `TRAM_SET`; `ridershipToBusCount` and `MODE_VEHICLE.countFor` retired.
 - `src/render/railcars.ts` — a train's cars and a tram's sections, in service and stabled; the art is [the vehicle kit](../art/props-and-vehicles/vehicle-kit.md#rail-and-tram-cars).
 - `src/render/utilitykits.ts` `UtilityKitRenderer.setDepotFleets`, `UTILITY_KIT_CATALOG_IDS` — the three depot kits (`busBase*`, `tramDepot*`, `railYard*`).
+- `src/render/utilitykits.ts` `chooseYardJoin`, `computeYardLayout`, `mirrorYard` — the lead's curve to the line, its turnout, and the yard laid mirrored where the line runs the other way; `computeDepotTrackside` — the platform out to its track; `relayBeside` — the kit laid again when its track changes.
 - `src/render/vehicles.ts` `buildVehicleGeometry(VehicleKind.Bus)` — the bus the stalls park.
 - `src/ui/` — headway, served over requested, depot and running cost in the line panel; "no depot" at served 0; four cards in the Transit category.
 - `tools/depot-shots.mjs` — the screenshots that judge the kits.
@@ -68,12 +76,15 @@
 - `src/sim/depots.test.ts`, `src/sim/transit.test.ts` — pool, gates, served, running cost, assignment and spill by cost.
 - `src/sim/deadruns.test.ts` — volume on exactly the path's edges at the two crossings, once each; tram and rail add none; determinism.
 - `src/render/transit.test.ts`, `src/render/depotkits.test.ts` — count equals `served`; kit ids, stalls, bays, parked fleet equals holds minus in service, lead at four rotations, every part inside the lot.
+- `src/render/yardjoin.test.ts` — the lead's rails run unbroken from the line to the ladder, tangent at both ends, at four turns and both frames; the fallbacks; a mirrored yard unmirrored in its parts; the lead and the platform on a line 1.5 m above and below the lot; a changed track tile lays only its own kit again.
 - `src/render/railcars.test.ts` — a car's shell is its size, bogies at 0.70 of its length, a cab on end cars only, outward faces, the bus builder never called.
 - `tests/interaction/transit.test.ts`, `tests/interaction/depottrucks.test.ts` — a pre-depot save loads idle and says "no depot"; a bus depot is placeable at milestone 1; fixtures carry a depot. `tests/interaction/firsttown.test.ts` is untouched.
 
 **Open:**
 
-- A tram depot declares no crossing: its gate faces the track.
+- A lead whose line gives its curve no run (track only along the lot's own edge) ends at a buffer stop inside the fence; a yard off the end of a line is never laid mirrored.
+- A tram depot's apron lies over a kerb that is not dropped, and its lead's meeting with the street's rail is laid from the lane's offset, not tested rail to rail.
+- The lead's and the platform's fit to sloped ground is held by tests; no shot shows it yet.
 - The dead runs read the visual clock for 05:00 and 23:00 while `[R-world-006]` says it never drives a sim rule; the truth gains the exception or both systems move to the calendar day.
 
 ## Why the rules are what they are

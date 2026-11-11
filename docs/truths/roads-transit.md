@@ -100,3 +100,11 @@ Back to [the index](../GROUND-TRUTHS.md).
   [transport-depots.md](../specs/transport-depots.md);
   `assign` and `crossings` in `src/sim/transit.ts`, `src/sim/deadruns.ts`,
   `inServiceSpan` in `src/shared/transitfleet.ts`
+- [R-roads-082] A yard's and a depot's lead joins the line beside it through a turnout on
+  that line, and a station's platform edge stands 1.55 m from its track's
+  centre. Neither ends at its own lot's fence: the kit draws across the
+  verge to the track, and lays itself again when that track changes. A rail
+  yard's lead once stopped 1.9 m inside its fence, 12 m from the rails. —
+  [transport-depots.md](../specs/transport-depots.md);
+  `chooseYardJoin`, `computeYardLayout`, `computeDepotTrackside`, `relayBeside`
+  in `src/render/utilitykits.ts`

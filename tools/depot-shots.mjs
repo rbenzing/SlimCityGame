@@ -185,6 +185,11 @@ const views = [
   ['a6-bus-noses', depot.x + 0.5, depot.z - 0.2, 40, Math.PI, 0.5],
   ['b-tram-depot-track', tram.x, tram.z, 95, Math.PI, PITCH],
   ['b2-tram-depot-yard', tram.x, tram.z, 90, 0.4, 0.5],
+  // Where each lead meets its line: from straight above, and close.
+  ['b3-tram-lead-above', X + 11, Z + 10.6, 80, Math.PI, 1.5],
+  ['b4-tram-lead-close', X + 10.9, Z + 10.5, 40, Math.PI + 0.5, 0.9],
+  ['c3-rail-lead-above', X + 18, Z + 16.6, 130, Math.PI, 1.5],
+  ['c4-rail-lead-close', X + 18.2, Z + 16.4, 50, Math.PI + 0.5, 0.9],
   ['c-rail-yard-track', yard.x, yard.z, 130, Math.PI, PITCH],
   ['c2-rail-yard-street', yard.x, yard.z, 120, 0.3, 0.5],
 ];
@@ -204,6 +209,54 @@ for (const [name, tx, tz, d, yaw, pitch] of [
   await camera(tx, tz, d, yaw, pitch);
   await shot(name, 2500);
 }
+
+// A rail yard and a station beside a railway that lies 1.5 m below their levelled lots:
+// the lead, its bed, the turnout and the platform's edge must follow the line's ground.
+await hook(() => window.__slimcity.setDayT(0.5));
+let slopeSite = null;
+for (let z = 40; z < N - 60 && !slopeSite; z++) {
+  for (let x = 40; x < N - 60 && !slopeSite; x++) {
+    if (x > X - 45 && x < X + 60 && z > Z - 12 && z < Z + 40) continue;
+    let ok = true;
+    for (let k = 0; k < 44 && ok; k++) {
+      for (let dz = -4; dz <= 16 && ok; dz++) {
+        const i = idx(x + k, z + dz);
+        if (g0.water[i] || Math.abs(g0.height[i]) > 22) ok = false;
+      }
+    }
+    if (ok) slopeSite = { x, z };
+  }
+}
+if (slopeSite) {
+  const { x: SX, z: SZ } = slopeSite;
+  const level = g0.height[idx(SX + 20, SZ + 6)];
+  // Vertices from SZ - 3 to SZ + 14: the railway row (SZ) a metre and a half down, the lots level.
+  await hook(
+    ([x, z, w, h, base]) => {
+      const heights = new Float32Array(w * h);
+      for (let r = 0; r < h; r++) {
+        const fall = Math.min(1, Math.max(0, (4 - r) / 2));
+        for (let c = 0; c < w; c++) heights[r * w + c] = base - 1.5 * fall;
+      }
+      window.__slimcity.cmd('Slope', [{ kind: 'terraformSet', x, z, w, h, heights }]);
+    },
+    [SX, SZ - 3, 44, 18, level],
+  );
+  await page.waitForTimeout(1500);
+  await row(SZ, RT.RailTrack, SX, SX + 40);
+  await row(SZ + 4, RT.TwoLane, SX, SX + 40);
+  await place('rail-yard', SX + 8, SZ + 1, 1);
+  await place('rail-station', SX + 26, SZ + 1, 0);
+  await page.waitForTimeout(1500);
+  for (const [name, tx, tz, d, yaw, pitch] of [
+    ['e-sloped-yard-lead-above', SX + 7, SZ + 0.8, 110, Math.PI, 1.5],
+    ['e2-sloped-yard-lead-close', SX + 6.5, SZ + 0.6, 45, Math.PI + 0.5, 0.7],
+    ['e3-sloped-station-edge', SX + 27, SZ + 0.6, 45, Math.PI + 0.4, 0.5],
+  ]) {
+    await camera(tx, tz, d, yaw, pitch);
+    await shot(name, 2200);
+  }
+} else console.log('no site for the sloped shots');
 
 console.log('page errors', errors.length ? errors : 'none');
 await browser.close();

@@ -9,6 +9,7 @@ import {
   BUS_BASE_STALL,
   CATENARY_POLE,
   RAIL_YARD_SPEC,
+  RECYCLING_YARD_HEIGHT,
   TRAM_DEPOT_SPEC,
   UTILITY_KIT_CATALOG_IDS,
   UtilityKitRenderer,
@@ -119,6 +120,14 @@ const PART_KINDS: readonly UtilityKitPartKind[] = [
   'railYardLit',
   'railYardCar',
   'railYardCarMid',
+  'tramDepotYardStop',
+  'tramDepotYardEndStop',
+  'tramDepotTrackStop',
+  'tramDepotTrackEndStop',
+  'railYardYardStop',
+  'railYardYardEndStop',
+  'railYardTrackStop',
+  'railYardTrackEndStop',
 ];
 
 /** Every placed part of the kit lies inside the turned lot, in world metres. */
@@ -437,11 +446,12 @@ describe('the tram depot', () => {
       Math.hypot(side.lead[0]!.x1 - side.lead[0]!.x0, side.lead[0]!.z1 - side.lead[0]!.z0),
       // The 20 m lead, less what the eight roads and their ladder leave of a 60 m lot.
     ).toBeGreaterThan(16);
-    expect(end.lead).toHaveLength(2);
-    expect(end.lead[0]!.x0 - lot.x0).toBeLessThan(0.5);
-    expect(end.lead[0]!.z0).toBe(end.lead[0]!.z1);
-    expect(end.lead[1]!.x1).toBe(side.ladder.x0);
-    expect(end.lead[1]!.z1).toBe(side.ladder.z0);
+    // Off the end the climb is one 45° segment too: the curve from the line does the turning.
+    expect(end.lead).toHaveLength(1);
+    expect(end.lead[0]!.x0 - lot.x0).toBeLessThan(2);
+    expect(end.lead[0]!.x1 - end.lead[0]!.x0).toBeCloseTo(end.lead[0]!.z1 - end.lead[0]!.z0, 9);
+    expect(end.lead[0]!.x1).toBe(side.ladder.x0);
+    expect(end.lead[0]!.z1).toBe(side.ladder.z0);
     // The roads, the shop and the poles are the same whichever edge the lead comes off.
     expect(end.roads).toEqual(side.roads);
     expect(end.hall).toEqual(side.hall);
@@ -575,15 +585,34 @@ describe('the rail yard', () => {
   });
 
   it('fences the yard but for the lead and the drive', () => {
-    expect(side.fenceGaps.map((g) => g.side)).toEqual([2, 0]);
-    expect(end.fenceGaps.map((g) => g.side)).toEqual([3, 0]);
     const drive = side.drive!;
-    // The gate opens across the office's frontage and the drive beside it.
-    expect(side.fenceGaps[1]).toEqual({ side: 0, a: side.office.x0 - 1, b: drive.x1 });
-    const lead = side.lead[0]!;
-    const at = lead.x0 + (side.fence.z0 - lead.z0);
-    expect(at).toBeGreaterThan(side.fenceGaps[0]!.a);
-    expect(at).toBeLessThan(side.fenceGaps[0]!.b);
+    for (const layout of [side, end]) {
+      // The gate opens across the office's frontage and the drive beside it.
+      expect(layout.fenceGaps[layout.fenceGaps.length - 1]).toEqual({
+        side: 0,
+        a: layout.office.x0 - 1,
+        b: layout.drive!.x1,
+      });
+      // The lead's gaps are where its path really crosses the fence, on the track's sides.
+      const gaps = layout.fenceGaps.slice(0, -1);
+      expect(gaps.length).toBeGreaterThan(0);
+      for (const g of gaps) expect([2, 3]).toContain(g.side);
+      for (let i = 1; i < layout.joinPath.length; i++) {
+        const p = layout.joinPath[i - 1]!;
+        const q = layout.joinPath[i]!;
+        for (const [line, from, to, a, b, sideNo] of [
+          [layout.fence.z0, p.z, q.z, p.x, q.x, 2],
+          [layout.fence.x0, p.x, q.x, p.z, q.z, 3],
+        ] as const) {
+          if ((from - line) * (to - line) >= 0) continue;
+          const at = a + ((b - a) * (line - from)) / (to - from);
+          const inFence = sideNo === 2 ? at >= layout.fence.x0 : at >= layout.fence.z0;
+          if (!inFence) continue;
+          expect(gaps.some((g) => g.side === sideNo && at >= g.a && at <= g.b)).toBe(true);
+        }
+      }
+    }
+    expect(drive.x1).toBeGreaterThan(drive.x0);
   });
 
   it('keeps every road clear of the shop, the office, the drive and the fuelling stand', () => {
@@ -671,7 +700,8 @@ describe('a yard turns its lead to the track', () => {
     // A 2×3's back edge as placed is its short edge at every rotation, so the lead comes off the end.
     for (const rotation of [0, 1, 2, 3] as const) {
       renderer.apply(add(instance(rotation + 1, 'tram-depot', { x: 10 + rotation * 5, rotation })));
-      expect(renderer.partSlotsFor(rotation + 1, 'tramDepotTrackEnd')).toHaveLength(1);
+      // With no line to join, the lead ends at a buffer stop inside the fence.
+      expect(renderer.partSlotsFor(rotation + 1, 'tramDepotTrackEndStop')).toHaveLength(1);
       expect(renderer.partSlotsFor(rotation + 1, 'tramDepotTrack')).toHaveLength(0);
     }
     // With the track along the long side, the lead comes off that side instead.
@@ -684,8 +714,10 @@ describe('a yard turns its lead to the track', () => {
       trackOn(1, TRAM, 0),
     );
     longSide.apply(add(instance(9, 'tram-depot', { rotation: 0 })));
-    expect(longSide.partSlotsFor(9, 'tramDepotTrack')).toHaveLength(1);
+    // Track only along the lot's own edge gives the curve no run before the corner: a buffer stop.
+    expect(longSide.partSlotsFor(9, 'tramDepotTrackStop')).toHaveLength(1);
     expect(longSide.partSlotsFor(9, 'tramDepotTrackEnd')).toHaveLength(0);
+    expect(longSide.partSlotsFor(9, 'tramDepotTrackEndStop')).toHaveLength(0);
   });
 
   it.each([
@@ -837,18 +869,10 @@ describe('the sets stabled in a depot and a yard', () => {
     const renderer = new UtilityKitRenderer(new THREE.Scene(), flat, [RAIL]);
     renderer.apply(add(instance(1, 'rail-yard')));
     const slot = renderer.partSlotsFor(1, 'railYardCar')[0]!;
-    // The lot takes the track on its long edge or its end: whichever frame the yard stands in.
-    const trackKind = renderer.partSlotsFor(1, 'railYardTrack').length
-      ? 'railYardTrack'
-      : 'railYardTrackEnd';
-    const track = placedBounds(
-      renderer,
-      'rail-yard',
-      trackKind,
-      renderer.partSlotsFor(1, trackKind)[0]!,
-    );
     const car = placedBounds(renderer, 'rail-yard', 'railYardCar', slot);
-    // Y = 0 of the car is the wheel foot, set on the rail's top; the track part's highest point is that rail head.
-    expect(car.min.y).toBeCloseTo(track.max.y, 2);
+    // Y = 0 of the car is the wheel foot, set on the rail's top: ballast 0.08, sleeper 0.1 and
+    // rail 0.12 over the yard. The track part itself now rises past its rails, at a buffer stop
+    // or a switch stand, so its highest point is no longer the rail head.
+    expect(car.min.y).toBeCloseTo(RECYCLING_YARD_HEIGHT + 0.08 + 0.1 + 0.12, 2);
   });
 });

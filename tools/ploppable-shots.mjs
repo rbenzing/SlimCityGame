@@ -164,6 +164,9 @@ const views = [
   ['a2-clinic-dropoff', clinic.x, clinic.z - 0.3, 42, Math.PI - 0.7, 0.45],
   ['b-station-track', stationA.x, stationA.z - 0.4, 85, Math.PI, PITCH],
   ['b2-station-street', stationA.x, stationA.z + 0.4, 85, 0, PITCH],
+  // The platform's edge at the track, from straight above and from beside it.
+  ['b5-station-platform-edge', X + 9, Z - 3.4, 45, Math.PI, 1.3],
+  ['b6-station-platform-edge-side', X + 9, Z - 3.4, 45, Math.PI / 2 + 0.4, 0.45],
   ['b3-station-long-track', stationB.x, stationB.z - 0.2, 95, Math.PI, PITCH],
   ['b4-station-long-street', stationB.x, stationB.z + 0.3, 95, 0.4, PITCH],
   ['c-busstop', shelterOf(X + 6).x, shelterOf(X + 6).z, 42, Math.PI, 0.75],
