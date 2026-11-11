@@ -153,7 +153,10 @@ export class SoundWallRenderer {
 
   /** Every wall drawn again: walls change only when the roads do. */
   rebuild(walls: readonly PlacedWall[]): void {
-    for (const mesh of this.meshes) this.scene.remove(mesh);
+    for (const mesh of this.meshes) {
+      this.scene.remove(mesh);
+      mesh.dispose();
+    }
     this.meshes = [];
     this.layout = layOutWalls(walls, this.heightAt);
     if (walls.length === 0) return;

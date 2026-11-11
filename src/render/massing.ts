@@ -36,6 +36,7 @@ import {
   BuildingState,
 } from '../shared/types';
 import { nightTintNode } from './nightlook';
+import { MIN_INSTANCE_CAPACITY } from './groundquad';
 import { TILE_METERS } from '../shared/constants';
 import { footprintForRotation } from '../shared/footprint';
 import {
@@ -383,7 +384,7 @@ export class InstancedSlotPool {
     this.scene = scene;
     this.geometry = geometry;
     this.material = material;
-    this.capacity = Math.max(1, initialCapacity);
+    this.capacity = Math.max(MIN_INSTANCE_CAPACITY, initialCapacity);
     this.mesh = this.buildMesh(this.capacity);
     this.scene.add(this.mesh);
   }
@@ -470,6 +471,7 @@ export class InstancedSlotPool {
     newMesh.count = this.mesh.count;
 
     this.scene.remove(this.mesh);
+    this.mesh.dispose();
     this.scene.add(newMesh);
     this.mesh = newMesh;
     this.capacity = newCapacity;
@@ -625,11 +627,7 @@ export class MassingRenderer {
       _matrix.compose(_position, _quaternion, _scale);
       this.pool.setMatrixAt(slot, _matrix);
 
-      _color.setRGB(
-        podiumColor[0] * tint[0],
-        podiumColor[1] * tint[1],
-        podiumColor[2] * tint[2],
-      );
+      _color.setRGB(podiumColor[0] * tint[0], podiumColor[1] * tint[1], podiumColor[2] * tint[2]);
       this.pool.setColorAt(slot, _color);
 
       slots.push(slot);

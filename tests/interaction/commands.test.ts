@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { MAP_TILES, START_FUNDS, TICK_MS } from '../../src/shared/constants';
+import { MAP_TILES, SPEED_MULTIPLIERS, START_FUNDS, TICK_MS } from '../../src/shared/constants';
 import { FieldId, RoadTier, SAVE_VERSION, ZoneType } from '../../src/shared/types';
 import type { Command, GridState } from '../../src/shared/types';
 import { tileIndex } from '../../src/shared/constants';
@@ -8,6 +8,7 @@ import {
   entryOf,
   GROWTH_TIMEOUT_MS,
   initialized,
+  latestSaveData,
   latestSaveGrid,
   roadRow,
   rows,
@@ -414,6 +415,77 @@ describe('building while paused', () => {
     h.sim.pump(TICK_MS);
     expect(h.messages.length).toBe(before);
   });
+});
+
+describe('a pump posts at most one snapshot', () => {
+  const snapshots = (h: Harness): number => h.messages.filter((m) => m.type === 'snapshot').length;
+  const tickOf = (h: Harness): number => h.lastSnapshot()!.stats.tick;
+  // One fixed tick of real time at speed 1, so a pump of n of these runs n ticks.
+  const perTick = TICK_MS / SPEED_MULTIPLIERS[1];
+
+  it('at speed 4 one pump runs several ticks and posts exactly one snapshot', () => {
+    const h = initialized();
+    h.sim.handleMessage({ type: 'setSpeed', speed: 4 });
+    const before = snapshots(h);
+    h.sim.pump(TICK_MS);
+    expect(tickOf(h)).toBeGreaterThan(2);
+    expect(snapshots(h) - before).toBe(1);
+  });
+
+  it('a delta made by the first tick of a multi-tick pump rides that one snapshot', () => {
+    const h = initialized();
+    h.sim.handleMessage({ type: 'setSpeed', speed: 4 });
+    send(h, 1, [{ kind: 'buildRoad', tier: RoadTier.TwoLane, tiles: roadRow(100, 100, 5) }]);
+    const before = snapshots(h);
+    h.sim.pump(TICK_MS);
+    expect(snapshots(h) - before).toBe(1);
+    expect(tickOf(h)).toBeGreaterThan(2);
+    expect(h.ackFor(1)!.ok).toBe(true);
+    expect(h.lastSnapshot()!.roads!.length).toBe(5);
+  });
+
+  it('at speed 1 a snapshot still arrives every second tick', () => {
+    const h = initialized();
+    const seen: number[] = [];
+    for (let i = 0; i < 6; i++) {
+      const before = snapshots(h);
+      h.ticks(1);
+      if (snapshots(h) > before) seen.push(tickOf(h));
+    }
+    expect(seen).toEqual([2, 4, 6]);
+  });
+
+  it('a paused post leaves no stale mark that doubles the next snapshot', () => {
+    const h = initialized();
+    h.ticks(1);
+    h.sim.handleMessage({ type: 'setSpeed', speed: 0 });
+    send(h, 1, [{ kind: 'buildRoad', tier: RoadTier.TwoLane, tiles: roadRow(100, 100, 3) }]);
+    h.sim.pump(TICK_MS);
+    h.sim.handleMessage({ type: 'setSpeed', speed: 1 });
+    const before = snapshots(h);
+    h.ticks(1); // tick 2 is on the cadence: one post
+    expect(snapshots(h) - before).toBe(1);
+    h.ticks(1); // tick 3 is not: none
+    expect(snapshots(h) - before).toBe(1);
+  });
+
+  it('gives the same save whether ticks are pumped one at a time or several at once', () => {
+    const commands: Command[] = [
+      { kind: 'buildRoad', tier: RoadTier.TwoLane, tiles: roadRow(100, 100, 12) },
+    ];
+    const saveAfter = (pumps: number, ticksPerPump: number): { tick: number; data: Uint8Array } => {
+      const h = initialized();
+      send(h, 1, commands);
+      for (let i = 0; i < pumps; i++) h.sim.pump(perTick * ticksPerPump);
+      h.sim.handleMessage({ type: 'requestSave' });
+      const data = new Uint8Array(latestSaveData(h));
+      return { tick: tickOf(h), data };
+    };
+    const single = saveAfter(12, 1);
+    const batched = saveAfter(3, 4);
+    expect(batched.tick).toBe(single.tick);
+    expect(batched.data).toEqual(single.data);
+  }, 60_000);
 });
 
 describe('a batch lands whole or not at all', () => {

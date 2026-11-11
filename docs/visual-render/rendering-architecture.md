@@ -82,6 +82,9 @@ junction's legs. Rebuilding only the tile's own chunk left a turn bay that a
 new signal opened drawn at full width on one side of a chunk seam and at its
 old width on the other, a notch in the kerb.
 
+Every renderer a snapshot feeds is held to the same thing: what it costs
+follows what changed, never the city's size — `[R-render-037]`.
+
 Roads off the grid are drawn separately, by `freeroadmesh.ts`, from the road
 network the worker sends whenever it changes. Each free segment's
 cross-section is swept along its centre line, and each node a free segment

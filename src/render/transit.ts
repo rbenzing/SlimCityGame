@@ -840,15 +840,16 @@ export class TransitRenderer {
   }
 
   private disposeMeshes(): void {
-    if (this.shelterMesh) this.scene.remove(this.shelterMesh);
-    if (this.signPoleMesh) this.scene.remove(this.signPoleMesh);
-    if (this.signMesh) this.scene.remove(this.signMesh);
+    for (const mesh of [this.shelterMesh, this.signPoleMesh, this.signMesh, this.busMesh]) {
+      if (!mesh) continue;
+      this.scene.remove(mesh);
+      mesh.dispose();
+    }
     if (this.ribbonMesh) {
       this.scene.remove(this.ribbonMesh);
       this.ribbonMesh.geometry.dispose();
       (this.ribbonMesh.material as THREE.Material).dispose();
     }
-    if (this.busMesh) this.scene.remove(this.busMesh);
 
     this.shelterMesh = null;
     this.signPoleMesh = null;

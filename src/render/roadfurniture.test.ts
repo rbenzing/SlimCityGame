@@ -829,16 +829,78 @@ describe('RoadFurnitureRenderer', () => {
     }
   });
 
-  it('a second rebuild disposes the previous meshes instead of accumulating them', () => {
+  it('rebuilds with the same or fewer props keep the same meshes and add no children', () => {
     const scene = new THREE.Scene();
     const renderer = new RoadFurnitureRenderer(scene, flatHeightAt);
     renderer.rebuild(representativeGrid());
-    const first = scene.children.filter((c) => c instanceof THREE.InstancedMesh);
+    const first = [...scene.children];
+    expect(first.length).toBe(5);
 
     renderer.rebuild(representativeGrid());
-    const second = scene.children.filter((c) => c instanceof THREE.InstancedMesh);
-    expect(second.length).toBe(5);
-    for (const mesh of first) expect(scene.children).not.toContain(mesh);
+    renderer.rebuild(representativeGrid().slice(0, 6));
+    expect(scene.children).toEqual(first);
+    const counts = renderer.furnitureCounts();
+    const live = (scene.children as THREE.InstancedMesh[]).reduce(
+      (sum, m) => sum + (m.visible ? m.count : 0),
+      0,
+    );
+    expect(live).toBe(counts.manholes + counts.boxes + counts.meters + counts.signs);
+  });
+
+  it('a rebuild that needs more room replaces and disposes the smaller mesh', () => {
+    const scene = new THREE.Scene();
+    const renderer = new RoadFurnitureRenderer(scene, flatHeightAt);
+    renderer.rebuild(representativeGrid().slice(0, 6));
+    const first = scene.children.filter(
+      (c): c is THREE.InstancedMesh => c instanceof THREE.InstancedMesh && c.visible,
+    );
+    expect(first.length).toBeGreaterThan(0);
+    let disposed = 0;
+    for (const mesh of first) mesh.addEventListener('dispose', () => (disposed += 1));
+
+    const grid = representativeGrid();
+    // Enough copies that a layer outgrows the instance capacity floor.
+    renderer.rebuild(
+      Array.from({ length: 400 }, (_, k) => grid.map((t) => ({ ...t, x: t.x + 40 * k }))).flat(),
+    );
+
+    const replaced = first.filter((m) => !scene.children.includes(m));
+    expect(replaced.length).toBeGreaterThan(0);
+    expect(disposed).toBe(replaced.length);
+  });
+
+  it('after reused rebuilds the props equal what a fresh renderer builds for the same input', () => {
+    const matrices = (scene: THREE.Scene): Map<string, number[][]> => {
+      const out = new Map<string, number[][]>();
+      for (const child of scene.children) {
+        const mesh = child as THREE.InstancedMesh;
+        const key = `${mesh.userData.furnitureKind}/${mesh.userData.signType ?? ''}`;
+        const rows: number[][] = [];
+        for (let i = 0; i < (mesh.visible ? mesh.count : 0); i++) {
+          const m = new THREE.Matrix4();
+          mesh.getMatrixAt(i, m);
+          rows.push(m.toArray());
+        }
+        out.set(key, rows);
+      }
+      return out;
+    };
+    const grid = representativeGrid();
+    const scene = new THREE.Scene();
+    const reused = new RoadFurnitureRenderer(scene, flatHeightAt);
+    reused.rebuild([...grid, ...grid.map((t) => ({ ...t, x: t.x + 40 }))]);
+    reused.rebuild(controlledPlus('signal', RoadTier.Avenue));
+    reused.rebuild(grid);
+
+    const freshScene = new THREE.Scene();
+    const fresh = new RoadFurnitureRenderer(freshScene, flatHeightAt);
+    fresh.rebuild(grid);
+
+    const got = matrices(scene);
+    for (const [key, rows] of matrices(freshScene)) expect(got.get(key)).toEqual(rows);
+    for (const [key, rows] of got) if (!matrices(freshScene).has(key)) expect(rows).toEqual([]);
+    expect(reused.furnitureCounts()).toEqual(fresh.furnitureCounts());
+    expect(reused.signalAspects()).toEqual(fresh.signalAspects());
   });
 
   it('rebuild() with no road tiles clears every layer back to zero', () => {
@@ -852,7 +914,9 @@ describe('RoadFurnitureRenderer', () => {
     expect(counts.boxes).toBe(0);
     expect(counts.meters).toBe(0);
     expect(counts.signs).toBe(0);
-    expect(scene.children.filter((c) => c instanceof THREE.InstancedMesh).length).toBe(0);
+    expect(scene.children.filter((c) => c instanceof THREE.InstancedMesh && c.visible).length).toBe(
+      0,
+    );
   });
 
   it('dispose() removes every layer from the scene', () => {
@@ -1602,6 +1666,15 @@ describe('a street tramway is hung from contact poles at the kerb', () => {
     expect(pole.geometry.boundingBox!.max.x * 2).toBeCloseTo(0.25, 6);
     // Standing them again replaces them rather than adding a second set.
     renderer.setTramPoles([]);
-    expect(scene.children.filter((o) => o.userData.furnitureKind === 'tramPole')).toEqual([]);
+    expect(
+      scene.children.filter((o) => o.userData.furnitureKind === 'tramPole' && o.visible),
+    ).toEqual([]);
+    expect(renderer.tramPoleStands()).toEqual([]);
+    // Standing the same poles again keeps the meshes it already has.
+    renderer.setTramPoles(poles);
+    expect(scene.children.filter((o) => o.userData.furnitureKind === 'tramPole')).toEqual([
+      meshes.find((m) => m.userData.furnitureKind === 'tramPole'),
+    ]);
+    expect(meshes.every((m) => m.visible && m.count === poles.length)).toBe(true);
   });
 });

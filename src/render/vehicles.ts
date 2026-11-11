@@ -40,8 +40,34 @@ import {
 } from 'three/tsl';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { MAX_VEHICLES, VEHICLE_STRIDE, INACTIVE_VEHICLE_X, VehicleKind } from '../shared/types';
-import { TILE_METERS } from '../shared/constants';
+import { SNAPSHOT_HZ, TILE_METERS } from '../shared/constants';
 import { ROAD_Y_OFFSET } from './roadsmesh';
+import { MIN_INSTANCE_CAPACITY } from './groundquad';
+
+/** The interval vehicles interpolate over until two snapshots have landed to measure one. */
+export const DEFAULT_SNAPSHOT_INTERVAL_MS = 1000 / SNAPSHOT_HZ;
+/** The shortest and longest measured interval trusted: a burst or a stalled tab must not freeze or fling vehicles. */
+export const MIN_SNAPSHOT_INTERVAL_MS = 16;
+export const MAX_SNAPSHOT_INTERVAL_MS = 1000;
+
+/**
+ * How long the next snapshot is expected to take to arrive: how long the one
+ * before it was on screen. Snapshots do not come every 1/SNAPSHOT_HZ — the
+ * gap follows the game speed — so a fixed interval leaves vehicles standing
+ * between slow snapshots and jumping past fast ones.
+ *
+ * `previousAgeMs` is null while no snapshot has landed before this one, so
+ * there is nothing to measure yet.
+ */
+export function measuredSnapshotIntervalMs(previousAgeMs: number | null): number {
+  if (previousAgeMs === null) return DEFAULT_SNAPSHOT_INTERVAL_MS;
+  return Math.min(MAX_SNAPSHOT_INTERVAL_MS, Math.max(MIN_SNAPSHOT_INTERVAL_MS, previousAgeMs));
+}
+
+/** How far through its step a vehicle is: 0 as a snapshot lands, 1 once an interval has passed, never beyond. */
+export function snapshotAlpha(ageMs: number, intervalMs: number): number {
+  return Math.min(1, Math.max(0, ageMs / intervalMs));
+}
 
 const TWO_PI = Math.PI * 2;
 
@@ -642,11 +668,11 @@ export class VehicleKitPool {
   constructor(scene: THREE.Scene, kind: number, capacity: number) {
     this.scene = scene;
     this.kind = kind;
-    this.capacity = capacity;
+    this.capacity = Math.max(MIN_INSTANCE_CAPACITY, capacity);
     this.geometry = buildVehicleGeometry(kind);
     this.material = new VehiclePartMaterial();
     this.material.vertexColors = true;
-    this.mesh = this.buildMesh(capacity);
+    this.mesh = this.buildMesh(this.capacity);
     scene.add(this.mesh);
   }
 
@@ -713,6 +739,7 @@ export class VehicleKitPool {
     if (newMesh.instanceColor) newMesh.instanceColor.needsUpdate = true;
 
     this.scene.remove(previous);
+    previous.dispose();
     this.scene.add(newMesh);
     this.mesh = newMesh;
     this.capacity = newCapacity;

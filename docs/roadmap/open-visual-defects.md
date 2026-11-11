@@ -4,7 +4,6 @@ What a review of every screenshot the shot tools write found wrong in the game, 
 
 ## Critical
 
-- At 4× speed a city growing fast stops the page answering. With a hundred blocks zoned at once and nothing else running on the machine, four read-backs in a row took 5 s, 11 s, 30 s and 57 s as the population passed 500, 2,800, 4,900 and 5,600; on a busy machine the next did not return in 90 s. A small town played at 4× stays usable: its longest stall was 5 s, on a busy machine. One trace put the main thread in a road-chunk rebuild after a junction-control change. `services-shots` grows its city at 1× to get past it. — `RoadsMesh.rebuildChunk` in `src/render/roadsmesh.ts`
 - Roofs, back fences, sound walls, trampolines, bus tops and shop canopies render near-black in daylight. The shingle colours are the roofs' cause: charcoal reads about (9, 11, 13) at noon, and `nightlook-shots` fails on it. `[R-render-020]` — `shots-town/04b-tram-crossing`, `shots-soundwalls/walled-oblique`
 - Rail draws no rails through a crossing, a junction or a bend, only a ballast box. — `shots-roadmatrix/rail-cross`
 - Tram track ends at a bend tile and at a junction box. — `shots-roadmatrix/tram-turn`

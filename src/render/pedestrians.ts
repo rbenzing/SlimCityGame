@@ -532,8 +532,17 @@ export class PedestrianRenderer {
   /** Per-stop-tile shelter ground anchor (world meters) idlers cluster around; missing key → scatter around the tile center. */
   private idleAnchors = new Map<number, WorldPoint>();
   private walkerIds: number[] = [];
-  /** Each walker's plan, aligned index-for-index with `walkerIds` (recomputed each apply). */
+  /** Each walker's plan, aligned index-for-index with `walkerIds`. */
   private walkerPaths: WalkPlan[] = [];
+  /** The plan kept for each walker building, so an apply lays only the buildings it names. */
+  private pathById = new Map<number, WalkPlan>();
+  /** Set when what the paths are laid against changed: the next apply lays every one again and redraws. */
+  private stale = true;
+  /** Set when the ground moved: figures are stood on it again at the next apply, their paths kept. */
+  private ground = false;
+  private lastStops: readonly StopIdleInput[] | null = null;
+  /** Instances each mesh can hold; the meshes grow by doubling and are never rebuilt to shrink. */
+  private capacity = 0;
   private visible = true;
 
   /**
@@ -564,24 +573,58 @@ export class PedestrianRenderer {
    * instance bookkeeping, since SimSnapshot.buildings is itself a delta.
    */
   apply(snapshot: PedestrianSnapshot): void {
-    for (const id of snapshot.buildings.removed) this.buildingsById.delete(id);
-    for (const b of snapshot.buildings.added) this.buildingsById.set(b.id, b);
-    for (const b of snapshot.buildings.updated) this.buildingsById.set(b.id, b);
+    const { added, removed, updated } = snapshot.buildings;
+    const unchanged =
+      !this.stale &&
+      !this.ground &&
+      added.length === 0 &&
+      removed.length === 0 &&
+      updated.length === 0 &&
+      stopsEqual(this.lastStops, snapshot.stops);
+    if (unchanged) return;
 
+    for (const id of removed) this.buildingsById.delete(id);
+    for (const b of added) this.buildingsById.set(b.id, b);
+    for (const b of updated) this.buildingsById.set(b.id, b);
+    const touched = new Set<number>();
+    for (const b of added) touched.add(b.id);
+    for (const b of updated) touched.add(b.id);
+
+    this.lastStops = snapshot.stops;
     this.idlePlacements = computeIdlePlacements(snapshot.stops);
     this.idleAnchors = new Map<number, WorldPoint>();
     for (const stop of snapshot.stops) {
       if (stop.anchor) this.idleAnchors.set(tileKey(stop.x, stop.z), stop.anchor);
     }
     this.walkerIds = computeWalkerBuildingIds([...this.buildingsById.values()]);
-    // Resolve each walker's frontage-sidewalk anchor once per apply (buildings
-    // are static once placed) so update() stays a cheap per-frame loop step.
+    // Resolve each walker's frontage-sidewalk anchor once, and again only for a
+    // building this delta names (or all, once the streets changed), so update()
+    // stays a cheap per-frame loop step and a snapshot costs what it changed.
+    const kept = this.pathById;
+    this.pathById = new Map<number, WalkPlan>();
     this.walkerPaths = this.walkerIds.map((id) => {
-      const building = this.buildingsById.get(id)!;
-      return computeWalkPath(building, this.roadAt, this.street, this.doorAt(building));
+      let plan = this.stale || touched.has(id) ? undefined : kept.get(id);
+      if (!plan) {
+        const building = this.buildingsById.get(id)!;
+        plan = computeWalkPath(building, this.roadAt, this.street, this.doorAt(building));
+      }
+      this.pathById.set(id, plan);
+      return plan;
     });
+    this.stale = false;
+    this.ground = false;
 
     this.rebuildMeshes();
+  }
+
+  /** The ground's height changed: the next apply stands the idlers on it again, without laying any path. */
+  redraw(): void {
+    this.ground = true;
+  }
+
+  /** The roads, or the ground they stand on, changed: the next apply lays every walker's path again. */
+  invalidatePaths(): void {
+    this.stale = true;
   }
 
   /** Advances every walker's position along its deterministic walk cycle for the given accumulated frame time; idlers are static. */
@@ -624,8 +667,9 @@ export class PedestrianRenderer {
   /** Visibility toggle (e.g. a future pedestrians lens): hides/shows without disposing. */
   setVisible(visible: boolean): void {
     this.visible = visible;
-    if (this.bodyMesh) this.bodyMesh.visible = visible;
-    if (this.headMesh) this.headMesh.visible = visible;
+    const show = visible && this.totalCount() > 0;
+    if (this.bodyMesh) this.bodyMesh.visible = show;
+    if (this.headMesh) this.headMesh.visible = show;
   }
 
   isVisible(): boolean {
@@ -671,26 +715,37 @@ export class PedestrianRenderer {
 
   // -- internals -------------------------------------------------------------
 
+  /**
+   * The two meshes outlive an apply: a disposed mesh takes its material's
+   * compiled pipeline with it, so they are sized for the largest crowd there
+   * can be and the live count follows the crowd.
+   */
   private rebuildMeshes(): void {
-    this.disposeMeshes();
-
     const total = this.idlePlacements.length + this.walkerIds.length;
-    if (total === 0) return;
-
-    const bodyMesh = new THREE.InstancedMesh(this.bodyGeometry, this.bodyMaterial, total);
-    const headMesh = new THREE.InstancedMesh(this.headGeometry, this.headMaterial, total);
+    if (total > this.capacity) {
+      this.disposeMeshes();
+      this.capacity = Math.max(MAX_PEDESTRIANS, this.capacity);
+      while (this.capacity < total) this.capacity *= 2;
+      const bodyMesh = new THREE.InstancedMesh(this.bodyGeometry, this.bodyMaterial, this.capacity);
+      const headMesh = new THREE.InstancedMesh(this.headGeometry, this.headMaterial, this.capacity);
+      bodyMesh.castShadow = true;
+      bodyMesh.receiveShadow = true;
+      headMesh.castShadow = true;
+      headMesh.receiveShadow = true;
+      this.bodyMesh = bodyMesh;
+      this.headMesh = headMesh;
+      this.scene.add(bodyMesh, headMesh);
+    }
+    const bodyMesh = this.bodyMesh;
+    const headMesh = this.headMesh;
+    if (!bodyMesh || !headMesh) return;
     setInstanceCount(bodyMesh, total);
     setInstanceCount(headMesh, total);
-    bodyMesh.castShadow = true;
-    bodyMesh.receiveShadow = true;
-    headMesh.castShadow = true;
-    headMesh.receiveShadow = true;
-    bodyMesh.visible = this.visible;
-    headMesh.visible = this.visible;
-
-    this.bodyMesh = bodyMesh;
-    this.headMesh = headMesh;
-    this.scene.add(bodyMesh, headMesh);
+    bodyMesh.visible = this.visible && total > 0;
+    headMesh.visible = this.visible && total > 0;
+    // The figures move: a bound taken from an earlier crowd would cull them.
+    bodyMesh.boundingSphere = null;
+    headMesh.boundingSphere = null;
 
     for (let i = 0; i < this.idlePlacements.length; i += 1) {
       const p = this.idlePlacements[i]!;
@@ -754,5 +809,23 @@ export class PedestrianRenderer {
     if (this.headMesh) this.scene.remove(this.headMesh);
     this.bodyMesh = null;
     this.headMesh = null;
+    this.capacity = 0;
   }
+}
+
+/** Whether two stop lists would seat the same idlers: same stops, shelters and platforms. */
+function stopsEqual(a: readonly StopIdleInput[] | null, b: readonly StopIdleInput[]): boolean {
+  if (a === b) return true;
+  if (!a || a.length !== b.length) return false;
+  return a.every((s, i) => {
+    const t = b[i]!;
+    return (
+      s === t ||
+      (s.x === t.x &&
+        s.z === t.z &&
+        s.anchor?.x === t.anchor?.x &&
+        s.anchor?.z === t.anchor?.z &&
+        s.platforms === t.platforms)
+    );
+  });
 }

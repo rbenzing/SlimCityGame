@@ -864,6 +864,9 @@ export class BuildingInstancer {
     newMesh.visible = bucket.mesh.visible;
 
     this.scene.remove(bucket.mesh);
+    bucket.mesh.dispose();
+    // The bucket's own clone of the body, carrying the id attributes just copied.
+    bucket.mesh.geometry.dispose();
     this.scene.add(newMesh);
     bucket.mesh = newMesh;
     bucket.windowSeed = newWindowSeed;

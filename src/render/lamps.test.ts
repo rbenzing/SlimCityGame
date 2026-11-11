@@ -357,20 +357,69 @@ describe('LampRenderer', () => {
     expect(renderer.housingInstanceCount()).toBe(0);
     expect(renderer.lensInstanceCount()).toBe(0);
     expect(renderer.poolVertexCount()).toBe(0);
-    expect(scene.children.filter((c) => c instanceof THREE.Mesh).length).toBe(0);
+    expect(scene.children.filter((c) => c instanceof THREE.Mesh && c.visible).length).toBe(0);
   });
 
-  it('a second rebuild() disposes the previous meshes instead of accumulating them', () => {
+  it('rebuilds with the same or fewer lamps keep the same meshes and add no children', () => {
+    const scene = new THREE.Scene();
+    const renderer = new LampRenderer(scene, flatHeightAt);
+    renderer.rebuild(strip(0, 0, 30, 'ew'));
+    const first = [...scene.children];
+    expect(first.length).toBe(5); // 4 instanced layers + the merged pool
+
+    renderer.rebuild(strip(0, 0, 30, 'ew'));
+    renderer.rebuild(strip(0, 0, 12, 'ew'));
+    expect(scene.children).toEqual(first);
+    expect(scene.children.every((c) => c.visible)).toBe(true);
+    expect(renderer.poleInstanceCount()).toBe(renderer.lampCount());
+
+    renderer.rebuild([]);
+    expect(scene.children).toEqual(first);
+    expect(renderer.poleInstanceCount()).toBe(0);
+    expect(scene.children.some((c) => c.visible)).toBe(false);
+  });
+
+  it('a rebuild that needs more room replaces and disposes the old instanced meshes', () => {
     const scene = new THREE.Scene();
     const renderer = new LampRenderer(scene, flatHeightAt);
     renderer.rebuild(strip(0, 0, 12, 'ew'));
-    const firstMeshes = scene.children.filter((c) => c instanceof THREE.Mesh);
+    const instanced = scene.children.filter(
+      (c): c is THREE.InstancedMesh => c instanceof THREE.InstancedMesh,
+    );
+    const pool = scene.children.find((c) => !(c instanceof THREE.InstancedMesh));
+    let disposed = 0;
+    for (const mesh of instanced) mesh.addEventListener('dispose', () => (disposed += 1));
 
-    renderer.rebuild(strip(0, 0, 30, 'ew'));
-    const secondMeshes = scene.children.filter((c) => c instanceof THREE.Mesh);
+    // Past the instance capacity floor: well over 2048 lamps.
+    renderer.rebuild(strip(0, 0, 5000, 'ew'));
 
-    expect(secondMeshes.length).toBe(5); // 4 instanced layers + the merged pool
-    for (const mesh of firstMeshes) expect(scene.children).not.toContain(mesh);
+    expect(disposed).toBe(4);
+    expect(scene.children.length).toBe(5);
+    for (const mesh of instanced) expect(scene.children).not.toContain(mesh);
+    expect(scene.children).toContain(pool);
+    expect(renderer.poleInstanceCount()).toBe(renderer.lampCount());
+  });
+
+  it('after reused rebuilds the lamps equal what a fresh renderer builds for the same input', () => {
+    const scene = new THREE.Scene();
+    const reused = new LampRenderer(scene, flatHeightAt);
+    reused.rebuild(strip(0, 0, 60, 'ew'));
+    reused.rebuild(strip(0, 0, 12, 'ns'));
+    reused.rebuild(strip(4, 0, 20, 'ns'));
+
+    const fresh = new LampRenderer(new THREE.Scene(), flatHeightAt);
+    fresh.rebuild(strip(4, 0, 20, 'ns'));
+
+    expect(reused.lampCount()).toBe(fresh.lampCount());
+    for (let slot = 0; slot < fresh.lampCount(); slot++) {
+      expect(reused.polePosition(slot)).toEqual(fresh.polePosition(slot));
+      expect(reused.armPosition(slot)).toEqual(fresh.armPosition(slot));
+      expect(reused.armQuaternion(slot)).toEqual(fresh.armQuaternion(slot));
+      expect(reused.housingPosition(slot)).toEqual(fresh.housingPosition(slot));
+      expect(reused.lensPosition(slot)).toEqual(fresh.lensPosition(slot));
+      expect(reused.poolCenter(slot)).toEqual(fresh.poolCenter(slot));
+    }
+    expect(reused.poolVertexCount()).toBe(fresh.poolVertexCount());
   });
 
   it('casts shadows from the pole, arm, and housing — the lens is a light source, not an occluder', () => {

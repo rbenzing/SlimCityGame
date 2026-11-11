@@ -526,6 +526,8 @@ class SimWorld implements WorkerSim {
   );
 
   private readonly timestep: FixedTimestep;
+  /** A tick landed on the snapshot cadence; the pump posts once it has run its ticks. */
+  private snapshotDue = false;
   private speed: SimSpeed = 1;
   private tickNo = 0;
 
@@ -748,6 +750,9 @@ class SimWorld implements WorkerSim {
     // (calm 1× = 0.5, exponential ×4 steps) — the timestep itself is a pure
     // multiplier driver.
     this.timestep.advance(elapsedMs, SPEED_MULTIPLIERS[this.speed]);
+    // A pump that ran several ticks posts once, after the last: every delta
+    // accumulates across ticks until a post drains it, so nothing is lost.
+    if (this.snapshotDue) this.postSnapshot();
   }
 
   /**
@@ -1304,9 +1309,7 @@ class SimWorld implements WorkerSim {
 
     this.stats.tick = t;
 
-    if (t % SNAPSHOT_TICKS === 0) {
-      this.postSnapshot();
-    }
+    if (t % SNAPSHOT_TICKS === 0) this.snapshotDue = true;
   }
 
   /** The street tile a facility's vehicles leave by, or null when no road is near its lot. */
@@ -1524,6 +1527,7 @@ class SimWorld implements WorkerSim {
   }
 
   private postSnapshot(): void {
+    this.snapshotDue = false;
     this.stats.happiness = this.averageHappiness();
     const vehicles = this.traffic.vehicleBuffer.slice();
     // Service vehicles ride the SAME shared buffer: overlay dispatch's own

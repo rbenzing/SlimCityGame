@@ -10,6 +10,10 @@
  * It grows a real city first: every load on screen has to come from residents
  * the sim actually counted, or the panel is reading its own defaults back.
  *
+ * It also times the page while the city grows at speed 4 and exits non-zero if
+ * one read-back takes longer than STALL_LIMIT_MS: that limit guards the page
+ * answering, not freezing, while snapshots arrive 53 times a second.
+ *
  * Usage: node tools/services-shots.mjs [url] [outDir]
  */
 import { chromium } from 'playwright';
@@ -20,6 +24,13 @@ const base = process.argv[2] ?? 'http://localhost:5173';
 const url = base + (base.includes('?') ? '&' : '?') + 'nobloom';
 const out = process.argv[3] ?? 'tools/shots-services';
 mkdirSync(out, { recursive: true });
+
+/** The longest the page may take to answer one read-back while the city grows at speed 4, in milliseconds. A page that stops answering while it grows fails the run. */
+const STALL_LIMIT_MS = 4000;
+
+/** A read-back that has not come back in this long means the page is hung, not slow. */
+const HUNG_MS = 90000;
+const HUNG = Symbol('hung');
 
 const TWO_LANE = 1;
 // Every residential density, painted at once. Sandbox unlocks what can be
@@ -40,7 +51,13 @@ const TARGET_POP = 5500;
 
 const b = await chromium.launch({ headless: true, args: ['--use-angle=default'] });
 const page = await b.newPage({ viewport: { width: 1440, height: 900 } });
-page.on('pageerror', (e) => console.log('[pageerror]', e.message));
+// Only the first three are printed, with their stack: a page that has run out
+// of memory repeats one error thousands of times.
+let pageErrors = 0;
+page.on('pageerror', (e) => {
+  pageErrors++;
+  if (pageErrors <= 3) console.log('[pageerror]', e.stack ?? e.message);
+});
 await page.addInitScript(() => {
   try {
     sessionStorage.setItem(
@@ -259,21 +276,85 @@ if (placed < EXPECTED) {
   process.exit(1);
 }
 
-// At speed 4 a city this size stops the page answering within seconds of its
-// first houses (the main thread sits in the road mesh's junction-control
-// rebuild and every read-back hangs). Speed 1 stays responsive.
-await setSpeed(1);
+// Grown at speed 4, where the worker posts a snapshot 53 times a second: a main
+// thread whose snapshot work follows the size of the city stops answering, and
+// the read-back below is how long it took to answer.
+await setSpeed(4);
 let s = await stats();
 let lastMilestone = -1;
+let longestMs = 0;
+// A read-back that does not come back in HUNG_MS ends the run.
+const answered = async (readBack) => {
+  let hungTimer;
+  const hung = new Promise((resolve) => {
+    hungTimer = setTimeout(() => resolve(HUNG), HUNG_MS);
+  });
+  const answer = await Promise.race([readBack, hung]);
+  clearTimeout(hungTimer);
+  if (answer === HUNG) {
+    console.log(`HUNG >${HUNG_MS / 1000}s at pop ${s.population}`);
+    // A hung browser may not close either; give it ten seconds, then leave.
+    await Promise.race([b.close().catch(() => {}), new Promise((r) => setTimeout(r, 10000))]);
+    process.exit(1);
+  }
+  return answer;
+};
+const readCounts = () => call(() => window.__slimcity.snapshotCounts());
+const GROWTH_CAP_MS = 15 * 60 * 1000;
+// A city that gains under 1% in two minutes has stopped growing: waiting out
+// the cap would time nothing more.
+const PLATEAU_MS = 120 * 1000;
+const growthStart = Date.now();
+const grown = [];
 for (let i = 0; i < 1200; i++) {
   await page.waitForTimeout(1000);
-  s = await stats();
+  const askedAt = Date.now();
+  s = await answered(stats());
+  const answeredMs = Date.now() - askedAt;
+  longestMs = Math.max(longestMs, answeredMs);
+  if (answeredMs > 2000)
+    console.log(`STALL ${answeredMs} at pop ${s.population} tick ${s.tick}`);
+  grown.push({ at: Date.now(), population: s.population });
+  while (grown.length > 1 && Date.now() - grown[1].at > PLATEAU_MS) grown.shift();
+  const since = grown[0];
+  if (
+    Date.now() - since.at > PLATEAU_MS &&
+    s.population > 0 &&
+    s.population < since.population * 1.01
+  ) {
+    console.log(`PLATEAU at pop ${s.population} tick ${s.tick}`);
+    break;
+  }
   if (s.milestoneLevel !== lastMilestone) {
     lastMilestone = s.milestoneLevel;
     console.log(`  milestone ${lastMilestone} at pop ${s.population} (${i}s)`);
   }
+  if (i % 10 === 9) {
+    const mem = await answered(
+      call(() => ({
+        heap: performance.memory ? performance.memory.usedJSHeapSize : 0,
+        info: window.__slimcity.renderInfo?.() ?? {},
+      })),
+    );
+    console.log(
+      `MEM heap=${Math.round(mem.heap / 1048576)}MB geometries=${mem.info.geometries ?? '?'} ` +
+        `textures=${mem.info.textures ?? '?'} pop=${s.population} tick=${s.tick}`,
+    );
+  }
   if (s.population >= TARGET_POP) break;
+  if (Date.now() - growthStart > GROWTH_CAP_MS) {
+    console.log(`CAPPED at pop ${s.population}`);
+    break;
+  }
 }
+console.log(`LONGEST ${longestMs}`);
+const fieldCounts = await answered(readCounts());
+console.log(
+  'FIELDS ' +
+    Object.entries(fieldCounts)
+      .map(([k, v]) => `${k}=${v}`)
+      .join(' '),
+);
 const fin = await stats();
 console.log(`pop ${s.population} power ${Math.round(fin.powerDemand)}/${Math.round(fin.powerSupply)} water ${Math.round(fin.waterDemand)}/${Math.round(fin.waterSupply)}`);
 if (s.population === 0) console.log('NOTHING GREW: do not read the shots below as a pass');
@@ -350,3 +431,9 @@ else {
 
 console.log('done');
 await b.close();
+console.log(`PAGEERRORS ${pageErrors}`);
+if (pageErrors > 0) process.exit(1);
+if (longestMs > STALL_LIMIT_MS) {
+  console.log(`FAIL: the page took ${longestMs} ms to answer once, over the ${STALL_LIMIT_MS} ms limit`);
+  process.exit(1);
+}

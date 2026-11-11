@@ -6,6 +6,11 @@ import {
   headingAlongX,
   laneOffset,
   lerpVehicle,
+  measuredSnapshotIntervalMs,
+  snapshotAlpha,
+  DEFAULT_SNAPSHOT_INTERVAL_MS,
+  MAX_SNAPSHOT_INTERVAL_MS,
+  MIN_SNAPSHOT_INTERVAL_MS,
   paletteColorForSlot,
   paletteIndexForSlot,
   sizeForKind,
@@ -642,5 +647,30 @@ describe('headingAlongX', () => {
     expect(headingAlongX(Math.PI)).toBe(false);
     expect(headingAlongX(Math.PI / 2)).toBe(true);
     expect(headingAlongX(-Math.PI / 2)).toBe(true);
+  });
+});
+
+describe('snapshot interpolation interval', () => {
+  it('uses the default until a previous snapshot has been on screen to measure', () => {
+    expect(measuredSnapshotIntervalMs(null)).toBe(DEFAULT_SNAPSHOT_INTERVAL_MS);
+    expect(DEFAULT_SNAPSHOT_INTERVAL_MS).toBe(100);
+  });
+
+  it('follows steady arrivals: alpha runs 0 to 1 across the measured interval', () => {
+    const interval = measuredSnapshotIntervalMs(50);
+    expect(interval).toBe(50);
+    expect(snapshotAlpha(0, interval)).toBe(0);
+    expect(snapshotAlpha(25, interval)).toBeCloseTo(0.5, 9);
+    expect(snapshotAlpha(50, interval)).toBe(1);
+  });
+
+  it('clamps a long gap and a burst', () => {
+    expect(measuredSnapshotIntervalMs(60_000)).toBe(MAX_SNAPSHOT_INTERVAL_MS);
+    expect(measuredSnapshotIntervalMs(0)).toBe(MIN_SNAPSHOT_INTERVAL_MS);
+  });
+
+  it('never exceeds 1 and never goes below 0', () => {
+    expect(snapshotAlpha(500, 50)).toBe(1);
+    expect(snapshotAlpha(-5, 50)).toBe(0);
   });
 });

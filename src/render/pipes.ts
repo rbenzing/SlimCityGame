@@ -425,6 +425,7 @@ export class PipeOverlayRenderer {
       grown.visible = this.visible;
       this.risers.parent?.add(grown);
       this.risers.parent?.remove(this.risers);
+      this.risers.dispose();
       this.risers = grown;
     }
     const m = new THREE.Matrix4();

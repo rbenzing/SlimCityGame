@@ -56,6 +56,15 @@ import type {
 /** One junction as the sim reports it: who gives way, and whose choice that is. */
 type JunctionSnapshot = NonNullable<SimSnapshot['junctions']>[number];
 
+function sameLaneTurns(
+  a: readonly number[] | undefined,
+  b: readonly number[] | undefined,
+): boolean {
+  if (a === b) return true;
+  if (!a || !b || a.length !== b.length) return false;
+  return a.every((v, i) => v === b[i]);
+}
+
 export class ClientGridMirror {
   readonly size: number;
   readonly height: Float32Array;
@@ -256,7 +265,13 @@ export class ClientGridMirror {
         const was = this.junctionControls.get(i);
         // The turns count as much as the control: banning a movement can take
         // an approach's turn pocket away, and the kerb props stand at its edge.
-        return was?.control === j.control && was.auto === j.auto && was.turns === j.turns;
+        // So do the lanes' own turns: the approach reads them to mark each lane.
+        return (
+          was?.control === j.control &&
+          was.auto === j.auto &&
+          was.turns === j.turns &&
+          sameLaneTurns(was.laneTurns, j.laneTurns)
+        );
       });
     this.junctionControls = next;
     return !same;
@@ -825,7 +840,13 @@ export class ClientGridMirror {
    * tram lane. The same ring the worker's commit check walks; the worker stays
    * authoritative, this lets the ghost refuse first.
    */
-  hasAdjacent(kind: 'rail' | 'water' | 'tram', x: number, z: number, w: number, d: number): boolean {
+  hasAdjacent(
+    kind: 'rail' | 'water' | 'tram',
+    x: number,
+    z: number,
+    w: number,
+    d: number,
+  ): boolean {
     const accepts = (i: number): boolean => {
       if (kind === 'water') return this.water[i] === 1;
       if (kind === 'rail') return isRailTier(this.roadTier[i] ?? RoadTier.None);

@@ -26,7 +26,7 @@ import { LAMP_SPACING_TILES, tileToWorld, worldToTile } from '../shared/constant
 import { carriagewayHalfWidthMeters, curbWidthMeters, ROAD_Y_OFFSET } from './roadsmesh';
 import { carriagewayHalfWidthOf, kerbWidthOf } from '../shared/roadprofile';
 import type { RoadProfile } from '../shared/types';
-import { setInstanceCount } from './groundquad';
+import { MIN_INSTANCE_CAPACITY, setInstanceCount } from './groundquad';
 import {
   buildTileSet,
   flankShift,
@@ -606,6 +606,8 @@ export class LampRenderer {
   /** Not instanced: each disc carries its own terrain-sampled vertex heights. */
   private poolMesh: THREE.Mesh | null = null;
   private stands: LampStand[] = [];
+  /** Instances each of the four layers can hold; only ever doubles. */
+  private capacity = 0;
 
   constructor(scene: THREE.Scene, heightAt: (x: number, z: number) => number) {
     this.scene = scene;
@@ -623,42 +625,60 @@ export class LampRenderer {
     freeStands: readonly LampStand[] = [],
     poles: readonly TramPoleStand[] = [],
   ): void {
-    this.disposeMeshes();
     this.stands = [
       ...computeLampPlacements(roadTiles, drivewayTiles, poles).map(standOf),
       ...freeStands,
     ];
 
     const count = this.stands.length;
-    if (count === 0) return;
+    // The meshes outlive a rebuild: a disposed mesh takes its material's
+    // compiled pipeline with it, so they are replaced only to hold more, by
+    // doubling, and the live count follows the lamps.
+    if (count > this.capacity) {
+      this.disposeInstanced();
+      this.capacity = Math.max(MIN_INSTANCE_CAPACITY, this.capacity);
+      while (this.capacity < count) this.capacity *= 2;
+      this.poleMesh = new THREE.InstancedMesh(this.poleGeometry, this.poleMaterial, this.capacity);
+      this.armMesh = new THREE.InstancedMesh(this.armGeometry, this.poleMaterial, this.capacity);
+      this.housingMesh = new THREE.InstancedMesh(
+        this.housingGeometry,
+        this.housingMaterial,
+        this.capacity,
+      );
+      this.lensMesh = new THREE.InstancedMesh(this.lensGeometry, this.lensMaterial, this.capacity);
+      // Pole/arm/housing are real modeled geometry — they cast shadows. The lens
+      // is a light source, so it stays non-shadow-casting.
+      this.poleMesh.castShadow = true;
+      this.armMesh.castShadow = true;
+      this.housingMesh.castShadow = true;
+      this.scene.add(this.poleMesh, this.armMesh, this.housingMesh, this.lensMesh);
+    }
+    const { poleMesh, armMesh, housingMesh, lensMesh } = this;
+    if (!poleMesh || !armMesh || !housingMesh || !lensMesh) return;
 
-    this.poleMesh = new THREE.InstancedMesh(this.poleGeometry, this.poleMaterial, count);
-    this.armMesh = new THREE.InstancedMesh(this.armGeometry, this.poleMaterial, count);
-    this.housingMesh = new THREE.InstancedMesh(this.housingGeometry, this.housingMaterial, count);
-    this.lensMesh = new THREE.InstancedMesh(this.lensGeometry, this.lensMaterial, count);
-    this.poolMesh = new THREE.Mesh(
-      buildPoolGeometry(this.stands, this.heightAt),
-      this.poolMaterial,
-    );
-    setInstanceCount(this.poleMesh, count);
-    setInstanceCount(this.armMesh, count);
-    setInstanceCount(this.housingMesh, count);
-    setInstanceCount(this.lensMesh, count);
+    // The pool keeps its Mesh and swaps the geometry that bakes terrain heights.
+    const poolGeometry = buildPoolGeometry(this.stands, this.heightAt);
+    if (this.poolMesh) {
+      this.poolMesh.geometry.dispose();
+      this.poolMesh.geometry = poolGeometry;
+    } else {
+      this.poolMesh = new THREE.Mesh(poolGeometry, this.poolMaterial);
+      this.scene.add(this.poolMesh);
+    }
+    this.poolMesh.visible = count > 0;
 
-    // Pole/arm/housing are real modeled geometry — they cast shadows. The lens
-    // is a light source, so it stays non-shadow-casting.
-    this.poleMesh.castShadow = true;
-    this.armMesh.castShadow = true;
-    this.housingMesh.castShadow = true;
+    for (const mesh of [poleMesh, armMesh, housingMesh, lensMesh]) {
+      setInstanceCount(mesh, count);
+      // The lamps move between rebuilds: a bound from an earlier set would cull them.
+      mesh.boundingSphere = null;
+    }
 
     for (let i = 0; i < count; i++) this.writeLamp(i, this.stands[i]!);
 
-    this.poleMesh.instanceMatrix.needsUpdate = true;
-    this.armMesh.instanceMatrix.needsUpdate = true;
-    this.housingMesh.instanceMatrix.needsUpdate = true;
-    this.lensMesh.instanceMatrix.needsUpdate = true;
-
-    this.scene.add(this.poleMesh, this.armMesh, this.housingMesh, this.lensMesh, this.poolMesh);
+    poleMesh.instanceMatrix.needsUpdate = true;
+    armMesh.instanceMatrix.needsUpdate = true;
+    housingMesh.instanceMatrix.needsUpdate = true;
+    lensMesh.instanceMatrix.needsUpdate = true;
   }
 
   /**
@@ -841,21 +861,15 @@ export class LampRenderer {
     this.lensMesh!.setMatrixAt(slot, _matrix);
   }
 
-  private disposeMeshes(): void {
-    if (this.poleMesh) this.scene.remove(this.poleMesh);
-    if (this.armMesh) this.scene.remove(this.armMesh);
-    if (this.housingMesh) this.scene.remove(this.housingMesh);
-    if (this.lensMesh) this.scene.remove(this.lensMesh);
-    if (this.poolMesh) {
-      this.scene.remove(this.poolMesh);
-      // Unlike every other layer's geometry, this one is rebuilt per road
-      // change (it bakes terrain heights), so it owns nothing shared.
-      this.poolMesh.geometry.dispose();
+  private disposeInstanced(): void {
+    for (const mesh of [this.poleMesh, this.armMesh, this.housingMesh, this.lensMesh]) {
+      if (!mesh) continue;
+      this.scene.remove(mesh);
+      mesh.dispose();
     }
     this.poleMesh = null;
     this.armMesh = null;
     this.housingMesh = null;
     this.lensMesh = null;
-    this.poolMesh = null;
   }
 }

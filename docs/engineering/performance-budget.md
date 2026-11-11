@@ -43,7 +43,7 @@ target nobody currently checks by automation.
 | Figure                                              | Constant                                                                                  | File                                                                                                                                           | Measured how                                                                                                                                                                                                                                                                                                  |
 | --------------------------------------------------- | ----------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Sim tick rate                                       | `TICK_RATE = 20` (ticks/real-second at 1× speed)                                          | [`src/shared/constants.ts:34`](../../src/shared/constants.ts)                                                                                  | Structural: `FixedTimestep` (`src/core/loop.ts`) drives the worker at this rate. `TICK_MS = 1000 / TICK_RATE` derives the per-tick budget (50 ms) the 10 ms target above is a fraction of. Not itself timed by a test.                                                                                        |
-| Snapshot rate                                       | `SNAPSHOT_HZ = 10`                                                                        | [`src/shared/constants.ts:56`](../../src/shared/constants.ts)                                                                                  | Structural: `postSnapshot()` fires every `SNAPSHOT_TICKS` ticks (`TICK_RATE / SNAPSHOT_HZ` = 2), so every other tick at 1× speed. Not timed by a test; the cadence itself is exercised by snapshot-diff tests in `src/sim/*.test.ts`.                                                                         |
+| Snapshot rate                                       | `SNAPSHOT_HZ = 10`                                                                        | [`src/shared/constants.ts:56`](../../src/shared/constants.ts)                                                                                  | Structural: a snapshot falls due every `SNAPSHOT_TICKS` ticks (`TICK_RATE / SNAPSHOT_HZ` = 2) and `pump` posts at most one after its ticks, so every other tick at 1× speed and one a pump at 4×. Not timed by a test; the cadence itself is exercised by snapshot-diff tests in `src/sim/*.test.ts`.                                                                         |
 | Field diffusion staggering                          | `DIFFUSING_FIELDS` schedule (`period`/`offset` per field)                                 | [`src/sim/fields.ts:75`](../../src/sim/fields.ts)                                                                                              | Real code: `tick()` skips a field whose `tickNo % period !== offset`, so not every scalar field diffuses on every tick — this is the concrete mechanism behind the "fields diffusion is the big cost" note in the original budget. Covered by field tests, not by a timing assertion.                         |
 | Trip budget per tick                                | `TRIPS_PER_TICK = 4` (flat fallback), `BASE_TRIPS_PER_TICK = 5` (population-scaled floor) | [`src/sim/traffic.ts:49,64`](../../src/sim/traffic.ts)                                                                                         | Real code: `tripsForTick(population, tickNo)` computes a per-tick ceiling so trip (re)assignment cost stays bounded regardless of city size. Covered by `src/sim/traffic.test.ts`'s behavior tests, not a timing test.                                                                                        |
 | Vehicle instance cap                                | `MAX_VEHICLES = 1024`                                                                     | [`src/shared/types.ts:542`](../../src/shared/types.ts), consumed in [`src/render/servicevehicles.ts:216`](../../src/render/servicevehicles.ts) | Structural: the service-vehicle `InstancedMesh` is allocated at this fixed capacity up front — a hard ceiling, not a soft target. No test asserts the numeric value is "enough"; it bounds worst-case draw cost by construction.                                                                              |
@@ -51,6 +51,69 @@ target nobody currently checks by automation.
 | Map size (what every quadratic cost scales against) | `MAP_SIZE = 256`                                                                          | [`src/shared/constants.ts:7`](../../src/shared/constants.ts)                                                                                   | Structural cap — see [constraints.md](constraints.md) and [ADR-0010](adr/0010-map-size-is-capped.md). Every figure above is sized to this ceiling; there is no test enforcing that a run stays at 256² (nothing prevents constructing a differently-sized `GridState` outside the tools that use `MAP_SIZE`). |
 | Instance buffer growth                              | `INITIAL_CAPACITY` + capacity-doubling in `BuildingInstancer`                             | [`src/render/buildings.ts:507,748`](../../src/render/buildings.ts)                                                                             | Real code: instance buckets grow by doubling rather than a fixed worst-case allocation, trading a predictable memory ceiling for amortized-cheap growth. Covered by `src/render/buildings.test.ts` behaviorally, not by a memory-footprint assertion.                                                         |
 
+## The main thread while a city grows
+
+The rule is `[R-render-037]`: a snapshot's cost follows what it changed.
+
+A snapshot falls due every `SNAPSHOT_TICKS` sim ticks, and the worker posts
+at most one a pump, after the pump's ticks have run. Deltas gather in the
+worker until a post drains them, so a pump of several ticks loses nothing:
+
+| Speed | Ticks a second | Snapshots a second |
+| ----- | -------------- | ------------------ |
+| 1×    | 6.7            | 3.3                |
+| 2×    | 26.7           | 13.3               |
+| 4×    | 106.7          | 20                 |
+
+Source: `TICK_RATE`, `SPEED_MULTIPLIERS` and `SNAPSHOT_HZ` in
+`src/shared/constants.ts`; `pump` in `src/sim/worker.entry.ts`. Before the
+one-a-pump rule 4× posted 53 a second, and any work a snapshot did over the
+whole city was done 53 times a second.
+
+**Target:** while `tools/services-shots.mjs` grows its city of a hundred
+zoned blocks at 4×, no read-back from the page takes longer than 1 s. —
+_measured by that tool, which fails over `STALL_LIMIT_MS`, on any page error
+and on a read-back that never returns; no CI step runs it._
+
+| Measured on that city at 4×     | Before                                  | Now         |
+| ------------------------------- | --------------------------------------- | ----------- |
+| Longest read-back               | 57 s, then the page never came back     | 1.1 s       |
+| Page errors                     | 12,000 "Array buffer allocation failed" | 0           |
+| JS heap                         | 2.1 GB                                  | 0.6 GB      |
+| Snapshots taken while growing   | 50 a second                             | 20 a second |
+| Shader programs linked in a run | 280                                     | 64          |
+
+The target is missed by a tenth of a second: the longest read-back is 1.1 s
+and none passes 2 s. The 64 links left are first compiles.
+
+Where the main thread went before the first fix, from a CPU profile of that
+city growing to 4,800 people (408 s sampled):
+
+| Work                                                                | Share | Why it was whole-city                                       |
+| ------------------------------------------------------------------- | ----- | ----------------------------------------------------------- |
+| Shader pipelines compiled in the render loop                        | 28%   | an instanced pool doubling: a new program each time         |
+| Every house's ground re-planned (`planHouseGround`)                 | 19%   | the driveway loop and every walker's door, on every snapshot |
+| Road chunks rebuilt after a junction-control change (`rebuildChunk`) | 15%   | every chunk along the junction's straight arms              |
+| Every pedestrian's path and both meshes rebuilt                     | 14%   | on every snapshot                                           |
+| Lot chunks re-laid (`LotRenderer.apply`)                            | 7%    | each touched chunk rebuilt whole                            |
+
+What each cost was met with:
+
+- **Kept per building:** the tiles a lot's drive crosses (`DrivewayTiles` in
+  `src/render/drivewaytiles.ts`) and a walker's path
+  (`PedestrianRenderer.apply`). A delta lays only what it names; a changed
+  road, section or moved junction control lays all again.
+- **Pools start large:** no instanced pool is allocated for fewer than
+  `MIN_INSTANCE_CAPACITY` = 2,048 instances (`src/render/groundquad.ts`).
+  Below about a thousand, three compiles the capacity into the shader as a
+  uniform array, so every doubling linked a new program in the render loop.
+- **Meshes kept alive:** pedestrians, median trees, lamps and road furniture
+  keep their meshes and set a live count. A replaced mesh is disposed; the
+  ones that were only taken off the scene were the leak.
+- **Road lookups:** `groundAt` in `src/render/roadsmesh.ts` is one index into
+  a flat array, where it was two map lookups forty times a tile.
+- **Lots:** a lot's normals are laid once with the lot, not with every flush
+  of its chunk.
 ## What is not measured anywhere
 
 No test or CI step in this repository:
