@@ -161,6 +161,18 @@ describe('ClientGridMirror', () => {
     expect(mirror.roadTiles().every((t) => !t.powered)).toBe(true);
   });
 
+  it('names only the tiles whose supply moved, so a restated supply re-lays no poles', () => {
+    const block = (data: number[]) => [{ x: 3, z: 4, w: 2, h: 2, data: Uint8Array.from(data) }];
+    expect(mirror.applyPowerPatches(block([1, 1, 0, 1]))).toEqual([
+      { x: 3, z: 4 },
+      { x: 4, z: 4 },
+      { x: 4, z: 5 },
+    ]);
+    // The same supply said again moves nothing; one tile going out names that tile alone.
+    expect(mirror.applyPowerPatches(block([1, 1, 0, 1]))).toEqual([]);
+    expect(mirror.applyPowerPatches(block([1, 0, 0, 1]))).toEqual([{ x: 4, z: 4 }]);
+  });
+
   it('applies road deltas, including removals (tier None)', () => {
     mirror.applyRoadDeltas([
       {

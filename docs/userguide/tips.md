@@ -16,6 +16,9 @@
   small upkeep every month for as long as it stands — so a sprawling rural grid
   is a standing bill, not a one-off. Dragging back over a run you've already
   strung costs nothing, and the bulldozer takes the wire down with a refund.
+  A paved street already carries power and shows it as a pole line along its
+  footway, so a line strung along one is refused ("The street already carries
+  power."); a line may still cross a street.
 - Keep commercial and industrial in proportion to residential; if a demand bar is
   empty, stop zoning that type.
 - Services and parks raise happiness and land value in a radius — spread them out

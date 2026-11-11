@@ -25,7 +25,7 @@ current behavior only and carry no dates of their own._
 
 ## Status (2026-09-29)
 
-**Test suite:** 7,643 tests passing across 226 test files, run 2026-11-11.
+**Test suite:** 7,697 tests passing across 228 test files, run 2026-11-11.
 This is the only test count in the documentation set. When the suite changes
 again, update the figure here and nowhere else.
 
@@ -48,7 +48,8 @@ again, update the figure here and nowhere else.
   outline and no further.
 - Three specs are agreed and not yet built:
   [power-distribution.md](specs/power-distribution.md), a street's drawn
-  supply, buried cable and the substation `[R-services-039]`;
+  supply, buried cable and the substation `[R-services-039]` (its first
+  slice, the pole lines, is built);
   [structured-parking.md](specs/structured-parking.md), a car park for every
   dense kind and a garage on its lot from level 2 `[R-services-040]` (its
   first slice, the stall faults, is built); and

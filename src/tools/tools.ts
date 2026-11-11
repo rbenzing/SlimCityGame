@@ -254,6 +254,12 @@ export interface ToolEnv {
    * quotes the whole run, which is what a fresh one costs anyway.
    */
   powerLineAt?(x: number, z: number): boolean;
+  /**
+   * The sentence refusing a run of line the world would refuse, or null: the
+   * cursor shows the words the toast will say. Optional: an env that omits it
+   * never refuses on the cursor and leaves the refusal to the world.
+   */
+  powerLineRefusal?(tiles: readonly TilePoint[]): string | null;
   /** Whether a water pipe is already laid on a tile, for the same reason. */
   waterPipeAt?(x: number, z: number): boolean;
   /**
@@ -2317,8 +2323,15 @@ export class ToolManager {
       // over a run already strung shows what it costs: nothing.
       const fresh = tiles.filter((t) => !this.env.powerLineAt?.(t.x, t.z));
       const cost = fresh.length * POWER_LINE_COST_PER_TILE;
-      const { valid, invalidReason } = this.evaluate(tiles, cost, 0, true);
-      this.env.onPreview({ tiles, valid, cost, label: 'Power line', invalidReason });
+      const evaluated = this.evaluate(tiles, cost, 0, true);
+      const refusal = this.env.powerLineRefusal?.(tiles) ?? null;
+      this.env.onPreview({
+        tiles,
+        valid: evaluated.valid && refusal === null,
+        cost,
+        label: 'Power line',
+        invalidReason: refusal ?? evaluated.invalidReason,
+      });
       return;
     }
 
