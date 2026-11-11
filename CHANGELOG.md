@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.82.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.81.0...slimcity-v1.82.0) (2026-11-11)
+
+
+### Features
+
+* **render:** a lamp stands at the kerb, by the street's width ([90d3a17](https://github.com/rbenzing/SlimCityGame/commit/90d3a174cfa89bd35d2d5249fe0db17e6cf04a68))
+
 ## [1.81.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.80.3...slimcity-v1.81.0) (2026-11-11)
 
 
