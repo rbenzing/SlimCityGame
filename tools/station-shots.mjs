@@ -88,7 +88,14 @@ const small = { police: { x: police.x + 9, z: 98 }, fire: { x: police.x + 12, z:
 await hook((s) => {
   window.__slimcity.cmd('Sandbox', [{ kind: 'setSandbox', on: true }]);
   window.__slimcity.cmd('Money', [{ kind: 'setUnlimitedMoney', on: true }]);
+  // The zone has grown shops on the row beside the district stations; they
+  // are cleared first so the two first-rung stations have the ground.
+  const row = [];
+  for (let x = s.police.x; x < s.fire.x + 2; x++) {
+    for (let z = s.police.z; z < s.police.z + 2; z++) row.push({ x, z });
+  }
   window.__slimcity.cmd('Stations', [
+    { kind: 'bulldoze', tiles: row },
     {
       kind: 'placeBuilding',
       catalogId: 'police-station',
