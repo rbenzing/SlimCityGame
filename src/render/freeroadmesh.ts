@@ -20,10 +20,11 @@
 
 import * as THREE from 'three';
 import { LAMP_SPACING_TILES, TILE_METERS } from '../shared/constants';
-import { leavingDirection, sampleCentreLine } from '../shared/roadgeom';
+import { MAX_SETBACK_SHARE, leavingDirection, sampleCentreLine } from '../shared/roadgeom';
 import type { MPoint } from '../shared/roadgeom';
 import {
   CARRIAGEWAY_KINDS,
+  bendRadiusOf,
   carriagewayHalfWidthOf,
   hasKerbs,
   isPaved,
@@ -34,7 +35,8 @@ import {
 } from '../shared/roadprofile';
 import { RoadFlow } from '../shared/types';
 import type { RoadNet, RoadProfile, RoadTier, TilePoint } from '../shared/types';
-import { isFreeSegment, isGridNode, segmentGeom, segmentsAt } from '../world/roadnet';
+import { bendsOf, isFreeSegment, isGridNode, segmentGeom, segmentsAt } from '../world/roadnet';
+import type { BendAt } from '../world/roadnet';
 import { lampLateralOffset, tierGetsLamp } from './lamps';
 import type { LampStand } from './lamps';
 import { markingPlan } from './roadmarkings';
@@ -77,8 +79,6 @@ const BAND_Y_OFFSET = MARK_Y_OFFSET - 0.004;
 const KERB_FACE_SHADE = 0.8;
 /** Below this sine two roads leaving a node count as one running straight on. */
 const STRAIGHT_ON_SIN = 0.17;
-/** A junction takes at most this share of a segment's length at each end. */
-const MAX_SETBACK_SHARE = 0.45;
 /** How many pieces a kerb return is drawn in. */
 const CORNER_STEPS = 8;
 
@@ -133,18 +133,43 @@ interface Station extends MPoint {
   s: number;
   nx: number;
   nz: number;
+  /**
+   * Where the line turns on an arc: the side of the line the arc's centre lies
+   * on, and how far off, so an offset that would pass the centre is held at it.
+   */
+  inner?: 1 | -1;
+  radius?: number;
 }
 
+/** A sample of a centre line, with the normal it is swept along where the line gives one. */
+interface Sample extends MPoint {
+  s: number;
+  nx?: number;
+  nz?: number;
+  inner?: 1 | -1;
+  radius?: number;
+}
+
+/** The offset `u` across a station, held at the arc's centre where it would pass it. */
+const across = (p: Station, u: number): number =>
+  p.inner === undefined || u * p.inner <= p.radius! ? u : p.inner * p.radius!;
+
 /** The centre line between `from` and `to` metres along it, with its normals, turned round when `flip`. */
-function stations(
-  samples: readonly { x: number; z: number; s: number }[],
-  from: number,
-  to: number,
-  flip = false,
-): Station[] {
+function stations(samples: readonly Sample[], from: number, to: number, flip = false): Station[] {
   const side = flip ? -1 : 1;
   const at = (i: number): Station => {
     const p = samples[i]!;
+    if (p.nx !== undefined && p.nz !== undefined) {
+      return {
+        x: p.x,
+        z: p.z,
+        s: p.s,
+        nx: p.nx * side,
+        nz: p.nz * side,
+        inner: p.inner,
+        radius: p.radius,
+      };
+    }
     const before = samples[Math.max(0, i - 1)]!;
     const after = samples[Math.min(samples.length - 1, i + 1)]!;
     const tx = after.x - before.x;
@@ -159,7 +184,15 @@ function stations(
     const nx = p.nx + (q.nx - p.nx) * f;
     const nz = p.nz + (q.nz - p.nz) * f;
     const nl = Math.sqrt(nx * nx + nz * nz) || 1;
-    return { x: p.x + (q.x - p.x) * f, z: p.z + (q.z - p.z) * f, s, nx: nx / nl, nz: nz / nl };
+    return {
+      x: p.x + (q.x - p.x) * f,
+      z: p.z + (q.z - p.z) * f,
+      s,
+      nx: nx / nl,
+      nz: nz / nl,
+      inner: p.inner ?? q.inner,
+      radius: p.radius ?? q.radius,
+    };
   };
   const out: Station[] = [];
   for (let i = 0; i < samples.length - 1; i++) {
@@ -220,11 +253,12 @@ class Soup implements RoadSoup {
       for (let c = 0; c < cells; c++) {
         const u = o1 + ((o2 - o1) * c) / cells;
         const v = o1 + ((o2 - o1) * (c + 1)) / cells;
+        const [pu, pv, qu, qv] = [across(p, u), across(p, v), across(q, u), across(q, v)];
         this.quad(
-          this.vertex(p.x + p.nx * u, p.z + p.nz * u, lift),
-          this.vertex(p.x + p.nx * v, p.z + p.nz * v, lift),
-          this.vertex(q.x + q.nx * v, q.z + q.nz * v, lift),
-          this.vertex(q.x + q.nx * u, q.z + q.nz * u, lift),
+          this.vertex(p.x + p.nx * pu, p.z + p.nz * pu, lift),
+          this.vertex(p.x + p.nx * pv, p.z + p.nz * pv, lift),
+          this.vertex(q.x + q.nx * qv, q.z + q.nz * qv, lift),
+          this.vertex(q.x + q.nx * qu, q.z + q.nz * qu, lift),
           color,
         );
       }
@@ -236,10 +270,12 @@ class Soup implements RoadSoup {
     for (let k = 0; k < st.length - 1; k++) {
       const p = st[k]!;
       const q = st[k + 1]!;
-      const px = p.x + p.nx * o;
-      const pz = p.z + p.nz * o;
-      const qx = q.x + q.nx * o;
-      const qz = q.z + q.nz * o;
+      const po = across(p, o);
+      const qo = across(q, o);
+      const px = p.x + p.nx * po;
+      const pz = p.z + p.nz * po;
+      const qx = q.x + q.nx * qo;
+      const qz = q.z + q.nz * qo;
       const a = this.vertex(px, pz, low);
       const b = this.vertex(qx, qz, low);
       const c = this.vertex(qx, qz, high);
@@ -504,10 +540,42 @@ function drawSegment(
 ): void {
   // A grid road whose junction reaches its tile's edge has nothing left to draw.
   if (to - from < 1e-6) return;
-  const { profile, plan } = lay;
   const samples = sampleCentreLine(segmentGeom(net, seg));
   const st = stations(samples, from, to, lay.flip);
+  const dashes = isPaved(lay.profile)
+    ? dashRuns(lay, from, to).map(([lo, hi]) => stations(samples, lo, hi, lay.flip))
+    : [];
+  drawSweep(soup, lay, st, dashes);
+}
+
+/** A bend: the cross-section swept along its centre line, the arc and what is driven straight to and from it. */
+function drawBend(soup: Soup, at: BendAt, lay: Lay): void {
+  const { path, arc, radius, turn } = at.bend;
+  const samples: Sample[] = path.map((p, k) => ({
+    x: p.x,
+    z: p.z,
+    s: p.s,
+    nx: -p.hz,
+    nz: p.hx,
+    ...(turn !== 0 && k >= arc[0] && k <= arc[1] ? { inner: turn, radius } : {}),
+  }));
+  const length = path[path.length - 1]!.s;
+  if (length < 1e-6) return;
+  const dashes = isPaved(lay.profile)
+    ? dashSegments(0, length).map(([lo, hi]) => stations(samples, lo, hi))
+    : [];
+  drawSweep(soup, lay, stations(samples, 0, length), dashes);
+}
+
+/** A cross-section swept along stations: surface, median, kerbs, bands and paint, with each dash drawn along its own run. */
+function drawSweep(
+  soup: Soup,
+  lay: Lay,
+  st: readonly Station[],
+  dashes: readonly (readonly Station[])[],
+): void {
   if (st.length < 2) return;
+  const { profile, plan } = lay;
   const half = carriagewayHalfWidthOf(profile);
   const surface = surfaceColor(profile);
   soup.ribbon(st, -half, half, ROAD_Y_OFFSET, surface);
@@ -549,10 +617,7 @@ function drawSegment(
       line.color === 'yellow' ? YELLOW_MARKING_COLOR : MARKING_COLOR,
     );
   for (const line of plan.solid) paint(line, st);
-  for (const [lo, hi] of dashRuns(lay, from, to)) {
-    const run = stations(samples, lo, hi, lay.flip);
-    for (const line of plan.dashed) paint(line, run);
-  }
+  for (const run of dashes) for (const line of plan.dashed) paint(line, run);
 }
 
 /**
@@ -563,8 +628,9 @@ function drawSegment(
  */
 export function freeRoadSoup(net: RoadNet, lookup: ProfileFor, surfaceAt: SurfaceAt): RoadSoup {
   const soup = new Soup(surfaceAt);
-  const { junctions, spans, caps } = layout(net, lookup);
+  const { junctions, spans, caps, bends } = layout(net, lookup);
   for (const j of junctions) drawJunction(soup, net, j.node, j.arms, j.color);
+  for (const b of bends) drawBend(soup, b.at, b.lay);
   for (const span of spans) drawSegment(soup, net, span.seg, span.lay, span.from, span.to);
   for (const cap of caps) drawCap(soup, net, cap);
   return soup;
@@ -599,14 +665,44 @@ function layout(
   spans: Span[];
   gridTiles: TilePoint[];
   caps: Cap[];
+  bends: { at: BendAt; lay: Lay }[];
 } {
   const setbackAt = new Map<string, number>();
   const junctions: { node: number; arms: Arm[]; color: Rgb }[] = [];
   const spans: Span[] = [];
   const gridTiles: TilePoint[] = [];
   const caps: Cap[] = [];
+  const bends: { at: BendAt; lay: Lay }[] = [];
+  const bendAt = bendsOf(net, (seg) => bendRadiusOf(profileOf(net.segProfile[seg]!, lookup)));
   for (let node = 0; node < net.nodeSlots; node++) {
     if (net.nodeLive[node] !== 1) continue;
+    // Two runs of one road meeting at an angle turn on an arc, with no junction.
+    const bend = bendAt.get(node);
+    if (bend) {
+      for (const seg of [bend.first, bend.second]) {
+        setbackAt.set(`${seg}:${node}`, bend.bend.setback[0]);
+      }
+      bends.push({ at: bend, lay: layOf(net, bend.frame, lookup) });
+      // Off a grid road the whole tile is this renderer's, as at a junction: the
+      // grid road runs from the tile's edge to where the arc begins.
+      const gridSeg = [bend.first, bend.second].find((seg) => !isFreeSegment(net, seg));
+      if (gridSeg !== undefined) {
+        gridTiles.push({
+          x: Math.floor(net.nodeX[node]! / 100 / TILE_METERS),
+          z: Math.floor(net.nodeZ[node]! / 100 / TILE_METERS),
+        });
+        const length = sampleCentreLine(segmentGeom(net, gridSeg)).at(-1)!.s;
+        const take = bend.bend.setback[0];
+        const atA = net.segA[gridSeg] === node;
+        spans.push({
+          seg: gridSeg,
+          lay: layOf(net, gridSeg, lookup),
+          from: atA ? take : length - GRID_ARM_REACH,
+          to: atA ? GRID_ARM_REACH : length - take,
+        });
+      }
+      continue;
+    }
     const { arms, segs } = armsAt(net, node, lookup);
     if (!segs.some((s) => isFreeSegment(net, s))) continue;
     arms.forEach((arm, k) => setbackAt.set(`${segs[k]}:${node}`, arm.setback));
@@ -648,7 +744,7 @@ function layout(
       to: length - (setbackAt.get(`${seg}:${net.segB[seg]}`) ?? 0),
     });
   }
-  return { junctions, spans, gridTiles, caps };
+  return { junctions, spans, gridTiles, caps, bends };
 }
 
 /**

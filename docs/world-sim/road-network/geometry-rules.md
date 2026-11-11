@@ -22,9 +22,10 @@
   cannot be checked against the standard here.
 
 - **A bend at a node.** Two runs of one road that meet at an angle turn on an
-  arc there, at the class's minimum radius or the widest the shorter run
-  holds; no edge of the bend is a corner. Agreed and not yet drawn: such a
-  node still takes a junction's kerb return. `[R-roads-081]`
+  arc there. Every edge and lane line sweeps about one centre, the inner kerb
+  at the class's kerb return radius, so the bend takes no ground the corner
+  did not; a run too short for that arc holds a tighter one. No edge of the
+  bend is a corner. `[R-roads-081]`
 
 - **Shortest segment.** A segment is at least half a tile, 10 m, long.
 - **Narrowest angle.** Two roads meeting at a node are at least 30° apart,

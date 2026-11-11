@@ -6,9 +6,9 @@
  *
  * Points are stored in whole centimetres and worked in metres. No decision
  * here calls a trigonometric function: angles are compared by their cosines,
- * so a decision about a curve comes out the same on every machine. The one
- * angle that is produced rather than judged is a heading, for a parcel to be
- * turned by.
+ * so a decision about a curve comes out the same on every machine. The angles
+ * that are produced rather than judged are a heading, for a parcel to be
+ * turned by, and the samples round the arc of a bend.
  */
 
 import { ROAD_MAX_SLOPE, TILE_METERS } from './constants';
@@ -296,6 +296,192 @@ export function tooSteep(g: SegmentGeom, groundAt: (x: number, z: number) => num
     if (Math.abs(groundAt(q.x, q.z) - groundAt(p.x, p.z)) > grade * run + 1e-9) return true;
   }
   return false;
+}
+
+/** A bend, or a junction, takes at most this share of a segment's length at each end. */
+export const MAX_SETBACK_SHARE = 0.45;
+/** The most one piece of a bend's arc turns, radians (4 degrees). */
+const BEND_STEP_RAD = 0.0698;
+
+/** One of the two runs meeting at a bend: a segment, and whether the node is its first end. */
+export interface BendRun {
+  geom: SegmentGeom;
+  atA: boolean;
+}
+
+/** A point on a bend's centre line: where it is, how far along, and the unit heading it is driven in. */
+export interface BendSample extends MPoint {
+  s: number;
+  hx: number;
+  hz: number;
+}
+
+/**
+ * Where two runs of one road meet at an angle and the road turns on an arc. The
+ * centre line leaves the first run, straight on its tangent where the runs are
+ * curved, turns on one circular arc tangent to both, and joins the second.
+ */
+export interface Bend {
+  /** Metres of each run, from the node, that the bend replaces. */
+  setback: readonly [number, number];
+  /** The centre line from the first run's end to the second's, in the way it is driven. */
+  path: BendSample[];
+  /** The sample at the middle of the arc, where the two halves of the bend meet. */
+  middle: number;
+  /** The arc's first and last samples in `path`. */
+  arc: readonly [number, number];
+  /** The arc's centre, and its radius (0 where the runs meet straight on). */
+  centre: MPoint;
+  radius: number;
+  /** Which way the road turns: 1 toward increasing angle (x toward z), -1 the other way, 0 straight on. */
+  turn: 1 | -1 | 0;
+}
+
+interface RunPoint extends MPoint {
+  /** Unit direction of the run at the point, away from the node. */
+  hx: number;
+  hz: number;
+}
+
+/** The point `s` metres from a run's node along its centre line, and the direction there away from the node. */
+function runPoint(run: BendRun, samples: readonly CentreSample[], s: number): RunPoint {
+  const total = samples[samples.length - 1]!.s;
+  const d = Math.min(total, Math.max(0, run.atA ? s : total - s));
+  let i = 0;
+  while (i < samples.length - 2 && samples[i + 1]!.s < d) i++;
+  const p = samples[i]!;
+  const q = samples[i + 1]!;
+  const f = q.s === p.s ? 0 : (d - p.s) / (q.s - p.s);
+  const t = p.t + (q.t - p.t) * f;
+  let v = derivativeAt(run.geom, t);
+  if (lengthOf(v) === 0) v = derivativeAt(run.geom, 0.5);
+  const h = unit(v);
+  const away = run.atA ? 1 : -1;
+  return { x: p.x + (q.x - p.x) * f, z: p.z + (q.z - p.z) * f, hx: h.x * away, hz: h.z * away };
+}
+
+const cross2 = (ux: number, uz: number, vx: number, vz: number): number => ux * vz - uz * vx;
+
+/**
+ * The bend two runs make at their shared node, on an arc of centre-line
+ * `radius` metres. The arc's tangent length is what a run gives up of itself;
+ * it never takes more than `maxTake` metres of either run, and where a run
+ * holds less than the arc wants the arc shrinks to what it holds. Where the
+ * runs are curved the arc joins the tangent lines at the ends of what is given
+ * up, and the part of those lines left over is driven straight.
+ */
+export function bendBetween(
+  first: BendRun,
+  second: BendRun,
+  radius: number,
+  maxTake: readonly [number, number],
+): Bend {
+  const sa = sampleCentreLine(first.geom);
+  const sb = sampleCentreLine(second.geom);
+  const limit = Math.max(0, Math.min(maxTake[0], maxTake[1]));
+  const wanted = (dot: number, sin: number): number =>
+    1 + dot < 1e-9 ? Infinity : (radius * sin) / (1 + dot);
+
+  /** Both ends of what `take` metres of each run gives up, and where their tangent lines cross. */
+  const fit = (take: number) => {
+    const e = runPoint(first, sa, take);
+    const f = runPoint(second, sb, take);
+    // Driven toward the node along the first run, away from it along the second.
+    const hp = { x: -e.hx, z: -e.hz };
+    const hq = { x: f.hx, z: f.hz };
+    const cr = cross2(hp.x, hp.z, hq.x, hq.z);
+    const dot = hp.x * hq.x + hp.z * hq.z;
+    const d = { x: f.x - e.x, z: f.z - e.z };
+    const crossing = Math.abs(cr) < 1e-6 ? null : cross2(d.x, d.z, hq.x, hq.z) / cr;
+    const farSide = Math.abs(cr) < 1e-6 ? null : cross2(hp.x, hp.z, d.x, d.z) / cr;
+    return { e, f, hp, hq, cr, dot, a: crossing, b: farSide, sin: Math.abs(cr) };
+  };
+
+  const node = runPoint(first, sa, 0);
+  const nodeIn = { x: -node.hx, z: -node.hz };
+  const nodeOut = runPoint(second, sb, 0);
+  let take = Math.min(
+    limit,
+    wanted(
+      nodeIn.x * nodeOut.hx + nodeIn.z * nodeOut.hz,
+      Math.abs(cross2(nodeIn.x, nodeIn.z, nodeOut.hx, nodeOut.hz)),
+    ),
+  );
+  // The ends of a curved run head a little differently from the node, so the
+  // take is refined a few times against the tangents it really meets.
+  for (let k = 0; k < 4; k++) {
+    const fitted = fit(take);
+    const next = Math.min(limit, wanted(fitted.dot, fitted.sin));
+    if (Math.abs(next - take) < 1e-4) break;
+    take = next;
+  }
+  const g = fit(take);
+
+  const sample = (x: number, z: number, hx: number, hz: number): BendSample => ({
+    x,
+    z,
+    s: 0,
+    hx,
+    hz,
+  });
+  const finish = (path: BendSample[], bend: Omit<Bend, 'path' | 'setback'>): Bend => {
+    for (let k = 1; k < path.length; k++) {
+      path[k]!.s =
+        path[k - 1]!.s + Math.hypot(path[k]!.x - path[k - 1]!.x, path[k]!.z - path[k - 1]!.z);
+    }
+    return { ...bend, path, setback: [take, take] };
+  };
+
+  const straight = g.a === null || g.b === null || g.a < -1e-6 || g.b < -1e-6 || g.sin < 1e-6;
+  if (straight) {
+    const mid = { x: (g.e.x + g.f.x) / 2, z: (g.e.z + g.f.z) / 2 };
+    const chord = unit({ x: g.f.x - g.e.x, z: g.f.z - g.e.z });
+    const h = lengthOf(chord) === 0 ? g.hp : chord;
+    return finish(
+      [
+        sample(g.e.x, g.e.z, g.hp.x, g.hp.z),
+        sample(mid.x, mid.z, h.x, h.z),
+        sample(g.f.x, g.f.z, g.hq.x, g.hq.z),
+      ],
+      { middle: 1, arc: [1, 1], centre: mid, radius: 0, turn: 0 },
+    );
+  }
+
+  const a = g.a!;
+  const b = g.b!;
+  const t = Math.min(a, b, wanted(g.dot, g.sin));
+  const r = (t * (1 + g.dot)) / g.sin;
+  const turn = g.cr > 0 ? 1 : -1;
+  const sweep = Math.atan2(g.sin, g.dot);
+  const p1 = { x: g.e.x + g.hp.x * (a - t), z: g.e.z + g.hp.z * (a - t) };
+  const centre = { x: p1.x - turn * g.hp.z * r, z: p1.z + turn * g.hp.x * r };
+  const steps = 2 * Math.max(1, Math.ceil(sweep / (2 * BEND_STEP_RAD)));
+  const path: BendSample[] = a - t > 1e-3 ? [sample(g.e.x, g.e.z, g.hp.x, g.hp.z)] : [];
+  const arcFrom = path.length;
+  for (let k = 0; k <= steps; k++) {
+    const beta = (turn * sweep * k) / steps;
+    const c = Math.cos(beta);
+    const s = Math.sin(beta);
+    const rx = p1.x - centre.x;
+    const rz = p1.z - centre.z;
+    path.push(
+      sample(
+        centre.x + rx * c - rz * s,
+        centre.z + rx * s + rz * c,
+        g.hp.x * c - g.hp.z * s,
+        g.hp.x * s + g.hp.z * c,
+      ),
+    );
+  }
+  const arcTo = path.length - 1;
+  if (b - t > 1e-3) path.push(sample(g.f.x, g.f.z, g.hq.x, g.hq.z));
+  return finish(path, {
+    middle: arcFrom + steps / 2,
+    arc: [arcFrom, arcTo],
+    centre,
+    radius: r,
+    turn,
+  });
 }
 
 /** The nearest two samples of two centre lines come, metres. */

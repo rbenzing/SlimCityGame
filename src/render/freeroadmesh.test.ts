@@ -1,13 +1,21 @@
 import { describe, expect, it } from 'vitest';
 import { sampleCentreLine, tileCentreCm } from '../shared/roadgeom';
 import type { CmPoint, MPoint } from '../shared/roadgeom';
-import { carriagewayHalfWidthOf, kerbWidthOf, presetProfileForTier } from '../shared/roadprofile';
-import { RoadTier } from '../shared/types';
+import {
+  bendRadiusOf,
+  carriagewayHalfWidthOf,
+  hasKerbs,
+  kerbReturnRadiusOf,
+  kerbWidthOf,
+  presetProfileForTier,
+} from '../shared/roadprofile';
+import { RoadFlow, RoadTier } from '../shared/types';
 import type { GridState, RoadTier as Tier } from '../shared/types';
 import { createGrid } from '../world/grid';
 import { applyRoad } from '../world/roads';
 import { deriveRoadFootprint, laySegment, planSegment } from '../world/freeroads';
 import {
+  bendsOf,
   isFreeSegment,
   networkFromGrid,
   reconcileRoads,
@@ -17,10 +25,12 @@ import {
 import { TILE_METERS } from '../shared/constants';
 import { freeJunctionTiles, freeRoadLampStands, freeRoadSoup } from './freeroadmesh';
 import { lampLateralOffset } from './lamps';
+import { markingPlan } from './roadmarkings';
 import {
   CURB_Y_OFFSET,
   MARKING_COLOR,
   MARK_Y_OFFSET,
+  PAINT_HALF_WIDTH_M,
   ROAD_Y_OFFSET,
   SIDEWALK_COLOR,
   YELLOW_MARKING_COLOR,
@@ -596,6 +606,237 @@ describe('freeRoadLampStands', () => {
       // Every lamp stands beside exactly one road, clear of the others.
       const near = freeSegs(g).filter((seg) => offsetFrom(g, seg, s).d < HALF);
       expect(near).toEqual([]);
+    }
+  });
+});
+
+describe('a bend where two runs of one road meet', () => {
+  const NODE = { x: 480, z: 400 };
+  const profileOfTier = (tier: Tier) => presetProfileForTier(tier);
+  const radiusOf = (tier: Tier) => () => bendRadiusOf(profileOfTier(tier));
+
+  /** Two straight runs of `arm` metres meeting at NODE, the second turned `deg` degrees off the first's line. */
+  function scene(tier: Tier, deg: number, arm = 120, grid = false) {
+    const g = world();
+    const d = { x: Math.cos((deg * Math.PI) / 180), z: Math.sin((deg * Math.PI) / 180) };
+    if (grid) {
+      // A grid street ends on a tile, and a free run leaves that tile's centre. The
+      // street keeps the direction it was drawn in, as the game stores it.
+      const tiles = Array.from({ length: 12 }, (_, i) => ({ x: 13 + i, z: 20 }));
+      applyRoad(
+        g,
+        tiles,
+        tier,
+        undefined,
+        tier,
+        false,
+        tiles.map(() => RoadFlow.East),
+      );
+      settle(g);
+      const end = centre(24, 20);
+      lay(g, { tier, a: end, b: at(end.x / 100 + d.x * arm, end.z / 100 + d.z * arm) });
+    } else {
+      lay(g, { tier, a: at(NODE.x - arm, NODE.z), b: at(NODE.x, NODE.z) });
+      lay(g, { tier, a: at(NODE.x, NODE.z), b: at(NODE.x + d.x * arm, NODE.z + d.z * arm) });
+    }
+    const found = [...bendsOf(g.roads!, radiusOf(tier)).values()];
+    expect(found).toHaveLength(1);
+    const bend = found[0]!.bend;
+    const soup = freeRoadSoup(g.roads!, noCustom, flat);
+    const vertices: { x: number; y: number; z: number }[] = [];
+    for (let i = 0; i < soup.positions.length; i += 3) {
+      vertices.push({
+        x: soup.positions[i]!,
+        y: soup.positions[i + 1]!,
+        z: soup.positions[i + 2]!,
+      });
+    }
+    // Position round the arc's centre: how far out, and the angle off the arc's middle.
+    const mid = bend.path[bend.middle]!;
+    const bx = mid.x - bend.centre.x;
+    const bz = mid.z - bend.centre.z;
+    const polar = (p: MPoint) => {
+      const wx = p.x - bend.centre.x;
+      const wz = p.z - bend.centre.z;
+      return {
+        r: Math.hypot(wx, wz),
+        angle: Math.atan2(bx * wz - bz * wx, bx * wx + bz * wz),
+      };
+    };
+    const edge = bend.path[bend.arc[0]]!;
+    const reach = Math.abs(polar(edge).angle) + 1e-6;
+    const inArc = (p: MPoint): boolean => Math.abs(polar(p).angle) <= reach;
+    return { g, bend, vertices, polar, inArc };
+  }
+
+  const TIERS: [string, Tier][] = [
+    ['two-lane', RoadTier.TwoLane],
+    ['avenue', RoadTier.Avenue],
+    ['four-lane', RoadTier.FourLane],
+    ['gravel', RoadTier.Gravel],
+  ];
+  const DEFLECTIONS = [15, 30, 60, 90, 120];
+
+  for (const [name, tier] of TIERS) {
+    const profile = profileOfTier(tier);
+    const half = carriagewayHalfWidthOf(profile);
+    const outer = half + (hasKerbs(profile) ? kerbWidthOf(profile) : 0);
+    const plan = markingPlan(profile, RoadFlow.None);
+
+    const GRID_DEFLECTIONS = [30, 60, 90];
+    const cases: [string, number, boolean][] = [
+      ...DEFLECTIONS.map((d): [string, number, boolean] => [`${d} degree ${name}`, d, false]),
+      ...(tier === RoadTier.TwoLane || tier === RoadTier.Avenue
+        ? GRID_DEFLECTIONS.map((d): [string, number, boolean] => [
+            `${d} degree ${name} off a grid street`,
+            d,
+            true,
+          ])
+        : []),
+    ];
+    for (const [label, deg, grid] of cases) {
+      it(`sweeps a ${label} bend about one centre: no corner, constant offsets, the same ground`, () => {
+        const { g, bend, vertices, polar, inArc } = scene(tier, deg, grid ? 90 : 120, grid);
+        // The inner kerb holds the class's kerb return, unless the grid tile's half holds less.
+        if (bend.setback[0] < TILE_METERS / 2 - 1e-6 || !grid) {
+          expect(bend.radius - half).toBeCloseTo(kerbReturnRadiusOf(profile), 2);
+        }
+        if (grid) {
+          // The grid road's cross-section runs on to the tile's edge: the bend's own edges
+          // are the same offsets there, to the centimetre.
+          const boundary = centre(24, 20).x / 100 - TILE_METERS / 2;
+          const across = vertices
+            .filter((v) => Math.abs(v.x - boundary) < 1e-6 && Math.abs(v.y - CURB_Y_OFFSET) < 1e-9)
+            .map((v) => v.z - centre(24, 20).z / 100);
+          expect(across.length).toBeGreaterThan(0);
+          expect(Math.min(...across)).toBeCloseTo(-outer, 2);
+          expect(Math.max(...across)).toBeCloseTo(outer, 2);
+        }
+
+        // The outer edge is a run of short chords whose headings turn a few degrees at a time.
+        const outerY = hasKerbs(profile) ? CURB_Y_OFFSET : ROAD_Y_OFFSET;
+        const edge = vertices
+          .filter((v) => Math.abs(v.y - outerY) < 1e-9 && inArc({ x: v.x, z: v.z }))
+          .filter((v) => Math.abs(polar({ x: v.x, z: v.z }).r - (bend.radius + outer)) < 5e-3)
+          .map((v) => ({ x: v.x, z: v.z, a: polar({ x: v.x, z: v.z }).angle }))
+          .sort((p, q) => p.a - q.a)
+          .filter((p, k, all) => k === 0 || Math.abs(p.a - all[k - 1]!.a) > 1e-6);
+        expect(edge.length).toBeGreaterThanOrEqual(4);
+        for (let k = 2; k < edge.length; k++) {
+          const u = { x: edge[k - 1]!.x - edge[k - 2]!.x, z: edge[k - 1]!.z - edge[k - 2]!.z };
+          const v = { x: edge[k]!.x - edge[k - 1]!.x, z: edge[k]!.z - edge[k - 1]!.z };
+          const turn = Math.atan2(u.x * v.z - u.z * v.x, u.x * v.x + u.z * v.z);
+          expect(Math.abs(turn)).toBeLessThan((12 * Math.PI) / 180);
+        }
+
+        // Nothing reaches further than the outer edge, and every paint line sits at a constant offset.
+        const lines = [...plan.solid, ...plan.dashed];
+        const wrong: string[] = [];
+        for (const v of vertices) {
+          const p = { x: v.x, z: v.z };
+          if (!inArc(p)) continue;
+          const { r } = polar(p);
+          if (r > bend.radius + outer + 5e-3) wrong.push(`past the outer edge at ${p.x},${p.z}`);
+          if (Math.abs(v.y - MARK_Y_OFFSET) > 1e-9) continue;
+          const offset = bend.turn * (bend.radius - r);
+          const held = lines.some((l) =>
+            [-PAINT_HALF_WIDTH_M, PAINT_HALF_WIDTH_M].some(
+              (w) => Math.abs(offset - (l.at + w)) < 0.02,
+            ),
+          );
+          if (!held) wrong.push(`paint off every line at ${p.x},${p.z}: offset ${offset}`);
+        }
+        expect(wrong).toEqual([]);
+
+        // The bend holds no ground a tile outside what the segments' footprint already holds.
+        const outside = vertices.filter((v) => {
+          const tile = Math.floor(v.z / TILE_METERS) * SIZE + Math.floor(v.x / TILE_METERS);
+          return g.roadFootprint[tile] !== 1 && g.roadTier[tile] === 0;
+        });
+        expect(outside).toEqual([]);
+      });
+    }
+  }
+
+  it('keeps a short run from the arc: no NaN, and the outer edge still turns on an arc', () => {
+    for (const [, tier] of TIERS) {
+      const profile = profileOfTier(tier);
+      const outer =
+        carriagewayHalfWidthOf(profile) + (hasKerbs(profile) ? kerbWidthOf(profile) : 0);
+      // Runs barely over the shortest a segment may be.
+      const { bend, vertices, polar, inArc } = scene(tier, 120, 10.5);
+      expect(bend.setback[0]).toBeLessThanOrEqual(10.5 * 0.45 + 1e-3);
+      for (const v of vertices) expect(Number.isFinite(v.x + v.y + v.z)).toBe(true);
+      const outerY = hasKerbs(profile) ? CURB_Y_OFFSET : ROAD_Y_OFFSET;
+      const edge = vertices.filter(
+        (v) =>
+          Math.abs(v.y - outerY) < 1e-9 &&
+          inArc({ x: v.x, z: v.z }) &&
+          Math.abs(polar({ x: v.x, z: v.z }).r - (bend.radius + outer)) < 5e-3,
+      );
+      expect(edge.length).toBeGreaterThanOrEqual(4);
+    }
+  });
+
+  it('draws a three-arm node as a junction, and two roads of different class as one too', () => {
+    const g = world();
+    const hub = at(400, 400);
+    lay(g, { a: hub, b: at(300, 300) });
+    lay(g, { a: hub, b: at(560, 360) });
+    lay(g, { a: hub, b: at(380, 600) });
+    expect(bendsOf(g.roads!, radiusOf(RoadTier.TwoLane)).size).toBe(0);
+    const soup = freeRoadSoup(g.roads!, noCustom, flat);
+    // The junction's surface fans out from a vertex on the node.
+    const hubAt = (i: number): boolean =>
+      Math.abs(soup.positions[i]! - 400) < 1e-6 && Math.abs(soup.positions[i + 2]! - 400) < 1e-6;
+    let fanned = false;
+    for (let i = 0; i < soup.positions.length; i += 3) fanned = fanned || hubAt(i);
+    expect(fanned).toBe(true);
+
+    const mixed = world();
+    lay(mixed, { tier: RoadTier.TwoLane, a: at(300, 400), b: at(400, 400) });
+    lay(mixed, { tier: RoadTier.Avenue, a: at(400, 400), b: at(480, 470) });
+    expect(bendsOf(mixed.roads!, radiusOf(RoadTier.TwoLane)).size).toBe(0);
+  });
+
+  it('leaves a grid street and a free run of another class, or a third grid arm, a junction', () => {
+    const different = world();
+    applyRoad(
+      different,
+      Array.from({ length: 12 }, (_, i) => ({ x: 13 + i, z: 20 })),
+      RoadTier.TwoLane,
+    );
+    settle(different);
+    lay(different, { tier: RoadTier.Avenue, a: centre(24, 20), b: at(560, 480) });
+    expect(bendsOf(different.roads!, radiusOf(RoadTier.TwoLane)).size).toBe(0);
+
+    const tee = world();
+    applyRoad(
+      tee,
+      Array.from({ length: 12 }, (_, i) => ({ x: 13 + i, z: 20 })),
+      RoadTier.TwoLane,
+    );
+    applyRoad(
+      tee,
+      Array.from({ length: 5 }, (_, i) => ({ x: 24, z: 16 + i })),
+      RoadTier.TwoLane,
+    );
+    settle(tee);
+    lay(tee, { a: centre(24, 20), b: at(560, 480) });
+    expect(bendsOf(tee.roads!, radiusOf(RoadTier.TwoLane)).size).toBe(0);
+  });
+
+  it('keeps every lamp off the carriageway of a bend', () => {
+    for (const deg of [30, 90, 120]) {
+      const { g, bend } = scene(RoadTier.TwoLane, deg, 60);
+      const stands = freeRoadLampStands(g.roads!, noCustom, () => true);
+      expect(stands.length).toBeGreaterThan(0);
+      for (const s of stands) {
+        const nearest = Math.min(...bend.path.map((p) => Math.hypot(p.x - s.x, p.z - s.z)));
+        const alongRuns = freeSegs(g).map((seg) => offsetFrom(g, seg, s).d);
+        // Beside a run, never over the bend's own carriageway.
+        expect(Math.min(nearest, ...alongRuns)).toBeGreaterThanOrEqual(HALF);
+      }
     }
   });
 });

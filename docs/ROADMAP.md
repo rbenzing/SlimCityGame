@@ -25,7 +25,7 @@ current behavior only and carry no dates of their own._
 
 ## Status (2026-09-29)
 
-**Test suite:** 7,540 tests passing across 221 test files, run 2026-11-11.
+**Test suite:** 7,585 tests passing across 222 test files, run 2026-11-11.
 This is the only test count in the documentation set. When the suite changes
 again, update the figure here and nowhere else.
 
@@ -36,9 +36,13 @@ again, update the figure here and nowhere else.
 **Open:**
 
 - What a review of every shot the tools write found wrong in the game is
-  ranked in [open-visual-defects.md](roadmap/open-visual-defects.md). One of
-  its lines is a rule stated and not yet built: a bend drawn as an arc
-  `[R-roads-081]`.
+  ranked in [open-visual-defects.md](roadmap/open-visual-defects.md).
+- A bend turns at its kerb return's radius, not its class's minimum curve
+  radius `[R-roads-081]`: the wider sweep leaves the tiles the road holds, so
+  lots, traffic and saves would have to follow it. Not yet bends: a one-way
+  grid street meeting a free run, and rail, which turns as tight as its
+  corridor. A custom-profile road is driven on its preset's arc; dashes
+  restart at a bend's seams; a bend carries no lamp.
 - A home's fence is cut back against other homes only `[R-render-035]`: a
   turned home beside a shop's or a civic plot's lot is cut to its own
   outline and no further.
