@@ -36,11 +36,10 @@ again, update the figure here and nowhere else.
 **Open:**
 
 - What a review of every shot the tools write found wrong in the game is
-  ranked in [open-visual-defects.md](roadmap/open-visual-defects.md). Four of
-  its lines are rules stated and not yet built: a building beside a street
-  `[R-world-049]`, its front turned to that street `[R-world-050]`, a fence
-  kept to its own lot's line `[R-render-035]` and a bend drawn as an arc
-  `[R-roads-081]`.
+  ranked in [open-visual-defects.md](roadmap/open-visual-defects.md). Three of
+  its lines are rules stated and not yet built: a placed building's front
+  turned to its street `[R-world-050]`, a fence kept to its own lot's line
+  `[R-render-035]` and a bend drawn as an arc `[R-roads-081]`.
 - Three specs are agreed and not yet built:
   [power-distribution.md](specs/power-distribution.md), a street's drawn
   supply, buried cable and the substation `[R-services-039]`;

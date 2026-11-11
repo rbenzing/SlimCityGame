@@ -147,11 +147,19 @@ for (let z = 46; z < 66 && !cycle; z++) {
 if (!cycle) throw new Error('no room on the avenue for the combined-cycle station');
 await place('Combined cycle on the avenue', 'combined-cycle', cycle.x, cycle.z, 3);
 
-// 3. A tower on the river bank beside the town's reactor (x 91-96, z 75-79).
-let tower = null;
-for (let x = 97; x < 112 && !tower; x++)
-  for (let z = 75; z < 80 && !tower; z++) if (freeRect(x, z, 2, 2, 1)) tower = { x, z };
-if (tower) await place('Tower by the reactor', 'res-tower-1', tower.x, tower.z);
+// 3. A tower on the river bank beside the town's reactor (x 91-96, z 75-79). A short street runs
+//    along the reactor's south edge (z 80) from the avenue at x 90, and the tower stands on it.
+const reactorRoad = [];
+for (let x = 91; x <= 101; x++) reactorRoad.push({ x, z: 80 });
+let tower = freeRect(98, 78, 2, 2) && reactorRoad.every((t) => free(t.x, t.z)) ? { x: 98, z: 78 } : null;
+if (tower) {
+  await hook(
+    (tiles) =>
+      window.__slimcity.cmd('Street by the reactor', [{ kind: 'buildRoad', tier: 1, tiles }]),
+    reactorRoad,
+  );
+  await place('Tower by the reactor', 'res-tower-1', tower.x, tower.z);
+}
 console.log(
   'turbine',
   JSON.stringify(turbine),
@@ -282,14 +290,26 @@ await shot('5b-field-closer', 2000);
 let dry = null;
 for (let x = 160; x < 240 && !dry; x += 3)
   for (let z = 100; z < 160 && !dry; z += 3) if (freeRect(x, z, 6, 5, 2)) dry = { x, z };
+// A short street along its south edge, so the world refuses it for want of a shore and not a street.
+const dryRoad = [];
+for (let k = 0; k < 6; k++) dryRoad.push({ x: dry.x + k, z: dry.z + 5 });
+await hook(
+  (tiles) => window.__slimcity.cmd('Street by dry land', [{ kind: 'buildRoad', tier: 1, tiles }]),
+  dryRoad,
+);
 await hook(() => window.__slimcity.setTool('plop.nuclear-plant'));
-await camera(dry.x + 3, dry.z + 2.5, 200, yaw, 0.7);
+// The ghost's footprint starts at the tile under the cursor, so aim the cursor at the dry corner.
+await camera(dry.x - 0.2, dry.z - 0.2, 200, yaw, 0.7);
 await page.waitForTimeout(800);
 await page.mouse.move(640, 400, { steps: 6 });
 await page.mouse.move(645, 402, { steps: 3 });
+const under = await hook(() => window.__slimcity.screenToTile(645, 402));
+if (!under || under.x !== dry.x || under.z !== dry.z)
+  throw new Error(`the ghost is not over the dry land: cursor on ${JSON.stringify(under)}`);
 await shot('6-nuclear-ghost-over-dry-land', 1500);
 await hook(() => window.__slimcity.setTool('select'));
-// The commit over the same dry land, which the world refuses for having no water beside it.
+// The commit over the same dry land, which the world refuses for having no water beside it
+// (the street beside it is there, so the shore is the reason given).
 await hook(
   (d) =>
     window.__slimcity.cmd('Reactor on dry land', [
@@ -304,7 +324,7 @@ const afterDry = await hook(
   dry,
 );
 console.log('reactor on dry land stands after the commit:', afterDry.length > 0);
-await shot('6b-nuclear-commit-over-dry-land', 500, /^Reactor on dry land failed/);
+await shot('6b-nuclear-commit-over-dry-land', 500, /^Reactor on dry land failed It must stand on a shore\.$/);
 
 // Shot 7: night. None of the new kits lights.
 await hook(() => window.__slimcity.setSpeed(1));

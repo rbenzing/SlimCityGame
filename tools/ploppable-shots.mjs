@@ -98,7 +98,10 @@ const place = (catalogId, x, z, rotation) =>
 // Station A fills the block between the track and the street, its short edge on
 // the track; station B stands with its long edge on the track.
 await place('rail-station', X + 8, Z - 3, 0);
-await place('rail-station', X + 22, Z - 3, 1);
+// B turned, it is two deep and stands on the street's kerb, so a short siding
+// off the main track runs along its north edge.
+await row(Z - 3, RT.RailTrack, X + 21, X + 25);
+await place('rail-station', X + 22, Z - 2, 1);
 // The clinic on the street's south kerb, turned to face it; the bus stops are
 // street furniture on the street tiles themselves, on the south side.
 await place('clinic', X + 2, Z + 1, 2);
@@ -154,7 +157,7 @@ await hook(
 const PITCH = 0.6;
 const clinic = { x: X + 2, z: Z + 1.5 };
 const stationA = { x: X + 8.5, z: Z - 2 };
-const stationB = { x: X + 23, z: Z - 2.5 };
+const stationB = { x: X + 23, z: Z - 1.5 };
 const shelterOf = (x) => ({ x: x - 0.16, z: Z + 0.56 });
 const views = [
   ['a-clinic-street', clinic.x, clinic.z, 60, Math.PI, PITCH],

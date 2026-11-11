@@ -3,6 +3,7 @@ import { MAP_TILES, SPEED_MULTIPLIERS, START_FUNDS, TICK_MS } from '../../src/sh
 import { FieldId, RoadTier, SAVE_VERSION, ZoneType } from '../../src/shared/types';
 import type { Command, GridState } from '../../src/shared/types';
 import { tileIndex } from '../../src/shared/constants';
+import { PLACEMENT_REFUSALS } from '../../src/shared/placement';
 import { decodeSave, encodeSave } from '../../src/app/persist';
 import {
   entryOf,
@@ -107,7 +108,10 @@ describe('worker sim', () => {
     h.sim.handleMessage({ type: 'loadSave', data: encodeSave(payload) });
     h.sim.handleMessage({ type: 'commands', seq: 5, commands: [{ kind: 'setSandbox', on: true }] });
 
-    send(h, 6, [{ kind: 'placeBuilding', catalogId: 'airport', x: 150, z: 150, rotation: 0 }]);
+    send(h, 6, [
+      { kind: 'buildRoad', tier: RoadTier.TwoLane, tiles: roadRow(150, 149, 12) },
+      { kind: 'placeBuilding', catalogId: 'airport', x: 150, z: 150, rotation: 0 },
+    ]);
     h.ticks(1);
     const buildingAck = h.ackFor(6)!;
     expect(buildingAck.ok).toBe(true);
@@ -155,7 +159,10 @@ describe('worker sim', () => {
     // Unlimited money on: the same placement now succeeds despite the low funds.
     send(h, 11, [{ kind: 'setUnlimitedMoney', on: true }]);
     h.ticks(1);
-    send(h, 12, [{ kind: 'placeBuilding', catalogId: 'coal-plant', x: 110, z: 110, rotation: 0 }]);
+    send(h, 12, [
+      { kind: 'buildRoad', tier: RoadTier.TwoLane, tiles: roadRow(110, 109, 8) },
+      { kind: 'placeBuilding', catalogId: 'coal-plant', x: 110, z: 110, rotation: 0 },
+    ]);
     h.ticks(1);
     const ack = h.ackFor(12)!;
     expect(ack.ok).toBe(true);
@@ -240,7 +247,7 @@ describe('worker sim', () => {
     h.ticks(1);
     const ack = h.ackFor(6);
     expect(ack!.ok).toBe(false);
-    expect(ack!.reason).toBe('invalid');
+    expect(ack!.reason).toBe(PLACEMENT_REFUSALS.occupied);
   });
 
   it('bulldozes a road with a partial refund and a rebuilding inverse', () => {

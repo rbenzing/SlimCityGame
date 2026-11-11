@@ -9,7 +9,7 @@ import {
   roadPriceOf,
 } from '../../src/shared/roadprofile';
 import { soundWallPrice } from '../../src/shared/soundwall';
-import { FieldId, RoadTier } from '../../src/shared/types';
+import { FieldId, RoadTier, type Command } from '../../src/shared/types';
 import {
   catalog,
   initialized,
@@ -18,11 +18,23 @@ import {
   latestSaveGrid,
   roadRow,
   send,
+  streetNorthOf,
+  twoLaneSpec,
   type Harness,
 } from '../support/sim';
 import { guardRoadNetwork } from '../support/guard';
 
 guardRoadNetwork();
+
+/**
+ * A building stands beside a street, and a motorway is not one: the home at
+ * (100, 101) and the shop at (120, 101) each get a two-lane stub on the side
+ * away from the motorway, which never joins it.
+ */
+const HOMESTEADS: Command[] = [
+  { kind: 'buildRoad', tier: RoadTier.TwoLane, tiles: roadRow(100, 103, 2) },
+  { kind: 'buildRoad', tier: RoadTier.TwoLane, tiles: roadRow(120, 102, 2) },
+];
 
 describe('landmark noise: the airport is heard around it', () => {
   const airport = catalog.find((e) => e.id === 'airport')!;
@@ -46,6 +58,7 @@ describe('landmark noise: the airport is heard around it', () => {
     expect(before).not.toBeNull();
     expect(before!.every((v) => v === 0)).toBe(true);
 
+    send(h, 0, [streetNorthOf(100, 100, 2)]);
     send(h, 1, [{ kind: 'placeBuilding', catalogId: 'airport', x: 100, z: 100, rotation: 0 }]);
     // 8 ticks cover the %4==3 emission slot (twice) and the Noise field's own
     // %4==1 diffusion slot, so neighbors have received spill-over too.
@@ -54,7 +67,10 @@ describe('landmark noise: the airport is heard around it', () => {
     const ack = h.ackFor(1)!;
     expect(ack.ok).toBe(true);
     expect(ack.cost).toBe(airport.cost);
-    expect(h.lastSnapshot()!.stats.funds).toBeCloseTo(100_000 - airport.cost, 5);
+    expect(h.lastSnapshot()!.stats.funds).toBeCloseTo(
+      100_000 - airport.cost - 2 * twoLaneSpec.costPerTile,
+      5,
+    );
 
     h.sim.handleMessage({ type: 'requestField', field: FieldId.Noise });
     const after = latestNoiseField(h)!;
@@ -70,6 +86,7 @@ describe('landmark noise: the airport is heard around it', () => {
 
   it('stops emitting once the airport is bulldozed (Noise decays back toward zero)', () => {
     const h = initializedAtMilestone5();
+    send(h, 0, [streetNorthOf(100, 100, 2)]);
     send(h, 1, [{ kind: 'placeBuilding', catalogId: 'airport', x: 100, z: 100, rotation: 0 }]);
     h.ticks(8);
     h.sim.handleMessage({ type: 'requestField', field: FieldId.Noise });
@@ -91,6 +108,7 @@ describe('road noise: a busy road is loud and a quiet one is not', () => {
     // Busy corridor: a straight highway with an active home at one end and an
     // active shop at the other — traffic routes all its trips over this edge.
     // Quiet control: an identical-length gravel road 40 tiles away, no buildings.
+    send(h, 0, HOMESTEADS);
     send(h, 1, [
       { kind: 'buildRoad', tier: RoadTier.Highway, tiles: roadRow(100, 100, 21) },
       { kind: 'buildRoad', tier: RoadTier.Gravel, tiles: roadRow(100, 140, 21) },
@@ -127,6 +145,7 @@ describe('a sound wall along a busy motorway', () => {
   /** The busy motorway of the test above, with walls or without, and its noise after 24 ticks. */
   function busyMotorway(withWalls: boolean): { h: Harness; noise: Uint8Array } {
     const h = initializedAtMilestone5();
+    send(h, 0, HOMESTEADS);
     send(h, 1, [
       ...(withWalls ? [{ kind: 'defineRoadProfile' as const, id: WALLED, profile: walled }] : []),
       {

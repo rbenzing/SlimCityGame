@@ -87,6 +87,14 @@ describe('cityIssues', () => {
     expect(cutOff?.focus).toEqual({ x: 10, z: 10 });
   });
 
+  it('does not count a kind that stands off the street by design, and still counts an old save’s building', () => {
+    const turbine = building(Problem.NoRoad, { catalogId: 'wind-turbine' });
+    const stranded = building(Problem.NoRoad, { catalogId: 'water-tower' });
+    expect(cityIssues([turbine], healthyStats()).find((i) => i.id === 'no-road')).toBeUndefined();
+    const issues = cityIssues([turbine, stranded], healthyStats());
+    expect(issues.find((i) => i.id === 'no-road')?.count).toBe(1);
+  });
+
   it('reads every flag on a building that has several at once', () => {
     const issues = cityIssues(
       [building(Problem.NoPower | Problem.NoWater | Problem.HighCrime)],

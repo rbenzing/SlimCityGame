@@ -171,10 +171,11 @@ Back to [the index](../GROUND-TRUTHS.md).
   the pumping station and the drain stand off the street, where a power line
   or a pipe reaches them. The worker refuses the placement with a worded
   reason, the ghost refuses it through the same predicate, and a building an
-  older save holds off the street stays where it is. A zoned lot is grown,
-  not placed, and keeps its own frontage rule. —
-  [municipal-services.md](../specs/municipal-services.md);
-  `cmdPlaceBuilding` in `src/sim/worker.entry.ts`, `src/world/grid.ts`
+  older save holds off the street stays where it is; undoing its demolition
+  puts it back. A zoned lot is grown, not placed, and keeps its own frontage
+  rule. — [municipal-services.md](../specs/municipal-services.md);
+  `touchesStreet` in `src/world/grid.ts`, `PLACEMENT_REFUSALS` in
+  `src/shared/placement.ts`, `cmdPlaceBuilding` in `src/sim/worker.entry.ts`
 - [R-world-050] A placed building fronts its street: the edge its door, drive and car
   park open on is the edge that touches the street. The ghost turns its front
   to the street it touches and slides up to a street one tile away; the

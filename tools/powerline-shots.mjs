@@ -87,10 +87,10 @@ const row = (z, a, c) => Array.from({ length: c - a + 1 }, (_, i) => ({ x: X + a
 
 // A generator on a short street of its own (a building off every street is cut
 // off), and an island of road far off with nothing joining the two.
+await cmd('plant street', [{ kind: 'buildRoad', tier: 1, tiles: row(14, 1, 4) }]);
 await cmd('plant', [
   { kind: 'placeBuilding', catalogId: 'coal-plant', x: X + 1, z: Z + 10, rotation: 0 },
 ]);
-await cmd('plant street', [{ kind: 'buildRoad', tier: 1, tiles: row(14, 1, 4) }]);
 await cmd('island', [{ kind: 'buildRoad', tier: 1, tiles: row(10, 20, 26) }]);
 await page.waitForTimeout(3000);
 

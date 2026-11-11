@@ -346,10 +346,18 @@ describe('stops in the worker', () => {
     const north = { x: 102, z: 99 };
     const south = { x: 106, z: 101 };
     const lost = { x: 50, z: 50 };
+    // The lost one stands where only an old save could have left it: off the street.
     for (const [i, t] of [north, south, lost].entries()) {
       expect(
         run(h, 2 + i, [
-          { kind: 'placeBuilding', catalogId: 'small-park', x: t.x, z: t.z, rotation: 0 },
+          {
+            kind: 'placeBuilding',
+            catalogId: 'small-park',
+            x: t.x,
+            z: t.z,
+            rotation: 0,
+            ...(t === lost ? { restore: true as const } : {}),
+          },
         ]).ok,
       ).toBe(true);
     }

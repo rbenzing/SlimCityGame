@@ -697,6 +697,12 @@ export type Command =
        * the undo of demolishing one sends it, so it stands back where it was.
        */
       frame?: ParcelFrame;
+      /**
+       * Stand it back exactly where it was, without asking whether a player
+       * could place it now: a building can outlive the street it stood
+       * beside. Only the undo of a demolition sends it.
+       */
+      restore?: true;
     }
   | { kind: 'setTaxRate'; sector: Sector; rate: number } // 0..0.3
   | { kind: 'setServiceFunding'; service: FundingKey; funding: number } // 0..1.5
@@ -1436,6 +1442,11 @@ export interface BuildingCatalogEntry {
    * on the tram track, judged by the tier the tram graph is built from.
    */
   requiresAdjacent?: 'rail' | 'water' | 'tram';
+  /**
+   * Stands off the street, reached by a power line or a pipe instead. Every
+   * other placed building has to touch a street.
+   */
+  offStreet?: true;
   /**
    * A transit depot: the vehicles it holds, in buses or in tram or train sets,
    * for the one mode it serves. A fifth are spares, so it fields the rest onto

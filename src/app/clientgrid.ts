@@ -35,6 +35,8 @@ import {
 import { runsAlongZ, type BridgeDeckTile } from '../render/bridges';
 import type { PlacedWall } from '../render/soundwalls';
 import { soundWallsAt, type SoundWallReader } from '../shared/soundwallsites';
+import { PLACEMENT_NEEDS, PLACEMENT_REFUSALS } from '../shared/placement';
+import { touchesStreet } from '../world/grid';
 import { deriveRoadFootprint } from '../world/freeroads';
 import { decodeRoadNetwork } from '../world/roadnet';
 import { axisOfFlow } from '../shared/overpass';
@@ -863,6 +865,23 @@ export class ClientGridMirror {
       }
     }
     return false;
+  }
+
+  /**
+   * The sentence the worker would refuse `entry` standing on `tiles` with for
+   * want of a street or of the track or shore it needs, or null when it has
+   * both. The slope and the overlap stay the worker's to judge.
+   */
+  placeRefusal(entry: BuildingCatalogEntry | undefined, tiles: TilePoint[]): string | null {
+    if (!entry || tiles.length === 0) return null;
+    if (!entry.offStreet && !touchesStreet(this, tiles)) return PLACEMENT_REFUSALS.needsStreet;
+    if (!entry.requiresAdjacent) return null;
+    const x0 = Math.min(...tiles.map((t) => t.x));
+    const z0 = Math.min(...tiles.map((t) => t.z));
+    const w = Math.max(...tiles.map((t) => t.x)) - x0 + 1;
+    const d = Math.max(...tiles.map((t) => t.z)) - z0 + 1;
+    if (this.hasAdjacent(entry.requiresAdjacent, x0, z0, w, d)) return null;
+    return PLACEMENT_REFUSALS[PLACEMENT_NEEDS[entry.requiresAdjacent]];
   }
 
   /**
