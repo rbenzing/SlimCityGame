@@ -21,6 +21,7 @@ import {
   UNMETERED_SUPPLY,
   drawKind,
   farmKindFor,
+  footprintsOf,
   lotGrade,
   spawnCandidates,
   withinRoom,
@@ -51,6 +52,7 @@ import {
   takesWholeParcels,
 } from '../world/plat';
 import type { PlatSource } from '../world/plat';
+import { garageFor } from '../shared/garage';
 import catalogData from '../data/catalog.json';
 
 function makeGrid(): GridState {
@@ -2897,10 +2899,12 @@ describe('a business opens where the town has room for its jobs', () => {
       expect([grown.x, grown.z, grown.rotation]).toEqual([1, 2, 1]);
     });
 
+    // A block two lots deep holds the 2x2 lot its car park needs, so the flats
+    // open on two normal lots side by side (before: on one normal lot each).
     it.each([
-      ['high-density flats', ZoneType.ResHigh, resHigh],
-      ['shopfront flats', ZoneType.Mixed, mixed],
-    ])('opens %s on one normal lot', (_name, zone, cat) => {
+      ['high-density flats', ZoneType.ResHigh, resHigh, 'res-high-1-lot2x2'],
+      ['shopfront flats', ZoneType.Mixed, mixed, 'mixed-1-lot2x2'],
+    ])('opens %s on the 2x2 lot its car park needs', (_name, zone, cat, id) => {
       const g = block(zone, 8, 2);
       const plat = platOf(platSourceOf(g, null, g.fields[FieldId.LandValue]), zone);
       const registry = new BuildingRegistry(cat);
@@ -2909,10 +2913,194 @@ describe('a business opens where the town has room for its jobs', () => {
       expect(first.length).toBeGreaterThan(0);
       for (const b of first) {
         expect(b.level).toBe(1);
-        expect(b.catalogId).toBe(zone === ZoneType.ResHigh ? 'res-high-1' : 'mixed-1');
+        expect(b.catalogId).toBe(id);
+        expect(takesFrontageLots(plat, b.x, b.z, 2, 2, 'N'), `${b.x},${b.z}`).toBe(true);
+        const p = plat.parcels[plat.parcelAt[tileIndex(b.x, b.z)]!]!;
+        expect(p.lot).toBe('normal');
+      }
+    });
+
+    // Where the site holds no car-park lot, the kind grows on one normal lot, as it always did.
+    it.each([
+      ['high-density flats', ZoneType.ResHigh, resHigh, 'res-high-1'],
+      ['shopfront flats', ZoneType.Mixed, mixed, 'mixed-1'],
+    ])('opens %s on one normal lot where no car-park lot fits', (_name, zone, cat, id) => {
+      const g = block(zone, 1, 2);
+      const plat = platOf(platSourceOf(g, null, g.fields[FieldId.LandValue]), zone);
+      const registry = new BuildingRegistry(cat);
+      tick(g, registry, cat, zone, { res: 1, com: 1, ind: 0 });
+      const first = registry.all();
+      expect(first.length).toBeGreaterThan(0);
+      for (const b of first) {
+        expect(b.level).toBe(1);
+        expect(b.catalogId).toBe(id);
         expect(takesFrontageLots(plat, b.x, b.z, 1, 2, 'N'), `${b.x},${b.z}`).toBe(true);
         const p = plat.parcels[plat.parcelAt[tileIndex(b.x, b.z)]!]!;
         expect(p.lot).toBe('normal');
+      }
+    });
+  });
+
+  describe('a level-1 dense kind stands in a car park, and still grows where there is no room for one', () => {
+    const all = (catalogData as { buildings: BuildingCatalogEntry[] }).buildings;
+    const kinds = [
+      { kind: 'midrise', zone: ZoneType.ResHigh, own: 'res-high-1', lot: 'res-high-1-lot2x2' },
+      { kind: 'mixed', zone: ZoneType.Mixed, own: 'mixed-1', lot: 'mixed-1-lot2x2' },
+      { kind: 'office', zone: ZoneType.ComHigh, own: 'com-high-1', lot: 'com-high-1-lot4x4' },
+      { kind: 'hotel', zone: ZoneType.ComHigh, own: 'com-hotel-1', lot: 'com-hotel-1-lot3x3' },
+    ] as const;
+    const catalogOf = (kind: BuildingKind, zone: ZoneType): BuildingCatalogEntry[] =>
+      all.filter((e) => e.kind === kind && e.zone === zone);
+    const oldCatalog = (zone: ZoneType): BuildingCatalogEntry[] =>
+      all.filter(
+        (e) =>
+          e.zone === zone &&
+          !(e.bodyFootprint !== undefined && ['midrise', 'mixed', 'office', 'hotel'].includes(e.kind!)),
+      );
+    const demand: DemandLevels = { res: 1, com: 1, ind: 0 };
+    const grow = (
+      g: GridState,
+      registry: BuildingRegistry,
+      cat: BuildingCatalogEntry[],
+      zone: ZoneType,
+      pass: number,
+    ): void => {
+      new GrowthSystem(cat, seededRng(7), onZoned(zone)).tick(
+        g,
+        registry,
+        demand,
+        4,
+        pass,
+        UNMETERED_SUPPLY,
+        UNLIMITED_ROOM,
+      );
+    };
+    /** Every building a zone grows over `passes` growth passes, as `pass:id@x,z`. */
+    const sequence = (
+      zone: ZoneType,
+      w: number,
+      d: number,
+      cat: BuildingCatalogEntry[],
+      passes = 14,
+    ): string[] => {
+      const g = block(zone, w, d);
+      const registry = new BuildingRegistry(cat);
+      const out: string[] = [];
+      for (let pass = 0; pass < passes; pass++) {
+        const before = new Set(registry.all().map((b) => b.id));
+        grow(g, registry, cat, zone, pass);
+        for (const b of registry.all()) {
+          if (!before.has(b.id)) out.push(`${pass}:${b.catalogId}@${b.x},${b.z}`);
+        }
+      }
+      return out;
+    };
+
+    it.each(kinds)('opens a $kind on the smallest lot that holds its code, on open ground', (k) => {
+      const cat = catalogOf(k.kind, k.zone);
+      const g = block(k.zone, 8, 6);
+      const registry = new BuildingRegistry(cat);
+      grow(g, registry, cat, k.zone, 0);
+      const grown = registry.all();
+      expect(grown.length).toBeGreaterThan(0);
+      for (const b of grown) expect(b.catalogId).toBe(k.lot);
+    });
+
+    // The widest ground a kind's lot does not fit but its own footprint does.
+    it.each([
+      { ...kinds[0], w: 1, d: 2 },
+      { ...kinds[1], w: 1, d: 2 },
+      { ...kinds[2], w: 8, d: 2 },
+      { ...kinds[3], w: 8, d: 2 },
+    ])('grows a $kind on its own footprint where the zone holds no lot for a car park', (k) => {
+      const cat = catalogOf(k.kind, k.zone);
+      const g = block(k.zone, k.w, k.d);
+      const registry = new BuildingRegistry(cat);
+      grow(g, registry, cat, k.zone, 0);
+      const grown = registry.all();
+      expect(grown.length).toBeGreaterThan(0);
+      for (const b of grown) expect(b.catalogId).toBe(k.own);
+    });
+
+    it('grows a two-deep ComHigh block exactly what it grew before the car-park lots existed', () => {
+      const now = sequence(ZoneType.ComHigh, 8, 2, all.filter((e) => e.zone === ZoneType.ComHigh));
+      const before = sequence(ZoneType.ComHigh, 8, 2, oldCatalog(ZoneType.ComHigh));
+      expect(now.length).toBeGreaterThan(0);
+      expect(now).toEqual(before);
+      for (const entry of now) expect(entry).not.toMatch(/lot\d/);
+    });
+
+    it.each([ZoneType.ResHigh, ZoneType.Mixed])(
+      'grows a one-lot-wide block of zone %s exactly what it grew before',
+      (zone) => {
+        const cat = all.filter((e) => e.zone === zone);
+        const now = sequence(zone, 1, 2, cat);
+        const before = sequence(zone, 1, 2, oldCatalog(zone));
+        expect(now.length).toBeGreaterThan(0);
+        expect(now).toEqual(before);
+      },
+    );
+
+    it('leaves a standing level-1 building on its own footprint untouched, in a town that grows around it', () => {
+      for (const k of kinds) {
+        const cat = all.filter((e) => e.zone === k.zone);
+        const own = cat.find((e) => e.id === k.own)!;
+        const g = block(k.zone, 8, 2);
+        const registry = new BuildingRegistry(cat);
+        registry.place(g, own, 0, 1, 0, BuildingState.Active);
+        for (let pass = 0; pass < 6; pass++) grow(g, registry, cat, k.zone, pass);
+        // It stands, never held to the car-park code, and a level-up takes no larger lot.
+        const still = registry.all().find((b) => b.x === 0 && b.z === 1)!;
+        expect(still, k.own).toBeDefined();
+        expect(still.state, k.own).not.toBe(BuildingState.Abandoned);
+        expect(still.catalogId, k.own).not.toMatch(/-lot\d/);
+        expect(all.find((e) => e.id === still.catalogId)!.kind, k.own).toBe(k.kind);
+      }
+    });
+
+    it.each(kinds)('levels a $kind on its larger lot up onto the same lot', (k) => {
+      const cat = catalogOf(k.kind, k.zone);
+      const lot = cat.find((e) => e.id === k.lot)!;
+      const g = block(k.zone, 8, 6);
+      const registry = new BuildingRegistry(cat);
+      const standing = registry.place(g, lot, 1, 1, 0, BuildingState.Active)!;
+      for (let pass = 0; pass < 8; pass++) grow(g, registry, cat, k.zone, pass);
+      const next = registry.all().find((b) => b.x === 1 && b.z === 1 && b.level === 2);
+      expect(next, k.lot).toBeDefined();
+      const grownEntry = all.find((e) => e.id === next!.catalogId)!;
+      expect(grownEntry.footprint.w).toBeGreaterThanOrEqual(lot.footprint.w);
+      expect(grownEntry.footprint.d).toBeGreaterThanOrEqual(lot.footprint.d);
+      expect(registry.get(standing.id)).toBeUndefined();
+      const garage = garageFor(grownEntry)!;
+      expect(garage, grownEntry.id).not.toBeNull();
+      expect(garage.deck.u1).toBeLessThanOrEqual(grownEntry.footprint.w * TILE_METERS + 1e-9);
+      expect(garage.deck.v1).toBeLessThanOrEqual(grownEntry.footprint.d * TILE_METERS + 1e-9);
+      expect(garage.body.u1).toBeLessThanOrEqual(grownEntry.footprint.w * TILE_METERS + 1e-9);
+    });
+
+    it('keeps a standing level-1 office on its own footprint when it levels up: the larger lots are for a building that stood on one', () => {
+      const cat = all.filter((e) => e.zone === ZoneType.ComHigh);
+      const own = cat.find((e) => e.id === 'com-high-1')!;
+      const g = block(ZoneType.ComHigh, 8, 6);
+      const registry = new BuildingRegistry(cat);
+      registry.place(g, own, 1, 1, 0, BuildingState.Active);
+      for (let pass = 0; pass < 8; pass++) grow(g, registry, cat, ZoneType.ComHigh, pass);
+      const next = registry.all().find((b) => b.x === 1 && b.z === 1 && b.level === 2);
+      if (next) expect(next.catalogId).toBe('com-office-2');
+    });
+
+    it('never offers a larger level-2 or level-3 lot except to the building that stood on it', () => {
+      for (const k of kinds.filter((x) => x.kind === 'office' || x.kind === 'hotel')) {
+        const cat = catalogOf(k.kind, k.zone);
+        for (const level of [2, 3]) {
+          const base = cat.find((e) => e.level === level && e.bodyFootprint === undefined);
+          if (!base) continue;
+          const lots = footprintsOf(cat, base).filter((e) => e.bodyFootprint !== undefined);
+          const lot = cat.find((e) => e.id === k.lot)!;
+          for (const l of lots) {
+            expect(l.footprint, l.id).toEqual(lot.footprint);
+          }
+        }
       }
     });
   });

@@ -984,7 +984,8 @@ describe('a high-density block houses the homes its catalog plates were counted 
   };
 
   it('covers every mid-rise, tower and mixed-use block', () => {
-    expect(blocks).toHaveLength(9);
+    // Nine blocks, and the level-1 mid-rise's and mixed-use block's larger lots.
+    expect(blocks).toHaveLength(11);
   });
 
   it.each(blocks.map((e) => [e.id, e] as const))('%s', (id, e) => {

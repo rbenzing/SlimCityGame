@@ -4,6 +4,7 @@ import catalogData from '../data/catalog.json';
 import { LOT_TREE_SCALE, ParkedCarRenderer } from './parked';
 import { lotPlanFor, lotPointToWorld, type LotPlan } from './lotplan';
 import { isWalkUpEntry } from './archetypes';
+import { isDenseLotEntry, lotParkingRequirement } from '../shared/parkingcode';
 import { kitPlanFor, placementBounds } from './buildingkit';
 import { footprintForRotation } from '../shared/footprint';
 import {
@@ -15,9 +16,11 @@ import {
 import type { LotRect } from '../shared/lotlayout';
 
 const catalog = (catalogData as { buildings: BuildingCatalogEntry[] }).buildings;
-/** Every kind that lays a car park on its lot: suburban commerce, industry and the walk-ups. */
+/** Every kind that lays a car park on its lot: suburban commerce, industry, the walk-ups and a dense kind on its larger level-1 lot. */
 const parkers = catalog.filter(
-  (e) => (e.category === 'com' || e.category === 'ind' || isWalkUpEntry(e)) && e.zone !== 9,
+  (e) =>
+    (e.category === 'com' || e.category === 'ind' || isWalkUpEntry(e) || isDenseLotEntry(e)) &&
+    e.zone !== 9,
 );
 
 type Side = 'N' | 'S' | 'E' | 'W';
@@ -208,6 +211,23 @@ describe('a lot car park, one vehicle to a stall', () => {
     }
     expect(lots).toBeGreaterThan(0);
     expect(faults).toEqual([]);
+    // Every lot kind at every turn and side: five seconds alone, several times that on a loaded machine.
+  }, 60_000);
+
+  it('parks a level-1 dense kind on its larger lot a car a stall, and reports the lot’s stalls as its own', () => {
+    const lots = catalog.filter(isDenseLotEntry);
+    expect(lots).toHaveLength(4);
+    for (const entry of lots) {
+      for (const side of SIDES) {
+        const r = render({ entry, side, rotation: 0, level: 1 });
+        expect(r, `${entry.id} ${side}`).not.toBeNull();
+        const { plan, renderer, cars } = r!;
+        expect(plan.layout.stalls.length, entry.id).toBe(lotParkingRequirement(entry)!.spaces);
+        expect(cars, entry.id).toHaveLength(plan.layout.stalls.length);
+        expect(renderer.ownStallCount(7), entry.id).toBe(plan.layout.stalls.length);
+        expect(renderer.garageStallCount(7), entry.id).toBe(0);
+      }
+    }
   });
 
   it('keeps every vehicle off the drive aisles, the hatched access aisles and the body', () => {

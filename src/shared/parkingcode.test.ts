@@ -2,12 +2,14 @@ import { describe, expect, it } from 'vitest';
 import catalogData from '../data/catalog.json';
 import type { BuildingCatalogEntry } from './types';
 import { ZoneType } from './types';
-import { grossFloorSqFt } from './floorarea';
+import { grossFloorM2, grossFloorSqFt, storeysOf } from './floorarea';
 import {
   AISLE_WIDTH_M,
   berthTableLimit,
   DOUBLE_MODULE_M,
   drawsLotParking,
+  HOTEL_ROOM_M2,
+  isDenseLotEntry,
   islandsInRow,
   loadingBerths,
   lotParkingRequirement,
@@ -23,7 +25,7 @@ import {
   walkUpParkingRequirement,
   lotSpacesFor,
 } from './parkingcode';
-import { holdsLotParkingAt, lotParkingAt } from './lotparking';
+import { holdsLotParkingAt, lotLayoutFor, lotParkingAt } from './lotparking';
 
 const catalog = (catalogData as { buildings: BuildingCatalogEntry[] }).buildings;
 
@@ -51,7 +53,8 @@ describe('a walk-up’s car park', () => {
   it('is drawn for no other home and no downtown block, which keep the kerb', () => {
     for (const e of catalog.filter((c) => c.category === 'res' && !walkUps.includes(c))) {
       expect(walkUpParkingRequirement(e), e.id).toBeNull();
-      expect(lotSpacesFor(e), e.id).toBeNull();
+      // A mid-rise or a mixed-use block on its larger level-1 lot parks to code; the rest keep the kerb.
+      if (!isDenseLotEntry(e)) expect(lotSpacesFor(e), e.id).toBeNull();
     }
   });
 
@@ -165,17 +168,119 @@ describe('the parking code', () => {
     expect([0, 1, 10, 11].map(treesFor)).toEqual([0, 1, 1, 2]);
   });
 
-  it('draws lot parking for suburban commerce and industry only: never downtown, a farm or a home', () => {
+  it('draws lot parking for suburban commerce and industry and a dense kind’s level-1 larger lot only: never downtown on its own footprint, a farm or a home', () => {
     for (const e of catalog) {
       const expected =
-        (e.category === 'com' || e.category === 'ind') &&
-        e.zone !== ZoneType.Agriculture &&
-        e.zone !== ZoneType.ComHigh &&
-        e.zone !== ZoneType.Mixed;
+        isDenseLotEntry(e) ||
+        ((e.category === 'com' || e.category === 'ind') &&
+          e.zone !== ZoneType.Agriculture &&
+          e.zone !== ZoneType.ComHigh &&
+          e.zone !== ZoneType.Mixed);
       expect(drawsLotParking(e), e.id).toBe(expected);
     }
     expect(
-      catalog.filter((e) => e.kind === 'office' || e.kind === 'hotel').some(drawsLotParking),
+      catalog
+        .filter((e) => (e.kind === 'office' || e.kind === 'hotel') && !isDenseLotEntry(e))
+        .some(drawsLotParking),
     ).toBe(false);
+  });
+});
+
+describe('a level-1 dense kind on its larger lot', () => {
+  const byId = (id: string): BuildingCatalogEntry => catalog.find((e) => e.id === id)!;
+  const required = (id: string): number => lotParkingRequirement(byId(id))!.spaces;
+  const lots = catalog.filter(isDenseLotEntry);
+
+  it('is the four level-1 kinds on their appended lots, and no other entry', () => {
+    expect(lots.map((e) => e.id).sort()).toEqual([
+      'com-high-1-lot4x4',
+      'com-hotel-1-lot3x3',
+      'mixed-1-lot2x2',
+      'res-high-1-lot2x2',
+    ]);
+  });
+
+  it('parks an office at 3 a 1,000 sq ft of its floor', () => {
+    expect(requiredSpaces('office', 10_000)).toBe(30);
+    expect(required('com-high-1-lot4x4')).toBe(
+      Math.ceil((3 * grossFloorSqFt(byId('com-high-1'))) / 1000),
+    );
+    expect(required('com-high-1-lot4x4')).toBe(120);
+  });
+
+  it('parks apartments at 1.4 a home', () => {
+    expect(required('res-high-1-lot2x2')).toBe(Math.ceil(1.4 * 17));
+  });
+
+  it('parks a hotel a room, a room being 45 m² of floor', () => {
+    expect(HOTEL_ROOM_M2).toBe(45);
+    expect(required('com-hotel-1-lot3x3')).toBe(
+      Math.ceil(grossFloorM2(byId('com-hotel-1')) / HOTEL_ROOM_M2),
+    );
+    expect(required('com-hotel-1-lot3x3')).toBe(66);
+  });
+
+  it('parks a mixed-use block its homes at the apartment rate and its shop floor at the shop’s rate, less the shop’s exemption', () => {
+    const e = byId('mixed-1-lot2x2');
+    const shopSqFt = grossFloorSqFt(e) / storeysOf(e);
+    expect(shopSqFt).toBeGreaterThan(SMALL_USE_EXEMPT_SQ_FT);
+    expect(required('mixed-1-lot2x2')).toBe(Math.ceil(1.4 * 10) + requiredSpaces('shop', shopSqFt));
+    expect(required('mixed-1-lot2x2')).toBe(19);
+  });
+
+  it('draws its floor from its body, so a larger lot never adds floor or jobs', () => {
+    for (const e of lots) {
+      const base = catalog.find((b) => b.id === e.id.replace(/-lot\d+x\d+$/, ''))!;
+      expect(grossFloorSqFt(e), e.id).toBeCloseTo(grossFloorSqFt(base), 6);
+    }
+  });
+
+  it('takes the kerb’s credit off what its lot holds, as any lot does', () => {
+    for (const e of lots) {
+      const full = lotLayoutFor(e, 0, true, 0)!;
+      expect(full.required, e.id).toBe(lotParkingRequirement(e)!.spaces);
+      expect(lotLayoutFor(e, 0, true, 7)!.required, e.id).toBe(full.required - 7);
+    }
+  });
+
+  it('holds the code’s spaces on the smallest square lot that holds them, whichever street side it fronts', () => {
+    const smallestHolding = (base: BuildingCatalogEntry): number => {
+      const floor = Math.max(base.footprint.w, base.footprint.d);
+      for (let n = floor; n <= 6; n++) {
+        const lot = { ...base, footprint: { w: n, d: n }, bodyFootprint: base.footprint };
+        if ([true, false].every((alongX) => lotLayoutFor(lot, 0, alongX, 0)!.fits)) return n;
+      }
+      return Infinity;
+    };
+    for (const e of lots) {
+      const base = catalog.find((b) => b.id === e.id.replace(/-lot\d+x\d+$/, ''))!;
+      expect(e.footprint.w, e.id).toBe(smallestHolding(base));
+      for (const alongX of [true, false]) {
+        const layout = lotLayoutFor(e, 0, alongX, 0)!;
+        expect(layout.fits, e.id).toBe(true);
+        expect(layout.provided, e.id).toBe(layout.required);
+      }
+    }
+  });
+
+  it('keeps its body clear of the street line by what its street face reaches', () => {
+    for (const e of lots) {
+      const layout = lotLayoutFor(e, 0, true, 0)!;
+      const reach = { 'com-high-1': 1.5, 'com-hotel-1': 6, 'mixed-1': 0, 'res-high-1': 1.8 }[
+        e.id.replace(/-lot\d+x\d+$/, '')
+      ]!;
+      expect(layout.body.v0, e.id).toBeGreaterThanOrEqual(reach - 1e-9);
+    }
+  });
+
+  it('parks at the kerb on its own footprint, as before', () => {
+    for (const id of ['com-high-1', 'com-hotel-1', 'mixed-1', 'res-high-1']) {
+      expect(drawsLotParking(byId(id)), id).toBe(false);
+      expect(lotSpacesFor(byId(id)), id).toBeNull();
+      expect(
+        holdsLotParkingAt(byId(id), 10, 10, 0, () => false, null),
+        id,
+      ).toBe(true);
+    }
   });
 });

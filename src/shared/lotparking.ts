@@ -11,8 +11,10 @@ import { bodyMetresFor } from './floorarea';
 import { kerbCreditFor, type KerbSurroundings } from './kerblayout';
 import { layoutLot, type LotLayout } from './lotlayout';
 import { isWalkUpKind } from './buildingkind';
+import { GARAGE_FRONT_PROJECTION_M, hasPodium, PODIUM_OVERHANG_M } from './garage';
 import {
   drawsLotParking,
+  isDenseLotEntry,
   lotSpacesFor,
   onSiteSpaces,
   WALK_UP_REAR_YARD_M,
@@ -34,16 +36,25 @@ const TANK_FARM_KINDS: ReadonlySet<BuildingKind> = new Set(['chemical', 'paper']
 /** The kinds that dock trailers at a bank of doors and keep a truck court before it. */
 const TRUCK_COURT_KINDS: ReadonlySet<BuildingKind> = new Set(['warehouse', 'foodplant']);
 
-/** The ground a kind keeps clear of its car park: a forecourt in front, a tank farm or a walk-up's rear lawn behind. */
+/**
+ * The ground a kind keeps clear of its car park: a forecourt in front, a tank
+ * farm or a walk-up's rear lawn behind. A dense kind on its larger lot keeps
+ * in front the ground its street face reaches, so every part stays on the lot.
+ */
 export function lotYardsFor(entry: BuildingCatalogEntry): {
   forecourtDepth?: number;
+  frontSetback?: number;
+  bodyMargin?: number;
   rearYard?: number;
 } {
   const kind = entry.kind;
+  const denseFront = isDenseLotEntry(entry) ? (GARAGE_FRONT_PROJECTION_M[kind ?? ''] ?? 0) : 0;
   return {
     ...(kind && FORECOURT_KINDS.has(kind)
       ? { forecourtDepth: FUEL_CANOPY_GAP_M + FUEL_CANOPY_DEPTH_M }
       : {}),
+    ...(denseFront > 0 ? { frontSetback: denseFront } : {}),
+    ...(isDenseLotEntry(entry) && hasPodium(entry) ? { bodyMargin: PODIUM_OVERHANG_M } : {}),
     ...(kind && TANK_FARM_KINDS.has(kind) ? { rearYard: TANK_GAP_M + TANK_DIAMETER_M } : {}),
     ...(kind === 'multiplex' || kind === 'garden' ? { rearYard: WALK_UP_REAR_YARD_M[kind] } : {}),
   };

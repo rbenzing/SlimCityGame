@@ -55,7 +55,7 @@ import {
 } from './parked';
 import type { KerbSurroundings } from '../shared/kerblayout';
 import { lotPaving } from '../shared/lotlayout';
-import { ENTRANCE_WALK_M } from '../shared/parkingcode';
+import { ENTRANCE_WALK_M, isDenseLotEntry } from '../shared/parkingcode';
 import {
   framedLotPlanFor,
   garagePlanAt,
@@ -113,7 +113,7 @@ export function lotSurfaceFor(entry: BuildingCatalogEntry): MaterialName | null 
     // Detached homes and attached rows keep a garden; a walk-up lays a car
     // park on a lawn; the mid-rise and the tower are paved downtown.
     if (isHouseEntry(entry)) return 'mownLawn';
-    return isWalkUpEntry(entry) ? 'brightAsphalt' : 'stainedConcrete';
+    return isWalkUpEntry(entry) || isDenseLotEntry(entry) ? 'brightAsphalt' : 'stainedConcrete';
   }
   // Utilities, services, parks and landmarks bring their own ground treatment.
   return null;

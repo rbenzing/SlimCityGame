@@ -68,7 +68,7 @@ function doorOf(delta: BuildingDelta, entry: BuildingCatalogEntry): THREE.Vector
 describe('which bodies are plain', () => {
   it('names mixed-use alone among the grown kinds, and no placed or kit-owned building', () => {
     const plain = catalog.filter(isPlainGrownBody).map((e) => e.id);
-    expect(plain.sort()).toEqual(['mixed-1', 'mixed-2', 'mixed-3']);
+    expect(plain.sort()).toEqual(['mixed-1', 'mixed-1-lot2x2', 'mixed-2', 'mixed-3']);
     expect(isPlainGrownBody({ ...MIXED, zone: undefined })).toBe(false);
   });
 });

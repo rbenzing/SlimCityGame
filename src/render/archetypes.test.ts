@@ -511,7 +511,8 @@ describe('the apartment kit', () => {
     const blocks = (catalogData as { buildings: BuildingCatalogEntry[] }).buildings.filter((e) =>
       isApartmentEntry(e),
     );
-    expect(blocks).toHaveLength(12);
+    // Twelve blocks, and the mid-rise's larger level-1 lot.
+    expect(blocks).toHaveLength(13);
     for (const e of blocks) expect(partsFor(e).length, e.id).toBeGreaterThan(0);
   });
 });

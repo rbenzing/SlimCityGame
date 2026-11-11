@@ -9,7 +9,14 @@
 import { TILE_METERS } from './constants';
 import { bodyMetresFor, grossFloorM2, SQ_FT_PER_M2, storeysOf } from './floorarea';
 import type { LotRect } from './lotlayout';
-import { AISLE_WIDTH_M, FOOT_M, STALL_LENGTH_M, STALL_WIDTH_M, stallsInRow } from './parkingcode';
+import {
+  AISLE_WIDTH_M,
+  FOOT_M,
+  HOTEL_ROOM_M2,
+  STALL_LENGTH_M,
+  STALL_WIDTH_M,
+  stallsInRow,
+} from './parkingcode';
 import type { BuildingCatalogEntry } from './types';
 
 /** A tier's floor-to-floor height, 11 ft: what a parking structure is built to. */
@@ -60,8 +67,6 @@ export const GARAGE_OFFICE_PER_1000_SQ_FT = 1;
 export const GARAGE_SPACES_PER_HOME = 0.71;
 /** Spaces a downtown hotel room holds on site. */
 export const GARAGE_SPACES_PER_ROOM = 0.5;
-/** A hotel room's floor, a dial until the catalog counts rooms. */
-export const HOTEL_ROOM_M2 = 45;
 
 export type GarageNose = 'v+' | 'v-';
 

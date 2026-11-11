@@ -26,7 +26,7 @@ import type { KerbSurroundings } from '../shared/kerblayout';
 import { kerbCreditAlongFrame } from '../world/kerbcredit';
 import { claimedTiles, frameCorners } from '../shared/lotframe';
 import { holdsLotParkingAt, lotLayoutFor } from '../shared/lotparking';
-import { drawsLotParking } from '../shared/parkingcode';
+import { drawsLotParking, isDenseLotKind } from '../shared/parkingcode';
 import { missingSchooling, type EducationRung } from '../shared/schooling';
 import { SoilGrade, isFarmable } from '../shared/soil';
 import type {
@@ -445,7 +445,10 @@ export function spawnCandidates(
 /**
  * The footprints a kind's building may stand on at the level `entry` is:
  * the entry itself and every larger lot the catalog holds for the same
- * building, smallest first (ties in catalog order).
+ * building, smallest first (ties in catalog order). A level-1 office, hotel,
+ * mixed-use block or mid-rise tries its car-park lots first and keeps its own
+ * footprint last, where it parks at the kerb: a car park is never a reason
+ * for a dense zone to stop growing.
  */
 export function footprintsOf(
   catalog: readonly BuildingCatalogEntry[],
@@ -463,7 +466,9 @@ export function footprintsOf(
             e.level === entry.level &&
             e.lot === entry.lot,
         );
-  return [entry, ...lots].sort((a, b) => area(a) - area(b));
+  const bySize = lots.sort((a, b) => area(a) - area(b));
+  if (entry.level === 1 && isDenseLotKind(entry.kind)) return [...bySize, entry];
+  return [entry, ...bySize].sort((a, b) => area(a) - area(b));
 }
 
 /** Whether a building may stand at (x, z) turned `rotation` and meet its parking code there. */
@@ -1196,6 +1201,17 @@ export class GrowthSystem {
       // stands on, so only those that hold its own lot are tried.
       for (const next of footprintsOf(this.catalog, nextKind)) {
         if (next.footprint.w < entry.footprint.w || next.footprint.d < entry.footprint.d) continue;
+        // A dense kind's larger lot is the next level on the lot its car park
+        // stood on, never a bigger lot for a building that stood on its own.
+        if (
+          next.bodyFootprint !== undefined &&
+          isDenseLotKind(next.kind) &&
+          (entry.bodyFootprint === undefined ||
+            next.footprint.w !== entry.footprint.w ||
+            next.footprint.d !== entry.footprint.d)
+        ) {
+          continue;
+        }
         const at = this.levelUpSite(g, plats, parks, inst, entry, next, zone, farm);
         if (at) {
           chosen = { next, ...at };

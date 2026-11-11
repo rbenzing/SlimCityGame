@@ -59,7 +59,7 @@ What a review of every screenshot the shot tools write found wrong in the game, 
 - A street's light pool ends in a hard edge mid-road at night, and stall paint glows brighter than the buildings. — `shots-storefronts/main-night`
 - A refused bridge or raised road says only that it cannot be built there.
 - A mixed-use block's shopfront is plain glass with a black rectangle for a door, no sign and no awning. — `shots-mixeduse/street`, `close-mixed-1`
-- A level-1 office, hotel, mixed-use block and mid-rise still stand on a bare pad with no stalls and park at the kerb; a level-2 hotel on a 2 × 2 lot has no garage. `[R-services-040]` — `shots-mixeduse/close-mixed-1`
+- Where a zone has no room for its car park a level-1 office, hotel, mixed-use block or mid-rise still stands on a bare pad and parks at the kerb, and a level-2 hotel on its own 2 × 2 footprint has no garage. `[R-services-040]` — `shots-mixeduse/close-mixed-1`
 - A reactor's intake house stands about 6 m back from the water on bare beach; a drain one tile square lies on a 20 m pad. — `shots-power/3c-reactor-intake-close`, `shots-earliest-kits/h-drain-street`
 
 ## Lesser

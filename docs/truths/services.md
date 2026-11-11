@@ -225,8 +225,9 @@ Back to [the index](../GROUND-TRUTHS.md).
   drawn building keeps the floor its jobs come from; a lot that cannot meet
   its code draws as many spaces as fit, and never a space without the
   accessible ones it owes. Downtown kinds (ComHigh's office and hotel, Mixed)
-  draw no lot parking: at level 1 they park at the kerb, and from level 2 in
-  their garage `[R-services-040]`. —
+  park by `[R-services-040]`: at level 1 on a larger lot's car park, or at
+  the kerb where the zone has no room for one, and from level 2 in their
+  garage. —
   [parking-to-code.md](../specs/parking-to-code.md);
   `src/shared/parkingcode.ts`, `src/shared/lotlayout.ts`, `src/shared/floorarea.ts`
 - [R-services-034] Such a lot is paved only where its layout uses the ground: the body and
@@ -284,9 +285,11 @@ Back to [the index](../GROUND-TRUTHS.md).
   hotel, mixed-use block and mid-rise parks on a surface lot to code; from
   level 2 those kinds and every tower park in a garage on their own lot,
   tiers in the podium or a deck behind the body, and no floor is cut for it.
-  Built: the deck behind the body at levels 2 and 3 and for every tower.
-  Agreed and not yet built: the level-1 surface lots and tiers opened in a
-  podium. —
+  Where a zone holds no lot large enough for a level-1 car park the kind
+  grows on its own footprint and parks at the kerb: a car park never stops
+  a zone growing. Not yet built: tiers opened in a podium. —
   [structured-parking.md](../specs/structured-parking.md);
-  `src/shared/garage.ts`, `src/render/garagekit.ts`, `src/shared/parkingcode.ts`
+  `src/shared/garage.ts`, `src/render/garagekit.ts`,
+  `denseLotRequirement` in `src/shared/parkingcode.ts`,
+  `footprintsOf` in `src/sim/growth.ts`
 

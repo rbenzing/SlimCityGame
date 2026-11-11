@@ -21,6 +21,7 @@ import {
   adaAccessibleSpaces,
   adaVanSpaces,
   ISLAND_WIDTH_M,
+  isDenseLotEntry,
   loadingBerths,
   lotParkingRequirement,
   SPACES_BETWEEN_ISLANDS,
@@ -47,7 +48,9 @@ import { computeSetbacks, frontageSetbackFor } from './massing';
 import { ParkedCarRenderer } from './parked';
 
 const catalog = (catalogData as { buildings: BuildingCatalogEntry[] }).buildings;
-const suburban = catalog.filter((e) => lotParkingRequirement(e) !== null);
+const suburban = catalog.filter((e) => lotParkingRequirement(e) !== null && !isDenseLotEntry(e));
+/** The level-1 dense kinds on the larger lots they park on. */
+const denseLots = catalog.filter(isDenseLotEntry);
 
 /** The kinds whose lots hold their code at every level, with their catalog width on the street. */
 const FITTING: readonly BuildingKind[] = [
@@ -350,7 +353,7 @@ describe('the lot plan on the map', () => {
 
   it('gives downtown kinds no lot plan: offices, hotels and mixed use park at the kerb', () => {
     const downtown = catalog.filter(
-      (e) => e.zone === ZoneType.ComHigh || e.zone === ZoneType.Mixed,
+      (e) => (e.zone === ZoneType.ComHigh || e.zone === ZoneType.Mixed) && !isDenseLotEntry(e),
     );
     expect(downtown.length).toBeGreaterThan(0);
     for (const e of downtown) {
@@ -370,6 +373,68 @@ describe('the lot plan on the map', () => {
       expect(setback.spanZM).toBe(0);
     }
   });
+});
+
+describe('a level-1 dense kind on its larger lot', () => {
+  it.each(denseLots.map((e) => [e.id, e] as const))(
+    '%s: lays a car park to code on every street side, its body behind its street face',
+    (_, e) => {
+      for (const side of ['N', 'E', 'S', 'W'] as const) {
+        const roadAt = roads[side](e.footprint.w, e.footprint.d);
+        const plan = lotPlanFor(e, 10, 10, roadAt)!;
+        expect(plan, `${e.id} ${side}`).not.toBeNull();
+        expect(plan.layout.fits, `${e.id} ${side}`).toBe(true);
+        expect(plan.layout.provided, `${e.id} ${side}`).toBe(lotParkingRequirement(e)!.spaces);
+        const setback = frontageSetbackFor(e, 10, 10, roadAt);
+        const { body } = plan.layout;
+        const bodyCentre = lotPointToWorld(
+          plan.frame,
+          (body.u0 + body.u1) / 2,
+          (body.v0 + body.v1) / 2,
+        );
+        expect(setback.centerXM + (10 + e.footprint.w / 2) * TILE_METERS, `${e.id} ${side}`).toBeCloseTo(
+          bodyCentre.x,
+          6,
+        );
+        expect(setback.centerZM + (10 + e.footprint.d / 2) * TILE_METERS, `${e.id} ${side}`).toBeCloseTo(
+          bodyCentre.z,
+          6,
+        );
+      }
+    },
+  );
+
+  it.each(denseLots.map((e) => [e.id, e] as const))(
+    '%s: keeps its body on its own plate and every stall, aisle and walk inside the lot',
+    (_, e) => {
+      const plan = lotPlanFor(e, 10, 10, roads.N(e.footprint.w, e.footprint.d))!;
+      const lot: LotRect = {
+        u0: 0,
+        u1: e.footprint.w * TILE_METERS,
+        v0: 0,
+        v1: e.footprint.d * TILE_METERS,
+      };
+      const inside = (r: LotRect): boolean =>
+        r.u0 >= lot.u0 - 1e-6 &&
+        r.u1 <= lot.u1 + 1e-6 &&
+        r.v0 >= lot.v0 - 1e-6 &&
+        r.v1 <= lot.v1 + 1e-6;
+      const { body } = plan.layout;
+      expect(body.u1 - body.u0, e.id).toBeCloseTo(bodyMetresFor(e).w, 9);
+      expect(body.v1 - body.v0, e.id).toBeCloseTo(bodyMetresFor(e).d, 9);
+      for (const r of [
+        body,
+        ...plan.layout.stalls.map((s) => s.rect),
+        ...plan.layout.aisles,
+        ...plan.layout.accessAisles,
+      ]) {
+        expect(inside(r), e.id).toBe(true);
+      }
+      for (const s of plan.layout.stalls) {
+        expect(overlaps(s.rect, body), e.id).toBe(false);
+      }
+    },
+  );
 });
 
 describe('the car park as drawn', () => {

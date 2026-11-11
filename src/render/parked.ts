@@ -46,6 +46,7 @@ import {
 import { InstancedSlotPool } from './massing';
 import { buildBroadleafGeometry } from './trees';
 import { parkingLaneOffset } from '../shared/roadprofile';
+import { isDenseLotEntry } from '../shared/parkingcode';
 import { isFarmEntry, isHouseEntry, isWalkUpEntry } from './archetypes';
 import {
   edgeFrameFor,
@@ -133,9 +134,14 @@ export function curbCutTileFor(
   return roadAt(tile.x, tile.z) ? tile : { x: edge.roadTileX, z: edge.roadTileZ };
 }
 
-/** The buildings that lay a car park on their lot: suburban commerce and industry, and the two walk-ups. */
+/** The buildings that lay a car park on their lot: suburban commerce and industry, the two walk-ups, and a dense kind on its larger lot. */
 function laysCarPark(entry: BuildingCatalogEntry): boolean {
-  return entry.category === 'com' || entry.category === 'ind' || isWalkUpEntry(entry);
+  return (
+    entry.category === 'com' ||
+    entry.category === 'ind' ||
+    isWalkUpEntry(entry) ||
+    isDenseLotEntry(entry)
+  );
 }
 
 /**

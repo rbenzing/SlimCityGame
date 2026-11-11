@@ -45,13 +45,19 @@ const entryOf = (id) => {
 const ZONE_COM_HIGH = 4;
 const ZONE_MIXED = 8;
 const ZONE_AGRICULTURE = 9;
+/** A level-1 office, hotel, mixed-use block or mid-rise on its larger lot parks to code too. */
+const isDenseLot = (e) =>
+  e.bodyFootprint !== undefined &&
+  e.level === 1 &&
+  ['office', 'hotel', 'mixed', 'midrise'].includes(e.kind);
 const drawsLotParking = (e) =>
-  (e.category === 'com' || e.category === 'ind') &&
-  e.zone !== ZONE_AGRICULTURE &&
-  e.zone !== ZONE_COM_HIGH &&
-  e.zone !== ZONE_MIXED &&
-  e.kind !== 'office' &&
-  e.kind !== 'hotel';
+  isDenseLot(e) ||
+  ((e.category === 'com' || e.category === 'ind') &&
+    e.zone !== ZONE_AGRICULTURE &&
+    e.zone !== ZONE_COM_HIGH &&
+    e.zone !== ZONE_MIXED &&
+    e.kind !== 'office' &&
+    e.kind !== 'hotel');
 
 const SEED = 7;
 const DEFAULT_PITCH = 0.7;
@@ -72,6 +78,10 @@ const STREETS = [
   { name: 'dense-homes', subjects: ['res-medium-2', 'res-high-2', 'res-tower-1'] },
   { name: 'mixed-industry', subjects: ['mixed-2', 'ind-flex-2', 'ind-warehouse-2'] },
   { name: 'health', subjects: ['clinic', 'hospital'] },
+  {
+    name: 'level-one-lots',
+    subjects: ['res-high-1-lot2x2', 'mixed-1-lot2x2', 'com-hotel-1-lot3x3', 'com-high-1-lot4x4'],
+  },
   {
     name: 'kerb',
     parkingLanes: true,
@@ -299,6 +309,14 @@ try {
     if (s.id === 'com-office-2') await shoot(`${frameName(s.id)}-rear-far`, cx, cz, 300, 0.5, 0.6);
   }
 
+  // The level-1 dense kinds on their larger lots, from the street: the body behind
+  // its street face, its car park beside and behind it.
+  const LEVEL_ONE_SUBJECTS = ['res-high-1-lot2x2', 'mixed-1-lot2x2', 'com-hotel-1-lot3x3', 'com-high-1-lot4x4'];
+  for (const s of spots.filter((n) => LEVEL_ONE_SUBJECTS.includes(n.id))) {
+    const cx = s.x + s.w / 2 - 0.5;
+    await shoot(`${frameName(s.id)}-street`, cx + 1, s.z, 120, Math.PI - 0.55, 0.45);
+  }
+
   // The commercial row from the street side, looking south over the road.
   const row = spots.filter((s) => s.street === 'commercial');
   const rx0 = Math.min(...row.map((s) => s.x));
@@ -312,6 +330,90 @@ try {
   const roadZ = kerb[0].z - 1;
   await shoot('kerb-parking', (kx0 + kx1) / 2 - 0.5, roadZ + 0.5, Math.max(CAMERA_MIN_DISTANCE, ((kx1 - kx0 + 4) * T) / (2 * Math.tan(Math.PI / 8) * aspect * 0.8)), 0, TOP_PITCH);
   await shoot('kerb-parking-close', kx0 + 2, roadZ, CAMERA_MIN_DISTANCE, 0, TOP_PITCH);
+
+  // A deep downtown block beside a two-deep one, grown by the game itself. The
+  // deep block (6 rows between two streets) holds the lots for a car park and
+  // grows them; the shallow block (2 rows) holds none, so its kinds stand on
+  // their own footprints, parked at the kerb. Housing and works beside them
+  // give the town the jobs and homes that downtown growth waits on.
+  const ZONE_RES_LOW = 1;
+  const ZONE_INDUSTRY = 5;
+  const GROW_W = 56;
+  let grow = null;
+  for (let z = 30; z < N - 30 && !grow; z++) {
+    for (let x = 30; x < N - GROW_W - 30 && !grow; x++) {
+      const h0 = g.height[idx(x, z)];
+      let ok = true;
+      for (let dz = -8; dz <= 14 && ok; dz++) {
+        for (let dx = -2; dx < GROW_W + 2 && ok; dx++) {
+          if (!flatDry(x + dx, z + dz, h0) || used.has(idx(x + dx, z + dz))) ok = false;
+        }
+      }
+      if (ok) grow = { x, z };
+    }
+  }
+  if (!grow) throw new Error('no flat dry ground for the grown blocks');
+  const { x: GX, z: GZ } = grow;
+  const rowOf = (z, x0, x1) => Array.from({ length: x1 - x0 + 1 }, (_, i) => ({ x: x0 + i, z }));
+  await send('Street', [{ kind: 'buildRoad', tier: 1, tiles: rowOf(GZ, GX, GX + GROW_W) }]);
+  await send('Back street', [{ kind: 'buildRoad', tier: 1, tiles: rowOf(GZ + 7, GX, GX + 21) }]);
+  await send('Link', [
+    { kind: 'buildRoad', tier: 1, tiles: Array.from({ length: 6 }, (_, i) => ({ x: GX, z: GZ + 1 + i })) },
+  ]);
+  await send('Power', [{ kind: 'placeBuilding', catalogId: 'coal-plant', x: GX + 2, z: GZ - 4, rotation: 0 }]);
+  await send('Water', [{ kind: 'placeBuilding', catalogId: 'water-tower', x: GX + 8, z: GZ - 1, rotation: 0 }]);
+  for (let z = GZ - 3; z <= GZ - 1; z++) {
+    await send('Homes', [{ kind: 'paintZone', zone: ZONE_RES_LOW, tiles: rowOf(z, GX + 28, GX + GROW_W - 1) }]);
+    await send('Works', [{ kind: 'paintZone', zone: ZONE_INDUSTRY, tiles: rowOf(z, GX + 10, GX + 26) }]);
+  }
+  // A street of homes stands at once, so the town has the households downtown growth waits on.
+  for (let i = 0; i < 24; i++) {
+    await send('Home', [
+      { kind: 'placeBuilding', catalogId: 'res-normal-1', x: GX + 28 + i, z: GZ - 2, rotation: 0 },
+    ]);
+  }
+  const deepBlock = [];
+  for (let z = GZ + 1; z <= GZ + 6; z++) deepBlock.push(...rowOf(z, GX + 5, GX + 20));
+  const shallowBlock = [];
+  for (let z = GZ + 1; z <= GZ + 2; z++) shallowBlock.push(...rowOf(z, GX + 26, GX + 30));
+  // Demand for downtown buildings is spent by the first few that grow, so the
+  // shallow block is small (room for two) and zoned first; the deep block is
+  // zoned once it has grown.
+  await send('Shallow block', [{ kind: 'paintZone', zone: ZONE_COM_HIGH, tiles: shallowBlock }]);
+  await page.evaluate(() => window.__slimcity.setSpeed(4));
+  const downtown = async () =>
+    (await readBuildings()).filter((b) => b.catalogId.startsWith('com-') && b.z > GZ && b.z < GZ + 8);
+  let deepGrown = [];
+  let shallowGrown = [];
+  let deepZoned = false;
+  for (let i = 0; i < 200 && (deepGrown.length < 1 || shallowGrown.length < 1); i++) {
+    await page.waitForTimeout(2000);
+    const grownNow = await downtown();
+    deepGrown = grownNow.filter((b) => b.x < GX + 22);
+    shallowGrown = grownNow.filter((b) => b.x >= GX + 22);
+    if (!deepZoned && shallowGrown.length > 0) {
+      deepZoned = true;
+      await send('Deep block', [{ kind: 'paintZone', zone: ZONE_COM_HIGH, tiles: deepBlock }]);
+    }
+  }
+  await page.evaluate(() => window.__slimcity.setSpeed(0));
+  console.log(
+    'grown deep block:',
+    deepGrown.map((b) => `${b.catalogId}@${b.x},${b.z}`).join(' ') || 'nothing',
+  );
+  console.log(
+    'grown shallow block:',
+    shallowGrown.map((b) => `${b.catalogId}@${b.x},${b.z}`).join(' ') || 'nothing',
+  );
+  if (deepGrown.length === 0) fail('the deep downtown block grew nothing');
+  await page.waitForTimeout(1000);
+  await page.evaluate(() => {
+    window.__slimcity.setDayT(0.5);
+    window.__slimcity.cmd('Phase', [{ kind: 'setUnlimitedMoney', on: true }]);
+  });
+  await page.waitForTimeout(2000);
+  await shoot('grown-blocks-above', GX + 24, GZ + 3.5, 420, 0, TOP_PITCH);
+  await shoot('grown-blocks-oblique', GX + 14, GZ + 2, 170, Math.PI - 0.5, 0.7);
 } catch (e) {
   fail(e.stack ?? String(e));
 } finally {
