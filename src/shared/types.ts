@@ -1225,6 +1225,8 @@ export type MainToWorker =
   | { type: 'init'; seed: number; map: MapData }
   | { type: 'commands'; seq: number; commands: Command[] }
   | { type: 'setSpeed'; speed: SimSpeed }
+  /** Dev builds only: holds every construction countdown where it is until released. The worker ignores it in production. */
+  | { type: 'devHoldConstruction'; hold: boolean }
   | { type: 'requestField'; field: FieldId }
   | { type: 'requestSave' }
   | { type: 'loadSave'; data: ArrayBuffer }

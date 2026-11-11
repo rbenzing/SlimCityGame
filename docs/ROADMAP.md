@@ -25,7 +25,7 @@ current behavior only and carry no dates of their own._
 
 ## Status (2026-09-29)
 
-**Test suite:** 7,818 tests passing across 231 test files, run 2026-11-11.
+**Test suite:** 7,838 tests passing across 231 test files, run 2026-11-11.
 This is the only test count in the documentation set. When the suite changes
 again, update the figure here and nowhere else.
 
@@ -59,9 +59,6 @@ again, update the figure here and nowhere else.
 - At 4× a fast-growing city's longest stall is 1.1 s against a 1 s target
   `[R-render-037]`. What was measured and what was done is in
   [performance-budget.md](engineering/performance-budget.md#the-main-thread-while-a-city-grows).
-- No tool can shoot a building under construction: `placeBuilding` yields it
-  finished, and no dev hook holds the countdown (`CONSTRUCTION_TICKS` in
-  `src/sim/growth.ts`). The hook is owed with the next change to growth.
 - The shipped industrial lots are too shallow for the yard the second pass
   gives the heavy kinds: a body fills 13.6 m of each 20 m lot tile, so no
   warehouse lot has the 18.7 m a 16 m van needs behind a dock door, and no
@@ -74,10 +71,6 @@ again, update the figure here and nowhere else.
   line gives its curve no run, track only along the lot's own edge
   `[R-roads-082]`; a tram depot's apron lies over a kerb that is not dropped;
   the lead's fit to sloped ground is tested and not yet shot.
-- A lot a zone grows on is levelled with its east and south neighbours only,
-  so on a slope its north and west edges still tilt; a placed building
-  levels the whole ring `[R-world-051]`. The ring for grown lots is owed,
-  behind the first-town guard.
 - A bus stop stands on grid street tiles only: its furniture frame reads a
   grid road axis, so a free-form curve takes no stop yet. The lamp renderer
   already lays furniture along a curve and is the frame to reuse.

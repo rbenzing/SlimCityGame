@@ -226,6 +226,17 @@ try {
   const farmGround = (x, z) => x >= 0 && z >= 0 && x < N && z < N && !g.water[idx(x, z)];
   const farmsFit = farmGround(X + farmLength, dirtZ + 8) && dirtZ + 9 < N;
   if (farmsFit) {
+    // The farm block is levelled to the anchor's height first, as the line-up is: a farm on
+    // a tile over MAX_BUILD_SLOPE is refused and the frames would aim at empty ground.
+    await page.evaluate(
+      ([x, z, w, h, height]) => {
+        const heights = new Float32Array(w * h);
+        heights.fill(height);
+        window.__slimcity.cmd('Level', [{ kind: 'terraformSet', x, z, w, h, heights }]);
+      },
+      [X - MARGIN - 1, dirtZ - 1, farmLength + 2, 12, g.height[idx(X, Z0)]],
+    );
+    await page.waitForTimeout(500);
     await send('Dirt', [
       {
         kind: 'buildRoad',
@@ -234,7 +245,8 @@ try {
       },
     ]);
     for (const f of farmSpans) {
-      await send('Farm', [{ kind: 'placeBuilding', catalogId: f.id, x: f.x, z: f.z, rotation: 0 }]);
+      // A lot's front is its south edge unturned; the dirt road is on its north, so it is turned half round.
+      await send('Farm', [{ kind: 'placeBuilding', catalogId: f.id, x: f.x, z: f.z, rotation: 2 }]);
     }
   } else {
     console.log('no room for the farm row below the streets');
@@ -250,6 +262,10 @@ try {
       ),
     ),
   );
+  if (farmsFit) {
+    const missing = FARMS.filter((id) => !standing.some((b) => b.catalogId === id));
+    if (missing.length > 0) throw new Error(`farms not placed: ${missing.join(', ')}`);
+  }
   console.log('kit', JSON.stringify(await page.evaluate(() => window.__slimcity.readKit())));
 
   // A paused sim posts a snapshot, which carries the pinned phase to the lighting, only when a command lands.

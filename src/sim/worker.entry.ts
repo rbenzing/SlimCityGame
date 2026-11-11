@@ -727,6 +727,9 @@ class SimWorld implements WorkerSim {
       case 'setSpeed':
         this.speed = msg.speed;
         break;
+      case 'devHoldConstruction':
+        if (import.meta.env.DEV) this.growth.holdConstruction = msg.hold;
+        break;
       case 'requestField':
         this.postField(msg.field);
         break;
@@ -4039,9 +4042,8 @@ class SimWorld implements WorkerSim {
    * cells meeting there. Levelling only the footprint's cells would leave the
    * corners along its edges blended with the ground beside it, tilting the
    * surface under the lot toward uphill neighbours. So the cells one step past
-   * the footprint are levelled as well wherever open ground owns them (the
-   * south and east ones only, for a grown house; all eight directions for a
-   * placed building), which makes every corner of the footprint the target, or
+   * the footprint are levelled as well wherever open ground owns them (all
+   * eight directions, for a grown lot and a placed building alike), which makes every corner of the footprint the target, or
    * lower beside a street cell below it. A cell a road, another building or
    * water owns keeps its height, since moving it would tilt a road, unseat a
    * neighbour or move a shoreline.
@@ -4087,22 +4089,9 @@ class SimWorld implements WorkerSim {
         g.water[i] === 0
       );
     };
-    if (toStreet) {
-      for (let z = footprint.minZ - 1; z <= footprint.maxZ + 1; z++) {
-        for (let x = footprint.minX - 1; x <= footprint.maxX + 1; x++) {
-          if (ownedByOpenGround(x, z)) levelled.add(tileIndex(x, z));
-        }
-      }
-    } else {
-      for (let z = footprint.minZ; z <= footprint.maxZ + 1; z++) {
-        if (ownedByOpenGround(footprint.maxX + 1, z)) {
-          levelled.add(tileIndex(footprint.maxX + 1, z));
-        }
-      }
-      for (let x = footprint.minX; x <= footprint.maxX; x++) {
-        if (ownedByOpenGround(x, footprint.maxZ + 1)) {
-          levelled.add(tileIndex(x, footprint.maxZ + 1));
-        }
+    for (let z = footprint.minZ - 1; z <= footprint.maxZ + 1; z++) {
+      for (let x = footprint.minX - 1; x <= footprint.maxX + 1; x++) {
+        if (ownedByOpenGround(x, z)) levelled.add(tileIndex(x, z));
       }
     }
 

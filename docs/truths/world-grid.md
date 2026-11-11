@@ -199,7 +199,8 @@ Back to [the index](../GROUND-TRUTHS.md).
   levelled with it: a rendered corner is the mean of the four cells meeting
   there, so a footprint levelled alone still tilts at its edges. A building
   that touches no street is levelled to the mean of its own ground; a draped
-  park is not levelled; a lot a zone grows on keeps the mean. A fire station
+  park is not levelled; a lot a zone grows on keeps the mean of its own
+  ground and levels its ring to it. A fire station
   on a lot that rose behind it stood a metre above its own drive. —
   [municipal-services.md](../specs/municipal-services.md);
   `computeFlattenPatch` in `src/sim/worker.entry.ts`

@@ -652,6 +652,9 @@ export class GrowthSystem {
   /** Sandbox: every kind a lot can grow is unlocked; the milestone still rules the septic rung. */
   unlockAll = false;
 
+  /** A dev tool's hold: while set, no construction countdown moves. Never saved; false unless a dev build sets it. */
+  holdConstruction = false;
+
   private unlockLevel(milestoneLevel: number): number {
     return this.unlockAll ? Number.POSITIVE_INFINITY : milestoneLevel;
   }
@@ -868,6 +871,7 @@ export class GrowthSystem {
   }
 
   private advanceConstruction(registry: BuildingRegistry, updated: BuildingInstance[]): void {
+    if (this.holdConstruction) return;
     for (const [id, remaining] of Array.from(this.constructing.entries())) {
       const next = remaining - 1;
       if (next > 0) {
