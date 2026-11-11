@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.81.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.80.3...slimcity-v1.81.0) (2026-11-11)
+
+
+### Features
+
+* **power:** a street shows its supply, and a strung line leaves the carriageway ([54a81f2](https://github.com/rbenzing/SlimCityGame/commit/54a81f2a6ed6c7508d59591beddaffb3b52d51fd))
+* **power:** a street shows its supply, and a strung line leaves the carriageway ([51c24e2](https://github.com/rbenzing/SlimCityGame/commit/51c24e27538c78c8c5292a609eec6206df6025df))
+* **render:** a train is a train and a tram a tram ([c030b3d](https://github.com/rbenzing/SlimCityGame/commit/c030b3d75e257b23dc66782ca3fec69e36a12f74))
+* **render:** a yard and a depot join their line; a platform stands at its track ([da90127](https://github.com/rbenzing/SlimCityGame/commit/da9012779fdfcec6cd3482ba0ba8d18939b03e70))
+* **render:** a yard and a depot join their line; a platform stands at its track ([28bc8d8](https://github.com/rbenzing/SlimCityGame/commit/28bc8d81dd78fc2cf395048a87b92ac7fe07d2e4))
+* **world:** a building faces its street ([2aa5369](https://github.com/rbenzing/SlimCityGame/commit/2aa5369dd8d1e2254e16cb5c4452e06581dfc840))
+* **world:** a placed building stands beside a street, and a refusal says why ([9b7e55d](https://github.com/rbenzing/SlimCityGame/commit/9b7e55df239099f01ccd6501514e79bcd05e224d))
+
+
+### Bug Fixes
+
+* **render:** a farm silo is a whole cylinder ([de3edda](https://github.com/rbenzing/SlimCityGame/commit/de3edda18525f76f3d33dc0da20460f2a5a7d908))
+* **render:** a fence keeps to its own lot's line ([702f83f](https://github.com/rbenzing/SlimCityGame/commit/702f83fd974634db4fe067aa69ad38b45c512274))
+* **render:** a plot lies flush with its ground and its street ([d674952](https://github.com/rbenzing/SlimCityGame/commit/d674952bcb34c7fc137d3cddc5320fe42216eee4))
+* **render:** one car a stall, and a building reports the stalls it draws ([7fdc725](https://github.com/rbenzing/SlimCityGame/commit/7fdc725746d5e13d63a966c2691ad28702060f7c))
+* **roads:** a bend is an arc ([d1d1dc6](https://github.com/rbenzing/SlimCityGame/commit/d1d1dc67762176483756e275f7ffd50b15dfb276))
+
 ## [1.80.3](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.80.2...slimcity-v1.80.3) (2026-11-11)
 
 
