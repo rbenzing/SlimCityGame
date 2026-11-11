@@ -83,13 +83,15 @@ export type RoadFlow = (typeof RoadFlow)[keyof typeof RoadFlow];
 
 /**
  * What a byte of GridState.powerLine holds. These are save bytes: never
- * reorder or reuse one, only append (3 is kept for the buried cable).
+ * reorder or reuse one, only append.
  * Held is a line an older save kept, which a street may feed; Strung is a
- * line laid from a source, which only a source or a live line feeds.
+ * line laid from a source, which only a source or a live line feeds; Cable is
+ * a buried cable, fed the same way as a strung line and drawn only underground.
  */
 export const PowerLineKind = {
   Held: 1,
   Strung: 2,
+  Cable: 3,
 } as const;
 export type PowerLineKind = (typeof PowerLineKind)[keyof typeof PowerLineKind];
 
@@ -763,8 +765,15 @@ export type Command =
   // Power: string (on) or pull down (off) a run of power line. Charged per
   // tile that actually changes, so dragging back over a run is free.
   // `lineKind` set means a restore (an undo): the tiles take that byte, and
-  // the run need not start at a source.
-  | { kind: 'stringPowerLine'; tiles: TilePoint[]; on: boolean; lineKind?: PowerLineKind }
+  // the run need not start at a source. A new buried cable is the one run that
+  // sets `lineKind: Cable` without `restore`, so it answers to the rules.
+  | {
+      kind: 'stringPowerLine';
+      tiles: TilePoint[];
+      on: boolean;
+      lineKind?: PowerLineKind;
+      restore?: boolean;
+    }
   // Water: lay (on) or pull up (off) a run of pipe, which carries water and
   // sewage. Charged per tile that actually changes, like the power line.
   | { kind: 'layWaterPipe'; tiles: TilePoint[]; on: boolean }
@@ -1834,6 +1843,7 @@ export type ToolId =
   | 'roundabout'
   // Power: string a run of line, to reach what a road cannot.
   | 'power.line'
+  | 'power.cable'
   | 'zone.resLow'
   | 'zone.resHigh'
   | 'zone.comLow'
@@ -1923,9 +1933,11 @@ export interface ReversibleEdit {
  * whose building registry may carry a parcel frame, which a build without
  * frames would stand on the grid wrongly; v18 is the v16 byte layout, the
  * version whose powerLine byte may be 2 (a line laid from a source), which a
- * build that reads only 1 would not draw or conduct.
+ * build that reads only 1 would not draw or conduct; v19 is the v16 byte
+ * layout, the version whose powerLine byte may be 3 (a buried cable), which a
+ * build that reads only 1 and 2 would not conduct.
  */
-export const SAVE_VERSION = 18;
+export const SAVE_VERSION = 19;
 /** The first save version whose landfill fill is in 0.25 kg trash units. */
 export const TRASH_UNIT_SAVE_VERSION = 15;
 

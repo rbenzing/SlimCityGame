@@ -377,3 +377,146 @@ describe('what a change re-lays', () => {
     expect(beside.poles.map((p) => p.key)).toEqual(alone.poles.map((p) => p.key));
   });
 });
+
+describe('a buried cable on the surface', () => {
+  const cableKeys = (tiles: readonly TilePoint[]): Set<number> =>
+    new Set(tiles.map((t) => keyOf(t.x, t.z)));
+  const withCables = (
+    roads: FurnitureRoadTile[],
+    cables: readonly TilePoint[],
+    lines: readonly TilePoint[] = [],
+  ): PowerWorld => ({ ...worldOf(roads), cables: cableKeys(cables), lines: cableKeys(lines) });
+  const run = (x0: number, x1: number, z: number): TilePoint[] =>
+    Array.from({ length: x1 - x0 + 1 }, (_, i) => ({ x: x0 + i, z }));
+  const profile = presetProfileForTier(RoadTier.TwoLane);
+  const footwayReach = carriagewayHalfWidthOf(profile) + kerbWidthOf(profile);
+
+  /** A street along row 4 with its supply buried from tile 4 to tile 11. */
+  const buried = (): PowerLay => lay(withCables(row(0, 15, 4), run(4, 11, 4)));
+
+  it('draws no pole and no wire on a buried street, and the line ends on a riser at each end', () => {
+    const { poles, spans } = buried();
+    for (const pole of poles) {
+      const t = tileOf(pole);
+      expect(t.x < 4 || t.x > 11).toBe(true);
+    }
+    for (const span of spans) {
+      const [lo, hi] = [span.a.x, span.b.x].sort((a, b) => a - b) as [number, number];
+      expect(lo > tileToWorld(11) || hi < tileToWorld(4)).toBe(true);
+    }
+    const risers = poles.filter((p) => p.riser);
+    expect(risers.map((p) => tileOf(p).x)).toEqual([3, 12]);
+    expect(risers[0]!.riser).toEqual({ x: 1, z: 0 });
+    expect(risers[1]!.riser).toEqual({ x: -1, z: 0 });
+  });
+
+  it('stands a transformer every fourth tile of a buried street, outside the footway, on the pole side', () => {
+    const transformers = (buried().boxes ?? []).filter((b) => b.kind === 'transformer');
+    expect(transformers.map((b) => tileOf(b).x)).toEqual([4, 8]);
+    const poleSide = Math.sign(lay(worldOf(row(0, 15, 4))).poles[0]!.z - tileToWorld(4));
+    for (const t of transformers) {
+      expect(Math.sign(t.z - tileToWorld(4))).toBe(poleSide);
+      // Its whole body is beyond the walk.
+      expect(Math.abs(t.z - tileToWorld(4)) - 0.5).toBeGreaterThanOrEqual(footwayReach);
+      expect(Math.abs(t.z - tileToWorld(4)) + 0.5).toBeLessThanOrEqual(TILE_METERS / 2);
+      // The doors face the street.
+      expect(t.fz).toBe(-poleSide);
+    }
+    // And a junction box is never one of a buried street's own tiles.
+    expect((buried().boxes ?? []).filter((b) => b.kind === 'junction')).toEqual([]);
+  });
+
+  it('draws a street with no cable exactly as before', () => {
+    expect(lay(withCables(row(0, 15, 4), []))).toEqual(lay(worldOf(row(0, 15, 4))));
+  });
+
+  it('puts a junction box at each end and each branch of a run on open ground', () => {
+    const cables = [...run(2, 6, 10), { x: 4, z: 11 }];
+    const boxes = lay(withCables([], cables)).boxes ?? [];
+    expect(boxes.every((b) => b.kind === 'junction')).toBe(true);
+    expect(boxes.map((b) => `${tileOf(b).x}:${tileOf(b).z}`).sort()).toEqual([
+      '2:10',
+      '4:10',
+      '4:11',
+      '6:10',
+    ]);
+  });
+
+  it('puts none along the middle of a run, and none on a bend', () => {
+    const bend = [...run(2, 5, 10), { x: 5, z: 11 }, { x: 5, z: 12 }];
+    const boxes = lay(withCables([], bend)).boxes ?? [];
+    expect(boxes.map((b) => `${tileOf(b).x}:${tileOf(b).z}`).sort()).toEqual(['2:10', '5:12']);
+  });
+
+  it('stands its box clear of a carriageway and a walk, with 3 m of clear ground before its doors', () => {
+    const gravel = row(0, 15, 6, { tier: RoadTier.Gravel });
+    const half = carriagewayHalfWidthOf(presetProfileForTier(RoadTier.Gravel));
+    const boxes = lay(withCables(gravel, run(3, 8, 6))).boxes ?? [];
+    expect(boxes.length).toBe(2);
+    for (const b of boxes) {
+      expect(Math.abs(b.z - tileToWorld(6))).toBeGreaterThanOrEqual(half);
+      expect(Math.abs(b.z - tileToWorld(6)) + 0.95).toBeLessThanOrEqual(TILE_METERS / 2);
+      // A point 3 m past the door face is no nearer the road than the box is.
+      const ahead = b.z + b.fz * (0.9 + 3);
+      expect(Math.abs(ahead - tileToWorld(6))).toBeGreaterThanOrEqual(half);
+    }
+  });
+
+  it('turns the end of a cable that meets a strung line into a riser, with no box there', () => {
+    const line = run(10, 14, 8);
+    const cables = run(15, 18, 8);
+    const w = withCables([], cables, line);
+    const poles = layStrungLine(w, line).poles;
+    const meeting = poles.find((p) => tileOf(p).x === 14);
+    expect(meeting?.riser).toEqual({ x: 1, z: 0 });
+    expect(poles.filter((p) => p.riser)).toHaveLength(1);
+    // The cable's far end has a box; the end beside the line has none.
+    const boxes = [...(lay(w).boxes ?? []), ...(layStreetChunk(w, 1).boxes ?? [])];
+    expect(boxes.map((b) => tileOf(b).x)).toEqual([18]);
+  });
+
+  it('puts the riser of a cable that meets a street on that street`s own pole line', () => {
+    const w = withCables(row(0, 15, 4), run(8, 8, 5).concat(run(8, 8, 6), run(8, 8, 7)));
+    const { poles, boxes } = lay(w);
+    const meeting = poles.find((p) => p.riser);
+    expect(meeting).toBeDefined();
+    expect(tileOf(meeting!)).toEqual({ x: 8, z: 4 });
+    expect(meeting!.riser).toEqual({ x: 0, z: 1 });
+    expect((boxes ?? []).map((b) => tileOf(b).z)).toEqual([7]);
+  });
+
+  it('marks an end on a junction tile with a box on the free ground beside it', () => {
+    const roads = [
+      ...row(0, 15, 6, { tier: RoadTier.Gravel }),
+      ...col(8, 7, 12, { tier: RoadTier.Gravel }),
+    ];
+    const boxes = lay(withCables(roads, run(8, 11, 6))).boxes ?? [];
+    const tiles = boxes.map((b) => `${tileOf(b).x}:${tileOf(b).z}`).sort();
+    // The far end has a box in its own strip; the junction end stands on the tile to its north.
+    expect(tiles).toContain('8:5');
+    expect(tiles).toHaveLength(2);
+    // Never in a building's lot: with that tile built on, the box finds no place.
+    const built = { ...withCables(roads, run(8, 11, 6)), built: new Set([keyOf(8, 5)]) };
+    expect((lay(built).boxes ?? []).map((b) => tileOf(b).x)).not.toContain(8);
+  });
+
+  it('puts the riser of a buried stretch that ends at a junction on its last tile before it', () => {
+    const roads = [...row(0, 15, 4), ...col(12, 5, 10)];
+    const { poles } = lay(withCables(roads, run(6, 11, 4)));
+    const risers = poles.filter((p) => p.riser).map((p) => tileOf(p).x);
+    expect(risers).toContain(11);
+    const last = poles.find((p) => p.riser && tileOf(p).x === 11)!;
+    expect(last.riser).toEqual({ x: -1, z: 0 });
+    // No other pole stands on the buried tiles.
+    expect(poles.filter((p) => tileOf(p).x >= 6 && tileOf(p).x <= 10)).toEqual([]);
+  });
+
+  it('lays a chunk the same whatever lies in the chunks beside it', () => {
+    const near = withCables(row(0, 15, 4), run(4, 11, 4));
+    const far = withCables(
+      [...row(0, 15, 4), ...row(20, 30, 4)],
+      [...run(4, 11, 4), ...run(22, 28, 4)],
+    );
+    expect(layStreetChunk(far, 0)).toEqual(layStreetChunk(near, 0));
+  });
+});

@@ -235,3 +235,100 @@ describe('a line starts at a source', () => {
     expect(feedsLines(undefined)).toBe(false);
   });
 });
+
+describe('a buried cable', () => {
+  const row = (x0: number, x1: number, z: number) =>
+    Array.from({ length: x1 - x0 + 1 }, (_, i) => ({ x: x0 + i, z }));
+  const noSource = (): boolean => false;
+  const tierColumn = [
+    RoadTier.Gravel,
+    RoadTier.TwoLane,
+    RoadTier.Highway,
+    RoadTier.Ramp,
+    RoadTier.RailTrack,
+  ];
+
+  it('lies under every road tier, which a line shares its ground with too', () => {
+    for (const tier of tierColumn) {
+      const g = createGrid(SIZE);
+      g.roadTier[idx(2, 2)] = tier;
+      expect(stringPowerLine(g, [{ x: 2, z: 2 }], true, PowerLineKind.Cable)).toHaveLength(1);
+      expect(g.powerLine[idx(2, 2)]).toBe(PowerLineKind.Cable);
+      expect(g.roadTier[idx(2, 2)]).toBe(tier);
+    }
+  });
+
+  it('will not go under water or a building', () => {
+    const g = createGrid(SIZE);
+    g.water[idx(3, 3)] = 1;
+    g.buildingId[idx(5, 5)] = 42;
+    const both = [
+      { x: 3, z: 3 },
+      { x: 5, z: 5 },
+    ];
+    expect(stringPowerLine(g, both, true, PowerLineKind.Cable)).toHaveLength(0);
+    expect(powerLineCount(g)).toBe(0);
+  });
+
+  it('takes the tile a line held and gives it back: one byte a tile, never both', () => {
+    const g = createGrid(SIZE);
+    const tiles = row(1, 3, 1);
+    stringPowerLine(g, tiles, true);
+    expect(stringPowerLine(g, tiles, true, PowerLineKind.Cable)).toHaveLength(3);
+    expect(Array.from(g.powerLine.slice(idx(1, 1), idx(4, 1)))).toEqual([3, 3, 3]);
+    // A cable laid again changes nothing; a plain line replaces a cable.
+    expect(stringPowerLine(g, tiles, true, PowerLineKind.Cable)).toHaveLength(0);
+    expect(stringPowerLine(g, tiles, true)).toHaveLength(3);
+    expect(Array.from(g.powerLine.slice(idx(1, 1), idx(4, 1)))).toEqual([2, 2, 2]);
+    // A line already held keeps its own byte under a plain line.
+    g.powerLine[idx(1, 1)] = PowerLineKind.Held;
+    expect(stringPowerLine(g, tiles, true)).toHaveLength(0);
+  });
+
+  it('puts a mixed run back tile by tile, bare ground pulled down and the cable marked a restore', () => {
+    const tiles = row(1, 4, 2);
+    expect(restoreLineCommands(tiles, [0, 1, 2, 3])).toEqual([
+      { kind: 'stringPowerLine', tiles: [tiles[0]], on: false },
+      { kind: 'stringPowerLine', tiles: [tiles[1]], on: true, lineKind: 1 },
+      { kind: 'stringPowerLine', tiles: [tiles[2]], on: true, lineKind: 2 },
+      { kind: 'stringPowerLine', tiles: [tiles[3]], on: true, lineKind: 3, restore: true },
+    ]);
+  });
+
+  it('says its own sentence for a run that would not be live, with cable where the line says line', () => {
+    const g = createGrid(SIZE);
+    const refusal = sourceEndRefusal(g, row(1, 4, 3), noSource, PowerLineKind.Cable);
+    expect(refusal).toBe(POWER_LINE_REFUSALS.cableMustStartAtSource);
+    expect(refusal).toBe(
+      'A cable must start at a power station, a substation or a live line or cable.',
+    );
+    expect(POWER_LINE_REFUSALS.mustStartAtSource).toBe(
+      'A line must start at a power station, a substation or a live line.',
+    );
+  });
+
+  it('is live from a source, a line or a cable, and needs none under a sealed street', () => {
+    const source = (x: number, z: number): boolean => x === 0 && z === 3;
+    const g = createGrid(SIZE);
+    expect(sourceEndRefusal(g, row(1, 4, 3), source, PowerLineKind.Cable)).toBeNull();
+    for (const kind of [PowerLineKind.Strung, PowerLineKind.Cable]) {
+      const h = createGrid(SIZE);
+      h.powerLine[idx(0, 3)] = kind;
+      expect(sourceEndRefusal(h, row(1, 4, 3), noSource, PowerLineKind.Cable)).toBeNull();
+    }
+    const underStreet = (_x: number, z: number): boolean => z === 5;
+    expect(
+      sourceEndRefusal(g, row(1, 4, 5), noSource, PowerLineKind.Cable, underStreet),
+    ).toBeNull();
+    // A stretch beyond the street's end is not fed by the street cable it adjoins.
+    expect(
+      sourceEndRefusal(
+        g,
+        [...row(1, 4, 5), ...row(4, 6, 4)],
+        noSource,
+        PowerLineKind.Cable,
+        underStreet,
+      ),
+    ).toBe(POWER_LINE_REFUSALS.cableMustStartAtSource);
+  });
+});

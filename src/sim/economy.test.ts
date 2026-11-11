@@ -10,6 +10,7 @@ import type {
 import {
   BuildingState,
   FieldId,
+  PowerLineKind,
   RoadTier,
   SHELTER_AD_INCOME,
   SHELTER_WARRANT_BOARDINGS,
@@ -18,6 +19,7 @@ import {
 import {
   MAX_LOAN,
   MILESTONES,
+  POWER_CABLE_UPKEEP_PER_TILE,
   POWER_LINE_UPKEEP_PER_TILE,
   RECYCLING_CREDIT_PER_UNIT,
   REGIONAL_FUNERAL_FEE,
@@ -387,6 +389,54 @@ describe('EconomySystem: monthly income/expenses', () => {
 
     // Nothing else in this city costs anything: the whole bill is the wire.
     expect(statsPatch.monthlyExpenses).toBeCloseTo(20 * POWER_LINE_UPKEEP_PER_TILE, 6);
+  });
+
+  describe('a buried cable', () => {
+    const bill = (g: GridState, specs: RoadSpec[] = roadSpecs): number => {
+      const sys = new EconomySystem(catalog, specs);
+      const stats = makeStats({ funds: 10000 });
+      return sys.tick({ g, buildings: [], stats, tickNo: TICKS_PER_MONTH }).statsPatch
+        .monthlyExpenses!;
+    };
+    const buryRow = (g: GridState, tier: number, n: number): void => {
+      for (let x = 0; x < n; x++) {
+        g.roadTier[tileIndex(x, 3)] = tier;
+        g.powerLine[tileIndex(x, 3)] = PowerLineKind.Cable;
+      }
+    };
+
+    it('costs a quarter of a cent a tile a month on open ground, half the line', () => {
+      const g = makeGrid();
+      for (let x = 0; x < 20; x++) g.powerLine[tileIndex(x, 3)] = PowerLineKind.Cable;
+      expect(bill(g)).toBeCloseTo(20 * 0.25, 6);
+      expect(POWER_CABLE_UPKEEP_PER_TILE).toBe(POWER_LINE_UPKEEP_PER_TILE / 2);
+    });
+
+    it('is charged on top of a gravel road, a motorway or rail it lies under', () => {
+      for (const tier of [RoadTier.Gravel, RoadTier.Highway, RoadTier.RailTrack]) {
+        const plain = makeGrid();
+        for (let x = 0; x < 10; x++) plain.roadTier[tileIndex(x, 3)] = tier;
+        const buried = makeGrid();
+        buryRow(buried, tier, 10);
+        expect(bill(buried) - bill(plain)).toBeCloseTo(10 * 0.25, 6);
+      }
+    });
+
+    it('charges none under a sealed street, and takes a quarter of a cent off that tile of street', () => {
+      const plain = makeGrid();
+      for (let x = 0; x < 10; x++) plain.roadTier[tileIndex(x, 3)] = RoadTier.TwoLane;
+      const buried = makeGrid();
+      buryRow(buried, RoadTier.TwoLane, 10);
+      expect(bill(plain)).toBeCloseTo(10 * 0.4, 6);
+      expect(bill(buried)).toBeCloseTo(10 * (0.4 - 0.25), 6);
+    });
+
+    it('never takes a street tile below nothing', () => {
+      const cheap: RoadSpec[] = [{ ...roadSpecs[0]!, upkeepPerTile: 0.1 }];
+      const g = makeGrid();
+      buryRow(g, RoadTier.TwoLane, 10);
+      expect(bill(g, cheap)).toBeCloseTo(0, 6);
+    });
   });
 
   it('charges nothing for a city that strung none', () => {

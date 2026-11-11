@@ -24,6 +24,8 @@ export const PLACEMENT_REFUSALS = {
 export const POWER_LINE_REFUSALS = {
   alongStreet: 'The street already carries power.',
   mustStartAtSource: 'A line must start at a power station, a substation or a live line.',
+  cableMustStartAtSource:
+    'A cable must start at a power station, a substation or a live line or cable.',
 } as const;
 
 /** The refusal for each thing a kind can need beside it besides a street. */

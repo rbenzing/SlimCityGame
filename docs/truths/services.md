@@ -274,11 +274,13 @@ Back to [the index](../GROUND-TRUTHS.md).
   behind the kerb and outside the footway, never in a carriageway, a median,
   a junction tile or a drive. A line or a cable the player lays starts at a
   power station, a substation or a line already live; a cable costs more to
-  build and less to keep. Power never passes from a street into a line laid
-  to this rule; a line an older save holds stays live as it was. Agreed and
-  not yet built: the cable. —
+  build and less to keep. Power never passes from a street into a line or a
+  cable laid to this rule; a line an older save holds stays live as it was.
+  A cable under a sealed street is that street's supply and conducts as the
+  street does; nothing of a cable shows on the surface but its boxes, its
+  pad transformers and its riser poles. —
   [power-distribution.md](../specs/power-distribution.md);
-  `src/render/powerpoles.ts`, `src/sim/network.ts`,
+  `src/render/powerpoles.ts`, `src/sim/network.ts`, `src/render/cables.ts`,
   `alongStreetRefusal` in `src/world/powerline.ts`
 - [R-services-040] Every building parks where it shows: on its lot, at the kerb it is
   credited, or in its garage; none stands on a bare pad. A level-1 office,

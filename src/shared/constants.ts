@@ -434,6 +434,14 @@ export const POWER_LINE_COST_PER_TILE = 12;
  * the mechanic exists to put in front of the player.
  */
 export const POWER_LINE_UPKEEP_PER_TILE = 0.5;
+/** ¢ to bury one tile of cable: eight tiles of strung line, the trench and the duct. */
+export const POWER_CABLE_COST_PER_TILE = POWER_LINE_COST_PER_TILE * 8;
+/**
+ * ¢/month upkeep per tile of buried cable: half a line's, since nothing weathers.
+ * Under a sealed street the cable charges none of its own and takes this much
+ * off that street tile's upkeep instead.
+ */
+export const POWER_CABLE_UPKEEP_PER_TILE = POWER_LINE_UPKEEP_PER_TILE / 2;
 /**
  * ¢ to lay one tile of water pipe, and ¢/month to keep it: the power line's
  * figures, for the same reason — a pipe has to be the cheapest thing that

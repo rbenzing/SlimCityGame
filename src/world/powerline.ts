@@ -50,44 +50,79 @@ export function lineAt(g: PowerLineGridSource, x: number, z: number): boolean {
 }
 
 /**
- * Strings (or pulls down) a line over `tiles`, returning the ones that
- * actually CHANGED — which is what the caller charges for and what its undo
- * puts back. A tile that already carries what is asked of it is skipped, so
- * dragging back over a run costs nothing and the command stays idempotent.
- * A tile strung takes `kind`; a tile already holding a line keeps its own.
+ * The tiles a stringing would CHANGE, which is what the caller charges for and
+ * what its undo puts back; nothing is written. A tile that already carries what
+ * is asked of it is skipped, so dragging back over a run costs nothing and the
+ * command stays idempotent. With no `kind` a tile strung takes Strung and a
+ * tile already holding a line or a held line keeps its own, but a buried cable
+ * is replaced; with a `kind` every tile not already of it takes it. A tile
+ * holds one byte, so a line and a cable never share one.
+ */
+export function lineChanges(
+  g: PowerLineGridSource,
+  tiles: readonly TilePoint[],
+  on: boolean,
+  kind?: PowerLineKind,
+): TilePoint[] {
+  const changed: TilePoint[] = [];
+  const seen = new Set<number>();
+  for (const { x, z } of tiles) {
+    if (!inBoundsOf(g.size, x, z)) continue;
+    const i = indexOf(g.size, x, z);
+    if (seen.has(i)) continue;
+    seen.add(i);
+    const now = g.powerLine[i] ?? 0;
+    if (!on) {
+      if (now !== 0) changed.push({ x, z });
+      continue;
+    }
+    if (!canStringLine(g, x, z)) continue;
+    const replaces = kind === undefined ? now === 0 || now === PowerLineKind.Cable : now !== kind;
+    if (replaces) changed.push({ x, z });
+  }
+  return changed;
+}
+
+/**
+ * Strings (or pulls down) a line or cable over `tiles`, returning the ones
+ * that actually CHANGED (see `lineChanges`).
  */
 export function stringPowerLine(
   g: PowerLineGridSource,
   tiles: readonly TilePoint[],
   on: boolean,
-  kind: PowerLineKind = PowerLineKind.Strung,
+  kind?: PowerLineKind,
 ): TilePoint[] {
-  const changed: TilePoint[] = [];
-  for (const { x, z } of tiles) {
-    if (!inBoundsOf(g.size, x, z)) continue;
-    const i = indexOf(g.size, x, z);
-    const now = (g.powerLine[i] ?? 0) !== 0;
-    if (now === on) continue;
-    if (on && !canStringLine(g, x, z)) continue;
-    g.powerLine[i] = on ? kind : 0;
-    changed.push({ x, z });
+  const changed = lineChanges(g, tiles, on, kind);
+  for (const { x, z } of changed) {
+    g.powerLine[indexOf(g.size, x, z)] = on ? (kind ?? PowerLineKind.Strung) : 0;
   }
   return changed;
 }
 
 /**
  * The commands that put `tiles` back as they were, given the kind each held
- * before they were pulled down: one restore a kind, so an undo returns old and
- * new lines each to their own byte.
+ * before: one restore a kind, so an undo returns held lines, strung lines and
+ * cables each to their own byte, and a tile that held nothing is pulled down.
+ * A cable restore says so, since a cable with no such mark is a new run.
  */
 export function restoreLineCommands(
   tiles: readonly TilePoint[],
   kinds: readonly number[],
 ): Command[] {
   const out: Command[] = [];
-  for (const lineKind of [PowerLineKind.Held, PowerLineKind.Strung]) {
+  const bare = tiles.filter((_, i) => kinds[i] === 0);
+  if (bare.length > 0) out.push({ kind: 'stringPowerLine', tiles: bare, on: false });
+  for (const lineKind of [PowerLineKind.Held, PowerLineKind.Strung, PowerLineKind.Cable]) {
     const same = tiles.filter((_, i) => kinds[i] === lineKind);
-    if (same.length > 0) out.push({ kind: 'stringPowerLine', tiles: same, on: true, lineKind });
+    if (same.length === 0) continue;
+    out.push({
+      kind: 'stringPowerLine',
+      tiles: same,
+      on: true,
+      lineKind,
+      ...(lineKind === PowerLineKind.Cable ? { restore: true } : {}),
+    });
   }
   return out;
 }
@@ -103,19 +138,34 @@ export function feedsLines(entry: Pick<BuildingCatalogEntry, 'utility'> | undefi
  * every stretch of new line in it touches a source tile — `sourceAt` says
  * which tiles are a generator's or a substation's footprint — or a line that
  * already stands. A stretch is the new tiles that follow one another.
+ *
+ * A cable (`kind` Cable) gives its own sentence. A cable tile under a sealed
+ * street (`underStreet`) is that street's supply and needs no source of its
+ * own, and a stretch does not run through it; nor does an existing one of
+ * those feed a stretch beside it.
  */
 export function sourceEndRefusal(
   g: PowerLineGridSource,
   tiles: readonly TilePoint[],
   sourceAt: (x: number, z: number) => boolean,
+  kind: PowerLineKind = PowerLineKind.Strung,
+  underStreet: (x: number, z: number) => boolean = () => false,
 ): string | null {
   const key = (x: number, z: number): number => indexOf(g.size, x, z);
+  const cable = kind === PowerLineKind.Cable;
   const fresh = new Set<number>();
   for (const { x, z } of tiles) {
-    if (inBoundsOf(g.size, x, z) && g.powerLine[key(x, z)] === 0 && canStringLine(g, x, z)) {
-      fresh.add(key(x, z));
+    if (!inBoundsOf(g.size, x, z) || g.powerLine[key(x, z)] !== 0 || !canStringLine(g, x, z)) {
+      continue;
     }
+    if (cable && underStreet(x, z)) continue;
+    fresh.add(key(x, z));
   }
+  const feeds = (x: number, z: number): boolean => {
+    const held = g.powerLine[key(x, z)] ?? 0;
+    if (held === 0) return sourceAt(x, z);
+    return !(held === PowerLineKind.Cable && underStreet(x, z));
+  };
   const seen = new Set<number>();
   for (const start of fresh) {
     if (seen.has(start)) continue;
@@ -141,12 +191,16 @@ export function sourceEndRefusal(
             seen.add(n);
             stack.push(n);
           }
-        } else if (g.powerLine[n] !== 0 || sourceAt(nx, nz)) {
+        } else if (feeds(nx, nz)) {
           live = true;
         }
       }
     }
-    if (!live) return POWER_LINE_REFUSALS.mustStartAtSource;
+    if (!live) {
+      return cable
+        ? POWER_LINE_REFUSALS.cableMustStartAtSource
+        : POWER_LINE_REFUSALS.mustStartAtSource;
+    }
   }
   return null;
 }
@@ -180,7 +234,8 @@ export function alongStreetRefusal(
 ): string | null {
   const isNew = (t: TilePoint): boolean =>
     inBoundsOf(g.size, t.x, t.z) &&
-    g.powerLine[indexOf(g.size, t.x, t.z)] === 0 &&
+    (g.powerLine[indexOf(g.size, t.x, t.z)] === 0 ||
+      g.powerLine[indexOf(g.size, t.x, t.z)] === PowerLineKind.Cable) &&
     canStringLine(g, t.x, t.z);
   const street = (t: TilePoint): boolean => {
     const tier = g.roadTier[indexOf(g.size, t.x, t.z)] ?? 0;

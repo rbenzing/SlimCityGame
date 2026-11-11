@@ -13,7 +13,14 @@ import { SEA_LEVEL, TILE_METERS, worldToTile } from '../shared/constants';
 import { footprintForRotation } from '../shared/footprint';
 import { claimedTiles } from '../shared/lotframe';
 import { regradeSoil, soilGrades } from '../shared/soil';
-import { corridorHalfOf, flowDirection, isRailTier, RoadFlow, RoadTier } from '../shared/types';
+import {
+  corridorHalfOf,
+  flowDirection,
+  isRailTier,
+  PowerLineKind,
+  RoadFlow,
+  RoadTier,
+} from '../shared/types';
 import { approachZoneTiles, armSlot } from '../shared/approach';
 import {
   approachAhead,
@@ -178,9 +185,19 @@ export class ClientGridMirror {
     return this.inBounds(x, z) && this.powerLine[this.idx(x, z)] !== 0;
   }
 
-  /** Every tile carrying a line, row-major — what the renderer stands poles on. */
+  /** Whether a buried cable lies at (x, z); false off the map. */
+  cableAt(x: number, z: number): boolean {
+    return this.inBounds(x, z) && this.powerLine[this.idx(x, z)] === PowerLineKind.Cable;
+  }
+
+  /** Every tile carrying a line on poles, row-major — what the renderer stands poles on. */
   powerLineTiles(): TilePoint[] {
-    return this.tilesWhere(this.powerLine);
+    return this.tilesWhere(this.powerLine, (kind) => kind !== PowerLineKind.Cable);
+  }
+
+  /** Every tile carrying a buried cable, row-major — what the underground view draws. */
+  cableTiles(): TilePoint[] {
+    return this.tilesWhere(this.powerLine, (kind) => kind === PowerLineKind.Cable);
   }
 
   /** Folds the worker's pipe rectangles in, the shape every painted layer travels in. */
@@ -216,11 +233,15 @@ export class ClientGridMirror {
     return this.tilesWhere(this.waterPipe);
   }
 
-  private tilesWhere(layer: Uint8Array): TilePoint[] {
+  private tilesWhere(
+    layer: Uint8Array,
+    keep: (value: number) => boolean = () => true,
+  ): TilePoint[] {
     const out: TilePoint[] = [];
     for (let z = 0; z < this.size; z++) {
       for (let x = 0; x < this.size; x++) {
-        if (layer[this.idx(x, z)] !== 0) out.push({ x, z });
+        const value = layer[this.idx(x, z)]!;
+        if (value !== 0 && keep(value)) out.push({ x, z });
       }
     }
     return out;

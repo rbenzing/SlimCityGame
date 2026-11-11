@@ -14,7 +14,7 @@
 
 import * as THREE from 'three';
 import { MIN_INSTANCE_CAPACITY, setInstanceCount } from './groundquad';
-import { wirePoints } from './powerpoles';
+import { JUNCTION_BOX_M, RISER_GUARD_OFFSET_M, TRANSFORMER_M, wirePoints } from './powerpoles';
 import type { PowerLay } from './powerpoles';
 
 /** Where the player's strung line is kept; the street's chunks are numbered from 0. */
@@ -34,14 +34,33 @@ const GUY_BELOW_ARM_M = 0.4;
 /** The foot of a pole is this much wider than its top. */
 const POLE_TAPER = 0.6;
 const POLE_RADIAL_SEGMENTS = 6;
+/** The green of a street cabinet; a junction box and a transformer wear it too. */
+const BOX_COLOR = 0x2f5d3a;
+/** The doors of a box, a shade deeper, proud of its face. */
+const DOOR_COLOR = 0x234a2d;
+/** A riser's guard: galvanised conduit up the pole. */
+const GUARD_COLOR = 0x9a9a94;
+const DOOR_PROUD_M = 0.04;
+/** How much of a box's face and height its doors fill. */
+const DOOR_FILL = 0.8;
+const GUARD_WIDTH_M = 0.12;
+/** A guard runs from the ground to this far below the pole's top, metres. */
+const GUARD_BELOW_TOP_M = 1.2;
 
 /** What one slot lays: the instance matrices of each part, and where its poles stand. */
 interface Slot {
   poles: Float32Array;
   arms: Float32Array;
   cables: Float32Array;
+  boxes: Float32Array;
+  doors: Float32Array;
+  guards: Float32Array;
   /** x, y, z of every pole's foot, in instance order. */
   feet: number[];
+  /** x, y, z of every box's foot, in instance order. */
+  boxFeet: number[];
+  /** The index, in `feet` order, of every pole that carries a cable up. */
+  riserPoles: number[];
 }
 
 const _matrix = new THREE.Matrix4();
@@ -128,9 +147,16 @@ export class PowerLineRenderer {
   private readonly cableGeometry = new THREE.BoxGeometry(1, 1, 1);
   private readonly timber = new THREE.MeshLambertMaterial({ color: POLE_COLOR });
   private readonly wire = new THREE.MeshLambertMaterial({ color: WIRE_COLOR });
+  private readonly boxGeometry = new THREE.BoxGeometry(1, 1, 1).translate(0, 0.5, 0);
+  private readonly boxMaterial = new THREE.MeshLambertMaterial({ color: BOX_COLOR });
+  private readonly doorMaterial = new THREE.MeshLambertMaterial({ color: DOOR_COLOR });
+  private readonly guardMaterial = new THREE.MeshLambertMaterial({ color: GUARD_COLOR });
   private readonly polePool: InstancePool;
   private readonly armPool: InstancePool;
   private readonly cablePool: InstancePool;
+  private readonly boxPool: InstancePool;
+  private readonly doorPool: InstancePool;
+  private readonly guardPool: InstancePool;
   /** Slots laid since construction; a test reads it to see what a change re-laid. */
   private laid = 0;
 
@@ -141,22 +167,67 @@ export class PowerLineRenderer {
     this.polePool = new InstancePool(scene, this.poleGeometry, this.timber, true);
     this.armPool = new InstancePool(scene, this.armGeometry, this.timber, true);
     this.cablePool = new InstancePool(scene, this.cableGeometry, this.wire, false);
+    this.boxPool = new InstancePool(scene, this.boxGeometry, this.boxMaterial, true);
+    this.doorPool = new InstancePool(scene, this.boxGeometry, this.doorMaterial, false);
+    this.guardPool = new InstancePool(scene, this.boxGeometry, this.guardMaterial, false);
   }
 
   /** Lays one slot anew, or empties it when given no lay. Nothing shows until commit(). */
   setSlot(slot: number, lay: PowerLay | null): void {
     this.laid += 1;
-    if (!lay || (lay.poles.length === 0 && lay.spans.length === 0)) {
+    const boxList = lay?.boxes ?? [];
+    if (!lay || (lay.poles.length === 0 && lay.spans.length === 0 && boxList.length === 0)) {
       this.slots.delete(slot);
       return;
     }
     const poles: number[] = [];
     const arms: number[] = [];
     const cables: number[] = [];
+    const boxes: number[] = [];
+    const doors: number[] = [];
+    const guards: number[] = [];
     const feet: number[] = [];
+    const boxFeet: number[] = [];
+    const riserPoles: number[] = [];
+    for (const box of boxList) {
+      const ground = this.heightAt(box.x, box.z);
+      const dims = box.kind === 'transformer' ? TRANSFORMER_M : JUNCTION_BOX_M;
+      boxFeet.push(box.x, ground, box.z);
+      // The box's width runs along its door face, its depth out of it: local +Z turned to the facing.
+      _quat.setFromAxisAngle(_up, Math.atan2(box.fx, box.fz));
+      _scale.set(dims.width, dims.height, dims.depth);
+      _matrix.compose(_position.set(box.x, ground, box.z), _quat, _scale);
+      boxes.push(..._matrix.elements);
+      // The doors stand proud of the face the box looks out of.
+      const out = dims.depth / 2 + DOOR_PROUD_M / 2;
+      _scale.set(dims.width * DOOR_FILL, dims.height * DOOR_FILL, DOOR_PROUD_M);
+      _matrix.compose(
+        _position.set(
+          box.x + box.fx * out,
+          ground + dims.height * ((1 - DOOR_FILL) / 2),
+          box.z + box.fz * out,
+        ),
+        _quat,
+        _scale,
+      );
+      doors.push(..._matrix.elements);
+    }
     for (const pole of lay.poles) {
       const ground = this.heightAt(pole.x, pole.z);
+      if (pole.riser) riserPoles.push(feet.length / 3);
       feet.push(pole.x, ground, pole.z);
+      if (pole.riser) {
+        // A guard stands up the side that faces the cable, from the ground to near the top.
+        const reach = pole.radius + RISER_GUARD_OFFSET_M * 0.5;
+        const length = pole.height - GUARD_BELOW_TOP_M;
+        _scale.set(GUARD_WIDTH_M, length, GUARD_WIDTH_M);
+        _matrix.compose(
+          _position.set(pole.x + pole.riser.x * reach, ground, pole.z + pole.riser.z * reach),
+          _quat.identity(),
+          _scale,
+        );
+        guards.push(..._matrix.elements);
+      }
       _scale.set(pole.radius, pole.height, pole.radius);
       _matrix.compose(_position.set(pole.x, ground, pole.z), _quat.identity(), _scale);
       poles.push(..._matrix.elements);
@@ -184,7 +255,12 @@ export class PowerLineRenderer {
       poles: Float32Array.from(poles),
       arms: Float32Array.from(arms),
       cables: Float32Array.from(cables),
+      boxes: Float32Array.from(boxes),
+      doors: Float32Array.from(doors),
+      guards: Float32Array.from(guards),
       feet,
+      boxFeet,
+      riserPoles,
     });
   }
 
@@ -194,6 +270,51 @@ export class PowerLineRenderer {
     this.polePool.write(all.map((s) => s.poles));
     this.armPool.write(all.map((s) => s.arms));
     this.cablePool.write(all.map((s) => s.cables));
+    this.boxPool.write(all.map((s) => s.boxes));
+    this.doorPool.write(all.map((s) => s.doors));
+    this.guardPool.write(all.map((s) => s.guards));
+  }
+
+  /**
+   * The ground points the cable comes up at: the foot of every box and of every
+   * riser pole, as laid. The underground view marks them on the cable.
+   */
+  footings(): { x: number; z: number }[] {
+    const out: { x: number; z: number }[] = [];
+    for (const slot of this.slots.values()) {
+      for (let i = 0; i < slot.boxFeet.length; i += 3) {
+        out.push({ x: slot.boxFeet[i]!, z: slot.boxFeet[i + 2]! });
+      }
+      for (const i of slot.riserPoles) out.push({ x: slot.feet[i * 3]!, z: slot.feet[i * 3 + 2]! });
+    }
+    return out;
+  }
+
+  /** Boxes standing after the last commit: junction boxes and transformers. */
+  boxCount(): number {
+    return this.boxPool.count();
+  }
+
+  /** Riser guards standing after the last commit. */
+  guardCount(): number {
+    return this.guardPool.count();
+  }
+
+  /** World position of a box's foot, for a harness to read back. */
+  boxPosition(index: number): { x: number; y: number; z: number } | null {
+    let left = index;
+    for (const slot of this.slots.values()) {
+      const here = slot.boxFeet.length / 3;
+      if (left < here) {
+        return {
+          x: slot.boxFeet[left * 3]!,
+          y: slot.boxFeet[left * 3 + 1]!,
+          z: slot.boxFeet[left * 3 + 2]!,
+        };
+      }
+      left -= here;
+    }
+    return null;
   }
 
   /** Number of poles standing after the last commit. */
@@ -237,5 +358,12 @@ export class PowerLineRenderer {
     this.polePool.dispose();
     this.armPool.dispose();
     this.cablePool.dispose();
+    this.boxPool.dispose();
+    this.doorPool.dispose();
+    this.guardPool.dispose();
+    this.boxGeometry.dispose();
+    this.boxMaterial.dispose();
+    this.doorMaterial.dispose();
+    this.guardMaterial.dispose();
   }
 }

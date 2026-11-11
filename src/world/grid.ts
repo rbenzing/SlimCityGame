@@ -176,6 +176,8 @@ export const BYTES_PER_TILE_BY_VERSION: readonly number[] = [
   BYTES_PER_TILE_V16,
   // v18 changes no layer: it is the v16 layout, with powerLine bytes of 2.
   BYTES_PER_TILE_V16,
+  // v19 changes no layer: it is the v16 layout, with powerLine bytes of 3.
+  BYTES_PER_TILE_V16,
 ];
 
 function bufferBytesFor(size: number, bytesPerTile: number = BYTES_PER_TILE_V16): number {

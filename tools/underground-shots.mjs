@@ -211,6 +211,52 @@ try {
   await camera(view.x, view.z, 40, Math.PI, 1.0);
   await shot('underground-close');
 
+  // The buried cable: the street's own supply buried along its middle (above the
+  // pipes under it), and a cable from a wind turbine north over open ground. The
+  // cable tool takes the city underground; on the surface nothing of it shows but boxes.
+  await place('wind-turbine', X + 33, Z - 1, 0);
+  await cmd('Buried street supply', [
+    { kind: 'stringPowerLine', tiles: rowTiles(Z, X + 14, X + 29), on: true, lineKind: 3 },
+  ]);
+  await cmd('Cable over open ground', [
+    { kind: 'stringPowerLine', tiles: colTiles(X + 33, Z - 9, Z - 2), on: true, lineKind: 3 },
+  ]);
+  await hook(() => window.__slimcity.setSpeed(1));
+  await page.waitForTimeout(3500);
+  await hook(() => window.__slimcity.setSpeed(0));
+  await page.waitForTimeout(600);
+  const gc = await hook(() => window.__slimcity.readGrid());
+  const cableTiles = gc.powerLine.reduce((n, v) => n + (v === 3 ? 1 : 0), 0);
+  check(cableTiles === 16 + 8, `cable not laid (${cableTiles} tiles)`);
+  const cableRead = () => hook(() => window.__slimcity.readPowerCables());
+
+  await hook(() => window.__slimcity.setTool('select'));
+  await page.waitForTimeout(500);
+  let c = await cableRead();
+  console.log('cable surface', JSON.stringify({ boxes: c.boxes.length, guards: c.guards, overlay: c.overlay }));
+  check(!c.overlay.visible, 'the cable overlay shows on the surface');
+  check(c.boxes.length >= 3, `too few boxes on the surface (${c.boxes.length})`);
+  await camera(X + 22, Z, 60, Math.PI, 0.6);
+  await shot('cable-surface-street');
+  await camera(X + 33, Z - 5, 50, Math.PI, 0.6);
+  await shot('cable-surface-open');
+
+  await hook(() => window.__slimcity.setTool('power.cable'));
+  await page.waitForTimeout(1000);
+  u = await under();
+  c = await cableRead();
+  console.log('cable underground', JSON.stringify({ active: u.active, overlay: c.overlay }));
+  check(u.active, 'the cable tool did not take the city underground');
+  check(c.overlay.visible && c.overlay.tiles === 24, `cable overlay not drawn (${c.overlay.tiles} tiles)`);
+  check(c.overlay.feet >= 4, `feet of boxes and risers not marked (${c.overlay.feet})`);
+  await camera(X + 22, Z - 1, 60, Math.PI, PITCH);
+  await shot('cable-underground-street');
+  await camera(X + 13, Z, 30, Math.PI, 1.0);
+  await shot('cable-underground-riser');
+  await camera(X + 33, Z - 5, 55, Math.PI, 1.0);
+  await shot('cable-underground-open');
+  await hook(() => window.__slimcity.setTool('select'));
+
   // Lenses, each with the tool put back to select.
   const lenses = [
     ['watered', true],

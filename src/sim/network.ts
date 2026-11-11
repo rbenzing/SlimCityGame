@@ -36,7 +36,14 @@ import type {
   TilePoint,
   UtilitySpec,
 } from '../shared/types';
-import { BuildingState, PowerLineKind, RoadTier, ZoneType, isStreetTier } from '../shared/types';
+import {
+  BuildingState,
+  PowerLineKind,
+  RoadTier,
+  ZoneType,
+  isFrontageTier,
+  isStreetTier,
+} from '../shared/types';
 import {
   MAP_SIZE,
   ROAD_CHECK_RADIUS,
@@ -86,6 +93,15 @@ function tierCarriesWater(tier: number): boolean {
 /** Whether the tier's road is made up; an unknown tier is assumed sealed. */
 export function tierIsSealed(tier: number): boolean {
   return IS_SEALED_BY_TIER.get(tier) ?? true;
+}
+
+/**
+ * Whether the tier is a made-up street a building stands beside: the roads
+ * whose own supply a buried cable takes underground. A motorway, a ramp, a
+ * gravel road and rail are not.
+ */
+export function tierIsSealedStreet(tier: number): boolean {
+  return isFrontageTier(tier) && tierIsSealed(tier);
 }
 
 /**
@@ -265,11 +281,19 @@ function reachableNetworkTiles(
     );
   };
   if (directed) for (const s of seeds) if (lineKind(s) !== 0) lineFed.add(s);
-  const mayEnter = (cur: number, next: number): boolean =>
-    !directed ||
-    lineKind(next) !== PowerLineKind.Strung ||
-    isLive(cur) ||
-    (cells.tier[next] !== 0 && streetCarriesPower(cells.tier[next]!));
+  // A strung line and a buried cable alike: a sealed street feeds the tile it
+  // runs under as the street itself, anything else only a live neighbour does.
+  // A cable under a motorway or a ramp is only a cable: it is not the supply of
+  // a street a building stands beside.
+  const mayEnter = (cur: number, next: number): boolean => {
+    if (!directed) return true;
+    const kind = lineKind(next);
+    if (kind !== PowerLineKind.Strung && kind !== PowerLineKind.Cable) return true;
+    if (isLive(cur)) return true;
+    const tier = cells.tier[next]!;
+    if (tier === 0) return false;
+    return kind === PowerLineKind.Cable ? tierIsSealedStreet(tier) : streetCarriesPower(tier);
+  };
   // A substation takes its supply from any cell beside it and feeds every
   // street and line beside it; the footprint is reached at the same distance.
   const hubAt = new Map<number, number>();
