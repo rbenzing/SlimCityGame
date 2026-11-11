@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.83.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.82.0...slimcity-v1.83.0) (2026-11-11)
+
+
+### Features
+
+* **render:** a dense building parks in a garage on its own lot ([1b35332](https://github.com/rbenzing/SlimCityGame/commit/1b35332c07fe630f27035baa00e34286e66aef56))
+
 ## [1.82.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.81.0...slimcity-v1.82.0) (2026-11-11)
 
 
