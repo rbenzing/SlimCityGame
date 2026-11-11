@@ -16,4 +16,4 @@ The numbered sections of the [roadmap](../ROADMAP.md), moved out of it unchanged
 | [7. Milestones (each ends playable)](7-milestones-each-ends-playable.md) | 4,049 B |
 | [8. Performance budgets](8-performance-budgets.md) | 396 B |
 | [9. Risks & scope guards](9-risks--scope-guards.md) | 769 B |
-| [Open visual defects](open-visual-defects.md) | 10,580 B |
+| [Open visual defects](open-visual-defects.md) | 10,622 B |

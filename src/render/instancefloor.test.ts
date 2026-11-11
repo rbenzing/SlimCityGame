@@ -61,7 +61,7 @@ describe('the instance capacity floor', () => {
     renderer.rebuild(row(60));
     expect(instanced(scene)).toEqual(first);
 
-    renderer.rebuild(row(MIN_INSTANCE_CAPACITY * 3));
+    renderer.rebuild(row(MIN_INSTANCE_CAPACITY * 4));
     const grown = instanced(scene);
     expect(grown).toHaveLength(4);
     for (const mesh of grown) {

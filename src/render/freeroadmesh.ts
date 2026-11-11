@@ -19,7 +19,7 @@
  */
 
 import * as THREE from 'three';
-import { LAMP_SPACING_TILES, TILE_METERS } from '../shared/constants';
+import { TILE_METERS } from '../shared/constants';
 import { MAX_SETBACK_SHARE, leavingDirection, sampleCentreLine } from '../shared/roadgeom';
 import type { MPoint } from '../shared/roadgeom';
 import {
@@ -37,7 +37,13 @@ import { RoadFlow, RoadTier } from '../shared/types';
 import type { RoadNet, RoadProfile, TilePoint } from '../shared/types';
 import { bendsOf, isFreeSegment, isGridNode, segmentGeom, segmentsAt } from '../world/roadnet';
 import type { BendAt } from '../world/roadnet';
-import { lampLateralOffset, tierGetsLamp } from './lamps';
+import {
+  centralLampOffsetOf,
+  lampLateralOffset,
+  lampRuleOf,
+  lampSideOf,
+  tierGetsLamp,
+} from './lamps';
 import type { LampStand } from './lamps';
 import { POLE_SPECS, layFromLinks, poleLateralOffset } from './powerpoles';
 import type { PoleSite, PowerLay } from './powerpoles';
@@ -862,36 +868,56 @@ function drawCap(soup: Soup, net: RoadNet, cap: Cap): void {
 }
 
 /**
- * The street lamps along every road off the grid: one every lamp spacing
- * between its junctions, first a half spacing in, on alternate kerbs, each
- * reaching square across the road — and only where the road has power, as on
- * the grid.
+ * The street lamps along every road off the grid, by the same rules as on it:
+ * one every lamp spacing between its junctions, first a half spacing in, on
+ * alternate kerbs on a narrow street, in facing pairs on a wide one and on a
+ * motorway's median where it has one, each reaching square across the road —
+ * and only where the road has power.
  */
 export function freeRoadLampStands(
   net: RoadNet,
   lookup: ProfileFor,
   powered: (x: number, z: number) => boolean,
 ): LampStand[] {
-  const spacing = LAMP_SPACING_TILES * TILE_METERS;
   const out: LampStand[] = [];
   for (const span of layout(net, lookup).spans) {
     // A grid road's lamps are the tiles' own, whichever renderer draws it.
     if (!isFreeSegment(net, span.seg)) continue;
     const tier = net.segTier[span.seg] as RoadTier;
-    if (!tierGetsLamp(tier) || !isPaved(span.lay.profile)) continue;
-    const offset = lampLateralOffset(tier, span.lay.profile);
+    const profile = span.lay.profile;
+    if (!tierGetsLamp(tier) || !isPaved(profile)) continue;
+    const rule = lampRuleOf(profile);
+    const spacing = rule.spacingTiles * TILE_METERS;
+    const offset = lampLateralOffset(tier, profile);
+    const centre = centralLampOffsetOf(profile);
     const samples = sampleCentreLine(segmentGeom(net, span.seg));
     const first = span.from + Math.min(spacing, span.to - span.from) / 2;
     for (let s = first, k = 0; s <= span.to; s += spacing, k++) {
       const st = stations(samples, s, s)[0];
       if (!st || !powered(st.x, st.z)) continue;
-      const side = k % 2 === 0 ? 1 : -1;
-      out.push({
-        x: st.x + st.nx * offset * side,
-        z: st.z + st.nz * offset * side,
-        reachX: -st.nx * side,
-        reachZ: -st.nz * side,
-      });
+      // Each pole: where it stands across the road, and which way its arm reaches.
+      const side = lampSideOf(profile, k);
+      const poles: { across: number; reach: number }[] =
+        centre !== null
+          ? [
+              { across: centre, reach: 1 },
+              { across: centre, reach: -1 },
+            ]
+          : rule.wide
+            ? [
+                { across: offset, reach: -1 },
+                { across: -offset, reach: 1 },
+              ]
+            : [{ across: offset * side, reach: -side }];
+      for (const pole of poles) {
+        out.push({
+          x: st.x + st.nx * pole.across,
+          z: st.z + st.nz * pole.across,
+          reachX: st.nx * pole.reach,
+          reachZ: st.nz * pole.reach,
+          height: rule.height,
+        });
+      }
     }
   }
   return out;

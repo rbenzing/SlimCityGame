@@ -24,6 +24,7 @@ import {
   BIG_TOWN_MILESTONE,
   CREMATIONS_PER_YEAR,
   LAMP_SPACING_TILES,
+  LAMP_SPACING_WIDE_TILES,
   MILESTONES,
   NIGHT_WINDOW_LIT_MAX,
   NIGHT_WINDOW_LIT_MIN,
@@ -53,8 +54,12 @@ describe('night-cycle constants (UI-SPEC §6.5)', () => {
     expect(VISUAL_DAY_TICKS).toBeGreaterThan(TICKS_PER_DAY);
   });
 
-  it('lamps sit on every 2nd road tile — a pole every 40 m, as real streets run', () => {
-    expect(LAMP_SPACING_TILES).toBe(2);
+  it('lamps sit on every 3rd road tile of a narrow street — a pole every 60 m, as real streets run', () => {
+    expect(LAMP_SPACING_TILES).toBe(3);
+  });
+
+  it('a wide street stands its lamps in pairs, one pair every 4th tile — 80 m', () => {
+    expect(LAMP_SPACING_WIDE_TILES).toBe(4);
   });
 
   it('lit-window band is 40–70%, a valid sub-range of 0..1', () => {

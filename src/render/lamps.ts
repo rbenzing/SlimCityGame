@@ -22,9 +22,23 @@
  */
 import * as THREE from 'three';
 import { RoadTier } from '../shared/types';
-import { LAMP_SPACING_TILES, tileToWorld, worldToTile } from '../shared/constants';
-import { carriagewayHalfWidthMeters, curbWidthMeters, ROAD_Y_OFFSET } from './roadsmesh';
-import { carriagewayHalfWidthOf, kerbWidthOf } from '../shared/roadprofile';
+import {
+  LAMP_SPACING_TILES,
+  LAMP_SPACING_WIDE_TILES,
+  TILE_METERS,
+  tileToWorld,
+  worldToTile,
+} from '../shared/constants';
+import { ROAD_Y_OFFSET } from './roadsmesh';
+import {
+  carriagewayHalfWidthOf,
+  carriagewayShiftOf,
+  carriagewayWidth,
+  centralReserveOffsetOf,
+  hasKerbs,
+  postedKmhOf,
+  presetProfileForTier,
+} from '../shared/roadprofile';
 import type { RoadProfile } from '../shared/types';
 import { MIN_INSTANCE_CAPACITY, setInstanceCount } from './groundquad';
 import {
@@ -32,15 +46,41 @@ import {
   flankShift,
   hasCrossingRoad,
   lateralAxis,
+  POLE_BEHIND_KERB_M,
   tileKey,
   type FurnitureRoadTile,
   type TramPoleStand,
 } from './roadfurniture';
+import { BUS_STOP_PAD } from './busstops';
 
 /** How near a tram contact pole a street lamp may stand before the pole takes its place. */
 export const POLE_CLEARANCE_M = 2;
 
-const POLE_HEIGHT = 5.5;
+/** Pole heights by the street's width: 20, 30 and 40 ft. */
+export const LAMP_HEIGHTS_M = [6.1, 9.1, 12.2] as const;
+/** A carriageway under this is lit by the lowest pole. */
+const MID_STREET_FROM_M = 9;
+/** A carriageway up to this alternates its lamps; a wider one stands them in pairs. */
+export const NARROW_STREET_UP_TO_M = 15;
+
+/** Clear zone beside a road with no kerb, to a posted speed of 65 km/h, then beyond it. */
+export const CLEAR_ZONE_SLOW_M = 3.0;
+export const CLEAR_ZONE_FAST_M = 4.6;
+export const CLEAR_ZONE_SLOW_UP_TO_KMH = 65;
+
+/** How far from a crosswalk a lamp stands. */
+export const CROSSWALK_CLEARANCE_M = 3;
+/** The boarding area's length along the kerb. */
+const BOARDING_ALONG_M = 1.52;
+/** Half the stretch of a tile's kerb a bus stop keeps clear: its pad and its boarding area. */
+export const STOP_CLEAR_HALF_M = BUS_STOP_PAD.along / 2 + BOARDING_ALONG_M / 2;
+/** A lamp slides along its tile's strip in steps of this, to the nearest free place. */
+const SLIDE_STEP_M = 0.5;
+/** And no further from the tile's middle than keeps it clear of a crosswalk in the next tile. */
+const SLIDE_LIMIT_M = TILE_METERS / 2 - CROSSWALK_CLEARANCE_M;
+
+/** The reference pole, and the height the arm, housing and lens are modelled for. */
+const POLE_HEIGHT = LAMP_HEIGHTS_M[0];
 const POLE_RADIUS_TOP = 0.12;
 const POLE_RADIUS_BOTTOM = 0.16;
 const POLE_RADIAL_SEGMENTS = 8;
@@ -52,13 +92,26 @@ const POLE_COLOR = 0x50555d;
 
 /**
  * The cantilever arm reaches from the pole top TOWARD the road centerline
- * (direction = opposite the pole's lateral-offset sign). A short reach — the
- * pole is already curbside — so the housing (and the pool it casts) land over
- * the near LANE of the road rather than the far side.
+ * (direction = opposite the pole's lateral-offset sign), so the housing (and
+ * the pool it casts) land over the outer LANE of the road. It is modelled for
+ * the lowest pole and grows with the pole: arm, housing and lens are scaled by
+ * `lampScaleOf`, the pole's own height is stretched, so a taller pole's
+ * lantern still hangs over its outer lane.
  */
-const ARM_LENGTH_METERS = 2.8;
+const ARM_LENGTH_METERS = 2.4;
 const ARM_THICKNESS = 0.1;
-const ARM_Y_OFFSET = POLE_HEIGHT - 0.05; // pole-top mount height, just below the pole top
+/** Mount height, just below the pole top. */
+const ARM_MOUNT_BELOW_TOP_M = 0.05;
+
+/** The size of a pole's arm, housing, lens and pool against the lowest pole's: 1 at 6.1 m, 1.5 at 12.2 m. */
+export function lampScaleOf(height: number): number {
+  return 0.5 + (0.5 * height) / POLE_HEIGHT;
+}
+
+/** How far a pole's arm reaches over the road, metres. */
+export function armLengthOf(height: number): number {
+  return ARM_LENGTH_METERS * lampScaleOf(height);
+}
 
 /**
  * The bracket bends in two straight runs — a cheap, deterministic stand-in
@@ -85,9 +138,6 @@ const HOUSING_COWL_HEIGHT = 0.26;
 const HOUSING_COWL_SEGMENTS = 4; // 4-sided taper reads as a "boxy" cowl, not a smooth cone
 const HOUSING_TILT_RAD = THREE.MathUtils.degToRad(18); // angled downward, toward the road
 const HOUSING_COLOR = 0xffd9a0;
-
-/** Housing attach point: where the arm ends and the luminaire hangs. */
-const HOUSING_ATTACH_Y_OFFSET = ARM_Y_OFFSET - HOUSING_DROP;
 
 /**
  * Lens: the bulb itself, a small sphere seated in the cowl mouth. It is
@@ -121,7 +171,7 @@ const LENS_DROP = HOUSING_CAP_HEIGHT + HOUSING_COWL_HEIGHT;
  * as isolated puddles with dark road between them.
  */
 const POOL_RADIUS = 4.5;
-const POOL_ALONG_SCALE = 3; // down the roadway — ~27 m of road per lamp
+const POOL_ALONG_SCALE = 4.5; // down the roadway — ~40 m of road per lamp, 60 m apart on alternate kerbs
 const POOL_ACROSS_SCALE = 1; // across it — the carriageway plus a little verge
 const POOL_SEGMENTS = 24;
 const POOL_Y_OFFSET = ROAD_Y_OFFSET + 0.06; // clears the raised road surface
@@ -201,38 +251,110 @@ export function tierGetsLamp(tier: RoadTier | undefined): boolean {
   return tier !== RoadTier.Gravel && tier !== RoadTier.RailTrack;
 }
 
+/** A bus stop as the lamps keep clear of it: its tile and which kerb (0 the low side, 1 the high). */
+export interface LampStopSite {
+  x: number;
+  z: number;
+  side: 0 | 1;
+}
+
 export interface LampPlacement {
   x: number; // tile x
   z: number; // tile z
   /** World axis the lamp is offset along, away from the road centerline. */
   axis: LampAxis;
-  /** Sign of the lateral offset along `axis`; alternates every LAMP_SPACING_TILES. */
+  /** Sign of the lateral offset along `axis`. */
   side: 1 | -1;
-  /** Meters from the road centerline to the pole — the tier's carriageway edge + half a sidewalk (curbside). */
+  /**
+   * Meters from the road centerline to the pole's centre: behind the kerb
+   * face, or back from the travelled way by the clear zone where there is no
+   * kerb. A pole on a central median carries its signed offset from the tile's
+   * middle here, with `side` 1.
+   */
   lateralOffset: number;
+  /** Pole height, metres, by the street's width. */
+  height: number;
+  /** Metres the lamp stands along its tile's strip from the tile's middle; absent at 0. */
+  along?: number;
+  /** A pole on a central median, twin-armed: its arms reach both ways. */
+  twin?: true;
+}
+
+/** How a street is lit: its pole height, and whether lamps stand in pairs rather than alternate. */
+export interface LampRule {
+  height: number;
+  wide: boolean;
+  /** Tiles between lamps, or between pairs of them. */
+  spacingTiles: number;
 }
 
 /**
- * Curbside pole offset (m) for a tier: the middle of whatever curb the road
- * actually draws, just past the carriageway edge. On a motorway that is the
- * half-metre kerb rather than a footway it does not have, which is where a
- * motorway's columns stand anyway — and on a bridge it puts the column on the
- * deck's kerb instead of stranding it out in the middle of the span.
+ * The lighting a cross-section takes by its width: a carriageway up to 15 m
+ * alternates its lamps every 3 tiles, a wider one (and every motorway) sets
+ * them in facing pairs every 4. Poles stand 6.1 m under a 9 m carriageway,
+ * 9.1 m to 15 m and 12.2 m beyond. Half of a two-tile corridor is one side of
+ * a road twice its width.
  */
-export function lampLateralOffset(tier: RoadTier | undefined, profile?: RoadProfile): number {
-  if (profile) return carriagewayHalfWidthOf(profile) + kerbWidthOf(profile) * 0.5;
-  const t = tier ?? RoadTier.TwoLane;
-  return carriagewayHalfWidthMeters(t) + curbWidthMeters(t) * 0.5;
+export function lampRuleOf(profile: RoadProfile): LampRule {
+  const width = carriagewayWidth(profile) * (profile.seam ? 2 : 1);
+  const narrow = width <= NARROW_STREET_UP_TO_M + 1e-6;
+  const [low, mid, high] = LAMP_HEIGHTS_M;
+  const height = width < MID_STREET_FROM_M ? low : narrow ? mid : high;
+  const wide = !narrow || profile.class === 'highway';
+  return { height, wide, spacingTiles: wide ? LAMP_SPACING_WIDE_TILES : LAMP_SPACING_TILES };
 }
 
 /**
- * Deterministic lamp placement: a lamp sits on every tile
- * whose (x+z) is a multiple of LAMP_SPACING_TILES. That sum advances by
- * exactly 1 along any straight run of tiles — horizontal, vertical, or
- * diagonal — so this single orientation-agnostic rule reproduces "every Nth
- * tile" spacing regardless of which way a road happens to run. Consecutive
- * selected tiles alternate sides. Pure function of the input list: no rng,
- * no dependency on tile ordering.
+ * How far a pole stands from the road's centre line, metres. Behind a kerb it
+ * stands in the furnishing strip, its centre 0.46 m behind the kerb face,
+ * which is where the carriageway (parking and bike lanes included) ends. With
+ * no kerb it stands back from the travelled way by the clear zone, 3.0 m on a
+ * road posted to 65 km/h or less and 4.6 m on a faster one, and a slip road's
+ * stands at the tile's edge on the outside. Never beyond the tile's edge.
+ * `faceShift` is how far the kerb face has moved off the carriageway's own
+ * half-width, for half of a corridor pushed against its seam.
+ */
+export function lampLateralOffset(
+  tier: RoadTier | undefined,
+  profile?: RoadProfile,
+  faceShift = 0,
+): number {
+  const section = profile ?? presetProfileForTier(tier ?? RoadTier.TwoLane);
+  const edge = TILE_METERS / 2;
+  if (section.class === 'ramp') return edge;
+  const face = carriagewayHalfWidthOf(section) + faceShift;
+  if (hasKerbs(section)) return Math.min(face + POLE_BEHIND_KERB_M, edge);
+  const clear =
+    postedKmhOf(section) <= CLEAR_ZONE_SLOW_UP_TO_KMH ? CLEAR_ZONE_SLOW_M : CLEAR_ZONE_FAST_M;
+  return Math.min(face + clear, edge);
+}
+
+/** Where a motorway's central median or barrier stands across it, or null where it has none. */
+export function centralLampOffsetOf(profile: RoadProfile): number | null {
+  return profile.class === 'highway' ? centralReserveOffsetOf(profile) : null;
+}
+
+/**
+ * The kerb a lamp stands on in run `group` of its street: they alternate, but
+ * a slip road's stand on its outside, the side of its wider shoulder.
+ */
+export function lampSideOf(profile: RoadProfile, group: number): 1 | -1 {
+  if (profile.class === 'ramp') {
+    const first = profile.pieces[0]?.width ?? 0;
+    const last = profile.pieces[profile.pieces.length - 1]?.width ?? 0;
+    return first > last ? -1 : 1;
+  }
+  return group % 2 === 0 ? 1 : -1;
+}
+
+/**
+ * Deterministic lamp placement along the road's run. A lamp sits on every
+ * tile whose position along the road is a multiple of its street's spacing
+ * (see `lampRuleOf`): alternating kerbs on a narrow street, a facing pair on
+ * a wide one, a twin on a motorway's median. A lamp whose place is a bus
+ * stop's span slides along its tile's strip to the nearest free place, and
+ * the tile carries none where there is none. Pure function of the input
+ * list: no rng, no dependency on tile ordering.
  */
 export function computeLampPlacements(
   roadTiles: readonly LampRoadTile[],
@@ -247,8 +369,20 @@ export function computeLampPlacements(
    * POLE_CLEARANCE_M of one is not drawn: the pole stands in its place.
    */
   poles: readonly TramPoleStand[] = [],
+  /**
+   * The bus stops. Nothing stands in a stop's boarding area, the kerb before
+   * its pad or its shelter's path, so a lamp there moves along the strip.
+   */
+  stops: readonly LampStopSite[] = [],
 ): LampPlacement[] {
   const tileSet = buildTileSet(roadTiles);
+  const stopSides = new Map<number, Set<1 | -1>>();
+  for (const stop of stops) {
+    const key = tileKey(stop.x, stop.z);
+    const here = stopSides.get(key) ?? new Set<1 | -1>();
+    here.add(stop.side === 0 ? -1 : 1);
+    stopSides.set(key, here);
+  }
   const polesByTile = new Map<number, TramPoleStand[]>();
   for (const pole of poles) {
     const key = tileKey(worldToTile(pole.x), worldToTile(pole.z));
@@ -282,14 +416,11 @@ export function computeLampPlacements(
     if (tile.powered === false) continue;
     if (drivewayTiles?.has(tileKey(tile.x, tile.z))) continue;
 
-    const sum = tile.x + tile.z;
-    const mod = ((sum % LAMP_SPACING_TILES) + LAMP_SPACING_TILES) % LAMP_SPACING_TILES;
-    if (mod !== 0) continue;
-
     // Any tile with road running through it on BOTH axes — a turn, a T, a
     // crossroads — has no curb to stand a pole on: the lateral offset that
     // clears one carriageway lands inside the other one. Such tiles carry no
-    // lamp, and their straight neighbours light the junction from the approach.
+    // lamp, and their straight neighbours light the junction from the approach
+    // (a crosswalk lies inside the junction's own tile, a tile's length away).
     // A road lying beside this one without joining it, the other half of a
     // corridor among them, runs no road through the tile.
     if (hasCrossingRoad(tileSet, tile.x, tile.z)) continue;
@@ -297,26 +428,73 @@ export function computeLampPlacements(
     // tile has no run axis at all and falls back to z.
     const axis: LampAxis = lateralAxis(tileSet, tile.x, tile.z);
 
-    // Consecutive lamps alternate kerbs, but a pole stands only on a kerb with
-    // no road beyond it: never on the edge a corridor's halves share, which is
-    // the middle of the road.
-    const group = sum / LAMP_SPACING_TILES;
-    const preferred: 1 | -1 = group % 2 === 0 ? 1 : -1;
+    const profile = tile.profile ?? presetProfileForTier(tile.tier ?? RoadTier.TwoLane);
+    const rule = lampRuleOf(profile);
+    // The run's own coordinate, so two halves of a corridor, side by side, meet
+    // at the same tile and a wide street's pair stands square across.
+    const along = axis === 'z' ? tile.x : tile.z;
+    if (((along % rule.spacingTiles) + rule.spacingTiles) % rule.spacingTiles !== 0) continue;
+    const group = along / rule.spacingTiles;
+
+    // A place is free of a bus stop's span, and of a tram pole.
+    const slideTo = (base: LampPlacement): LampPlacement | null => {
+      const stopsHere = base.twin ? undefined : stopSides.get(tileKey(tile.x, tile.z));
+      const taken = stopsHere?.has(base.side) ?? false;
+      for (let step = 0; step * SLIDE_STEP_M <= SLIDE_LIMIT_M; step++) {
+        for (const sign of step === 0 ? [1] : [1, -1]) {
+          const offset = sign * step * SLIDE_STEP_M;
+          if (taken && Math.abs(offset) < STOP_CLEAR_HALF_M) continue;
+          const placed = offset === 0 ? base : { ...base, along: offset };
+          return besidePole(standOf(placed)) ? null : placed;
+        }
+      }
+      return null;
+    };
+
+    const centre = centralLampOffsetOf(profile);
+    if (centre !== null) {
+      // A motorway's median or barrier carries one twin-armed pole.
+      const found = slideTo({
+        x: tile.x,
+        z: tile.z,
+        axis,
+        side: 1,
+        lateralOffset: centre + carriagewayShiftOf(profile),
+        height: rule.height,
+        twin: true,
+      });
+      if (found) placements.push(found);
+      continue;
+    }
+
+    // A pole stands only on a kerb with no road beyond it: never on the edge a
+    // corridor's halves share, which is the middle of the road.
     const free = (s: 1 | -1): boolean =>
       !tileSet.has(tileKey(tile.x + (axis === 'x' ? s : 0), tile.z + (axis === 'z' ? s : 0)));
+    const preferred = lampSideOf(profile, group);
     const other: 1 | -1 = preferred === 1 ? -1 : 1;
-    const side = free(preferred) ? preferred : free(other) ? other : null;
-    if (side === null) continue;
-    const placement: LampPlacement = {
-      x: tile.x,
-      z: tile.z,
-      axis,
-      side,
-      lateralOffset:
-        lampLateralOffset(tile.tier, tile.profile) + flankShift(tileSet, tile, { axis, side }),
-    };
-    if (besidePole(standOf(placement))) continue;
-    placements.push(placement);
+    const sides: (1 | -1)[] = rule.wide
+      ? [1, -1].filter((s) => free(s as 1 | -1)).map((s) => s as 1 | -1)
+      : free(preferred)
+        ? [preferred]
+        : free(other)
+          ? [other]
+          : [];
+    for (const side of sides) {
+      const found = slideTo({
+        x: tile.x,
+        z: tile.z,
+        axis,
+        side,
+        lateralOffset: lampLateralOffset(
+          tile.tier,
+          profile,
+          flankShift(tileSet, tile, { axis, side }),
+        ),
+        height: rule.height,
+      });
+      if (found) placements.push(found);
+    }
   }
   return placements;
 }
@@ -418,26 +596,38 @@ export interface LampStand {
   z: number;
   reachX: number;
   reachZ: number;
+  /** Pole height, metres; absent reads as the lowest pole. */
+  height?: number;
 }
+
+const heightOf = (stand: LampStand): number => stand.height ?? POLE_HEIGHT;
 
 /** The stand a grid lamp placement describes: curbside, offset along its axis. */
 export function standOf(placement: LampPlacement): LampStand {
   const tileCenterX = tileToWorld(placement.x);
   const tileCenterZ = tileToWorld(placement.z);
   const offset = placement.lateralOffset * placement.side;
+  const slide = placement.along ?? 0;
   // The arm reaches back toward the centre line, opposite the pole's offset.
   const reach = -placement.side;
+  const height = placement.height;
   return placement.axis === 'x'
-    ? { x: tileCenterX + offset, z: tileCenterZ, reachX: reach, reachZ: 0 }
-    : { x: tileCenterX, z: tileCenterZ + offset, reachX: 0, reachZ: reach };
+    ? { x: tileCenterX + offset, z: tileCenterZ + slide, reachX: reach, reachZ: 0, height }
+    : { x: tileCenterX + slide, z: tileCenterZ + offset, reachX: 0, reachZ: reach, height };
 }
 
-/** World XZ of the luminaire — the arm end, out over the near lane. */
+/** The stands a placement describes: one, or the two arms of a twin on a median. */
+export function standsOf(placement: LampPlacement): LampStand[] {
+  const first = standOf(placement);
+  if (!placement.twin) return [first];
+  // `0 -` rather than a negation, which would turn a zero component into -0.
+  return [first, { ...first, reachX: 0 - first.reachX, reachZ: 0 - first.reachZ }];
+}
+
+/** World XZ of the luminaire — the arm end, out over the outer lane. */
 function housingWorldXZ(stand: LampStand): { x: number; z: number } {
-  return {
-    x: stand.x + stand.reachX * ARM_LENGTH_METERS,
-    z: stand.z + stand.reachZ * ARM_LENGTH_METERS,
-  };
+  const arm = armLengthOf(heightOf(stand));
+  return { x: stand.x + stand.reachX * arm, z: stand.z + stand.reachZ * arm };
 }
 
 /**
@@ -478,6 +668,7 @@ function buildPoolGeometry(
 
   stands.forEach((stand, lamp) => {
     const { x: centerX, z: centerZ } = housingWorldXZ(stand);
+    const poolScale = lampScaleOf(heightOf(stand)); // a taller lantern lights more road
     const base = lamp * POOL_VERTICES_PER_LAMP;
     // The arm reaches ACROSS the road, so the roadway runs square to it — that
     // is the direction the pool stretches down. `across` is always `along`
@@ -500,7 +691,7 @@ function buildPoolGeometry(
 
     for (let ring = 0; ring < POOL_RINGS.length; ring++) {
       const [radiusFraction, intensity] = POOL_RINGS[ring]!;
-      const radius = POOL_RADIUS * radiusFraction;
+      const radius = POOL_RADIUS * radiusFraction * poolScale;
       const firstVertex = base + 1 + ring * POOL_SEGMENTS;
       const innerFirst = firstVertex - POOL_SEGMENTS;
       for (let s = 0; s < POOL_SEGMENTS; s++) {
@@ -624,9 +815,10 @@ export class LampRenderer {
     drivewayTiles?: ReadonlySet<number>,
     freeStands: readonly LampStand[] = [],
     poles: readonly TramPoleStand[] = [],
+    stops: readonly LampStopSite[] = [],
   ): void {
     this.stands = [
-      ...computeLampPlacements(roadTiles, drivewayTiles, poles).map(standOf),
+      ...computeLampPlacements(roadTiles, drivewayTiles, poles, stops).flatMap(standsOf),
       ...freeStands,
     ];
 
@@ -836,26 +1028,34 @@ export class LampRenderer {
       .setFromAxisAngle(_upAxis, housingYawOf(stand))
       .multiply(_housingPitch);
 
-    _position.set(poleX, groundY + POLE_HEIGHT / 2, poleZ);
+    // One mesh serves every pole height: the pole is stretched to its height
+    // and grows with its arm, and the arm, housing and lens grow together, all
+    // by positive scales so no instance is mirrored.
+    const height = heightOf(stand);
+    const scale = lampScaleOf(height);
+    _scale.set(scale, height / POLE_HEIGHT, scale);
+    _position.set(poleX, groundY + height / 2, poleZ);
     _matrix.compose(_position, _identityQuat, _scale);
     this.poleMesh!.setMatrixAt(slot, _matrix);
+    _scale.setScalar(scale);
 
     // Arm mounts at the pole-top attach point; the bracket geometry itself
-    // encodes the rise-then-reach bend, so only the mount position + the
-    // direction-dependent yaw vary per instance.
-    _position.set(poleX, groundY + ARM_Y_OFFSET, poleZ);
+    // encodes the rise-then-reach bend, so only the mount position, the
+    // direction-dependent yaw and the scale vary per instance.
+    const mountY = groundY + height - ARM_MOUNT_BELOW_TOP_M;
+    _position.set(poleX, mountY, poleZ);
     _matrix.compose(_position, armYaw, _scale);
     this.armMesh!.setMatrixAt(slot, _matrix);
 
-    // Housing hangs at the arm end, over the road (near lane), angled down.
-    const housingY = groundY + HOUSING_ATTACH_Y_OFFSET;
+    // Housing hangs at the arm end, over the outer lane, angled down.
+    const housingY = mountY - HOUSING_DROP * scale;
     _position.set(housingX, housingY, housingZ);
     _matrix.compose(_position, housingQuat, _scale);
     this.housingMesh!.setMatrixAt(slot, _matrix);
 
     // Lens sits in the cowl mouth: straight down the HOUSING's own axis, not
     // the world's, so the housing's downward tilt carries the bulb with it.
-    _lensOffset.set(0, -LENS_DROP, 0).applyQuaternion(housingQuat);
+    _lensOffset.set(0, -LENS_DROP * scale, 0).applyQuaternion(housingQuat);
     _position.set(housingX + _lensOffset.x, housingY + _lensOffset.y, housingZ + _lensOffset.z);
     _matrix.compose(_position, _identityQuat, _scale);
     this.lensMesh!.setMatrixAt(slot, _matrix);

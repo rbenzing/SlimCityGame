@@ -109,18 +109,48 @@ await cmd('define', [
     id: PARKED,
     profile: {
       class: 'local',
-      pieces: [walk, { kind: 'parking', width: 2.25 }, ...lanes, { kind: 'parking', width: 2.25 }, walk],
+      pieces: [
+        walk,
+        { kind: 'parking', width: 2.25 },
+        ...lanes,
+        { kind: 'parking', width: 2.25 },
+        walk,
+      ],
     },
   },
-  { kind: 'defineRoadProfile', id: BARE, profile: { class: 'local', pieces: [walk, ...lanes, walk] } },
+  {
+    kind: 'defineRoadProfile',
+    id: BARE,
+    profile: { class: 'local', pieces: [walk, ...lanes, walk] },
+  },
 ]);
 await cmd('parked', [
   { kind: 'buildRoad', tier: TWO_LANE, tiles: row(28, 0, 24), profile: PARKED },
 ]);
 await cmd('bare', [{ kind: 'buildRoad', tier: TWO_LANE, tiles: row(31, 0, 24), profile: BARE }]);
+// Lamps stand only on a powered street: a turbine beside the avenue's west end
+// feeds it and the street that crosses it.
+await cmd('turbine', [
+  { kind: 'placeBuilding', catalogId: 'wind-turbine', x: X + 1, z: Z + 15, rotation: 0 },
+]);
+// A bus stop on the very tile a lamp would stand on, at the kerb it would stand
+// at: the lamp must give way along the strip, and nothing may stand between the
+// pad and the bus.
+const STREET_X = X + 13;
+const stopZ = [20, 21, 22, 23, 24].map((dz) => Z + dz).find((z) => z % 3 === 0) ?? Z + 21;
+const lampSide = (stopZ / 3) % 2 === 0 ? 1 : -1;
+await cmd('stop', [
+  {
+    kind: 'placeStop',
+    stop: { x: STREET_X, z: stopZ, side: lampSide === -1 ? 0 : 1, kind: 'shelter' },
+  },
+]);
 await page.waitForTimeout(3500);
 
 const failures = [];
+const lampPoles = await call(() => window.__slimcity.readLampPoles());
+console.log('lamps standing:', lampPoles.length);
+if (lampPoles.length === 0) failures.push('no street lamp stood on the powered streets');
 const all = await signs();
 console.log('signs laid:', all.length);
 
@@ -136,17 +166,17 @@ if (counts.meters === 0) failures.push('no meters on the street that has parking
 // identical boxes is what the mix exists to avoid.
 const cabinets = await call(() => window.__slimcity.readCabinets());
 const pedestals = cabinets.filter((c) => c.kind === 'pedestal');
-console.log(
-  'cabinets:',
-  JSON.stringify({ total: cabinets.length, pedestals: pedestals.length }),
-);
+console.log('cabinets:', JSON.stringify({ total: cabinets.length, pedestals: pedestals.length }));
 if (pedestals.length === 0) failures.push('not one round telco pedestal among the cabinets');
 if (pedestals.length === cabinets.length)
   failures.push('every cabinet is a pedestal — the rectangular one has gone');
 
 // Control boards must stand close to the box they hold, not a tile back.
 const near = all.filter((s) => Math.abs(s.x - (X + 13)) <= 2 && Math.abs(s.z - (Z + 16)) <= 2);
-console.log('boards at the crossroads:', JSON.stringify(near.map((s) => `${s.type}@${s.x},${s.z}`)));
+console.log(
+  'boards at the crossroads:',
+  JSON.stringify(near.map((s) => `${s.type}@${s.x},${s.z}`)),
+);
 if (near.length === 0) failures.push('the controlled crossroads warranted no boards at all');
 
 const PED = pedestals[0];
@@ -165,10 +195,36 @@ const shots = [
   ['cabinets', X + 12, Z + 31, 46, 0.35, 0.35],
   ['pedestal', PED ? PED.x : X + 12, PED ? PED.z : Z + 31, 14, 0.5, 0.3],
   ['cabinets-far', X + 20, Z + 28, 40, 0.35, 0.35],
+  // A lamp beside a bus stop, from the street and from the kerb's own side:
+  // nothing stands between the pad and the bus door.
+  ['lamp-busstop', STREET_X, stopZ, 16, lampSide === 1 ? -Math.PI / 2 : Math.PI / 2, 0.45],
+  ['lamp-busstop-along', STREET_X, stopZ, 26, 0.0, 0.5],
+  // The avenue's lamps stand in facing pairs on taller poles; the street's
+  // alternate on lower ones.
+  ['avenue-lamps', X + 12, Z + 16, 60, 0.45, 0.5],
+  ['street-lamps', STREET_X, Z + 21, 50, 0.5, 0.5],
 ];
 for (const [name, tx, tz, d, yaw, pitch] of shots) {
   await cam(tx, tz, d, yaw, pitch);
   await page.waitForTimeout(700);
+  await cleanShot(page, `${out}/${name}.png`);
+  console.log('shot', name);
+}
+
+// After dark, to read the lanterns' pools on the road. The pin only takes
+// effect while the sim runs a snapshot, so the speed is set around it.
+await call(() => {
+  window.__slimcity.setSpeed(1);
+  window.__slimcity.setDayT(3 / 24);
+});
+await page.waitForTimeout(800);
+for (const [name, tx, tz, d, yaw, pitch] of [
+  ['night-street', STREET_X, Z + 21, 60, 0.5, 0.6],
+  ['night-avenue', X + 12, Z + 16, 70, 0.45, 0.55],
+  ['night-lamp-busstop', STREET_X, stopZ, 24, 0.0, 0.45],
+]) {
+  await cam(tx, tz, d, yaw, pitch);
+  await page.waitForTimeout(900);
   await cleanShot(page, `${out}/${name}.png`);
   console.log('shot', name);
 }

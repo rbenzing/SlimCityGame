@@ -24,7 +24,7 @@ import {
 } from '../world/roadnet';
 import { TILE_METERS } from '../shared/constants';
 import { freeJunctionTiles, freeRoadLampStands, freeRoadSoup } from './freeroadmesh';
-import { lampLateralOffset } from './lamps';
+import { LAMP_HEIGHTS_M, lampLateralOffset } from './lamps';
 import { markingPlan } from './roadmarkings';
 import {
   CURB_Y_OFFSET,
@@ -583,6 +583,25 @@ describe('freeRoadLampStands', () => {
       return side;
     });
     for (let k = 1; k < sides.length; k++) expect(sides[k]).toBe(-sides[k - 1]!);
+  });
+
+  it('stands a wide road’s lamps in facing pairs on its two kerbs, on the tallest pole', () => {
+    const g = world();
+    lay(g, { tier: RoadTier.Avenue, a: at(200, 200), b: at(500, 500), control: at(500, 200) });
+    const [seg] = freeSegs(g);
+    const stands = freeRoadLampStands(g.roads!, noCustom, powered);
+    expect(stands.length).toBeGreaterThanOrEqual(4);
+    expect(stands.length % 2).toBe(0);
+    const offset = lampLateralOffset(RoadTier.Avenue, presetProfileForTier(RoadTier.Avenue));
+    for (let k = 0; k < stands.length; k += 2) {
+      const [a, b] = [stands[k]!, stands[k + 1]!];
+      const [oa, ob] = [offsetFrom(g, seg!, a), offsetFrom(g, seg!, b)];
+      expect(oa.d).toBeCloseTo(offset, 1);
+      expect(ob.d).toBeCloseTo(offset, 1);
+      expect(oa.side).toBe(-ob.side);
+      expect(Math.hypot(a.x - b.x, a.z - b.z)).toBeCloseTo(2 * offset, 0);
+      expect(a.height).toBe(LAMP_HEIGHTS_M[2]);
+    }
   });
 
   it('stands none where the road has no power, and none on gravel', () => {

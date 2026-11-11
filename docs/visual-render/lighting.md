@@ -145,9 +145,11 @@ it reading as light on a street rather than a painted shape:
   is also the lamp's single largest bright area, and so its widest bloom
   source.
 
-**Spacing**: a lamp stands every 2 tiles (40 m), alternating sides of the
-street for a staggered arrangement — close enough that successive pools
-light a continuous corridor down the road.
+**Spacing**: on a street up to 15 m wide a lamp stands every 3 tiles (60 m),
+alternating sides; on a wider one lamps stand in facing pairs every 4 tiles
+(80 m), on taller poles. A pool is stretched along the road so successive
+pools still light a continuous corridor. Where each pole stands is
+[street-furniture.md](../specs/street-furniture.md).
 
 **Bloom pass tuning**: `BLOOM_RADIUS` is 0.9 (up from 0.4) for a wider,
 softer spread on every night light in the scene. `BLOOM_NIGHT_STRENGTH`

@@ -122,6 +122,9 @@ const METER_ALONG = 3; // the pair straddles the tile center by ±3m along the r
 /** How far behind the kerb face a meter stands, so it is beside its bay and clear of the traffic. */
 export const METER_KERB_CLEARANCE_M = 0.45;
 
+/** How far behind the kerb face a roadside pole's centre stands: 18 in, in the furnishing strip. */
+export const POLE_BEHIND_KERB_M = 0.46;
+
 /** How far behind the kerb face a cantilevered mast's own post stands. */
 export const MAST_KERB_CLEARANCE_M = 0.5;
 

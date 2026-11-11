@@ -29,14 +29,20 @@ import {
 } from '../shared/roadprofile';
 import { flowDirection, RoadFlow, RoadTier, type BusStop, type RoadProfile } from '../shared/types';
 import { box, BUS_SHELTER, buildBusShelterGeometry, painted } from './busshelter';
-import { lateralAxis, tileKey, type FurnitureAxis, type RoadTileIndex } from './roadfurniture';
+import {
+  lateralAxis,
+  POLE_BEHIND_KERB_M,
+  tileKey,
+  type FurnitureAxis,
+  type RoadTileIndex,
+} from './roadfurniture';
 import { sidewalkDepthMeters } from './frontage';
 import { CURB_Y_OFFSET, ROAD_Y_OFFSET } from './roadsmesh';
 
 /** The boarding pad: 96 in out from the kerb, 12 ft along it, the shelter's length. */
 export const BUS_STOP_PAD = { out: 2.44, along: 3.66 };
 /** The pole stands this far out from the kerb. */
-export const BUS_STOP_POLE_FROM_KERB_M = 0.46;
+export const BUS_STOP_POLE_FROM_KERB_M = POLE_BEHIND_KERB_M;
 /** The shelter's front stands this far out from the kerb. */
 export const BUS_STOP_SHELTER_FRONT_M = 0.9;
 /** The flag sign: 18 × 24 in with its bottom 7 ft up, on a slim pole. */
