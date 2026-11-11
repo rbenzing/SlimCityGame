@@ -140,7 +140,9 @@ import type { CommandBatch } from '../core/commands';
 import type { ParcelFrame, RoadNet, SelectionInfo } from '../shared/types';
 import {
   canPlaceFootprint,
-  canPlaceTiles,
+  footprintBlocker,
+  GROUND_HUGGING_LIFT_M,
+  touchesStreet,
   ARMS_PER_TILE,
   hasAdjacentRoad,
   hasAdjacentTier,
@@ -217,6 +219,7 @@ import {
 } from '../world/terraform';
 import { FieldSim } from './fields';
 import { footprintForRotation } from '../shared/footprint';
+import { PLACEMENT_REFUSALS } from '../shared/placement';
 import { BuildingRegistry, settleBuildingDelta, standingTiles } from './buildings';
 import { computeDemand, jobRoom } from './demand';
 import { GrowthSystem, schoolsMissingAt, type GrowthSupply } from './growth';
@@ -464,13 +467,6 @@ function deadEndFacings(mask: number, flow: number): ReadonlyArray<readonly [num
   const [dx, dz] = arms[0]!;
   return [[-dx, -dz]];
 }
-
-/**
- * A deck lifted this little off its ground still lies on it: the grade solver
- * raises a tile a sliver to meet a neighbour's step, which is not a bridge and
- * must be levelled with the rest of the road or its ground stands proud of it.
- */
-const GROUND_HUGGING_LIFT_M = 0.5;
 
 /** The four orthogonal steps from a footprint tile to the tile across one of its edges. */
 const FOOTPRINT_EDGE_STEPS: ReadonlyArray<readonly [number, number]> = [
@@ -2768,6 +2764,7 @@ class SimWorld implements WorkerSim {
           command.rotation,
           command.interments,
           command.frame,
+          command.restore === true,
         );
       case 'setTaxRate': {
         const rate = Math.max(0, Math.min(MAX_TAX_RATE, command.rate));
@@ -3700,6 +3697,7 @@ class SimWorld implements WorkerSim {
         rotation: inst.rotation,
         ...(interments > 0 ? { interments } : {}),
         ...(inst.frame ? { frame: { ...inst.frame } } : {}),
+        restore: true,
       });
     }
 
@@ -3883,7 +3881,14 @@ class SimWorld implements WorkerSim {
     rotation: 0 | 1 | 2 | 3,
     interments = 0,
     frame?: ParcelFrame,
+    restore = false,
   ): CommandResult {
+    const refused = (reason: string): CommandResult => ({
+      ok: false,
+      cost: 0,
+      inverse: [],
+      reason,
+    });
     const entry = this.catalogById.get(catalogId);
     if (!entry) return { ok: false, cost: 0, inverse: [], reason: 'invalid' };
     if (catalogId === 'bus-stop' || catalogId === 'bus-stop-sign') {
@@ -3903,17 +3908,17 @@ class SimWorld implements WorkerSim {
     // A building put back on its curved parcel claims the tiles its frame
     // overlaps; everything else stands on its rectangle.
     const footprint = standingTiles(this.grid.size, x, z, w, d, frame);
-    const placeable =
-      frame === undefined
-        ? canPlaceFootprint(this.grid, x, z, w, d)
-        : canPlaceTiles(this.grid, footprint);
-    if (!placeable) {
-      return { ok: false, cost: 0, inverse: [], reason: 'invalid' };
+    const blocker = footprintBlocker(this.grid, footprint, frame === undefined);
+    if (blocker !== null) return refused(PLACEMENT_REFUSALS[blocker]);
+    // A building stands beside a street; only a kind marked off-street, which
+    // a power line or a pipe reaches instead, goes without. A demolition's undo
+    // stands back what stood, street or none.
+    if (!restore && !entry.offStreet && !touchesStreet(this.grid, footprint)) {
+      return refused(PLACEMENT_REFUSALS.needsStreet);
     }
-    // A station has to touch the track it serves; everything else goes anywhere
-    // buildable, exactly as before.
+    // A station has to touch the track it serves, on top of the street.
     if (entry.requiresAdjacent === 'rail' && !hasAdjacentTier(this.grid, x, z, w, d, isRailTier)) {
-      return { ok: false, cost: 0, inverse: [], reason: 'invalid' };
+      return refused(PLACEMENT_REFUSALS.needsRail);
     }
     // A tram depot stands on the tram track as the tram graph knows it: any
     // street whose profile carries a tram lane.
@@ -3923,20 +3928,20 @@ class SimWorld implements WorkerSim {
         isTramTile(this.grid, i, (id) => this.customRoadProfiles.get(id) ?? null),
       )
     ) {
-      return { ok: false, cost: 0, inverse: [], reason: 'invalid' };
+      return refused(PLACEMENT_REFUSALS.needsTram);
     }
     // An intake or an outfall stands on a shore: its footprint on land, the
     // water it draws from or empties into orthogonally beside it.
     if (entry.requiresAdjacent === 'water' && !hasAdjacentWater(this.grid, x, z, w, d)) {
-      return { ok: false, cost: 0, inverse: [], reason: 'invalid' };
+      return refused(PLACEMENT_REFUSALS.needsShore);
     }
     // A turbine keeps its rotor out of its neighbour's: nothing of the same
     // entry within its spacing, in any direction.
     if (entry.spacing !== undefined && this.crowdsItsKind(entry, x, z, w, d)) {
-      return { ok: false, cost: 0, inverse: [], reason: 'invalid' };
+      return refused(PLACEMENT_REFUSALS.crowded);
     }
     const inst = this.registry.place(this.grid, entry, x, z, rotation, BuildingState.Active, frame);
-    if (!inst) return { ok: false, cost: 0, inverse: [], reason: 'invalid' };
+    if (!inst) return refused(PLACEMENT_REFUSALS.blocked);
 
     this.stats.funds -= price;
     if (restored > 0) this.deathCare.setInterments(inst.id, restored);

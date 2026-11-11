@@ -112,7 +112,7 @@ The solar farm is optional at the first milestone, joining wind and coal as a Ti
 
 ### Siting
 
-The reactor is the first generator that cannot go just anywhere: its footprint must touch water. A reactor rejects about twice its electrical output as heat, and US stations take that from a river, a lake or the sea. In the game that is the shoreline, also the best land, so the reactor costs ground as well as treasury and the power line carries its output inland.
+The reactor needs more than the street every plant but a turbine and a solar farm stands beside: its footprint must touch water. A reactor rejects about twice its electrical output as heat, and US stations take that from a river, a lake or the sea. In the game that is the shoreline, also the best land, so the reactor costs ground as well as treasury and the power line carries its output inland.
 
 `requiresAdjacent` takes `'rail' | 'water'`; the water member arrived with the pumping station. The worker refuses a build whose footprint has no orthogonally adjacent water tile, against `GridState.water`. The footprint stands on land and merely touches water, so the reactor adds no gate code.
 

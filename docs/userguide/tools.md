@@ -223,14 +223,17 @@
   and workshops alike. A farm grows larger as the town wants more work, but
   only onto land as good as its kind needs.
 - **Power & Water** — generators and water sources placed next to a road feed the
-  connected network. A generator counts for what it delivers over a year, not
+  connected network. Every building you place must stand beside a street; the
+  game refuses one that does not and says why. Four may stand in the open,
+  where a power line or a pipe reaches them: the wind turbine, the solar farm,
+  the water pumping station and the drain. A generator counts for what it delivers over a year, not
   the number on the machine: a wind turbine is rated 3.4 MW and delivers about
   1.1, enough for eight hundred houses, and the coal plant is rated 60 and
   delivers about 26. The inspector shows both. If the city asks for more than it makes, the grid gives out
   from its far end: the buildings furthest along the wires from a plant go dark
   first, abandon if it lasts, and nothing new moves in until there is supply to
   spare. The Advisor says how far short you are.
-- **Water, in and out** — a **water tower** stands anywhere and supplies about
+- **Water, in and out** — a **water tower** stands beside any street and supplies about
   1,100 people from its borehole; a **water pumping station** (from Small Town)
   must stand on a shore, touching the water it draws, and supplies ten times
   that. Every building that drinks city water makes sewage, and the sewage has

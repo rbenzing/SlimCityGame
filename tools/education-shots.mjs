@@ -84,6 +84,16 @@ await hook(() => {
 // down east of the bus lane; its lot is 4 wide by 5 deep once turned.
 const elementary = { x: 91, z: 116 };
 const turned = { x: 123, z: 104 };
+// A short two-lane stub off the bus lane runs up to the campus's west edge.
+await hook(() =>
+  window.__slimcity.cmd('Campus stub', [
+    {
+      kind: 'buildRoad',
+      tier: 1,
+      tiles: [121, 122].map((x) => ({ x, z: 106 })),
+    },
+  ]),
+);
 await hook(
   (t) =>
     window.__slimcity.cmd('Turned campus', [
@@ -91,13 +101,15 @@ await hook(
     ]),
   turned,
 );
-// Civic neighbours round the college, so it stands in a built-up block.
+// Civic neighbours round the college, so it stands in a built-up block: the
+// clinic, park and police station on the alley's west kerb, the fire station
+// on the one-way street's east kerb.
 await hook(() =>
   window.__slimcity.cmd('College neighbours', [
-    { kind: 'placeBuilding', catalogId: 'clinic', x: 68, z: 108, rotation: 0 },
+    { kind: 'placeBuilding', catalogId: 'clinic', x: 69, z: 108, rotation: 0 },
     { kind: 'placeBuilding', catalogId: 'police-station', x: 68, z: 112, rotation: 0 },
-    { kind: 'placeBuilding', catalogId: 'small-park', x: 68, z: 115, rotation: 0 },
-    { kind: 'placeBuilding', catalogId: 'fire-station', x: 62, z: 113, rotation: 0 },
+    { kind: 'placeBuilding', catalogId: 'small-park', x: 69, z: 111, rotation: 0 },
+    { kind: 'placeBuilding', catalogId: 'fire-station', x: 61, z: 113, rotation: 0 },
   ]),
 );
 // The town plants both with their doors on the south side, away from the street

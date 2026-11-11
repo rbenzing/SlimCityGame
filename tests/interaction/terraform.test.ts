@@ -17,6 +17,7 @@ import {
   send,
   sixLaneCommands,
   standingBuildings,
+  streetNorthOf,
   type Harness,
 } from '../support/sim';
 import { guardRoadNetwork } from '../support/guard';
@@ -228,12 +229,10 @@ describe('auto-flatten: the ground levels under a placed footprint', () => {
     const h = initializedVaried();
     const x = 50;
     const z = 60;
-    const footprintTiles: TilePoint[] = [
-      { x, z },
-      { x: x + 1, z },
-      { x, z: z + 1 },
-      { x: x + 1, z: z + 1 },
-    ];
+    // No street touches it, so only a kind marked off-street can stand here: it levels to its own mean.
+    const solar = catalog.find((e) => e.id === 'solar-farm')!;
+    expect(solar.offStreet).toBe(true);
+    const footprintTiles = rows(x, z, solar.footprint.w, solar.footprint.d);
     const mean =
       footprintTiles.reduce((sum, t) => sum + variedHeight(t.x, t.z), 0) / footprintTiles.length;
     // Sanity: the footprint really is varied (mean differs from at least one covered tile).
@@ -241,7 +240,7 @@ describe('auto-flatten: the ground levels under a placed footprint', () => {
 
     send(h, 1, [
       { kind: 'setSandbox', on: true },
-      { kind: 'placeBuilding', catalogId: twoByTwo.id, x, z, rotation: 0 },
+      { kind: 'placeBuilding', catalogId: solar.id, x, z, rotation: 0 },
     ]);
     h.ticks(2);
     expect(h.ackFor(1)!.ok).toBe(true);
@@ -676,6 +675,10 @@ describe('auto-flatten: the ground levels under a placed footprint', () => {
     const h = initializedVaried();
     const x = 30;
     const z = 40;
+    // The tower stands beside a street, laid before the heights are read.
+    send(h, 0, [streetNorthOf(x, z, 4)]);
+    h.ticks(2);
+    expect(h.ackFor(0)!.ok).toBe(true);
 
     h.sim.handleMessage({ type: 'requestSave' });
     const before = latestSaveGrid(h);
@@ -717,6 +720,14 @@ describe('auto-flatten: the ground levels under a placed footprint', () => {
     // The ripple really varies under forty acres: a plateau would have to move something.
     expect(new Set(footprint.map((t) => variedHeight(t.x, t.z))).size).toBeGreaterThan(1);
 
+    // A park stands beside a street too; its ground is read once that is laid.
+    send(h, 0, [streetNorthOf(x, z, park.footprint.w)]);
+    h.ticks(2);
+    expect(h.ackFor(0)!.ok).toBe(true);
+    h.sim.handleMessage({ type: 'requestSave' });
+    const laidHeights = footprint.map((t) => latestSaveGrid(h).height[tileIndex(t.x, t.z)]);
+    expect(new Set(laidHeights).size).toBeGreaterThan(1);
+
     send(h, 1, [
       { kind: 'setSandbox', on: true },
       { kind: 'placeBuilding', catalogId: park.id, x, z, rotation: 0 },
@@ -729,20 +740,27 @@ describe('auto-flatten: the ground levels under a placed footprint', () => {
 
     h.sim.handleMessage({ type: 'requestSave' });
     const grid = latestSaveGrid(h);
-    for (const t of footprint) {
-      expect(grid.height[tileIndex(t.x, t.z)]).toBe(variedHeight(t.x, t.z));
+    footprint.forEach((t, k) => {
+      expect(grid.height[tileIndex(t.x, t.z)]).toBe(laidHeights[k]);
       expect(grid.buildingId[tileIndex(t.x, t.z)]).not.toBe(0);
-    }
+    });
   });
 
-  it('a levelled park grades its paving flat: a plaza goes to its mean height, as a building does', () => {
+  it('a levelled park grades its paving flat: a plaza goes to its street’s height, as a building does', () => {
     const h = initializedVaried();
     const plaza = catalog.find((e) => e.id === 'civic-plaza')!;
     expect(plaza.ground).toBe('level');
     const x = 50;
     const z = 60;
     const footprint = rows(x, z, plaza.footprint.w, plaza.footprint.d);
-    const mean = footprint.reduce((sum, t) => sum + variedHeight(t.x, t.z), 0) / footprint.length;
+    send(h, 0, [streetNorthOf(x, z, plaza.footprint.w)]);
+    h.ticks(2);
+    expect(h.ackFor(0)!.ok).toBe(true);
+    h.sim.handleMessage({ type: 'requestSave' });
+    const laid = latestSaveGrid(h);
+    const target = Math.max(
+      ...rows(x, z - 1, plaza.footprint.w, 1).map((t) => laid.height[tileIndex(t.x, t.z)]!),
+    );
 
     send(h, 1, [
       { kind: 'setSandbox', on: true },
@@ -755,7 +773,7 @@ describe('auto-flatten: the ground levels under a placed footprint', () => {
 
     h.sim.handleMessage({ type: 'requestSave' });
     const grid = latestSaveGrid(h);
-    for (const t of footprint) expect(grid.height[tileIndex(t.x, t.z)]).toBeCloseTo(mean, 5);
+    for (const t of footprint) expect(grid.height[tileIndex(t.x, t.z)]).toBeCloseTo(target, 5);
   });
 
   it('undo (ack.inverse) of a draped park removes it and leaves the ground exactly as it was', () => {
@@ -764,6 +782,11 @@ describe('auto-flatten: the ground levels under a placed footprint', () => {
     const x = 30;
     const z = 40;
     const footprint = rows(x, z, park.footprint.w, park.footprint.d);
+    send(h, 0, [streetNorthOf(x, z, park.footprint.w)]);
+    h.ticks(2);
+    expect(h.ackFor(0)!.ok).toBe(true);
+    h.sim.handleMessage({ type: 'requestSave' });
+    const laidHeights = footprint.map((t) => latestSaveGrid(h).height[tileIndex(t.x, t.z)]);
 
     send(h, 1, [
       { kind: 'setSandbox', on: true },
@@ -780,8 +803,8 @@ describe('auto-flatten: the ground levels under a placed footprint', () => {
 
     h.sim.handleMessage({ type: 'requestSave' });
     const afterUndo = latestSaveGrid(h);
-    for (const t of footprint) {
-      expect(afterUndo.height[tileIndex(t.x, t.z)]).toBe(variedHeight(t.x, t.z));
+    for (const [k, t] of footprint.entries()) {
+      expect(afterUndo.height[tileIndex(t.x, t.z)]).toBe(laidHeights[k]);
       expect(afterUndo.buildingId[tileIndex(t.x, t.z)]).toBe(0);
     }
   });
@@ -789,10 +812,16 @@ describe('auto-flatten: the ground levels under a placed footprint', () => {
   it('is deterministic: identical placement on two independent sims yields bit-identical flattened heights (no Math.random)', () => {
     const h1 = initializedVaried();
     const h2 = initializedVaried();
-    send(h1, 1, [{ kind: 'placeBuilding', catalogId: 'water-tower', x: 80, z: 90, rotation: 0 }]);
-    send(h2, 1, [{ kind: 'placeBuilding', catalogId: 'water-tower', x: 80, z: 90, rotation: 0 }]);
+    const batch: Command[] = [
+      streetNorthOf(80, 90, 4),
+      { kind: 'placeBuilding', catalogId: 'water-tower', x: 80, z: 90, rotation: 0 },
+    ];
+    send(h1, 1, batch);
+    send(h2, 1, batch);
     h1.ticks(2);
     h2.ticks(2);
+    expect(h1.ackFor(1)!.ok).toBe(true);
+    expect(h2.ackFor(1)!.ok).toBe(true);
 
     h1.sim.handleMessage({ type: 'requestSave' });
     h2.sim.handleMessage({ type: 'requestSave' });

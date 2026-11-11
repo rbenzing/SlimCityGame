@@ -1898,18 +1898,19 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       // A stop stands on the street's side, never on a lot.
       if (isStopTool(tool)) return true;
       if (tool.startsWith('plop.')) {
-        if (!clientGrid.isFreeForPlop(tiles)) return false;
-        const needs = catalogById.get(tool.slice('plop.'.length))?.requiresAdjacent;
-        if (!needs || tiles.length === 0) return true;
-        const x0 = Math.min(...tiles.map((t) => t.x));
-        const z0 = Math.min(...tiles.map((t) => t.z));
-        const w = Math.max(...tiles.map((t) => t.x)) - x0 + 1;
-        const d = Math.max(...tiles.map((t) => t.z)) - z0 + 1;
-        return clientGrid.hasAdjacent(needs, x0, z0, w, d);
+        return (
+          clientGrid.isFreeForPlop(tiles) &&
+          clientGrid.placeRefusal(catalogById.get(tool.slice('plop.'.length)), tiles) === null
+        );
       }
       if (tool in ROAD_TOOL_TO_TIER) return clientGrid.isClearOfBuildings(tiles);
       return true;
     },
+    // The sentence the worker would refuse a plop with, for the cursor chip.
+    placeRefusal: (catalogId, tiles) =>
+      clientGrid.isFreeForPlop(tiles)
+        ? clientGrid.placeRefusal(catalogById.get(catalogId), tiles)
+        : null,
     // Terraform hooks: the Level tool's drag-start height sample (tile
     // center, same anchor the camera/buildings use) and the road/building
     // structure-exclusion check backing the brush validity chip.

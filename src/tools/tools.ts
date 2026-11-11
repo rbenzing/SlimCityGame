@@ -217,6 +217,11 @@ export interface ToolEnv {
    */
   canPlace?(tiles: TilePoint[]): boolean;
   /**
+   * The sentence a plop is refused with for want of a street, track or shore,
+   * or null. Optional: an env that omits it keeps the generic overlap reason.
+   */
+  placeRefusal?(catalogId: string, tiles: TilePoint[]): string | null;
+  /**
    * Terrain height in meters at a tile. The Level terraform
    * tool samples this once at drag start for its flatten target. Optional:
    * an env that omits it samples a target height of 0 (still real terraform
@@ -2143,13 +2148,18 @@ export class ToolManager {
       }
       const tiles = footprintTiles(current, entry, this.rotation);
       const geometryOk = tiles.every((t) => inBounds(t.x, t.z));
-      const { valid, invalidReason } = this.evaluate(
+      const judged = this.evaluate(tiles, entry.cost, entry.unlockMilestone, geometryOk);
+      const invalidReason =
+        judged.invalidReason === 'Overlapping items' && geometryOk
+          ? (this.env.placeRefusal?.(entry.id, tiles) ?? judged.invalidReason)
+          : judged.invalidReason;
+      this.env.onPreview({
         tiles,
-        entry.cost,
-        entry.unlockMilestone,
-        geometryOk,
-      );
-      this.env.onPreview({ tiles, valid, cost: entry.cost, label: entry.name, invalidReason });
+        valid: judged.valid,
+        cost: entry.cost,
+        label: entry.name,
+        invalidReason,
+      });
       return;
     }
     if (tool === 'interchange') {

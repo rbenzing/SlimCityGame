@@ -102,6 +102,14 @@ const row = (z, tier, x0, x1) =>
     },
   ]);
 await row(Z, RT.TwoLane, X - 1, X + 36);
+// A stub south off the street along the sewage works' west edge: its street.
+await cmd('Road', [
+  {
+    kind: 'buildRoad',
+    tier: RT.TwoLane,
+    tiles: [1, 2, 3].map((dz) => ({ x: X + 6, z: Z + dz })),
+  },
+]);
 await page.waitForTimeout(800);
 
 const place = (catalogId, x, z, rotation) =>

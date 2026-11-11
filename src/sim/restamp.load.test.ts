@@ -21,10 +21,19 @@ describe('loading a water tower saved when it was 2x2', () => {
         { kind: 'buildRoad', tier: RoadTier.TwoLane, tiles: roadRow(98, 102, 8) },
       ]).ok,
     ).toBe(true);
-    // One tile now; the old build stamped it 2x2 over z 100-101, the street at z 102.
+    // One tile now; the old build stamped it 2x2 over z 100-101, the street at
+    // z 102, so it stands where only a save could have left it: off the street.
     expect(
-      run(h, 2, [{ kind: 'placeBuilding', catalogId: 'water-tower', x: 100, z: 100, rotation: 0 }])
-        .ok,
+      run(h, 2, [
+        {
+          kind: 'placeBuilding',
+          catalogId: 'water-tower',
+          x: 100,
+          z: 100,
+          rotation: 0,
+          restore: true,
+        },
+      ]).ok,
     ).toBe(true);
 
     h.sim.handleMessage({ type: 'requestSave' });

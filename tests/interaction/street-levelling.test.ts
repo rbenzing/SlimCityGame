@@ -147,15 +147,22 @@ describe('a placed building is levelled to its street [R-world-051]', () => {
     expectFlush(h, before, target);
   });
 
+  // A building that touches no street can only be a kind marked off-street: the solar farm.
+  const solar = catalog.find((e) => e.id === 'solar-farm')!; // 6 x 6
+  const solarFootprint = rows(X, Z, 6, 6);
+  const placeSolar: Command = { kind: 'placeBuilding', catalogId: solar.id, x: X, z: Z, rotation: 0 };
+
   it('takes the mean of its own ground when no street touches it', () => {
+    expect(solar.offStreet).toBe(true);
     const h = slopedHarness(heightAt);
     const before = heightsOf(h);
     const mean =
-      footprint.reduce((sum, t) => sum + before[tileIndex(t.x, t.z)]!, 0) / footprint.length;
+      solarFootprint.reduce((sum, t) => sum + before[tileIndex(t.x, t.z)]!, 0) /
+      solarFootprint.length;
 
-    expect(run(h, 2, [place]).ok).toBe(true);
+    expect(run(h, 2, [placeSolar]).ok).toBe(true);
     const after = heightsOf(h);
-    for (const t of footprint) expect(after[tileIndex(t.x, t.z)]).toBeCloseTo(mean, 4);
+    for (const t of solarFootprint) expect(after[tileIndex(t.x, t.z)]).toBeCloseTo(mean, 4);
   });
 
   it.each([
@@ -163,16 +170,17 @@ describe('a placed building is levelled to its street [R-world-051]', () => {
     ['a railway', RoadTier.RailTrack],
   ])('takes the mean beside %s alone, which is not a street', (_name, tier) => {
     const h = slopedHarness(fallingAt);
-    run(h, 2, [{ kind: 'buildRoad', tier, tiles: roadRow(X - 6, Z + 2, 14) }]);
+    run(h, 2, [{ kind: 'buildRoad', tier, tiles: roadRow(X - 6, Z + 6, 14) }]);
     const before = heightsOf(h);
     const mean =
-      footprint.reduce((sum, t) => sum + before[tileIndex(t.x, t.z)]!, 0) / footprint.length;
-    const street = Math.max(...[X, X + 1].map((x) => before[tileIndex(x, Z + 2)]!));
+      solarFootprint.reduce((sum, t) => sum + before[tileIndex(t.x, t.z)]!, 0) /
+      solarFootprint.length;
+    const street = Math.max(...[X, X + 1].map((x) => before[tileIndex(x, Z + 6)]!));
     expect(street).not.toBeCloseTo(mean, 3);
 
-    expect(run(h, 3, [place]).ok).toBe(true);
+    expect(run(h, 3, [placeSolar]).ok).toBe(true);
     const after = heightsOf(h);
-    for (const t of footprint) expect(after[tileIndex(t.x, t.z)]).toBeCloseTo(mean, 4);
+    for (const t of solarFootprint) expect(after[tileIndex(t.x, t.z)]).toBeCloseTo(mean, 4);
   });
 
   it('leaves a draped park as the ground lies, beside a street or not', () => {

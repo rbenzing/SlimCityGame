@@ -80,7 +80,7 @@ It shows only while a water tool is in hand or the Water or Sewer lens is on, wh
 
 ### Water in
 
-- **Water Tower.** A 100,000-gallon elevated tank on its borehole stands anywhere and supplies 378.5 kL a day, one day's average demand: about 1,100 people. It takes one tile. The tower is never scaled by fouling.
+- **Water Tower.** A 100,000-gallon elevated tank on its borehole stands beside any street and supplies 378.5 kL a day, one day's average demand: about 1,100 people. It takes one tile. The tower is never scaled by fouling.
 - **Water Pumping Station.** A surface-water intake of the smallest class, one million gallons a day, 3,785 kL, which must stand with its footprint touching the water it draws from. From Small Town.
 
 `requiresAdjacent` widens to `'rail' | 'water'`. `cmdPlaceBuilding` refuses a footprint with no orthogonally adjacent water tile, read from `g.water`, exactly as it refuses a station off the rails. The pump and the drain take it; the tower does not.

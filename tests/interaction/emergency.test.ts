@@ -9,6 +9,7 @@ import {
   latestSaveGrid,
   run,
   standingBuildings,
+  streetNorthOf,
   type Harness,
 } from '../support/sim';
 import { guardRoadNetwork } from '../support/guard';
@@ -22,6 +23,7 @@ describe('the station ladder, in play', () => {
     const before = initializedAtMilestone(1);
     expect(
       run(before, 1, [
+        streetNorthOf(60, 60, 20),
         { kind: 'placeBuilding', catalogId: 'fire-station', x: 60, z: 60, rotation: 1 },
         { kind: 'placeBuilding', catalogId: 'police-station', x: 70, z: 60, rotation: 3 },
       ]).ok,
@@ -73,12 +75,18 @@ describe('the station ladder, in play', () => {
     for (const catalogId of ['fire-station-district', 'police-station-district']) {
       const early = initializedAtMilestone(SMALL_CITY - 1);
       expect(
-        run(early, 1, [{ kind: 'placeBuilding', catalogId, x: 60, z: 60, rotation: 0 }]),
+        run(early, 1, [
+          streetNorthOf(60, 60, 10),
+          { kind: 'placeBuilding', catalogId, x: 60, z: 60, rotation: 0 },
+        ]),
       ).toMatchObject({ ok: false, reason: 'locked' });
 
       const open = initializedAtMilestone(SMALL_CITY);
       expect(
-        run(open, 1, [{ kind: 'placeBuilding', catalogId, x: 60, z: 60, rotation: 0 }]).ok,
+        run(open, 1, [
+          streetNorthOf(60, 60, 10),
+          { kind: 'placeBuilding', catalogId, x: 60, z: 60, rotation: 0 },
+        ]).ok,
       ).toBe(true);
     }
   });

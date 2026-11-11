@@ -289,16 +289,20 @@ const motion = async (a, b) =>
     },
     [a.toString('base64'), b.toString('base64')],
   );
+const TRAM_WAIT_MS = 420_000;
 const tramShot = async (name, tx, tz, d, yaw, pitch) => {
   await lens(true);
   await camera(tx, tz, d, yaw, pitch);
   await page.waitForTimeout(1500);
-  for (let i = 0; i < 150; i++) {
+  // A guideway line's loop is minutes long at a tram's commercial speed, so the
+  // wait is bounded by the clock: one tram passes the frame inside a full loop.
+  const started = Date.now();
+  while (Date.now() - started < TRAM_WAIT_MS) {
     const a = await page.screenshot();
     await page.waitForTimeout(150);
     const m = await motion(a, await page.screenshot());
     if (m.n >= 300 && m.x0 > 320 && m.x1 < m.width - 160) {
-      console.log(name, 'tram motion', m.n, m.x0, m.x1);
+      console.log(name, 'tram motion', m.n, m.x0, m.x1, `after ${Math.round((Date.now() - started) / 1000)} s`);
       await shot(name, 0);
       return;
     }

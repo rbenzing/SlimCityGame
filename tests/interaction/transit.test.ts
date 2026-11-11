@@ -11,6 +11,7 @@ import {
   type SimSnapshot,
   type WorkerToMain,
 } from '../../src/shared/types';
+import { PLACEMENT_REFUSALS } from '../../src/shared/placement';
 import { SERVICE_END_HOUR, SERVICE_START_HOUR } from '../../src/shared/transitfleet';
 import { dayHourFromTick } from '../../src/sim/traffic';
 import { MAX_DEAD_RUN_BUSES } from '../../src/sim/deadruns';
@@ -296,6 +297,8 @@ describe('a bus line and the depot that fields it', () => {
         { kind: 'placeBuilding', catalogId: 'bus-depot', ...DEPOT, rotation: 0 },
         { kind: 'placeBuilding', catalogId: 'bus-depot', x: 74, z: 81, rotation: 0 },
         { kind: 'buildRoad', tier: RoadTier.RailTrack, tiles: roadRow(60, 90, 20) },
+        // The yard also stands beside a street, along its far side.
+        { kind: 'buildRoad', tier: RoadTier.TwoLane, tiles: roadRow(64, 94, 4) },
         { kind: 'placeBuilding', catalogId: 'rail-yard', x: 64, z: 91, rotation: 1 },
       ]).ok,
     ).toBe(true);
@@ -360,7 +363,7 @@ describe('where a tram depot and a rail yard may stand', () => {
       { kind: 'placeBuilding', catalogId: 'tram-depot', x: 65, z: STREET_Z + 1, rotation: 0 },
     ]);
     expect(onStreet.ok).toBe(false);
-    expect(onStreet.reason).toBe('invalid');
+    expect(onStreet.reason).toBe(PLACEMENT_REFUSALS.needsTram);
     const onTrack = run(h, 3, [
       { kind: 'placeBuilding', catalogId: 'tram-depot', x: 65, z: TRAM_Z - 3, rotation: 0 },
     ]);
@@ -421,8 +424,10 @@ describe('where a tram depot and a rail yard may stand', () => {
       { kind: 'placeBuilding', catalogId: 'rail-yard', x: 65, z: STREET_Z + 1, rotation: 1 },
     ]);
     expect(onStreet.ok).toBe(false);
-    expect(onStreet.reason).toBe('invalid');
+    expect(onStreet.reason).toBe(PLACEMENT_REFUSALS.needsRail);
+    // Beside the railway the yard also needs a street, along its far side.
     const onRail = run(h, 3, [
+      { kind: 'buildRoad', tier: RoadTier.TwoLane, tiles: roadRow(65, RAIL_Z + 4, 4) },
       { kind: 'placeBuilding', catalogId: 'rail-yard', x: 65, z: RAIL_Z + 1, rotation: 1 },
     ]);
     expect(onRail.ok).toBe(true);

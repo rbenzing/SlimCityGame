@@ -41,7 +41,10 @@ describe('a generator that cannot deliver says so', () => {
 
   it('tells the mirror a stranded water tower is cut off, so the advisor can count it', () => {
     const h = initialized();
-    send(h, 1, [{ kind: 'placeBuilding', catalogId: 'water-tower', x: 80, z: 90, rotation: 0 }]);
+    // Off the street, which only a building an old save holds can be.
+    send(h, 1, [
+      { kind: 'placeBuilding', catalogId: 'water-tower', x: 80, z: 90, rotation: 0, restore: true },
+    ]);
     h.ticks(30);
     expect(h.ackFor(1)!.ok).toBe(true);
 
@@ -89,7 +92,7 @@ describe('a wind turbine keeps its rotor out of its neighbour’s', () => {
     expect(turbine(68, 59)).toBe(true);
     // Another kind of building may stand right beside a turbine.
     expect(
-      run(h, 5, [{ kind: 'placeBuilding', catalogId: 'water-tower', x: 65, z: 57, rotation: 0 }])
+      run(h, 5, [{ kind: 'placeBuilding', catalogId: 'water-tower', x: 65, z: 59, rotation: 0 }])
         .ok,
     ).toBe(true);
   });
@@ -360,7 +363,9 @@ describe('the fouled water', () => {
       expect(run(h, 2, [{ kind: 'bulldoze', tiles: [{ x: 66, z: 45 }] }]).ok).toBe(true);
       // The works is 2×2; it stands on the pond's west bank, where the station
       // stands on the east, and a short pipe joins it to the drain's old run.
+      // A works, unlike the drain, also stands beside a street: a short one along its north side.
       const built = run(h, 3, [
+        { kind: 'buildRoad', tier: RoadTier.TwoLane, tiles: roadRow(64, 42, 2) },
         { kind: 'placeBuilding', catalogId: 'sewage-works', x: 64, z: 43, rotation: 0 },
         { kind: 'layWaterPipe', tiles: roadRow(65, 45, 2), on: true },
       ]);

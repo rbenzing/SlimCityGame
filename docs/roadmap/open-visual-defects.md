@@ -9,7 +9,6 @@ What a review of every screenshot the shot tools write found wrong in the game, 
 - Tram track ends at a bend tile and at a junction box. — `shots-roadmatrix/tram-turn`
 - A rail yard's and a tram depot's tracks stop at their own fence and never join the line beside them; a rail station's platform stands about 8 m from its track. — `shots-depots/c-rail-yard-track`, `shots-ploppables/b3-station-long-track`
 - Loose dark slabs lie on the grass both sides of a tram guideway's ramp; a raised station's lift tower hangs above the ground and its stair lands on grass. `[R-roads-011]` — `shots-tramways/guideway-ramp`, `station-junction`
-- A building may be placed off any street, where it serves nothing. `[R-world-049]`
 - A divided corridor draws its right half's turn bay on the side its lanes leave by; the grid has it where they arrive. `corridor-shots` fails on it. `[R-roads-052]`
 
 ## Major: roads
@@ -65,7 +64,7 @@ What a review of every screenshot the shot tools write found wrong in the game, 
 - A cemetery's gatehouse is a blank box; a civic crossing's kerb is not dropped. — `shots-cemetery/b-cemetery-pedestrian-scale`
 - A restaurant's sign bar hangs skewed off its frame, and a black arch stands alone in grass beside it. — `shots-storefronts/close-restaurant`
 - A street's light pool ends in a hard edge mid-road at night, and stall paint glows brighter than the buildings. — `shots-storefronts/main-night`
-- A refused station, bridge or park on a slope says only that it cannot be built there.
+- A refused bridge or raised road says only that it cannot be built there.
 - A placed building keeps the turn in hand: beside a street at its back it stands with its door, drive and car park facing away. `[R-world-050]` — `src/tools/tools.ts`
 - A plain building's door is drawn on the face that looks north, whichever way the building is turned: on the north side of a street the door is at the back. `[R-world-050]` — `src/render/buildings.ts`, `shots-mixeduse/close-mixed-1`
 - A mixed-use block stands on a bare grey slab with no stalls, kerb or walk, and grass lies between the footway and the slab. Its shopfront is plain glass with a black rectangle for a door, no sign and no awning. — `shots-mixeduse/street`, `close-mixed-1`

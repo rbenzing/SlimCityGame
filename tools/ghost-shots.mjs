@@ -240,6 +240,15 @@ const clearRow = await call(
   [DRAG_Y, DRAG_FROM_X, DRAG_TO_X],
 );
 const mid = clearRow[Math.floor(clearRow.length / 2)];
+// A building stands beside a street, so a short one runs along the row above the tower.
+await cmd('Street by the tower', [
+  {
+    kind: 'buildRoad',
+    tier: TWO_LANE,
+    tiles: [-1, 0, 1].map((dx) => ({ x: mid.x + dx, z: mid.z - 1 })),
+  },
+]);
+await page.waitForTimeout(500);
 await cmd('Water Tower', [
   { kind: 'placeBuilding', catalogId: 'water-tower', x: mid.x, z: mid.z, rotation: 0 },
 ]);

@@ -8,6 +8,7 @@ import { MAP_SIZE, MAX_BUILD_SLOPE, ROAD_MAX_SLOPE } from '../shared/constants';
 import {
   CORE_FIELD_COUNT,
   FIELD_COUNT,
+  isFrontageTier,
   RoadFlow,
   RoadTier,
   SAVE_VERSION,
@@ -630,6 +631,27 @@ export function canPlaceTiles(g: GridState, tiles: readonly TilePoint[]): boolea
   return tiles.length > 0 && tiles.every((t) => tilePlaceable(g, t.x, t.z, false));
 }
 
+/** Why a footprint cannot stand on the ground it covers; null when it can. */
+export type FootprintBlocker = 'offMap' | 'water' | 'steep' | 'occupied';
+
+/**
+ * The first reason `canPlaceTiles` (or `canPlaceFootprint` with
+ * `offFreeRoads`) refuses `tiles`, in the order a player would fix them: the
+ * map's edge, water, a slope, then a road or building already there.
+ */
+export function footprintBlocker(
+  g: GridState,
+  tiles: readonly TilePoint[],
+  offFreeRoads = true,
+): FootprintBlocker | null {
+  if (tiles.length === 0) return 'offMap';
+  if (tiles.some((t) => !inBoundsOf(g.size, t.x, t.z))) return 'offMap';
+  if (tiles.some((t) => g.water[indexOf(g.size, t.x, t.z)])) return 'water';
+  if (tiles.some((t) => !isBuildable(g, t.x, t.z))) return 'steep';
+  if (tiles.some((t) => !tilePlaceable(g, t.x, t.z, offFreeRoads))) return 'occupied';
+  return null;
+}
+
 function tilePlaceable(g: GridState, x: number, z: number, offFreeRoads = true): boolean {
   if (!isBuildable(g, x, z)) return false;
   const i = indexOf(g.size, x, z); // in bounds: isBuildable already confirmed it
@@ -679,6 +701,41 @@ export function hasAdjacentRoad(
       const tz = z + dz;
       if (!inBoundsOf(g.size, tx, tz)) continue;
       if (accepts(indexOf(g.size, tx, tz))) return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * A deck lifted this little off its ground still lies on it: the grade solver
+ * raises a tile a sliver to meet a neighbour's step, which is not a bridge and
+ * must be levelled with the rest of the road or its ground stands proud of it.
+ */
+export const GROUND_HUGGING_LIFT_M = 0.5;
+
+/**
+ * True when a tile orthogonally beside the footprint `tiles` carries a street
+ * a building stands beside: general traffic, at grade, on the ground layer.
+ * A motorway, a ramp, rail, a lifted deck, a road passing over a crossing and
+ * a tile touching only at a corner do not count. The one test the worker's
+ * placement and the ghost both ask.
+ */
+export function touchesStreet(
+  g: Pick<GridState, 'size' | 'roadTier' | 'roadElevation'>,
+  tiles: readonly TilePoint[],
+): boolean {
+  const own = new Set<number>();
+  for (const t of tiles) own.add(indexOf(g.size, t.x, t.z));
+  for (const t of tiles) {
+    for (const [dx, dz] of NEIGHBOR_OFFSETS) {
+      const nx = t.x + dx;
+      const nz = t.z + dz;
+      if (!inBoundsOf(g.size, nx, nz)) continue;
+      const n = indexOf(g.size, nx, nz);
+      if (own.has(n)) continue;
+      if (!isFrontageTier(g.roadTier[n] ?? RoadTier.None)) continue;
+      if ((g.roadElevation[n] ?? 0) >= GROUND_HUGGING_LIFT_M) continue;
+      return true;
     }
   }
   return false;

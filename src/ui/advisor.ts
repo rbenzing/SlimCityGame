@@ -238,8 +238,11 @@ export function cityIssues(
         }
       }
     }
+    const offStreet = catalogById.get(building.catalogId)?.offStreet === true;
     for (const rule of PROBLEM_RULES) {
       if ((building.problems & rule.flag) === 0) continue;
+      // A turbine or a pumping station stands off the street by design.
+      if (rule.flag === Problem.NoRoad && offStreet) continue;
       if (rule.unless !== undefined && (building.problems & rule.unless) !== 0) continue;
       counts.set(rule.flag, (counts.get(rule.flag) ?? 0) + 1);
       // Lowest id wins, so the same city always points at the same building

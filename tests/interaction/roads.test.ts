@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { MAP_SIZE, MAP_TILES, tileIndex } from '../../src/shared/constants';
+import { PLACEMENT_REFUSALS } from '../../src/shared/placement';
 import { RoadFlow, RoadTier, ZoneType } from '../../src/shared/types';
 import type {
   Command,
@@ -123,7 +124,7 @@ describe('roads on a slope', () => {
     h.ticks(1);
     const ack = h.ackFor(1)!;
     expect(ack.ok).toBe(false);
-    expect(ack.reason).toBe('invalid');
+    expect(ack.reason).toBe(PLACEMENT_REFUSALS.steep);
   });
 
   it('placing a road on a sloped tile emits auto-flatten heightPatches and undoes exactly', () => {

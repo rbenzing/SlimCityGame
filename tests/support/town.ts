@@ -415,6 +415,8 @@ export function townSteps(): TownStep[] {
           on: true,
         },
         place('water-drain', t.drain),
+        // The works, unlike the other two, stands beside a street: a short one along its north side.
+        { kind: 'buildRoad', tier: RoadTier.TwoLane, tiles: roadRow(t.works.x, t.works.z - 1, 2) },
         place('sewage-works', t.works),
         {
           kind: 'layWaterPipe',

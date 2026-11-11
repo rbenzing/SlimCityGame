@@ -235,6 +235,14 @@ await cmd('Quay street', [
     tiles: Array.from({ length: 6 }, (_, i) => ({ x: X + 30, z: Z + 61 + i })),
   },
 ]);
+// A short branch west off the stub, along the works' north edge: its street.
+await cmd('Works street', [
+  {
+    kind: 'buildRoad',
+    tier: TWO_LANE,
+    tiles: [27, 28, 29].map((dx) => ({ x: X + dx, z: Z + 64 })),
+  },
+]);
 const SEWAGE = [
   { kind: 'placeBuilding', catalogId: 'water-pump', x: X + 31, z: Z + 65, rotation: 0 },
   { kind: 'placeBuilding', catalogId: 'water-drain', x: X + 29, z: Z + 66, rotation: 0 },
@@ -272,6 +280,14 @@ if (placed < EXPECTED) {
   console.log(
     `EXPECTED ${EXPECTED} PLOPPABLES, GOT ${placed} — too many refused to trust this run`,
   );
+  const absent = await call(
+    (list) => {
+      const g2 = window.__slimcity.readGrid();
+      return list.filter(([, x, z]) => g2.buildingId[z * g2.size + x] === 0);
+    },
+    [...UTILITIES, ...SERVICES, ...SEWAGE].map((p) => [p.catalogId, p.x, p.z]),
+  );
+  console.log('not standing', JSON.stringify(absent));
   await b.close();
   process.exit(1);
 }
