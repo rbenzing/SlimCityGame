@@ -348,7 +348,7 @@ function bandedCylinder(height: number, spacing: number): THREE.BufferGeometry {
     for (let k = 0; k < radial; k++) {
       const [x0, z0] = around(k);
       const [x1, z1] = around(k + 1);
-      positions.push(x0, y0, z0, x0, y1, z0, x1, y1, z1, x0, y0, z0, x1, y1, z1, x1, y0, z1);
+      positions.push(x0, y0, z0, x1, y1, z1, x0, y1, z0, x0, y0, z0, x1, y0, z1, x1, y1, z1);
       for (let v = 0; v < 6; v++) colors.push(shade, shade, shade);
     }
   }

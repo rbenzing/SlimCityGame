@@ -147,6 +147,89 @@ describe('the farmstead’s detail', () => {
     expect(twoShades).toHaveLength(2);
   });
 
+  describe('round stores', () => {
+    const built = (rotation: 0 | 1 | 2 | 3): THREE.InstancedMesh[] => {
+      const scene = new THREE.Scene();
+      new FarmRenderer(scene, flat, catalog, dirtNorth).apply({
+        added: [{ ...standing('farm-crops-3'), rotation }],
+        updated: [],
+        removed: [],
+      });
+      return scene.children.filter(
+        (c): c is THREE.InstancedMesh => c instanceof THREE.InstancedMesh && c.count > 0,
+      );
+    };
+    const instances = (m: THREE.InstancedMesh): THREE.Matrix4[] =>
+      Array.from({ length: m.count }, (_, i) => {
+        const mat = new THREE.Matrix4();
+        m.getMatrixAt(i, mat);
+        return mat;
+      });
+    // A banded wall is a unit-wide cylinder one unit tall; the truck's kit also carries vertex colour.
+    const banded = (m: THREE.InstancedMesh): boolean => {
+      if (!m.geometry.hasAttribute('color')) return false;
+      m.geometry.computeBoundingBox();
+      const box = m.geometry.boundingBox!;
+      return box.max.x > 0.4 && box.max.x <= 0.5 && Math.abs(box.max.y - 1) < 1e-6;
+    };
+
+    it('never mirrors a part, so no face is culled the wrong way round, at every rotation', () => {
+      for (const rotation of [0, 1, 2, 3] as const) {
+        for (const mesh of built(rotation)) {
+          for (const mat of instances(mesh)) expect(mat.determinant()).toBeGreaterThan(0);
+        }
+      }
+    });
+
+    it('winds every silo and bin wall outward, so the whole cylinder shows from outside', () => {
+      const walls = built(0).filter(banded);
+      expect(walls.length).toBeGreaterThanOrEqual(2);
+      for (const mesh of walls) {
+        const g = mesh.geometry;
+        const pos = g.getAttribute('position');
+        const a = new THREE.Vector3();
+        const b = new THREE.Vector3();
+        const c = new THREE.Vector3();
+        for (let i = 0; i + 2 < pos.count; i += 3) {
+          a.fromBufferAttribute(pos, i);
+          b.fromBufferAttribute(pos, i + 1);
+          c.fromBufferAttribute(pos, i + 2);
+          const normal = b.clone().sub(a).cross(c.clone().sub(a));
+          const centre = a.clone().add(b).add(c).divideScalar(3);
+          expect(normal.x * centre.x + normal.z * centre.z).toBeGreaterThan(0);
+        }
+      }
+    });
+
+    it('stands the silo on the yard and sits its dome on the wall’s top', () => {
+      for (const rotation of [0, 1, 2, 3] as const) {
+        const meshes = built(rotation);
+        const walls = meshes
+          .filter(banded)
+          .flatMap(instances)
+          .filter((mat) => Math.abs(mat.elements[5]! - 16) < 1e-6);
+        expect(walls).toHaveLength(2);
+        const others = meshes.filter((m) => !banded(m)).flatMap(instances);
+        for (const wall of walls) {
+          const p = new THREE.Vector3().setFromMatrixPosition(wall);
+          expect(Math.abs(p.y - 3)).toBeLessThan(0.01);
+          const domes = others.filter((mat) => {
+            const q = new THREE.Vector3().setFromMatrixPosition(mat);
+            return (
+              Math.abs(q.x - p.x) < 1e-6 &&
+              Math.abs(q.z - p.z) < 1e-6 &&
+              Math.abs(mat.elements[0]! - 6) < 1e-6
+            );
+          });
+          expect(domes).toHaveLength(1);
+          expect(
+            Math.abs(new THREE.Vector3().setFromMatrixPosition(domes[0]!).y - (p.y + 16)),
+          ).toBeLessThan(0.01);
+        }
+      }
+    });
+  });
+
   it('roofs a bin at 30° with a 0.4 m cap on its peak', () => {
     expect(BIN_ROOF_PITCH).toBeCloseTo(Math.PI / 6, 12);
     expect(BIN_CAP_M).toBe(0.4);
