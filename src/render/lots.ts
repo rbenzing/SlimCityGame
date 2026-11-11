@@ -34,6 +34,7 @@ import {
   conformingQuadVertexCount,
 } from './groundquad';
 import { materialUnit, type MaterialName } from './palette';
+import { LOT_Y_OFFSET } from './plotground';
 import { massingLifecycleTint } from './massing';
 import { isFarmEntry, isHouseEntry, isWalkUpEntry } from './archetypes';
 import { cropBands, planFarm, type FarmPlan, type FarmRect } from './farmlot';
@@ -67,7 +68,7 @@ import {
  * a lot — the parking apron at 0.12 and a driveway at 0.10 — so a lot's own
  * surfaces stack on top of it rather than fighting it for the same plane.
  */
-export const LOT_Y_OFFSET = 0.08;
+export { LOT_Y_OFFSET };
 /** A home's drive, path and patio ride over its lawn and under the road plate (0.15). */
 export const DRIVE_Y_OFFSET = 0.1;
 /** A car park's concrete walks and slab ride over its paving, under its paint (0.135). */

@@ -204,7 +204,8 @@ Back to [the index](../GROUND-TRUTHS.md).
   kerb height and are not pads. A yard drawn 0.3 m proud of a 0.25 m plinth
   showed a half-metre step round every civic plot. —
   [lots-and-paved-ground.md](../art/buildings/lots-and-paved-ground.md);
-  `src/render/utilitykits.ts`, `src/render/buildings.ts`
+  `src/render/plotground.ts`, `src/render/utilitykits.ts`,
+  `src/render/buildings.ts`
 - [R-render-035] A fence stands on its own lot's boundary and nowhere else. It never
   crosses onto another lot, a road, a drive or another fence, and where two
   lots share a line one fence stands on it. A lot turned to a curved street

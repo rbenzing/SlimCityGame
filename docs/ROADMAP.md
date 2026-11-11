@@ -36,11 +36,11 @@ again, update the figure here and nowhere else.
 **Open:**
 
 - What a review of every shot the tools write found wrong in the game is
-  ranked in [open-visual-defects.md](roadmap/open-visual-defects.md). Five of
-  its lines are rules stated and not yet built: a kit's plot flush with its
-  ground `[R-render-034]`, a building beside a street `[R-world-049]`, its
-  front turned to that street `[R-world-050]`, a fence kept to its own lot's
-  line `[R-render-035]` and a bend drawn as an arc `[R-roads-081]`.
+  ranked in [open-visual-defects.md](roadmap/open-visual-defects.md). Four of
+  its lines are rules stated and not yet built: a building beside a street
+  `[R-world-049]`, its front turned to that street `[R-world-050]`, a fence
+  kept to its own lot's line `[R-render-035]` and a bend drawn as an arc
+  `[R-roads-081]`.
 - Three specs are agreed and not yet built:
   [power-distribution.md](specs/power-distribution.md), a street's drawn
   supply, buried cable and the substation `[R-services-039]`;
@@ -61,11 +61,12 @@ again, update the figure here and nowhere else.
   The kit omits what does not fit and parks the vans in the lot's trailer
   stalls. The real fix is deeper lots for the heavy kinds in the lot layout
   (truck courts run 120–135 ft), a lots-and-land change.
-- A civic kit stands on a raised plinth, so its apron or yard meets the
-  crossing to the road with a step at the footprint's edge; the plinth is
-  the kits' pre-existing pad, and a ramp or a lowered pad is a kit
-  follow-up. A tram depot declares no crossing (its gate faces the track)
-  and the college no drive (its kit has no car park).
+- A tram depot declares no crossing (its gate faces the track) and the
+  college no drive (its kit has no car park).
+- A lot a zone grows on is levelled with its east and south neighbours only,
+  so on a slope its north and west edges still tilt; a placed building
+  levels the whole ring `[R-world-051]`. The ring for grown lots is owed,
+  behind the first-town guard.
 - A bus stop stands on grid street tiles only: its furniture frame reads a
   grid road axis, so a free-form curve takes no stop yet. The lamp renderer
   already lays furniture along a curve and is the frame to reuse.

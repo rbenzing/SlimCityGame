@@ -63,6 +63,7 @@ import {
   isRailTier,
   isTramTier,
   isStreetTier,
+  isFrontageTier,
   stepForFlow,
   ZoneType,
   MAX_VEHICLES,
@@ -470,6 +471,14 @@ function deadEndFacings(mask: number, flow: number): ReadonlyArray<readonly [num
  * must be levelled with the rest of the road or its ground stands proud of it.
  */
 const GROUND_HUGGING_LIFT_M = 0.5;
+
+/** The four orthogonal steps from a footprint tile to the tile across one of its edges. */
+const FOOTPRINT_EDGE_STEPS: ReadonlyArray<readonly [number, number]> = [
+  [0, -1],
+  [1, 0],
+  [0, 1],
+  [-1, 0],
+];
 
 /** 8-neighbor (Chebyshev distance 1) ring offsets — the "1-tile apron" around a road footprint. */
 const APRON_NEIGHBOR_OFFSETS: ReadonlyArray<readonly [number, number]> = [
@@ -3936,9 +3945,10 @@ class SimWorld implements WorkerSim {
 
     this.invalidateAround(footprint);
     const inverse: Command[] = [{ kind: 'bulldoze', tiles: footprint }];
-    // Auto-flatten: the whole footprint, no apron. A draped park keeps the
-    // ground it is laid on, so there is nothing to level and nothing to undo.
-    if (entry.ground !== 'drape') this.flattenFootprint(footprint, false, inverse);
+    // Auto-flatten: the whole footprint, no apron, to the street it fronts. A
+    // draped park keeps the ground it is laid on, so there is nothing to level
+    // and nothing to undo.
+    if (entry.ground !== 'drape') this.flattenFootprint(footprint, false, inverse, true);
     return { ok: true, cost: price, inverse };
   }
 
@@ -4011,19 +4021,27 @@ class SimWorld implements WorkerSim {
    * same HeightPatch shape as terraform, so the terrain mesh + zonegrid
    * conform flat under the building.
    *
-   * A tile's height is the terrain vertex at its north-west corner, so the
-   * footprint's own tiles only reach the vertices along its north and west
-   * edges; the ones along its south and east edges belong to the tiles one
-   * past it. Those are levelled too where open ground owns them, so the
-   * whole surface under the footprint is one plane; a vertex a road, another
-   * building or water owns keeps its height, since moving it would tilt a
-   * road, unseat a neighbour or move a shoreline.
+   * A height belongs to a cell, and a rendered corner is the mean of the four
+   * cells meeting there. Levelling only the footprint's cells would leave the
+   * corners along its edges blended with the ground beside it, tilting the
+   * surface under the lot toward uphill neighbours. So the cells one step past
+   * the footprint are levelled as well wherever open ground owns them (the
+   * south and east ones only, for a grown house; all eight directions for a
+   * placed building), which makes every corner of the footprint the target, or
+   * lower beside a street cell below it. A cell a road, another building or
+   * water owns keeps its height, since moving it would tilt a road, unseat a
+   * neighbour or move a shoreline.
+   *
+   * A placed building (`toStreet`) levels to the highest street cell at grade
+   * orthogonally beside its footprint instead of to the mean, so the plot meets
+   * the footway at the street's highest point. With no such street it takes the
+   * mean, as does every other caller.
    *
    * `tiles` are the whole footprint (already verified buildable by the
    * caller). Returns null (no patch, nothing to do) when the covered set is
-   * empty or every levelled tile's height already equals the mean bit-for-bit.
+   * empty or every levelled cell's height already equals the target bit-for-bit.
    */
-  private computeFlattenPatch(tiles: TilePoint[]): HeightPatch | null {
+  private computeFlattenPatch(tiles: TilePoint[], toStreet: boolean): HeightPatch | null {
     const g = this.grid;
     const covered = new Map<number, TilePoint>();
     for (const t of tiles) {
@@ -4034,7 +4052,11 @@ class SimWorld implements WorkerSim {
 
     let sum = 0;
     for (const idx of covered.keys()) sum += g.height[idx]!;
-    const mean = sum / covered.size;
+    let target = sum / covered.size;
+    if (toStreet) {
+      const street = this.highestStreetEdgeHeight(covered);
+      if (street !== null) target = street;
+    }
 
     const footprint = growRect(null, Array.from(covered.values()));
     if (!footprint) return null;
@@ -4051,11 +4073,23 @@ class SimWorld implements WorkerSim {
         g.water[i] === 0
       );
     };
-    for (let z = footprint.minZ; z <= footprint.maxZ + 1; z++) {
-      if (ownedByOpenGround(footprint.maxX + 1, z)) levelled.add(tileIndex(footprint.maxX + 1, z));
-    }
-    for (let x = footprint.minX; x <= footprint.maxX; x++) {
-      if (ownedByOpenGround(x, footprint.maxZ + 1)) levelled.add(tileIndex(x, footprint.maxZ + 1));
+    if (toStreet) {
+      for (let z = footprint.minZ - 1; z <= footprint.maxZ + 1; z++) {
+        for (let x = footprint.minX - 1; x <= footprint.maxX + 1; x++) {
+          if (ownedByOpenGround(x, z)) levelled.add(tileIndex(x, z));
+        }
+      }
+    } else {
+      for (let z = footprint.minZ; z <= footprint.maxZ + 1; z++) {
+        if (ownedByOpenGround(footprint.maxX + 1, z)) {
+          levelled.add(tileIndex(footprint.maxX + 1, z));
+        }
+      }
+      for (let x = footprint.minX; x <= footprint.maxX; x++) {
+        if (ownedByOpenGround(x, footprint.maxZ + 1)) {
+          levelled.add(tileIndex(x, footprint.maxZ + 1));
+        }
+      }
     }
 
     const rect = growRect(
@@ -4073,8 +4107,8 @@ class SimWorld implements WorkerSim {
         const idx = tileIndex(x, z);
         const local = row * w + col;
         if (levelled.has(idx)) {
-          heights[local] = mean;
-          if (mean !== g.height[idx]!) changed = true;
+          heights[local] = target;
+          if (target !== g.height[idx]!) changed = true;
         } else {
           heights[local] = g.height[idx]!;
         }
@@ -4083,6 +4117,28 @@ class SimWorld implements WorkerSim {
     if (!changed) return null;
 
     return { x: rect.minX, z: rect.minZ, w, h, heights };
+  }
+
+  /**
+   * The highest current height among the street cells at grade lying
+   * orthogonally beside a footprint, or null when no street touches it.
+   */
+  private highestStreetEdgeHeight(covered: Map<number, TilePoint>): number | null {
+    const g = this.grid;
+    let best = -Infinity;
+    for (const t of covered.values()) {
+      for (const [dx, dz] of FOOTPRINT_EDGE_STEPS) {
+        const nx = t.x + dx;
+        const nz = t.z + dz;
+        if (!inBounds(nx, nz)) continue;
+        const n = tileIndex(nx, nz);
+        if (covered.has(n)) continue;
+        if (!isFrontageTier(g.roadTier[n] ?? 0)) continue;
+        if ((g.roadElevation[n] ?? 0) >= GROUND_HUGGING_LIFT_M) continue;
+        best = Math.max(best, g.height[n]!);
+      }
+    }
+    return best === -Infinity ? null : best;
   }
 
   /**
@@ -4245,8 +4301,15 @@ class SimWorld implements WorkerSim {
    * bulldoze/rebuild inverse — so undo replays the structure removal AND the
    * terrain restore. No-op when `computeFlattenPatch` finds nothing to do.
    */
-  private flattenFootprint(tiles: TilePoint[], apron: boolean, inverse: Command[]): void {
-    const patch = apron ? this.computeRoadGradePatch(tiles) : this.computeFlattenPatch(tiles);
+  private flattenFootprint(
+    tiles: TilePoint[],
+    apron: boolean,
+    inverse: Command[],
+    toStreet = false,
+  ): void {
+    const patch = apron
+      ? this.computeRoadGradePatch(tiles)
+      : this.computeFlattenPatch(tiles, toStreet);
     if (!patch) return;
 
     const prev = readHeightPatch(this.grid, patch.x, patch.z, patch.w, patch.h);

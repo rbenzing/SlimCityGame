@@ -14,6 +14,7 @@
 - Load a save from before an epic with the new service absent, never rejected; no capacity figure means uncapped. `[R-services-012]`
 - Refuse a building placed off the street, the four exempt field and shore kinds apart; a kind that needs track or water needs the street too. `[R-world-049]`
 - Turn a placed building's front, its door, drive and car park, to the street it touches, and refuse one whose front is on no street. `[R-world-050]`
+- Level a placed building's ground to the highest street edge it touches, so its plot meets the footway without a step. `[R-world-051]`
 - Re-stamp ploppables from the catalog on load when an epic resizes a shipped footprint.
 - Cut funding without expecting load to rise: the budget shows as the size of the area served.
 

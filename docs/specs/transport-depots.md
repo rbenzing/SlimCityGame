@@ -71,7 +71,7 @@
 
 **Open:**
 
-- A civic kit's apron meets the road crossing with a step at the plinth edge; a tram depot declares no crossing, its gate faces the track.
+- A tram depot declares no crossing: its gate faces the track.
 - The dead runs read the visual clock for 05:00 and 23:00 while `[R-world-006]` says it never drives a sim rule; the truth gains the exception or both systems move to the calendar day.
 
 ## Why the rules are what they are

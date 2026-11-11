@@ -54,6 +54,10 @@ existing orthogonal neighbour is within a slope ceiling:
   underneath anyway, so the terrain never actually stays this steep once
   the road is down.
 
+Placing a building levels the ground under it to the highest street edge it
+touches (`[R-world-051]`); a lot a zone grows on is levelled to the mean of
+its own ground.
+
 ## Terraforming
 
 Four tools reshape the ground: **Raise**, **Lower**, **Level** (flattens to

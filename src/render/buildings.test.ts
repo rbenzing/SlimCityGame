@@ -15,6 +15,7 @@ import {
   windowLitFraction,
 } from './buildings';
 import { decodeId } from './picking';
+import { PLINTH_TOP } from './plotground';
 import { BARN_EAVE_SHARE, planFarm } from './farmlot';
 import {
   pickByShare,
@@ -1075,7 +1076,7 @@ describe('plinth mode (UI-SPEC §6.15) — additive-only 4th constructor arg, de
     expect(materialOf(instancer, UTILITY_ENTRY.id).emissiveNode).not.toBeNull();
   });
 
-  it('renders a plinth-designated entry as a fixed thin PAD (0.25m), not scaled to its tall model height', () => {
+  it('renders a plinth-designated entry as a fixed thin PAD flush with the ground (PLINTH_TOP), not scaled to its tall model height', () => {
     const instancer = new BuildingInstancer(
       new THREE.Scene(),
       MIXED_CATALOG,
@@ -1090,8 +1091,8 @@ describe('plinth mode (UI-SPEC §6.15) — additive-only 4th constructor arg, de
     const mesh = instancer.getPickables().find((p) => p.catalogId === UTILITY_ENTRY.id)
       ?.mesh as THREE.InstancedMesh;
     const { pos, scl } = decomposeAt(mesh, 0);
-    expect(scl.y).toBeCloseTo(0.25, 5); // PLINTH_PAD_HEIGHT, independent of the 24m+ model
-    expect(pos.y).toBeCloseTo(0.25 / 2, 5); // groundY(0) + pad height/2
+    expect(scl.y).toBeCloseTo(PLINTH_TOP, 5); // PLINTH_PAD_HEIGHT, independent of the 24m+ model
+    expect(pos.y).toBeCloseTo(PLINTH_TOP / 2, 5); // groundY(0) + pad height/2
   });
 
   it('renders even a short catalog entry as the same fixed thin pad (no per-entry height scaling)', () => {
@@ -1109,7 +1110,7 @@ describe('plinth mode (UI-SPEC §6.15) — additive-only 4th constructor arg, de
     const mesh = instancer.getPickables().find((p) => p.catalogId === SHORT_UTILITY_ENTRY.id)
       ?.mesh as THREE.InstancedMesh;
     const { scl } = decomposeAt(mesh, 0);
-    expect(scl.y).toBeCloseTo(0.25, 5); // same fixed PLINTH_PAD_HEIGHT
+    expect(scl.y).toBeCloseTo(PLINTH_TOP, 5); // same fixed PLINTH_PAD_HEIGHT
   });
 
   it('leaves footprint span (X/Z) untouched by plinth mode — only height changes', () => {
@@ -1148,7 +1149,7 @@ describe('plinth mode (UI-SPEC §6.15) — additive-only 4th constructor arg, de
     const mesh = instancer.getPickables().find((p) => p.catalogId === UTILITY_ENTRY.id)
       ?.mesh as THREE.InstancedMesh;
     const { scl } = decomposeAt(mesh, 0);
-    expect(scl.y).toBeCloseTo(0.25 * 0.25, 5); // PLINTH_PAD_HEIGHT × Constructing scale
+    expect(scl.y).toBeCloseTo(PLINTH_TOP * 0.25, 5); // PLINTH_PAD_HEIGHT × Constructing scale
   });
 
   it('gives plinth-designated entries a PLAIN material with no emissive/window graph at all', () => {

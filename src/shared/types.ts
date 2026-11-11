@@ -171,6 +171,15 @@ export function isStreetTier(tier: number): boolean {
 }
 
 /**
+ * True for a street a building stands beside: one that carries general traffic
+ * and lets a door and a drive open onto it, so any street tier but a motorway
+ * and its slip road. A road's deck height is the caller's to read.
+ */
+export function isFrontageTier(tier: number): boolean {
+  return isStreetTier(tier) && tier !== RoadTier.Highway && tier !== RoadTier.Ramp;
+}
+
+/**
  * True for the dedicated heavy-rail tier — the tiles a TRAIN's network is built
  * from, exactly as isStreetTier picks the tiles a car's is. The two predicates
  * are disjoint, which is what keeps the two graphs from ever sharing an edge:

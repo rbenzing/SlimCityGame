@@ -68,7 +68,7 @@
 **Open:**
 
 - A bus stop stands on grid street tiles only: its frame reads a grid road axis, so a free-form curve takes no stop yet; reuse the lamp renderer's frame.
-- A civic kit stands on a raised plinth, so its apron meets the crossing with a step; a tram depot declares no crossing and the college no drive.
+- A tram depot declares no crossing and the college no drive.
 
 ## Why the rules are what they are
 

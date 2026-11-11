@@ -61,7 +61,7 @@
 Growth tests pin the gates: `ResHigh` at land value 200 with only middle coverage keeps level 2 and `NeedsSchool`; no count of elementary schools opens it.
 Service tests pin the library (stretch, no school means no field, any registry order) and load closing a gate. The catalog contract test pins capacities, prices, upkeep, draws, milestones. `utilitykits.test.ts` pins layouts: deterministic, inside the lot at four rotations, floor within 1%.
 
-**Open:** the college declares no drive: its kit has no car park. A civic kit's plinth leaves a step where its apron meets the road.
+**Open:** the college declares no drive: its kit has no car park.
 
 ## Why the rules are what they are
 

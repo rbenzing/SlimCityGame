@@ -131,9 +131,9 @@ of the generic building facade box:
   own kit's parts, because those genuinely are buildings; the airport
   stays a box until it has an epic of its own.
 
-For a kit-owned catalog entry, the building instancer draws a low plinth
-(about 8% of the catalog height, a plain desaturated slab with no window
-shader) beneath the kit instead of a full facade box, so the kit carries the
+For a kit-owned catalog entry, the building instancer draws a pad flush with
+the ground (`PLINTH_TOP`, a plain desaturated slab with no window shader)
+beneath the kit instead of a full facade box, so the kit carries the
 visual identity while selection and outline still land on the right
 footprint. Kit parts stay unlit at night, except a small red beacon on the
 wind turbine's nacelle and the windows and door panes of the stations, the
