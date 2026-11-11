@@ -2543,7 +2543,10 @@ describe('hospital kit', () => {
       const centerZ = (lot.d / 2) * TILE_METERS;
       const taken = layout.stalls.filter((_, i) => deckStallTaken(7, i));
       const cars = renderer.partSlotsFor(7, 'hospitalCar');
-      expect(cars).toHaveLength(taken.length);
+      // A car also stands in each accessible space by the entrance that the hash fills.
+      const spaces = layout.accessible.filter((p) => p.kind !== 'aisle');
+      const takenSpaces = spaces.filter((_, k) => deckStallTaken(7, layout.stalls.length + k));
+      expect(cars).toHaveLength(taken.length + takenSpaces.length);
       expect(taken.length).toBeGreaterThan(0);
       expect(taken.length).toBeLessThan(layout.stalls.length);
       const m = new THREE.Matrix4();
@@ -2562,6 +2565,10 @@ describe('hospital kit', () => {
       taken.forEach((stall, i) => {
         const pos = check('hospitalCar', cars[i]!, stall);
         expect(pos.y).toBeCloseTo(RECYCLING_YARD_HEIGHT + stall.level * DECK_STOREY_M, 5);
+      });
+      takenSpaces.forEach((piece, k) => {
+        const z = (layout.accessibleZ.z0 + layout.accessibleZ.z1) / 2;
+        check('hospitalCar', cars[taken.length + k]!, { x: (piece.x0 + piece.x1) / 2, z });
       });
       check(
         'hospitalAmbulance',

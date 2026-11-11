@@ -825,15 +825,31 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       // is being honoured; this can.
       readParking: (
         buildingId: number,
-      ): { stalls: number; occupied: number; category: string; northTier: number } | null => {
+      ): {
+        stalls: number;
+        occupied: number;
+        kerbStalls: number;
+        kerbOccupied: number;
+        category: string;
+        northTier: number;
+      } | null => {
         const b = knownBuildings.get(buildingId);
         if (!b) return null;
         const entry = catalogById.get(b.catalogId);
+        // The stalls drawn on the building's own lot or in its own kit, and the
+        // kerb stalls it is credited, which belong to the street and are never
+        // its own.
+        const civic = utilityKits.ownStalls(buildingId);
+        const kerbStalls = parkedCars.kerbStallCount(buildingId);
+        const ownStalls = parkedCars.ownStallCount(buildingId);
+        const occupiedAll = parkedCars.occupiedStallCount(buildingId);
         return {
-          stalls: parkedCars.stallSlotsFor(buildingId).length,
+          stalls: ownStalls + civic.stalls,
           // How many of them hold a car at this hour: the kerb's rule is about
           // when, which a count of stalls cannot show.
-          occupied: parkedCars.occupiedStallCount(buildingId),
+          occupied: (kerbStalls > 0 ? 0 : occupiedAll) + civic.occupied,
+          kerbStalls,
+          kerbOccupied: kerbStalls > 0 ? occupiedAll : 0,
           category: entry?.category ?? '?',
           // Only the tile north of the origin — NOT the frontage the renderer
           // actually chose, which may be any of the four sides.

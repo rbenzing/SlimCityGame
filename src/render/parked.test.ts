@@ -17,7 +17,6 @@ import {
   lotOccupancy,
   ParkedCarRenderer,
   stallColorIndex,
-  stallKind,
   stallOccupancyThreshold,
   stallOccupied,
   stallVariantIndex,
@@ -354,18 +353,7 @@ function planOf(
   return plan;
 }
 
-describe('stallKind / stallVariantIndex', () => {
-  it('commercial lots park only cars', () => {
-    for (let i = 0; i < 20; i++) expect(stallKind('com', 7, i)).toBe(VehicleKind.Car);
-  });
-
-  it('industrial lots mix trucks with some cars', () => {
-    const kinds = new Set<number>();
-    for (let id = 1; id <= 10; id++) for (let i = 0; i < 4; i++) kinds.add(stallKind('ind', id, i));
-    expect(kinds.has(VehicleKind.Truck)).toBe(true);
-    expect(kinds.has(VehicleKind.Car)).toBe(true);
-  });
-
+describe('stallVariantIndex', () => {
   it('variant index stays within the kind variant count and varies', () => {
     const carVariants = new Set<number>();
     for (let i = 0; i < 30; i++) {
@@ -906,7 +894,7 @@ describe('ParkedCarRenderer', () => {
     expect(renderer.hasStripeMesh(1)).toBe(false); // no grey apron bleeding into the road
   });
 
-  it('industrial lots mix in TRUCK kit models; commercial lots park only cars, sized in real meters', () => {
+  it('industrial lots park cars in their stalls and trucks in their berths; commercial lots park only cars, sized in real meters', () => {
     const scene = new THREE.Scene();
     const factory = makeCatalogEntry({
       id: 'factory',
@@ -933,9 +921,11 @@ describe('ParkedCarRenderer', () => {
     renderer.apply(deltaAdd(makeBuilding({ id: 1, catalogId: 'factory', level: 9 })));
     renderer.apply(deltaAdd(makeBuilding({ id: 2, catalogId: 'shop', x: 20, level: 9 })));
 
-    // Industrial stall kinds follow the pure stallKind rule (trucks + some cars).
+    // Industrial stalls hold cars; any truck stands in a loading berth, not a stall.
     const indKinds = renderer.stallSlotsFor(1).map((ref) => ref.kind);
-    indKinds.forEach((kind, i) => expect(kind).toBe(stallKind('ind', 1, i)));
+    expect(indKinds.length).toBeGreaterThan(0);
+    indKinds.forEach((kind) => expect(kind).toBe(VehicleKind.Car));
+    renderer.berthTruckSlotsFor(1).forEach((ref) => expect(ref.kind).toBe(VehicleKind.Truck));
 
     // Commercial stalls are all cars, instanced at the kit's real car size.
     const comRefs = renderer.stallSlotsFor(2);
@@ -1868,7 +1858,7 @@ describe('a walk-up parks on its own lot', () => {
     expect(stalls).toBeGreaterThan(0);
     expect(renderer.stallSlotsFor(1)).toHaveLength(stalls);
     expect(renderer.carMeshCount()).toBe(1);
-    expect(stallKind('res', 1, 3)).toBe(VehicleKind.Car);
+    expect(renderer.stallSlotsFor(1).every((s) => s.kind === VehicleKind.Car)).toBe(true);
     expect(lotOccupancy('res', 0.1)).toBe(lotOccupancy('residents', 0.1));
     expect(lotOccupancy('res', 0.5)).toBe(lotOccupancy('residents', 0.5));
   });
