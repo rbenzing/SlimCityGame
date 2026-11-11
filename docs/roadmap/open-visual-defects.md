@@ -30,6 +30,8 @@ What a review of every screenshot the shot tools write found wrong in the game, 
 - A street lamp stands in the middle of the footway, and before a bus stop's pad; thin posts stand in the parking strip, on the road side of the kerb. `[R-render-036]` — `shots-furniture/kerb-close`
 - A raised deck on a slope stands on dark slabs that miss the ground; the rail truss bridge reads as loose members; a four-lane road at grade carries a dark wall strip along its footway past a bend, and a shaded seam across its lanes. `[R-roads-004]` — `shots-roadclip/worst-intrusion`, `shots-bridges/rail-truss-side`, `shots-roadmatrix/four-lane-turn`
 - Crosswalk ladders overlap inside a tram junction; a one-way arm carries turn arrows and no stop line. — `shots-roadmatrix/tram-cross`, `one-way-mixCross`
+- A roundabout sits to one side of the crossing it replaces: its arms meet the ring along one edge, not toward its centre. An entry carries no crosswalk, and the ring has no lamp of its own. — `shots-roundabouts/fourway-above`, `fourway-night`
+- Where a slip road leaves a motorway there is no gore paint, and the slip road's lines begin with a kink; the deck over the motorway is dark between its end lamps. `[R-roads-064]` — `shots-interchanges/gore-close`, `diamond-night`
 - A power line's pole stands in the carriageway of the road it follows. — `shots-powerline/gravel-remedied`
 
 ## Major: transit
@@ -39,6 +41,9 @@ What a review of every screenshot the shot tools write found wrong in the game, 
 - A bus depot's fence runs across its own door, and its buses stand through the fence. — `shots-depots/a2-bus-depot-close`
 - A parked rail car is drawn like a bus, in rows like a bus park.
 - A line's buses, trams and trains are drawn only under the Transit lens or with a transit tool in hand; in the plain view the streets and tracks stand empty. — `src/main.ts` `transitRenderer.setVisible`
+- The airport has no runway. Its terminal is one slab over the middle of the plot, aircraft stand half under its walls, and its car park is an outline on lawn. — `shots-airport/airport-above`
+- A police car carries no light bar and reads as a plain blue car. An incident's pin stands over the back yard, not the building, and an answered pin differs from an open one only in colour. — `shots-servicevehicles/close-police`, `incident-pins`
+
 ## Major: interface and messages
 
 - The Transit Lines panel gives a line that asks for no vehicles "0 of 0 vehicles, every 0.0 min", and a short tram line a headway of 0.1 minutes. — `src/ui/TransitLinesPanel.tsx`
@@ -64,6 +69,10 @@ What a review of every screenshot the shot tools write found wrong in the game, 
 - A street's light pool ends in a hard edge mid-road at night, and stall paint glows brighter than the buildings. — `shots-storefronts/main-night`
 - A refused station, bridge or park on a slope says only that it cannot be built there.
 - A placed building keeps the turn in hand: beside a street at its back it stands with its door, drive and car park facing away. `[R-world-050]` — `src/tools/tools.ts`
+- A plain building's door is drawn on the face that looks north, whichever way the building is turned: on the north side of a street the door is at the back. `[R-world-050]` — `src/render/buildings.ts`, `shots-mixeduse/close-mixed-1`
+- A mixed-use block stands on a bare grey slab with no stalls, kerb or walk, and grass lies between the footway and the slab. Its shopfront is plain glass with a black rectangle for a door, no sign and no awning. — `shots-mixeduse/street`, `close-mixed-1`
+- A walk-up, a mid-rise, a tower and a mixed-use block each report four stalls and draw none; the hospital and the clinic draw their car parks and report none; the hospital's rows hold two or three cars to a stall. `[R-services-040]` — `shots-parking/res-tower-1-above`, `shots-healthcare/hospital-above`
+- On estate and acre lots one home draws its fence and its neighbour none, and no fence opens where the drive passes. `[R-render-035]` — `shots-lotsizes/estate-above`
 - A reactor's intake house stands about 6 m back from the water on bare beach; a drain one tile square lies on a 20 m pad. — `shots-power/3c-reactor-intake-close`, `shots-earliest-kits/h-drain-street`
 
 ## Lesser
@@ -77,3 +86,5 @@ What a review of every screenshot the shot tools write found wrong in the game, 
 - A tree grows through a bus shelter; a shelter's roof overhangs a gravel road.
 - The landfill reads as loose tiles; the neighbourhood park and the plaza are bare.
 - A viaduct's shadow lies detached from it; a detached garage is a plain box; the season reads Winter over green ground.
+- A street's parking lane is painted with stalls and stands empty beside homes. — `shots-parking/kerb-parking-close`
+- A home's water and sewer leads stop short of the house; the water lens and the sewer lens draw the same picture. — `shots-underground/underground-view`, `lens-sewered`
