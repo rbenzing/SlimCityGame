@@ -691,6 +691,16 @@ describe('ClientGridMirror — junction control', () => {
     expect(mirror.junctionAt(4, 4)?.control).toBeUndefined();
   });
 
+  it('reports a change to a lane’s turns alone, and not a warrant that moved by itself', () => {
+    const at = (laneTurns: number[], warranted: 'stop' | 'signal' = 'stop') => [
+      { x: 4, z: 4, control: 'stop' as const, warranted, auto: true, turns: 0, laneTurns },
+    ];
+    mirror.applyJunctions(at([0, 0, 0, 0]));
+    expect(mirror.applyJunctions(at([0, 0, 0, 0]))).toBe(false);
+    expect(mirror.applyJunctions(at([0, 0, 0, 0], 'signal'))).toBe(false);
+    expect(mirror.applyJunctions(at([0, 3, 0, 0]))).toBe(true);
+  });
+
   it('drops a junction outside the map rather than indexing off the end', () => {
     const off = (x: number) => [
       { x, z: 0, control: 'stop' as const, warranted: 'stop' as const, auto: true, turns: 0 },

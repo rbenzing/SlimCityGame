@@ -9,7 +9,6 @@ import {
   CLOCK_START_OFFSET_TICKS,
   MAP_SIZE,
   ROAD_ELEVATION_STEP_M,
-  SNAPSHOT_HZ,
   SPEED_MULTIPLIERS,
   TILE_METERS,
   VISUAL_DAY_TICKS,
@@ -104,6 +103,8 @@ import {
   type KerbSide,
 } from './render/parked';
 import { findRoadFacingEdge, streetLookupOf } from './render/frontage';
+import { DrivewayTiles } from './render/drivewaytiles';
+import { civicAccessFor } from './shared/civicaccess';
 import { civicCutTiles, civicSiteFor, type KitSensors } from './render/civiccrossing';
 import {
   driveRoadTiles,
@@ -120,7 +121,13 @@ import type { BandSpan } from './render/roadsmesh';
 import { BridgeRenderer } from './render/bridges';
 import { GuidewayRenderer } from './render/guideway';
 import { TramStationRenderer } from './render/tramstations';
-import { headingAlongX, VehicleRenderer } from './render/vehicles';
+import {
+  DEFAULT_SNAPSHOT_INTERVAL_MS,
+  headingAlongX,
+  measuredSnapshotIntervalMs,
+  snapshotAlpha,
+  VehicleRenderer,
+} from './render/vehicles';
 import {
   TransitRenderer,
   computeShelterLayout,
@@ -185,7 +192,6 @@ function sameTileKeySet(a: ReadonlySet<number>, b: ReadonlySet<number>): boolean
 
 const MAP_NAME = 'Riverton';
 const OVERLAY_REFRESH_MS = 500; // 2 Hz while an infoview lens is active
-const SNAPSHOT_INTERVAL_MS = 1000 / SNAPSHOT_HZ;
 /**
  * Refusal reasons that are codes rather than sentences. Any other reason the
  * worker sends is already written for the player and is shown as it is.
@@ -552,9 +558,23 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
   let devIncidents: readonly Incident[] | null = null;
   // The last frame's animation-loop delta, for the frame-budget harness.
   let lastFrameMs = 0;
+  // How many snapshots carried each field, bumped by onSnapshot in dev builds
+  // only and read by the harness through the hook below.
+  const snapshotCounts: Record<string, number> = {
+    snapshots: 0,
+    buildings: 0,
+    junctions: 0,
+    controlsMoved: 0,
+    roads: 0,
+    roadNet: 0,
+    roadProfiles: 0,
+    roundabouts: 0,
+    heightPatches: 0,
+  };
   if (import.meta.env.DEV) {
     (window as unknown as Record<string, unknown>).__slimcity = {
       map,
+      snapshotCounts: (): Record<string, number> => ({ ...snapshotCounts }),
       freeRoadTriangles: (): number => freeRoads.triangleCount(),
       setDayT: (t: number | null): void => {
         devDayTOverride = t;
@@ -624,15 +644,26 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
         }
         latestVehicles = buf;
         snapshotAgeMs = 0;
+        // Not a snapshot: the next real one must not measure its interval from here.
+        snapshotsLanded = 0;
+        snapshotIntervalMs = DEFAULT_SNAPSHOT_INTERVAL_MS;
       },
       getStats: (): CityStats => useCityStore.getState().stats,
       // What the last frame drew, whole: the renderer resets its counters at the
       // top of each animation-loop frame, so every pass of the frame (scene,
       // shadow, bloom) is in the figure. frameMs is that frame's loop delta.
-      renderInfo: (): { drawCalls: number; triangles: number; frameMs: number } => ({
+      renderInfo: (): {
+        drawCalls: number;
+        triangles: number;
+        frameMs: number;
+        geometries: number;
+        textures: number;
+      } => ({
         drawCalls: handle.renderer.info.render.drawCalls,
         triangles: handle.renderer.info.render.triangles,
         frameMs: lastFrameMs,
+        geometries: handle.renderer.info.memory.geometries,
+        textures: handle.renderer.info.memory.textures,
       }),
       setOverlay: (overlay: LensId | null): void => {
         useCityStore.getState().setOverlay(overlay);
@@ -1272,6 +1303,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
    * is also when the lamps have to be rebuilt to notice.
    */
   let drivewayTiles: ReadonlySet<number> = new Set();
+  const drivewayCache = new DrivewayTiles();
   let latestRoadTiles: ReturnType<typeof clientGrid.roadTiles> = [];
   /** The same tiles indexed the way the furniture reads them; kept in step with latestRoadTiles. */
   let latestRoadTileSet: RoadTileIndex = new Map();
@@ -1361,6 +1393,10 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
   const autoSaver = new AutoSaver(() => saveNow(worker));
 
   let snapshotAgeMs = 0;
+  /** Snapshots with vehicles that have landed since the last reset; one is needed before an interval can be measured. */
+  let snapshotsLanded = 0;
+  /** How long vehicles take to interpolate to the next snapshot: how long the last one was on screen. */
+  let snapshotIntervalMs = DEFAULT_SNAPSHOT_INTERVAL_MS;
   let overlayAgeMs = 0;
   /** Last calendar month pushed into TreeRenderer.setSeason (0 = never). */
   let lastSeasonMonth = 0;
@@ -1971,6 +2007,16 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
     const state = store.getState();
     state.applySnapshotStats(snap.stats);
     autoSaver.onSnapshotTick(snap.stats.tick);
+    if (import.meta.env.DEV) {
+      snapshotCounts.snapshots! += 1;
+      if (snap.buildings) snapshotCounts.buildings! += 1;
+      if (snap.junctions) snapshotCounts.junctions! += 1;
+      if (snap.roads) snapshotCounts.roads! += 1;
+      if (snap.roadNet) snapshotCounts.roadNet! += 1;
+      if (snap.roadProfiles) snapshotCounts.roadProfiles! += 1;
+      if (snap.roundabouts) snapshotCounts.roundabouts! += 1;
+      if (snap.heightPatches && snap.heightPatches.length > 0) snapshotCounts.heightPatches! += 1;
+    }
 
     // Record every snapshot's stats into the ring buffer and publish the
     // oldest-first samples for the StatsPanel charts.
@@ -2056,6 +2102,14 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
     // the zone grid here too, since a flatten can arrive in a snapshot with no
     // road/zone delta (e.g. a building footprint flatten).
     if (snap.heightPatches && snap.heightPatches.length > 0) {
+      // Growth flattens a footprint under every new building, so this rides most
+      // snapshots. Only a kit that turns to the water beside it reads the ground
+      // for its drive; a walker's path reads the roads alone.
+      drivewayCache.invalidateWhere((b) => {
+        const entry = catalogById.get(b.catalogId);
+        return entry !== undefined && civicAccessFor(entry)?.turn === 'water';
+      });
+      pedestrianRenderer.redraw();
       terrain.applyHeightPatches(snap.heightPatches);
       clientGrid.applyHeightPatches(snap.heightPatches);
       // The trees were scattered on the seed map: a riverbed sunk since loses
@@ -2074,6 +2128,13 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       roadsMesh.invalidateHeights(snap.heightPatches);
       freeRoads.rebuild(clientGrid.roads);
     }
+    // What a lot's drive and a walker's path are laid against: the roads, their
+    // sections, and the controls that reshape them. Each is derived per building,
+    // so a change to any of them lays every one again.
+    if (snap.roads || snap.roadProfiles || snap.roadNet || snap.roundabouts) {
+      drivewayCache.invalidate();
+      pedestrianRenderer.invalidatePaths();
+    }
     // The profile table lands before the road deltas that refer into it.
     if (snap.roadProfiles) clientGrid.applyRoadProfiles(snap.roadProfiles);
     if (snap.roadNet) {
@@ -2091,6 +2152,13 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
     // Who gives way lands before the road deltas too, so that when a drag
     // changes both, the signs are rebuilt once against the new answer.
     const controlsMoved = snap.junctions ? clientGrid.applyJunctions(snap.junctions) : false;
+    // The list is resent whenever anything in it moves, a warrant included; only
+    // a control or its turns reshape a section.
+    if (controlsMoved) {
+      if (import.meta.env.DEV) snapshotCounts.controlsMoved! += 1;
+      drivewayCache.invalidate();
+      pedestrianRenderer.invalidatePaths();
+    }
     if (snap.roundabouts) {
       clientGrid.applyRoundabouts(snap.roundabouts);
       roadsMesh.setRoundabouts(snap.roundabouts);
@@ -2158,25 +2226,26 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       for (const id of snap.buildings.removed) knownBuildings.delete(id);
 
       // A lot's driveway is decided by its building, so the tiles kerb furniture
-      // must avoid change with the building set, not with the roads.
-      const nextDriveways = new Set<number>();
-      for (const inst of knownBuildings.values()) {
+      // must avoid change with the building set; only the buildings this delta
+      // names are laid again, and a changed road or shore lays every one again.
+      drivewayCache.apply(snap.buildings, (inst) => {
         const entry = catalogById.get(inst.catalogId);
-        if (!entry) continue;
+        if (!entry) return [];
+        const keys: number[] = [];
         const cut = curbCutTileFor(entry, inst, roadAt, kerb, kerbCreditOf);
-        if (cut) nextDriveways.add(cut.x * 100_000 + cut.z);
+        if (cut) keys.push(cut.x * 100_000 + cut.z);
         const civic = civicSiteFor(entry, inst, street, kitSensors);
         if (civic) {
-          for (const tile of civicCutTiles(civic, street)) {
-            nextDriveways.add(tile.x * 100_000 + tile.z);
-          }
+          for (const tile of civicCutTiles(civic, street)) keys.push(tile.x * 100_000 + tile.z);
         }
         const home = planHouseGround(inst, entry, roadAt, street);
-        if (!home) continue;
-        for (const tile of driveRoadTiles(inst, entry, home)) {
-          nextDriveways.add(tile.x * 100_000 + tile.z);
+        if (home) {
+          for (const tile of driveRoadTiles(inst, entry, home))
+            keys.push(tile.x * 100_000 + tile.z);
         }
-      }
+        return keys;
+      });
+      const nextDriveways = drivewayCache.keys();
       if (!sameTileKeySet(nextDriveways, drivewayTiles)) {
         drivewayTiles = nextDriveways;
         rebuildLamps();
@@ -2260,6 +2329,8 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       latestVehicles = snap.vehicles;
       // Service vehicles share the SAME buffer (kind-filtered), no copy.
       serviceVehicles.setBuffer(snap.vehicles);
+      snapshotIntervalMs = measuredSnapshotIntervalMs(snapshotsLanded > 0 ? snapshotAgeMs : null);
+      snapshotsLanded += 1;
       snapshotAgeMs = 0;
     }
     // Bus stops: the furniture on the streets, and the selected one's figures.
@@ -2737,7 +2808,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
     clouds.update(dtMs, lastTick, lastDayT);
 
     snapshotAgeMs += dtMs;
-    const vehicleAlpha = Math.min(1, snapshotAgeMs / SNAPSHOT_INTERVAL_MS);
+    const vehicleAlpha = snapshotAlpha(snapshotAgeMs, snapshotIntervalMs);
     vehicles.update(vehicleAlpha);
     serviceVehicles.update(vehicleAlpha); // same interpolation alpha as VehicleRenderer
     transitRenderer.update(dtMs / 1000); // buses run on real elapsed seconds

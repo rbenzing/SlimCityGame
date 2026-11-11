@@ -535,7 +535,7 @@ export class LotRenderer {
       chunk = { lots: new Map(), mesh: null };
       this.chunks.set(key, chunk);
     }
-    chunk.lots.set(building.id, { positions, colors });
+    chunk.lots.set(building.id, { positions, colors, normals: triangleNormals(positions) });
     this.lotChunk.set(building.id, key);
     this.dirty.add(key);
   }
@@ -559,17 +559,23 @@ export class LotRenderer {
         this.chunks.delete(key);
         continue;
       }
-      const positions: number[] = [];
-      const colors: number[] = [];
+      let floats = 0;
+      for (const lot of chunk.lots.values()) floats += lot.positions.length;
+      const positions = new Float32Array(floats);
+      const colors = new Float32Array(floats);
+      const normals = new Float32Array(floats);
+      let at = 0;
       for (const lot of chunk.lots.values()) {
-        for (const v of lot.positions) positions.push(v);
-        for (const v of lot.colors) colors.push(v);
+        positions.set(lot.positions, at);
+        colors.set(lot.colors, at);
+        normals.set(lot.normals, at);
+        at += lot.positions.length;
       }
       this.rebuilds += 1;
       const geometry = new THREE.BufferGeometry();
-      geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-      geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
-      geometry.computeVertexNormals();
+      geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+      geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+      geometry.setAttribute('normal', new THREE.BufferAttribute(normals, 3));
       const mesh = new THREE.Mesh(geometry, this.material);
       mesh.receiveShadow = true;
       mesh.visible = this.visible;
@@ -583,6 +589,39 @@ export class LotRenderer {
 interface LotGround {
   positions: number[];
   colors: number[];
+  /** Each triangle's face normal on its three vertices, laid once with the lot rather than with every flush of its chunk. */
+  normals: Float32Array;
+}
+
+/**
+ * The normal of every triangle of an unindexed position list, repeated on its
+ * three vertices: what `computeVertexNormals` gives geometry whose triangles
+ * share no vertex, which a lot's ground never does.
+ */
+function triangleNormals(positions: readonly number[]): Float32Array {
+  const normals = new Float32Array(positions.length);
+  for (let i = 0; i + 8 < positions.length; i += 9) {
+    const bx = Math.fround(positions[i + 3]!);
+    const by = Math.fround(positions[i + 4]!);
+    const bz = Math.fround(positions[i + 5]!);
+    const cb0 = Math.fround(positions[i + 6]!) - bx;
+    const cb1 = Math.fround(positions[i + 7]!) - by;
+    const cb2 = Math.fround(positions[i + 8]!) - bz;
+    const ab0 = Math.fround(positions[i]!) - bx;
+    const ab1 = Math.fround(positions[i + 1]!) - by;
+    const ab2 = Math.fround(positions[i + 2]!) - bz;
+    // (C - B) x (A - B), the order three.js takes, so a triangle faces the same way.
+    const nx = cb1 * ab2 - cb2 * ab1;
+    const ny = cb2 * ab0 - cb0 * ab2;
+    const nz = cb0 * ab1 - cb1 * ab0;
+    const length = Math.hypot(nx, ny, nz) || 1;
+    for (let v = 0; v < 3; v++) {
+      normals[i + v * 3] = nx / length;
+      normals[i + v * 3 + 1] = ny / length;
+      normals[i + v * 3 + 2] = nz / length;
+    }
+  }
+  return normals;
 }
 
 interface LotChunk {

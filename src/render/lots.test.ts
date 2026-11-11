@@ -249,6 +249,31 @@ describe('LotRenderer', () => {
     }
   });
 
+  it('carries the normals computeVertexNormals would give the same chunk, over sloped ground', () => {
+    const scene = new THREE.Scene();
+    const e = entry({ footprint: { w: 3, d: 3 } });
+    const hill = (x: number, z: number): number => 4 * Math.sin(x * 0.07) + 3 * Math.cos(z * 0.05);
+    const r = new LotRenderer(scene, hill, [e]);
+    r.apply(delta({ added: [building({ id: 1, x: 4, z: 6 }), building({ id: 2, x: 9, z: 6 })] }));
+    // A change to one lot lays the chunk again; the other lot's normals are kept.
+    r.apply(delta({ updated: [building({ id: 2, x: 9, z: 7 })] }));
+
+    const mesh = scene.children[0] as THREE.Mesh;
+    const carried = mesh.geometry.getAttribute('normal');
+    const expected = mesh.geometry.clone();
+    expected.deleteAttribute('normal');
+    expected.computeVertexNormals();
+    const reference = expected.getAttribute('normal');
+
+    expect(carried.count).toBeGreaterThan(0);
+    expect(carried.count).toBe(reference.count);
+    for (let i = 0; i < carried.count; i += 1) {
+      expect(carried.getX(i)).toBeCloseTo(reference.getX(i), 6);
+      expect(carried.getY(i)).toBeCloseTo(reference.getY(i), 6);
+      expect(carried.getZ(i)).toBeCloseTo(reference.getZ(i), 6);
+    }
+  });
+
   it('sits above the terrain but under what stands on the lot', () => {
     const scene = new THREE.Scene();
     const r = new LotRenderer(scene, () => 5, [entry()]);
@@ -465,7 +490,12 @@ describe('a home’s lot on a framed parcel', () => {
     const home = building({ x: 10, z: 17, frame });
     r.apply(delta({ added: [home] }));
     expect(r.lotCount()).toBe(1);
-    const plan = planHouseLot(home, house, () => false, () => null)!;
+    const plan = planHouseLot(
+      home,
+      house,
+      () => false,
+      () => null,
+    )!;
     expect(plan.drives.length).toBeGreaterThan(0);
     const mesh = scene.children[0] as THREE.Mesh;
     const position = mesh.geometry.getAttribute('position');

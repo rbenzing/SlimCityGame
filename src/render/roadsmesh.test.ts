@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import * as THREE from 'three';
 import { NIGHT_TINT } from './nightlook';
 import {
@@ -2848,6 +2848,65 @@ describe('RoadMeshRenderer', () => {
     expect(renderer.apply([])).toEqual(new Set());
   });
 
+  it('finds the road on every tile exactly as the chunk maps hold it, after adds, replaces and removes', () => {
+    const renderer = new RoadMeshRenderer(new THREE.Scene(), flatHeightAt);
+    type Inside = {
+      chunks: Map<number, { tiles: Map<number, RoadTileDelta> }>;
+      groundAt(x: number, z: number): RoadTileDelta | undefined;
+    };
+    const inside = renderer as unknown as Inside;
+    const width = 2 * CHUNK_TILES + 2;
+    const heldByChunks = (x: number, z: number): RoadTileDelta | undefined => {
+      const chunk = inside.chunks.get(
+        Math.floor(z / CHUNK_TILES) * CHUNKS_PER_SIDE + Math.floor(x / CHUNK_TILES),
+      );
+      return chunk?.tiles.get((z % CHUNK_TILES) * CHUNK_TILES + (x % CHUNK_TILES));
+    };
+    const expectAgreement = (): void => {
+      for (let z = -1; z < 4; z++) {
+        for (let x = -1; x < width; x++) {
+          expect(inside.groundAt(x, z), `tile ${x},${z}`).toBe(heldByChunks(x, z));
+        }
+      }
+    };
+
+    expect(inside.groundAt(0, 0)).toBeUndefined();
+    const row = (tier: RoadTier, z: number, from = 0, to = width): RoadTileDelta[] => {
+      const out: RoadTileDelta[] = [];
+      for (let x = from; x < to; x++) out.push(makeDelta(x, z, tier, E | W));
+      return out;
+    };
+    renderer.apply([...row(RoadTier.TwoLane, 0), ...row(RoadTier.TwoLane, 2)]);
+    expectAgreement();
+    expect(inside.groundAt(3, 0)?.tier).toBe(RoadTier.TwoLane);
+
+    // Replace some tiles, including both sides of the chunk seam.
+    renderer.apply([
+      makeDelta(CHUNK_TILES - 1, 0, RoadTier.FourLane, E | W),
+      ...row(RoadTier.Avenue, 2, 4, 9),
+    ]);
+    expectAgreement();
+    expect(inside.groundAt(CHUNK_TILES - 1, 0)?.tier).toBe(RoadTier.FourLane);
+
+    // Remove some tiles, then every tile of the first chunk's row so a chunk empties.
+    renderer.apply(row(RoadTier.None, 2, 5, 7));
+    expectAgreement();
+    expect(inside.groundAt(5, 2)).toBeUndefined();
+    renderer.apply([
+      ...row(RoadTier.None, 0, 0, CHUNK_TILES),
+      ...row(RoadTier.None, 2, 0, CHUNK_TILES),
+    ]);
+    expectAgreement();
+    expect(inside.chunks.get(0)?.tiles.size).toBe(0);
+    expect(inside.groundAt(0, 0)).toBeUndefined();
+    expect(inside.groundAt(CHUNK_TILES, 0)).toBeDefined();
+
+    // A tile put back after its chunk emptied is found again.
+    renderer.apply([makeDelta(1, 1, RoadTier.TwoLane, N | S)]);
+    expectAgreement();
+    expect(inside.groundAt(1, 1)?.tier).toBe(RoadTier.TwoLane);
+  });
+
   it('leaves alone a chunk the changed tile cannot reach', () => {
     const scene = new THREE.Scene();
     const renderer = new RoadMeshRenderer(scene, flatHeightAt);
@@ -2966,6 +3025,46 @@ describe('RoadMeshRenderer', () => {
     renderer.apply([makeDelta(0, 0, RoadTier.None), makeDelta(0, 1, RoadTier.None)]);
     expect(renderer.medianTreeCount()).toBe(0);
     void before;
+  });
+
+  it('keeps the same two median-tree meshes across repeated edits and disposes a replaced one', () => {
+    const scene = new THREE.Scene();
+    const renderer = new RoadMeshRenderer(scene, flatHeightAt);
+    const avenue = (from: number, to: number): RoadTileDelta[] => {
+      const out: RoadTileDelta[] = [];
+      for (let z = from; z < to; z++) out.push(makeDelta(0, z, RoadTier.Avenue, N | S));
+      return out;
+    };
+    const treeMeshes = (): THREE.InstancedMesh[] =>
+      scene.children.filter((c) => c instanceof THREE.InstancedMesh) as THREE.InstancedMesh[];
+
+    renderer.apply(avenue(0, 6));
+    const first = treeMeshes();
+    expect(first).toHaveLength(2);
+    const capacity = first[0]!.instanceMatrix.count;
+    const tiles = (n: number): number => avenue(0, n).filter((d) => hasMedianTree(d.x, d.z)).length;
+
+    // A tile redrawn again and again adds nothing to the scene.
+    for (let i = 0; i < 5; i++) renderer.apply([makeDelta(0, 0, RoadTier.Avenue, N | S)]);
+    expect(treeMeshes()).toEqual(first);
+    expect(scene.children.filter((c) => c instanceof THREE.InstancedMesh)).toHaveLength(2);
+
+    // Fewer trees than capacity: the same meshes, a smaller live count.
+    if (tiles(6) > 1) {
+      renderer.apply([makeDelta(0, 5, RoadTier.None), makeDelta(0, 4, RoadTier.None)]);
+      expect(treeMeshes()).toEqual(first);
+      expect(first[0]!.count).toBe(renderer.medianTreeCount());
+    }
+
+    // Growing past capacity replaces them, and what is replaced is disposed.
+    const disposed = vi.fn();
+    for (const mesh of first) mesh.addEventListener('dispose', disposed);
+    renderer.apply(avenue(0, 6000));
+    expect(tiles(6000)).toBeGreaterThan(capacity);
+    expect(disposed).toHaveBeenCalledTimes(2);
+    const grown = treeMeshes();
+    expect(grown).toHaveLength(2);
+    for (const mesh of first) expect(grown).not.toContain(mesh);
   });
 });
 

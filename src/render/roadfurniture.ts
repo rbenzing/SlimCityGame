@@ -48,6 +48,7 @@ import { isSeparateRoad } from '../shared/approachzone';
 import type { SeparateRoadSurroundings } from '../shared/approachzone';
 import type { JunctionControl, RoadProfile } from '../shared/types';
 import { materialHex } from './palette';
+import { MIN_INSTANCE_CAPACITY, setInstanceCount } from './groundquad';
 
 // --- Manhole -----------------------------------------------------------------
 const MANHOLE_RADIUS = 0.5;
@@ -1984,6 +1985,57 @@ export interface FurnitureCounts {
   signs: number;
 }
 
+/**
+ * One instanced layer that outlives a rebuild: a disposed mesh takes its
+ * material's compiled pipeline with it, so the mesh is replaced only to hold
+ * more, by doubling, and its live count follows the placements.
+ */
+class KeptInstances {
+  private mesh: THREE.InstancedMesh | null = null;
+  private capacity = 0;
+
+  constructor(
+    private readonly scene: THREE.Scene,
+    private readonly geometry: THREE.BufferGeometry,
+    private readonly material: THREE.Material,
+    private readonly userData: Record<string, unknown>,
+    private readonly setup: (mesh: THREE.InstancedMesh) => void,
+  ) {}
+
+  /** The mesh sized for `count` instances (hidden at 0), or null while none was ever needed. */
+  fit(count: number): THREE.InstancedMesh | null {
+    if (count > this.capacity) {
+      this.release();
+      this.capacity = Math.max(MIN_INSTANCE_CAPACITY, this.capacity);
+      while (this.capacity < count) this.capacity *= 2;
+      const mesh = new THREE.InstancedMesh(this.geometry, this.material, this.capacity);
+      Object.assign(mesh.userData, this.userData);
+      this.setup(mesh);
+      this.mesh = mesh;
+      this.scene.add(mesh);
+    }
+    const mesh = this.mesh;
+    if (!mesh) return null;
+    setInstanceCount(mesh, count);
+    // The instances are rewritten: a bound taken from earlier ones would cull them.
+    mesh.boundingSphere = null;
+    return mesh;
+  }
+
+  private release(): void {
+    if (!this.mesh) return;
+    this.scene.remove(this.mesh);
+    this.mesh.dispose();
+    this.mesh = null;
+  }
+
+  /** Frees the mesh and forgets its capacity, so a later fit() starts again. */
+  dispose(): void {
+    this.release();
+    this.capacity = 0;
+  }
+}
+
 export class RoadFurnitureRenderer {
   private readonly scene: THREE.Scene;
   private readonly heightAt: (x: number, z: number) => number;
@@ -2001,11 +2053,12 @@ export class RoadFurnitureRenderer {
   private readonly signGeometries = buildSignGeometries();
   private readonly signMaterial = new THREE.MeshLambertMaterial({ vertexColors: true });
 
-  private manholeMesh: THREE.InstancedMesh | null = null;
-  private boxMesh: THREE.InstancedMesh | null = null;
-  private pedestalMesh: THREE.InstancedMesh | null = null;
-  private meterMesh: THREE.InstancedMesh | null = null;
-  private signMeshes: THREE.InstancedMesh[] = [];
+  private readonly manholeLayer: KeptInstances;
+  private readonly boxLayer: KeptInstances;
+  private readonly pedestalLayer: KeptInstances;
+  private readonly meterLayer: KeptInstances;
+  /** One layer per sign type, made the first time that type is placed. */
+  private readonly signLayers = new Map<SignType, KeptInstances>();
 
   /**
    * The one lit lens on each signal head. A separate instanced disc rather
@@ -2017,6 +2070,7 @@ export class RoadFurnitureRenderer {
   private readonly lampGeometry = buildSignalLampGeometry();
   private readonly lampMaterial = new THREE.MeshBasicMaterial({ vertexColors: true });
   private lampMesh: THREE.InstancedMesh | null = null;
+  private readonly lampLayer: KeptInstances;
 
   /** The tram's contact poles: a mast and its bracket arm, each one instanced pool. */
   private readonly tramPoleGeometry = new THREE.CylinderGeometry(
@@ -2031,8 +2085,8 @@ export class RoadFurnitureRenderer {
     TRAM_POLE_ARM_THICKNESS_M,
   ).translate(TRAM_POLE_ARM_LENGTH_M / 2, TRAM_POLE_ARM_HEIGHT_M, 0);
   private readonly tramPoleMaterial = new THREE.MeshLambertMaterial({ color: TRAM_POLE_COLOR });
-  private tramPoleMesh: THREE.InstancedMesh | null = null;
-  private tramArmMesh: THREE.InstancedMesh | null = null;
+  private readonly tramPoleLayer: KeptInstances;
+  private readonly tramArmLayer: KeptInstances;
   private tramPoles: readonly TramPoleStand[] = [];
 
   private manholes: ManholePlacement[] = [];
@@ -2047,6 +2101,68 @@ export class RoadFurnitureRenderer {
   constructor(scene: THREE.Scene, heightAt: (x: number, z: number) => number) {
     this.scene = scene;
     this.heightAt = heightAt;
+    this.manholeLayer = new KeptInstances(
+      scene,
+      this.manholeGeometry,
+      this.manholeMaterial,
+      { furnitureKind: 'manhole' },
+      (mesh) => {
+        mesh.castShadow = false; // flat disc — nothing to cast
+        mesh.receiveShadow = true;
+      },
+    );
+    this.boxLayer = new KeptInstances(
+      scene,
+      this.boxGeometry,
+      this.boxMaterial,
+      { furnitureKind: 'box' },
+      (mesh) => {
+        mesh.castShadow = true;
+      },
+    );
+    this.pedestalLayer = new KeptInstances(
+      scene,
+      this.pedestalGeometry,
+      this.boxMaterial,
+      { furnitureKind: 'pedestal' },
+      (mesh) => {
+        mesh.castShadow = true;
+      },
+    );
+    this.meterLayer = new KeptInstances(
+      scene,
+      this.meterGeometry,
+      this.meterMaterial,
+      { furnitureKind: 'meter' },
+      (mesh) => {
+        mesh.castShadow = true;
+      },
+    );
+    this.lampLayer = new KeptInstances(
+      scene,
+      this.lampGeometry,
+      this.lampMaterial,
+      { furnitureKind: 'signalLamp' },
+      () => {},
+    );
+    this.tramPoleLayer = new KeptInstances(
+      scene,
+      this.tramPoleGeometry,
+      this.tramPoleMaterial,
+      { furnitureKind: 'tramPole' },
+      (mesh) => {
+        mesh.castShadow = true;
+      },
+    );
+    this.tramArmLayer = new KeptInstances(
+      scene,
+      this.tramArmGeometry,
+      this.tramPoleMaterial,
+      { furnitureKind: 'tramArm' },
+      (mesh) => {
+        mesh.castShadow = true;
+      },
+    );
   }
 
   /**
@@ -2056,8 +2172,6 @@ export class RoadFurnitureRenderer {
    * where its kerbs are, so nothing it earned is stood there.
    */
   rebuild(roadTiles: readonly FurnitureRoadTile[], keepOff?: ReadonlySet<number>): void {
-    this.disposeMeshes();
-
     const allowed = <T extends { x: number; z: number }>(placements: T[]): T[] =>
       keepOff && keepOff.size > 0
         ? placements.filter((p) => !keepOff.has(p.x * 100_000 + p.z))
@@ -2067,104 +2181,70 @@ export class RoadFurnitureRenderer {
     this.meters = allowed(computeMeterPlacements(roadTiles));
     this.signs = allowed(computeSignPlacements(roadTiles));
 
-    if (this.manholes.length) {
-      const mesh = new THREE.InstancedMesh(
-        this.manholeGeometry,
-        this.manholeMaterial,
-        this.manholes.length,
-      );
-      mesh.count = this.manholes.length;
-      mesh.castShadow = false; // flat disc — nothing to cast
-      mesh.receiveShadow = true;
-      for (let i = 0; i < this.manholes.length; i++) this.writeManhole(mesh, i, this.manholes[i]!);
-      mesh.instanceMatrix.needsUpdate = true;
-      mesh.userData.furnitureKind = 'manhole';
-      this.manholeMesh = mesh;
-      this.scene.add(mesh);
+    const manholeMesh = this.manholeLayer.fit(this.manholes.length);
+    if (manholeMesh) {
+      for (let i = 0; i < this.manholes.length; i++)
+        this.writeManhole(manholeMesh, i, this.manholes[i]!);
+      manholeMesh.instanceMatrix.needsUpdate = true;
     }
 
     // The two cabinets share a slot and a siting rule but not a shape, so each
     // takes its own instanced mesh.
     const cabinets = this.boxes.filter((b) => b.kind === 'cabinet');
     const pedestals = this.boxes.filter((b) => b.kind === 'pedestal');
-    if (cabinets.length) {
-      const mesh = new THREE.InstancedMesh(this.boxGeometry, this.boxMaterial, cabinets.length);
-      mesh.count = cabinets.length;
-      mesh.castShadow = true;
+    const boxMesh = this.boxLayer.fit(cabinets.length);
+    if (boxMesh) {
       for (let i = 0; i < cabinets.length; i++)
-        this.writeBox(mesh, i, cabinets[i]!, BOX_HEIGHT / 2);
-      mesh.instanceMatrix.needsUpdate = true;
-      mesh.userData.furnitureKind = 'box';
-      this.boxMesh = mesh;
-      this.scene.add(mesh);
+        this.writeBox(boxMesh, i, cabinets[i]!, BOX_HEIGHT / 2);
+      boxMesh.instanceMatrix.needsUpdate = true;
     }
-    if (pedestals.length) {
-      const mesh = new THREE.InstancedMesh(
-        this.pedestalGeometry,
-        this.boxMaterial,
-        pedestals.length,
-      );
-      mesh.count = pedestals.length;
-      mesh.castShadow = true;
+    const pedestalMesh = this.pedestalLayer.fit(pedestals.length);
+    if (pedestalMesh) {
       // Authored with its base at the origin, so it seats on the ground itself.
-      for (let i = 0; i < pedestals.length; i++) this.writeBox(mesh, i, pedestals[i]!, 0);
-      mesh.instanceMatrix.needsUpdate = true;
-      mesh.userData.furnitureKind = 'pedestal';
-      this.pedestalMesh = mesh;
-      this.scene.add(mesh);
+      for (let i = 0; i < pedestals.length; i++) this.writeBox(pedestalMesh, i, pedestals[i]!, 0);
+      pedestalMesh.instanceMatrix.needsUpdate = true;
     }
 
-    if (this.meters.length) {
-      const mesh = new THREE.InstancedMesh(
-        this.meterGeometry,
-        this.meterMaterial,
-        this.meters.length,
-      );
-      mesh.count = this.meters.length;
-      mesh.castShadow = true;
-      for (let i = 0; i < this.meters.length; i++) this.writeMeter(mesh, i, this.meters[i]!);
-      mesh.instanceMatrix.needsUpdate = true;
-      mesh.userData.furnitureKind = 'meter';
-      this.meterMesh = mesh;
-      this.scene.add(mesh);
+    const meterMesh = this.meterLayer.fit(this.meters.length);
+    if (meterMesh) {
+      for (let i = 0; i < this.meters.length; i++) this.writeMeter(meterMesh, i, this.meters[i]!);
+      meterMesh.instanceMatrix.needsUpdate = true;
     }
 
-    // One InstancedMesh per sign type present, grouping the placements by type.
+    // One InstancedMesh per sign type, grouping the placements by type; a type
+    // that is no longer placed keeps its mesh, hidden.
     const byType = new Map<SignType, SignPlacement[]>();
     for (const s of this.signs) {
       const group = byType.get(s.type);
       if (group) group.push(s);
       else byType.set(s.type, [s]);
     }
-    for (const [type, group] of byType) {
-      const mesh = new THREE.InstancedMesh(
-        this.signGeometries[type],
-        this.signMaterial,
-        group.length,
+    for (const type of byType.keys()) {
+      if (this.signLayers.has(type)) continue;
+      this.signLayers.set(
+        type,
+        new KeptInstances(
+          this.scene,
+          this.signGeometries[type],
+          this.signMaterial,
+          { furnitureKind: 'sign', signType: type },
+          (mesh) => {
+            mesh.castShadow = true;
+          },
+        ),
       );
-      mesh.count = group.length;
-      mesh.castShadow = true;
+    }
+    for (const [type, layer] of this.signLayers) {
+      const group = byType.get(type) ?? [];
+      const mesh = layer.fit(group.length);
+      if (!mesh) continue;
       for (let i = 0; i < group.length; i++) this.writeSign(mesh, i, group[i]!);
       mesh.instanceMatrix.needsUpdate = true;
-      mesh.userData.furnitureKind = 'sign';
-      mesh.userData.signType = type;
-      this.signMeshes.push(mesh);
-      this.scene.add(mesh);
     }
 
     this.signalHeads = this.signs.filter((s) => s.type === 'signal');
-    if (this.signalHeads.length) {
-      const mesh = new THREE.InstancedMesh(
-        this.lampGeometry,
-        this.lampMaterial,
-        this.signalHeads.length,
-      );
-      mesh.count = this.signalHeads.length;
-      mesh.userData.furnitureKind = 'signalLamp';
-      this.lampMesh = mesh;
-      this.scene.add(mesh);
-      this.writeSignalLamps();
-    }
+    this.lampMesh = this.lampLayer.fit(this.signalHeads.length);
+    this.writeSignalLamps();
   }
 
   /**
@@ -2173,23 +2253,10 @@ export class RoadFurnitureRenderer {
    * buildings rather than the roads, and the street lamps step aside for them.
    */
   setTramPoles(poles: readonly TramPoleStand[]): void {
-    this.disposeTramPoles();
     this.tramPoles = poles;
-    if (poles.length === 0) return;
-    const pole = new THREE.InstancedMesh(
-      this.tramPoleGeometry,
-      this.tramPoleMaterial,
-      poles.length,
-    );
-    const arm = new THREE.InstancedMesh(this.tramArmGeometry, this.tramPoleMaterial, poles.length);
-    for (const [mesh, kind] of [
-      [pole, 'tramPole'],
-      [arm, 'tramArm'],
-    ] as const) {
-      mesh.count = poles.length;
-      mesh.castShadow = true;
-      mesh.userData.furnitureKind = kind;
-    }
+    const pole = this.tramPoleLayer.fit(poles.length);
+    const arm = this.tramArmLayer.fit(poles.length);
+    if (!pole || !arm) return;
     poles.forEach((p, i) => {
       _position.set(p.x, this.heightAt(p.x, p.z), p.z);
       _matrix.compose(_position, _identityQuat, _scale);
@@ -2200,22 +2267,11 @@ export class RoadFurnitureRenderer {
     });
     pole.instanceMatrix.needsUpdate = true;
     arm.instanceMatrix.needsUpdate = true;
-    this.tramPoleMesh = pole;
-    this.tramArmMesh = arm;
-    this.scene.add(pole, arm);
   }
 
   /** The tram poles standing, from the last setTramPoles(). */
   tramPoleStands(): readonly TramPoleStand[] {
     return this.tramPoles;
-  }
-
-  private disposeTramPoles(): void {
-    if (this.tramPoleMesh) this.scene.remove(this.tramPoleMesh);
-    if (this.tramArmMesh) this.scene.remove(this.tramArmMesh);
-    this.tramPoleMesh = null;
-    this.tramArmMesh = null;
-    this.tramPoles = [];
   }
 
   /**
@@ -2366,24 +2422,25 @@ export class RoadFurnitureRenderer {
     mesh.setMatrixAt(slot, _matrix);
   }
 
-  private disposeMeshes(): void {
-    for (const mesh of [this.manholeMesh, this.boxMesh, this.pedestalMesh, this.meterMesh])
-      if (mesh) this.scene.remove(mesh);
-    for (const mesh of this.signMeshes) this.scene.remove(mesh);
-    if (this.lampMesh) this.scene.remove(this.lampMesh);
-    this.manholeMesh = null;
-    this.boxMesh = null;
-    this.pedestalMesh = null;
-    this.meterMesh = null;
-    this.signMeshes = [];
-    this.lampMesh = null;
-    this.signalHeads = [];
-  }
-
   /** Removes every layer from the scene and frees the shared geometries/materials. */
   dispose(): void {
-    this.disposeMeshes();
-    this.disposeTramPoles();
+    // Releasing a layer frees its instance buffers and leaves the shared geometry be.
+    for (const layer of [
+      this.manholeLayer,
+      this.boxLayer,
+      this.pedestalLayer,
+      this.meterLayer,
+      ...this.signLayers.values(),
+      this.lampLayer,
+      this.tramPoleLayer,
+      this.tramArmLayer,
+    ]) {
+      layer.dispose();
+    }
+    this.signLayers.clear();
+    this.lampMesh = null;
+    this.signalHeads = [];
+    this.tramPoles = [];
     this.tramPoleGeometry.dispose();
     this.tramArmGeometry.dispose();
     this.tramPoleMaterial.dispose();

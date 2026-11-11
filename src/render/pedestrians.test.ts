@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   PedestrianRenderer,
   computeIdlePlacements,
@@ -557,26 +557,182 @@ describe('PedestrianRenderer.apply', () => {
     for (const mesh of instancedMeshes) expect(mesh.count).toBeLessThanOrEqual(MAX_PEDESTRIANS);
   });
 
-  it('a second apply() disposes the previous meshes instead of accumulating them', () => {
+  it('a second apply() never accumulates meshes: the scene holds one body and one head', () => {
     const scene = new THREE.Scene();
     const renderer = new PedestrianRenderer(scene, flatHeightAt);
     renderer.apply({ stops: [{ x: 0, z: 0 }], buildings: emptyDelta() });
-    const firstChildren = [...scene.children];
-
-    renderer.apply({ stops: [{ x: 0, z: 0 }], buildings: emptyDelta() });
-    for (const child of firstChildren) expect(scene.children).not.toContain(child);
+    renderer.apply({
+      stops: [
+        { x: 0, z: 0 },
+        { x: 5, z: 5 },
+      ],
+      buildings: emptyDelta(),
+    });
+    expect(scene.children).toHaveLength(2);
   });
 
   it('an empty snapshot clears everything back to zero', () => {
     const scene = new THREE.Scene();
     const renderer = new PedestrianRenderer(scene, flatHeightAt);
     renderer.apply({ stops: [{ x: 0, z: 0 }], buildings: emptyDelta() });
-    renderer.apply({ stops: [], buildings: emptyDelta() });
+    expect(() => renderer.apply({ stops: [], buildings: emptyDelta() })).not.toThrow();
 
     expect(renderer.idleCount()).toBe(0);
     expect(renderer.walkerCount()).toBe(0);
     expect(renderer.totalCount()).toBe(0);
-    expect(scene.children).toHaveLength(0);
+    // The meshes stay (a disposed one takes its compiled pipeline with it) but draw nothing.
+    for (const mesh of scene.children as THREE.InstancedMesh[]) {
+      expect(mesh.count).toBe(0);
+      expect(mesh.visible).toBe(false);
+    }
+  });
+});
+
+describe('PedestrianRenderer incremental paths and live meshes', () => {
+  const meshesOf = (scene: THREE.Scene): THREE.InstancedMesh[] =>
+    scene.children.filter((c) => c instanceof THREE.InstancedMesh) as THREE.InstancedMesh[];
+  const walkersOf = (n: number, from = 0): BuildingInstance[] => {
+    const out: BuildingInstance[] = [];
+    for (let id = from; out.length < n; id += 1) {
+      if (isWalkerBuilding(id)) out.push(building(id, id, 3));
+    }
+    return out;
+  };
+
+  it('an apply that adds one building asks doorAt once, not once per walker', () => {
+    const doorAt = vi.fn(() => null);
+    const renderer = new PedestrianRenderer(
+      new THREE.Scene(),
+      flatHeightAt,
+      () => false,
+      () => null,
+      doorAt,
+    );
+    const first = walkersOf(20);
+    renderer.apply({ stops: [], buildings: { added: first, removed: [], updated: [] } });
+    expect(doorAt).toHaveBeenCalledTimes(20);
+    doorAt.mockClear();
+
+    const [extra] = walkersOf(1, first[first.length - 1]!.id + 1);
+    renderer.apply({ stops: [], buildings: { added: [extra!], removed: [], updated: [] } });
+    expect(renderer.walkerCount()).toBe(21);
+    expect(doorAt).toHaveBeenCalledTimes(1);
+  });
+
+  it('invalidatePaths() makes the next apply lay every walker again', () => {
+    const doorAt = vi.fn(() => null);
+    const renderer = new PedestrianRenderer(
+      new THREE.Scene(),
+      flatHeightAt,
+      () => false,
+      () => null,
+      doorAt,
+    );
+    renderer.apply({ stops: [], buildings: { added: walkersOf(20), removed: [], updated: [] } });
+    doorAt.mockClear();
+
+    renderer.apply({ stops: [], buildings: emptyDelta() });
+    expect(doorAt).not.toHaveBeenCalled();
+
+    renderer.invalidatePaths();
+    renderer.apply({ stops: [], buildings: emptyDelta() });
+    expect(doorAt).toHaveBeenCalledTimes(20);
+  });
+
+  it('redraw() stands the figures on the new ground at the next apply without laying a path', () => {
+    let ground = 0;
+    const doorAt = vi.fn(() => null);
+    const scene = new THREE.Scene();
+    const renderer = new PedestrianRenderer(
+      scene,
+      () => ground,
+      () => false,
+      () => null,
+      doorAt,
+    );
+    renderer.apply({ stops: [{ x: 0, z: 0 }], buildings: emptyDelta() });
+    const body = scene.children[0] as THREE.InstancedMesh;
+    const m = new THREE.Matrix4();
+    body.getMatrixAt(0, m);
+    const before = new THREE.Vector3().setFromMatrixPosition(m).y;
+
+    ground = 4;
+    renderer.redraw();
+    renderer.apply({ stops: [{ x: 0, z: 0 }], buildings: emptyDelta() });
+    body.getMatrixAt(0, m);
+    expect(new THREE.Vector3().setFromMatrixPosition(m).y).toBeCloseTo(before + 4, 5);
+    expect(doorAt).not.toHaveBeenCalled();
+  });
+
+  it('keeps the same two mesh objects as the crowd grows, sized for the largest crowd', () => {
+    const scene = new THREE.Scene();
+    const renderer = new PedestrianRenderer(scene, flatHeightAt);
+    const all = walkersOf(40);
+    renderer.apply({ stops: [], buildings: { added: all.slice(0, 5), removed: [], updated: [] } });
+    const [body, head] = meshesOf(scene);
+    expect(renderer.totalCount()).toBe(5);
+
+    renderer.apply({ stops: [], buildings: { added: all.slice(5, 7), removed: [], updated: [] } });
+    renderer.apply({ stops: [], buildings: { added: [], removed: [all[0]!.id], updated: [] } });
+    expect(meshesOf(scene)).toEqual([body, head]);
+    expect(body!.count).toBe(renderer.totalCount());
+    expect(body!.count).toBe(6);
+
+    // The crowd can never outgrow MAX_PEDESTRIANS, which the meshes are sized
+    // for up front: growing it replaces nothing.
+    renderer.apply({ stops: [], buildings: { added: all.slice(7, 40), removed: [], updated: [] } });
+    const grown = meshesOf(scene);
+    expect(grown).toEqual([body, head]);
+    expect(grown[0]!.count).toBe(renderer.totalCount());
+    expect(grown[0]!.instanceMatrix.count).toBe(MAX_PEDESTRIANS);
+    expect(scene.children).toHaveLength(2);
+  });
+
+  it('a crowd of zero sets count 0 on the live meshes and does not throw', () => {
+    const scene = new THREE.Scene();
+    const renderer = new PedestrianRenderer(scene, flatHeightAt);
+    const added = walkersOf(5);
+    renderer.apply({ stops: [], buildings: { added, removed: [], updated: [] } });
+    const before = meshesOf(scene);
+    expect(() =>
+      renderer.apply({
+        stops: [],
+        buildings: { added: [], removed: added.map((b) => b.id), updated: [] },
+      }),
+    ).not.toThrow();
+    expect(meshesOf(scene)).toEqual(before);
+    for (const mesh of before) expect(mesh.count).toBe(0);
+    expect(() => renderer.update(1000)).not.toThrow();
+  });
+
+  it('paths after incremental applies equal those of one full apply of the same buildings', () => {
+    const road = (_x: number, z: number): boolean => z === 1;
+    const door = (b: BuildingInstance): { x: number; z: number } => ({ x: b.x + 0.5, z: 2 });
+    const all = walkersOf(30);
+    const stepwise = new PedestrianRenderer(
+      new THREE.Scene(),
+      flatHeightAt,
+      road,
+      () => null,
+      door,
+    );
+    stepwise.apply({ stops: [], buildings: { added: all.slice(0, 10), removed: [], updated: [] } });
+    stepwise.apply({
+      stops: [],
+      buildings: { added: all.slice(10, 25), removed: [], updated: [] },
+    });
+    stepwise.apply({
+      stops: [],
+      buildings: { added: all.slice(25), removed: [], updated: [all[3]!] },
+    });
+    stepwise.apply({ stops: [], buildings: { added: [], removed: [all[7]!.id], updated: [] } });
+
+    const full = new PedestrianRenderer(new THREE.Scene(), flatHeightAt, road, () => null, door);
+    full.apply({
+      stops: [],
+      buildings: { added: all.filter((b) => b.id !== all[7]!.id), removed: [], updated: [] },
+    });
+    expect(stepwise.walkerPathsForAudit()).toEqual(full.walkerPathsForAudit());
   });
 });
 

@@ -23,6 +23,18 @@
 export const CONFORM_MAX_CELL_M = 2;
 
 /**
+ * The fewest instances an InstancedMesh is ever allocated for.
+ *
+ * three compiles the instance matrices into the shader as a uniform array of
+ * the mesh's capacity while 64 bytes a matrix fits the uniform block limit
+ * (16 to 64 KB), so every doubling below that is a different program and a
+ * pipeline compiled in the render loop. Past the limit the matrices are an
+ * attribute and the program no longer depends on capacity. 2048 matrices
+ * (128 KB) is over every limit, so growing from here changes no shader.
+ */
+export const MIN_INSTANCE_CAPACITY = 2048;
+
+/**
  * Sets an instanced mesh's live count and hides it when that count is zero.
  *
  * An InstancedMesh with no instances is still submitted as a draw call with a

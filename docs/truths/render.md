@@ -223,4 +223,14 @@ Back to [the index](../GROUND-TRUTHS.md).
   between a bus stop's pad and the bus door. —
   [street-furniture.md](../specs/street-furniture.md);
   `lampLateralOffset` in `src/render/lamps.ts`, `src/render/roadfurniture.ts`
+- [R-render-037] A snapshot costs the main thread work in proportion to what it changed,
+  never to the size of the city. What is derived from a building or a chunk
+  is kept for it and redone only for the ones a delta names or a changed road
+  reaches. An instanced pool is never allocated for fewer than
+  `MIN_INSTANCE_CAPACITY` instances: below about a thousand, three compiles
+  the capacity into the shader, so every doubling compiled it again. A mesh
+  that is replaced is disposed. The page once stopped answering while a city
+  grew at 4×; its longest stall is now 1.1 s. —
+  [performance-budget.md](../engineering/performance-budget.md#the-main-thread-while-a-city-grows);
+  `onSnapshot` in `src/main.ts`
 

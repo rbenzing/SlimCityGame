@@ -91,6 +91,7 @@ import {
   tramCrossingRoad,
 } from '../shared/types';
 import { materialUnit } from './palette';
+import { MIN_INSTANCE_CAPACITY, setInstanceCount } from './groundquad';
 import type { JunctionControl, TilePoint } from '../shared/types';
 import type { RoadProfile } from '../shared/types';
 import {
@@ -6437,6 +6438,14 @@ export class RoadMeshRenderer {
   private readonly material = new THREE.MeshLambertMaterial({ vertexColors: true });
   private readonly chunks = new Map<number, ChunkEntry>();
   /**
+   * The same deltas the chunk maps hold, by `z * MAP_SIZE + x`, so a lookup of
+   * the road beside a tile is one index. Written wherever a chunk's `tiles`
+   * is, in apply().
+   */
+  private readonly ground: (RoadTileDelta | undefined)[] = new Array<RoadTileDelta | undefined>(
+    MAP_SIZE * MAP_SIZE,
+  ).fill(undefined);
+  /**
    * Each parking lane's block face, by tile index × 2 plus its side (1 for
    * the high side); null where that side paints none. Laid on demand and
    * forgotten whenever the roads or their junctions change.
@@ -6557,10 +6566,13 @@ export class RoadMeshRenderer {
         this.chunks.set(key, chunk);
       }
       const tileKey = localTileKeyOf(delta.x, delta.z);
+      const onMap = inBounds(delta.x, delta.z);
       if (delta.tier === RoadTier.None) {
         chunk.tiles.delete(tileKey);
+        if (onMap) this.ground[delta.z * MAP_SIZE + delta.x] = undefined;
       } else {
         chunk.tiles.set(tileKey, delta);
+        if (onMap) this.ground[delta.z * MAP_SIZE + delta.x] = delta;
       }
       dirty.add(key);
       this.dirtyReaders(delta.x, delta.z, dirty);
@@ -6572,7 +6584,7 @@ export class RoadMeshRenderer {
     }
 
     for (const key of dirty) this.rebuildChunk(key);
-    this.rebuildMedianTrees();
+    if (dirty.size > 0) this.rebuildMedianTrees();
     return dirty;
   }
 
@@ -6898,7 +6910,7 @@ export class RoadMeshRenderer {
   /** The road on the ground at a tile; nothing off the map, where a chunk key would wrap to the far side. */
   private groundAt(x: number, z: number): RoadTileDelta | undefined {
     if (!inBounds(x, z)) return undefined;
-    return this.chunks.get(chunkKeyOf(x, z))?.tiles.get(localTileKeyOf(x, z));
+    return this.ground[z * MAP_SIZE + x];
   }
 
   /** The cross-section of a road passing over a crossing, laid in world order. */
@@ -7531,31 +7543,50 @@ export class RoadMeshRenderer {
         (this.profileAt(t.x, t.z)?.pieces.some((p) => p.kind === 'median') ?? true),
     );
 
+    // The two meshes outlive a rebuild: they are replaced, and the old ones
+    // disposed, only to hold more, by doubling; the live count follows the trees.
     if (treeTiles.length === 0) {
-      if (this.treeTrunkMesh) {
-        this.scene.remove(this.treeTrunkMesh);
-        this.treeTrunkMesh = null;
-      }
-      if (this.treeCanopyMesh) {
-        this.scene.remove(this.treeCanopyMesh);
-        this.treeCanopyMesh = null;
-      }
+      if (this.treeTrunkMesh) setInstanceCount(this.treeTrunkMesh, 0);
+      if (this.treeCanopyMesh) setInstanceCount(this.treeCanopyMesh, 0);
       return;
     }
 
-    if (this.treeTrunkMesh) this.scene.remove(this.treeTrunkMesh);
-    if (this.treeCanopyMesh) this.scene.remove(this.treeCanopyMesh);
-
-    const trunkMesh = new THREE.InstancedMesh(
-      this.treeTrunkGeometry,
-      this.treeTrunkMaterial,
-      treeTiles.length,
-    );
-    const canopyMesh = new THREE.InstancedMesh(
-      this.treeCanopyGeometry,
-      this.treeCanopyMaterial,
-      treeTiles.length,
-    );
+    if (
+      !this.treeTrunkMesh ||
+      !this.treeCanopyMesh ||
+      treeTiles.length > this.treeTrunkMesh.instanceMatrix.count
+    ) {
+      let capacity = Math.max(MIN_INSTANCE_CAPACITY, this.treeTrunkMesh?.instanceMatrix.count ?? 0);
+      while (capacity < treeTiles.length) capacity *= 2;
+      for (const old of [this.treeTrunkMesh, this.treeCanopyMesh]) {
+        if (!old) continue;
+        this.scene.remove(old);
+        old.dispose();
+      }
+      const grownTrunk = new THREE.InstancedMesh(
+        this.treeTrunkGeometry,
+        this.treeTrunkMaterial,
+        capacity,
+      );
+      const grownCanopy = new THREE.InstancedMesh(
+        this.treeCanopyGeometry,
+        this.treeCanopyMaterial,
+        capacity,
+      );
+      for (const mesh of [grownTrunk, grownCanopy]) {
+        mesh.castShadow = true; // median foliage casts onto the road, like street trees
+        mesh.receiveShadow = true;
+        this.scene.add(mesh);
+      }
+      this.treeTrunkMesh = grownTrunk;
+      this.treeCanopyMesh = grownCanopy;
+    }
+    const trunkMesh = this.treeTrunkMesh;
+    const canopyMesh = this.treeCanopyMesh!;
+    setInstanceCount(trunkMesh, treeTiles.length);
+    setInstanceCount(canopyMesh, treeTiles.length);
+    trunkMesh.boundingSphere = null;
+    canopyMesh.boundingSphere = null;
 
     for (let i = 0; i < treeTiles.length; i++) {
       const tile = treeTiles[i]!;
@@ -7576,14 +7607,5 @@ export class RoadMeshRenderer {
     }
     trunkMesh.instanceMatrix.needsUpdate = true;
     canopyMesh.instanceMatrix.needsUpdate = true;
-    trunkMesh.castShadow = true; // median foliage casts onto the road, like street trees
-    canopyMesh.castShadow = true;
-    trunkMesh.receiveShadow = true;
-    canopyMesh.receiveShadow = true;
-
-    this.scene.add(trunkMesh);
-    this.scene.add(canopyMesh);
-    this.treeTrunkMesh = trunkMesh;
-    this.treeCanopyMesh = canopyMesh;
   }
 }

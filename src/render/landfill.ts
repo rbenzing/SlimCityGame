@@ -559,7 +559,10 @@ export class LandfillRenderer {
     mesh.instanceMatrix.needsUpdate = true;
     if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
 
-    if (this.pileMesh) this.scene.remove(this.pileMesh);
+    if (this.pileMesh) {
+      this.scene.remove(this.pileMesh);
+      this.pileMesh.dispose();
+    }
     this.pileMesh = mesh;
     this.scene.add(mesh);
   }

@@ -48,6 +48,9 @@ again, update the figure here and nowhere else.
   dense kind and a garage on its lot from level 2 `[R-services-040]`; and
   [street-furniture.md](specs/street-furniture.md), a furnishing strip, a
   clear walk and every roadside object in its place `[R-render-036]`.
+- At 4× a fast-growing city's longest stall is 1.1 s against a 1 s target
+  `[R-render-037]`. What was measured and what was done is in
+  [performance-budget.md](engineering/performance-budget.md#the-main-thread-while-a-city-grows).
 - No tool can shoot a building under construction: `placeBuilding` yields it
   finished, and no dev hook holds the countdown (`CONSTRUCTION_TICKS` in
   `src/sim/growth.ts`). The hook is owed with the next change to growth.
