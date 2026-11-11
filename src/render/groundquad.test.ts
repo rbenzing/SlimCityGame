@@ -1,9 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  CONFORM_MAX_CELL_M,
-  conformingQuadVertexCount,
-  pushConformingQuad,
-} from './groundquad';
+import { CONFORM_MAX_CELL_M, conformingQuadVertexCount, pushConformingQuad } from './groundquad';
 
 const WHITE: readonly [number, number, number] = [1, 1, 1];
 
@@ -62,10 +58,9 @@ describe('pushConformingQuad', () => {
     const verts = build(0, 0, 16, 16, yOffset, ridge);
 
     for (const v of verts) {
-      expect(
-        v.y,
-        `surface at z=${v.z} sits below the ground it covers`,
-      ).toBeGreaterThanOrEqual(ridge(v.x, v.z) + yOffset - 1e-9);
+      expect(v.y, `surface at z=${v.z} sits below the ground it covers`).toBeGreaterThanOrEqual(
+        ridge(v.x, v.z) + yOffset - 1e-9,
+      );
     }
     // And it actually followed the ridge rather than flattening it.
     const peak = Math.max(...verts.map((v) => v.y));

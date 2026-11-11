@@ -201,11 +201,7 @@ export function frameToLocal(
 }
 
 /** A lot direction turned into the world: `du` along the edge, `dv` inward, away from the street. */
-export function frameDirection(
-  frame: EdgeFrame,
-  du: number,
-  dv: number,
-): { x: number; z: number } {
+export function frameDirection(frame: EdgeFrame, du: number, dv: number): { x: number; z: number } {
   const { ax, az, ox, oz } = frameAxes(frame);
   return { x: du * ax - dv * ox, z: du * az - dv * oz };
 }

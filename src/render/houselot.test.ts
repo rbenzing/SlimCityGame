@@ -206,7 +206,8 @@ describe('planHouseLot — the drive', () => {
           ? Math.max(...drive.garageDoors.map((d) => d.u1)) -
             Math.min(...drive.garageDoors.map((d) => d.u0))
           : 0;
-      const expectedW = drive.cover === 'detachedGarage' ? DRIVE_WIDTH_M : Math.max(DRIVE_WIDTH_M, doorsW);
+      const expectedW =
+        drive.cover === 'detachedGarage' ? DRIVE_WIDTH_M : Math.max(DRIVE_WIDTH_M, doorsW);
       expect(drive.rect.u1 - drive.rect.u0).toBeCloseTo(expectedW, 6);
       expect(drive.rect.v0).toBeCloseTo(-VERGE, 6);
       expect(drive.cut).toEqual({
@@ -669,7 +670,8 @@ describe('planHouseLot — the shares the seed draws', () => {
       );
     }
     const wider = entry({ footprint: { w: 3, d: 3 }, height: 4, level: 1 });
-    for (let id = 1; id <= 50; id++) expect(houseStyleOf(wider, id)).toBe(houseStyleOf(kitRanch, id));
+    for (let id = 1; id <= 50; id++)
+      expect(houseStyleOf(wider, id)).toBe(houseStyleOf(kitRanch, id));
   });
 });
 
@@ -706,7 +708,8 @@ describe('planHouseLot — the garage by size and by what the lot fits', () => {
           expect(doorWidths(plan).sort()).toEqual([GARAGE_DOOR_SINGLE_M, GARAGE_DOOR_DOUBLE_M]);
         }
       }
-      for (const w of doorWidths(plan)) expect([GARAGE_DOOR_SINGLE_M, GARAGE_DOOR_DOUBLE_M]).toContain(w);
+      for (const w of doorWidths(plan))
+        expect([GARAGE_DOOR_SINGLE_M, GARAGE_DOOR_DOUBLE_M]).toContain(w);
       // The drive runs under the doors it leads to, and the car stands on it.
       for (const d of plan.drives) {
         if (d.cover === 'detachedGarage' || d.garageDoors.length === 0) continue;
@@ -726,7 +729,8 @@ describe('planHouseLot — the garage by size and by what the lot fits', () => {
       // A split-level's wing holds two bays at most.
       expect(baysBuilt(plan)).toBe(plan.kit.style === 'splitLevel' ? Math.min(2, bays) : bays);
       for (const d of plan.drives) {
-        if (d.cover === 'garage') expect(d.coverRect!.u1 - d.coverRect!.u0).toBeLessThanOrEqual(5.25);
+        if (d.cover === 'garage')
+          expect(d.coverRect!.u1 - d.coverRect!.u0).toBeLessThanOrEqual(5.25);
       }
     }
   });
@@ -810,7 +814,8 @@ describe('planHouseLot — the craftsman and the split-level', () => {
       expect(wing).not.toBeNull();
       const bodyW = body.u1 - body.u0;
       const wingW = wing!.u1 - wing!.u0;
-      const block = wing!.u0 > body.u0 + 1e-6 ? { u0: body.u0, u1: wing!.u0 } : { u0: wing!.u1, u1: body.u1 };
+      const block =
+        wing!.u0 > body.u0 + 1e-6 ? { u0: body.u0, u1: wing!.u0 } : { u0: wing!.u1, u1: body.u1 };
       // The block takes 55% unless the wing has to widen for its door.
       expect(wingW / bodyW).toBeGreaterThanOrEqual(0.45 - 1e-9);
       expect(wingW / bodyW).toBeLessThan(0.6);
@@ -1056,7 +1061,11 @@ describe('a home on a framed parcel', () => {
     const origin = inParcel(plan, 0, 0);
     expect(origin.u).toBeCloseTo(0, 9);
     expect(origin.v).toBeCloseTo(0, 9);
-    const centre = inParcel(plan, (plan.body.u0 + plan.body.u1) / 2, (plan.body.v0 + plan.body.v1) / 2);
+    const centre = inParcel(
+      plan,
+      (plan.body.u0 + plan.body.u1) / 2,
+      (plan.body.v0 + plan.body.v1) / 2,
+    );
     expect(centre.u).toBeCloseTo(W / 2, 9);
     const front = inParcel(plan, plan.body.u0, plan.body.v0);
     expect(front.v).toBeCloseTo(HOUSE_FRONT_YARD_M, 9);
@@ -1093,7 +1102,11 @@ describe('a home on a framed parcel', () => {
 
   it('reads the footway’s depth from the street under its kerb when the grid holds one', () => {
     // The street is read a metre out from the middle of the kerb frontage.
-    const kerbPoint = lotToWorld({ x: parcel.x, z: parcel.z, heading: parcel.heading, mirror: 1 }, W / 2, -1);
+    const kerbPoint = lotToWorld(
+      { x: parcel.x, z: parcel.z, heading: parcel.heading, mirror: 1 },
+      W / 2,
+      -1,
+    );
     const street: StreetLookup = (x, z) =>
       x === Math.floor(kerbPoint.x / TILE_METERS) && z === Math.floor(kerbPoint.z / TILE_METERS)
         ? { vergeM: 4, sidewalkM: 3 }
@@ -1107,7 +1120,11 @@ describe('a home on a framed parcel', () => {
   it('seats the body where the lot planner puts it, turned to the street, through one placement', () => {
     const plan = planHouseLot(framed(), small, roadAt, noStreets)!;
     const seat = framedBodyPlacement(parcel, small, noStreets);
-    const centre = lotToWorld(plan.frame, (plan.body.u0 + plan.body.u1) / 2, (plan.body.v0 + plan.body.v1) / 2);
+    const centre = lotToWorld(
+      plan.frame,
+      (plan.body.u0 + plan.body.u1) / 2,
+      (plan.body.v0 + plan.body.v1) / 2,
+    );
     expect(seat.x).toBeCloseTo(centre.x, 9);
     expect(seat.z).toBeCloseTo(centre.z, 9);
     expect(seat.yaw).toBeCloseTo(-parcel.heading, 12);
@@ -1126,7 +1143,12 @@ describe('a framed home’s drive tiles', () => {
 
   it('names the tiles under the drive’s cut, on the road band across the kerb line, each once', () => {
     const building = home({ x: 10, z: 17, frame: parcel });
-    const plan = planHouseGround(building, small, () => false, () => null)!;
+    const plan = planHouseGround(
+      building,
+      small,
+      () => false,
+      () => null,
+    )!;
     expect(plan.drives.length).toBeGreaterThan(0);
     const tiles = driveRoadTiles(building, small, plan);
     expect(tiles.length).toBeGreaterThan(0);
@@ -1145,7 +1167,12 @@ describe('a framed home’s drive tiles', () => {
 
   it('is empty for a grid home that fronts no street, as before', () => {
     const building = home({ x: 10, z: 17 });
-    const plan = planHouseGround(building, small, () => false, () => null)!;
+    const plan = planHouseGround(
+      building,
+      small,
+      () => false,
+      () => null,
+    )!;
     expect(driveRoadTiles(building, small, plan)).toEqual([]);
   });
 });

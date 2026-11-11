@@ -502,7 +502,11 @@ describe('chunkOfTile', () => {
  * separate interpolation of the heightmap. Returns null if no triangle covers
  * the point (outside the chunk).
  */
-const meshSurfaceHeightAt = (geometry: THREE.BufferGeometry, px: number, pz: number): number | null => {
+const meshSurfaceHeightAt = (
+  geometry: THREE.BufferGeometry,
+  px: number,
+  pz: number,
+): number | null => {
   const pos = geometry.attributes.position!;
   const index = geometry.index!;
   const eps = 1e-6;
@@ -536,7 +540,7 @@ describe('TerrainRenderer.heightAt', () => {
     const map = makeFlatMap(MAP_SIZE);
     for (let z = 0; z < MAP_SIZE; z++) {
       for (let x = 0; x < MAP_SIZE; x++) {
-        map.height[z * MAP_SIZE + x] = ((x * 7 + z * 13) % 11) * 3 + ((x % 5) * (z % 5));
+        map.height[z * MAP_SIZE + x] = ((x * 7 + z * 13) % 11) * 3 + (x % 5) * (z % 5);
       }
     }
     return map;
@@ -648,7 +652,10 @@ describe('TerrainRenderer.heightAt', () => {
     const zOnGrid = 5 * TILE_METERS;
     expect(terrain.heightAt(-10_000, zOnGrid)).toBeCloseTo(terrain.heightAt(0, zOnGrid), 4);
     const eastEdge = MAP_SIZE * TILE_METERS;
-    expect(terrain.heightAt(10 * eastEdge, zOnGrid)).toBeCloseTo(terrain.heightAt(eastEdge, zOnGrid), 4);
+    expect(terrain.heightAt(10 * eastEdge, zOnGrid)).toBeCloseTo(
+      terrain.heightAt(eastEdge, zOnGrid),
+      4,
+    );
   });
 
   it('returns 0 before build() has ever been called', () => {

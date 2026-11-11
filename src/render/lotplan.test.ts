@@ -392,14 +392,14 @@ describe('a level-1 dense kind on its larger lot', () => {
           (body.u0 + body.u1) / 2,
           (body.v0 + body.v1) / 2,
         );
-        expect(setback.centerXM + (10 + e.footprint.w / 2) * TILE_METERS, `${e.id} ${side}`).toBeCloseTo(
-          bodyCentre.x,
-          6,
-        );
-        expect(setback.centerZM + (10 + e.footprint.d / 2) * TILE_METERS, `${e.id} ${side}`).toBeCloseTo(
-          bodyCentre.z,
-          6,
-        );
+        expect(
+          setback.centerXM + (10 + e.footprint.w / 2) * TILE_METERS,
+          `${e.id} ${side}`,
+        ).toBeCloseTo(bodyCentre.x, 6);
+        expect(
+          setback.centerZM + (10 + e.footprint.d / 2) * TILE_METERS,
+          `${e.id} ${side}`,
+        ).toBeCloseTo(bodyCentre.z, 6);
       }
     },
   );
@@ -964,7 +964,13 @@ describe('a lot plan on a framed parcel', () => {
   });
 
   it('is the plan every site reads: the parcel’s frame on a curve, the grid’s elsewhere', () => {
-    const framed = lotPlanAt(shop, { x: 10, z: 17, rotation: 0, frame: parcel }, () => false, null, null)!;
+    const framed = lotPlanAt(
+      shop,
+      { x: 10, z: 17, rotation: 0, frame: parcel },
+      () => false,
+      null,
+      null,
+    )!;
     expect(framed.frame).toEqual({ x: parcel.x, z: parcel.z, heading: 0.6, mirror: 1 });
     const roadAt = (x: number, z: number): boolean => z === 9 && x >= 10 && x < 12;
     expect(lotPlanAt(shop, { x: 10, z: 10, rotation: 0 }, roadAt, null, null)).toEqual(

@@ -156,7 +156,8 @@ describe('how a ramp meets the motorway beside it', () => {
 
 describe('whether a ramp beside a motorway joins it', () => {
   it('joins where it merges or diverges, and where it cannot be told', () => {
-    for (const j of ['merge', 'diverge', 'inline', 'unknown'] as const) expect(rampJoins(j)).toBe(true);
+    for (const j of ['merge', 'diverge', 'inline', 'unknown'] as const)
+      expect(rampJoins(j)).toBe(true);
   });
 
   it('still joins a head-on or wrong-way ramp a save already holds: only the tool refuses one', () => {

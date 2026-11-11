@@ -627,7 +627,12 @@ describe('deriveFacadeParams: a commercial body takes its kind palette by id has
       expect(residentialBodyShares(kind), `${kind}`).toBeNull();
       expect(residentialBodyMaterial(kind, 3), `${kind}`).toBeNull();
     }
-    for (const shares of [HOUSE_BODY_SHARES, GARDEN_BODY_SHARES, MIDRISE_BODY_SHARES, TOWER_BODY_SHARES]) {
+    for (const shares of [
+      HOUSE_BODY_SHARES,
+      GARDEN_BODY_SHARES,
+      MIDRISE_BODY_SHARES,
+      TOWER_BODY_SHARES,
+    ]) {
       expect(shares.reduce((sum, s) => sum + s.share, 0)).toBeCloseTo(1, 9);
       for (const { material, share } of shares) {
         expect(share).toBeGreaterThan(0);

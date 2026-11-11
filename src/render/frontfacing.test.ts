@@ -83,13 +83,16 @@ describe('a grown plain building turned to its street', () => {
     [1, 'S'],
     [1, 'E'],
     [1, 'W'],
-  ] as const)('at stored rotation %i with its street on %s shows its door to the street', (rotation, side) => {
-    const drawn = faceStreets(deltaOf(building({ rotation })), CATALOG_BY_ID, streetOn(side));
-    const door = doorOf(drawn, MIXED);
-    const [x, z] = expectedDoor(rotation, side);
-    expect(door.x).toBeCloseTo(x, 6);
-    expect(door.z).toBeCloseTo(z, 6);
-  });
+  ] as const)(
+    'at stored rotation %i with its street on %s shows its door to the street',
+    (rotation, side) => {
+      const drawn = faceStreets(deltaOf(building({ rotation })), CATALOG_BY_ID, streetOn(side));
+      const door = doorOf(drawn, MIXED);
+      const [x, z] = expectedDoor(rotation, side);
+      expect(door.x).toBeCloseTo(x, 6);
+      expect(door.z).toBeCloseTo(z, 6);
+    },
+  );
 
   it('leaves the yaw alone when the street is on a side-on edge', () => {
     for (const side of ['E', 'W'] as const) {
@@ -126,7 +129,8 @@ describe('a grown plain building turned to its street', () => {
     const b = building({ rotation: 0 });
     const instancer = new BuildingInstancer(new THREE.Scene(), [MIXED], () => 0);
     let street: StreetLookup = () => null;
-    const apply = (delta: BuildingDelta): void => instancer.apply(faceStreets(delta, CATALOG_BY_ID, street));
+    const apply = (delta: BuildingDelta): void =>
+      instancer.apply(faceStreets(delta, CATALOG_BY_ID, street));
     apply(deltaOf(b));
     const read = (): THREE.Vector3 => {
       const m = new THREE.Matrix4();

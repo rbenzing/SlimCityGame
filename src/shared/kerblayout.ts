@@ -50,12 +50,7 @@ import {
   type CarriagewaySpan,
 } from './travellanes';
 import { corridorHalfOf, flowDirection, RoadFlow, RoadTier } from './types';
-import type {
-  ParkingStyle,
-  RoadProfile,
-  RoadTileDelta,
-  TilePoint,
-} from './types';
+import type { ParkingStyle, RoadProfile, RoadTileDelta, TilePoint } from './types';
 
 const TILE_HALF = TILE_METERS / 2;
 const NORTH = 1;
@@ -683,4 +678,3 @@ export function kerbCreditOnSection(profile: RoadProfile, side: KerbSide, wM: nu
   if (parkingLaneOffset(profile, side) === null) return 0;
   return Math.floor(wM / PARKING_STALL_LENGTH_M);
 }
-

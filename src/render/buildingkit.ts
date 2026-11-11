@@ -4567,7 +4567,9 @@ export function kitPlanFor(
   const topBox = boxes[boxes.length - 1];
   if (!baseBox || !topBox) return null;
 
-  const kitLot = site.plan ? kitLotOf(site.plan, site.centre, site.yaw, isWalkUpEntry(entry)) : null;
+  const kitLot = site.plan
+    ? kitLotOf(site.plan, site.centre, site.yaw, isWalkUpEntry(entry))
+    : null;
   const placements = computePartPlacements(
     entry,
     baseBox,

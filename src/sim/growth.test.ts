@@ -2955,7 +2955,10 @@ describe('a business opens where the town has room for its jobs', () => {
       all.filter(
         (e) =>
           e.zone === zone &&
-          !(e.bodyFootprint !== undefined && ['midrise', 'mixed', 'office', 'hotel'].includes(e.kind!)),
+          !(
+            e.bodyFootprint !== undefined &&
+            ['midrise', 'mixed', 'office', 'hotel'].includes(e.kind!)
+          ),
       );
     const demand: DemandLevels = { res: 1, com: 1, ind: 0 };
     const grow = (
@@ -3023,7 +3026,12 @@ describe('a business opens where the town has room for its jobs', () => {
     });
 
     it('grows a two-deep ComHigh block exactly what it grew before the car-park lots existed', () => {
-      const now = sequence(ZoneType.ComHigh, 8, 2, all.filter((e) => e.zone === ZoneType.ComHigh));
+      const now = sequence(
+        ZoneType.ComHigh,
+        8,
+        2,
+        all.filter((e) => e.zone === ZoneType.ComHigh),
+      );
       const before = sequence(ZoneType.ComHigh, 8, 2, oldCatalog(ZoneType.ComHigh));
       expect(now.length).toBeGreaterThan(0);
       expect(now).toEqual(before);
@@ -3589,10 +3597,15 @@ describe('the rest of the ladder on parcels cut along a curved street', () => {
     zone: ZoneType,
   ): { framedTiles: Set<number>; frames: Map<number, ParcelFrame[]> } => {
     const plat = platOf(platSourceOf(g, null, g.fields[FieldId.LandValue]), zone);
-    const framedTiles = new Set(plat.framed.flatMap((p) => p.tiles.map((t) => tileIndex(t.x, t.z))));
+    const framedTiles = new Set(
+      plat.framed.flatMap((p) => p.tiles.map((t) => tileIndex(t.x, t.z))),
+    );
     const frames = new Map<number, ParcelFrame[]>();
     for (const lots of [1, 2, 3, 4, 5]) {
-      frames.set(lots, runsAlongKerbs(plat, lots * TILE_METERS).map((r) => r.frame));
+      frames.set(
+        lots,
+        runsAlongKerbs(plat, lots * TILE_METERS).map((r) => r.frame),
+      );
     }
     return { framedTiles, frames };
   };

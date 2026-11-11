@@ -1136,7 +1136,8 @@ export class ParkedCarRenderer {
             VehicleKind.Truck,
             APRON_Y_OFFSET,
             touchedPools,
-            (length) => lotStallPlacement(plan.frame, { rect: berth, nose: 'v-', accessible: null }, length),
+            (length) =>
+              lotStallPlacement(plan.frame, { rect: berth, nose: 'v-', accessible: null }, length),
           ),
         );
       });

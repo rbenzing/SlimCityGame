@@ -63,7 +63,10 @@ said explicitly, rule by rule, in
 ## Prettier
 
 `.prettierrc.json`: `singleQuote: true`, `semi: true`, `printWidth: 100`,
-`trailingComma: "all"`. Run via `npm run format` (`prettier --write .`);
+`trailingComma: "all"`, `endOfLine: "auto"` (a file keeps the line endings
+of its checkout, so a run on Windows changes only what it reformats).
+`.prettierignore` leaves `src/data/catalog.json` alone: it is a table, one
+building a line. Run via `npm run format` (`prettier --write .`);
 not currently wired into CI as a check step — `ci.yml` runs `typecheck`,
 `lint`, `test`, `build`, no `prettier --check`.
 

@@ -27,7 +27,12 @@ const SEVERITY_LABEL: Record<IssueSeverity, string> = {
   info: 'Note',
 };
 
-export function AdvisorPanel({ open, onClose, issues, onFocus }: AdvisorPanelProps): JSX.Element | null {
+export function AdvisorPanel({
+  open,
+  onClose,
+  issues,
+  onFocus,
+}: AdvisorPanelProps): JSX.Element | null {
   if (!open) return null;
 
   return (

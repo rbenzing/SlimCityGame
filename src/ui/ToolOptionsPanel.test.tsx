@@ -51,7 +51,6 @@ describe('ToolOptionsPanel', () => {
     expect(container).toBeEmptyDOMElement();
   });
 
-
   describe.each([
     'terraform.raise',
     'terraform.lower',

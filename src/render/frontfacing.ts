@@ -9,11 +9,7 @@
 import { footprintForRotation } from '../shared/footprint';
 import { frontSideOf, NO_SENSORS } from '../shared/kitfront';
 import type { Side } from '../shared/roadedge';
-import type {
-  BuildingCatalogEntry,
-  BuildingDelta,
-  BuildingInstance,
-} from '../shared/types';
+import type { BuildingCatalogEntry, BuildingDelta, BuildingInstance } from '../shared/types';
 import { findStreetFacingEdge, type StreetLookup } from './frontage';
 import { partsFor, isFarmEntry, isHouseEntry } from './archetypes';
 
