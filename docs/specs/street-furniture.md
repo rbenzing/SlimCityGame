@@ -31,7 +31,10 @@
 | Narrow street | carriageway to 15 m (50 ft): lamps alternate, every 3 tiles (60 m) | | 180 ft, [lighting](../sources/street-furniture.md#street-lights) |
 | Wide street | over 15 m: facing pairs, every 4 tiles (80 m) | | 250 ft, same |
 | Lamp height by width | 6.1 / 9.1 / 12.2 (20 / 30 / 40 ft) | m | same |
-| Lamp height today | 5.5 (`POLE_HEIGHT`), every 2 tiles | m | `src/render/lamps.ts` |
+| Lamp height breaks | under 9 m of carriageway, 9 to 15 m, over 15 m | | dial; the three heights are the standard's |
+| Motorway | one twin-armed pole on the median or barrier every 4 tiles; facing poles at the tile's edge where it has neither | | dial |
+| Ramp | one pole every 3 tiles at the tile's edge, on its wider shoulder | | dial |
+| A stop's clear span | 2.59 either side of the stop's centre along its kerb | m | half the pad and half the boarding area |
 | Clear zone, to 65 km/h | 3.0 (10 ft) | m | [no kerb](../sources/street-furniture.md#roads-with-no-kerb) |
 | Clear zone, faster | 4.6 (15 ft) | m | same |
 | Sign post behind the kerb face | 0.46; the board's edge 0.3 at least | m | [signs](../sources/street-furniture.md#signs-and-signals) |
@@ -42,11 +45,11 @@
 | Tree from a lamp / a stop sign or signal / a drive | 4.6 / 6.1 / 1.8 (15 / 20 / 6 ft) | m | [trees](../sources/street-furniture.md#street-trees) |
 | Between two objects | 1.5 | m | dial |
 
-**Code:** `src/render/lamps.ts` `lampLateralOffset`, `tierGetsLamp`, the spacing and sides; `src/shared/constants.ts` `LAMP_SPACING_TILES`; `src/render/freeroadmesh.ts` lamps along a curve; `src/render/roadfurniture.ts` covers, meters, boards, masts, cabinets; `src/render/busstops.ts` `busStopPlacement`; `src/shared/roadprofile.ts` `kerbWidthOf`, `FOOTWAY_WIDTH_M`; `src/main.ts` what `lamps.rebuild` is told.
+**Code:** `src/render/lamps.ts` `lampLateralOffset`, `tierGetsLamp`, `computeLampPlacements` the spacing, sides, heights and the stops it keeps clear of; `src/shared/constants.ts` `LAMP_SPACING_TILES`, `LAMP_SPACING_WIDE_TILES`; `src/shared/roadprofile.ts` `postedKmhOf`, `centralReserveOffsetOf`; `src/render/roadfurniture.ts` `POLE_BEHIND_KERB_M`; `src/render/freeroadmesh.ts` lamps along a curve; `src/render/roadfurniture.ts` covers, meters, boards, masts, cabinets; `src/render/busstops.ts` `busStopPlacement`; `src/shared/roadprofile.ts` `kerbWidthOf`, `FOOTWAY_WIDTH_M`; `src/main.ts` what `lamps.rebuild` is told.
 
-**Tests:** to be written with the build: a lamp's offset from the kerb face on every profile; no object in a stop's span, on a drive, a ramp or a crosswalk; a cover on no painted line; a no-kerb lamp at the clear zone; `src/render/lamps.test.ts` today pins a lamp inside the footway and changes with it.
+**Tests:** `src/render/lamps.test.ts` holds a lamp 0.46 m behind the kerb face on every profile with the walk clear behind it, the no-kerb clear zone, the spacing and sides of a narrow and a wide street, the three heights, the motorway and the ramp, and no lamp in a stop's span or within 3 m of a crosswalk. To be written with the rest: no cover on a painted line; signs, signals, meters and trees in their places.
 
-**Open:** a motorway's tile leaves no clear zone beside its lanes, so its lamps go to the median or to none, to be settled with the first slice; hydrants, benches and mailboxes do not exist in the game and are not proposed here.
+**Open:** the lamps are built; covers, signs, signals, meters and trees are not. A curved street's lamps do not yet keep off a drive or a stop. A motorway's median lamp is one pole drawn twice, and no shot shows it lit. Poles of different kinds do not yet keep 1.5 m apart. Hydrants, benches and mailboxes do not exist in the game and are not proposed here.
 
 ## Why the rules are what they are
 

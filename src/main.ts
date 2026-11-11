@@ -195,6 +195,11 @@ function sameTileKeySet(a: ReadonlySet<number>, b: ReadonlySet<number>): boolean
   return true;
 }
 
+/** Where the bus stops stand, by tile and kerb; a sign becoming a shelter stands where it did. */
+function stopSiteKeys(stops: readonly BusStopState[]): ReadonlySet<number> {
+  return new Set(stops.map((s) => (s.x * 100_000 + s.z) * 2 + s.side));
+}
+
 const MAP_NAME = 'Riverton';
 const OVERLAY_REFRESH_MS = 500; // 2 Hz while an infoview lens is active
 /**
@@ -1437,7 +1442,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
     // gives way to it, so both are placed from the one answer.
     const poles = computeTramPolePlacements(latestRoadTiles, keepOff);
     roadFurniture.setTramPoles(poles);
-    lamps.rebuild(latestRoadTiles, keepOff, free, poles);
+    lamps.rebuild(latestRoadTiles, keepOff, free, poles, latestStops);
   };
   /**
    * Grid tiles where a road off the grid meets, keyed as the lamps key tiles.
@@ -2440,8 +2445,12 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
     }
     // Bus stops: the furniture on the streets, and the selected one's figures.
     if (snap.stops) {
+      // A stop's figures change every snapshot; only a stop put down, moved or
+      // taken up moves a lamp off its kerb.
+      const stopsMoved = !sameTileKeySet(stopSiteKeys(snap.stops), stopSiteKeys(latestStops));
       latestStops = snap.stops;
       stopTiles = new Set(snap.stops.map((s) => s.x * 100_000 + s.z));
+      if (stopsMoved) rebuildLamps();
       redrawStops();
       state.setStops(snap.stops);
       if (snap.transit === undefined) applyTransit(latestTransit);

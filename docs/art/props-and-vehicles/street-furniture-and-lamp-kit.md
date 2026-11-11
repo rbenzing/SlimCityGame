@@ -38,7 +38,8 @@
   rather than a near-black — a tone that dark sits below the point where
   Lambert shading reads at all, and a slim pole disappears into a flat dark
   line at that colour — so the lighter charcoal still takes visible sun
-  shading and reads as painted metal. Poles alternate sides of the street.
+  shading and reads as painted metal. A pole stands 6.1, 9.1 or 12.2 m tall
+  by the street's width, at the kerb, 0.46 m behind its face.
   See [lighting.md](../../visual-render/lighting.md) for the glow the housing itself carries at
   night, the spacing between poles, and the night schedule.
 

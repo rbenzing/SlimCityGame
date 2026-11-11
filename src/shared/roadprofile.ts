@@ -315,11 +315,16 @@ export function speedFromKmh(kmh: number): number {
   return Math.round(kmh / 3.6);
 }
 
-/** A profile's sim speed: its posted speed, or the class default, over 3.6. */
-export function profileSpeed(profile: RoadProfile): number {
+/** A profile's posted speed, km/h: its own, or the class default, held to the class's range. */
+export function postedKmhOf(profile: RoadProfile): number {
   const cls = roadClass(profile.class);
   const posted = profile.postedKmh ?? cls.postedKmh.default;
-  return speedFromKmh(Math.min(cls.postedKmh.max, Math.max(cls.postedKmh.min, posted)));
+  return Math.min(cls.postedKmh.max, Math.max(cls.postedKmh.min, posted));
+}
+
+/** A profile's sim speed: its posted speed over 3.6. */
+export function profileSpeed(profile: RoadProfile): number {
+  return speedFromKmh(postedKmhOf(profile));
 }
 
 /**
@@ -708,6 +713,16 @@ export function medianOffsetOf(profile: RoadProfile): number {
   const centres = pieceCentres(profile);
   const at = profile.pieces.findIndex((p) => p.kind === 'median');
   return at < 0 ? 0 : (centres[at] ?? 0);
+}
+
+/**
+ * Where a central median or barrier stands across the carriageway, as an
+ * offset from its centre, or null for a section with neither.
+ */
+export function centralReserveOffsetOf(profile: RoadProfile): number | null {
+  const centres = pieceCentres(profile);
+  const at = profile.pieces.findIndex((p) => p.kind === 'median' || p.kind === 'barrier');
+  return at < 0 ? null : (centres[at] ?? null);
 }
 
 /**

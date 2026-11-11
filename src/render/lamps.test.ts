@@ -1,25 +1,39 @@
 import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
 import {
+  armLengthOf,
+  CLEAR_ZONE_FAST_M,
+  CLEAR_ZONE_SLOW_M,
   computeLampPlacements,
+  LAMP_HEIGHTS_M,
   LAMP_OFF_HOUR,
   lampGlowFactor,
+  lampLateralOffset,
   LampRenderer,
+  lampRuleOf,
   POOL_VERTICES_PER_LAMP,
   standOf,
+  standsOf,
+  STOP_CLEAR_HALF_M,
   tierGetsLamp,
   type LampRoadTile,
+  type LampStopSite,
 } from './lamps';
-import { computeTramPolePlacements, type TramPoleStand } from './roadfurniture';
+import { computeTramPolePlacements, POLE_BEHIND_KERB_M, type TramPoleStand } from './roadfurniture';
 import { RoadFlow, RoadTier, storedFlow, TilePoint } from '../shared/types';
 import type { RoadProfile } from '../shared/types';
 import {
   carriagewayHalfWidthOf,
   carriagewayShiftOf,
   corridorHalfProfile,
+  hasFootway,
+  hasKerbs,
+  presetProfileForTier,
+  ROAD_PRESETS,
 } from '../shared/roadprofile';
-import { LAMP_SPACING_TILES, TILE_METERS } from '../shared/constants';
-import { carriagewayHalfWidthMeters, curbWidthMeters, SIDEWALK_WIDTH_M } from './roadsmesh';
+import { BUS_STOP_PAD, busStopPlacement } from './busstops';
+import { LAMP_SPACING_TILES, LAMP_SPACING_WIDE_TILES, TILE_METERS } from '../shared/constants';
+import { carriagewayHalfWidthMeters, SIDEWALK_WIDTH_M } from './roadsmesh';
 
 const flatHeightAt = (): number => 0;
 
@@ -28,8 +42,10 @@ const atHour = (hour: number): number => hour / 24;
 const MIDNIGHT = atHour(0);
 const MIDDAY = atHour(12);
 
-/** Default (no-tier -> TwoLane) curbside pole offset the placements carry. */
-const OFF = carriagewayHalfWidthMeters(RoadTier.TwoLane) + SIDEWALK_WIDTH_M * 0.5;
+/** Default (no-tier -> TwoLane) pole offset the placements carry: 0.46 m behind the kerb face. */
+const OFF = carriagewayHalfWidthMeters(RoadTier.TwoLane) + POLE_BEHIND_KERB_M;
+/** The lowest pole, which a two-lane street takes. */
+const LOW = LAMP_HEIGHTS_M[0];
 
 /** Builds a straight run of tiles, either horizontal (fixed z) or vertical (fixed x). */
 function strip(fixed: number, from: number, to: number, orientation: 'ew' | 'ns'): TilePoint[] {
@@ -41,8 +57,9 @@ function strip(fixed: number, from: number, to: number, orientation: 'ew' | 'ns'
 }
 
 describe('computeLampPlacements (pure)', () => {
-  it('respects the shared LAMP_SPACING_TILES constant', () => {
-    expect(LAMP_SPACING_TILES).toBe(2); // a pole every 40 m, as real streets run
+  it('respects the shared lamp spacing constants', () => {
+    expect(LAMP_SPACING_TILES).toBe(3); // a narrow street: a pole every 60 m
+    expect(LAMP_SPACING_WIDE_TILES).toBe(4); // a wide one: a pair every 80 m
   });
 
   it('stands no pole on a crossroads — there is no curb to stand it on', () => {
@@ -130,21 +147,17 @@ describe('computeLampPlacements (pure)', () => {
     for (const p of preset) expect(p.lateralOffset).toBeLessThan(6);
   });
 
-  it('stands a motorway column at the road’s own edge, not out in the middle of the deck', () => {
+  it('stands a motorway pole at the tile’s edge, clear of its shoulders', () => {
     // A motorway has no footway and no kerb — its shoulders are inside the
-    // paved width already — so its columns stand where the hard shoulder ends.
-    // A column offset by a full sidewalk width instead lands beyond the road
-    // entirely, which on a bridge is the blank strip out to the parapet.
+    // paved width already — and its 15.45 m of carriageway leaves less than the
+    // 4.6 m clear zone before the tile's edge, so the pole stands on the edge.
     const tier = RoadTier.Highway;
     const road = carriagewayHalfWidthMeters(tier);
-    const kerb = curbWidthMeters(tier);
-    expect(kerb).toBeLessThan(SIDEWALK_WIDTH_M); // the case being guarded
-
     const placements = computeLampPlacements(strip(4, 0, 8, 'ew').map((t) => ({ ...t, tier })));
     expect(placements.length).toBeGreaterThan(0);
     for (const p of placements) {
-      expect(p.lateralOffset).toBeGreaterThanOrEqual(road);
-      expect(p.lateralOffset).toBeLessThan(road + SIDEWALK_WIDTH_M / 2);
+      expect(p.lateralOffset).toBeGreaterThan(road);
+      expect(p.lateralOffset).toBe(TILE_METERS / 2);
     }
   });
 
@@ -173,9 +186,9 @@ describe('computeLampPlacements (pure)', () => {
     const placements = computeLampPlacements(tiles);
 
     expect(placements).toEqual([
-      { x: 1, z: 5, axis: 'z', side: -1, lateralOffset: OFF },
-      { x: 3, z: 5, axis: 'z', side: 1, lateralOffset: OFF },
-      { x: 5, z: 5, axis: 'z', side: -1, lateralOffset: OFF },
+      { x: 0, z: 5, axis: 'z', side: 1, lateralOffset: OFF, height: LOW },
+      { x: 3, z: 5, axis: 'z', side: -1, lateralOffset: OFF, height: LOW },
+      { x: 6, z: 5, axis: 'z', side: 1, lateralOffset: OFF, height: LOW },
     ]);
   });
 
@@ -184,18 +197,18 @@ describe('computeLampPlacements (pure)', () => {
     const placements = computeLampPlacements(tiles);
 
     expect(placements).toEqual([
-      { x: 5, z: 1, axis: 'x', side: -1, lateralOffset: OFF },
-      { x: 5, z: 3, axis: 'x', side: 1, lateralOffset: OFF },
-      { x: 5, z: 5, axis: 'x', side: -1, lateralOffset: OFF },
+      { x: 5, z: 0, axis: 'x', side: 1, lateralOffset: OFF, height: LOW },
+      { x: 5, z: 3, axis: 'x', side: -1, lateralOffset: OFF, height: LOW },
+      { x: 5, z: 6, axis: 'x', side: 1, lateralOffset: OFF, height: LOW },
     ]);
   });
 
   it('continues alternating sides across more than two lamps on a longer road', () => {
     const tiles = strip(0, 0, 12, 'ew'); // (0,0)..(12,0)
     const placements = computeLampPlacements(tiles);
-    // even sums: x=0,2,4,6,8,10,12 -> groups 0..6 -> sides +,-,+,-,+,-,+
-    expect(placements.map((p) => p.side)).toEqual([1, -1, 1, -1, 1, -1, 1]);
-    expect(placements.map((p) => p.x)).toEqual([0, 2, 4, 6, 8, 10, 12]);
+    // x = 0,3,6,9,12 -> groups 0..4 -> sides +,-,+,-,+
+    expect(placements.map((p) => p.side)).toEqual([1, -1, 1, -1, 1]);
+    expect(placements.map((p) => p.x)).toEqual([0, 3, 6, 9, 12]);
   });
 
   it('is order-independent: shuffled input yields the same placement set', () => {
@@ -209,12 +222,14 @@ describe('computeLampPlacements (pure)', () => {
   });
 
   it('defaults an isolated (non-adjacent) selected tile to the z axis', () => {
-    const placements = computeLampPlacements([{ x: 9, z: 9 }]); // sum=18, a multiple, no neighbors
-    expect(placements).toEqual([{ x: 9, z: 9, axis: 'z', side: -1, lateralOffset: OFF }]);
+    const placements = computeLampPlacements([{ x: 9, z: 9 }]); // x=9, a multiple, no neighbors
+    expect(placements).toEqual([
+      { x: 9, z: 9, axis: 'z', side: -1, lateralOffset: OFF, height: LOW },
+    ]);
   });
 
-  it('skips tiles whose (x+z) is not a multiple of LAMP_SPACING_TILES', () => {
-    const placements = computeLampPlacements([{ x: 1, z: 2 }]); // sum=3
+  it('skips tiles whose run position is not a multiple of LAMP_SPACING_TILES', () => {
+    const placements = computeLampPlacements([{ x: 1, z: 2 }]); // x=1
     expect(placements).toEqual([]);
   });
 
@@ -278,15 +293,15 @@ describe('LampRenderer', () => {
   it('rebuild() creates one instance per computed placement across every layer', () => {
     const scene = new THREE.Scene();
     const renderer = new LampRenderer(scene, flatHeightAt);
-    const tiles = strip(0, 0, 12, 'ew'); // 7 placements (see test above)
+    const tiles = strip(0, 0, 12, 'ew'); // 5 placements (see test above)
 
     renderer.rebuild(tiles);
 
-    expect(renderer.lampCount()).toBe(7);
-    expect(renderer.poleInstanceCount()).toBe(7);
-    expect(renderer.armInstanceCount()).toBe(7);
-    expect(renderer.housingInstanceCount()).toBe(7);
-    expect(renderer.lensInstanceCount()).toBe(7);
+    expect(renderer.lampCount()).toBe(5);
+    expect(renderer.poleInstanceCount()).toBe(5);
+    expect(renderer.armInstanceCount()).toBe(5);
+    expect(renderer.housingInstanceCount()).toBe(5);
+    expect(renderer.lensInstanceCount()).toBe(5);
   });
 
   it('adds exactly one InstancedMesh per layer (pole/arm/housing/lens) to the scene', () => {
@@ -329,7 +344,7 @@ describe('LampRenderer', () => {
   it('models the arm and housing as merged multi-part geometry (curved bracket, tapered cowl) rather than bare boxes', () => {
     const scene = new THREE.Scene();
     const renderer = new LampRenderer(scene, flatHeightAt);
-    renderer.rebuild([{ x: 4, z: 4 }]);
+    renderer.rebuild([{ x: 3, z: 4 }]);
 
     const merged = scene.children.filter(
       (c): c is THREE.InstancedMesh =>
@@ -391,7 +406,7 @@ describe('LampRenderer', () => {
     for (const mesh of instanced) mesh.addEventListener('dispose', () => (disposed += 1));
 
     // Past the instance capacity floor: well over 2048 lamps.
-    renderer.rebuild(strip(0, 0, 5000, 'ew'));
+    renderer.rebuild(strip(0, 0, 7000, 'ew'));
 
     expect(disposed).toBe(4);
     expect(scene.children.length).toBe(5);
@@ -467,8 +482,8 @@ describe('LampRenderer', () => {
   it('places the pole at the curbside position, ground-height-following, with the arm mount above the pole', () => {
     const scene = new THREE.Scene();
     const renderer = new LampRenderer(scene, flatHeightAt);
-    // A single selected tile at (4,5): axis defaults to 'z' (isolated tile), side -1.
-    renderer.rebuild([{ x: 4, z: 4 }]);
+    // A single selected tile at (3,4): axis defaults to 'z' (isolated tile), side -1.
+    renderer.rebuild([{ x: 3, z: 4 }]);
     expect(renderer.lampCount()).toBe(1);
 
     const polePos = renderer.polePosition(0);
@@ -479,9 +494,9 @@ describe('LampRenderer', () => {
   it('the arm reaches from the pole toward the road centerline, and the housing sits at the arm end (laterally between the pole and the centerline, over the road)', () => {
     const scene = new THREE.Scene();
     const renderer = new LampRenderer(scene, flatHeightAt);
-    // Isolated tile (4,6): axis 'z', side -1 -> pole offset toward -z from
+    // Isolated tile (3,6): axis 'z', side -1 -> pole offset toward -z from
     // tile center; the arm/housing must move back toward +z (the centerline).
-    renderer.rebuild([{ x: 4, z: 6 }]);
+    renderer.rebuild([{ x: 3, z: 6 }]);
 
     const polePos = renderer.polePosition(0);
     const housingPos = renderer.housingPosition(0);
@@ -521,14 +536,14 @@ describe('LampRenderer', () => {
       expect(Math.sign(Math.round(component))).toBe(expectedSign);
     };
 
-    // ns strip -> axis 'x': slot0 side=-1 (pole offset -x, arm must reach +x),
-    // slot1 side=1 (pole offset +x, arm must reach -x).
-    check(strip(5, 0, 6, 'ns'), 0, 'x', 1);
-    check(strip(5, 0, 6, 'ns'), 1, 'x', -1);
-    // ew strip -> axis 'z': slot0 side=-1 (pole offset -z, arm must reach +z),
-    // slot1 side=1 (pole offset +z, arm must reach -z).
-    check(strip(5, 0, 6, 'ew'), 0, 'z', 1);
-    check(strip(5, 0, 6, 'ew'), 1, 'z', -1);
+    // ns strip -> axis 'x': slot0 side=1 (pole offset +x, arm must reach -x),
+    // slot1 side=-1 (pole offset -x, arm must reach +x).
+    check(strip(5, 0, 6, 'ns'), 0, 'x', -1);
+    check(strip(5, 0, 6, 'ns'), 1, 'x', 1);
+    // ew strip -> axis 'z': slot0 side=1 (pole offset +z, arm must reach -z),
+    // slot1 side=-1 (pole offset -z, arm must reach +z).
+    check(strip(5, 0, 6, 'ew'), 0, 'z', -1);
+    check(strip(5, 0, 6, 'ew'), 1, 'z', 1);
   });
 
   it('lamp part positions are deterministic: repeated rebuilds on the same tiles give identical transforms', () => {
@@ -564,7 +579,7 @@ describe('LampRenderer', () => {
       heights.get(`${Math.round(x)},${Math.round(z)}`) ?? 0;
     const scene = new THREE.Scene();
     const renderer = new LampRenderer(scene, heightAt);
-    renderer.rebuild([{ x: 4, z: 4 }]);
+    renderer.rebuild([{ x: 3, z: 4 }]);
     expect(renderer.lampCount()).toBe(1);
     expect(renderer.lensInstanceCount()).toBe(1);
 
@@ -628,7 +643,7 @@ describe('LampRenderer', () => {
     const renderer = new LampRenderer(scene, flatHeightAt);
 
     // Isolated tile -> axis 'z' (lateral), so the roadway runs along x.
-    renderer.rebuild([{ x: 4, z: 4 }]);
+    renderer.rebuild([{ x: 3, z: 4 }]);
     const center = renderer.poolCenter(0);
     let alongReach = 0;
     let acrossReach = 0;
@@ -651,7 +666,7 @@ describe('LampRenderer', () => {
     const ramp = (x: number): number => x * 0.05;
     const scene = new THREE.Scene();
     const renderer = new LampRenderer(scene, (x) => ramp(x));
-    renderer.rebuild([{ x: 4, z: 4 }]);
+    renderer.rebuild([{ x: 3, z: 4 }]);
 
     const heights: number[] = [];
     for (let v = 0; v < POOL_VERTICES_PER_LAMP; v++) heights.push(renderer.poolVertexY(v));
@@ -821,5 +836,383 @@ describe('a road laid across two tiles is lit from its outer kerbs', () => {
     const lamps = computeLampPlacements([...street, ...beside]).filter((l) => l.z === 8);
     expect(lamps.length).toBeGreaterThan(0);
     for (const l of lamps) expect(l.side).toBe(-1);
+  });
+});
+
+describe('a lamp stands in the furnishing strip, by the street’s width', () => {
+  const road = (tier: RoadTier, profile?: RoadProfile, x1 = 24): LampRoadTile[] =>
+    strip(4, 0, x1, 'ew').map((t) => (profile ? { ...t, tier, profile } : { ...t, tier }));
+  const light = (tier: RoadTier, profile?: RoadProfile, x1 = 24) =>
+    computeLampPlacements(road(tier, profile, x1));
+  const EDGE = TILE_METERS / 2;
+
+  describe('behind the kerb, or back from a road with none, on every profile', () => {
+    for (const spec of ROAD_PRESETS.filter((s) => tierGetsLamp(s.tier))) {
+      const profile = presetProfileForTier(spec.tier);
+      it(`tier ${spec.tier} (${profile.class})`, () => {
+        const half = carriagewayHalfWidthOf(profile);
+        const placements = light(spec.tier, profile);
+        expect(placements.length).toBeGreaterThan(0);
+        for (const p of placements) {
+          // The carriageway, parking and bike lanes included, ends at `half`.
+          expect(p.lateralOffset).toBeGreaterThan(half);
+          expect(p.lateralOffset).toBeLessThanOrEqual(EDGE);
+          if (hasKerbs(profile)) {
+            expect(p.lateralOffset).toBeCloseTo(Math.min(half + POLE_BEHIND_KERB_M, EDGE), 2);
+          } else if (profile.class === 'ramp') {
+            expect(p.lateralOffset).toBe(EDGE);
+          } else {
+            const clear = (profile.postedKmh ?? 0) > 65 ? CLEAR_ZONE_FAST_M : CLEAR_ZONE_SLOW_M;
+            expect(p.lateralOffset).toBeGreaterThanOrEqual(Math.min(half + clear, EDGE) - 1e-9);
+          }
+          const footway = profile.pieces.find((piece) => piece.kind === 'sidewalk');
+          if (hasFootway(profile) && footway) {
+            // The walk behind the pole is the footway less the pole's 0.46 m.
+            expect(footway.width - (p.lateralOffset - half)).toBeGreaterThanOrEqual(1.2);
+          }
+        }
+      });
+    }
+
+    it('keeps a pole behind the parking lane and the bike lane, not among them', () => {
+      const parked: RoadProfile = {
+        class: 'local',
+        pieces: [
+          { kind: 'sidewalk', width: 1.875 },
+          { kind: 'parking', width: 2.25 },
+          { kind: 'bike', width: 1.5, flow: 'back' },
+          { kind: 'travel', width: 3.75, flow: 'back' },
+          { kind: 'travel', width: 3.75, flow: 'fwd' },
+          { kind: 'bike', width: 1.5, flow: 'fwd' },
+          { kind: 'parking', width: 2.25 },
+          { kind: 'sidewalk', width: 1.875 },
+        ],
+      };
+      const half = carriagewayHalfWidthOf(parked);
+      expect(half).toBe(7.5);
+      for (const p of light(RoadTier.TwoLane, parked)) {
+        expect(p.lateralOffset).toBeCloseTo(half + POLE_BEHIND_KERB_M, 2);
+      }
+    });
+  });
+
+  describe('where there is no kerb', () => {
+    const noKerb = (kmh: number, lane = 3.5): RoadProfile => ({
+      class: 'rural',
+      postedKmh: kmh,
+      pieces: [
+        { kind: 'travel', width: lane, flow: 'back' },
+        { kind: 'travel', width: lane, flow: 'fwd' },
+      ],
+    });
+
+    it('stands back from the travelled way by 3.0 m on a road posted to 65 km/h', () => {
+      const [p] = light(RoadTier.TwoLane, noKerb(60));
+      expect(p!.lateralOffset).toBeCloseTo(3.5 + CLEAR_ZONE_SLOW_M, 9);
+      const [q] = light(RoadTier.TwoLane, noKerb(65));
+      expect(q!.lateralOffset).toBeCloseTo(3.5 + CLEAR_ZONE_SLOW_M, 9);
+    });
+
+    it('stands back 4.6 m on a faster road', () => {
+      const [p] = light(RoadTier.TwoLane, noKerb(80));
+      expect(p!.lateralOffset).toBeCloseTo(3.5 + CLEAR_ZONE_FAST_M, 9);
+    });
+
+    it('stands at the tile’s edge where the tile is narrower than the clear zone', () => {
+      const [p] = light(RoadTier.TwoLane, noKerb(80, 6));
+      expect(p!.lateralOffset).toBe(EDGE);
+      expect(lampLateralOffset(undefined, noKerb(80, 6))).toBe(EDGE);
+    });
+
+    it('never stands on the travelled way', () => {
+      for (const kmh of [30, 60, 65, 66, 90]) {
+        const profile = noKerb(kmh);
+        for (const p of light(RoadTier.TwoLane, profile)) {
+          expect(p.lateralOffset).toBeGreaterThan(carriagewayHalfWidthOf(profile));
+        }
+      }
+    });
+  });
+
+  describe('spacing and side by the street’s width', () => {
+    it('alternates sides every 3 tiles on a street up to 15 m', () => {
+      for (const tier of [RoadTier.TwoLane, RoadTier.FourLane]) {
+        const lamps = light(tier, undefined, 18);
+        expect(lamps.map((p) => p.x)).toEqual([0, 3, 6, 9, 12, 15, 18]);
+        expect(lamps.map((p) => p.side)).toEqual([1, -1, 1, -1, 1, -1, 1]);
+      }
+      expect(LAMP_SPACING_TILES * TILE_METERS).toBe(60);
+    });
+
+    it('stands facing pairs every 4 tiles on a street over 15 m', () => {
+      const lamps = light(RoadTier.Avenue, undefined, 16);
+      expect(lamps.map((p) => p.x)).toEqual([0, 0, 4, 4, 8, 8, 12, 12, 16, 16]);
+      for (let k = 0; k < lamps.length; k += 2) {
+        expect(lamps[k]!.side).toBe(1);
+        expect(lamps[k + 1]!.side).toBe(-1);
+      }
+      expect(LAMP_SPACING_WIDE_TILES * TILE_METERS).toBe(80);
+    });
+
+    it('sets a pair of a two-tile corridor square across it, one pole per outer kerb', () => {
+      const lane = (flow: 'fwd' | 'back') => ({ kind: 'travel' as const, width: 3.6, flow });
+      const arterial: RoadProfile = {
+        class: 'arterial',
+        pieces: [
+          { kind: 'sidewalk', width: 1.9 },
+          lane('back'),
+          lane('back'),
+          lane('back'),
+          lane('fwd'),
+          lane('fwd'),
+          lane('fwd'),
+          { kind: 'sidewalk', width: 1.9 },
+        ],
+      };
+      const tiles = (['left', 'right'] as const).flatMap((half, i) =>
+        strip(4 + i, 0, 16, 'ew').map((t) => ({
+          ...t,
+          tier: RoadTier.Avenue,
+          flow: storedFlow(RoadFlow.East, half),
+          profile: corridorHalfProfile(arterial, half),
+        })),
+      );
+      const lamps = computeLampPlacements(tiles);
+      const near = lamps.filter((l) => l.z === 4).map((l) => l.x);
+      const far = lamps.filter((l) => l.z === 5).map((l) => l.x);
+      expect(near).toEqual([0, 4, 8, 12, 16]);
+      expect(far).toEqual(near);
+      for (const l of lamps) expect(l.height).toBe(LAMP_HEIGHTS_M[2]);
+    });
+
+    it('takes the pole height from the carriageway: 6.1 m under 9 m, 9.1 m to 15 m, 12.2 m beyond', () => {
+      const height = (tier: RoadTier): number => lampRuleOf(presetProfileForTier(tier)).height;
+      expect(height(RoadTier.TwoLane)).toBe(6.1); // 7.5 m
+      expect(height(RoadTier.Alley)).toBe(6.1);
+      expect(height(RoadTier.FourLane)).toBe(9.1); // 15 m exactly
+      expect(height(RoadTier.Avenue)).toBe(12.2); // 16.2 m
+      expect(height(RoadTier.Highway)).toBe(12.2);
+      const wide = (n: number): RoadProfile => ({
+        class: 'local',
+        pieces: [
+          { kind: 'sidewalk', width: 1.875 },
+          { kind: 'travel', width: n / 2, flow: 'back' },
+          { kind: 'travel', width: n / 2, flow: 'fwd' },
+          { kind: 'sidewalk', width: 1.875 },
+        ],
+      });
+      expect(lampRuleOf(wide(8.9)).height).toBe(6.1);
+      expect(lampRuleOf(wide(9)).height).toBe(9.1);
+      expect(lampRuleOf(wide(15.1)).height).toBe(12.2);
+      expect(light(RoadTier.TwoLane).every((p) => p.height === 6.1)).toBe(true);
+      expect(light(RoadTier.FourLane).every((p) => p.height === 9.1)).toBe(true);
+      expect(light(RoadTier.Avenue).every((p) => p.height === 12.2)).toBe(true);
+    });
+
+    it('stands each height on its own pole in one mesh, with its lantern over the outer lane', () => {
+      for (const [tier, height] of [
+        [RoadTier.TwoLane, 6.1],
+        [RoadTier.FourLane, 9.1],
+        [RoadTier.Avenue, 12.2],
+      ] as const) {
+        const scene = new THREE.Scene();
+        const renderer = new LampRenderer(scene, flatHeightAt);
+        renderer.rebuild(road(tier, undefined, 4));
+        expect(scene.children.filter((c) => c instanceof THREE.InstancedMesh)).toHaveLength(4);
+        const pole = renderer.polePosition(0);
+        // Instance matrices are float32.
+        expect(pole.y).toBeCloseTo(height / 2, 4);
+        expect(renderer.armPosition(0).y).toBeCloseTo(height - 0.05, 4);
+        // The lantern hangs inside the kerb, over the outermost lane.
+        const half = carriagewayHalfWidthOf(presetProfileForTier(tier));
+        const centreZ = (4 + 0.5) * TILE_METERS;
+        const lanternOut = Math.abs(renderer.housingPosition(0).z - centreZ);
+        expect(lanternOut).toBeLessThan(half);
+        expect(lanternOut).toBeGreaterThan(half - 3.75);
+        expect(Math.abs(pole.z - centreZ) - lanternOut).toBeCloseTo(armLengthOf(height), 4);
+        // Every instance is a positive scale: none is mirrored.
+        const matrix = new THREE.Matrix4();
+        for (const mesh of scene.children.filter((c) => c instanceof THREE.InstancedMesh)) {
+          (mesh as THREE.InstancedMesh).getMatrixAt(0, matrix);
+          expect(matrix.determinant()).toBeGreaterThan(0);
+        }
+      }
+    });
+
+    it('follows the lantern with its pool: a taller lantern lights more road', () => {
+      const reach = (tier: RoadTier): number => {
+        const renderer = new LampRenderer(new THREE.Scene(), flatHeightAt);
+        renderer.rebuild(road(tier, undefined, 4));
+        const centre = renderer.poolCenter(0);
+        expect(centre.x).toBeCloseTo(renderer.housingPosition(0).x, 9);
+        expect(centre.z).toBeCloseTo(renderer.housingPosition(0).z, 9);
+        let along = 0;
+        for (let v = 0; v < POOL_VERTICES_PER_LAMP; v++) {
+          along = Math.max(along, Math.abs(renderer.poolVertexX(v) - centre.x));
+        }
+        return along;
+      };
+      expect(reach(RoadTier.Avenue)).toBeGreaterThan(reach(RoadTier.TwoLane));
+    });
+
+    it('lights no street the grid has not reached, whatever its width', () => {
+      const dark = road(RoadTier.Avenue).map((t) => ({ ...t, powered: false }));
+      expect(computeLampPlacements(dark)).toEqual([]);
+    });
+  });
+
+  describe('a motorway and a ramp', () => {
+    const motorway = (centre: RoadProfile['pieces'][number] | null): RoadProfile => ({
+      class: 'highway',
+      kerbs: false,
+      pieces: [
+        { kind: 'shoulder', width: 1.2 },
+        { kind: 'travel', width: 3.5, flow: 'back' },
+        { kind: 'travel', width: 3.5, flow: 'back' },
+        ...(centre ? [centre] : []),
+        { kind: 'travel', width: 3.5, flow: 'fwd' },
+        { kind: 'travel', width: 3.5, flow: 'fwd' },
+        { kind: 'shoulder', width: 1.2 },
+      ],
+    });
+
+    it('stands a twin-armed pole on its median every 4 tiles', () => {
+      const profile = motorway({ kind: 'median', width: 3 });
+      const lamps = light(RoadTier.Highway, profile, 12);
+      expect(lamps.map((p) => p.x)).toEqual([0, 4, 8, 12]);
+      for (const p of lamps) {
+        expect(p.twin).toBe(true);
+        expect(p.lateralOffset).toBeCloseTo(0, 9);
+        const [a, b] = standsOf(p);
+        expect(a!.z).toBeCloseTo((4 + 0.5) * TILE_METERS, 9);
+        expect(b!.z).toBeCloseTo(a!.z, 9);
+        expect(b!.reachZ).toBe(-a!.reachZ);
+        expect(a!.height).toBe(12.2);
+      }
+      const renderer = new LampRenderer(new THREE.Scene(), flatHeightAt);
+      renderer.rebuild(road(RoadTier.Highway, profile, 12));
+      expect(renderer.lampCount()).toBe(8); // two arms to a pole
+      const zs = new Set([0, 1, 2, 3].map((slot) => renderer.housingPosition(slot).z.toFixed(3)));
+      expect(zs.size).toBe(2); // one lantern to each carriageway
+    });
+
+    it('stands a twin on a central barrier too', () => {
+      const lamps = light(RoadTier.Highway, motorway({ kind: 'barrier', width: 0.6 }), 8);
+      expect(lamps.length).toBeGreaterThan(0);
+      expect(lamps.every((p) => p.twin === true)).toBe(true);
+    });
+
+    it('stands facing poles at the tile’s edge where the profile has no median', () => {
+      const lamps = light(RoadTier.Highway, motorway(null), 8);
+      expect(lamps.map((p) => p.x)).toEqual([0, 0, 4, 4, 8, 8]);
+      for (const p of lamps) {
+        expect(p.twin).toBeUndefined();
+        expect(p.lateralOffset).toBe(EDGE);
+      }
+    });
+
+    it('stands a ramp’s pole at the tile’s edge on its outside, every 3 tiles', () => {
+      const lamps = light(RoadTier.Ramp, undefined, 9);
+      expect(lamps.map((p) => p.x)).toEqual([0, 3, 6, 9]);
+      for (const p of lamps) {
+        expect(p.lateralOffset).toBe(EDGE);
+        expect(p.side).toBe(1); // the side of its wider, 2.4 m shoulder
+        expect(p.height).toBe(6.1);
+      }
+    });
+  });
+
+  describe('keeps clear of a bus stop', () => {
+    const sites = (tile: number, side: 0 | 1): LampStopSite[] => [{ x: tile, z: 4, side }];
+    const withStops = (tiles: LampRoadTile[], stops: LampStopSite[]) =>
+      computeLampPlacements(tiles, undefined, [], stops);
+
+    it('moves a lamp out of the stop’s span, along its own tile’s strip', () => {
+      const tiles = road(RoadTier.TwoLane, undefined, 12);
+      const lamp = computeLampPlacements(tiles).find((p) => p.x === 6)!;
+      const found = withStops(tiles, sites(6, lamp.side === -1 ? 0 : 1)).find((p) => p.x === 6)!;
+      expect(found).toBeDefined();
+      expect(found.side).toBe(lamp.side);
+      expect(found.lateralOffset).toBe(lamp.lateralOffset);
+      expect(Math.abs(found.along!)).toBeGreaterThanOrEqual(STOP_CLEAR_HALF_M);
+      expect(Math.abs(found.along!)).toBeLessThanOrEqual(TILE_METERS / 2 - 3);
+      // The nearest free place: half a metre closer is inside the span.
+      expect(Math.abs(found.along!) - 0.5).toBeLessThan(STOP_CLEAR_HALF_M);
+    });
+
+    it('stands no lamp inside a sign’s or a shelter’s span, on either side', () => {
+      const tiles = road(RoadTier.TwoLane, undefined, 12);
+      for (const kind of ['sign', 'shelter'] as const) {
+        for (const side of [0, 1] as const) {
+          for (const tile of [0, 3, 6, 9]) {
+            const stop = { x: tile, z: 4, side, kind };
+            const placed = busStopPlacement(stop, RoadTier.TwoLane, undefined, 0, 'z');
+            const lamps = withStops(tiles, [stop]);
+            const mine = lamps.filter((p) => p.x === tile && p.side === (side === 0 ? -1 : 1));
+            for (const p of mine) {
+              const { x } = standOf(p);
+              // Clear of the pad, the shelter's footprint and the boarding area before the door.
+              expect(Math.abs(x - placed.pad.x)).toBeGreaterThanOrEqual(BUS_STOP_PAD.along / 2);
+              if (placed.shelter) {
+                expect(Math.abs(x - placed.shelter.x)).toBeGreaterThanOrEqual(
+                  BUS_STOP_PAD.along / 2,
+                );
+              }
+              expect(Math.abs(x - placed.pad.x)).toBeGreaterThanOrEqual(STOP_CLEAR_HALF_M);
+            }
+          }
+        }
+      }
+    });
+
+    it('leaves the other kerb’s lamp, and every other tile’s, where it was', () => {
+      const tiles = road(RoadTier.Avenue, undefined, 16);
+      const all = computeLampPlacements(tiles);
+      const stopped = withStops(tiles, sites(8, 0));
+      // A pair at x = 8: the high kerb's pole stays, the low kerb's moves.
+      const at8 = (list: typeof all) => list.filter((p) => p.x === 8);
+      expect(at8(stopped).find((p) => p.side === 1)).toEqual(at8(all).find((p) => p.side === 1));
+      expect(at8(stopped).find((p) => p.side === -1)!.along).toBeDefined();
+      expect(stopped.filter((p) => p.x !== 8)).toEqual(all.filter((p) => p.x !== 8));
+    });
+
+    it('re-lays only the tiles a moved stop touches', () => {
+      const tiles = road(RoadTier.TwoLane, undefined, 30);
+      const none = computeLampPlacements(tiles);
+      const differs = (a: typeof none, b: typeof none): number[] =>
+        a.filter((p, i) => JSON.stringify(p) !== JSON.stringify(b[i])).map((p) => p.x);
+      const first = withStops(tiles, sites(9, 0));
+      expect(first.length).toBe(none.length);
+      expect(differs(first, none).every((x) => x === 9)).toBe(true);
+      // Moving the stop to another tile changes that tile's lamp and the old one's, no more.
+      const moved = withStops(tiles, sites(15, 0));
+      const touched = new Set([...differs(first, moved), ...differs(moved, first)]);
+      expect([...touched].every((x) => x === 9 || x === 15)).toBe(true);
+    });
+
+    it('keeps a moved lamp 3 m from a crosswalk in the junction beside its tile', () => {
+      // A crossroads at (4,4) with a stop on the lamp tile (3,4) beside it.
+      const tiles = [...strip(4, 0, 8, 'ew'), ...strip(4, 0, 8, 'ns')].map((t) => ({
+        ...t,
+        tier: RoadTier.TwoLane,
+      }));
+      for (const side of [0, 1] as const) {
+        const here = withStops(tiles, sites(3, side)).find((p) => p.x === 3 && p.z === 4);
+        expect(here).toBeDefined();
+        const junctionEdge = 4 * TILE_METERS; // the junction tile's west edge, where its crosswalk ends
+        expect(junctionEdge - standOf(here!).x).toBeGreaterThanOrEqual(3);
+      }
+    });
+
+    it('stands no lamp on a tile a driveway crosses', () => {
+      const tiles = road(RoadTier.TwoLane, undefined, 12);
+      const drive = new Set([3 * 100_000 + 4]);
+      expect(computeLampPlacements(tiles, drive).some((p) => p.x === 3)).toBe(false);
+    });
+
+    it('is deterministic with stops', () => {
+      const tiles = road(RoadTier.TwoLane, undefined, 12);
+      expect(withStops(tiles, sites(6, 1))).toEqual(withStops(tiles, sites(6, 1)));
+    });
   });
 });
