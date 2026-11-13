@@ -4,7 +4,6 @@ import { TILE_METERS, tileToWorld } from '../shared/constants';
 import {
   carriagewayHalfWidthOf,
   hasFootway,
-  KERB_RESERVE_M,
   kerbWidthOf,
   presetProfileForTier,
 } from '../shared/roadprofile';
@@ -12,7 +11,9 @@ import { RoadFlow, RoadTier, type BusStop } from '../shared/types';
 import { BUS_SHELTER } from './busshelter';
 import {
   BUS_STOP_PAD,
+  BUS_STOP_PAD_RISE_M,
   BUS_STOP_POLE_FROM_KERB_M,
+  BUS_STOP_SIGN,
   BUS_STOP_SHELTER_FRONT_M,
   BusStopRenderer,
   busStopPlacement,
@@ -20,6 +21,7 @@ import {
   type StopRoad,
 } from './busstops';
 import { buildTileSet } from './roadfurniture';
+import { SIGN_NO_KERB_M } from './roadsidespace';
 
 const TILE = { x: 7, z: 4 };
 const CX = tileToWorld(TILE.x);
@@ -66,9 +68,9 @@ describe('busStopPlacement', () => {
         expect(shelter.frontOut - kerb).toBeCloseTo(BUS_STOP_SHELTER_FRONT_M, 9);
       });
 
-      it(`stands the same pad off the pavement's edge by the kerb reserve on a gravel road (${where})`, () => {
+      it(`stands the pole 3.7 m off the pavement's edge on a gravel road, the pad and shelter behind it (${where})`, () => {
         const p = busStopPlacement(stopOn(side), RoadTier.Gravel, gravel, 0, lateral);
-        const edge = carriagewayHalfWidthOf(gravel) + KERB_RESERVE_M;
+        const edge = carriagewayHalfWidthOf(gravel) + SIGN_NO_KERB_M - BUS_STOP_POLE_FROM_KERB_M;
         expect(p.kerbOut).toBeCloseTo(edge, 9);
         expect(p.pad.out0).toBeCloseTo(edge, 9);
         expect(outOf(p.pole, side, lateral) - edge).toBeCloseTo(BUS_STOP_POLE_FROM_KERB_M, 9);
@@ -138,6 +140,109 @@ describe('busStopPlacement', () => {
     expect(p.pad.x).toBeCloseTo(CX, 9);
     expect(p.pad.along).toBeCloseTo(BUS_STOP_PAD.along, 9);
     expect(Math.abs(p.pad.out1 - p.pad.out0)).toBeLessThan(TILE_METERS / 2);
+  });
+});
+
+/** The footway-level position of every vertex of a geometry, after a matrix. */
+function vertices(geometry: THREE.BufferGeometry, m: THREE.Matrix4): THREE.Vector3[] {
+  const position = geometry.getAttribute('position');
+  return Array.from({ length: position.count }, (_, i) =>
+    new THREE.Vector3().fromBufferAttribute(position, i).applyMatrix4(m),
+  );
+}
+
+describe('a stop turned to its kerb', () => {
+  const flat = (): number => 0;
+  const kerbedRoad = (lateral: 'x' | 'z'): StopRoad => ({
+    tier: RoadTier.TwoLane,
+    profile: presetProfileForTier(RoadTier.TwoLane),
+    flow: 0,
+    lateral,
+  });
+
+  for (const lateral of ['z', 'x'] as const) {
+    for (const side of [0, 1] as const) {
+      it(`opens the placed shelter to the carriageway and puts its glazed back to the lots (lateral ${lateral}, side ${side})`, () => {
+        const renderer = new BusStopRenderer(new THREE.Scene(), flat);
+        renderer.apply([stopOn(side)], () => kerbedRoad(lateral));
+        const m = new THREE.Matrix4();
+        renderer.getMatrix('shelter', 0, m);
+        const centre = new THREE.Vector3().setFromMatrixPosition(m);
+        const roadCentre = new THREE.Vector3(CX, 0, CZ);
+        const front = new THREE.Vector3(0, 0, 1).transformDirection(m);
+        const toRoad = roadCentre.clone().sub(centre).setY(0).normalize();
+        expect(front.dot(toRoad)).toBeCloseTo(1, 6);
+        // The glazed back is the shelter's furthest panel from the road.
+        const placed = vertices(renderer.partGeometry('shelter'), m);
+        const back = placed.reduce((far, v) =>
+          far.distanceTo(roadCentre) > v.distanceTo(roadCentre) ? far : v,
+        );
+        expect(back.clone().sub(centre).setY(0).dot(toRoad)).toBeLessThan(0);
+      });
+    }
+  }
+
+  it('hangs a bus stop sign as a plate 0.305 × 0.457 m (12 × 18 in) with its bottom edge 7 ft over the pad', () => {
+    expect(BUS_STOP_SIGN.w).toBeCloseTo(0.3048, 3);
+    expect(BUS_STOP_SIGN.h).toBeCloseTo(0.4572, 3);
+    const renderer = new BusStopRenderer(new THREE.Scene(), flat);
+    const plate = vertices(renderer.partGeometry('pole'), new THREE.Matrix4()).filter(
+      (v) => Math.abs(v.x) > BUS_STOP_SIGN.pole + 1e-6,
+    );
+    expect(plate.length).toBeGreaterThan(0);
+    const ys = plate.map((v) => v.y);
+    const zs = plate.map((v) => v.z);
+    expect(Math.min(...ys) - BUS_STOP_PAD_RISE_M).toBeGreaterThanOrEqual(7 * 0.3048 - 1e-6);
+    expect(Math.max(...ys) - Math.min(...ys)).toBeCloseTo(BUS_STOP_SIGN.h, 6);
+    expect(Math.max(...zs) - Math.min(...zs)).toBeCloseTo(BUS_STOP_SIGN.w, 6);
+  });
+
+  it('shows a plate face to traffic arriving from either way, along the road, whichever kerb the stop is on', () => {
+    for (const lateral of ['z', 'x'] as const) {
+      for (const side of [0, 1] as const) {
+        const renderer = new BusStopRenderer(new THREE.Scene(), flat);
+        renderer.apply([stopOn(side)], () => kerbedRoad(lateral));
+        const m = new THREE.Matrix4();
+        renderer.getMatrix('pole', 0, m);
+        const post = new THREE.Vector3().setFromMatrixPosition(m);
+        const along = lateral === 'z' ? new THREE.Vector3(1, 0, 0) : new THREE.Vector3(0, 0, 1);
+        const plate = vertices(renderer.partGeometry('pole'), m).filter(
+          (v) => Math.abs(v.clone().sub(post).dot(along)) > BUS_STOP_SIGN.pole + 1e-6,
+        );
+        const ahead = plate.some((v) => v.clone().sub(post).dot(along) > 0);
+        const behind = plate.some((v) => v.clone().sub(post).dot(along) < 0);
+        expect(ahead && behind, `${lateral} ${side}`).toBe(true);
+      }
+    }
+  });
+
+  it('keeps every part of a stop clear of the carriageway and standing 3.7 m from its edge where there is no kerb', () => {
+    const gravel = presetProfileForTier(RoadTier.Gravel);
+    for (const lateral of ['z', 'x'] as const) {
+      for (const side of [0, 1] as const) {
+        const renderer = new BusStopRenderer(new THREE.Scene(), flat);
+        renderer.apply([stopOn(side)], () => ({
+          tier: RoadTier.Gravel,
+          profile: gravel,
+          flow: 0,
+          lateral,
+        }));
+        const edge = carriagewayHalfWidthOf(gravel);
+        let nearest = Infinity;
+        for (const part of ['pad', 'pole', 'shelter', 'bin'] as const) {
+          const m = new THREE.Matrix4();
+          renderer.getMatrix(part, 0, m);
+          for (const v of vertices(renderer.partGeometry(part), m)) {
+            const out = outOf(v, side, lateral);
+            nearest = Math.min(nearest, out - edge);
+          }
+        }
+        // The pole is the sign: 3.7 m out. Nothing, roof included, stands nearer than the clear zone.
+        expect(nearest, `${lateral} ${side}`).toBeGreaterThanOrEqual(3.0 - 1e-6);
+        const p = busStopPlacement(stopOn(side), RoadTier.Gravel, gravel, 0, lateral);
+        expect(outOf(p.pole, side, lateral) - edge).toBeCloseTo(SIGN_NO_KERB_M, 6);
+      }
+    }
   });
 });
 

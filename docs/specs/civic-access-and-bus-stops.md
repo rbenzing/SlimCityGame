@@ -21,6 +21,9 @@
 | Boarding pad, deep by along the kerb | 2.44 by 3.66 (96 by 60 in, 8 ft by 5 ft) | m | [pad](../sources/civic-access-and-bus-stops.md#the-boarding-pad) |
 | Pole and vertical elements off the kerb face | 0.46 (18 in) | m | same |
 | Shelter path to the kerb | 0.9 (3 ft) | m | same |
+| Sign plate, on each face of its pole | 0.30 by 0.46 (12 by 18 in) | m | the bus stop sign's size; MUTCD Table 2B-1's row for it did not extract cleanly, so it is unchecked here |
+| Sign plate's bottom edge above the pad | 2.13 (7 ft) | m | MUTCD 2A.15 ¶05, ¶07 |
+| Pole from the travelled way, no kerb | 3.7 | m | [street furniture](street-furniture.md) |
 | Bus stop sign: cost, upkeep, income | ₵2, ₵0, none | ₵ | [sign against shelter](../sources/civic-access-and-bus-stops.md#sign-against-shelter) |
 | Bus shelter: cost, upkeep | ₵150, ₵10 | ₵, ₵ a month | same |
 | Real cost ratio sign to shelter | 1 to 83 | ratio | same |
@@ -88,7 +91,9 @@ On a street with a footway the whole stop stands at the outer edge of the footwa
 
 The pole stands at the pad's road-side edge at its leading end in the road's flow direction. The shelter stands along the back of the pad facing the road, and the bin at the pad's trailing end.
 
-On a street with no footway a dirt or gravel road, a lane without kerbs, the same pad comes up to the road, its near edge at the kerb reserve's outer edge. The pole, shelter and bin stand on it the same way. A sign standing in grass is the one thing a transit agency will not build.
+On a street with no footway, a dirt or gravel road or a lane without kerbs, the stop stands back from the travelled way: its pole 3.7 m out, the unkerbed set-back every roadside post takes, held inside the tile. The pad, shelter and bin stand behind it the same way, and nothing of a shelter is over the road. Set at the kerb reserve instead, a shelter's roof hung over gravel. A sign standing in grass is the one thing a transit agency will not build.
+
+A shelter opens to the road on every side of every street: its facing comes from which kerb the stop is on. Seen from behind, on the far side of a street, its glazed back is what shows.
 
 `busStopPlacement(stop, profile)` is the one function that lays this, in the tile's road frame: the road axis along, the side's normal out. The pools are the shelter's existing one and three new instanced pools (pad, pole, bin). The pads conform to the terrain like the lot pads.
 

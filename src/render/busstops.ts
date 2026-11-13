@@ -12,19 +12,18 @@
  * the pad's road-side edge at its leading end, the end traffic reaches first;
  * the shelter stands at the back of the pad with its front 0.9 m from that
  * edge; the bin stands at the pad's trailing end. A road with no footway has
- * nothing to keep clear, so the same pad stands off the edge of its pavement
- * by the kerb reserve.
+ * nothing to keep clear, so the same pad stands back from the edge of its
+ * pavement until its pole is a sign's no-kerb distance from the travelled way.
  *
  * Every part is one instanced pool; nothing here draws a stop per mesh.
  */
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { tileToWorld } from '../shared/constants';
+import { TILE_METERS, tileToWorld } from '../shared/constants';
 import {
   carriagewayHalfWidthOf,
   carriagewayShiftOf,
   hasFootway,
-  KERB_RESERVE_M,
   presetProfileForTier,
 } from '../shared/roadprofile';
 import { flowDirection, RoadFlow, RoadTier, type BusStop, type RoadProfile } from '../shared/types';
@@ -37,6 +36,7 @@ import {
   type RoadTileIndex,
 } from './roadfurniture';
 import { sidewalkDepthMeters } from './frontage';
+import { SIGN_NO_KERB_M } from './roadsidespace';
 import { CURB_Y_OFFSET, ROAD_Y_OFFSET } from './roadsmesh';
 
 /** The boarding pad: 96 in out from the kerb, 12 ft along it, the shelter's length. */
@@ -45,14 +45,19 @@ export const BUS_STOP_PAD = { out: 2.44, along: 3.66 };
 export const BUS_STOP_POLE_FROM_KERB_M = POLE_BEHIND_KERB_M;
 /** The shelter's front stands this far out from the kerb. */
 export const BUS_STOP_SHELTER_FRONT_M = 0.9;
-/** The flag sign: 18 × 24 in with its bottom 7 ft up, on a slim pole. */
-export const BUS_STOP_SIGN = { w: 0.46, h: 0.61, bottom: 2.13, pole: 0.04 };
+/**
+ * The bus stop sign: a 12 × 18 in plate on each face of a slim pole, facing the
+ * traffic either way along the road, its bottom edge 7 ft over the pad people
+ * stand on.
+ */
+export const BUS_STOP_SIGN = { w: 0.3048, h: 0.4572, bottom: 2.1336, pole: 0.04, plate: 0.02 };
 /** The receptacle: a 32 gal can, 24 in across and 40 in tall. */
 export const BUS_STOP_BIN = { r: 0.305, h: 1.0 };
 /** How far the bin stands out from the kerb, on the pad in front of the shelter. */
 const BUS_STOP_BIN_FROM_KERB_M = 0.5;
 /** The pad's slab: its top this far above the footway, and thick enough to hide on a slope. */
-const PAD_RISE_M = 0.03;
+export const BUS_STOP_PAD_RISE_M = 0.03;
+const PAD_RISE_M = BUS_STOP_PAD_RISE_M;
 const PAD_THICKNESS_M = 0.35;
 
 const PAD_COLOR = 0xbdb8ae;
@@ -127,8 +132,15 @@ export function busStopPlacement(
   // Half of a corridor nothing divides is pushed against the edge it shares
   // with the other half, and its kerbs go with it.
   const kerbFace = carriagewayHalfWidthOf(section) + side * carriagewayShiftOf(section);
-  // The footway is kept clear: the stop stands beyond its outer edge.
-  const kerbOut = kerbFace + (onFootway ? sidewalkDepthMeters(tier, section) : KERB_RESERVE_M);
+  // The footway is kept clear: the stop stands beyond its outer edge. With no
+  // footway nothing shields it from the road, so its pole stands as far from
+  // the travelled way as a sign does, never past the tile's edge.
+  const kerbOut = onFootway
+    ? kerbFace + sidewalkDepthMeters(tier, section)
+    : Math.min(
+        kerbFace + SIGN_NO_KERB_M - BUS_STOP_POLE_FROM_KERB_M,
+        TILE_METERS / 2 - BUS_STOP_PAD.out,
+      );
   const leading = leadingSign(lateral, side, flow);
   const cx = tileToWorld(stop.x);
   const cz = tileToWorld(stop.z);
@@ -195,10 +207,16 @@ function merged(parts: THREE.BufferGeometry[]): THREE.BufferGeometry {
 
 /** The flag sign on its pole; local Y=0 is the ground the pole stands on. */
 function buildPoleGeometry(): THREE.BufferGeometry {
-  const { w, h, bottom, pole } = BUS_STOP_SIGN;
-  const post = new THREE.CylinderGeometry(pole, pole, bottom + h, 6);
-  post.translate(0, (bottom + h) / 2, 0);
-  return merged([painted(post, POLE_COLOR), box(0.03, h, w, 0, bottom, 0, SIGN_COLOR)]);
+  const { w, h, bottom, pole, plate } = BUS_STOP_SIGN;
+  const top = PAD_RISE_M + bottom + h;
+  const post = new THREE.CylinderGeometry(pole, pole, top, 6);
+  post.translate(0, top / 2, 0);
+  const faceX = pole + plate / 2;
+  return merged([
+    painted(post, POLE_COLOR),
+    box(plate, h, w, -faceX, PAD_RISE_M + bottom, 0, SIGN_COLOR),
+    box(plate, h, w, faceX, PAD_RISE_M + bottom, 0, SIGN_COLOR),
+  ]);
 }
 
 /** The receptacle: a can and its lid; local Y=0 is the ground. */

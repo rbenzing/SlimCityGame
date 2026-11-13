@@ -414,7 +414,12 @@ describe('the rail station kit', () => {
     expect(renderer.partSlotsFor(1, frame.long ? 'depotGrounds' : 'depotGroundsLong')).toHaveLength(
       0,
     );
-    expect(renderer.partSlotsFor(1, canopyKind)).toHaveLength(1);
+    // Beside a track the canopy is the platform's own at the track's edge, drawn with its paving.
+    expect(renderer.partSlotsFor(1, canopyKind)).toHaveLength(0);
+    const tracksideKinds = renderer
+      .poolKinds('rail-station')
+      .filter((k) => k.startsWith('depotTrackside') && renderer.partSlotsFor(1, k).length > 0);
+    expect(tracksideKinds).toHaveLength(1);
 
     // The track frame's -Z points at the rail.
     const m = new THREE.Matrix4();
@@ -431,31 +436,11 @@ describe('the rail station kit', () => {
     expect(back.x).toBeCloseTo(dir.x, 6);
     expect(back.z).toBeCloseTo(dir.z, 6);
 
-    // The canopy stands along the lot's track edge, at the lot line.
-    const canopy = placedBounds(
-      renderer,
-      'rail-station',
-      canopyKind,
-      renderer.partSlotsFor(1, canopyKind)[0]!,
-    );
     const lotX0 = 10 * TILE_METERS;
     const lotZ0 = 10 * TILE_METERS;
     const lotX1 = lotX0 + lot.w * TILE_METERS;
     const lotZ1 = lotZ0 + lot.d * TILE_METERS;
     const edge = side === 0 ? lotZ1 : side === 2 ? lotZ0 : side === 1 ? lotX1 : lotX0;
-    const nearest =
-      side === 0
-        ? canopy.max.z
-        : side === 2
-          ? canopy.min.z
-          : side === 1
-            ? canopy.max.x
-            : canopy.min.x;
-    expect(nearest).toBeCloseTo(edge, 6);
-    expect(canopy.min.x).toBeGreaterThanOrEqual(lotX0 - 1e-6);
-    expect(canopy.max.x).toBeLessThanOrEqual(lotX1 + 1e-6);
-    expect(canopy.min.z).toBeGreaterThanOrEqual(lotZ0 - 1e-6);
-    expect(canopy.max.z).toBeLessThanOrEqual(lotZ1 + 1e-6);
 
     // The depot stands between the platform and the far edge, inside the lot.
     const depot = placedBounds(
@@ -534,10 +519,10 @@ describe('the bus shelter', () => {
     expect(b.min.y).toBeCloseTo(0, 6);
   });
 
-  it('hangs a 0.46 × 0.61 m flag sign with its bottom 2.13 m up, over a 2.44 × 3.66 m pad', () => {
+  it('hangs a 12 × 18 in plate with its bottom 7 ft up, over a 2.44 × 3.66 m pad', () => {
     expect(BUS_STOP_PAD).toEqual({ out: 2.44, along: 3.66 });
-    expect(BUS_STOP_SIGN.bottom).toBeCloseTo(2.13, 9);
-    expect(BUS_STOP_SIGN.w).toBeCloseTo(0.46, 9);
-    expect(BUS_STOP_SIGN.h).toBeCloseTo(0.61, 9);
+    expect(BUS_STOP_SIGN.bottom).toBeCloseTo(7 * 0.3048, 9);
+    expect(BUS_STOP_SIGN.w).toBeCloseTo(12 * 0.0254, 9);
+    expect(BUS_STOP_SIGN.h).toBeCloseTo(18 * 0.0254, 9);
   });
 });

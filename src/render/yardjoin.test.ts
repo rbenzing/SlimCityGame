@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
 import {
+  DEPOT_BODY,
+  DEPOT_CANOPY,
+  DEPOT_PLATFORM,
   DEPOT_TRACK_EDGE_M,
   computeDepotTrackside,
   RAIL_YARD_SPEC,
@@ -292,6 +295,60 @@ describe('a station platform stands at its track', () => {
     for (const r of lay.canopy) expect(r.z0).toBeCloseTo(lay.platform[0]!.z0, 9);
     expect(computeDepotTrackside(footprint, [false, false, false]).platform).toHaveLength(0);
   });
+
+  it('roofs only the 12 ft platform at the track, not the paving that carries on to the lot', () => {
+    const lay = computeDepotTrackside(footprint, [true, true, true]);
+    expect(lay.canopy.length).toBeGreaterThan(0);
+    for (const c of lay.canopy) {
+      const platform = lay.platform.find((p) => p.x0 <= c.x0 + 1e-9 && p.x1 >= c.x1 - 1e-9)!;
+      expect(platform).toBeDefined();
+      expect(c.z0).toBeCloseTo(platform.z0, 9);
+      expect(c.z1 - c.z0).toBeCloseTo(DEPOT_PLATFORM.w, 9);
+      expect(c.z1).toBeLessThan(platform.z1 - 1);
+    }
+    for (const p of lay.posts) {
+      expect(lay.canopy.some((c) => p.x > c.x0 && p.x < c.x1 && p.z > c.z0 && p.z < c.z1)).toBe(
+        true,
+      );
+    }
+  });
+
+  it.each([-0.6, -0.3, 0, 0.2, 0.4, 0.6])(
+    'keeps the canopy under the depot’s eaves, with headroom over the platform, where the track lies %s m off the lot',
+    (rise) => {
+      const lay = computeDepotTrackside(footprint, [true, true, true], rise);
+      const { lotTop, edgeTop } = lay.levels;
+      const top = lay.canopyBottom + DEPOT_CANOPY.slab;
+      expect(top - lotTop).toBeLessThanOrEqual(DEPOT_BODY.plate - 0.3 + 1e-9);
+      expect(lay.canopyBottom - edgeTop).toBeGreaterThanOrEqual(2.03 - 1e-9);
+    },
+  );
+
+  it.each([-0.4, -0.2, 0, 0.2, 0.4])(
+    'runs one unbroken ramp from the platform to the lot no steeper than 1 in 12, with a 1.525 m landing at each end, where the track lies %s m off the lot',
+    (rise) => {
+      const lay = computeDepotTrackside(footprint, [true, true, true], rise);
+      const pieces = lay.approach;
+      const first = pieces[0]!;
+      const last = pieces[pieces.length - 1]!;
+      // From the platform's edge to the lot's edge with no gap between pieces.
+      expect(first.z0).toBeCloseTo(lay.platform[0]!.z0, 9);
+      expect(last.z1).toBeCloseTo(lay.platform[0]!.z1, 9);
+      expect(first.y0).toBeCloseTo(lay.levels.edgeTop, 9);
+      expect(last.y1).toBeCloseTo(lay.levels.lotTop, 9);
+      for (let i = 1; i < pieces.length; i++) {
+        expect(pieces[i]!.z0).toBeCloseTo(pieces[i - 1]!.z1, 9);
+        expect(pieces[i]!.y0).toBeCloseTo(pieces[i - 1]!.y1, 9);
+      }
+      for (const p of pieces) {
+        expect(Math.abs(p.y1 - p.y0) / (p.z1 - p.z0)).toBeLessThanOrEqual(1 / 12 + 1e-9);
+      }
+      // A flat landing at the platform end, and the lot's own platform flat beyond the other.
+      expect(first.y1).toBeCloseTo(first.y0, 9);
+      expect(first.z1 - first.z0).toBeGreaterThanOrEqual(1.525 - 1e-9);
+      expect(lay.platform[0]!.z1 - last.z0).toBeGreaterThan(0);
+    },
+  );
 
   it('keeps every platform vertex clear of the sleepers and rails of the track', () => {
     const renderer = new UtilityKitRenderer(
