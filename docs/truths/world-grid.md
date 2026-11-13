@@ -34,9 +34,11 @@ Back to [the index](../GROUND-TRUTHS.md).
   coverage. A new system is slotted into that order explicitly. —
   [tick.md](../world-sim/tick.md); `tick()` in `src/sim/worker.entry.ts`
 
-- [R-world-006] The calendar is 200 ticks a day and 30 days a month. `VISUAL_DAY_TICKS` and
-  `CLOCK_START_OFFSET_TICKS` are display-only and never drive a sim rule. —
-  [time-system.md](../world-sim/time-system.md)
+- [R-world-006] The calendar is 200 ticks a day and 30 days a month; dates, budgets and every
+  monthly rule run on it. The day the player sees is `VISUAL_DAY_TICKS` from
+  `CLOCK_START_OFFSET_TICKS`. Two sim rules read its hour and no third may: the rush
+  curve and a line's service span, which the player watches against that clock. —
+  [time-system.md](../world-sim/time-system.md); `dayHourFromTick` in `src/sim/traffic.ts`
 
 - [R-world-019] Vehicles and pedestrians are cosmetic: they draw along a real route and
   simulate nothing, and a cosmetic route is computed once and never re-solved.

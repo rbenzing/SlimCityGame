@@ -85,7 +85,6 @@
 - A lead whose line gives its curve no run (track only along the lot's own edge) ends at a buffer stop inside the fence; a yard off the end of a line is never laid mirrored.
 - A tram depot's apron lies over a kerb that is not dropped, and its lead's meeting with the street's rail is laid from the lane's offset, not tested rail to rail.
 - The lead's and the platform's fit to sloped ground is held by tests; no shot shows it yet.
-- The dead runs read the visual clock for 05:00 and 23:00 while `[R-world-006]` says it never drives a sim rule; the truth gains the exception or both systems move to the calendar day.
 
 ## Why the rules are what they are
 
@@ -141,7 +140,7 @@ A depot vehicle drives to its line's first stop and back, simulated, so a depot 
 
 - **Assignment.** The pool stays one number and the proportional cut stands. Lines in id order take their served vehicles from the nearest connected depot with vehicles left, by `findPath` cost over the mode's graph from the depot's gate tile (the footprint tile nearest the network) to the line's first stop, and spill to the next nearest when it runs dry. The snapshot carries an optional `depotId` per line.
 - **The path** is one `findPath(gate, line.stops[0])` per line for the depot that fields most of it, cached and recomputed only when the line's edge list or its depot changes. The graph is rebuilt on every edit, so a path with stale edge ids is recomputed next tick. Pairs counted are lines, not lines × depots.
-- **The service span** is 05:00 to 23:00 of the sim day, read from `dayHourFromTick`. At the tick the day crosses 05:00 each bus line's path takes `served` vehicles of volume on each edge through `network.addVolume`; at 23:00 the same again. Volume is trips and decays with the day as every trip does. Tram and rail paths take no volume: their graphs carry no traffic.
+- **The service span** is 05:00 to 23:00 of the day the player sees `[R-world-006]`, read from `dayHourFromTick`. At the tick the day crosses 05:00 each bus line's path takes `served` vehicles of volume on each edge through `network.addVolume`; at 23:00 the same again. Volume is trips and decays with the day as every trip does. Tram and rail paths take no volume: their graphs carry no traffic.
 - **The vehicles** are in the sim's vehicle buffer as `VehicleKind.Bus`: at pull-out the served buses leave the gate along the path, one per headway, and are dropped at the first stop; at pull-in the same number drive back. The transit renderer hides a line's looping vehicles outside the span, so the street shows buses pulling out at dawn and going home at night. Tram and train dead runs are not animated; the buffer has no kind for them.
 
 The visual clock drives the crossings because the renderer's hiding of the loop must match the sim to the hour; the traffic system's rush hour reads the same clock, so the dead runs follow that precedent and flag the disagreement (see Open). A visual hour is a hundred ticks, five seconds at normal speed, while a bus drives at real 5.56 m/s, so a pull-out may still be driving an hour later. A bus is never faster than a bus; the clock is what races. The dead run is one extra A\* per line per invalidation, the same order as the per-tick `routeLine` but new work, so it is held against [the performance budget](../engineering/performance-budget.md).

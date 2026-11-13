@@ -128,12 +128,6 @@ again, update the figure here and nowhere else.
   their `units` were counted on when they stepped; the unit counts were left
   as they were. `window.__slimcity.readKit()` reports only the kit's first
   six part kinds.
-- A ground truth says `VISUAL_DAY_TICKS` never drives a sim rule, but the
-  traffic system's rush hour reads the visual clock and the transit dead
-  runs now follow it for their 05:00 and 23:00 crossings, since the
-  renderer's hiding of the loop has to match the sim to the hour. Either the
-  truth gains the exception or both systems move to the calendar day; the
-  player decides.
 - The crematorium's upkeep of ¢600 is the design's dial: no US operating
   cost for a crematory was found (gas is 12.5–28.5 therms a cremation by one
   maker's metering, staff unpublished).

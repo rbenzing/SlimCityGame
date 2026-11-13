@@ -24,8 +24,15 @@ night every few real seconds. The status-strip clock displays this visual
 time; the calendar date advances on calendar days regardless of what the
 visual clock shows.
 
-A fresh city boots reading 09:00, not midnight: both the lighting and the
-status-strip clock add the same `CLOCK_START_OFFSET_TICKS` (900 ticks, 9/24
-of the visual day) before mapping the tick onto the 24-hour visual day, so
-the displayed clock and the lighting always agree. This is a pure display
-offset — sim ticks, saves, and the calendar are untouched.
+Two sim rules follow the day the player sees and not the calendar's, by the
+player's choice: traffic's rush curve and a transit line's service span both
+read `dayHourFromTick`, so the morning peak comes with the morning light and
+a fleet goes home in the dark. On the calendar day, half a minute at the 1×
+button, both would turn over twelve times in one sweep of the sky. Every
+other sim rule counts calendar days `[R-world-006]`.
+
+A fresh city boots reading 09:00, not midnight: the lighting, the
+status-strip clock and `dayHourFromTick` add the same
+`CLOCK_START_OFFSET_TICKS` (900 ticks, 9/24 of the visual day) before
+mapping the tick onto the 24-hour visual day, so the clock, the light and
+the rush hour always agree. The offset moves no tick, save or date.
