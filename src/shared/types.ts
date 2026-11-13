@@ -2188,6 +2188,12 @@ export interface TransitFleetSnapshot {
    * (unconnected, or an older worker) parks its whole catalog fleet.
    */
   depots?: { id: number; holds: number; inService: number }[];
+  /**
+   * The line each routed line's vehicles and ribbon follow along its network,
+   * world metres, by line id. A line the sim finds no route for has no entry;
+   * absent from an older worker.
+   */
+  routes?: Record<number, { x: number; z: number }[]>;
 }
 
 /**

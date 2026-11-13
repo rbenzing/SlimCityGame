@@ -115,7 +115,10 @@ run takes over from whatever of the last is still out. The renderer hides a
 line's looping vehicles outside the span, so the street shows buses pulling
 out at dawn, the line running by day and the buses going home at night.
 Inside the span a line's vehicles are drawn in every view, and the Transit
-lens adds only its ribbon `[R-render-038]`. A
+lens adds only its ribbon `[R-render-038]`. Vehicles and ribbon follow the
+path the line is routed over, sent as `routes` with the transit snapshot,
+never the chord between two stops; a line with no route draws no vehicle
+`[R-world-019]`. A
 tram or a train dead-runs over its own graph, which carries no traffic, and
 no vehicle kind draws it: neither loads nor animates anything.
 

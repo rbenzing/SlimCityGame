@@ -83,6 +83,7 @@ describe('drawing a bus line while the city is paused', () => {
       headwayMin: [],
       runningCost: [],
       pools: { bus: 0, rail: 0, tram: 0 },
+      routes: {},
       depotId: [],
       depots: [],
     });

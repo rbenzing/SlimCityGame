@@ -1607,6 +1607,7 @@ class SimWorld implements WorkerSim {
       headwayMin: lines.map((l) => figure(result.headwayMin, l.id)),
       runningCost: lines.map((l) => figure(result.runningCost, l.id)),
       pools: { ...result.pools },
+      routes: result.routes,
       depotId: lines.map((l) => {
         const slot = slotOf.get(l.id);
         return slot === undefined ? null : (result.depotId[slot] ?? null);

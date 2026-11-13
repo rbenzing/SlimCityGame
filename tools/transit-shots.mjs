@@ -394,6 +394,26 @@ const lineAt = (id, color, mode, row, x0, x1) =>
       },
     },
   ]);
+// A second bus line whose stops sit on two streets joined by a corner: one on
+// the row, one down the column. The straight chord between them crosses open ground.
+const CORNER_X = LX + 38;
+const CORNER_STOP = { x: CORNER_X, z: BUS_ROW + 8 };
+for (const at of [{ x: LX + 30, z: BUS_ROW }, CORNER_STOP]) {
+  await cmd('Stop', [{ kind: 'placeStop', stop: { ...at, side: 0, kind: 'shelter' } }]);
+}
+await page.waitForTimeout(800);
+await cmd('corner line', [
+  {
+    kind: 'createTransitLine',
+    line: {
+      id: 3,
+      color: 0xffb300,
+      mode: 'bus',
+      vehicles: 2,
+      stops: [{ x: LX + 30, z: BUS_ROW }, CORNER_STOP],
+    },
+  },
+]);
 await lineAt(0, 0xef5350, 'bus', BUS_ROW, 14, 24);
 await lineAt(1, 0x3cb45a, 'tram', TRAM_ROW, 20, 30);
 await lineAt(2, 0x42a5f5, 'rail', RAIL_ROW, 6, 22);
@@ -407,6 +427,10 @@ await page.waitForTimeout(600);
 console.log(
   'line transit',
   JSON.stringify(await call(() => window.__slimcity.readTransit().served)),
+  'ridership',
+  JSON.stringify(await call(() => window.__slimcity.readTransit().ridership)),
+  'drawn',
+  JSON.stringify(await call(() => window.__slimcity.readTransitRender().vehicles)),
 );
 
 /** Pixels that changed between two frames, below the top panels and above the bottom bar. */
@@ -466,6 +490,57 @@ const plainShot = async (name, tx, tz, d, yaw, pitch) => {
 await plainShot('plain-bus-line', LX + 19, BUS_ROW, 90, Math.PI, 0.6);
 await plainShot('plain-tram-line', LX + 25, TRAM_ROW, 90, Math.PI, 0.6);
 await plainShot('plain-train-line', LX + 14, RAIL_ROW, 110, Math.PI, 0.55);
+
+// The corner line, plain view: every vehicle the renderer draws, sampled over
+// time, stays within half a tile of a road tile, and one is caught at the corner.
+const roadNow = await readGrid();
+const TILE_M = 20;
+const offRoadBy = (p) => {
+  let best = Infinity;
+  const tx = Math.floor(p.x / TILE_M);
+  const tz = Math.floor(p.z / TILE_M);
+  for (let dz = -2; dz <= 2; dz++) {
+    for (let dx = -2; dx <= 2; dx++) {
+      const x = tx + dx;
+      const z = tz + dz;
+      if (x < 0 || z < 0 || x >= N || z >= N || roadNow.roadTier[idx(x, z)] === 0) continue;
+      const gapX = Math.max(0, Math.abs(p.x - (x + 0.5) * TILE_M) - TILE_M / 2);
+      const gapZ = Math.max(0, Math.abs(p.z - (z + 0.5) * TILE_M) - TILE_M / 2);
+      best = Math.min(best, Math.hypot(gapX, gapZ));
+    }
+  }
+  return best;
+};
+const cornerWorld = { x: (CORNER_X + 0.5) * TILE_M, z: (BUS_ROW + 0.5) * TILE_M };
+await cam(CORNER_X - 2, BUS_ROW + 3, 90, Math.PI, 0.6);
+await page.waitForTimeout(2500);
+let sampled = 0;
+let worst = 0;
+let caught = false;
+for (let i = 0; i < 600 && !(caught && i >= 100); i++) {
+  const { positions } = await call(() => window.__slimcity.readTransitRender());
+  for (const p of positions) {
+    sampled++;
+    const gap = offRoadBy(p);
+    worst = Math.max(worst, gap);
+    if (gap > TILE_M / 2)
+      failures.push(
+        `a vehicle stands ${gap.toFixed(1)} m off the roads at ${p.x.toFixed(0)},${p.z.toFixed(0)}`,
+      );
+  }
+  if (
+    !caught &&
+    positions.some((p) => Math.hypot(p.x - cornerWorld.x, p.z - cornerWorld.z) < TILE_M * 1.5)
+  ) {
+    caught = true;
+    await cleanShot(page, `${out}/plain-bus-corner.png`);
+    console.log('shot plain-bus-corner');
+  }
+  await page.waitForTimeout(100);
+}
+console.log(`corner line: ${sampled} positions sampled, worst ${worst.toFixed(1)} m off the roads`);
+if (sampled === 0) failures.push('the transit renderer drew no vehicle to sample');
+if (!caught) failures.push('no vehicle was caught at the corner');
 
 console.log(failures.length === 0 ? 'PASS' : 'FAIL:\n - ' + failures.join('\n - '));
 console.log('done ->', out);

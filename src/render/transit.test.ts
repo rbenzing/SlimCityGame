@@ -138,6 +138,86 @@ describe('the vehicles a line draws', () => {
   });
 });
 
+describe('a line laid along its route', () => {
+  // Two stops on two streets joined by a corner: the chord cuts across the block.
+  const stops = [
+    { x: 0, z: 0 },
+    { x: 10, z: 10 },
+  ];
+  const corner = [
+    { x: tileToWorld(0), z: tileToWorld(0) },
+    { x: tileToWorld(10), z: tileToWorld(0) },
+    { x: tileToWorld(10), z: tileToWorld(10) },
+  ];
+  const distanceToPath = (p: { x: number; z: number }): number => {
+    let best = Infinity;
+    for (let i = 0; i < corner.length - 1; i += 1) {
+      const a = corner[i]!;
+      const b = corner[i + 1]!;
+      const dx = b.x - a.x;
+      const dz = b.z - a.z;
+      const t = Math.max(
+        0,
+        Math.min(1, ((p.x - a.x) * dx + (p.z - a.z) * dz) / (dx * dx + dz * dz)),
+      );
+      best = Math.min(best, Math.hypot(p.x - (a.x + t * dx), p.z - (a.z + t * dz)));
+    }
+    return best;
+  };
+  const laneAllowance = 4;
+
+  it('keeps every vehicle on the route round the corner, never on the chord', () => {
+    const scene = new THREE.Scene();
+    const renderer = new TransitRenderer(scene, flatHeightAt);
+    renderer.apply({
+      lines: [line(1, stops, 1)],
+      ridership: [0],
+      served: [3],
+      routes: { 1: corner },
+    });
+    const m = new THREE.Matrix4();
+    const p = new THREE.Vector3();
+    for (let step = 0; step < 60; step += 1) {
+      for (let slot = 0; slot < renderer.busCount(); slot += 1) {
+        renderer.getCarMatrix(slot, m);
+        p.setFromMatrixPosition(m);
+        expect(distanceToPath({ x: p.x, z: p.z })).toBeLessThan(laneAllowance);
+      }
+      renderer.update(2);
+    }
+  });
+
+  it('draws the ribbon along the route, and along the stops where the line has no route', () => {
+    const atCorner = (snapshot: TransitSnapshot): number => {
+      const scene = new THREE.Scene();
+      const renderer = new TransitRenderer(scene, flatHeightAt);
+      renderer.apply(snapshot);
+      const mesh = scene.children.find(
+        (c): c is THREE.Mesh => c instanceof THREE.Mesh && !(c instanceof THREE.InstancedMesh),
+      )!;
+      const position = mesh.geometry.getAttribute('position');
+      let near = 0;
+      for (let i = 0; i < position.count; i += 1) {
+        if (Math.hypot(position.getX(i) - corner[1]!.x, position.getZ(i) - corner[1]!.z) < 5) {
+          near += 1;
+        }
+      }
+      return near;
+    };
+    const routed = atCorner({ lines: [line(1, stops, 1)], ridership: [0], routes: { 1: corner } });
+    const chord = atCorner({ lines: [line(1, stops, 1)], ridership: [0], routes: {} });
+    expect(routed).toBeGreaterThan(0);
+    expect(chord).toBe(0);
+  });
+
+  it('runs no vehicle on a line the sim found no route for', () => {
+    const scene = new THREE.Scene();
+    const renderer = new TransitRenderer(scene, flatHeightAt);
+    renderer.apply({ lines: [line(1, stops, 1)], ridership: [0], served: [3], routes: {} });
+    expect(renderer.busCount()).toBe(0);
+  });
+});
+
 describe('toWorldPoints / polylineLength (pure)', () => {
   it('converts tile coordinates to world space via tileToWorld', () => {
     const points = toWorldPoints([
