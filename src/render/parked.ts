@@ -22,7 +22,6 @@ import {
   BuildingDelta,
   BuildingInstance,
   BuildingState,
-  isStreetTier,
   RoadSpec,
   RoadTier,
   VehicleKind,
@@ -61,7 +60,7 @@ import {
   type RoadFacingEdge,
 } from './frontage';
 import { kerbSideFacing, type KerbSide, type Side } from '../shared/roadedge';
-import type { KerbSurroundings } from '../shared/kerblayout';
+import { lotDriveCuts, type KerbSurroundings, type TileDriveCut } from '../shared/kerblayout';
 import { sizeForKind, variantScaleForKind, VehicleKitPool, VEHICLE_PALETTE_HEX } from './vehicles';
 import { materialUnit } from './palette';
 import { pushConformingQuad, pushConformingTurnedQuad } from './groundquad';
@@ -132,6 +131,26 @@ export function curbCutTileFor(
   // A framed lot's cut opens onto its free road, whose tiles the grid's roadAt need not name.
   if (site.frame) return tile;
   return roadAt(tile.x, tile.z) ? tile : { x: edge.roadTileX, z: edge.roadTileZ };
+}
+
+/**
+ * The cuts a commercial or industrial lot's car park drive makes on the kerb
+ * it fronts, one per road tile it crosses; none for a lot with no car park
+ * drive or one on a curve, whose road is not a grid kerb.
+ */
+export function curbCutsFor(
+  entry: BuildingCatalogEntry,
+  site: LotSite,
+  roadAt: (tileX: number, tileZ: number) => boolean,
+  kerb: KerbSurroundings | null = null,
+  kerbCreditOf: KerbCreditOf | null = null,
+): TileDriveCut[] {
+  if (site.frame) return [];
+  const plan = parkingPlanFor(entry, site, roadAt, kerb, kerbCreditOf);
+  if (!plan || plan.layout.aisles.length === 0) return [];
+  const lot = footprintForRotation(entry, site.rotation);
+  const { u0, u1 } = plan.layout.curbCut;
+  return lotDriveCuts({ x: site.x, z: site.z, w: lot.w, d: lot.d }, plan.edge.side, u0, u1);
 }
 
 /** The buildings that lay a car park on their lot: suburban commerce and industry, the two walk-ups, and a dense kind on its larger lot. */
@@ -247,9 +266,6 @@ export const YAW_JITTER_MAX = 0.03;
 export const CAR_PALETTE: readonly number[] = VEHICLE_PALETTE_HEX;
 
 export const NEAR_WHITE_STRIPE_COLOR: readonly [number, number, number] = [0.93, 0.93, 0.9];
-/** Bay aprons are asphalt, and asphalt is a measured material. */
-const APRON_COLOR: readonly [number, number, number] = materialUnit('brightAsphalt');
-
 /** Apron rides above the terrain overlays but below the road plate (0.15). */
 const APRON_Y_OFFSET = 0.12;
 export const STRIPE_LINE_Y_OFFSET = 0.135;
@@ -1383,7 +1399,7 @@ export class ParkedCarRenderer {
    * loading berths' outlines, and the planted islands with their kerbs.
    */
   private rebuildStripes(building: BuildingInstance, plan: LotPlan): void {
-    const { edge, frame, layout } = plan;
+    const { frame, layout } = plan;
     const positions: number[] = [];
     const colors: number[] = [];
     const rect = (r: LotRect, y: number, color: readonly [number, number, number]): void =>
@@ -1402,23 +1418,9 @@ export class ParkedCarRenderer {
       }
     };
 
-    // The driveway crosses the sidewalk at the curb cut; the lot's own ground
-    // paves the verge between them (lots.ts). A framed parcel's front line is
-    // the back of its free road's footway, so its cut starts at the kerb line
-    // and crosses that footway, a two-lane street's where the grid names no tier.
-    const tileTier = this.roadTierAt(edge.roadTileX, edge.roadTileZ);
-    const tier = building.frame && !isStreetTier(tileTier) ? RoadTier.TwoLane : tileTier;
-    const streetProfile = this.drawnProfileAt(edge.roadTileX, edge.roadTileZ) ?? undefined;
-    const verge = building.frame ? 0 : vergeDepthMeters(tier, streetProfile);
-    const sidewalk = sidewalkDepthMeters(tier, streetProfile);
-    const cut = layout.curbCut;
-    if (sidewalk > 0) {
-      rect(
-        { u0: cut.u0, u1: cut.u1, v0: -verge - sidewalk, v1: -verge },
-        CURB_CUT_Y_OFFSET,
-        APRON_COLOR,
-      );
-    }
+    // The driveway stops at the back of the footway: the lot's own ground
+    // paves the verge up to it (lots.ts), and the footway runs through the
+    // entrance unbroken, in its own paving.
 
     // Stall lines down both long sides of every space, each line drawn once.
     const drawn = new Set<string>();

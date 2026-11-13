@@ -104,6 +104,7 @@ import { HouseRoofRenderer } from './render/houses';
 import { frontDoorOf } from './render/houselot';
 import { kerbCreditAlongFrame } from './world/kerbcredit';
 import {
+  curbCutsFor,
   curbCutTileFor,
   kerbAllowance,
   ParkedCarRenderer,
@@ -115,8 +116,10 @@ import { DrivewayTiles } from './render/drivewaytiles';
 import { faceStreets } from './render/frontfacing';
 import { civicAccessFor } from './shared/civicaccess';
 import { civicCutTiles, civicSiteFor, type KitSensors } from './render/civiccrossing';
+import type { TileDriveCut } from './shared/kerblayout';
 import {
   driveRoadTiles,
+  homeDriveCuts,
   planHouseGround,
   planHouseLot,
   type HouseLotPlan,
@@ -216,6 +219,9 @@ import { ClientGridMirror } from './app/clientgrid';
 import { readAppSession, type AppSession, type GameSettings } from './app/session';
 import { audioRuntime } from './app/audioruntime';
 import { ambientMix } from './app/audio';
+
+/** What a lot's driveway contributes: a road tile it crosses, or its cut on a kerb. */
+type DriveSite = { key: number; cut: null } | { key: null; cut: TileDriveCut };
 
 /** Cheap set equality, so an unchanged driveway set costs no lamp rebuild. */
 function sameTileKeySet(a: ReadonlySet<number>, b: ReadonlySet<number>): boolean {
@@ -1373,7 +1379,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
    * is also when the lamps have to be rebuilt to notice.
    */
   let drivewayTiles: ReadonlySet<number> = new Set();
-  const drivewayCache = new DrivewayTiles();
+  const drivewayCache = new DrivewayTiles<DriveSite>();
   let latestRoadTiles: ReturnType<typeof clientGrid.roadTiles> = [];
   /** The same tiles indexed the way the furniture reads them; kept in step with latestRoadTiles. */
   let latestRoadTileSet: RoadTileIndex = new Map();
@@ -2587,6 +2593,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
         const entry = catalogById.get(inst.catalogId);
         if (!entry) return [];
         const keys: number[] = [];
+        const cuts: TileDriveCut[] = curbCutsFor(entry, inst, roadAt, kerb, kerbCreditOf);
         const cut = curbCutTileFor(entry, inst, roadAt, kerb, kerbCreditOf);
         if (cut) keys.push(cut.x * 100_000 + cut.z);
         const civic = civicSiteFor(entry, inst, street, kitSensors);
@@ -2599,13 +2606,24 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
         if (home) {
           for (const tile of driveRoadTiles(inst, entry, home))
             keys.push(tile.x * 100_000 + tile.z);
+          cuts.push(...homeDriveCuts(inst, entry, home));
         }
-        return keys;
+        return [
+          ...keys.map((key): DriveSite => ({ key, cut: null })),
+          ...cuts.map((c): DriveSite => ({ key: null, cut: c })),
+        ];
       });
-      const nextDriveways = drivewayCache.keys();
+      const driveSites = [...drivewayCache.keys()];
+      const nextDriveways = new Set(driveSites.flatMap((s) => (s.key === null ? [] : [s.key])));
       if (!sameTileKeySet(nextDriveways, drivewayTiles)) {
         drivewayTiles = nextDriveways;
         rebuildLamps();
+      }
+      // A drive is a no-parking zone on its kerb: the stalls along it are laid round it.
+      for (const key of roadsMesh.setDriveCuts(
+        driveSites.flatMap((s) => (s.cut === null ? [] : [s.cut])),
+      )) {
+        redrawnChunks.add(key);
       }
 
       const selected = state.selectedBuilding;

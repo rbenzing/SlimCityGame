@@ -29,12 +29,15 @@ import {
 } from './junctionpaint';
 import {
   downstreamBeside,
+  driveZone,
   kerbOrientation,
   layKerbFace,
+  mergeZones,
   PARKING_STALL_LENGTH_M,
-  parkingTickPositions,
+  parkingRunTicks,
   type KerbFace,
   type KerbStall,
+  type NoParkingZone,
   type ParkingSetbacks,
 } from './kerbstalls';
 import { axisOfFlow } from './overpass';
@@ -92,8 +95,25 @@ export interface RoadTiles {
 /** Who gives way at each junction, and the turns its arms and lanes may make. */
 export type JunctionReader = Pick<ApproachSurroundings, 'controlAt' | 'turnsAt' | 'laneTurnsAt'>;
 
+/**
+ * A driveway's dropped kerb along one kerb of a road tile: the stretch of the
+ * kerb, world metres along the road, where the drive meets it.
+ */
+export interface DriveCut {
+  /** The road's low-coordinate kerb or its high one. */
+  side: 'low' | 'high';
+  from: number;
+  to: number;
+}
+
+/** Where the driveways meet the roads, as a thread holds them. */
+export interface DriveCuts {
+  /** The cuts along the road tile at (x, z); each is listed on every tile it overlaps. */
+  driveCutsAt(x: number, z: number): readonly DriveCut[];
+}
+
 /** Everything the kerb stall layout reads about the roads around a tile. */
-export type KerbSurroundings = ApproachSurroundings & RoadTiles;
+export type KerbSurroundings = ApproachSurroundings & RoadTiles & DriveCuts;
 
 /**
  * The cross-section a tile draws for ITSELF. A corridor is two carriageways
@@ -133,8 +153,13 @@ export function overSection(over: RoadTileDelta, roads: RoadTiles): RoadProfile 
  * about it, read off the road tiles and the junctions. Both threads build
  * theirs here, so a road reads the same to each.
  */
-export function roadSurroundings(roads: RoadTiles, junctions: JunctionReader): KerbSurroundings {
+export function roadSurroundings(
+  roads: RoadTiles,
+  junctions: JunctionReader,
+  driveCuts: DriveCuts['driveCutsAt'] = () => [],
+): KerbSurroundings {
   return {
+    driveCutsAt: driveCuts,
     roadAt: (x, z) => roads.roadAt(x, z),
     profileById: (id) => roads.profileById(id),
     hasRoad: (x, z) => (roads.roadAt(x, z)?.tier ?? RoadTier.None) !== RoadTier.None,
@@ -496,34 +521,39 @@ function parkingBandOn(
 }
 
 /**
- * The world positions, along the road, of the stall ticks the tile at
- * (x, z) paints across its parking lane on one side, or null where that
- * side paints no parking lane. What a turn bay leaves of a lane along its
- * taper is too shallow to park in and is marked with none.
+ * Whether the tile at (x, z) paints a parking lane deep enough to mark
+ * stalls on one side. What a turn bay leaves of a lane along its taper is too
+ * shallow to park in and is marked with none.
  */
-export function parkingTicksAt(
+export function parkingLaneAt(
   x: number,
   z: number,
   side: 'low' | 'high',
   s: KerbSurroundings,
-): number[] | null {
+): boolean {
   const band = parkingBandOn(x, z, side, s);
-  if (!band || !isParkingLane(band.piece)) return null;
-  const tile = s.roadAt(x, z)!;
-  const alongX = (tile.mask & (EAST | WEST)) !== 0;
-  const core = halfAt(x, z, s);
-  const lo = (tile.mask & (alongX ? WEST : NORTH)) !== 0 ? -TILE_HALF : -core;
-  const hi = (tile.mask & (alongX ? EAST : SOUTH)) !== 0 ? TILE_HALF : core;
-  const origin = ((alongX ? x : z) + 0.5) * TILE_METERS;
-  const setbacks = parkingSetbacksAt(x, z, s);
-  const k = side === 'low' ? 0 : 1;
-  return parkingTickPositions(
-    origin,
-    lo,
-    hi,
-    setbacks?.lo?.[k] ?? null,
-    setbacks?.hi?.[k] ?? null,
-  ).map((a) => origin + a);
+  return band !== null && isParkingLane(band.piece);
+}
+
+/**
+ * The no-parking zones the driveways along one kerb make around the road
+ * tile at (x, z), from the cuts on it and the tile either side: each cut and
+ * 1.5 m either side of it, merged. World metres along the road.
+ */
+export function driveZonesAround(
+  x: number,
+  z: number,
+  side: 'low' | 'high',
+  alongX: boolean,
+  s: DriveCuts,
+): NoParkingZone[] {
+  const zones: NoParkingZone[] = [];
+  for (let step = -1; step <= 1; step++) {
+    for (const cut of s.driveCutsAt(alongX ? x + step : x, alongX ? z : z + step)) {
+      if (cut.side === side) zones.push(driveZone(cut.from, cut.to));
+    }
+  }
+  return mergeZones(zones);
 }
 
 /** The style of the parking lane a straight tile paints on one side, or null where it paints none. */
@@ -599,24 +629,45 @@ export function blockFaceAt(
   const lastSet = parkingSetbacksAt(lx, lz, s)?.hi?.[k] ?? null;
   const lowEnd = junctionEndsAt(fx, fz, s)?.lo ?? null;
   const highEnd = junctionEndsAt(lx, lz, s)?.hi ?? null;
-  const ticks =
-    style === 'parallel'
-      ? tiles.flatMap(({ x: tx, z: tz }) => parkingTicksAt(tx, tz, side, s) ?? [])
-      : undefined;
-  // A junction end starts where its zone ends; any other end where the
-  // lane's own marking does.
-  const bound = (toward: 1 | -1): number => {
+  /** Where the face's lane may be marked from, toward each end: its run's end, or the edge of a junction's zone. */
+  const edge = (toward: 1 | -1): number => {
     const [tx, tz] = toward < 0 ? [fx, fz] : [lx, lz];
     const run = runEnd(tx, tz, toward);
     const set = toward < 0 ? firstSet : lastSet;
-    const zone = set === null ? null : centreOf(tx, tz) + toward * (TILE_HALF - set);
+    if (set === null) return run;
+    const zone = centreOf(tx, tz) + toward * (TILE_HALF - set);
+    return toward < 0 ? Math.max(run, zone) : Math.min(run, zone);
+  };
+  const driveZones = mergeZones(
+    tiles.flatMap(({ x: tx, z: tz }) => driveZonesAround(tx, tz, side, alongX, s)),
+  );
+  const downstream = downstreamBeside(
+    drawnSectionAt(fx, fz, s)!,
+    s.roadAt(fx, fz)!.flow,
+    alongX,
+    side,
+  );
+  let ticks: number[] | undefined;
+  if (style === 'parallel') {
+    // Junction setbacks and drives cut the kerb into runs; each run is laid
+    // as a row of whole stalls of its own, from its upstream end. A tile whose
+    // lane is narrowed marks none, so it is a zone too.
+    const narrowed = tiles.flatMap(({ x: tx, z: tz }) =>
+      parkingLaneAt(tx, tz, side, s)
+        ? []
+        : [{ from: centreOf(tx, tz) - TILE_HALF, to: centreOf(tx, tz) + TILE_HALF }],
+    );
+    ticks = parkingRunTicks(edge(-1), edge(1), [...driveZones, ...narrowed], downstream > 0);
+  }
+  // A junction end starts where its zone ends; any other end where the
+  // lane's own marking does.
+  const bound = (toward: 1 | -1): number => {
     const atJunction = toward < 0 ? lowEnd !== null : highEnd !== null;
     if (ticks && !atJunction) {
       const marked = toward < 0 ? ticks[0] : ticks[ticks.length - 1];
       if (marked !== undefined) return marked;
     }
-    if (zone === null) return run;
-    return toward < 0 ? Math.max(run, zone) : Math.min(run, zone);
+    return edge(toward);
   };
   // The accessible stalls stand nearest a crosswalk, else nearest a
   // junction, else at the low end.
@@ -649,12 +700,7 @@ export function blockFaceAt(
     }
     return true;
   };
-  const orientation = kerbOrientation(
-    style,
-    alongX,
-    side,
-    downstreamBeside(drawnSectionAt(fx, fz, s)!, s.roadAt(fx, fz)!.flow, alongX, side),
-  );
+  const orientation = kerbOrientation(style, alongX, side, downstream);
   const face = layKerbFace({
     style,
     orientation,
@@ -662,7 +708,9 @@ export function blockFaceAt(
     lo: bound(-1),
     hi: bound(1),
     ticks,
+    upstreamLow: downstream > 0,
     fullDepth,
+    zones: driveZones,
     accessibleEnd,
   });
   return { face, tiles };
@@ -748,6 +796,48 @@ export function kerbCreditFor(s: KerbSurroundings, lot: LotTiles, side: Side): n
     tiles: alongX ? lot.w : lot.d,
     side: kerbSideFacing(side),
   }).length;
+}
+
+/** A drive's cut on the kerb of one road tile. */
+export interface TileDriveCut {
+  x: number;
+  z: number;
+  cut: DriveCut;
+}
+
+/**
+ * The cuts a drive makes on the kerb a lot fronts, one per road tile it
+ * crosses. `u0` to `u1` is the drive's span along the frontage from the lot's
+ * low corner, as every lot frame measures it.
+ */
+export function lotDriveCuts(lot: LotTiles, side: Side, u0: number, u1: number): TileDriveCut[] {
+  const alongX = side === 'N' || side === 'S';
+  const start = (alongX ? lot.x : lot.z) * TILE_METERS;
+  const cut: DriveCut = { side: kerbSideFacing(side), from: start + u0, to: start + u1 };
+  const roadX = side === 'E' ? lot.x + lot.w : lot.x - 1;
+  const roadZ = side === 'S' ? lot.z + lot.d : lot.z - 1;
+  const out: TileDriveCut[] = [];
+  const first = Math.floor(cut.from / TILE_METERS);
+  const last = Math.floor((cut.to - 1e-6) / TILE_METERS);
+  for (let t = first; t <= last; t++) {
+    out.push(alongX ? { x: t, z: roadZ, cut } : { x: roadX, z: t, cut });
+  }
+  return out;
+}
+
+/** The same surroundings with `extra` cuts along their roads as well. */
+export function withDriveCuts(
+  s: KerbSurroundings,
+  extra: readonly TileDriveCut[],
+): KerbSurroundings {
+  if (extra.length === 0) return s;
+  return {
+    ...s,
+    driveCutsAt: (x, z) => [
+      ...s.driveCutsAt(x, z),
+      ...extra.filter((e) => e.x === x && e.z === z).map((e) => e.cut),
+    ],
+  };
 }
 
 /**

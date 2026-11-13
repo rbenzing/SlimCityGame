@@ -33,6 +33,7 @@ import { bodyMetresFor, frontageSetbackFor, HOUSE_FRONT_YARD_M, tierHeightOf } f
 import { isHouseEntry } from './archetypes';
 import { framedLotPlanFor, type KerbCreditOf } from './lotplan';
 import { garageFor } from '../shared/garage';
+import { lotDriveCuts, type TileDriveCut } from '../shared/kerblayout';
 import { housePaneMargins, MULLION_MARGIN_PUNCHED, windowGrid } from './facade';
 import { homesAcrossFrontage } from '../shared/buildingkind';
 
@@ -1742,6 +1743,21 @@ function splitLevelDrive(
     doorW > 0 ? [{ u0: wc - doorW / 2, u1: wc + doorW / 2, v: body.v0 }] : [],
   );
   return { drive, doorU: blockCentre(body, wing), wing };
+}
+
+/**
+ * The cuts a home's drives make on the kerb it fronts, one per road tile each
+ * crosses. A home on a curve fronts a road off the grid, whose kerb the grid
+ * stall layout does not read: it makes none.
+ */
+export function homeDriveCuts(
+  building: BuildingInstance,
+  entry: BuildingCatalogEntry,
+  plan: HouseGroundPlan,
+): TileDriveCut[] {
+  if (building.frame || !plan.edge) return [];
+  const lot = { x: building.x, z: building.z, w: entry.footprint.w, d: entry.footprint.d };
+  return plan.drives.flatMap(({ cut }) => lotDriveCuts(lot, plan.edge!.side, cut.u0, cut.u1));
 }
 
 /** The road tiles a home's drives cross — where a lamp must not stand. */

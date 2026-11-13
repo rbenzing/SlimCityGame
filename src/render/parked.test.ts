@@ -61,7 +61,7 @@ import {
   presetProfileForTier,
   withTurnPocket,
 } from '../shared/roadprofile';
-import { CURB_CUT_M, STALL_LENGTH_M, STALL_WIDTH_M } from '../shared/parkingcode';
+import { STALL_LENGTH_M, STALL_WIDTH_M } from '../shared/parkingcode';
 import { lotPlanAt, lotPlanFor, lotPointToWorld, type LotPlan } from './lotplan';
 import { toLocal } from '../shared/lotframe';
 import type { ParcelFrame } from '../shared/types';
@@ -547,43 +547,15 @@ describe('ParkedCarRenderer frontage apron', () => {
     }
   });
 
-  it('reaches out across the verge to the sidewalk, and crosses it with a curb cut', () => {
+  it('stays inside the lot: nothing is laid across the verge or the footway, which runs through the entrance unbroken', () => {
     const { renderer } = northFrontingLot();
     const { minZ, maxZ } = stripeBounds(renderer, 1);
     const buildingEdgeZ = 5 * TILE_METERS;
-    const verge = vergeDepthMeters(RoadTier.TwoLane);
-    const walk = sidewalkDepthMeters(RoadTier.TwoLane);
-
-    // Outward (north, -Z): past the footprint edge, over the verge AND the sidewalk.
-    // Positions come back through a Float32 attribute, so compare at mm scale.
-    expect(minZ).toBeCloseTo(buildingEdgeZ - verge - walk, 3);
+    // Outward (north, -Z): nothing past the footprint edge. Positions come
+    // back through a Float32 attribute, so compare at mm scale.
+    expect(minZ).toBeGreaterThanOrEqual(buildingEdgeZ - 1e-3);
     // Inward (south, +Z): never past the back of the two-deep lot.
     expect(maxZ).toBeLessThanOrEqual(7 * TILE_METERS + 1e-3);
-  });
-
-  it('keeps the curb cut narrower than the frontage (an entrance, not a paved street edge)', () => {
-    const { renderer } = northFrontingLot();
-    const mesh = renderer.stripeMeshFor(1)!;
-    const position = mesh.geometry.getAttribute('position')!;
-    const buildingEdgeZ = 5 * TILE_METERS;
-    const beyondVerge = buildingEdgeZ - vergeDepthMeters(RoadTier.TwoLane) - 1e-6;
-
-    let cutMinX = Infinity;
-    let cutMaxX = -Infinity;
-    for (let i = 0; i < position.count; i++) {
-      if (position.getZ(i) > beyondVerge) continue; // not in the sidewalk band
-      cutMinX = Math.min(cutMinX, position.getX(i));
-      cutMaxX = Math.max(cutMaxX, position.getX(i));
-    }
-    expect(cutMaxX - cutMinX).toBeCloseTo(CURB_CUT_M, 3);
-    // Where the lot's drive meets the street.
-    const plan = planOf(
-      makeCatalogEntry({ footprint: { w: 3, d: 2 } }),
-      5,
-      5,
-      roadAtTiles([[5, 4]]),
-    );
-    expect(cutMinX).toBeCloseTo(5 * TILE_METERS + plan.layout.curbCut.u0, 3);
   });
 
   it('meets the lot’s own crossing of the verge at the back of the sidewalk, edge to edge', () => {
@@ -616,14 +588,11 @@ describe('ParkedCarRenderer frontage apron', () => {
     expect(lotMinZ).toBeCloseTo(buildingEdgeZ - verge, 3);
     expect(crossing.minX).toBeCloseTo(5 * TILE_METERS + cut.u0, 3);
     expect(crossing.maxX).toBeCloseTo(5 * TILE_METERS + cut.u1, 3);
-    // ...and the cut takes it on from there, so no band is left that nothing covers.
+    // ...and stops there: the car park lays nothing over the footway.
     const position = renderer.stripeMeshFor(1)!.geometry.getAttribute('position')!;
-    let cutNearest = -Infinity;
     for (let i = 0; i < position.count; i++) {
-      if (position.getZ(i) < buildingEdgeZ - 1e-3)
-        cutNearest = Math.max(cutNearest, position.getZ(i));
+      expect(position.getZ(i)).toBeGreaterThanOrEqual(buildingEdgeZ - 1e-3);
     }
-    expect(cutNearest).toBeCloseTo(buildingEdgeZ - verge, 3);
   });
 });
 
@@ -1995,7 +1964,7 @@ describe('a car park on a framed parcel', () => {
     }
   });
 
-  it('paints its stripes and its curb cut turned with the frame, the cut across the footway from the kerb line', () => {
+  it('paints its stripes turned with the frame, none across the footway in front of the lot', () => {
     const scene = new THREE.Scene();
     const renderer = new ParkedCarRenderer(scene, flatHeightAt, [shop], noRoad);
     renderer.apply(deltaAdd(makeBuilding({ id: 1, catalogId: 'shop', ...site })));
@@ -2004,17 +1973,15 @@ describe('a car park on a framed parcel', () => {
     ) as THREE.Mesh;
     expect(stripes).toBeDefined();
     const position = stripes.geometry.getAttribute('position');
-    const walk = sidewalkDepthMeters(RoadTier.TwoLane);
-    let onFootway = 0;
+    expect(position.count).toBeGreaterThan(0);
     for (let i = 0; i < position.count; i++) {
       const at = toLocal(parcel, position.getX(i), position.getZ(i));
       expect(at.u, `vertex ${i}`).toBeGreaterThanOrEqual(-1e-3);
       expect(at.u, `vertex ${i}`).toBeLessThanOrEqual(2 * TILE_METERS + 1e-3);
-      expect(at.v, `vertex ${i}`).toBeGreaterThanOrEqual(-walk - 1e-3);
+      // The front line is the back of the footway: nothing lies out over it.
+      expect(at.v, `vertex ${i}`).toBeGreaterThanOrEqual(-1e-3);
       expect(at.v, `vertex ${i}`).toBeLessThanOrEqual(2 * TILE_METERS + 1e-3);
-      if (at.v < -1e-3) onFootway += 1;
     }
-    expect(onFootway).toBeGreaterThan(0);
   });
 
   it('keeps the kerb furniture off the tile its curb cut opens onto', () => {

@@ -333,15 +333,15 @@ describe('LotRenderer', () => {
       return { min, max, top };
     };
 
-    it('carries its lawn across the verge and its drive across the sidewalk', () => {
+    it('carries its lawn and its drive across the verge and stops at the footway, which runs through unbroken', () => {
       const scene = new THREE.Scene();
       new LotRenderer(scene, flat, [home], roadAt, street).apply(delta({ added: [building()] }));
       const { min, max, top } = zExtent(scene);
       expect(min).toBeCloseTo(6 * TILE_METERS, 6);
-      // Out over the verge and then the footway, to the kerb.
-      expect(max).toBeCloseTo(southEdge + 4.375 + 1.875, 6);
-      // The curb cut rides over the sidewalk, above everything else on the lot.
-      expect(top).toBeCloseTo(CURB_CUT_Y_OFFSET, 6);
+      // Out over the verge to the back of the footway, never onto it or the carriageway.
+      expect(max).toBeCloseTo(southEdge + 4.375, 6);
+      // Nothing of the lot lies over the footway: no paving rides above it.
+      expect(top).toBeLessThan(CURB_CUT_Y_OFFSET);
     });
 
     it('keeps a home that fronts no street inside its own footprint', () => {

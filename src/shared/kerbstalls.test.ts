@@ -298,9 +298,7 @@ describe('layKerbFace — a parallel block face', () => {
     }
   });
 
-  it('grows the zone rather than leave a stall shorter than 6.1 m beside it', () => {
-    // An end stall of 6.3 m: lengthened to 7.3 m it would leave 5.7 m before
-    // the next tick, so it ends on that tick and the zone grows by the rest.
+  it('lays the accessible stall flush to the face’s end and the rest of the run again beside it, none shorter than 6.1 m', () => {
     const face = layKerbFace({
       style: 'parallel',
       orientation,
@@ -311,9 +309,80 @@ describe('layKerbFace — a parallel block face', () => {
       accessibleEnd: 'lo',
     });
     expect(face.stalls[0]).toMatchObject({ accessible: true });
-    expect(face.stalls[0]!.to).toBeCloseTo(113, 9);
-    expect(face.stalls[0]!.from).toBeCloseTo(113 - ACCESSIBLE_PARALLEL_STALL_M, 9);
-    expect(face.stalls[1]!.to - face.stalls[1]!.from).toBeCloseTo(PARKING_STALL_LENGTH_M, 9);
+    expect(face.stalls[0]!.from).toBeCloseTo(100, 9);
+    expect(face.stalls[0]!.to).toBeCloseTo(100 + ACCESSIBLE_PARALLEL_STALL_M, 9);
+    for (const s of face.stalls) {
+      expect(s.to - s.from).toBeGreaterThanOrEqual(6.1 - 1e-9);
+      expect(s.to - s.from).toBeLessThanOrEqual(7.9 + 1e-9);
+    }
+  });
+
+  it('moves the accessible stall to the nearest run that holds one when the run at the face’s end is too short', () => {
+    // A 6.1 m run at the low end, a zone, then a long run.
+    const face = layKerbFace({
+      style: 'parallel',
+      orientation,
+      depth: 2.25,
+      lo: 100,
+      hi: 150,
+      ticks: [100, 106.1, 112, 118.1, 124.8, 131.5, 138.2, 144.9],
+      zones: [{ from: 106.1, to: 112 }],
+      accessibleEnd: 'lo',
+    });
+    const accessible = face.stalls.filter((s) => s.accessible);
+    expect(accessible).toHaveLength(1);
+    expect(accessible[0]!.from).toBeCloseTo(112, 9);
+    expect(accessible[0]!.to - accessible[0]!.from).toBeCloseTo(ACCESSIBLE_PARALLEL_STALL_M, 9);
+    // The short run keeps its ordinary stall.
+    expect(face.stalls[0]).toMatchObject({ from: 100, accessible: false });
+  });
+
+  it('counts the stalls over the whole face and marks the accessible ones at its end, however many runs drives cut it into', () => {
+    const ticks = Array.from({ length: 25 }, (_, k) => 1000 + k * PARKING_STALL_LENGTH_M);
+    const face = layKerbFace({
+      style: 'parallel',
+      orientation,
+      depth: 2.25,
+      lo: 1000,
+      hi: ticks.at(-1)!,
+      ticks,
+      zones: [
+        { from: 1040, to: 1046 },
+        { from: 1100, to: 1106 },
+      ],
+      accessibleEnd: 'hi',
+    });
+    const accessible = face.stalls.filter((s) => s.accessible);
+    expect(accessible).toHaveLength(1);
+    // At the high end of the face: the last stall is the accessible one.
+    expect(face.stalls.at(-1)!.accessible).toBe(true);
+    expect(accessible[0]!.to - accessible[0]!.from).toBeCloseTo(ACCESSIBLE_PARALLEL_STALL_M, 9);
+  });
+
+  it('keeps an angled face’s accessible stall and aisle clear of a drive', () => {
+    const angled = kerbOrientation('angled', true, 'high', 1);
+    const face = layKerbFace({
+      style: 'angled',
+      orientation: angled,
+      depth: 6,
+      lo: 1000,
+      hi: 1100,
+      zones: [{ from: 1000, to: 1006 }],
+      accessibleEnd: 'lo',
+    });
+    const accessible = face.stalls.filter((s) => s.accessible);
+    expect(accessible.length).toBeGreaterThan(0);
+    const reach = angled.slant * 6;
+    for (const s of accessible) {
+      expect(s.aisle).not.toBeNull();
+      for (const [a, b] of [
+        [s.from, s.to],
+        [s.aisle!.from, s.aisle!.to],
+      ] as const) {
+        expect(a + Math.min(0, reach)).toBeGreaterThanOrEqual(1006 - 1e-6);
+        expect(b + Math.max(0, reach)).toBeLessThanOrEqual(1100 + 1e-6);
+      }
+    }
   });
 
   it('counts the accessible stalls from the face’s marked stalls', () => {

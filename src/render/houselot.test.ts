@@ -29,6 +29,7 @@ import {
   chimneyRolled,
   driveRoadTiles,
   garageBaysOf,
+  homeDriveCuts,
   houseStyleOf,
   framedBodyPlacement,
   lotToWorld,
@@ -42,7 +43,14 @@ import {
 } from './houselot';
 import { housePaneMargins, windowGrid } from './facade';
 import { HOUSE_FRONT_YARD_M, frontageSetbackFor, tierHeightOf } from './massing';
-import { sidewalkDepthMeters, type StreetLookup } from './frontage';
+import { sidewalkDepthMeters, streetLookupOf, type StreetLookup } from './frontage';
+import {
+  carriagewayHalfWidthOf,
+  composeProfile,
+  fitsTile,
+  NO_EDITS,
+  presetProfileForTier,
+} from '../shared/roadprofile';
 import { TILE_METERS } from '../shared/constants';
 import { toLocal } from '../shared/lotframe';
 import {
@@ -293,6 +301,58 @@ describe('planHouseLot — the drive', () => {
       const u0 = (t.x - building.x) * TILE_METERS;
       expect(plan.drives.some((d) => d.cut.u0 < u0 + TILE_METERS && d.cut.u1 > u0)).toBe(true);
     }
+  });
+
+  it('hands the street each drive’s dropped kerb, as its span along the road', () => {
+    const { roadAt, street } = streetRow(8);
+    const building = home({ id: 3 });
+    const plan = planHouseGround(building, small, roadAt, street)!;
+    const cuts = homeDriveCuts(building, small, plan);
+    expect(cuts.length).toBeGreaterThan(0);
+    for (const { x, z, cut } of cuts) {
+      expect(z).toBe(8);
+      // The lot lies north of the road on its S edge, so it is the road's low-z kerb.
+      expect(cut.side).toBe('low');
+      expect(cut.to).toBeGreaterThan(x * TILE_METERS);
+      expect(cut.from).toBeLessThan((x + 1) * TILE_METERS);
+      expect(plan.drives.some((d) => cut.from === building.x * TILE_METERS + d.cut.u0)).toBe(true);
+      expect(cut.to - cut.from).toBeGreaterThan(0);
+    }
+  });
+
+  it('lays no drive past the kerb, on any road class and parking style that carries a parking lane', () => {
+    let checked = 0;
+    for (const tier of [1, 2, 4, 5, 6, 7] as const) {
+      for (const parkingStyle of ['parallel', 'angled', 'headIn'] as const) {
+        const profile = composeProfile(presetProfileForTier(tier), {
+          ...NO_EDITS,
+          parking: 'both',
+          parkingStyle,
+        });
+        if (!profile.pieces.some((p) => p.kind === 'parking') || !fitsTile(profile)) continue;
+        const street = streetLookupOf(
+          (_x, tz) => (tz === 8 ? tier : RoadTier.None),
+          (_x, tz) => (tz === 8 ? profile : null),
+        );
+        // From the lot's edge, the kerb lies this far out across the road tile.
+        const toKerb = TILE_METERS / 2 - carriagewayHalfWidthOf(profile);
+        for (let id = 1; id <= 40; id++) {
+          const building = home({ id });
+          const plan = planHouseGround(building, small, (_x, tz) => tz === 8, street);
+          for (const drive of plan?.drives ?? []) {
+            checked += 1;
+            // Neither the drive nor its cut across the footway reaches the carriageway.
+            expect(-drive.rect.v0, `tier ${tier} ${parkingStyle} drive`).toBeLessThanOrEqual(
+              toKerb + 1e-6,
+            );
+            expect(-drive.cut.v0, `tier ${tier} ${parkingStyle} cut`).toBeLessThanOrEqual(
+              toKerb + 1e-6,
+            );
+          }
+        }
+      }
+    }
+    expect(checked).toBeGreaterThan(0);
   });
 });
 

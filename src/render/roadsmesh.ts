@@ -197,7 +197,9 @@ import {
   stallsOnTile,
   tierAlong,
   walkableAlong,
+  type DriveCut,
   type KerbSurroundings,
+  type TileDriveCut,
 } from '../shared/kerblayout';
 
 /**
@@ -921,6 +923,7 @@ function emitAxisMarkings(
     : null;
   plan.solid.forEach((line, i) => {
     if (pair && (line === pair[0] || line === pair[1])) return;
+    if (line.parallelParkingEdge) return;
     const [atLo, atHi] = ends(line, i, 'solid');
     const lane = !edges.includes(line);
     const spans: [number, number][] =
@@ -1613,7 +1616,12 @@ function emitBicycleGlyph(
  * green) between along-offsets [lo, hi]; the glyph sits centered in each band,
  * repeating every LANE_GLYPH_PERIOD_TILES tiles by global coordinate.
  */
-const PARKING_TICK_HALF_LENGTH_M = 0.075;
+/** A parallel stall's corner marks are 4 in (0.10 m) wide, inside the figure's 4 to 6 in (MUTCD 3B.27, fig. 3B-23). */
+const CORNER_MARK_HALF_WIDTH_M = 0.05;
+/** A T's bar reaches 12 in (0.3 m) either side of its stem (fig. 3B-23's extension). */
+const CORNER_MARK_EXTENSION_M = 0.3;
+/** A corner mark's stem runs 0.6 m from the lane's travel edge toward the kerb; the figure gives no length. */
+const CORNER_MARK_STEM_M = 0.6;
 
 /**
  * A strip of paint laid along a run whose two edges may each drift across the
@@ -1907,27 +1915,55 @@ function emitKerbStalls(
   const owns = (along: number): boolean => along >= lo - EPS && (along < hi - EPS || last);
 
   if (face.style === 'parallel') {
-    for (const tick of face.lines) {
-      const along = tick - origin;
-      if (along < lo - EPS || along > hi + EPS) continue;
+    // Corner marks only (MUTCD fig. 3B-23): a T where two stalls meet, an L at
+    // each end of a run, standing on the lane's travel edge. Nothing runs
+    // along the lane, and a stretch that marks no stall is bare.
+    const corners = new Map<number, { below: boolean; above: boolean }>();
+    const cornerAt = (pos: number): { below: boolean; above: boolean } => {
+      for (const [key, value] of corners) if (Math.abs(key - pos) < EPS) return value;
+      const fresh = { below: false, above: false };
+      corners.set(pos, fresh);
+      return fresh;
+    };
+    for (const stall of face.stalls) {
+      cornerAt(stall.from).above = true;
+      cornerAt(stall.to).below = true;
+    }
+    for (const [pos, { below, above }] of corners) {
+      const along = pos - origin;
+      const reach = CORNER_MARK_EXTENSION_M + CORNER_MARK_HALF_WIDTH_M;
+      if (along + reach < lo || along - reach > hi) continue;
       const { inner, outer } = edges(along);
-      const c0 = inner + sign * PAINT_HALF_WIDTH_M;
-      const c1 = outer - sign * PARKING_TICK_KERB_CLEARANCE_M;
-      if ((c1 - c0) * sign <= 1e-6) continue;
-      pushDriftingStrip(
-        positions,
-        colors,
-        vertical,
-        centerX,
-        centerZ,
-        () => Math.min(c0, c1),
-        () => Math.max(c0, c1),
-        Math.max(lo, along - PARKING_TICK_HALF_LENGTH_M),
-        Math.min(hi, along + PARKING_TICK_HALF_LENGTH_M),
-        MARK_Y_OFFSET,
-        MARKING_COLOR,
-        hAt,
+      const stem = Math.min(
+        CORNER_MARK_STEM_M,
+        Math.abs(outer - inner) - PARKING_TICK_KERB_CLEARANCE_M,
       );
+      if (stem <= CORNER_MARK_HALF_WIDTH_M) continue;
+      const barFrom = below ? along - CORNER_MARK_EXTENSION_M : along - CORNER_MARK_HALF_WIDTH_M;
+      const barTo = above ? along + CORNER_MARK_EXTENSION_M : along + CORNER_MARK_HALF_WIDTH_M;
+      const strip = (a0: number, a1: number, across: number): void => {
+        const from = Math.max(lo, a0);
+        const to = Math.min(hi, a1);
+        if (to <= from) return;
+        const c0 = inner;
+        const c1 = inner + sign * across;
+        pushDriftingStrip(
+          positions,
+          colors,
+          vertical,
+          centerX,
+          centerZ,
+          () => Math.min(c0, c1),
+          () => Math.max(c0, c1),
+          from,
+          to,
+          MARK_Y_OFFSET,
+          MARKING_COLOR,
+          hAt,
+        );
+      };
+      strip(barFrom, barTo, CORNER_MARK_HALF_WIDTH_M * 2);
+      strip(along - CORNER_MARK_HALF_WIDTH_M, along + CORNER_MARK_HALF_WIDTH_M, stem);
     }
   } else {
     // A line at the stall's angle: its kerb end stops short of the edge by the
@@ -6980,6 +7016,9 @@ export class RoadMeshRenderer {
   private junctionTurns: ReadonlyMap<number, number> = new Map();
   private junctionLaneTurns: ReadonlyMap<number, readonly number[]> = new Map();
 
+  /** The driveways' cuts along each road tile's kerbs, by tile index. */
+  private driveCuts: ReadonlyMap<number, readonly DriveCut[]> = new Map();
+
   /** The road network as the approach-zone walk and the kerb stall layout ask about it. */
   private readonly surroundings: KerbSurroundings = roadSurroundings(
     {
@@ -6995,7 +7034,38 @@ export class RoadMeshRenderer {
         return this.junctionLaneTurns.get(tileIndex(x, z))?.[slot] ?? 0;
       },
     },
+    (x, z) => this.driveCuts.get(tileIndex(x, z)) ?? [],
   );
+
+  /**
+   * Takes every driveway's cut on the kerbs and rebuilds the chunks whose
+   * stalls moved: a drive is a no-parking zone, so the stalls along its run
+   * are laid round it. Answers the chunks it rebuilt, so what stands beside
+   * them can be laid again.
+   */
+  setDriveCuts(cuts: readonly TileDriveCut[]): ReadonlySet<number> {
+    const next = new Map<number, DriveCut[]>();
+    for (const { x, z, cut } of cuts) {
+      const key = tileIndex(x, z);
+      const list = next.get(key);
+      if (list) list.push(cut);
+      else next.set(key, [cut]);
+    }
+    const same = (a: readonly DriveCut[] = [], b: readonly DriveCut[] = []): boolean =>
+      a.length === b.length &&
+      a.every((c) => b.some((d) => d.side === c.side && d.from === c.from && d.to === c.to));
+    const dirty = new Set<number>();
+    const moved = (i: number): void => {
+      this.dirtyReaders(i % MAP_SIZE, Math.floor(i / MAP_SIZE), dirty);
+      this.dirtyRuns(i % MAP_SIZE, Math.floor(i / MAP_SIZE), dirty);
+    };
+    for (const [i, list] of next) if (!same(this.driveCuts.get(i), list)) moved(i);
+    for (const i of this.driveCuts.keys()) if (!next.has(i)) moved(i);
+    this.driveCuts = next;
+    if (dirty.size > 0) this.kerbFaces.clear();
+    for (const key of dirty) this.rebuildChunk(key);
+    return dirty;
+  }
 
   /**
    * The cross-section a tile draws for itself, for a tile whose road has a

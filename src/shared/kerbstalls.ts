@@ -33,6 +33,35 @@ export const PARKING_TICK_KERB_CLEARANCE_M = 0.3;
 export const NO_PARKING_BEFORE_STOP_M = 9.1;
 /** No standing within 20 ft of a crosswalk at an intersection (UVC §11-1003). */
 export const NO_PARKING_FROM_CROSSWALK_M = 6.1;
+/** No standing in front of a driveway, nor within 5 ft either side of its dropped kerb (UVC §11-1003; the common state figure). */
+export const NO_PARKING_BESIDE_DRIVE_M = 1.5;
+
+/** A stretch of kerb, world metres along the road, where no stall is marked and no car parks. */
+export interface NoParkingZone {
+  from: number;
+  to: number;
+}
+
+/** A driveway's dropped kerb, `from` to `to` along the road, as the no-parking zone it makes. */
+export function driveZone(from: number, to: number): NoParkingZone {
+  return { from: from - NO_PARKING_BESIDE_DRIVE_M, to: to + NO_PARKING_BESIDE_DRIVE_M };
+}
+
+/** Zones sorted low to high, those that overlap or touch joined into one. */
+export function mergeZones(zones: readonly NoParkingZone[]): NoParkingZone[] {
+  const out: NoParkingZone[] = [];
+  for (const z of [...zones].sort((a, b) => a.from - b.from)) {
+    const last = out[out.length - 1];
+    if (last && z.from <= last.to + EPS) last.to = Math.max(last.to, z.to);
+    else out.push({ from: z.from, to: z.to });
+  }
+  return out;
+}
+
+/** Whether something spanning `from` to `to` lies across any zone. */
+export function crossesZone(from: number, to: number, zones: readonly NoParkingZone[]): boolean {
+  return zones.some((z) => from < z.to - EPS && to > z.from + EPS);
+}
 
 /** A parallel accessible space is 24 ft long (PROWAG R310.2.1). */
 export const ACCESSIBLE_PARALLEL_STALL_M = 7.3;
@@ -95,67 +124,56 @@ export function clearOfNoParking(
 }
 
 /**
- * Where a parking lane's stall ticks fall along a run from `lo` to `hi`
- * (offsets from the tile centre, `origin` the centre's world coordinate along
- * the run). Every stall is 6.1–7.9 m (20–26 ft). Interior stalls are pitched
- * 6.7 m from world metre 0, so they run on across every seam. At an end that
- * meets a junction the lane's last stall is the end stall, marked from the
- * edge of the junction's no-parking zone; where the pitch leaves an odd length
- * beside it, the end stall takes up as much as keeps it within 7.9 m, and
- * beyond that the zone grows instead, so the end stall ends on a pitch tick.
- * Where two zones leave too little room for that, as many legal stalls as fit
- * are marked from the low zone's edge. `setLo` and `setHi` are null at an end
- * that meets no junction; either may lie past the tile's own end, when the
- * junction is a tile further on.
+ * The ticks of one run of kerb, `from` to `to`, laid as a row of whole stalls
+ * from its upstream end (`upstreamLow`: the low end): the stall at each end
+ * 6.1 m, the ones between 6.7 m, and where the run leaves an odd length the
+ * downstream end stall takes it up to 7.9 m. Only what is left after that
+ * stays unmarked, at the downstream end. A run shorter than 6.1 m marks none.
  */
-export function parkingTickPositions(
-  origin: number,
+export function parkingRunTicksOf(from: number, to: number, upstreamLow: boolean): number[] {
+  const room = to - from;
+  if (room < PARKING_END_STALL_M - EPS) return [];
+  const count =
+    room < 2 * PARKING_END_STALL_M - EPS
+      ? 1
+      : 2 + Math.floor((room - 2 * PARKING_END_STALL_M) / PARKING_STALL_LENGTH_M + EPS);
+  const lengths =
+    count === 1
+      ? [PARKING_END_STALL_M]
+      : [
+          PARKING_END_STALL_M,
+          ...Array.from({ length: count - 2 }, () => PARKING_STALL_LENGTH_M),
+          PARKING_END_STALL_M,
+        ];
+  const spare = room - lengths.reduce((sum, l) => sum + l, 0);
+  lengths[lengths.length - 1]! += Math.min(spare, PARKING_STALL_MAX_M - PARKING_END_STALL_M);
+  const ticks = [upstreamLow ? from : to];
+  for (const length of lengths) {
+    ticks.push(ticks[ticks.length - 1]! + (upstreamLow ? length : -length));
+  }
+  return ticks.sort((a, b) => a - b);
+}
+
+/**
+ * The ticks of a whole kerb between `lo` and `hi`: every stretch between the
+ * no-parking `zones` is a run of its own, laid by `parkingRunTicksOf`.
+ */
+export function parkingRunTicks(
   lo: number,
   hi: number,
-  setLo: number | null,
-  setHi: number | null,
+  zones: readonly NoParkingZone[],
+  upstreamLow: boolean,
 ): number[] {
-  const EPS = 1e-9;
-  const pitch = PARKING_STALL_LENGTH_M;
-  const end = PARKING_END_STALL_M;
-  const longest = PARKING_STALL_MAX_M;
-  /** The pitch ticks at or after / at or before a local offset. */
-  const pitchAtOrAfter = (a: number): number =>
-    Math.ceil((origin + a) / pitch - EPS) * pitch - origin;
-  const pitchAtOrBefore = (a: number): number =>
-    Math.floor((origin + a) / pitch + EPS) * pitch - origin;
-  // Each end stall, as [near tick, far tick] in run order.
-  let loStall: [number, number] | null = null;
-  let hiStall: [number, number] | null = null;
-  const zoneLo = setLo === null ? null : -TILE_HALF + setLo;
-  const zoneHi = setHi === null ? null : TILE_HALF - setHi;
-  if (zoneLo !== null) {
-    const far = pitchAtOrAfter(zoneLo + end);
-    loStall = far - zoneLo <= longest + EPS ? [zoneLo, far] : [far - end, far];
-  }
-  if (zoneHi !== null) {
-    const near = pitchAtOrBefore(zoneHi - end);
-    hiStall = zoneHi - near <= longest + EPS ? [near, zoneHi] : [near, near + end];
-  }
   const ticks: number[] = [];
-  if (zoneLo !== null && zoneHi !== null && loStall![1] > hiStall![0] + EPS) {
-    // The two end stalls would overlap: as many stalls as the room between
-    // the zones holds, each as long as it can be up to the longest.
-    const room = zoneHi - zoneLo;
-    const count = Math.floor(room / end + EPS);
-    const length = count > 0 ? Math.min(longest, room / count) : 0;
-    for (let k = 0; k <= count && count > 0; k++) ticks.push(zoneLo + k * length);
-  } else {
-    if (loStall) ticks.push(...loStall);
-    if (hiStall) ticks.push(...hiStall);
-    const from = loStall ? loStall[1] : lo;
-    const to = hiStall ? hiStall[0] : hi;
-    for (let a = pitchAtOrAfter(from); a <= to + EPS; a += pitch) ticks.push(a);
+  let from = lo;
+  for (const zone of mergeZones(zones)) {
+    if (zone.to <= from + EPS) continue;
+    if (zone.from >= hi - EPS) break;
+    if (zone.from > from) ticks.push(...parkingRunTicksOf(from, zone.from, upstreamLow));
+    from = Math.max(from, zone.to);
   }
-  return ticks
-    .filter((a) => a >= lo - EPS && a <= hi + EPS && clearOfNoParking(a, 0, setLo, setHi))
-    .sort((a, b) => a - b)
-    .filter((a, i, all) => i === 0 || a - all[i - 1]! > 1e-6);
+  if (from < hi) ticks.push(...parkingRunTicksOf(from, hi, upstreamLow));
+  return ticks;
 }
 
 /**
@@ -266,10 +284,14 @@ export interface KerbFaceInput {
    */
   lo: number;
   hi: number;
-  /** The ticks a parallel lane's tiles mark, world metres, as `parkingTickPositions` lays them. */
+  /** The ticks a parallel lane marks, world metres, as `parkingRunTicks` lays them. */
   ticks?: readonly number[];
+  /** Whether traffic beside the lane arrives from its low end, so its runs are laid from there. */
+  upstreamLow?: boolean;
   /** Whether the lane is its full depth all the way from `from` to `to`; omitted, everywhere. */
   fullDepth?: (from: number, to: number) => boolean;
+  /** Stretches no stall may cross, such as the mouth of a driveway; merged, low to high. */
+  zones?: readonly NoParkingZone[];
   /** Which end of the face its accessible stalls stand at. */
   accessibleEnd: 'lo' | 'hi';
 }
@@ -278,60 +300,94 @@ function sortedUnique(values: readonly number[]): number[] {
   return [...values].sort((a, b) => a - b).filter((v, i, all) => i === 0 || v - all[i - 1]! > EPS);
 }
 
-/** Consecutive ticks no further apart than the longest stall, as stalls. */
-function stallsBetween(ticks: readonly number[]): [number, number][] {
+/** Consecutive ticks no further apart than the longest stall, and clear of every zone, as stalls. */
+function stallsBetween(
+  ticks: readonly number[],
+  zones: readonly NoParkingZone[] = [],
+): [number, number][] {
   const out: [number, number][] = [];
   for (let i = 1; i < ticks.length; i++) {
     const from = ticks[i - 1]!;
     const to = ticks[i]!;
-    // Two ticks further apart than any stall is laid are a gap in the lane.
-    if (to - from <= PARKING_STALL_MAX_M + EPS) out.push([from, to]);
+    // Two ticks further apart than any stall is laid, or closer than the
+    // shortest, are a gap in the lane: the odd length a run leaves over.
+    const length = to - from;
+    if (
+      length <= PARKING_STALL_MAX_M + EPS &&
+      length >= PARKING_END_STALL_M - EPS &&
+      !crossesZone(from, to, zones)
+    ) {
+      out.push([from, to]);
+    }
   }
   return out;
 }
 
+/** The runs of stalls a face's ticks make: stalls that meet end to end, each run as its first and last tick. */
+function runsOf(ticks: readonly number[], zones: readonly NoParkingZone[]): [number, number][] {
+  const runs: [number, number][] = [];
+  for (const [from, to] of stallsBetween(ticks, zones)) {
+    const last = runs[runs.length - 1];
+    if (last && Math.abs(last[1] - from) < EPS) last[1] = to;
+    else runs.push([from, to]);
+  }
+  return runs;
+}
+
 /**
- * The accessible stalls of a parallel face laid from `start` upward: `count`
- * stalls of 7.3 m end to end, and the ticks they leave. The stall after them
- * keeps the 6.1–7.9 m rule: where it would be shorter the group moves up to
- * end on the next tick and the zone grows, and where there is no room for the
- * group at all it is null.
+ * The accessible stalls of a parallel face: `wanted` stalls of 7.3 m end to end
+ * (fewer where no run is long enough), flush to the end of the nearest run
+ * that holds them, nearest the face's `accessibleEnd`. The rest of that run is
+ * laid again from its upstream end beside them. Returns the face's ticks and
+ * the group, or null where no run holds even one.
  */
-function parallelGroupFrom(
+function placeAccessible(
   ticks: readonly number[],
-  count: number,
-  start: number,
-  limit: number,
+  zones: readonly NoParkingZone[],
+  wanted: number,
+  accessibleEnd: 'lo' | 'hi',
+  upstreamLow: boolean,
 ): { ticks: number[]; group: [number, number][] } | null {
-  const length = count * ACCESSIBLE_PARALLEL_STALL_M;
-  if (start + length > limit + EPS) return null;
-  const after = ticks.filter((t) => t >= start + length - EPS);
-  const next = after[0];
-  const gap = next === undefined ? 0 : next - (start + length);
-  // A stall beside the group too short to be one: the group ends on the tick instead.
-  const from = gap > EPS && gap < PARKING_END_STALL_M - EPS ? next! - length : start;
-  const group: [number, number][] = Array.from({ length: count }, (_, k) => [
-    from + k * ACCESSIBLE_PARALLEL_STALL_M,
-    from + (k + 1) * ACCESSIBLE_PARALLEL_STALL_M,
-  ]);
-  return { ticks: sortedUnique([...group.flat(), ...after]), group };
+  const runs = runsOf(ticks, zones);
+  if (accessibleEnd === 'hi') runs.reverse();
+  for (let count = wanted; count > 0; count--) {
+    const length = count * ACCESSIBLE_PARALLEL_STALL_M;
+    const run = runs.find(([a, b]) => b - a >= length - EPS);
+    if (!run) continue;
+    const [a, b] = run;
+    const groupFrom = accessibleEnd === 'lo' ? a : b - length;
+    const rest = accessibleEnd === 'lo' ? [groupFrom + length, b] : [a, groupFrom];
+    const group: [number, number][] = Array.from({ length: count }, (_, k) => [
+      groupFrom + k * ACCESSIBLE_PARALLEL_STALL_M,
+      groupFrom + (k + 1) * ACCESSIBLE_PARALLEL_STALL_M,
+    ]);
+    const kept = ticks.filter((t) => t < a - EPS || t > b + EPS);
+    return {
+      ticks: sortedUnique([
+        ...kept,
+        ...group.flat(),
+        ...parkingRunTicksOf(rest[0]!, rest[1]!, upstreamLow),
+      ]),
+      group,
+    };
+  }
+  return null;
 }
 
 function layParallelFace(input: KerbFaceInput): KerbFace {
   const ticks = sortedUnique(input.ticks ?? []);
-  const wanted = accessibleStallCount(stallsBetween(ticks).length);
-  // Laid from the low end; the high end is the same with the road turned round.
-  const flip = input.accessibleEnd === 'hi' ? -1 : 1;
-  const turned = sortedUnique(ticks.map((t) => t * flip));
-  const start = flip === 1 ? input.lo : -input.hi;
-  const limit = flip === 1 ? input.hi : -input.lo;
-  let laid: { ticks: number[]; group: [number, number][] } | null = null;
-  for (let n = wanted; n > 0 && !laid; n--) laid = parallelGroupFrom(turned, n, start, limit);
-  const lines = laid ? sortedUnique(laid.ticks.map((t) => t * flip)) : ticks;
-  const accessible = (laid?.group ?? []).map(([a, b]) =>
-    flip === 1 ? ([a, b] as const) : ([-b, -a] as const),
+  const zones = input.zones ?? [];
+  const wanted = accessibleStallCount(stallsBetween(ticks, zones).length);
+  const laid = placeAccessible(
+    ticks,
+    zones,
+    wanted,
+    input.accessibleEnd,
+    input.upstreamLow ?? true,
   );
-  const stalls = stallsBetween(lines).map(([from, to]): KerbStall => ({
+  const lines = laid ? laid.ticks : ticks;
+  const accessible = laid?.group ?? [];
+  const stalls = stallsBetween(lines, zones).map(([from, to]): KerbStall => ({
     from,
     to,
     centre: (from + to) / 2,
@@ -352,6 +408,7 @@ function layAngledFace(input: KerbFaceInput, style: 'angled' | 'headIn'): KerbFa
   const fits = (a0: number, a1: number): boolean =>
     a0 + below >= lo - EPS &&
     a1 + above <= hi + EPS &&
+    !crossesZone(a0 + below, a1 + above, input.zones ?? []) &&
     (input.fullDepth?.(a0 + below, a1 + above) ?? true);
 
   const regular: [number, number][] = [];

@@ -580,7 +580,11 @@ export class LotRenderer {
     }
   }
 
-  /** What a home's lot paves over its lawn: the verge strips, the walks, the patios, the drives and their cuts across the footway. */
+  /**
+   * What a home's lot paves over its lawn: the verge strips, the walks, the
+   * patios and the drives. A drive stops at the back of the footway: the
+   * footway runs through its mouth unbroken, in its own paving.
+   */
   private layHouseLot(
     plan: HouseLotPlan,
     surface: MaterialName,
@@ -590,12 +594,7 @@ export class LotRenderer {
     for (const path of plan.paths) lay(path, DRIVE_Y_OFFSET, 'cleanConcrete');
     for (const patio of plan.yard.patios)
       lay(patio, DRIVE_Y_OFFSET, PATIO_SURFACE[plan.yard.patioStone]);
-    for (const drive of plan.drives) {
-      lay(drive.rect, DRIVE_Y_OFFSET, DRIVE_SURFACE[plan.surface]);
-      // Across the footway the drive is always paved: the kerb is dropped
-      // and the paving carried through, dirt drive or not.
-      if (drive.cut.v1 > drive.cut.v0) lay(drive.cut, CURB_CUT_Y_OFFSET, 'cleanConcrete');
-    }
+    for (const drive of plan.drives) lay(drive.rect, DRIVE_Y_OFFSET, DRIVE_SURFACE[plan.surface]);
   }
 
   /**

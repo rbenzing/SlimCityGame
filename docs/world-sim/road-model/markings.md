@@ -54,24 +54,24 @@ per-tier:
   (§9E.02): the crossing over its arm, the stop line across its own lanes, or
   else the point where its kerb starts to turn the corner; its outermost line
   goes on round the corner with the kerb return.
-- **A parking lane's travel side is its solid white parking lane line**, and
-  no edge line runs inside the lane, where it would lay a second line through
-  the cars. Its stall marks are white (§3B.27): ticks from the parking lane
-  line toward the kerb, ending inside the lane at least 0.3 m short of the
-  edge of the pavement. The stalls follow the 2009 MUTCD's parallel-parking
-  layout (Figure 3B-21): an interior stall is 22 ft (6.7 m) long, inside the
-  figure's 22–26 ft, and the stall nearest a junction 20 ft (6.1 m). The
-  interior stalls are pitched from world metre 0, so they run on unbroken
-  across every seam; the end stall is measured from the edge of the
-  junction's no-parking zone (from the edge of the junction's tile where the
-  zone ends inside it). No marked stall is shorter than 6.1 m or longer than
-  7.9 m (26 ft). Where the pitch leaves an odd length beside the end stall,
-  the end stall takes it up as far as 7.9 m; beyond that the no-parking zone
-  grows instead, so the 6.1 m end stall ends on a pitch tick and the strip
-  between it and the zone stays unmarked and empty. Where two zones leave too
-  little room for an end stall each, as many legal stalls as fit are marked
-  from one zone's edge, and none where not even one fits. The lane's 2.25 m sits inside
-  the figure's 8 ft (2.4 m) stall width.
+- **A parallel parking lane marks its stalls with corner marks**, white
+  (§3B.27 ¶01), on the lane's travel edge: a T where two stalls meet and an
+  L at each end of a run, as the MUTCD's Figure 3B-23 draws them. The bar
+  lies along the edge and reaches 0.3 m (the figure's 12 in extension, which
+  "enables driver to see limits of stall") either side of the stem; the stem
+  points to the kerb, 0.6 m long (a dial: the figure gives no length); lines
+  are 0.10 m (the figure's 4 to 6 in). No continuous line runs along the
+  lane: an edge line may be left out where parking marks the travelled way's
+  edge (§3B.10 ¶05). Only against a bike lane does the solid line stay, as
+  that lane's second line. No edge line runs inside the lane.
+- **Stalls are laid run by run.** A run is the kerb between two no-parking
+  zones, and each is laid on its own from its upstream end: stalls of 22 ft
+  (6.7 m), inside the figure's 22–26 ft, with the stall at each end 20 ft
+  (6.1 m). The last stall takes an odd length up to 7.9 m (26 ft); what is
+  left beyond that stays unmarked, and a run under 6.1 m marks nothing.
+  Laid on one rhythm for the whole street instead, a driveway left 13 m of
+  kerb unmarked. The lane's 2.25 m sits inside the figure's 8 ft (2.4 m)
+  stall width.
 - **An angled or head-in lane marks its stalls at their angle** (§3B.27).
   Each stall line runs from the parking lane line, which stays as the lane's
   travel edge, toward the kerb at the stall's angle and stops at least 0.3 m
@@ -111,8 +111,10 @@ per-tier:
   marked, and no car stands, within 9.1 m before a stop line on an approach
   a stop or a signal holds; within 6.1 m of a crosswalk; or, where an arm has
   no crosswalk, within 6.1 m of the junction's mouth — on the approach side
-  and the departure side alike. The parking lane line itself runs on to the
-  mouth as the lane's travel edge. One function measures the zone, and the
+  and the departure side alike. A driveway is a zone too: its mouth and
+  1.5 m (5 ft) either side, since the code forbids parking in front of a
+  driveway and states that copy it give 5 ft (Washington RCW 46.61.570).
+  The layout takes the drive cuts on a face as an input. One function measures the zone, and the
   paint and the parked cars both read it. A car parks one to a marked stall,
   centred in it, the stalls read off the same layout the ticks are painted
   from; a kerb whose street allows parking but paints no lane has no stalls,

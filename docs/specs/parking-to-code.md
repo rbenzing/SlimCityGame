@@ -82,7 +82,7 @@
 
 **Open:**
 
-- The kerb paints stalls across curb cuts and house drives, so a lot's kerb credit can count a stall a driveway would block.
+- The kerb credit counts stalls with the lot's own curb cut taken out, but not a neighbour's cut or a home's drive, which the sim does not hold.
 - Customers of a kerb-credited lot still park on the lot, not in its credited kerb stalls.
 - A framed lot beside a curve that lays no car park still reads its kerbside allowance from grid edges.
 

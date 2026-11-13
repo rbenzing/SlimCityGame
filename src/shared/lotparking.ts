@@ -8,7 +8,7 @@
 import { TILE_METERS } from './constants';
 import { footprintForRotation } from './footprint';
 import { bodyMetresFor } from './floorarea';
-import { kerbCreditFor, type KerbSurroundings } from './kerblayout';
+import { kerbCreditFor, lotDriveCuts, withDriveCuts, type KerbSurroundings } from './kerblayout';
 import { layoutLot, type LotLayout } from './lotlayout';
 import { isWalkUpKind } from './buildingkind';
 import { GARAGE_FRONT_PROJECTION_M, hasPodium, PODIUM_OVERHANG_M } from './garage';
@@ -113,9 +113,22 @@ export function lotParkingAt(
   const lot = footprintForRotation(entry, rotation);
   const edge = findRoadFacingEdge(x, z, lot.w, lot.d, roadAt);
   if (!edge) return null;
-  const kerbCredit = kerb ? kerbCreditFor(kerb, { x, z, w: lot.w, d: lot.d }, edge.side) : 0;
+  const tiles = { x, z, w: lot.w, d: lot.d };
   const alongX = edge.side === 'N' || edge.side === 'S';
-  const layout = lotLayoutFor(entry, rotation, alongX, kerbCredit)!;
+  let kerbCredit = kerb ? kerbCreditFor(kerb, tiles, edge.side) : 0;
+  let layout = lotLayoutFor(entry, rotation, alongX, kerbCredit)!;
+  if (kerb && layout.aisles.length > 0) {
+    // The lot's own drive is a no-parking zone on the kerb it earns credit
+    // from: a stall it blocks is no space, so the credit is counted again with
+    // the cut in place, and the lot laid out for what it leaves.
+    const cut = layout.curbCut;
+    const own = withDriveCuts(kerb, lotDriveCuts(tiles, edge.side, cut.u0, cut.u1));
+    const counted = kerbCreditFor(own, tiles, edge.side);
+    if (counted !== kerbCredit) {
+      kerbCredit = counted;
+      layout = lotLayoutFor(entry, rotation, alongX, kerbCredit)!;
+    }
+  }
   if (isWalkUpKind(entry.kind) && !clearOfSideLines(layout, WALK_UP_SIDE_YARD_M)) return null;
   return { edge, kerbCredit, layout };
 }

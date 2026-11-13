@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
 import {
-  ACCESSIBLE_PAINT_COLOR,
   BIKE_LANE_PAINT_COLOR,
   carriagewayHalfWidthMeters,
   isLaneGlyphTile,
@@ -18,7 +17,7 @@ import {
   PARKING_STALL_MAX_M,
   PARKING_STALL_LENGTH_M,
   PARKING_TICK_KERB_CLEARANCE_M,
-  parkingTickPositions,
+  parkingRunTicks,
 } from '../shared/kerbstalls';
 import { EDGE_LINE_MARGIN_M } from './roadmarkings';
 import { RoadFlow, RoadTier } from '../shared/types';
@@ -43,7 +42,6 @@ const key = (c: readonly [number, number, number]): string => c.map((q) => q.toF
 const WHITE = key(MARKING_COLOR);
 const GREEN = key(BIKE_LANE_PAINT_COLOR);
 const KERB = key(SIDEWALK_COLOR);
-const BLUE = key(ACCESSIBLE_PAINT_COLOR);
 
 /** The street in the report: two-way, no footways, a bike lane left and parking right. */
 const CUSTOM = composeProfile(presetProfileForTier(RoadTier.TwoLane), {
@@ -66,6 +64,9 @@ const PARKED = composeProfile(presetProfileForTier(RoadTier.TwoLane), {
   parking: 'both',
 });
 const PARKED_ID = 102;
+/** A parallel parking lane's depth, and how far a corner mark's stem runs into it from the travel edge. */
+const PARKED_LANE_M = 2.25;
+const CORNER_STEM_M = 0.6;
 const PROFILES = new Map<number, RoadProfile>([
   [CUSTOM_ID, CUSTOM],
   [PLAIN_ID, PLAIN],
@@ -136,34 +137,6 @@ function carriagewayReach(row: readonly Sample[], centre: number): { lo: number;
   for (const x of road) if (x >= hi && x - hi < 0.2) hi = x;
   for (const x of [...road].reverse()) if (x <= lo && lo - x < 0.2) lo = x;
   return { lo: centre - lo, hi: hi - centre };
-}
-
-/**
- * The middle of each short run of white along a row: one per stall tick. A
- * longer run is something else crossing the row, a lane-use arrow in the
- * turn bay beside the parking lane, say; a run on blue is part of an
- * accessible stall's symbol.
- */
-function tickRuns(row: readonly Sample[]): number[] {
-  const at: number[] = [];
-  let run: number[] = [];
-  let before: string | null = null;
-  const close = (after: string | null): void => {
-    const onSymbol = before === BLUE || after === BLUE;
-    if (run.length && run[run.length - 1]! - run[0]! < 0.4 && !onSymbol) {
-      at.push((run[0]! + run[run.length - 1]!) / 2);
-    }
-    run = [];
-  };
-  for (const s of row) {
-    if (s.colour === WHITE) run.push(s.at);
-    else {
-      close(s.colour);
-      before = s.colour;
-    }
-  }
-  close(null);
-  return at;
 }
 
 /** A crossing road along z = 2 and the report's street running south from it at x = 4. */
@@ -452,29 +425,24 @@ describe('a parking lane', () => {
 
   it('marks no stall inside the zone, and every stall up to it 6.1–7.9 m long', () => {
     const r = crossroads();
-    const half = carriagewayHalfWidthOf(PARKED);
-    // Along the parking lane just inside where the ticks stop, clear of its
-    // lane line and of the arrows in the turn bay beside it.
-    const across = half - PARKING_TICK_KERB_CLEARANCE_M - 0.05;
     const edge = 4 * TILE_METERS; // where the west arm meets the junction tile
     for (const [side, reach] of [
-      [1, BEFORE_STOP],
-      [-1, FROM_CROSSING],
+      ['high', BEFORE_STOP],
+      ['low', FROM_CROSSING],
     ] as const) {
-      const at = tickRuns(
-        rowAlongX(r, 2.5 * TILE_METERS + side * across, 2 * TILE_METERS, edge, 800),
-      );
-      expect(at.length).toBeGreaterThan(2);
-      const last = Math.max(...at);
+      // The stalls the corner marks are painted from, west of the junction.
+      const stalls = [0, 1, 2, 3].flatMap((x) => r.parkingStallsAt(x, 2, side) ?? []);
+      expect(stalls.length).toBeGreaterThan(2);
+      const last = Math.max(...stalls.map((s) => s.to));
       expect(last, 'a stall marked inside the zone').toBeLessThanOrEqual(edge - reach + 0.05);
-      for (let i = 1; i < at.length; i++) {
-        expect(at[i]! - at[i - 1]!).toBeGreaterThan(PARKING_END_STALL_M - 0.1);
-        expect(at[i]! - at[i - 1]!).toBeLessThan(PARKING_STALL_MAX_M + 0.1);
+      for (const s of stalls) {
+        expect(s.to - s.from).toBeGreaterThan(PARKING_END_STALL_M - 0.1);
+        expect(s.to - s.from).toBeLessThan(PARKING_STALL_MAX_M + 0.1);
       }
     }
   });
 
-  it('pitches its interior stalls 6.7 m apart, from world metre 0', () => {
+  it('lays a run with 6.1 m end stalls and 6.7 m stalls between, flush to the run’s upstream end', () => {
     const r = layRoads(
       Array.from({ length: 9 }, (_, z) => ({
         x: 4,
@@ -483,21 +451,22 @@ describe('a parking lane', () => {
         profile: PARKED_ID,
       })),
     );
-    const half = carriagewayHalfWidthOf(PARKED);
-    const at = tickRuns(
-      rowAlongZ(r, 4.5 * TILE_METERS + half - 1, 2 * TILE_METERS, 7 * TILE_METERS, 1000),
-    );
-    expect(at.length).toBeGreaterThan(5);
-    for (let i = 1; i < at.length; i++) {
-      expect(at[i]! - at[i - 1]!).toBeCloseTo(PARKING_STALL_LENGTH_M, 1);
-    }
-    for (const z of at) {
-      const phase = z / PARKING_STALL_LENGTH_M;
-      expect(Math.abs(phase - Math.round(phase)) * PARKING_STALL_LENGTH_M).toBeLessThan(0.1);
+    const stalls = Array.from(
+      { length: 9 },
+      (_, z) => r.parkingStallsAt(4, z, 'high') ?? [],
+    ).flat();
+    expect(stalls.length).toBeGreaterThan(15);
+    const lengths = stalls.map((s) => s.to - s.from);
+    // The stalls between the ends are 6.7 m; the ends and the accessible stall differ.
+    const interior = lengths.filter((l) => Math.abs(l - PARKING_STALL_LENGTH_M) < 1e-6);
+    expect(interior.length).toBeGreaterThan(lengths.length - 5);
+    for (const l of lengths) {
+      expect(l).toBeGreaterThanOrEqual(PARKING_END_STALL_M - 1e-6);
+      expect(l).toBeLessThanOrEqual(PARKING_STALL_MAX_M + 1e-6);
     }
   });
 
-  it('ticks its stalls from the parking lane line and stops them short of the kerb', () => {
+  it('marks its stalls with corner marks on the travel edge and paints no line along the lane', () => {
     const r = layRoads(
       Array.from({ length: 9 }, (_, z) => ({
         x: 4,
@@ -508,74 +477,96 @@ describe('a parking lane', () => {
     );
     const half = carriagewayHalfWidthOf(PARKED);
     const centre = 4.5 * TILE_METERS;
-    // Across the road at a tick: world z a multiple of the stall.
-    const z = Math.ceil((3 * TILE_METERS) / PARKING_STALL_LENGTH_M) * PARKING_STALL_LENGTH_M;
+    // Across the road at a corner mark: where two plain stalls meet.
+    const stalls = (r.parkingStallsAt(4, 4, 'high') ?? []).filter((s) => !s.accessible);
+    const z = stalls[1]!.to;
+    const stall = stalls[1]!.to - stalls[1]!.from;
     const row = rowAlongX(r, z, 4 * TILE_METERS, 5 * TILE_METERS, 800);
     const white = row.filter((s) => s.colour === WHITE).map((s) => Math.abs(s.at - centre));
-    expect(Math.max(...white)).toBeGreaterThan(half - 1);
-    expect(Math.max(...white)).toBeLessThanOrEqual(half - PARKING_TICK_KERB_CLEARANCE_M + 0.03);
+    const edge = half - PARKED_LANE_M;
+    // The stem runs 0.6 m from the travel edge toward the kerb and stops there.
+    expect(Math.max(...white)).toBeGreaterThan(edge + CORNER_STEM_M - 0.2);
+    expect(Math.max(...white)).toBeLessThanOrEqual(edge + CORNER_STEM_M + 0.05);
+    // Half way along a stall nothing is painted on the lane at all.
+    const mid = z - stall / 2;
+    const between = rowAlongX(r, mid, 4 * TILE_METERS, 5 * TILE_METERS, 800);
+    expect(between.some((s) => s.colour === WHITE)).toBe(false);
+  });
+
+  it('lays its stalls round a drive and paints nothing on the lane across its mouth', () => {
+    const r = layRoads(
+      Array.from({ length: 9 }, (_, z) => ({
+        x: 4,
+        z,
+        tier: RoadTier.TwoLane,
+        profile: PARKED_ID,
+      })),
+    );
+    const before = [2, 3, 4, 5, 6].flatMap((z) => r.parkingStallsAt(4, z, 'high') ?? []);
+    const cut = { side: 'high' as const, from: 100, to: 103 };
+    // The cut lies on tile z = 5 only, and the run it shapes is redrawn.
+    expect(r.setDriveCuts([{ x: 4, z: 5, cut }]).size).toBeGreaterThan(0);
+    const stalls = [2, 3, 4, 5, 6].flatMap((z) => r.parkingStallsAt(4, z, 'high') ?? []);
+    expect(stalls.length).toBeGreaterThan(0);
+    expect(before.some((s) => s.to > cut.from - 1.5 && s.from < cut.to + 1.5)).toBe(true);
+    for (const s of stalls) {
+      expect(s.to <= cut.from - 1.5 + 1e-6 || s.from >= cut.to + 1.5 - 1e-6).toBe(true);
+    }
+    // Nothing is painted down the lane between the last stall before the drive and the first after it.
+    const gapFrom = Math.max(...stalls.filter((s) => s.to <= cut.from).map((s) => s.to));
+    const gapTo = Math.min(...stalls.filter((s) => s.from >= cut.to).map((s) => s.from));
+    const edge = carriagewayHalfWidthOf(PARKED) - PARKED_LANE_M;
+    for (const across of [0.05, 0.3, 0.55]) {
+      const row = rowAlongZ(r, 4.5 * TILE_METERS + edge + across, gapFrom + 0.3, gapTo - 0.3, 200);
+      expect(
+        row.some((s) => s.colour === WHITE),
+        `paint ${across} m into the lane`,
+      ).toBe(false);
+    }
   });
 });
 
-describe('parkingTickPositions — where a parking lane’s stalls are marked', () => {
-  it('marks an open run every interior stall', () => {
-    const at = parkingTickPositions(10 * TILE_METERS + 10, -10, 10, null, null);
-    expect(at.length).toBeGreaterThanOrEqual(2);
-    for (let i = 1; i < at.length; i++) {
-      expect(at[i]! - at[i - 1]!).toBeCloseTo(PARKING_STALL_LENGTH_M, 9);
+describe('parkingRunTicks — how a kerb’s stalls are laid', () => {
+  it('lays an open run with 6.1 m end stalls and 6.7 m stalls between, from its upstream end', () => {
+    const low = parkingRunTicks(100, 130, [], true);
+    expect(low[0]).toBeCloseTo(100, 9);
+    expect(low[1]! - low[0]!).toBeCloseTo(PARKING_END_STALL_M, 9);
+    for (let i = 2; i < low.length - 1; i++) {
+      expect(low[i]! - low[i - 1]!).toBeCloseTo(PARKING_STALL_LENGTH_M, 9);
     }
+    // Traffic arriving from the high end lays the same run from there.
+    const high = parkingRunTicks(100, 130, [], false);
+    expect(high[high.length - 1]).toBeCloseTo(130, 9);
   });
 
-  it('marks every stall 6.1–7.9 m long, wherever the pitch falls and whichever ends meet a junction', () => {
-    const zones: [number | null, number | null][] = [
-      [null, null],
-      [0, null],
-      [4.2, null],
-      [null, 0],
-      [null, 8.575],
-      [3.975, 8.575],
-      [0, 0],
-      [8.575, 3.975],
-      [-12, null],
-      [null, -14.5],
-    ];
-    for (let k = 0; k <= 67; k++) {
-      const origin = 200 + k * 0.1;
-      for (const [setLo, setHi] of zones) {
-        const at = parkingTickPositions(origin, -10, 10, setLo, setHi);
-        const label = `origin ${origin.toFixed(1)}, zones ${setLo} ${setHi}`;
+  it('marks every stall 6.1–7.9 m long, whatever the length of the run and the zones round it', () => {
+    for (let room = 0; room <= 60; room += 0.37) {
+      for (const upstreamLow of [true, false]) {
+        const at = parkingRunTicks(200, 200 + room, [], upstreamLow);
         for (let i = 1; i < at.length; i++) {
           const gap = at[i]! - at[i - 1]!;
-          expect(gap, label).toBeGreaterThanOrEqual(PARKING_END_STALL_M - 1e-6);
-          expect(gap, label).toBeLessThanOrEqual(PARKING_STALL_MAX_M + 1e-6);
+          expect(gap, `run ${room.toFixed(2)}`).toBeGreaterThanOrEqual(PARKING_END_STALL_M - 1e-6);
+          expect(gap, `run ${room.toFixed(2)}`).toBeLessThanOrEqual(PARKING_STALL_MAX_M + 1e-6);
         }
-        // Nothing marked inside either zone.
-        if (setLo !== null && at.length > 0) {
-          expect(at[0]!, label).toBeGreaterThanOrEqual(-10 + setLo - 1e-6);
-        }
-        if (setHi !== null && at.length > 0) {
-          expect(at[at.length - 1]!, label).toBeLessThanOrEqual(10 - setHi + 1e-6);
+        if (at.length > 0) {
+          expect(at[0]!).toBeGreaterThanOrEqual(200 - 1e-6);
+          expect(at[at.length - 1]!).toBeLessThanOrEqual(200 + room + 1e-6);
         }
       }
     }
   });
 
-  it('lets the end stall take up an odd length to 7.9 m, and grows the zone beyond that', () => {
-    // The zone ends at local 2. With the tile centred on world 200, the last
-    // pitch tick a 6.1 m end stall leaves room for is world 194.3 (local
-    // −5.7): 1.6 m odd, which the end stall takes up, to 7.7 m.
-    let at = parkingTickPositions(200, -10, 10, null, 8);
-    expect(at[at.length - 1]).toBeCloseTo(2, 9);
-    expect(at[at.length - 2]).toBeCloseTo(-5.7, 9);
-    // Centred on world 197 that tick is world 187.6 (local −9.4): 5.3 m odd,
-    // too much to take up. The end stall is 6.1 m from that tick, and the
-    // 5.3 m between it and the zone is left unmarked.
-    at = parkingTickPositions(197, -10, 10, null, 8);
-    expect(at[at.length - 2]).toBeCloseTo(-9.4, 9);
-    expect(at[at.length - 1]).toBeCloseTo(-9.4 + PARKING_END_STALL_M, 9);
+  it('marks nothing inside a zone, and lays each run between zones on its own', () => {
+    const at = parkingRunTicks(0, 60, [{ from: 20, to: 26 }], true);
+    expect(at.some((t) => t > 20 + 1e-6 && t < 26 - 1e-6)).toBe(false);
+    // The run above the zone starts flush at its edge.
+    expect(at).toContain(26);
+    // The run below it, laid from the same upstream end, starts at the kerb's end.
+    expect(at[0]).toBeCloseTo(0, 9);
   });
 
-  it('marks nothing where the zones leave no room for a stall', () => {
-    expect(parkingTickPositions(10, -10, 10, 8, 8)).toEqual([]);
+  it('marks nothing where a run is too short for a stall', () => {
+    expect(parkingRunTicks(0, PARKING_END_STALL_M - 0.1, [], true)).toEqual([]);
+    expect(parkingRunTicks(0, 30, [{ from: 5, to: 25 }], true)).toEqual([]);
   });
 });

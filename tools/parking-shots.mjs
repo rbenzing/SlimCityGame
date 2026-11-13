@@ -25,6 +25,7 @@ import { mkdirSync, readFileSync } from 'node:fs';
 import {
   CAMERA_MIN_DISTANCE,
   cleanShot,
+  closeUp,
   hooksReady,
   tileCamera,
   tileMeters,
@@ -86,6 +87,9 @@ const STREETS = [
     name: 'kerb',
     parkingLanes: true,
     subjects: ['res-low-1', 'res-normal-2', 'res-low-1', 'res-normal-2', 'res-low-1'],
+    // Homes on the far side too, facing south onto the same lanes: a two-tile
+    // lot (res-normal-t) and the one-tile and two-tile lots of the south row.
+    north: ['res-normal-t-2', 'res-low-1', 'res-normal-t-2', 'res-low-1', 'res-normal-2'],
   },
 ];
 /** Subject names for the frames: the catalog id, as the ticket's arrangements. */
@@ -214,6 +218,17 @@ try {
       ]);
       cursor += fp.w + (street.parkingLanes ? 2 : GAP);
     }
+    // The far side of the street: homes standing north of the road, facing it.
+    cursor = site.x + 1;
+    for (const id of street.north ?? []) {
+      const fp = entryOf(id).footprint;
+      const spot = { id, street: `${street.name}-north`, x: cursor, z: site.z - fp.d, w: fp.w, d: fp.d };
+      spots.push(spot);
+      await send('Building', [
+        { kind: 'placeBuilding', catalogId: id, x: spot.x, z: spot.z, rotation: 0 },
+      ]);
+      cursor += fp.w + 2;
+    }
   }
   await page.waitForTimeout(3000);
 
@@ -291,7 +306,7 @@ try {
     await shoot(`${frameName(s.id)}-above`, (x0 + x1) / 2 - 0.5, (z0 + z1) / 2 - 0.5, distance, 0, TOP_PITCH);
   };
   for (const s of spots) {
-    if (s.street === 'kerb') continue;
+    if (s.street.startsWith('kerb')) continue;
     await above(s);
   }
 
@@ -330,6 +345,13 @@ try {
   const roadZ = kerb[0].z - 1;
   await shoot('kerb-parking', (kx0 + kx1) / 2 - 0.5, roadZ + 0.5, Math.max(CAMERA_MIN_DISTANCE, ((kx1 - kx0 + 4) * T) / (2 * Math.tan(Math.PI / 8) * aspect * 0.8)), 0, TOP_PITCH);
   await shoot('kerb-parking-close', kx0 + 2, roadZ, CAMERA_MIN_DISTANCE, 0, TOP_PITCH);
+  // Top-down closes along the street, both rows of homes with their drives in
+  // frame, at twice the pixels: 70 m up, stepping four tiles along the street.
+  const normalSize = await closeUp(page, 2);
+  for (let step = 0, cx = kx0 + 2; cx < kx1 - 1; step++, cx += 4) {
+    await shoot(`kerb-both-${step}`, cx, roadZ, 70, 0, TOP_PITCH);
+  }
+  await normalSize();
 
   // A deep downtown block beside a two-deep one, grown by the game itself. The
   // deep block (6 rows between two streets) holds the lots for a car park and

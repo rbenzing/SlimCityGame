@@ -68,18 +68,18 @@ Back to [the index](../GROUND-TRUTHS.md).
   supplement inside those lines (3H.06): never under a line, past one, or off
   the pavement. — [road-model.md](../world-sim/road-model/README.md);
   `src/render/roadmarkings.ts`
-- [R-roads-047] A parking lane's travel side is its solid white parking lane line, and no
-  edge line runs inside the lane. Its stall marks are white ticks from that
-  line toward the kerb (MUTCD 3B.27), inside the lane and never past the
-  pavement. Stalls are 6.7 m (22 ft) long, and the stall nearest a junction is
-  6.1 m (20 ft); no marked stall is shorter than 6.1 m or longer than 7.9 m
-  (26 ft). Where the pitch leaves an odd length beside the end stall, the end
-  stall takes it up to 7.9 m and beyond that the no-parking zone grows, never
-  a stall. A car on a painted parking lane stands one to a stall, centred in
-  it. No stall is marked and no car parks within 9.1 m (30 ft) of a
-  stop line or signal, or within 6.1 m (20 ft) of a crosswalk or of the
-  junction mouth where there is no crosswalk, on either side of the junction
-  (UVC §11-1003). — [road-model.md](../world-sim/road-model/README.md);
+- [R-roads-047] A parallel parking lane marks its stalls with white corner marks on its
+  travel edge: a T where two stalls meet and an L at each end of a run, the
+  bar 0.3 m either side of a 0.6 m stem (MUTCD 3B.27, Figure 3B-23). It
+  carries no continuous line (3B.10 ¶05) except against a bike lane, and no
+  edge line runs inside it. Each run of kerb between two no-parking zones is
+  laid on its own from its upstream end: 6.7 m (22 ft) stalls, 6.1 m (20 ft)
+  at each end, the last taking an odd length up to 7.9 m (26 ft); the rest
+  stays unmarked, and a run under 6.1 m marks nothing. A car stands one to a
+  stall, centred. The zones: 9.1 m (30 ft) before a stop line or signal,
+  6.1 m (20 ft) from a crosswalk or a junction mouth with none (UVC
+  §11-1003), and a drive's mouth with 1.5 m (5 ft) either side. —
+  [markings.md](../world-sim/road-model/markings.md);
   `src/shared/kerbstalls.ts`, `src/shared/kerblayout.ts`, `src/render/parked.ts`
 - [R-roads-048] A parking lane is parallel, angled or head-in, and the style is part of
   the road's profile (a field on its parking piece, parallel when absent), so
@@ -107,9 +107,11 @@ Back to [the index](../GROUND-TRUTHS.md).
   module that the renderer and the sim both call, each reading the roads
   through a `KerbSurroundings` built by the same `roadSurroundings`; the sim
   never infers stalls another way. Every input is grid state (the road tiles,
-  the profile table, the junction controls), never anything only the mesh
-  knows, and nothing off the map: a lookup past the edge finds no road on
-  either thread. — [parking-to-code.md](../specs/parking-to-code.md);
+  the profile table, the junction controls) and the drive cuts on the face,
+  and nothing off the map: a lookup past the edge finds no road on either
+  thread. One input is still open: a home's drive is planned by the
+  renderer, so the sim's layout holds only the cut of the lot it is
+  crediting. — [parking-to-code.md](../specs/parking-to-code.md);
   `src/shared/kerblayout.ts`, `src/sim/kerbsurroundings.ts`
 - [R-roads-056] A sound wall is a piece of a motorway's or ramp's own cross-section, never
   a separate structure, and only those two classes admit it. Which tile edge
