@@ -171,10 +171,10 @@ switched on by the same night-factor threshold (see
 
 ## Clock and morning boot
 
-Visual time of day runs on its own constant, `VISUAL_DAY_TICKS` — about 2
-real minutes per full day/night cycle at 1× speed — decoupled from the
+Visual time of day runs on its own constant, `VISUAL_DAY_TICKS` — about six
+real minutes a full day and night at the 1× button — decoupled from the
 calendar day used for simulation ticks; coupling them directly would strobe
-day and night every 10 seconds. The status-strip clock displays visual time;
+day and night every half minute. The status-strip clock displays visual time;
 the calendar date advances on simulation days instead.
 
 Tick 0 reads as **09:00**, not midnight: a fresh city that booted into a
@@ -182,8 +182,9 @@ fully night-factor sky would be a near-black screen with every placed model
 invisible. A single shared constant, `CLOCK_START_OFFSET_TICKS =
 round(VISUAL_DAY_TICKS × 9/24)`, is added to the tick everywhere visual time
 is derived — both the lighting rig and the status-strip clock — so the
-displayed clock and the lighting always agree. It is a pure display shift:
-simulation ticks, saves and the calendar are untouched.
+displayed clock and the lighting always agree. The shift changes no
+simulation tick, save or calendar date; which sim rules read this clock is
+[time-system.md](../world-sim/time-system.md)'s to say.
 
 ## Shadows and grounding
 

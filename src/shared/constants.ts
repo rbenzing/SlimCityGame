@@ -50,7 +50,7 @@ export const SPEED_MULTIPLIERS: Readonly<Record<0 | 1 | 2 | 4, number>> = {
   2: 2 / 1.5,
   4: 8 / 1.5,
 };
-export const TICKS_PER_DAY = 200; // 10s per game day at 1x
+export const TICKS_PER_DAY = 200; // 10 s a game day at the raw multiplier, 30 s at the 1× button
 export const DAYS_PER_MONTH = 30;
 export const TICKS_PER_MONTH = TICKS_PER_DAY * DAYS_PER_MONTH;
 export const MONTHS_PER_YEAR = 12;
@@ -287,9 +287,11 @@ export const CHUNKS_PER_SIDE = MAP_SIZE / CHUNK_TILES;
 // --- night cycle & emissive city --------------------------------------------
 /**
  * Visual day/night period in ticks. Deliberately decoupled from the calendar
- * day (TICKS_PER_DAY = 200 would strobe day/night every 10s): 2400 ticks =
- * 120s of real time per full cycle at 1×. The status-strip clock maps
- * `tick % VISUAL_DAY_TICKS` onto 24h; the date still advances on sim days.
+ * day (TICKS_PER_DAY = 200 would turn day to night every 30 s at the 1×
+ * button): 2400 ticks is about six real minutes a cycle at 1×. The
+ * status-strip clock maps `tick % VISUAL_DAY_TICKS` onto 24h; the date still
+ * advances on sim days. Traffic's rush curve and a transit line's service
+ * span read the same hour.
  */
 export const VISUAL_DAY_TICKS = 2400;
 /**
