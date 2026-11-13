@@ -21,11 +21,14 @@ sun's own place overhead (`moonDirection`, `moonBlend` in `scene.ts`): lit
 from where noon lit them, a roof, a wall and a slope each keep the same share
 of their day value at night, whichever way a building faces. The night
 keyframe is the moon at `sunIntensity` 0.55 in `[0.6, 0.7, 1.0]` and the
-hemisphere at `hemiIntensity` 0.5 with sky `[0.49, 0.55, 0.78]` over ground
+hemisphere at `hemiIntensity` 0.75 with sky `[0.49, 0.55, 0.78]` over ground
 `[0.06, 0.07, 0.1]`, shadows at 0.2; the dusk keyframe matches those
 strengths in a violet hue (sky `[0.56, 0.53, 0.73]`, shadows 0.3), because
 03:00 is lerped halfway from night toward dusk and a dusk darker than night
-would drag the small hours under the legibility floor below.
+would drag the small hours under the legibility floor below. The day
+keyframe's hemisphere is 1.4 over a ground colour of `[0.4, 0.36, 0.28]`:
+the shade side of a wall takes the sky and the sunlit ground's bounce, and
+at 0.9 a wall in shade read a third of a wall in sun.
 
 ## Emissive building windows
 

@@ -161,7 +161,7 @@ const NIGHT_KEYFRAME: Keyframe = {
   // dial — while the sky dome and background stay navy.
   hemiSkyColor: [0.49, 0.55, 0.78],
   hemiGroundColor: [0.06, 0.07, 0.1],
-  hemiIntensity: 0.5,
+  hemiIntensity: 0.75,
   backgroundColor: [0x0a / 0xff, 0x12 / 0xff, 0x24 / 0xff], // deep navy #0a1224
   shadowIntensity: 0.2,
   nightFactor: 1,
@@ -176,7 +176,7 @@ const DUSK_KEYFRAME: Keyframe = {
   // under the night's own legibility floor.
   hemiSkyColor: [0.56, 0.53, 0.73],
   hemiGroundColor: [0.07, 0.06, 0.09],
-  hemiIntensity: 0.5,
+  hemiIntensity: 0.75,
   backgroundColor: [0.14, 0.1, 0.22], // violet dusk sky
   shadowIntensity: 0.3,
   nightFactor: 0.65,
@@ -197,8 +197,10 @@ const DAY_KEYFRAME: Keyframe = {
   sunColor: [1.0, 0.98, 0.92],
   sunIntensity: 1.8,
   hemiSkyColor: [0.55, 0.72, 0.95],
-  hemiGroundColor: [0.25, 0.2, 0.12],
-  hemiIntensity: 0.9,
+  // The shade side of a wall takes the sky plus the sunlit ground's bounce;
+  // at the old strength a wall in shade read a third of a wall in sun.
+  hemiGroundColor: [0.4, 0.36, 0.28],
+  hemiIntensity: 1.4,
   backgroundColor: [0.55, 0.75, 0.95],
   shadowIntensity: 1,
   nightFactor: 0,

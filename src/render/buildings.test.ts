@@ -271,9 +271,9 @@ describe('BuildingInstancer', () => {
 
     const abandonedColor = new THREE.Color();
     mesh.getColorAt(0, abandonedColor);
-    expect(abandonedColor.r).toBeCloseTo(0.25, 5);
-    expect(abandonedColor.g).toBeCloseTo(0.25, 5);
-    expect(abandonedColor.b).toBeCloseTo(0.25, 5);
+    expect(abandonedColor.r).toBeCloseTo(0.5, 5);
+    expect(abandonedColor.g).toBeCloseTo(0.5, 5);
+    expect(abandonedColor.b).toBeCloseTo(0.5, 5);
 
     const activeColor = new THREE.Color();
     mesh.getColorAt(1, activeColor);
@@ -997,7 +997,7 @@ describe('day facade (UI-SPEC §6.6 Stage 1) — extends the §6.5 material, no 
       ?.mesh as THREE.InstancedMesh;
     const abandonedColor = new THREE.Color();
     towerMesh.getColorAt(0, abandonedColor);
-    expect(abandonedColor.r).toBeCloseTo(0.25, 5); // Abandoned tint unchanged
+    expect(abandonedColor.r).toBeCloseTo(0.5, 5); // Abandoned tint: half light
 
     expect(instancer.activeAt(INDUSTRIAL.id, 0)).toBe(0); // Constructing: not lit-eligible
     expect(instancer.activeAt(GLASS_RES_TOWER.id, 0)).toBe(0); // Abandoned: not lit-eligible
@@ -1541,7 +1541,7 @@ describe('BuildingInstancer draws a grown building as its stacked tiers', () => 
     const color = new THREE.Color();
     for (let tier = 3; tier < 6; tier++) {
       mesh.getColorAt(tier, color);
-      expect(color.r).toBeCloseTo(0.25, 5);
+      expect(color.r).toBeCloseTo(0.5, 5);
     }
   });
 

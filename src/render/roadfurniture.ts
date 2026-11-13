@@ -69,8 +69,9 @@ import {
 const MANHOLE_RADIUS = 0.5;
 const MANHOLE_HEIGHT = 0.06; // rim thickness — stays low and flat
 const MANHOLE_SEGMENTS = 24;
-const MANHOLE_RIM_COLOR = 0x232327; // dark cast-iron rim, groove and seam
-const MANHOLE_PLATE_COLOR = 0x34343b; // lighter center plate
+/** Cast iron: a dark rim, groove and seam round a lighter centre plate. */
+export const MANHOLE_RIM_COLOR = materialHex('darkBitumen');
+export const MANHOLE_PLATE_COLOR = materialHex('slateRoof');
 /**
  * A hair proud of the ASPHALT, which is itself ROAD_Y_OFFSET above the ground
  * the props are seated from. Lifting only by this put the cover 0.06 m under
