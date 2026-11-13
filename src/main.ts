@@ -1285,10 +1285,16 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       // What the transit renderer actually built. A transit vehicle and a
       // traffic-spawned one look alike in a screenshot, so a shot cannot tell
       // whether a line's own vehicles are on the road; this can.
-      readTransitRender: (): { lines: number; stops: number; vehicles: number } => ({
+      readTransitRender: (): {
+        lines: number;
+        stops: number;
+        vehicles: number;
+        positions: { x: number; z: number }[];
+      } => ({
         lines: transitRenderer.lineCount(),
         stops: transitRenderer.stopCount(),
         vehicles: transitRenderer.busCount(),
+        positions: transitRenderer.carPositions(),
       }),
       readBuildings: (): Array<{
         id: number;

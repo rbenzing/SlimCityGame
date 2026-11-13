@@ -26,7 +26,7 @@ import {
   type TransitLine,
   type TransitMode,
 } from '../shared/types';
-import { TICK_RATE } from '../shared/constants';
+import { TICK_RATE, tileToWorld } from '../shared/constants';
 import {
   allocate,
   defaultFleet,
@@ -63,6 +63,8 @@ export interface TransitRoute {
   edges: number[];
   /** Approximate route length in tiles (points.length). */
   lengthTiles: number;
+  /** The line a vehicle drives along the whole route, world metres: its legs' routes joined. */
+  line?: { x: number; z: number }[];
 }
 
 // ---------------------------------------------------------------------------
@@ -187,6 +189,7 @@ export function routeLine(network: RoadNetworkApi, line: TransitLine): TransitRo
 
   const points: TilePoint[] = [];
   const edges: number[] = [];
+  const drive: { x: number; z: number }[] = [];
 
   for (let i = 0; i < stops.length - 1; i += 1) {
     const from = stops[i]!;
@@ -195,13 +198,24 @@ export function routeLine(network: RoadNetworkApi, line: TransitLine): TransitRo
     if (!leg) return null;
 
     edges.push(...leg.edges);
+    // Two stops that snap to one junction have no road between them to follow: they stand on one run of street, and the line is drawn between them.
+    const legLine =
+      leg.edges.length === 0
+        ? [
+            { x: tileToWorld(from.x), z: tileToWorld(from.z) },
+            { x: tileToWorld(to.x), z: tileToWorld(to.z) },
+          ]
+        : pathRoute(leg);
+    const seam = drive[drive.length - 1];
+    const joined = seam && legLine[0] && seam.x === legLine[0].x && seam.z === legLine[0].z;
+    for (let k = joined ? 1 : 0; k < legLine.length; k += 1) drive.push(legLine[k]!);
     const start = i === 0 ? 0 : 1; // skip the point shared with the previous leg's end
     for (let k = start; k < leg.points.length; k += 1) {
       points.push(leg.points[k]!);
     }
   }
 
-  return { points, edges, lengthTiles: points.length };
+  return { points, edges, lengthTiles: points.length, line: drive };
 }
 
 // ---------------------------------------------------------------------------
@@ -345,6 +359,7 @@ export interface TransitTickResult extends TransitFleetSnapshot {
   inService: Map<number, number>;
   /** The dead runs starting this tick: the bus lines' pull-out at 05:00 and pull-in at 23:00. */
   deadRuns: DeadRunStart[];
+  routes: Record<number, { x: number; z: number }[]>;
 }
 
 /** The vehicles each mode's connected depots field this tick. */
@@ -365,6 +380,7 @@ export function emptyTransitResult(): TransitTickResult {
     depotId: [],
     inService: new Map(),
     deadRuns: [],
+    routes: {},
   };
 }
 
@@ -647,6 +663,12 @@ export class TransitSystem {
       depotId,
       inService,
       deadRuns,
+      routes: Object.fromEntries(
+        lines.flatMap((line, i) => {
+          const drive = routes[i]?.line;
+          return drive ? [[line.id, drive] as const] : [];
+        }),
+      ),
     };
   }
 

@@ -25,6 +25,7 @@ import {
 } from '../shared/transitfleet';
 import { TICK_RATE, tileToWorld, VISUAL_DAY_TICKS } from '../shared/constants';
 import {
+  pathRoute,
   isRailTier,
   isTramTier,
   RoadFlow,
@@ -534,6 +535,7 @@ describe('TransitSystem.tick', () => {
             points: path.points,
             edges: path.edges,
             lengthTiles: path.points.length,
+            line: pathRoute(path),
           }
         : null,
     );
@@ -1529,5 +1531,79 @@ describe('dead runs', () => {
       expect(a.network.addVolumeCalls).toEqual(b.network.addVolumeCalls);
       expect(loads(a.network)).toHaveLength(4);
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The line each route lays for the renderer
+// ---------------------------------------------------------------------------
+
+describe('the line a route is drawn along', () => {
+  const SIZE = 20;
+  const stops = [
+    { x: 2, z: 3 },
+    { x: 12, z: 12 },
+  ];
+
+  /** A street from the first stop along `row`, then down `column`, to the second. */
+  function cornerNetwork(row: number, column: number): RoadNetwork {
+    const g = makeGrid(SIZE);
+    for (let x = 2; x <= 12; x++) g.roadTier[row * SIZE + x] = RoadTier.TwoLane;
+    for (let z = 3; z <= 12; z++) g.roadTier[z * SIZE + column] = RoadTier.TwoLane;
+    const network = new RoadNetwork();
+    network.rebuild(g);
+    return network;
+  }
+
+  const passesNear = (line: readonly { x: number; z: number }[], x: number, z: number): boolean =>
+    line.some((p) => Math.hypot(p.x - tileToWorld(x), p.z - tileToWorld(z)) < 1);
+
+  it('carries each routed line round the corner of its streets, by line id', () => {
+    const sys = new TransitSystem(cornerNetwork(3, 12));
+    const line = sys.createLine(stops, 0);
+    const drive = sys.tick(fixedAccessor(100), BUS_POOL).routes[line.id]!;
+    expect(passesNear(drive, 12, 3)).toBe(true);
+    expect(passesNear(drive, 2, 12)).toBe(false);
+  });
+
+  it('draws a new line when the street between the stops is rerouted', () => {
+    const network = cornerNetwork(3, 12);
+    const sys = new TransitSystem(network);
+    const line = sys.createLine(stops, 0);
+    expect(passesNear(sys.tick(fixedAccessor(100), BUS_POOL).routes[line.id]!, 12, 3)).toBe(true);
+
+    const g = makeGrid(SIZE);
+    for (let z = 3; z <= 12; z++) g.roadTier[z * SIZE + 2] = RoadTier.TwoLane;
+    for (let x = 2; x <= 12; x++) g.roadTier[12 * SIZE + x] = RoadTier.TwoLane;
+    network.rebuild(g);
+    const drive = sys.tick(fixedAccessor(100), BUS_POOL).routes[line.id]!;
+    expect(passesNear(drive, 2, 12)).toBe(true);
+    expect(passesNear(drive, 12, 3)).toBe(false);
+  });
+
+  it('runs between two stops on one run of street, though they snap to one junction', () => {
+    const sys = new TransitSystem(cornerNetwork(3, 12));
+    const line = sys.createLine(
+      [
+        { x: 5, z: 3 },
+        { x: 7, z: 3 },
+      ],
+      0,
+    );
+    const drive = sys.tick(fixedAccessor(100), BUS_POOL).routes[line.id]!;
+    expect(passesNear(drive, 5, 3)).toBe(true);
+    expect(passesNear(drive, 7, 3)).toBe(true);
+  });
+
+  it('has no entry for a line the network cannot route', () => {
+    const sys = new TransitSystem(cornerNetwork(3, 12));
+    const line = sys.createLine(
+      [
+        { x: 2, z: 3 },
+        { x: 18, z: 18 },
+      ],
+      0,
+    );
+    expect(sys.tick(fixedAccessor(100), BUS_POOL).routes[line.id]).toBeUndefined();
   });
 });

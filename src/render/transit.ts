@@ -69,6 +69,12 @@ export interface TransitSnapshot {
   ridership: number[];
   /** Vehicles each line runs, index-aligned with `lines`; absent (an older worker) draws none. */
   served?: number[];
+  /**
+   * The line each routed line's vehicles and ribbon follow, by line id; a line
+   * with no entry has no route and runs nothing. Absent (an older worker) lays
+   * every line along its stops.
+   */
+  routes?: Record<number, readonly WorldPoint[]>;
 }
 
 // ---------------------------------------------------------------------------
@@ -543,8 +549,8 @@ export class TransitRenderer {
 
     this.lineTotal = snapshot.lines.length;
     this.buildShelters(snapshot.lines, hasStopBuilding, isStation);
-    this.buildRibbon(snapshot.lines);
-    this.buildBuses(snapshot.lines, snapshot.served ?? []);
+    this.buildRibbon(snapshot.lines, snapshot.routes);
+    this.buildBuses(snapshot.lines, snapshot.served ?? [], snapshot.routes);
 
     if (this.ribbonMesh) this.ribbonMesh.visible = this.ribbonVisible;
   }
@@ -639,6 +645,17 @@ export class TransitRenderer {
   getCarMatrix(slot: number, out: THREE.Matrix4): void {
     const car = this.buses[slot];
     if (car) this.carMeshes[car.mesh]?.getMatrixAt(car.index, out);
+  }
+
+  /** Where every drawn vehicle stands on the ground, world metres, for a dev read-back. */
+  carPositions(): { x: number; z: number }[] {
+    const matrix = new THREE.Matrix4();
+    const at = new THREE.Vector3();
+    return this.buses.map((_, slot) => {
+      this.getCarMatrix(slot, matrix);
+      at.setFromMatrixPosition(matrix);
+      return { x: at.x, z: at.z };
+    });
   }
 
   /** The geometry vehicle `slot` is drawn with, for a test reading what the set shows. */
@@ -781,11 +798,12 @@ export class TransitRenderer {
     this.scene.add(shelterMesh, signPoleMesh, signMesh);
   }
 
-  private buildRibbon(lines: readonly TransitLine[]): void {
+  private buildRibbon(lines: readonly TransitLine[], routes: TransitSnapshot['routes']): void {
     const segmentGeometries: THREE.BufferGeometry[] = [];
 
     for (const line of lines) {
-      const worldPoints = toWorldPoints(line.stops);
+      // A line with no route still shows what the player drew, stop to stop.
+      const worldPoints = routes?.[line.id] ?? toWorldPoints(line.stops);
       for (let i = 0; i < worldPoints.length - 1; i += 1) {
         const a = worldPoints[i]!;
         const b = worldPoints[i + 1]!;
@@ -834,7 +852,11 @@ export class TransitRenderer {
   }
 
   /** One set per vehicle the sim says the line runs, spaced at 1/served of the route. */
-  private buildBuses(lines: readonly TransitLine[], served: readonly number[]): void {
+  private buildBuses(
+    lines: readonly TransitLine[],
+    served: readonly number[],
+    routes: TransitSnapshot['routes'],
+  ): void {
     const buses: ActiveVehicle[] = [];
     const colors: number[] = [];
 
@@ -844,8 +866,9 @@ export class TransitRenderer {
       const count = Math.max(0, Math.floor(served[i] ?? 0));
       if (count === 0) continue;
 
-      const worldPoints = toWorldPoints(line.stops);
-      if (worldPoints.length < 2) continue;
+      // With routes sent, a line the sim could not route runs nothing.
+      const worldPoints = routes ? routes[line.id] : toWorldPoints(line.stops);
+      if (!worldPoints || worldPoints.length < 2) continue;
       const totalLength = polylineLength(worldPoints);
       if (totalLength <= 0) continue;
 
