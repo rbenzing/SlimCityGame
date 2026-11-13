@@ -31,7 +31,13 @@ independent per-approach toggle a player sets from the junction inspector.
 
 A crossing is as DEEP as the footway it carries across the road, never less
 than the 1.8 m a marked crossing may be (MUTCD 3C.03 ¶05), and it lies AGAINST THE
-KERB LINE, which is where that footway runs. It is not as deep as the strip of
+KERB LINE of the road it runs along, on the side away from the box: a
+crosswalk is the part of the roadway between the footway's two lines carried
+over (MUTCD 1C.02 def. 50), and the kerb ramps must fall within it (3C.03
+¶09). Set inside the box instead, four crossings of wide roads made a
+square in the middle of the junction with their bars piled at its corners.
+Bars are cut to the carriageway, so a crossing follows the kerb return out
+to the kerb at each end. It is not as deep as the strip of
 tile the footway sits in: the strip is the room available and runs opposite to
 the road, leaving 6.25 m beside a two-lane street and 1.90 m beside an avenue —
 so reading the room as the figure gave the quiet street a crossing 20 ft deep

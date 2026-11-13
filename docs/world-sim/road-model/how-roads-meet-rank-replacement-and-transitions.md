@@ -147,7 +147,12 @@ median is open: the two halves join across that row, and the crossing is a
 pair of junctions side by side, one on each carriageway. A car crossing goes
 straight over both; one turning turns onto the carriageway running its way,
 crossing the first to reach the second where it must, since each half is
-driven only the way it flows. A street meeting only one half is still a T, and
+driven only the way it flows. The pair is painted as the one intersection it
+is on the ground: a median this narrow holds no vehicle between the halves,
+which is the standard's test for calling them two (MUTCD 1C.02 def. 113(c)),
+so the box is bare from one outer kerb to the other and the crossings stand
+outside it, each running the divided road's whole width behind the median's
+nose `[R-roads-083]`. A street meeting only one half is still a T, and
 the median stays shut there: a right turn in and out, the way a median
 without a break works.
 

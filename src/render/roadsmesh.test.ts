@@ -8,7 +8,7 @@ import {
   chunksReading,
   emitLaneUseArrow,
   emitTurnArrow,
-  crosswalkBarOffsets,
+  crosswalkBarCentres,
   isAvenueMedianEligible,
   hasMedianTree,
   gravelColorAt,
@@ -1298,93 +1298,76 @@ describe('roadTileVertices — intersection suppression / proper intersections (
 });
 
 describe('junctionArmLayout — a crosswalk and a stop line at their real size', () => {
-  it('lays them in the order a driver meets them: stop line, gap, then the crossing', () => {
-    const layout = junctionArmLayout(1.5);
-    // Measured from the junction tile's edge, positive inward. A stop line
-    // stands in advance of the nearest crosswalk line — stopping past the
-    // crossing is stopping on the people using it — and there is no room for
-    // it between the tile edge and the crossing, so it goes back down the
-    // APPROACH, which is where a driver actually stops.
-    expect(layout.stopLineStart).toBeLessThan(0);
-    expect(layout.stopLineEnd - layout.stopLineStart).toBeCloseTo(0.4, 9);
-    expect(layout.crosswalkStart).toBeGreaterThan(layout.stopLineEnd);
-    expect(layout.crosswalkStart - layout.stopLineEnd).toBeCloseTo(1.2, 9);
+  it('lays them in the order a driver meets them: crossing from the kerb line, a gap, then the stop line', () => {
+    const layout = junctionArmLayout(5);
+    // Measured outward from the junction's centre. The crossing starts on the
+    // crossing road's kerb line, and a stop line stands 1.2 m in advance of
+    // its nearest line, stopping past the crossing being stopping on the
+    // people using it.
+    expect(layout.crosswalkNear).toBe(5);
+    expect(layout.stopLineNear - layout.crosswalkFar).toBeCloseTo(1.2, 9);
+    expect(layout.stopLineFar - layout.stopLineNear).toBeCloseTo(0.4, 9);
   });
 
-  it('lays the crossing over the strip the footway crosses, never narrower than a crossing may be', () => {
-    // A crossing is the footway carried over the road, so it is as deep as
-    // that footway — NOT as deep as the strip of tile the footway happens to
-    // sit in. The strip is the room available and runs opposite to the road:
-    // a two-lane street leaves 6.25 m of it and an avenue 1.90 m, so reading
-    // the room as the figure gave the quiet street a crossing 20 ft deep and
-    // the busy one a normal 6 ft.
-    const roomy = junctionArmLayout(6.25, SIDEWALK_WIDTH_M);
-    expect(roomy.crosswalkEnd - roomy.crosswalkStart).toBeCloseTo(SIDEWALK_WIDTH_M, 9);
-    // And it lies AGAINST THE KERB at the inner end of that strip, which is
-    // where the footway runs. Anchored at the tile edge instead it floats at
-    // the outer end with 4.4 m of road between it and the kerb.
-    expect(roomy.crosswalkEnd).toBeCloseTo(6.25, 9);
-
-    // The avenue, whose strip is barely a footway wide, gets the same crossing
-    // filling almost the whole strip — which is why it looked right while the
-    // two-lane street did not.
-    const avenue = junctionArmLayout(1.9, SIDEWALK_WIDTH_M);
-    expect(avenue.crosswalkEnd - avenue.crosswalkStart).toBeCloseTo(SIDEWALK_WIDTH_M, 9);
-    expect(avenue.crosswalkEnd).toBeCloseTo(1.9, 9);
-
-    // A road that leaves almost no verge still gets a crossing a person can
-    // stand in; that one reaches a little into the box.
-    const tight = junctionArmLayout(0.5);
-    expect(tight.crosswalkEnd - tight.crosswalkStart).toBeCloseTo(1.8, 9);
-    expect(tight.crosswalkStart).toBeCloseTo(0, 9);
-
-    // And a road carrying a wide footway carries it across at that width.
+  it('is as deep as the footway it carries across, never narrower than a crossing may be', () => {
+    const footway = junctionArmLayout(6.25, SIDEWALK_WIDTH_M);
+    expect(footway.crosswalkFar - footway.crosswalkNear).toBeCloseTo(SIDEWALK_WIDTH_M, 9);
     const wide = junctionArmLayout(6.25, 3);
-    expect(wide.crosswalkEnd - wide.crosswalkStart).toBeCloseTo(3, 9);
-    expect(wide.crosswalkEnd).toBeCloseTo(6.25, 9);
+    expect(wide.crosswalkFar - wide.crosswalkNear).toBeCloseTo(3, 9);
+    // A road with next to no verge still gets a crossing a person can stand in.
+    const tight = junctionArmLayout(6.25, 0.5);
+    expect(tight.crosswalkFar - tight.crosswalkNear).toBeCloseTo(1.8, 9);
   });
 
-  it('keeps its real size whatever the road, since squeezing it is what made a crossing read as a dashed ring', () => {
-    // The old layout scaled everything into the depth left between the box and
-    // the tile edge, which on a four-lane is half a metre.
-    const a = junctionArmLayout();
-    const b = junctionArmLayout();
-    expect(a).toEqual(b);
-    expect(a.stopLineEnd).toBeLessThan(TILE_METERS / 2); // still inside the tile
+  it('keeps its real size whatever the road', () => {
+    const narrow = junctionArmLayout(2, SIDEWALK_WIDTH_M);
+    const broad = junctionArmLayout(9, SIDEWALK_WIDTH_M);
+    expect(narrow.crosswalkFar - narrow.crosswalkNear).toBeCloseTo(
+      broad.crosswalkFar - broad.crosswalkNear,
+      9,
+    );
+    expect(narrow.stopLineNear - narrow.crosswalkFar).toBeCloseTo(
+      broad.stopLineNear - broad.crosswalkFar,
+      9,
+    );
   });
 });
-describe('crosswalkBarOffsets — zebra-stripe placement (UI-SPEC §6.7 Roads v2)', () => {
-  it('returns [] for a non-positive width', () => {
-    expect(crosswalkBarOffsets(0)).toEqual([]);
-    expect(crosswalkBarOffsets(-1)).toEqual([]);
+
+describe('crosswalkBarCentres — zebra-stripe placement', () => {
+  it('returns [] for a non-positive span', () => {
+    expect(crosswalkBarCentres(0, 0)).toEqual([]);
+    expect(crosswalkBarCentres(1, -1)).toEqual([]);
   });
 
-  it('places at least one bar for any positive carriageway half-width', () => {
-    expect(crosswalkBarOffsets(0.5).length).toBeGreaterThanOrEqual(1);
+  it('places one bar in the middle of a span too narrow for two', () => {
+    expect(crosswalkBarCentres(-0.3, 0.3)).toEqual([0]);
   });
 
-  it('every bar stays within the carriageway half-width', () => {
-    for (const halfWidth of [0.5, 2, 4.8, 6.8, 7.36]) {
-      for (const offset of crosswalkBarOffsets(halfWidth)) {
-        expect(Math.abs(offset)).toBeLessThanOrEqual(halfWidth);
-      }
+  it('meets the kerb at both ends and every bar stays within the span', () => {
+    for (const half of [2, 4.8, 6.8, 7.36]) {
+      const centres = crosswalkBarCentres(-half, half);
+      expect(centres.length).toBeGreaterThan(1);
+      for (const c of centres) expect(Math.abs(c) + 0.225).toBeLessThanOrEqual(half + 1e-9);
+      expect(centres[0]! - 0.225).toBeCloseTo(-half, 9);
+      expect(centres[centres.length - 1]! + 0.225).toBeCloseTo(half, 9);
     }
   });
 
-  it('bars are evenly spaced at the ~0.45m width + ~0.6m gap period (1.05m)', () => {
-    const offsets = crosswalkBarOffsets(6.8); // a wide carriageway half-width (fits several bars)
-    expect(offsets.length).toBeGreaterThan(2);
-    for (let i = 1; i < offsets.length; i++) {
-      expect((offsets[i] as number) - (offsets[i - 1] as number)).toBeCloseTo(1.05, 9);
+  it('spaces bars evenly at no less than the 1.05 m period', () => {
+    const centres = crosswalkBarCentres(-6.8, 6.8);
+    expect(centres.length).toBeGreaterThan(2);
+    const pitch = centres[1]! - centres[0]!;
+    expect(pitch).toBeGreaterThanOrEqual(1.05 - 1e-9);
+    expect(pitch).toBeLessThan(1.2);
+    for (let i = 1; i < centres.length; i++) {
+      expect(centres[i]! - centres[i - 1]!).toBeCloseTo(pitch, 9);
     }
   });
 
-  it('is a pure function of the width alone — identical for every arm of the same tier', () => {
-    expect(crosswalkBarOffsets(4.8)).toEqual(crosswalkBarOffsets(4.8));
-  });
-
-  it('a wider carriageway fits more bars than a narrower one', () => {
-    expect(crosswalkBarOffsets(6.8).length).toBeGreaterThan(crosswalkBarOffsets(4.8).length);
+  it('is symmetric about the middle of the span and fits more bars in a wider one', () => {
+    const centres = crosswalkBarCentres(-4.8, 4.8);
+    centres.forEach((c, i) => expect(c).toBeCloseTo(-centres[centres.length - 1 - i]!, 9));
+    expect(crosswalkBarCentres(-6.8, 6.8).length).toBeGreaterThan(centres.length);
   });
 });
 
@@ -3744,6 +3727,447 @@ describe('roadTileVertices — a motorway laid across two tiles draws one carria
     expect(paintZs(far, isMarkingYellow)).toEqual([]);
     // The white edge line stands inside the right shoulder, out at the far edge.
     expect(Math.max(...paintZs(far, isMarkingWhite))).toBeGreaterThan(seamZ + 9);
+  });
+});
+
+/**
+ * The white paint a tile lays that is an axis-aligned rectangle — bars and
+ * stop lines, not the arcs of an edge line — as boxes in metres from the
+ * given centre.
+ */
+function whiteRects(
+  v: { positions: number[]; colors: number[] },
+  cx: number,
+  cz: number,
+): Array<{ x0: number; x1: number; z0: number; z1: number }> {
+  const out: Array<{ x0: number; x1: number; z0: number; z1: number }> = [];
+  for (let q = 0; q + 18 <= v.positions.length; q += 18) {
+    if (!isMarkingWhite(v.colors.slice(q, q + 3))) continue;
+    const xs: number[] = [];
+    const zs: number[] = [];
+    for (let k = 0; k < 6; k++) {
+      xs.push(v.positions[q + k * 3]! - cx);
+      zs.push(v.positions[q + k * 3 + 2]! - cz);
+    }
+    const x0 = Math.min(...xs);
+    const x1 = Math.max(...xs);
+    const z0 = Math.min(...zs);
+    const z1 = Math.max(...zs);
+    const tri = (a: number, b: number, c: number): number =>
+      Math.abs((xs[b]! - xs[a]!) * (zs[c]! - zs[a]!) - (xs[c]! - xs[a]!) * (zs[b]! - zs[a]!)) / 2;
+    const area = tri(0, 1, 2) + tri(3, 4, 5);
+    if (Math.abs(area - (x1 - x0) * (z1 - z0)) > 1e-6) continue;
+    out.push({ x0, x1, z0, z1 });
+  }
+  return out;
+}
+
+describe('roadTileVertices — a crossing is the crossing road’s footway carried over the arm', () => {
+  type Box = { x0: number; x1: number; z0: number; z1: number };
+  type Painted = Box & { thin: number; long: number };
+  const centre = 5.5 * TILE_METERS;
+
+  /** Every axis-aligned white rectangle a tile lays, as a box in tile-local metres. */
+  const whiteBoxes = (v: { positions: number[]; colors: number[] }): Painted[] =>
+    whiteRects(v, centre, centre).map((b) => ({
+      ...b,
+      thin: Math.min(b.x1 - b.x0, b.z1 - b.z0),
+      long: Math.max(b.x1 - b.x0, b.z1 - b.z0),
+    }));
+  /** A zebra bar: 0.45 m across and as deep as the crossing. */
+  const isBar = (b: Painted): boolean => Math.abs(b.thin - 0.45) < 0.02 && b.long < 4;
+  /** A stop line: 0.4 m deep and long across the lanes. */
+  const isStopLine = (b: Painted): boolean => Math.abs(b.thin - 0.4) < 0.02 && b.long > 3;
+  const overlap = (a: Box, b: Box): boolean =>
+    a.x0 < b.x1 - 1e-6 && b.x0 < a.x1 - 1e-6 && a.z0 < b.z1 - 1e-6 && b.z0 < a.z1 - 1e-6;
+
+  const half = (tier: RoadTier): number => carriagewayHalfWidthOf(presetProfileForTier(tier));
+  const footway = (tier: RoadTier): number => kerbWidthOf(presetProfileForTier(tier));
+
+  const junction = (
+    tile: RoadTier,
+    ns: RoadTier,
+    ew: RoadTier,
+    mask = N | E | S | W,
+    control: JunctionControl = 'allWayStop',
+  ) =>
+    roadTileVertices(
+      5,
+      5,
+      tile,
+      mask,
+      flatHeightAt,
+      { n: ns, s: ns, e: ew, w: ew },
+      undefined,
+      undefined,
+      undefined,
+      control,
+    );
+
+  const barsOf = (v: ReturnType<typeof junction>, arm: 'n' | 's' | 'e' | 'w'): Painted[] =>
+    whiteBoxes(v).filter(
+      (b) =>
+        isBar(b) &&
+        (arm === 'n' ? b.z1 < 0 : arm === 's' ? b.z0 > 0 : arm === 'e' ? b.x0 > 0 : b.x1 < 0) &&
+        (arm === 'n' || arm === 's' ? b.z1 - b.z0 > b.x1 - b.x0 : b.x1 - b.x0 > b.z1 - b.z0),
+    );
+
+  const cases: Array<[string, RoadTier, RoadTier, RoadTier]> = [
+    ['four-lane x four-lane', RoadTier.FourLane, RoadTier.FourLane, RoadTier.FourLane],
+    ['two-lane x four-lane', RoadTier.FourLane, RoadTier.TwoLane, RoadTier.FourLane],
+    [
+      'four-lane tile, two-lane street along x',
+      RoadTier.TwoLane,
+      RoadTier.FourLane,
+      RoadTier.TwoLane,
+    ],
+    ['avenue x two-lane', RoadTier.Avenue, RoadTier.TwoLane, RoadTier.Avenue],
+  ];
+
+  for (const [name, tile, ns, ew] of cases) {
+    describe(name, () => {
+      const v = junction(tile, ns, ew);
+      const boxes = whiteBoxes(v);
+      const arm = { n: ns, s: ns, e: ew, w: ew };
+      // Half of the road crossing each arm: the one running the other way.
+      const crossHalf = { n: half(ew), s: half(ew), e: half(ns), w: half(ns) };
+      const depth = (side: 'n' | 'e' | 's' | 'w') =>
+        Math.max(footway(tile), 1.8) + 0 * crossHalf[side];
+
+      it('puts every crossing outside the box, from the crossing road’s kerb line outward', () => {
+        for (const side of ['n', 'e', 's', 'w'] as const) {
+          const bars = barsOf(v, side);
+          expect(bars.length, `${side} arm has a crossing`).toBeGreaterThan(2);
+          for (const b of bars) {
+            const near = side === 'n' ? -b.z1 : side === 's' ? b.z0 : side === 'e' ? b.x0 : -b.x1;
+            const far = side === 'n' ? -b.z0 : side === 's' ? b.z1 : side === 'e' ? b.x1 : -b.x0;
+            expect(near, `${side} bar starts on the kerb line`).toBeGreaterThanOrEqual(
+              crossHalf[side] - 1e-6,
+            );
+            expect(far - near).toBeCloseTo(depth(side), 6);
+          }
+        }
+      });
+
+      it('lays every bar wholly on the arm’s carriageway', () => {
+        for (const side of ['n', 'e', 's', 'w'] as const) {
+          const reach = half(arm[side]) + 4;
+          for (const b of barsOf(v, side)) {
+            const across = side === 'n' || side === 's' ? [b.x0, b.x1] : [b.z0, b.z1];
+            // Never past the arm's kerb by more than its kerb return bulges.
+            for (const a of across) expect(Math.abs(a)).toBeLessThanOrEqual(reach);
+          }
+          const bars = barsOf(v, side);
+          const lo = Math.min(...bars.map((b) => (side === 'n' || side === 's' ? b.x0 : b.z0)));
+          const hi = Math.max(...bars.map((b) => (side === 'n' || side === 's' ? b.x1 : b.z1)));
+          // The crossing reaches the kerb at both ends, stopping a hand short of
+          // it only where it would meet the crossing across the corner.
+          expect(Math.abs(lo) - half(arm[side])).toBeGreaterThan(-0.31);
+          expect(Math.abs(hi) - half(arm[side])).toBeGreaterThan(-0.31);
+          expect(Math.abs(lo) - half(arm[side])).toBeLessThan(1.5);
+          expect(Math.abs(hi) - half(arm[side])).toBeLessThan(1.5);
+        }
+      });
+
+      it('lays no paint inside the box and no two crossings touch', () => {
+        const inBox = boxes.filter(
+          (b) =>
+            b.x0 > -half(ew === RoadTier.None ? tile : ns) + 0.05 &&
+            b.x1 < half(ns) - 0.05 &&
+            b.z0 > -half(ew) + 0.05 &&
+            b.z1 < half(ew) - 0.05,
+        );
+        expect(inBox).toEqual([]);
+        const bars = boxes.filter(isBar);
+        for (let i = 0; i < bars.length; i++) {
+          for (let j = i + 1; j < bars.length; j++) {
+            expect(overlap(bars[i]!, bars[j]!)).toBe(false);
+          }
+        }
+      });
+
+      it('stands each stop line at least 1.2 m before its crossing', () => {
+        for (const b of boxes.filter(isStopLine)) {
+          const vertical = b.x1 - b.x0 > b.z1 - b.z0;
+          const side = vertical ? (b.z1 < 0 ? 'n' : 's') : b.x1 < 0 ? 'w' : 'e';
+          const crossFar = crossHalf[side] + depth(side);
+          const near = side === 'n' ? -b.z1 : side === 's' ? b.z0 : side === 'e' ? b.x0 : -b.x1;
+          expect(near - crossFar).toBeGreaterThanOrEqual(1.2 - 1e-6);
+        }
+        expect(boxes.filter(isStopLine).length).toBeGreaterThan(0);
+      });
+    });
+  }
+
+  it('gives a one-way arm whose lanes arrive a stop line, and the arm they leave by none', () => {
+    const oneWay = half(RoadTier.OneWay);
+    const v = roadTileVertices(
+      5,
+      5,
+      RoadTier.OneWay,
+      N | E | S | W,
+      flatHeightAt,
+      { n: RoadTier.OneWay, s: RoadTier.OneWay, e: RoadTier.TwoLane, w: RoadTier.TwoLane },
+      undefined,
+      {
+        n: oneWay,
+        s: oneWay,
+        e: half(RoadTier.TwoLane),
+        w: half(RoadTier.TwoLane),
+        // Drawn north to south: the north arm's lanes arrive, the south arm's leave.
+        approaches: { n: { from: -oneWay, to: oneWay }, s: null, e: undefined, w: undefined },
+      },
+      undefined,
+      'allWayStop',
+    );
+    const stops = whiteBoxes(v).filter(isStopLine);
+    expect(stops.some((b) => b.z1 < 0 && b.x1 - b.x0 > b.z1 - b.z0)).toBe(true);
+    expect(stops.some((b) => b.z0 > 0 && b.x1 - b.x0 > b.z1 - b.z0)).toBe(false);
+  });
+
+  it('moves a two-lane crossroads’ crossings only as far as the crossing road’s kerb line', () => {
+    const v = junction(RoadTier.TwoLane, RoadTier.TwoLane, RoadTier.TwoLane);
+    const bars = barsOf(v, 'n');
+    const near = Math.min(...bars.map((b) => -b.z1));
+    expect(near).toBeCloseTo(half(RoadTier.TwoLane), 6);
+  });
+
+  it('paints a T on its three arms only, each crossing off the road it crosses', () => {
+    const v = junction(RoadTier.TwoLane, RoadTier.TwoLane, RoadTier.FourLane, N | E | W);
+    expect(barsOf(v, 's')).toEqual([]);
+    for (const side of ['n', 'e', 'w'] as const) {
+      expect(barsOf(v, side).length, `${side} crossing`).toBeGreaterThan(2);
+    }
+    // The north arm's crossing lies outside the four-lane road across it.
+    expect(Math.min(...barsOf(v, 'n').map((b) => -b.z1))).toBeGreaterThanOrEqual(
+      half(RoadTier.FourLane) - 1e-6,
+    );
+  });
+});
+
+describe('roadTileVertices — lines and arrows end at the stop line', () => {
+  const approach = (reach: number) =>
+    roadTileVertices(4, 4, RoadTier.TwoLane, N | S, flatHeightAt, undefined, undefined, {
+      ...presetHalvesFor(RoadTier.TwoLane),
+      reach: { n: 0, e: 0, s: reach, w: 0 },
+    });
+  /** The southmost z any centre line or lane line of the tile reaches, relative to its centre. */
+  const laneLineEnd = (v: { positions: number[]; colors: number[] }): number => {
+    let end = -Infinity;
+    for (let i = 0; i < v.colors.length; i += 3) {
+      const c = v.colors.slice(i, i + 3);
+      const yellow = c[0]! > 0.85 && c[1]! > 0.6 && c[1]! < 0.85 && c[2]! < 0.35;
+      if (yellow) end = Math.max(end, v.positions[i + 2]! - 4.5 * TILE_METERS);
+    }
+    return end;
+  };
+
+  it('stops the centre line short of a stop line standing on the tile', () => {
+    const plain = laneLineEnd(approach(0));
+    expect(plain).toBeCloseTo(TILE_METERS / 2, 6);
+    expect(laneLineEnd(approach(1.6))).toBeCloseTo(TILE_METERS / 2 - 1.6, 6);
+  });
+
+  function presetHalvesFor(tier: RoadTier): NeighborHalves {
+    const h = carriagewayHalfWidthOf(presetProfileForTier(tier));
+    return { n: h, e: h, s: h, w: h };
+  }
+});
+
+describe('roadTileVertices — a street crossing a divided road is one intersection', () => {
+  // The two halves of a six-lane divided road run north-south; the street
+  // crosses west to east. The west half's partner lies to its east.
+  const street = RoadTier.TwoLane;
+  const corridorHalf = RoadTier.Avenue;
+  const centre = 5.5 * TILE_METERS;
+  const flow = RoadFlow.South;
+  const lanes = (): RoadProfile => ({
+    class: 'divided',
+    pieces: [
+      { kind: 'sidewalk', width: 1.9 },
+      { kind: 'travel', width: 3.6, flow: 'fwd' },
+      { kind: 'travel', width: 3.6, flow: 'fwd' },
+      { kind: 'travel', width: 3.6, flow: 'fwd' },
+      { kind: 'median', width: 1.0 },
+    ],
+  });
+  const halfOfCorridor = carriagewayHalfWidthOf(lanes());
+  const streetHalf = carriagewayHalfWidthOf(presetProfileForTier(street));
+  const kerb = kerbWidthOf(presetProfileForTier(street));
+
+  const west = (partner: 'e' | null, w = streetHalf, partnerAcross = 0) =>
+    roadTileVertices(
+      5,
+      5,
+      corridorHalf,
+      N | E | S | W,
+      flatHeightAt,
+      { n: corridorHalf, s: corridorHalf, e: corridorHalf, w: street },
+      lanes(),
+      {
+        n: halfOfCorridor,
+        s: halfOfCorridor,
+        e: halfOfCorridor,
+        w,
+        partner,
+        partnerAcross,
+      },
+      flow,
+      'allWayStop',
+    );
+  const east = (partner: 'w' | null, e = streetHalf, partnerAcross = 0) =>
+    roadTileVertices(
+      6,
+      5,
+      corridorHalf,
+      N | E | S | W,
+      flatHeightAt,
+      { n: corridorHalf, s: corridorHalf, e: street, w: corridorHalf },
+      lanes(),
+      {
+        n: halfOfCorridor,
+        s: halfOfCorridor,
+        e,
+        w: halfOfCorridor,
+        partner,
+        partnerAcross,
+      },
+      flow,
+      'allWayStop',
+    );
+
+  const boxes = (v: { positions: number[]; colors: number[] }, cx: number) =>
+    whiteRects(v, cx, centre);
+  const cxWest = 5.5 * TILE_METERS;
+  const cxEast = 6.5 * TILE_METERS;
+
+  it('paints no stop line or crossing across the gap between the halves', () => {
+    const v = west('e');
+    const bars = boxes(v, cxWest);
+    // Across the partner arm (east) a stop line is thin along x and long along
+    // z, and a crossing is a row of bars thin along z. Neither is there: the
+    // only paint east of the half's carriageway is the crossing over the
+    // arms north and south, whose bars are long along z.
+    const east = bars.filter((b) => b.x0 > 0);
+    expect(east.filter((b) => b.x1 - b.x0 < 0.5 && b.z1 - b.z0 > 3)).toEqual([]);
+    expect(
+      east.filter((b) => b.x1 - b.x0 > b.z1 - b.z0 && Math.abs(b.z1 - b.z0 - 0.45) < 0.02),
+    ).toEqual([]);
+    expect(east.length).toBeGreaterThan(0);
+  });
+
+  it('keeps the street’s own arm painted as any junction arm is', () => {
+    const bars = boxes(west('e'), cxWest).filter((b) => b.x1 < 0);
+    expect(bars.some((b) => b.x1 - b.x0 < 0.5 && b.z1 - b.z0 > 3)).toBe(true);
+    expect(bars.filter((b) => b.x1 - b.x0 > b.z1 - b.z0).length).toBeGreaterThan(2);
+  });
+
+  it('paints the opening differently from a street that meets one half only', () => {
+    expect(boxes(west('e'), cxWest).length).not.toBe(boxes(west(null), cxWest).length);
+  });
+
+  it('runs the crossing over the divided road unbroken from kerb to kerb', () => {
+    const near = boxes(west('e'), cxWest).filter((b) => b.z1 < 0 && b.z0 > -TILE_METERS);
+    const far = boxes(east('w'), cxEast)
+      .filter((b) => b.z1 < 0 && b.z0 > -TILE_METERS)
+      .map((b) => ({ ...b, x0: b.x0 + TILE_METERS, x1: b.x1 + TILE_METERS }));
+    const bars = [...near, ...far].filter((b) => b.z1 - b.z0 > b.x1 - b.x0 && b.z1 - b.z0 < 4);
+    expect(bars.length).toBeGreaterThan(8);
+    const sorted = bars.sort((a, b) => a.x0 - b.x0);
+    for (let i = 1; i < sorted.length; i++) {
+      const gap = sorted[i]!.x0 - sorted[i - 1]!.x1;
+      expect(gap, 'no bar overlaps the next').toBeGreaterThanOrEqual(-1e-6);
+      expect(gap, 'no break wider than a bar gap or two').toBeLessThan(1.5);
+    }
+    // And it spans both halves: from the west kerb to the east kerb.
+    expect(sorted[0]!.x0).toBeLessThan(-halfOfCorridor + 1.5);
+    expect(sorted[sorted.length - 1]!.x1).toBeGreaterThan(TILE_METERS + halfOfCorridor - 1.5);
+  });
+
+  describe('with a narrow street on one side and a wide one on the other', () => {
+    const narrow = streetHalf;
+    const wide = narrow + 2;
+    const depth = Math.max(kerbWidthOf(lanes()), 1.8);
+    const w = () => west('e', narrow, wide);
+    const e = () => east('w', wide, narrow);
+    const northBars = (v: Parameters<typeof boxes>[0], cx: number) =>
+      boxes(v, cx).filter(
+        (b) =>
+          b.z1 < 0 && b.z0 > -TILE_METERS && Math.abs(b.x1 - b.x0 - 0.45) < 0.02 && b.z1 - b.z0 > 1,
+      );
+
+    it('puts the crossing over both halves on one line, the wider street’s kerb line', () => {
+      for (const v of [northBars(w(), cxWest), northBars(e(), cxEast)]) {
+        expect(v.length).toBeGreaterThan(4);
+        expect(Math.max(...v.map((b) => -b.z0))).toBeCloseTo(wide + depth, 6);
+        expect(Math.min(...v.map((b) => -b.z1))).toBeCloseTo(wide, 6);
+      }
+    });
+
+    it('keeps the bar rhythm even across the centre line', () => {
+      const near = northBars(w(), cxWest);
+      const far = northBars(e(), cxEast).map((b) => ({
+        ...b,
+        x0: b.x0 + TILE_METERS,
+        x1: b.x1 + TILE_METERS,
+      }));
+      const centres = [...near, ...far].map((b) => (b.x0 + b.x1) / 2).sort((a, b) => a - b);
+      const pitches = centres.slice(1).map((c, i) => c - centres[i]!);
+      for (const pitch of pitches) expect(pitch).toBeCloseTo(pitches[0]!, 6);
+    });
+
+    it('shapes the nose the same on both halves, with no step between them', () => {
+      const noseStart = (
+        v: { positions: number[]; colors: number[] },
+        cx: number,
+        mirror: 1 | -1,
+      ) => {
+        const at: number[] = [];
+        for (let i = 0; i < v.colors.length; i += 3) {
+          const c = v.colors.slice(i, i + 3);
+          const x = (v.positions[i]! - cx) * mirror;
+          const z = v.positions[i + 2]! - centre;
+          if (
+            c[0]! > 0.72 &&
+            c[0]! < 0.9 &&
+            c[1]! > 0.72 &&
+            c[1]! < 0.9 &&
+            z < 0 &&
+            x > halfOfCorridor + 0.3
+          ) {
+            at.push(-z);
+          }
+        }
+        return Math.min(...at);
+      };
+      expect(noseStart(w(), cxWest, 1)).toBeCloseTo(noseStart(e(), cxEast, -1), 6);
+      expect(noseStart(w(), cxWest, 1)).toBeGreaterThanOrEqual(wide + depth - 1e-6);
+    });
+  });
+
+  it('ends the median’s nose behind the crossing, away from the box', () => {
+    const v = west('e');
+    const crossFar = streetHalf + Math.max(kerb, 1.8);
+    // Nothing kerbed stands on the pavement side of the crossing's far edge
+    // east of the half's carriageway: the nose starts beyond it.
+    const kerbed: number[] = [];
+    for (let i = 0; i < v.colors.length; i += 3) {
+      const c = v.colors.slice(i, i + 3);
+      const x = v.positions[i]! - cxWest;
+      const z = v.positions[i + 2]! - centre;
+      if (
+        c[0]! > 0.72 &&
+        c[0]! < 0.9 &&
+        c[1]! > 0.72 &&
+        c[1]! < 0.9 &&
+        z < 0 &&
+        x > halfOfCorridor + 0.3
+      ) {
+        kerbed.push(-z);
+      }
+    }
+    expect(kerbed.length).toBeGreaterThan(0);
+    expect(Math.min(...kerbed)).toBeGreaterThanOrEqual(crossFar - 1e-6);
   });
 });
 
