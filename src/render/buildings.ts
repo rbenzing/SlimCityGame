@@ -951,6 +951,41 @@ export class BuildingInstancer {
   }
 
   /**
+   * The centre of a building's roof in world metres, where its body stands
+   * (not its lot's middle, which can be the back yard), or null for a catalog
+   * id this instancer has no entry for.
+   */
+  roofAnchorOf(instance: BuildingInstance): { x: number; y: number; z: number } | null {
+    const entry = this.buckets.get(instance.catalogId)?.entry;
+    if (!entry) return null;
+    const heightScale =
+      instance.state === BuildingState.Constructing ? CONSTRUCTING_HEIGHT_SCALE : 1;
+    const farm = planFarm(instance, entry, this.dirtAt);
+    if (farm) {
+      const groundY = maxHeightOverRect(
+        this.heightAt,
+        farm.barn.x0,
+        farm.barn.z0,
+        farm.barn.x1,
+        farm.barn.z1,
+      );
+      return {
+        x: (farm.barn.x0 + farm.barn.x1) / 2,
+        y: groundY + entry.height * BARN_EAVE_SHARE * heightScale,
+        z: (farm.barn.z0 + farm.barn.z1) / 2,
+      };
+    }
+    const boxes = this.boxesFor(entry, instance);
+    const seat = this.seatFor(entry, instance, boxes[0]!);
+    const plinth = this.plinthIds.has(entry.id);
+    // A plinth id is drawn as a low pad with its kit standing on it: the roof is the kit's.
+    const top = plinth
+      ? entry.height
+      : Math.max(...boxes.map((box) => box.yOffset + box.h)) * heightScale;
+    return { x: seat.centerX, y: seat.groundY + top, z: seat.centerZ };
+  }
+
+  /**
    * The boxes a building is drawn as: its stacked tiers, or the one body a
    * farm's barn and a plinth collapse to.
    */

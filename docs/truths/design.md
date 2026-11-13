@@ -81,4 +81,10 @@ Back to [the index](../GROUND-TRUTHS.md).
   and Escape left them on. —
   [top-corners.md](../ux/hud/top-corners.md), [input-mapping.md](../ux/input-mapping.md);
   `ViewChip` in `src/ui/ViewChip.tsx`, `isUnderground` in `src/shared/view.ts`
+- [R-design-019] A marker's or a control's state is never told by colour alone: two states
+  differ in shape, text or an icon as well (WCAG 2.2 success criterion 1.4.1,
+  Use of Color). A data lens is a colour map and is read with its legend. An
+  incident's open and answered pins once differed only in colour. —
+  [emergency-services.md](../specs/emergency-services.md);
+  `src/render/servicevehicles.ts`
 

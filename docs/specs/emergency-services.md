@@ -11,6 +11,7 @@
 - Cap a facility's calls in flight by `responders`; a call nobody can answer still spawns as unanswered, takes no vehicle slot and lapses. `[R-services-020]`
 - Spawn incidents at the real per-resident rates, scaled by occupants and field ÷ `FIELD_REFERENCE`, never a flat chance a building. `[R-services-021]`
 - Show crews out beside the load gauge as its own number, never merged with it.
+- Stand a call's pin over the building's body, and tell an answered call from an open one by shape as well as colour. `[R-design-019]`
 - Derive a civic footprint and height from occupant-load arithmetic, and make the station readable by its bay doors or its entrance. `[R-render-015]`
 - Buy the large rung crews at once, never reach and never a cheaper person; reach belongs to the appliance and the road.
 
@@ -54,7 +55,8 @@
 - `src/sim/worker.entry.ts` — passes `serviceFunding` into the tick; sends `responders` on the snapshot.
 - `src/sim/services.ts` — untouched: coverage is unchanged.
 - `src/data/catalog.json` — `responders` on the stations; `fire-station-district`, `police-station-district`.
-- `src/render/servicevehicles.ts` — the unanswered marker, a different colour on the same instanced mesh.
+- `src/render/servicevehicles.ts` — the two pins: a plain cone for an open call, a cone with a ring for an answered one.
+- `src/render/buildings.ts` `roofAnchorOf` — where a pin stands: the seated body's centre, at its roof.
 - `src/render/utilitykits.ts` `computeStationLayout` — the one pure layout of the four station kits.
 - `src/ui/advisor.ts` — the unanswered-calls issue; `src/ui/` Services panel shows responder occupancy.
 - `tests/support/town.ts` — the regression town stands both district stations on main street's north side.

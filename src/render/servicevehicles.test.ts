@@ -75,17 +75,6 @@ describe('buildServiceVehicleGeometry', () => {
     }
   });
 
-  it('gives the ambulance extra vertices over fire/police (its red-cross roof accent parts)', () => {
-    const fire = buildServiceVehicleGeometry(VehicleKind.Fire as ServiceVehicleKind);
-    const police = buildServiceVehicleGeometry(VehicleKind.Police as ServiceVehicleKind);
-    const ambulance = buildServiceVehicleGeometry(VehicleKind.Ambulance as ServiceVehicleKind);
-
-    expect(fire.getAttribute('position').count).toBe(police.getAttribute('position').count);
-    expect(ambulance.getAttribute('position').count).toBeGreaterThan(
-      police.getAttribute('position').count,
-    );
-  });
-
   it("bakes each kind's livery body color onto its body-slab vertices (the first part built)", () => {
     // The body slab is always the first part merged in (see
     // buildServiceVehicleGeometry) -- its vertices carry the kind's exact
@@ -125,15 +114,17 @@ describe('buildServiceVehicleGeometry', () => {
     expect(recycling[1]).toBeGreaterThan(police[1] + 0.15); // and greener than the police blue
   });
 
-  it('gives the recycling truck a white cab where every other kind has a dark one', () => {
-    function cabColor(kind: VehicleKind): [number, number, number] {
-      // The cabin box is the second part: 24 vertices after the body slab's 24.
+  it('gives the recycling truck a white cab where the refuse truck has a green one', () => {
+    function whiteVertices(kind: VehicleKind): number {
       const color = buildServiceVehicleGeometry(kind as ServiceVehicleKind).getAttribute('color');
-      return [color.getX(24), color.getY(24), color.getZ(24)];
+      let white = 0;
+      for (let i = 0; i < color.count; i++) {
+        if (Math.min(color.getX(i), color.getY(i), color.getZ(i)) > 0.9) white++;
+      }
+      return white;
     }
-    const recycling = cabColor(VehicleKind.Recycling);
-    expect(Math.min(...recycling)).toBeGreaterThan(0.9);
-    expect(Math.max(...cabColor(VehicleKind.Garbage))).toBeLessThan(0.2);
+    expect(whiteVertices(VehicleKind.Recycling)).toBeGreaterThan(0);
+    expect(whiteVertices(VehicleKind.Garbage)).toBe(0);
   });
 
   describe('the hearse', () => {
@@ -167,6 +158,160 @@ describe('buildServiceVehicleGeometry', () => {
     it('stands lower than the ambulance and the fire engine, and taller than a car', () => {
       expect(sy).toBeLessThan(sizeForKind(VehicleKind.Ambulance)[1] - 0.5);
       expect(sy).toBeGreaterThan(sizeForKind(VehicleKind.Car)[1]);
+    });
+  });
+
+  describe('each vehicle is recognisable by shape at its real size', () => {
+    const REAL_SIZE_M: ReadonlyArray<
+      readonly [string, ServiceVehicleKind, number, number, number]
+    > = [
+      ['police patrol SUV', VehicleKind.Police, 2.0, 1.76, 5.05],
+      ['fire pumper', VehicleKind.Fire, 2.5, 3.0, 10],
+      ['Type III ambulance', VehicleKind.Ambulance, 2.5, 2.7, 6.9],
+      ['rear-loader refuse truck', VehicleKind.Garbage, 2.44, 3.5, 9],
+    ];
+    const boundsOf = (kind: ServiceVehicleKind): THREE.Vector3 => {
+      const geo = buildServiceVehicleGeometry(kind);
+      geo.computeBoundingBox();
+      const [sx, sy, sz] = sizeForKind(kind);
+      const size = geo.boundingBox!.getSize(new THREE.Vector3());
+      return size.multiply(new THREE.Vector3(sx, sy, sz));
+    };
+
+    for (const [name, kind, w, h, l] of REAL_SIZE_M) {
+      it(`${name} measures ${w} x ${h} x ${l} m within 5 %, standing on the road`, () => {
+        const size = boundsOf(kind);
+        expect(size.x).toBeGreaterThan(w * 0.95);
+        expect(size.x).toBeLessThan(w * 1.05);
+        expect(size.y).toBeGreaterThan(h * 0.95);
+        expect(size.y).toBeLessThan(h * 1.05);
+        expect(size.z).toBeGreaterThan(l * 0.95);
+        expect(size.z).toBeLessThan(l * 1.05);
+        const geo = buildServiceVehicleGeometry(kind);
+        geo.computeBoundingBox();
+        expect(geo.boundingBox!.min.y).toBeCloseTo(-0.5, 6);
+      });
+    }
+
+    // The geometry's metres: the unit-box vertices scaled by the kind's size.
+    const vertices = (kind: ServiceVehicleKind) => {
+      const geo = buildServiceVehicleGeometry(kind);
+      const [sx, sy, sz] = sizeForKind(kind);
+      const pos = geo.getAttribute('position');
+      const color = geo.getAttribute('color');
+      return Array.from({ length: pos.count }, (_, i) => ({
+        x: pos.getX(i) * sx,
+        y: (pos.getY(i) + 0.5) * sy,
+        z: pos.getZ(i) * sz,
+        rgb: [color.getX(i), color.getY(i), color.getZ(i)] as const,
+      }));
+    };
+
+    // The solid's extent in metres at one z: where every triangle crossing that plane meets it.
+    const crossSection = (kind: ServiceVehicleKind, z: number) => {
+      const geo = buildServiceVehicleGeometry(kind);
+      const [sx, sy, sz] = sizeForKind(kind);
+      const pos = geo.getAttribute('position');
+      const index = geo.getIndex()!;
+      const at = (i: number): [number, number, number] => [
+        pos.getX(i) * sx,
+        (pos.getY(i) + 0.5) * sy,
+        pos.getZ(i) * sz,
+      ];
+      const xs: number[] = [];
+      const ys: number[] = [];
+      for (let t = 0; t < index.count; t += 3) {
+        const tri = [at(index.getX(t)), at(index.getX(t + 1)), at(index.getX(t + 2))];
+        for (let e = 0; e < 3; e++) {
+          const a = tri[e]!;
+          const b = tri[(e + 1) % 3]!;
+          if ((a[2] - z) * (b[2] - z) > 0) continue;
+          const k = a[2] === b[2] ? 0 : (z - a[2]) / (b[2] - a[2]);
+          xs.push(a[0] + (b[0] - a[0]) * k);
+          ys.push(a[1] + (b[1] - a[1]) * k);
+        }
+      }
+      return { top: Math.max(...ys), width: Math.max(...xs) - Math.min(...xs) };
+    };
+
+    it('gives the patrol car a roof light bar about 1.2 m wide, above the roofline, and a livery stripe', () => {
+      const vs = vertices(VehicleKind.Police);
+      const lit = vs.filter(({ rgb }) => rgb[0] > 0.9 && rgb[1] < 0.3 && rgb[2] < 0.3);
+      const bar = vs.filter(
+        ({ rgb }) =>
+          (rgb[0] > 0.9 && rgb[1] < 0.3 && rgb[2] < 0.3) ||
+          (rgb[0] < 0.3 && rgb[1] < 0.4 && rgb[2] > 0.5 && rgb[2] < 0.7),
+      );
+      expect(lit.length).toBeGreaterThan(0);
+      const xs = bar.map((v) => v.x);
+      expect(Math.max(...xs) - Math.min(...xs)).toBeGreaterThan(1.1);
+      expect(Math.max(...xs) - Math.min(...xs)).toBeLessThan(1.3);
+      // The bar is the highest thing on the car, over the front doors (forward of the middle).
+      expect(Math.max(...bar.map((v) => v.y))).toBeCloseTo(1.76, 2);
+      expect(bar.every((v) => v.z > -0.3 && v.z < 1.5)).toBe(true);
+      // A white door panel on each side, so it is not a plain blue car without the bar.
+      const doors = vs.filter(({ rgb }) => Math.min(...rgb) > 0.85);
+      expect(doors.some((v) => v.x > 0.9)).toBe(true);
+      expect(doors.some((v) => v.x < -0.9)).toBe(true);
+    });
+
+    it('builds the pumper from a cab, a taller pump section, a lower hose bed, a ladder and a cab-roof bar', () => {
+      const vs = vertices(VehicleKind.Fire);
+      const topAt = (z: number): number => crossSection(VehicleKind.Fire, z).top;
+      const cab = topAt(3.7);
+      const pump = topAt(1.3);
+      const hoseBed = topAt(-4.7);
+      expect(cab).toBeGreaterThan(pump + 0.4);
+      expect(pump).toBeGreaterThan(hoseBed + 0.3);
+      // A ladder: a grey part running most of the body's length along one side only.
+      const ladder = vs.filter(
+        ({ rgb }) => Math.abs(rgb[0] - rgb[1]) < 0.05 && rgb[0] > 0.5 && rgb[0] < 0.85,
+      );
+      const zs = ladder.map((v) => v.z);
+      expect(Math.max(...zs) - Math.min(...zs)).toBeGreaterThan(5);
+      expect(ladder.some((v) => v.x < -0.5)).toBe(false);
+    });
+
+    it('builds the ambulance as a low van cab in front of a taller, wider box with a stripe and a front light bar', () => {
+      const vs = vertices(VehicleKind.Ambulance);
+      const box = crossSection(VehicleKind.Ambulance, -1);
+      const cab = crossSection(VehicleKind.Ambulance, 3.2);
+      expect(box.top).toBeGreaterThan(cab.top + 0.4);
+      expect(box.width).toBeGreaterThan(cab.width + 0.1);
+      expect(vs.some(({ rgb, y }) => rgb[0] > 0.7 && rgb[1] < 0.3 && rgb[2] < 0.3 && y > 2.5)).toBe(
+        true,
+      );
+    });
+
+    it('builds the refuse truck as a cab-over cab, a tall body and a hopper that slopes down at the tail', () => {
+      const topAt = (z: number): number => crossSection(VehicleKind.Garbage, z).top;
+      expect(topAt(0)).toBeGreaterThan(topAt(3.6) + 0.4); // body over the cab
+      expect(topAt(-3.1)).toBeGreaterThan(topAt(-4.4) + 0.8); // the hopper slopes down to the tail
+      expect(topAt(-4.4)).toBeGreaterThan(1.0);
+    });
+
+    it('draws the four kinds with plainly different height profiles along the body', () => {
+      const profile = (kind: ServiceVehicleKind): number[] => {
+        const [, sy, sz] = sizeForKind(kind);
+        return Array.from(
+          { length: 10 },
+          (_, bin) => crossSection(kind, -sz / 2 + (sz * (bin + 0.5)) / 10).top / sy,
+        );
+      };
+      const kinds = [
+        VehicleKind.Fire,
+        VehicleKind.Police,
+        VehicleKind.Ambulance,
+        VehicleKind.Garbage,
+      ];
+      for (let a = 0; a < kinds.length; a++) {
+        for (let b = a + 1; b < kinds.length; b++) {
+          const pa = profile(kinds[a]!);
+          const pb = profile(kinds[b]!);
+          const gap = pa.reduce((sum, v, i) => sum + Math.abs(v - pb[i]!), 0) / pa.length;
+          expect(gap, `${kinds[a]} vs ${kinds[b]}`).toBeGreaterThan(0.08);
+        }
+      }
     });
   });
 
@@ -205,7 +350,7 @@ describe('ServiceVehicleRenderer', () => {
     const instancedMeshes = scene.children.filter(
       (c): c is THREE.InstancedMesh => c instanceof THREE.InstancedMesh,
     );
-    expect(instancedMeshes.length).toBe(7); // fire + police + ambulance + garbage + recycling + hearse + incident pins
+    expect(instancedMeshes.length).toBe(8); // fire + police + ambulance + garbage + recycling + hearse + answered pins + open pins
     for (const kind of Object.values(VehicleKind).filter(
       (k) => k !== VehicleKind.Car && k !== VehicleKind.Truck && k !== VehicleKind.Bus,
     )) {
@@ -400,6 +545,15 @@ describe('ServiceVehicleRenderer', () => {
       expect(isHiddenAt(pinMesh, 1)).toBe(true);
     });
 
+    const pinMeshes = (scene: THREE.Scene) => {
+      const find = (state: string): THREE.InstancedMesh =>
+        scene.children.find(
+          (c): c is THREE.InstancedMesh =>
+            c instanceof THREE.InstancedMesh && c.userData.incidentPin === state,
+        )!;
+      return { answered: find('answered'), open: find('open') };
+    };
+
     it('draws an unanswered call in a different, duller colour than an answered one of the same kind', () => {
       const scene = new THREE.Scene();
       const renderer = new ServiceVehicleRenderer(scene, flatHeightAt, 8);
@@ -408,24 +562,60 @@ describe('ServiceVehicleRenderer', () => {
         { kind: 'fire', x: 6, z: 4, severity: 0.5, answered: false },
         { kind: 'fire', x: 8, z: 4, severity: 0.5 },
       ]);
-      const pinMesh = scene.children.find(
-        (c): c is THREE.InstancedMesh =>
-          c instanceof THREE.InstancedMesh && !('vehicleKind' in c.userData),
-      )!;
+      const { answered, open } = pinMeshes(scene);
       // The colour buffer exists before any call: without it a material that
       // has already drawn never picks one up.
-      expect(pinMesh.instanceColor).not.toBeNull();
-      const colour = (i: number): THREE.Color => {
+      expect(answered.instanceColor).not.toBeNull();
+      expect(open.instanceColor).not.toBeNull();
+      const colour = (mesh: THREE.InstancedMesh, i: number): THREE.Color => {
         const c = new THREE.Color();
-        pinMesh.getColorAt(i, c);
+        mesh.getColorAt(i, c);
         return c;
       };
-      const answeredFire = colour(0);
-      const lapsing = colour(1);
+      const answeredFire = colour(answered, 0);
+      const lapsing = colour(open, 1);
       expect(lapsing.equals(answeredFire)).toBe(false);
       expect(lapsing.r).toBeLessThan(answeredFire.r);
       // Absent means answered, as it does everywhere else.
-      expect(colour(2).equals(answeredFire)).toBe(true);
+      expect(colour(answered, 2).equals(answeredFire)).toBe(true);
+    });
+
+    it('draws an answered call and an open one in different shapes, not only different colours', () => {
+      const scene = new THREE.Scene();
+      const renderer = new ServiceVehicleRenderer(scene, flatHeightAt, 8);
+      renderer.setIncidents([
+        { kind: 'crime', x: 4, z: 4, severity: 0.5, answered: true },
+        { kind: 'crime', x: 6, z: 4, severity: 0.5, answered: false },
+      ]);
+      const { answered, open } = pinMeshes(scene);
+      expect(answered.geometry).not.toBe(open.geometry);
+      // An answered pin is shown in its own mesh and an open one in the other, never both.
+      expect(isHiddenAt(answered, 0)).toBe(false);
+      expect(isHiddenAt(open, 0)).toBe(true);
+      expect(isHiddenAt(answered, 1)).toBe(true);
+      expect(isHiddenAt(open, 1)).toBe(false);
+      // The answered pin carries a ring around the cone the open one lacks: wider, with more faces.
+      answered.geometry.computeBoundingBox();
+      open.geometry.computeBoundingBox();
+      const width = (geometry: THREE.BufferGeometry): number =>
+        geometry.boundingBox!.getSize(new THREE.Vector3()).x;
+      expect(width(answered.geometry)).toBeGreaterThan(width(open.geometry) * 1.3);
+      expect(answered.geometry.getAttribute('position').count).toBeGreaterThan(
+        open.geometry.getAttribute('position').count,
+      );
+      // Both still hover their point where the call is: the point is at y = 0.
+      expect(answered.geometry.boundingBox!.min.y).toBeCloseTo(0, 6);
+      expect(open.geometry.boundingBox!.min.y).toBeCloseTo(0, 6);
+    });
+
+    it('moves a call between the two shapes when a station takes it', () => {
+      const scene = new THREE.Scene();
+      const renderer = new ServiceVehicleRenderer(scene, flatHeightAt, 8);
+      renderer.setIncidents([{ kind: 'fire', x: 4, z: 4, severity: 0.5, answered: false }]);
+      renderer.setIncidents([{ kind: 'fire', x: 4, z: 4, severity: 0.5, answered: true }]);
+      const { answered, open } = pinMeshes(scene);
+      expect(isHiddenAt(answered, 0)).toBe(false);
+      expect(isHiddenAt(open, 0)).toBe(true);
     });
 
     describe('sized against the art anchors, point down over the roof', () => {

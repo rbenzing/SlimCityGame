@@ -36,7 +36,6 @@ What two reviews of every screenshot the shot tools write found wrong in the gam
 - A bus depot's fence runs across its own door, and its buses stand through the fence. — `shots-depots/a2-bus-depot-close`
 - A station's platform canopy hides the building, and its ramp stops partway. — `shots-ploppables/b-station-track`
 - The airport has no runway. Its terminal is one slab over the middle of the plot, aircraft stand half under its walls, and its car park is an outline on lawn. — `shots-airport/airport-above`
-- A police car carries no light bar and reads as a plain blue car; a fire engine, an ambulance and a garbage truck are one box each and differ only in colour. An incident's pin stands over the back yard, not the building, and an answered pin differs from an open one only in colour. — `shots-servicevehicles/close-police`, `lineup`, `incident-pins`
 
 ## Major: interface and messages
 

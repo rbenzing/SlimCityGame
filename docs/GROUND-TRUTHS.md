@@ -21,8 +21,8 @@ How to use it:
 | Utilities and services                 | [services.md](truths/services.md)             | 40    | `R-services-001` to `R-services-040` |
 | Saves and the data model               | [saves.md](truths/saves.md)                   | 12    | `R-saves-001` to `R-saves-012`       |
 | Architecture and the thread boundary   | [architecture.md](truths/architecture.md)     | 17    | `R-architecture-001` to `R-architecture-017` |
-| Rendering and art                      | [render.md](truths/render.md)                 | 37    | `R-render-001` to `R-render-037`     |
-| Game design and interface              | [design.md](truths/design.md)                 | 17    | `R-design-001` to `R-design-017`     |
+| Rendering and art                      | [render.md](truths/render.md)                 | 38    | `R-render-001` to `R-render-038`     |
+| Game design and interface              | [design.md](truths/design.md)                 | 19    | `R-design-001` to `R-design-019`     |
 | Process                                | [process.md](truths/process.md)               | 10    | `R-process-001` to `R-process-010`   |
 
 Read the file of every area a task touches, and nothing else of the truths.
