@@ -368,16 +368,15 @@ export function computeSetbacks(
 }
 
 // ---------------------------------------------------------------------------
-// Lifecycle tint (mirrors buildings.ts's private tintFor/TINT_* constants —
-// not exported there, so re-derived here identically for cross-renderer
-// visual consistency; the "same tint" requirement).
+// Lifecycle tint: the one multiplier every building renderer applies.
 // ---------------------------------------------------------------------------
 
 const TINT_ACTIVE: readonly [number, number, number] = [1, 1, 1];
 const TINT_CONSTRUCTING: readonly [number, number, number] = [0.55, 0.55, 0.55];
-const TINT_ABANDONED: readonly [number, number, number] = [0.25, 0.25, 0.25];
+/** Derelict reads dulled but readable: half the light, since a quarter fell into the tone mapping's toe and read black. */
+export const TINT_ABANDONED: readonly [number, number, number] = [0.5, 0.5, 0.5];
 
-/** Same per-state tint multiplier as buildings.ts's tintFor, exported for props.ts to share. */
+/** The per-state tint multiplier shared by every building renderer. */
 export function massingLifecycleTint(state: BuildingState): readonly [number, number, number] {
   if (state === BuildingState.Constructing) return TINT_CONSTRUCTING;
   if (state === BuildingState.Abandoned) return TINT_ABANDONED;

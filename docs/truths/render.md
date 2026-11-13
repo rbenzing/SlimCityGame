@@ -250,4 +250,12 @@ Back to [the index](../GROUND-TRUTHS.md).
   nothing else. Nothing on a site is emissive. —
   [construction-and-abandonment.md](../art/buildings/construction-and-abandonment.md);
   `src/render/sites.ts`, `src/shared/constructionstages.ts`
+- [R-render-040] One palette number is one colour on screen. A swatch reaches the renderer
+  as its number ÷ 255 on every path, vertex colour and material colour
+  alike; a hex for a `THREE.Color` is made only by `paletteHex`. A part that
+  glows in its own colour takes `litHex`; vehicle paint is outside the
+  palette. Decoded from sRGB on one path only, roofs, walls and fences read
+  near-black beside a road that read right. —
+  [texture-standards.md](../art/texture-standards.md); `paletteHex` in
+  `src/render/palette.ts`
 

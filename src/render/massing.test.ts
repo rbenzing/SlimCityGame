@@ -369,7 +369,7 @@ describe('massingLifecycleTint', () => {
   it('is [1,1,1] for Active, grey for Constructing, dark for Abandoned', () => {
     expect(massingLifecycleTint(BuildingState.Active)).toEqual([1, 1, 1]);
     expect(massingLifecycleTint(BuildingState.Constructing)).toEqual([0.55, 0.55, 0.55]);
-    expect(massingLifecycleTint(BuildingState.Abandoned)).toEqual([0.25, 0.25, 0.25]);
+    expect(massingLifecycleTint(BuildingState.Abandoned)).toEqual([0.5, 0.5, 0.5]);
   });
 });
 
@@ -626,9 +626,9 @@ describe('MassingRenderer', () => {
     const c = new THREE.Color();
     renderer.getBoxColor(slot, c);
     const { wallColor } = deriveFacadeParams(e, 1);
-    expect(c.r).toBeCloseTo(wallColor[0] * 0.25, 4);
-    expect(c.g).toBeCloseTo(wallColor[1] * 0.25, 4);
-    expect(c.b).toBeCloseTo(wallColor[2] * 0.25, 4);
+    expect(c.r).toBeCloseTo(wallColor[0] * 0.5, 4);
+    expect(c.g).toBeCloseTo(wallColor[1] * 0.5, 4);
+    expect(c.b).toBeCloseTo(wallColor[2] * 0.5, 4);
   });
 
   it('removal frees exactly the removed building slots (zero-scale), leaving other buildings intact', () => {

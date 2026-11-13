@@ -756,7 +756,7 @@ describe('HouseRoofRenderer — the house kit', () => {
     const d = new THREE.Color();
     active.getPartColor('shutter', whole!, c);
     abandoned.getPartColor('shutter', dark!, d);
-    expect(d.r).toBeCloseTo(c.r * 0.25, 4);
+    expect(d.r).toBeCloseTo(c.r * 0.5, 4);
     // Removed: every slot is freed.
     active.apply({ added: [], updated: [], removed: [2] });
     for (const part of EVERY_PART) expect(active.slotsFor(2, part), part).toHaveLength(0);

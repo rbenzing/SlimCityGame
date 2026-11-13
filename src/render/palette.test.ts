@@ -1,3 +1,4 @@
+import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
 import {
   MATERIALS,
@@ -90,7 +91,8 @@ describe('calibrate', () => {
 describe('material accessors', () => {
   it('reads a swatch by name', () => {
     expect(material('slateRoof')).toEqual([47, 47, 46]);
-    expect(materialHex('coal')).toBe(0x171717);
+    // The hex three.js decodes from sRGB back to the raw palette number / 255.
+    expect(materialHex('coal')).toBe(0x555555);
   });
 
   it('converts to the 0..1 floats three.js wants', () => {
@@ -129,7 +131,9 @@ describe('the renderers stay inside the calibration', () => {
 
   it('keeps every house roof colour in range, for any building id', () => {
     for (let id = 1; id <= 400; id += 1) {
-      const rgb = hexToRgb255(roofColorHex(id));
+      // A hex is the sRGB encoding of the raw palette number: decode it back.
+      const decoded = new THREE.Color(roofColorHex(id));
+      const rgb = [decoded.r, decoded.g, decoded.b].map((v) => Math.round(v * 255));
       expect(Math.max(...rgb), `house roof for id ${id} exceeds the ceiling`).toBeLessThanOrEqual(
         MAX_MATERIAL_CHANNEL,
       );

@@ -33,10 +33,12 @@ something that does not exist yet.
 `src/render/palette.ts`'s `MATERIALS` table is the actual governing
 standard for how a surface looks, in place of a texture set:
 
-- Every value is measured **sRGB 0–255**, named after the physical
-  reference swatch it came from (`stainedConcrete`, `whiteBrick`,
-  `bluePlaster`, `darkAsphalt`, `slateRoof`) — see
-  [naming-conventions.md](naming-conventions.md).
+- Every value is a 0–255 triple named after the physical reference swatch
+  it came from (`stainedConcrete`, `whiteBrick`, `bluePlaster`,
+  `darkAsphalt`, `slateRoof`) — see
+  [naming-conventions.md](naming-conventions.md). The renderer takes the
+  number ÷ 255 as it stands on every path, so one swatch is one colour on
+  screen wherever it is used `[R-render-040]`.
 - **`MAX_MATERIAL_CHANNEL = 140`** is a hard ceiling: nothing but snow may
   author a channel above it. The reasoning is lighting headroom, not
   taste — albedo is what a material _reflects_, not how bright it looks
@@ -64,10 +66,17 @@ and still plainly claimed ground.
 
 ## Palette calibration in practice
 
-`rgb255ToHex`/`hexToRgb255`/`rgb255ToUnit` are the only conversions
-between the chart's 0–255 sRGB units and the 0–1 float units three.js
-materials want; nothing in `src/render/` hand-converts a colour outside
-these helpers. Vehicle paint (`src/render/vehicles.ts`) is the one
+A swatch reaches the renderer two ways: as a vertex colour
+(`rgb255ToUnit`, `materialUnit`) and as a hex handed to a `THREE.Color`
+(`materialHex`, `saturatedHex`). three.js decodes a hex from sRGB, which
+landed the same swatch two to seven times darker than its vertex colour,
+and the tone mapping's toe then crushed the dark ones: a charcoal roof of
+40 read 9 at noon beside a road reading 141. `paletteHex` in
+`src/render/palette.ts` is the one conversion: it returns the hex whose
+decoded value is the number ÷ 255, and both hex helpers go through it. A
+part that glows in its own colour (a sign, a lit shopfront band) takes
+`litHex`, the plain hex, so its glow is what it was. Nothing in
+`src/render/` hand-converts a colour outside these helpers. Vehicle paint (`src/render/vehicles.ts`) is the one
 deliberate exception to the whole palette: cars are a curated ~10-colour
 saturated list chosen to contrast against the deliberately desaturated
 city, not calibrated against the reference chart at all — see

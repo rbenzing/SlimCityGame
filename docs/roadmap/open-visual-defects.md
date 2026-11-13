@@ -4,7 +4,6 @@ What two reviews of every screenshot the shot tools write found wrong in the gam
 
 ## Critical
 
-- Roofs, back fences, sound walls, trampolines, bus tops and shop canopies render near-black in daylight. The shingle colours are the roofs' cause: charcoal reads about (9, 11, 13) at noon, and `nightlook-shots` fails on it. `[R-render-020]` — `shots-town/04b-tram-crossing`, `shots-soundwalls/walled-oblique`
 - Rail draws no rails through a crossing, a junction or a bend, only a ballast box. — `shots-roadmatrix/rail-cross`
 - Tram track ends at a bend tile and at a junction box. — `shots-roadmatrix/tram-turn`
 - Loose dark slabs lie on the grass both sides of a tram guideway's ramp; a raised station's lift tower hangs above the ground and its stair lands on grass, or at a junction across the carriageway, with a guideway column in the approach lanes. `[R-roads-011]` — `shots-tramways/guideway-ramp`, `station-junction`
@@ -57,7 +56,7 @@ What two reviews of every screenshot the shot tools write found wrong in the gam
 - A cemetery's gatehouse is a blank box with trees through its roof; a civic crossing's kerb is not dropped. — `shots-cemetery/b2-cemetery-gatehouse`
 - The crematorium is a stack of plain boxes with a door-sized entrance; the hospital's ambulance canopy has no door and its parking deck no ramp. — `shots-healthcare/crematorium-close`, `hospital-entrance-close`
 - A garage's top deck runs into the building above it, and a mixed-use block's garage shows no way in from the street. — `shots-parking/com-office-2-rear`, `shots-mixeduse/rear`
-- A farm's yard does not meet its dirt road, a strip of grass between; an abandoned farm is near-black. — `shots-industry/close-farm-pasture-2-yard`, `shots-farms/abandoned`
+- A farm's yard does not meet its dirt road, a strip of grass between. — `shots-industry/close-farm-pasture-2-yard`
 - A restaurant's sign bar hangs skewed off its frame, and a black arch stands alone in grass beside it. — `shots-storefronts/close-restaurant`
 - A street's light pool ends in a hard edge mid-road at night, and stall paint glows brighter than the buildings; shopfronts and the hospital stay dark. — `shots-storefronts/main-night`, `shots-healthcare/hospital-night`
 - A mixed-use block's shopfront is plain glass with a black rectangle for a door, no sign and no awning. — `shots-mixeduse/street`, `close-mixed-1`
@@ -70,7 +69,7 @@ What two reviews of every screenshot the shot tools write found wrong in the gam
 - A green hairline shows between carriageway and footway; footway corners carry notches; kerb arcs are faceted.
 - A motorway's gantry carries blank boards where no ramp leaves; dead-end caps carry odd painted arcs; stray dashes lie in lanes.
 - Short white stubs lie beside the edge line where a road narrows. — `shots-transitions/fourlane-to-twolane-run`
-- A manhole cover is a near-black disc and reads as a hole in the lane; a lamp's or a signal arm's shadow lies on the road as a jagged scribble. — `shots-scale/shelter-along-street`, `shots-furniture/crossroads`
+- A lamp's or a signal arm's shadow lies on the road as a jagged scribble; a vehicle's wheels are near-black boxes. — `shots-furniture/crossroads`
 - One two-lane street's broken centre line reads white, not yellow, beside a free curve. — `shots-curve/4b-grid-street-above`
 - A tree stands in a median; a boulder lies on a footway; bins stand on the grass.
 - A solar farm's transformer hut straddles its fence; a rail yard's shed stands on the railway.

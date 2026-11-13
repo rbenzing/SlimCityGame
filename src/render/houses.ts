@@ -37,7 +37,7 @@ import { maxHeightOverRect } from './footprint';
 import { InstancedSlotPool, massingLifecycleTint } from './massing';
 import { isHouseEntry } from './archetypes';
 import { sizeForKind, variantScaleForKind, VehicleKitPool, VEHICLE_PALETTE_HEX } from './vehicles';
-import { materialHex, rgb255ToHex, SATURATED } from './palette';
+import { materialHex, saturatedHex } from './palette';
 import { FRAME_DARKEN, deriveFacadeParams } from './facade';
 import { NO_STREETS, type StreetLookup } from './frontage';
 import {
@@ -354,7 +354,7 @@ export function buildPoolGeometry(): THREE.BufferGeometry {
   water.translate(0, POOL_HEIGHT_M + 0.01, 0);
   return mergeGeometryParts([
     paintVertexColor(wall, materialHex('bluePlaster')),
-    paintVertexColor(water, rgb255ToHex(SATURATED.cyan)),
+    paintVertexColor(water, saturatedHex('cyan')),
   ]);
 }
 
@@ -544,12 +544,7 @@ export class HouseRoofRenderer {
       garageLeaf: kit(buildPanelGeometry()),
       carport: kit(buildCarportGeometry()),
       door: kit(buildUnitBoxGeometry()),
-      fence: new InstancedSlotPool(
-        scene,
-        buildPanelGeometry(),
-        new THREE.MeshLambertMaterial(),
-        INITIAL_KIT_CAPACITY,
-      ),
+      fence: kit(buildPanelGeometry()),
       pool: yard(buildPoolGeometry()),
       trampoline: yard(buildTrampolineGeometry()),
       grill: yard(buildGrillGeometry()),

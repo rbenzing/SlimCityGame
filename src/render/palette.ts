@@ -145,7 +145,7 @@ export const MATERIALS = {
   sidingLightBrown: [112, 96, 78],
   sidingLightGrey: [112, 112, 110],
   sidingBlue: [58, 76, 98],
-  shingleCharcoal: [40, 40, 41],
+  shingleCharcoal: [50, 50, 51],
   shingleWeathered: [66, 58, 50],
   shinglePewter: [74, 76, 78],
   shingleBarkwood: [58, 48, 40],
@@ -204,8 +204,44 @@ export function rgb255ToUnit(rgb: RGB255): readonly [number, number, number] {
   return [rgb[0] / 255, rgb[1] / 255, rgb[2] / 255];
 }
 
+/** The sRGB encoding of a linear 0..1 value. */
+function linearToSrgb(v: number): number {
+  return v <= 0.0031308 ? 12.92 * v : 1.055 * v ** (1 / 2.4) - 0.055;
+}
+
+/**
+ * A palette colour as the packed hex three.js reads it from. Palette numbers
+ * are used raw (number / 255, no sRGB decode) as the vertex-colour path does,
+ * but a hex handed to THREE.Color is decoded from sRGB first, which would land
+ * the same swatch several times darker. The hex returned here is the sRGB
+ * encoding of the raw value, so the Color it makes holds exactly rgb / 255.
+ * This is the only place that conversion lives.
+ */
+export function paletteHex(rgb: RGB255): number {
+  return rgb255ToHex([
+    255 * linearToSrgb(rgb[0] / 255),
+    255 * linearToSrgb(rgb[1] / 255),
+    255 * linearToSrgb(rgb[2] / 255),
+  ]);
+}
+
 export function materialHex(name: MaterialName): number {
-  return rgb255ToHex(MATERIALS[name]);
+  return paletteHex(MATERIALS[name]);
+}
+
+/**
+ * The hex for a part that glows in its own colour: its emissive is its
+ * instance colour, so it keeps the sRGB-decoded value it always had and its
+ * glow does not change with the daylight palette.
+ */
+export function litHex(name: MaterialName | SaturatedName): number {
+  return rgb255ToHex(
+    name in MATERIALS ? MATERIALS[name as MaterialName] : SATURATED[name as SaturatedName],
+  );
+}
+
+export function saturatedHex(name: SaturatedName): number {
+  return paletteHex(SATURATED[name]);
 }
 
 export function materialUnit(name: MaterialName): readonly [number, number, number] {

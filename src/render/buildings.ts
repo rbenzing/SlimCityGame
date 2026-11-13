@@ -41,6 +41,7 @@ import {
   bodyMetresFor,
   computeSetbacks,
   frontageSetbackFor,
+  massingLifecycleTint,
   type FrontageSetback,
   tierHeightOf,
   type SetbackBox,
@@ -113,17 +114,6 @@ export const SITE_TRACE_SINK_M = 0.5;
 const PLINTH_PAD_HEIGHT = PLINTH_TOP;
 /** The one box a barn or a plinth is drawn as; its size is written when the slot is, not read from here. */
 const ONE_BOX: SetbackBox = { w: 1, d: 1, h: 1, yOffset: 0 };
-
-const TINT_ACTIVE: readonly [number, number, number] = [1, 1, 1];
-const TINT_CONSTRUCTING: readonly [number, number, number] = [0.55, 0.55, 0.55];
-const TINT_ABANDONED: readonly [number, number, number] = [0.25, 0.25, 0.25];
-
-/** Problems are surfaced by the UI (icons); the mesh tint only reflects lifecycle state. */
-function tintFor(state: BuildingState): readonly [number, number, number] {
-  if (state === BuildingState.Constructing) return TINT_CONSTRUCTING;
-  if (state === BuildingState.Abandoned) return TINT_ABANDONED;
-  return TINT_ACTIVE;
-}
 
 // ---------------------------------------------------------------------------
 // Night cycle: per-instance emissive windows (pure parts).
@@ -1198,7 +1188,7 @@ export class BuildingInstancer {
     instance: BuildingInstance,
     tier: number,
   ): void {
-    const [tr, tg, tb] = tintFor(instance.state);
+    const [tr, tg, tb] = massingLifecycleTint(instance.state);
     _color.setRGB(tr, tg, tb);
     bucket.mesh.setColorAt(slot, _color);
 
