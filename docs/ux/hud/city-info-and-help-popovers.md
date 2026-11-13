@@ -7,11 +7,17 @@ carries a close button of its own. Neither closes on an outside click
 either: each is dismissed only by pressing its own corner button again.
 
 - **City info** (left button): a fuller read of the city's live stats —
-  `Jobs` (employed/total), `Power` and `Water` (supply/demand, in MW and
-  kL), and `Loan` (the outstanding balance).
+  `Jobs` (employed/total), `Power`, `Water` and `Sewer` as what is made and
+  what is used ("0.2 MW made, 0.24 MW used"), and `Loan` (the outstanding
+  balance). The figures are the sim's own totals, shown to two places below
+  ten so a single wind turbine does not read as zero. Where use is above
+  supply a line in the warning colour says by how much and what follows
+  ("Short by 0.04 MW: some buildings go dark").
 - **Help** (right cluster): only the keyboard shortcuts actually wired to
   a listener, no aspirational bindings — Play/Pause, Undo, Redo, Save,
-  Load latest save, Rotate ploppable, the 1–7 toolbar-category jump keys,
-  and the Escape stack (see [`interaction.md`](../interaction.md) for what Escape
-  does at each stage).
+  Load latest save, Rotate ploppable, the Escape stack (see
+  [`interaction.md`](../interaction.md) for what Escape does at each stage),
+  and every toolbar category with its jump key, or "Click its icon" where
+  it has none. The list is read from the table the toolbar and the key
+  handler use, so it cannot name a category the dock does not show.
 

@@ -43,13 +43,9 @@ What two reviews of every screenshot the shot tools write found wrong in the gam
 
 ## Major: interface and messages
 
-- The Transit Lines panel gives a line that asks for no vehicles "0 of 0 vehicles, every 0.0 min", and a short tram line a headway of 0.1 minutes. — `src/ui/TransitLinesPanel.tsx`
-- The advisor writes "a elementary school" and the panel "1 riders"; the advisor tells the player to build a school that is still locked. — `shots-playthrough/09-advisor-gravel`
-- The city panel reads "POWER 0/0 MW" in a town its turbine powers, and water at 379 of 25 kL with no word why. — `shots-playthrough/53-panel-city-info`
 - A lens shows no legend or scale with its picker open, and a lens with nothing to show is blank without saying so; the underground view's red cable and its orange box are unnamed; the picker covers the east end of the town. — `shots-playthrough/33-lens-land-value`, `shots-underground/lens-watered`
 - The City Stats chart opens empty, with no axes, units or word that there is nothing to plot yet. — `shots-playthrough/55-panel-city-stats`
 - The junction panel's lanes section runs under the toolbar; the Services panel cuts a label to "Educa…" and wraps its parks line to five. — `shots-playthrough/14-junction-panel`, `18-services`
-- The help panel numbers the toolbar's categories 1 to 7; the toolbar shows fourteen.
 - The interface has no layout for a narrow window: at 480 px wide the dock's left cluster lies over its category buttons, which cannot be clicked. — `tools/viewexit-shots.mjs` checks at 768 px for that reason
 
 ## Major: buildings and lots
@@ -69,7 +65,6 @@ What two reviews of every screenshot the shot tools write found wrong in the gam
 - A farm's yard does not meet its dirt road, a strip of grass between; an abandoned farm is near-black. — `shots-industry/close-farm-pasture-2-yard`, `shots-farms/abandoned`
 - A restaurant's sign bar hangs skewed off its frame, and a black arch stands alone in grass beside it. — `shots-storefronts/close-restaurant`
 - A street's light pool ends in a hard edge mid-road at night, and stall paint glows brighter than the buildings; shopfronts and the hospital stay dark. — `shots-storefronts/main-night`, `shots-healthcare/hospital-night`
-- A refused bridge or raised road says only that it cannot be built there.
 - A mixed-use block's shopfront is plain glass with a black rectangle for a door, no sign and no awning. — `shots-mixeduse/street`, `close-mixed-1`
 - Where a zone has no room for its car park a level-1 office, hotel, mixed-use block or mid-rise still stands on a bare pad and parks at the kerb, and a level-2 hotel on its own 2 × 2 footprint has no garage. `[R-services-040]` — `shots-mixeduse/close-mixed-1`
 - A reactor's intake house stands about 6 m back from the water on bare beach; a drain one tile square lies on a 20 m pad. — `shots-power/3c-reactor-intake-close`, `shots-earliest-kits/h-drain-street`

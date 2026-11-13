@@ -11,6 +11,8 @@ import {
   lotLine,
   seasonForMonth,
   trendOf,
+  counted,
+  withArticle,
 } from './format';
 
 const catalogEntry = (id: string): BuildingCatalogEntry => {
@@ -143,5 +145,26 @@ describe('formatFunds', () => {
 
   it("formats the magnitude only (sign is the caller's responsibility)", () => {
     expect(formatFunds(-500)).toBe('¢500');
+  });
+});
+
+describe('counted', () => {
+  it('writes one of a thing singular and every other count plural', () => {
+    expect(counted(1, 'rider')).toBe('1 rider');
+    expect(counted(0, 'rider')).toBe('0 riders');
+    expect(counted(2, 'rider')).toBe('2 riders');
+    expect(counted(2, 'body', 'bodies')).toBe('2 bodies');
+    expect(counted(1, 'body', 'bodies')).toBe('1 body');
+  });
+});
+
+describe('withArticle', () => {
+  it('picks a or an by the sound the word starts with', () => {
+    expect(withArticle('elementary school')).toBe('an elementary school');
+    expect(withArticle('middle school')).toBe('a middle school');
+    expect(withArticle('high school')).toBe('a high school');
+    expect(withArticle('university')).toBe('a university');
+    expect(withArticle('hour')).toBe('an hour');
+    expect(withArticle('Open library')).toBe('an Open library');
   });
 });

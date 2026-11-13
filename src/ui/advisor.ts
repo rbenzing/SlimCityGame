@@ -15,6 +15,7 @@ import {
   workforceOf,
 } from '../shared/constants';
 import { level3Schooling, type EducationRung } from '../shared/schooling';
+import { amount, counted, withArticle } from './format';
 import {
   BuildingState,
   Problem,
@@ -67,7 +68,7 @@ const PROBLEM_RULES: {
     flag: Problem.NoRoad,
     id: 'no-road',
     severity: 'critical',
-    title: (n) => `${n} building${n === 1 ? '' : 's'} cut off from the road network`,
+    title: (n) => `${counted(n, 'building')} cut off from the road network`,
     detail: () =>
       'Nothing reaches them — connect a road to their frontage. A farm’s gate opens only onto a dirt road.',
   },
@@ -75,7 +76,7 @@ const PROBLEM_RULES: {
     flag: Problem.PowerShortage,
     id: 'power-short',
     severity: 'critical',
-    title: (n) => `${n} building${n === 1 ? '' : 's'} at the far end of the grid without power`,
+    title: (n) => `${counted(n, 'building')} at the far end of the grid without power`,
     detail: (s) =>
       `Not enough power: the city needs ${amount(s.powerDemand, 'MW')} and makes ${amount(s.powerSupply, 'MW')} — build another plant.`,
   },
@@ -84,7 +85,7 @@ const PROBLEM_RULES: {
     unless: Problem.PowerShortage,
     id: 'no-power',
     severity: 'critical',
-    title: (n) => `${n} building${n === 1 ? '' : 's'} without power`,
+    title: (n) => `${counted(n, 'building')} without power`,
     detail: () =>
       'Power travels along paved roads and power lines from a plant — check for a gap, or string a line out along a dirt road.',
   },
@@ -92,7 +93,7 @@ const PROBLEM_RULES: {
     flag: Problem.WaterShortage,
     id: 'water-short',
     severity: 'critical',
-    title: (n) => `${n} building${n === 1 ? '' : 's'} at the far end of the mains without water`,
+    title: (n) => `${counted(n, 'building')} at the far end of the mains without water`,
     detail: (s) =>
       `Not enough water: the city needs ${amount(s.waterDemand, 'kL')} and pumps ${amount(s.waterSupply, 'kL')} — add a water tower.`,
   },
@@ -101,14 +102,14 @@ const PROBLEM_RULES: {
     unless: Problem.WaterShortage,
     id: 'no-water',
     severity: 'critical',
-    title: (n) => `${n} building${n === 1 ? '' : 's'} without water`,
+    title: (n) => `${counted(n, 'building')} without water`,
     detail: () => 'Add a water tower within reach, or connect the road that carries the supply.',
   },
   {
     flag: Problem.SewerShortage,
     id: 'sewer-short',
     severity: 'warning',
-    title: (n) => `${n} building${n === 1 ? '' : 's'} at the far end of the sewers without a drain`,
+    title: (n) => `${counted(n, 'building')} at the far end of the sewers without a drain`,
     detail: (s) =>
       `Not enough drainage: the city makes ${amount(s.sewerDemand, 'kL')} of sewage and drains ${amount(s.sewerSupply, 'kL')} — build another drain pipe.`,
   },
@@ -117,7 +118,7 @@ const PROBLEM_RULES: {
     unless: Problem.SewerShortage,
     id: 'no-sewer',
     severity: 'warning',
-    title: (n) => `${n} building${n === 1 ? '' : 's'} with no sewer`,
+    title: (n) => `${counted(n, 'building')} with no sewer`,
     detail: () =>
       'Their sewage runs in the ditches and fouls the ground, and nothing new grows there. Build a drain pipe on a shore and lay pipe or road to it.',
   },
@@ -125,30 +126,24 @@ const PROBLEM_RULES: {
     flag: Problem.HighCrime,
     id: 'high-crime',
     severity: 'warning',
-    title: (n) => `Crime is hurting ${n} building${n === 1 ? '' : 's'}`,
+    title: (n) => `Crime is hurting ${counted(n, 'building')}`,
     detail: () => 'A police station nearby lowers crime and lifts land value.',
   },
   {
     flag: Problem.HighPollution,
     id: 'high-pollution',
     severity: 'warning',
-    title: (n) => `Pollution is hurting ${n} building${n === 1 ? '' : 's'}`,
+    title: (n) => `Pollution is hurting ${counted(n, 'building')}`,
     detail: () => 'Move heavy industry and incinerators downwind of housing, or add parks.',
   },
   {
     flag: Problem.LowDemand,
     id: 'low-demand',
     severity: 'info',
-    title: (n) => `${n} building${n === 1 ? '' : 's'} have no one to fill them`,
+    title: (n) => `${counted(n, 'building')} have no one to fill them`,
     detail: () => 'Demand for this zone type is soft — check the RCI meter before zoning more.',
   },
 ];
-
-/** A supply figure as the player reads it: whole units once it is big, two places below ten. */
-function amount(value: number, unit: string): string {
-  const shown = value >= 10 ? Math.round(value) : Math.round(value * 100) / 100;
-  return `${shown} ${unit}`;
-}
 
 const catalog = (catalogData as { buildings: BuildingCatalogEntry[] }).buildings;
 const catalogById = new Map(catalog.map((entry) => [entry.id, entry]));
@@ -162,7 +157,7 @@ interface SchoolingGroup {
 
 /** "a middle school and a high school", the rungs as a player reads them. */
 function rungsText(rungs: readonly EducationRung[]): string {
-  return rungs.map((rung) => `a ${rung.school}`).join(' and ');
+  return rungs.map((rung) => withArticle(rung.school)).join(' and ');
 }
 
 /**
@@ -177,19 +172,29 @@ function schoolingIssues(
 ): CityIssue[] {
   const issues: CityIssue[] = [];
   for (const [id, { rungs, count, focus }] of groups) {
+    const entryOf = (rung: EducationRung): BuildingCatalogEntry | undefined =>
+      catalog.find((e) => e.service?.kind === rung.kind);
+    const isLocked = (rung: EducationRung): boolean =>
+      (entryOf(rung)?.unlockMilestone ?? 0) > stats.milestoneLevel;
     const locked = rungs
-      .map((rung) => catalog.find((e) => e.service?.kind === rung.kind))
-      .filter((e): e is BuildingCatalogEntry => e !== undefined)
-      .filter((e) => e.unlockMilestone > stats.milestoneLevel);
+      .filter(isLocked)
+      .map(entryOf)
+      .filter((e): e is BuildingCatalogEntry => e !== undefined);
+    const buildable = rungs.filter((rung) => !isLocked(rung));
+    const build =
+      buildable.length > 0
+        ? ` Build ${rungsText(buildable)} on a street that connects to them.`
+        : '';
     const unlock =
       locked.length > 0
-        ? ` ${locked.map((e) => e.name).join(' and ')} unlock${locked.length === 1 ? 's' : ''} at ${MILESTONES[Math.max(...locked.map((e) => e.unlockMilestone))]!.name}.`
+        ? `${locked.map((e) => e.name).join(' and ')} unlock${locked.length === 1 ? 's' : ''} at ${MILESTONES[Math.max(...locked.map((e) => e.unlockMilestone))]!.name}.`
         : '';
     issues.push({
       id,
       severity: 'info',
-      title: `${count} building${count === 1 ? '' : 's'} held at level 2 for want of ${rungsText(rungs)}`,
-      detail: `They have the land value to level up and are waiting on schooling. Build ${rungsText(rungs)} on a street that connects to them.${unlock}`,
+      title: `${counted(count, 'building')} held at level 2 for want of ${rungsText(rungs)}`,
+      detail:
+        `They have the land value to level up and are waiting on schooling.${build} ${unlock}`.trim(),
       count,
       focus: { x: focus.x, z: focus.z },
     });
@@ -293,7 +298,7 @@ export function cityIssues(
 function waitingIssues(waiting: GrowthWaiting): CityIssue[] {
   const issues: CityIssue[] = [];
   const lots = (n: number): string =>
-    `${n} new or growing building${n === 1 ? '' : 's'} ${n === 1 ? 'needs' : 'need'}`;
+    `${counted(n, 'new or growing building')} ${n === 1 ? 'needs' : 'need'}`;
   if (waiting.power > 0) {
     issues.push({
       id: 'power-waiting',
@@ -332,7 +337,7 @@ function waitingIssues(waiting: GrowthWaiting): CityIssue[] {
 function unservedIssues(unserved: ZonedUnserved): CityIssue[] {
   const issues: CityIssue[] = [];
   const tiles = (n: number, what: string): string =>
-    `${n} zoned tile${n === 1 ? ' has' : 's have'} no ${what} from the road beside ${n === 1 ? 'it' : 'them'}`;
+    `${counted(n, 'zoned tile')} ${n === 1 ? 'has' : 'have'} no ${what} from the road beside ${n === 1 ? 'it' : 'them'}`;
   if (unserved.power > 0) {
     issues.push({
       id: 'zoned-no-power',
@@ -382,7 +387,7 @@ function deathCareIssues(report: DeathCareReport, stats: CityStats): CityIssue[]
     issues.push({
       id: 'bodies-uncollected',
       severity: 'warning',
-      title: `${n} ${n === 1 ? 'body lies' : 'bodies lie'} uncollected`,
+      title: `${counted(n, 'body', 'bodies')} ${n === 1 ? 'lies' : 'lie'} uncollected`,
       detail:
         'No cemetery or crematorium with room reaches by road the building where they fell, and each one costs the health of the streets around it every month. Build one on a street that connects to it.',
       count: n,
@@ -443,7 +448,7 @@ function unansweredCallIssues(incidents: readonly Incident[]): CityIssue[] {
     {
       id: 'calls-unanswered',
       severity: 'warning',
-      title: `${unanswered.length} ${unanswered.length === 1 ? 'call stands' : 'calls stand'} unanswered: ${byKind.join(', ')}`,
+      title: `${counted(unanswered.length, 'call')} ${unanswered.length === 1 ? 'stands' : 'stand'} unanswered: ${byKind.join(', ')}`,
       detail:
         'No station reaches them by road, or every station that does is out on a call. Build a station on a street that connects to them, or raise the service funding to lengthen its reach.',
       count: unanswered.length,
@@ -529,7 +534,7 @@ function cityWideIssues(stats: CityStats, unlimitedMoney: boolean): CityIssue[] 
         id: 'labour-short',
         severity: 'warning',
         title: 'Employers cannot find workers',
-        detail: `${vacancies} job${vacancies === 1 ? ' stands' : 's stand'} empty — zone more housing to grow the workforce.`,
+        detail: `${counted(vacancies, 'job')} ${vacancies === 1 ? 'stands' : 'stand'} empty — zone more housing to grow the workforce.`,
         count: 0,
       });
     }

@@ -346,6 +346,11 @@ export interface ToolEnv {
    */
   deckLifts?(tiles: TilePoint[], elevation: number): number[] | null;
   /**
+   * The sentence the world refuses a deck with where it cannot be solved, or
+   * null where it can. Optional: without it a deck is previewed unrefused.
+   */
+  deckRefusal?(tiles: TilePoint[], elevation: number): string | null;
+  /**
    * The ground under a screen pixel, world metres, or null off the ground.
    * Optional: without it the `Curve` mode has nowhere to put a click.
    */
@@ -2401,8 +2406,13 @@ export class ToolManager {
       const { build, path, tiles, corridor, overpass } = plan;
       const cost = tiles.length * build.price.costPerTile;
       const evaluated = this.evaluate(tiles, cost, build.price.unlockMilestone, true);
+      const deckRefusal = this.deckRefusalFor(
+        corridor.runs ? [corridor.runs.near, corridor.runs.far] : [tiles],
+        overpass?.elevation ?? this.roadElevation,
+      );
+      const refusal = plan.refusal ?? deckRefusal;
       const { valid, invalidReason } =
-        plan.refusal !== null ? { valid: false, invalidReason: plan.refusal } : evaluated;
+        refusal !== null ? { valid: false, invalidReason: refusal } : evaluated;
       // What the ghost is drawn at: the composed section's own width, halved
       // for a corridor because each of its two tile rows carries one
       // carriageway and corridorHalfProfile splits it exactly down the middle.
@@ -2452,6 +2462,17 @@ export class ToolManager {
     if (!solve) return undefined;
     const lifts = runs.flatMap((run) => solve(run, elevation) ?? run.map(() => 0));
     return lifts.some((lift) => lift > 0) ? lifts : undefined;
+  }
+
+  /** The world's refusal of the first run whose deck cannot be solved, or null when every run can. */
+  private deckRefusalFor(runs: TilePoint[][], elevation: number): string | null {
+    const refuse = this.env.deckRefusal;
+    if (!refuse) return null;
+    for (const run of runs) {
+      const text = refuse(run, elevation);
+      if (text !== null) return text;
+    }
+    return null;
   }
 
   /** Drag-start setup for a terraform stroke: samples the

@@ -17,7 +17,10 @@ its own.
   the vehicles it asked for, its headway in minutes and the month's running
   cost ("2 of 3 vehicles · every 4.1 min · ¢80/mo"); or, where no depot of
   its mode fields it, "No depot — build a Bus Depot" (Tram Depot, Rail Yard
-  by mode) in the warning colour.
+  by mode) in the warning colour. A line that asks for no vehicle says "Not
+  running" and why: its stops are not joined by a route, or it is set to
+  run none. A headway under a minute reads "under 1 min", and nothing is
+  shown before the first snapshot brings the fleet's figures.
 - With no lines committed yet, the list reads "No lines yet" instead,
   regardless of whether a line tool is currently in hand.
 - A footer, "Transit running", sums the lines' running cost: the figure the

@@ -8,6 +8,7 @@ import {
   NO_EDITS,
   presetProfileForTier,
 } from '../../src/shared/roadprofile';
+import { bridgeRefusalText } from '../../src/world/bridges';
 import { GUIDEWAY_UNDER_OVERPASS, OVERPASS_OVER_GUIDEWAY } from '../../src/shared/overpass';
 import {
   column,
@@ -70,7 +71,7 @@ describe('bridges — crossing water', () => {
 
     const ack = h.ackFor(1)!;
     expect(ack.ok).toBe(false);
-    expect(ack.reason).toBe('grade');
+    expect(ack.reason).toBe(bridgeRefusalText('landing'));
     expect(h.lastSnapshot()!.stats.funds).toBe(START_FUNDS);
   });
 

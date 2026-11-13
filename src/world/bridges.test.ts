@@ -7,7 +7,12 @@ import {
 } from '../shared/constants';
 import { RoadFlow, RoadTier, storedFlow } from '../shared/types';
 import type { GridState, TilePoint } from '../shared/types';
-import { isElevated, shareCorridorLifts, solveElevationProfile } from './bridges';
+import {
+  bridgeRefusalText,
+  isElevated,
+  shareCorridorLifts,
+  solveElevationProfile,
+} from './bridges';
 import { createGrid } from './grid';
 
 function makeGrid(size: number): GridState {
@@ -119,7 +124,7 @@ describe('solveElevationProfile', () => {
     carveRiver(g, 5, 4, 8);
 
     const result = solveElevationProfile(g, run(5, 3, 8));
-    expect(result).toEqual({ ok: false, reason: 'grade' });
+    expect(result).toEqual({ ok: false, reason: 'landing' });
   });
 
   it('allows a span to stop over water — a dead end gets capped, not rejected', () => {
@@ -138,7 +143,20 @@ describe('solveElevationProfile', () => {
     g.roadTier[idx(16, 5, 5)] = RoadTier.TwoLane;
 
     const result = solveElevationProfile(g, run(5, 6, 14));
-    expect(result).toEqual({ ok: false, reason: 'grade' });
+    expect(result).toEqual({ ok: false, reason: 'step' });
+  });
+
+  it('words each refusal as its own cause and what to do, one sentence', () => {
+    const sentences = (['step', 'landing', 'height'] as const).map(bridgeRefusalText);
+    expect(new Set(sentences).size).toBe(3);
+    expect(bridgeRefusalText('step')).toMatch(/^Too steep: .*road already there.* 10%/);
+    expect(bridgeRefusalText('landing')).toMatch(/^Nothing to land on: /);
+    expect(bridgeRefusalText('height')).toContain(`more than ${BRIDGE_MAX_ELEVATION} m`);
+    for (const text of sentences) {
+      expect(text.match(/\.\s/g) ?? []).toHaveLength(0);
+      expect(text.endsWith('.')).toBe(true);
+      expect(text).not.toMatch(/cannot be built there/);
+    }
   });
 
   it('meets an existing elevated road at its own height', () => {

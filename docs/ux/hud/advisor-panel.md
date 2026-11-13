@@ -14,3 +14,9 @@ never reshuffles under the player's cursor) is a pure function of the
 building list and the city stats, so it updates without touching the
 simulation.
 
+A row tells the player to build only what the city has unlocked. Where the
+answer is still locked it names the milestone instead ("Elementary School
+unlocks at Small Town"). Counts and articles are written by one helper
+(`counted`, `withArticle` in `src/ui/format.ts`), so "1 rider" and "an
+elementary school" hold in every panel.
+

@@ -24,4 +24,4 @@ bridges.
 | [Sound walls](sound-walls.md) | 2459 |
 | [The road tool](the-road-tool.md) | 1307 |
 | [Progression and unlocks](progression-and-unlocks.md) | 463 |
-| [Bridges and elevated roads](bridges-and-elevated-roads.md) | 4121 |
+| [Bridges and elevated roads](bridges-and-elevated-roads.md) | 4486 |

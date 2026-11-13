@@ -53,6 +53,9 @@ All bound in one `window` `keydown` listener in `main.ts`.
 
 ### The `1`–`7` category hotkeys
 
+The table is `CATEGORY_HOTKEYS` in `src/ui/categories.ts`; the key handler
+and the Help popover both read it.
+
 | Key | Tool selected              | Category    |
 | --- | -------------------------- | ----------- |
 | `1` | `road.two` (two-lane road) | Roads       |

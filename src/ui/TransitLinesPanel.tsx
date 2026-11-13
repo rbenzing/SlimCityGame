@@ -9,6 +9,7 @@
  * the advertising the warranted bus shelters earn it.
  */
 import type { JSX } from 'react';
+import { counted } from './format';
 import { Icon } from './icons';
 import { useCityStore } from './store';
 import { LABEL, PANEL_ROUNDED } from './theme';
@@ -27,6 +28,11 @@ const DEPOT_LABEL: Record<TransitMode, string> = {
   rail: 'Rail Yard',
   tram: 'Tram Depot',
 };
+
+/** The headway as the sim computed it; under a minute it is not a figure a street timetable holds. */
+function headwayText(minutes: number): string {
+  return minutes < 1 ? 'under 1 min' : `${minutes.toFixed(1)} min`;
+}
 
 export function TransitLinesPanel(): JSX.Element | null {
   const selectedTool = useCityStore((s) => s.selectedTool);
@@ -61,12 +67,14 @@ export function TransitLinesPanel(): JSX.Element | null {
           <div className="flex flex-col gap-1">
             {lines.map((line, i) => {
               const mode = line.mode ?? 'bus';
+              const figured = fleet.requested[i] !== undefined;
               const served = fleet.served[i] ?? 0;
               const requested = fleet.requested[i] ?? 0;
               const headway = fleet.headwayMin[i] ?? 0;
               const cost = fleet.runningCost[i] ?? 0;
               const depot = fleet.depotId?.[i] ?? null;
               const noDepot = served === 0 && requested > 0;
+              const idle = figured && requested === 0;
               return (
                 <div
                   key={line.id}
@@ -80,7 +88,9 @@ export function TransitLinesPanel(): JSX.Element | null {
                       />
                       {MODE_LABEL[mode]} {line.id}
                     </span>
-                    <span className="text-white/60">{Math.round(ridership[i] ?? 0)} riders</span>
+                    <span className="text-white/60">
+                      {counted(Math.round(ridership[i] ?? 0), 'rider')}
+                    </span>
                     <button
                       type="button"
                       aria-label={`Delete line ${line.id}`}
@@ -90,7 +100,16 @@ export function TransitLinesPanel(): JSX.Element | null {
                       <Icon name="close" className="h-3.5 w-3.5" />
                     </button>
                   </div>
-                  {noDepot ? (
+                  {!figured ? null : idle ? (
+                    <div
+                      className="text-[11px] text-[#e5533f]"
+                      data-testid={`line-${line.id}-idle`}
+                    >
+                      {line.vehicles === 0
+                        ? 'Not running — set to run no vehicles'
+                        : 'Not running — its stops are not joined by a route'}
+                    </div>
+                  ) : noDepot ? (
                     <div
                       className="text-[11px] text-[#e5533f]"
                       data-testid={`line-${line.id}-no-depot`}
@@ -102,7 +121,8 @@ export function TransitLinesPanel(): JSX.Element | null {
                       className="text-[11px] text-white/60"
                       data-testid={`line-${line.id}-service`}
                     >
-                      {served} of {requested} vehicles · every {headway.toFixed(1)} min · ¢{cost}/mo
+                      {served} of {counted(requested, 'vehicle')} · every {headwayText(headway)} · ¢
+                      {cost}/mo
                       {depot !== null && ` · from ${DEPOT_LABEL[mode]}`}
                     </div>
                   )}
