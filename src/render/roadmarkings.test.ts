@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { corridorHalfProfile, presetProfileForTier } from '../shared/roadprofile';
+import {
+  carriagewayHalfWidthOf,
+  corridorHalfProfile,
+  presetProfileForTier,
+} from '../shared/roadprofile';
 import { RoadFlow, RoadTier } from '../shared/types';
 import type { RoadProfile } from '../shared/types';
 import {
@@ -879,5 +883,49 @@ describe('the lanes an approach arrives in (MUTCD 3B.16)', () => {
         expect((lane.from + lane.to) / 2).toBeCloseTo(lane.centre, 6);
       }
     }
+  });
+});
+
+describe('seamBetween where an avenue meets a one-way road', () => {
+  const avenue = presetProfileForTier(RoadTier.Avenue);
+  const oneWay = presetProfileForTier(RoadTier.OneWay);
+  const avenueHalf = carriagewayHalfWidthOf(avenue);
+  const oneWayHalf = carriagewayHalfWidthOf(oneWay);
+
+  /** Every line of a plan, with its colour and where it lands at the seam. */
+  const landings = (
+    here: MarkingProfile,
+    there: MarkingProfile,
+    hereHalf: number,
+    thereHalf: number,
+  ) => {
+    const at = seamBetween(here, there, thereHalf, hereHalf);
+    return [
+      ...here.solid.map((l, i) => ({ from: l.at, to: at.solid[i]!, color: l.color })),
+      ...here.dashed.map((l, i) => ({ from: l.at, to: at.dashed[i]!, color: l.color })),
+    ];
+  };
+
+  for (const flow of [RoadFlow.North, RoadFlow.South, RoadFlow.East, RoadFlow.West]) {
+    it(`lets no line cross another on its way to the road that runs ${flow}`, () => {
+      const wide = markingPlan(avenue, RoadFlow.East);
+      const narrow = markingPlan(oneWay, flow);
+      const lines = landings(wide, narrow, avenueHalf, oneWayHalf).sort((a, b) => a.from - b.from);
+      for (let i = 1; i < lines.length; i++) {
+        expect(lines[i]!.to, `line ${i} landed behind the one before it`).toBeGreaterThanOrEqual(
+          lines[i - 1]!.to - 1e-9,
+        );
+      }
+    });
+  }
+
+  it('takes the white edge lines to the kerbs, never across the road', () => {
+    const wide = markingPlan(avenue, RoadFlow.East);
+    const narrow = markingPlan(oneWay, RoadFlow.East);
+    const at = seamBetween(wide, narrow, oneWayHalf, avenueHalf);
+    const edges = wide.solid.map((l, i) => ({ from: l.at, to: at.solid[i]!, color: l.color }));
+    const whites = edges.filter((l) => l.color === 'white');
+    expect(whites).toHaveLength(2);
+    for (const w of whites) expect(Math.sign(w.to)).toBe(Math.sign(w.from));
   });
 });

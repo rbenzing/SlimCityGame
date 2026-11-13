@@ -26,6 +26,7 @@ import { TILE_METERS } from '../shared/constants';
 import { freeJunctionTiles, freeRoadLampStands, freeRoadSoup } from './freeroadmesh';
 import { LAMP_HEIGHTS_M, lampLateralOffset } from './lamps';
 import { markingPlan } from './roadmarkings';
+import { MEDIAN_CONCRETE_COLOR, MEDIAN_GRASS_COLOR, MEDIAN_RAISE } from './medianisland';
 import {
   CURB_Y_OFFSET,
   MARKING_COLOR,
@@ -34,6 +35,7 @@ import {
   ROAD_Y_OFFSET,
   SIDEWALK_COLOR,
   YELLOW_MARKING_COLOR,
+  medianHalfWidthOf,
   surfaceColor,
 } from './roadsmesh';
 
@@ -843,6 +845,49 @@ describe('a bend where two runs of one road meet', () => {
     settle(tee);
     lay(tee, { a: centre(24, 20), b: at(560, 480) });
     expect(bendsOf(tee.roads!, radiusOf(RoadTier.TwoLane)).size).toBe(0);
+  });
+
+  it('draws the median at one width and height on the arc and on the run before it', () => {
+    const { g, bend, polar, inArc } = scene(RoadTier.Avenue, 90, 90);
+    const half = medianHalfWidthOf(profileOfTier(RoadTier.Avenue));
+    const soup = freeRoadSoup(g.roads!, noCustom, flat);
+    const island: { x: number; y: number; z: number }[] = [];
+    for (let i = 0; i < soup.positions.length; i += 3) {
+      const rgb = soup.colors.slice(i, i + 3);
+      const y = soup.positions[i + 1]!;
+      if (
+        y >= ROAD_Y_OFFSET + MEDIAN_RAISE - 1e-6 &&
+        (sameColor(rgb, MEDIAN_GRASS_COLOR) || sameColor(rgb, MEDIAN_CONCRETE_COLOR))
+      ) {
+        island.push({ x: soup.positions[i]!, y, z: soup.positions[i + 2]! });
+      }
+    }
+    const onArc = island.filter((p) => inArc(p));
+    const radii = onArc.map((p) => polar(p).r);
+    expect(onArc.length).toBeGreaterThan(0);
+    expect(Math.max(...radii) - Math.min(...radii)).toBeCloseTo(2 * half, 3);
+    expect((Math.max(...radii) + Math.min(...radii)) / 2).toBeCloseTo(bend.radius, 3);
+    // The run before the bend lies along z = 400 m.
+    const run = island.filter((p) => p.x < 420 && p.x > 380);
+    expect(run.length).toBeGreaterThan(0);
+    const across = run.map((p) => p.z - NODE.z);
+    expect(Math.max(...across) - Math.min(...across)).toBeCloseTo(2 * half, 3);
+    for (const p of island) expect(p.y).toBeCloseTo(ROAD_Y_OFFSET + MEDIAN_RAISE, 6);
+  });
+
+  it('ends a median in a yellow-kerbed nose at each end of the road', () => {
+    const g = world();
+    lay(g, { tier: RoadTier.Avenue, a: at(200, 200), b: at(520, 260) });
+    const soup = freeRoadSoup(g.roads!, noCustom, flat);
+    const noseKerb: number[] = [];
+    for (let i = 0; i < soup.positions.length; i += 3) {
+      const raised = soup.positions[i + 1]! >= ROAD_Y_OFFSET + MEDIAN_RAISE - 1e-6;
+      if (raised && sameColor(soup.colors.slice(i, i + 3), YELLOW_MARKING_COLOR)) {
+        noseKerb.push(soup.positions[i]!);
+      }
+    }
+    expect(noseKerb.some((x) => x < 300)).toBe(true);
+    expect(noseKerb.some((x) => x > 420)).toBe(true);
   });
 
   it('keeps every lamp off the carriageway of a bend', () => {

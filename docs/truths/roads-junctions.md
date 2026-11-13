@@ -274,3 +274,12 @@ Back to [the index](../GROUND-TRUTHS.md).
   a node on each half `[R-roads-054]`. —
   [how roads meet](../world-sim/road-model/how-roads-meet-rank-replacement-and-transitions.md);
   `src/shared/junctionpaint.ts`
+- [R-roads-084] A raised median is one kerbed island at its section's own width wherever
+  its road runs: straight, round a bend on the road's arc, and tapering where
+  a neighbour's is narrower, with no step at a seam. Every end is a rounded
+  nose of the island's half-width with a yellow kerb (MUTCD 3J.04 ¶02),
+  behind the stop line at a junction. Solid yellow lines run both sides
+  (3J.05 ¶02) and end where the nose begins. Where two roads meet in line no
+  closing line crosses another. One function draws it for grid and free
+  roads. — [median, dividers and kerbs](../art/streets/median-dividers-and-kerbs.md);
+  `emitIsland` in `src/render/medianisland.ts`

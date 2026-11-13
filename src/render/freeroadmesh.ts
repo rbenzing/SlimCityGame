@@ -48,8 +48,10 @@ import type { LampStand } from './lamps';
 import { POLE_SPECS, layFromLinks, poleLateralOffset } from './powerpoles';
 import type { PoleSite, PowerLay } from './powerpoles';
 import { firstFreeAlong, placeIsFree, type Roadside } from './roadsidespace';
-import { markingPlan } from './roadmarkings';
+import { isMedianSideLine, markingPlan } from './roadmarkings';
 import type { MarkingLine, MarkingPlan } from './roadmarkings';
+import { emitIsland, MEDIAN_RAISE } from './medianisland';
+import type { IslandPath } from './medianisland';
 import {
   BIKE_LANE_PAINT_COLOR,
   BUS_LANE_PAINT_COLOR,
@@ -59,13 +61,12 @@ import {
   HIGHWAY_BARRIER_RAISE,
   MARKING_COLOR,
   MARK_Y_OFFSET,
-  MEDIAN_GRASS_COLOR,
-  MEDIAN_RAISE,
   PAINT_HALF_WIDTH_M,
   ROAD_Y_OFFSET,
   SIDEWALK_COLOR,
   YELLOW_MARKING_COLOR,
   dashSegments,
+  medianHalfWidthOf,
   roadNightTint,
   surfaceColor,
 } from './roadsmesh';
@@ -272,6 +273,33 @@ class Soup implements RoadSoup {
         );
       }
     }
+  }
+
+  /** The median island swept along the stations, nosed where asked. */
+  island(
+    st: readonly Station[],
+    median: { offset: number; half: number },
+    noseStart = false,
+    noseEnd = false,
+  ): void {
+    if (st.length < 2) return;
+    const path: IslandPath = {
+      count: st.length,
+      at: (k, o): [number, number] => {
+        const p = st[k]!;
+        const u = across(p, median.offset + o);
+        return [p.x + p.nx * u, p.z + p.nz * u];
+      },
+      half: () => median.half,
+    };
+    emitIsland(path, { noseStart, noseEnd, noseColor: YELLOW_MARKING_COLOR }, (a, b, c, color) =>
+      this.tri(
+        this.vertex(a[0], a[1], MEDIAN_RAISE + ROAD_Y_OFFSET),
+        this.vertex(b[0], b[1], MEDIAN_RAISE + ROAD_Y_OFFSET),
+        this.vertex(c[0], c[1], MEDIAN_RAISE + ROAD_Y_OFFSET),
+        color,
+      ),
+    );
   }
 
   /** A vertical face along the stations at one offset, from one lift to another. */
@@ -548,6 +576,7 @@ function drawSegment(
   lay: Lay,
   from: number,
   to: number,
+  nose: { from: boolean; to: boolean },
 ): void {
   // A grid road whose junction reaches its tile's edge has nothing left to draw.
   if (to - from < 1e-6) return;
@@ -556,7 +585,19 @@ function drawSegment(
   const dashes = isPaved(lay.profile)
     ? dashRuns(lay, from, to).map(([lo, hi]) => stations(samples, lo, hi, lay.flip))
     : [];
-  drawSweep(soup, lay, st, dashes);
+  // A median that ends here ends in a nose, which spends its half-width of the run.
+  const half = medianHalfWidthOf(lay.profile);
+  const first = from + (nose.from ? half : 0);
+  const last = to - (nose.to ? half : 0);
+  const island =
+    last > first
+      ? {
+          stations: stations(samples, first, last, lay.flip),
+          noseStart: nose.from,
+          noseEnd: nose.to,
+        }
+      : undefined;
+  drawSweep(soup, lay, st, dashes, island);
 }
 
 /** A bend: the cross-section swept along its centre line, the arc and what is driven straight to and from it. */
@@ -584,6 +625,12 @@ function drawSweep(
   lay: Lay,
   st: readonly Station[],
   dashes: readonly (readonly Station[])[],
+  /**
+   * The stretch the median's island and the lines beside it run, where it ends
+   * in a nose: the stations without the nose's own length. Omitted, the island
+   * runs the whole sweep and ends square, as it does where it runs on.
+   */
+  island?: { stations: readonly Station[]; noseStart: boolean; noseEnd: boolean },
 ): void {
   if (st.length < 2) return;
   const { profile, plan } = lay;
@@ -592,12 +639,15 @@ function drawSweep(
   soup.ribbon(st, -half, half, ROAD_Y_OFFSET, surface);
 
   let edge = -half;
+  let median: { offset: number; half: number } | null = null;
   for (const piece of profile.pieces) {
     if (!CARRIAGEWAY_KINDS.has(piece.kind)) continue;
     const lo = edge;
     edge += piece.width;
-    if (piece.kind === 'median')
-      soup.ribbon(st, lo, edge, MEDIAN_RAISE + ROAD_Y_OFFSET, MEDIAN_GRASS_COLOR);
+    if (piece.kind === 'median') {
+      median = { offset: (lo + edge) / 2, half: piece.width / 2 };
+      soup.island(island?.stations ?? st, median, island?.noseStart, island?.noseEnd);
+    }
     if (piece.kind === 'barrier') {
       soup.ribbon(st, lo, edge, HIGHWAY_BARRIER_RAISE + ROAD_Y_OFFSET, HIGHWAY_BARRIER_COLOR);
     }
@@ -627,7 +677,10 @@ function drawSweep(
       MARK_Y_OFFSET,
       line.color === 'yellow' ? YELLOW_MARKING_COLOR : MARKING_COLOR,
     );
-  for (const line of plan.solid) paint(line, st);
+  for (const line of plan.solid) {
+    const besideMedian = median !== null && isMedianSideLine(line, median.offset, median.half);
+    paint(line, besideMedian && island ? island.stations : st);
+  }
   for (const run of dashes) for (const line of plan.dashed) paint(line, run);
 }
 
@@ -642,7 +695,9 @@ export function freeRoadSoup(net: RoadNet, lookup: ProfileFor, surfaceAt: Surfac
   const { junctions, spans, caps, bends } = layout(net, lookup);
   for (const j of junctions) drawJunction(soup, net, j.node, j.arms, j.color);
   for (const b of bends) drawBend(soup, b.at, b.lay);
-  for (const span of spans) drawSegment(soup, net, span.seg, span.lay, span.from, span.to);
+  for (const span of spans) {
+    drawSegment(soup, net, span.seg, span.lay, span.from, span.to, span.nose);
+  }
   for (const cap of caps) drawCap(soup, net, cap);
   return soup;
 }
@@ -662,6 +717,8 @@ interface Span {
   lay: Lay;
   from: number;
   to: number;
+  /** Which ends of the stretch finish a median in a nose: those at a junction or a dead end. */
+  nose: { from: boolean; to: boolean };
 }
 
 /**
@@ -679,6 +736,8 @@ function layout(
   bends: { at: BendAt; lay: Lay }[];
 } {
   const setbackAt = new Map<string, number>();
+  /** The segment ends that meet a junction or a dead end, where a median finishes in a nose. */
+  const noseAt = new Set<string>();
   const junctions: { node: number; arms: Arm[]; color: Rgb }[] = [];
   const spans: Span[] = [];
   const gridTiles: TilePoint[] = [];
@@ -710,6 +769,7 @@ function layout(
           lay: layOf(net, gridSeg, lookup),
           from: atA ? take : length - GRID_ARM_REACH,
           to: atA ? GRID_ARM_REACH : length - take,
+          nose: { from: false, to: false },
         });
       }
       continue;
@@ -722,9 +782,11 @@ function layout(
     if (arms.length === 1 && !isGridNode(net, node)) {
       const cap = capAt(net, segs[0]!, node, lookup);
       setbackAt.set(`${segs[0]}:${node}`, cap.pivot);
+      noseAt.add(`${segs[0]}:${node}`);
       caps.push(cap);
     }
     if (arms.length < 2) continue;
+    for (const seg of segs) noseAt.add(`${seg}:${node}`);
     const free = segs.find((s) => isFreeSegment(net, s))!;
     junctions.push({ node, arms, color: surfaceColor(profileOf(net.segProfile[free]!, lookup)) });
     if (!isGridNode(net, node)) continue;
@@ -742,6 +804,7 @@ function layout(
         lay: layOf(net, seg, lookup),
         from: atA ? setback : length - GRID_ARM_REACH,
         to: atA ? GRID_ARM_REACH : length - setback,
+        nose: { from: atA, to: !atA },
       });
     });
   }
@@ -753,6 +816,10 @@ function layout(
       lay: layOf(net, seg, lookup),
       from: setbackAt.get(`${seg}:${net.segA[seg]}`) ?? 0,
       to: length - (setbackAt.get(`${seg}:${net.segB[seg]}`) ?? 0),
+      nose: {
+        from: noseAt.has(`${seg}:${net.segA[seg]}`),
+        to: noseAt.has(`${seg}:${net.segB[seg]}`),
+      },
     });
   }
   return { junctions, spans, gridTiles, caps, bends };

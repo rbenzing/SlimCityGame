@@ -536,7 +536,7 @@ export function seamOffsets(
   /** Half the width of this side's own carriageway; equal widths meet half way. */
   hereHalf: number = thereHalf,
 ): number[] {
-  const partner = orderedPartners(here, there);
+  const partner = carryingPartners(here, there, thereHalf);
   /** The nearest line of the same colour over there, whether or not it is spoken for. */
   const nearestOfColour = (line: MarkingLine): MarkingLine | null => {
     let best: MarkingLine | null = null;
@@ -583,7 +583,75 @@ export function seamOffsets(
     if (thereHalf <= 0 || line.at === 0) return line.at;
     return Math.sign(line.at) * thereHalf;
   };
-  return here.map((_, i) => seamAt(i, new Set([i])));
+  const landing = here.map((_, i) => seamAt(i, new Set([i])));
+  keepOrder(here, partner, landing, thereHalf);
+  return landing;
+}
+
+/**
+ * Settles the lines that close, so none of them lands across another. A line
+ * with no opposite number runs to the nearest line of its colour, and where
+ * that lies on the far side of other lines it would cross them on the way:
+ * it goes to the kerb on its own side instead, and no further across than the
+ * lines it sat between.
+ */
+function keepOrder(
+  here: readonly MarkingLine[],
+  partner: readonly number[],
+  landing: number[],
+  thereHalf: number,
+): void {
+  const EPS = 1e-9;
+  const crosses = (i: number): boolean =>
+    here.some(
+      (other, j) => j !== i && (other.at - here[i]!.at) * (landing[j]! - landing[i]!) < -EPS,
+    );
+  for (let i = 0; i < here.length; i++) {
+    if (partner[i]! >= 0 || !crosses(i)) continue;
+    const line = here[i]!;
+    if (line.at !== 0 && thereHalf > 0) landing[i] = Math.sign(line.at) * thereHalf;
+  }
+  const order = here.map((_, i) => i).sort((a, b) => here[a]!.at - here[b]!.at);
+  for (let k = 1; k < order.length; k++) {
+    const i = order[k]!;
+    if (partner[i]! < 0) landing[i] = Math.max(landing[i]!, landing[order[k - 1]!]!);
+  }
+  for (let k = order.length - 2; k >= 0; k--) {
+    const i = order[k]!;
+    if (partner[i]! < 0) landing[i] = Math.min(landing[i]!, landing[order[k + 1]!]!);
+  }
+}
+
+/**
+ * `orderedPartners`, for roads that meet where one carries traffic both ways
+ * and the other one way. Only one carriageway of the two-way road carries on
+ * into the one-way road, and the one-way road's own yellow edge — always its
+ * left, facing the traffic that is not there — says which: the carriageway
+ * on the far side of the road from it, whose left edge faces the same way.
+ * The other carriageway's lines have nothing to carry on into, and close to the
+ * kerb rather than crossing the lines of the one that does.
+ */
+function carryingPartners(
+  here: readonly MarkingLine[],
+  there: readonly MarkingLine[],
+  thereHalf: number,
+): number[] {
+  const yellows = there.filter((l) => l.color === 'yellow');
+  const edge = yellows.length === 1 && Math.abs(yellows[0]!.at) > thereHalf / 2 ? yellows[0] : null;
+  const opposing =
+    here.some((l) => l.color === 'yellow' && l.at < 0) &&
+    here.some((l) => l.color === 'yellow' && l.at > 0);
+  if (!edge || !opposing) return orderedPartners(here, there);
+  const carrying = here.map((_, k) => k).filter((k) => here[k]!.at * edge.at < 0);
+  const partner = new Array<number>(here.length).fill(-1);
+  const matched = orderedPartners(
+    carrying.map((k) => here[k]!),
+    there,
+  );
+  carrying.forEach((k, i) => {
+    partner[k] = matched[i]!;
+  });
+  return partner;
 }
 
 /** The line next to line `i` across the road, toward the low offsets or the high, or -1. */
@@ -720,6 +788,17 @@ function bandSeams(
     if (narrower !== 'there' || side === 0) return { from: band.from, to: band.to };
     return { from: side * thereHalf, to: side * thereHalf };
   });
+}
+
+/**
+ * Whether `line` is one of the two solid yellow lines painted beside a raised
+ * median of half-width `half` centred `offset` across the road.
+ */
+export function isMedianSideLine(line: MarkingLine, offset: number, half: number): boolean {
+  return (
+    line.color === 'yellow' &&
+    Math.abs(Math.abs(line.at - offset) - (half + MEDIAN_EDGE_LINE_INSET_M)) < 1e-6
+  );
 }
 
 /** The pair of solid lines painted around the centre, or none. */
