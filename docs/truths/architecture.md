@@ -45,7 +45,10 @@ Back to [the index](../GROUND-TRUTHS.md).
   [dependency-map.md](../engineering/dependency-map.md)
 - [R-architecture-008] Every `Command` kind has an `applyCommand` case that returns its literal, exact
   inverse (the prior values, not a re-derived approximation); undo replays that
-  inverse, refund included. A road it puts back carries the stored flow and
+  inverse, refund included: a batch's inverse ends in a `settle` carrying the
+  opposite of what the batch cost, so an undo puts the funds back exactly. A
+  bulldoze's undo once charged the full price where the bulldoze had refunded
+  half. A road it puts back carries the stored flow and
   deck height each tile had (`flows`, `elevations`), never a direction read
   off the order its tiles were listed in: a bulldoze lists a rectangle, and
   its undo once laid one-way roads and corridor halves back running the wrong

@@ -2241,7 +2241,7 @@ class SimWorld implements WorkerSim {
       cost += costPerTile + elevation * BRIDGE_COST_PER_METER_TILE;
     }
     if (crossings.size === 0) return { ok: false, cost: 0, inverse: [], reason: 'invalid' };
-    if (!this.unlimitedMoney && this.stats.funds < cost) {
+    if (this.cannotPay(cost)) {
       return { ok: false, cost: 0, inverse: [], reason: 'funds' };
     }
     const inverse = this.applyCrossings(crossings);
@@ -2645,7 +2645,25 @@ class SimWorld implements WorkerSim {
       let refusal: CommandResult | null = null;
       const inverse: Command[] = [];
 
-      for (const command of batch.commands) {
+      // A settle ends a batch that has other commands before it, and nowhere else.
+      const last = batch.commands[batch.commands.length - 1];
+      const settle = last?.kind === 'settle' ? last : null;
+      const misplaced =
+        batch.commands.some((c, i) => c.kind === 'settle' && i !== batch.commands.length - 1) ||
+        (settle !== null && (batch.commands.length === 1 || !Number.isFinite(settle.cost)));
+      if (misplaced || (settle !== null && settle.cost > 0 && this.cannotPay(settle.cost))) {
+        const reason = misplaced ? 'invalid' : 'funds';
+        this.post({
+          type: 'ack',
+          ack: { seq: batch.seq, ok: false, cost: 0, inverse: [], reason },
+        });
+        continue;
+      }
+      // The settled price stands in for the prices of the commands before it.
+      this.settling = settle !== null;
+      const commands = settle ? batch.commands.slice(0, -1) : batch.commands;
+
+      for (const command of commands) {
         const result = this.applyCommand(command);
         // Before the next command, which may read what this one laid.
         this.syncRoads();
@@ -2661,15 +2679,21 @@ class SimWorld implements WorkerSim {
       if (refusal) {
         // What landed before the refusal comes back off, newest first. An
         // inverse is not priced like its original — a road's is a bulldoze,
-        // which refunds half — so the funds go back as they stood.
-        for (const command of inverse) {
-          const undone = this.applyCommand(command);
-          this.syncRoads();
-          if (!undone.ok) {
-            console.error(
-              `batch ${batch.seq}: an inverse was refused taking back a refused batch (${command.kind}, ${undone.reason ?? 'no reason'})`,
-            );
+        // which refunds half — so the funds gates stand aside and the funds go
+        // back as they stood.
+        this.settling = true;
+        try {
+          for (const command of inverse) {
+            const undone = this.applyCommand(command);
+            this.syncRoads();
+            if (!undone.ok) {
+              console.error(
+                `batch ${batch.seq}: an inverse was refused taking back a refused batch (${command.kind}, ${undone.reason ?? 'no reason'})`,
+              );
+            }
           }
+        } finally {
+          this.settling = false;
         }
         this.stats.funds = fundsBefore;
         const ack: CommandAck = { seq: batch.seq, ok: false, cost: 0, inverse: [] };
@@ -2678,8 +2702,23 @@ class SimWorld implements WorkerSim {
         continue;
       }
 
+      this.settling = false;
+      if (settle) {
+        cost = settle.cost;
+        this.stats.funds = fundsBefore - cost;
+      }
+      // Undoing an edit costs nothing: its undo settles to the opposite of what it cost.
+      if (inverse.length > 0) inverse.push({ kind: 'settle', cost: cost === 0 ? 0 : -cost });
       this.post({ type: 'ack', ack: { seq: batch.seq, ok: true, cost, inverse } });
     }
+  }
+
+  /** Set while a batch that ends in a settle is applied, so its commands' own funds gates stand aside. */
+  private settling = false;
+
+  /** Whether the city cannot pay `cost` now; unlimited money and a settling batch always can. */
+  private cannotPay(cost: number): boolean {
+    return !this.unlimitedMoney && !this.settling && this.stats.funds < cost;
   }
 
   /** Set while a refused road edit is taken back, so its inverse's bulldoze leaves the stops standing. */
@@ -2894,6 +2933,9 @@ class SimWorld implements WorkerSim {
       case 'setUnlimitedMoney':
         this.unlimitedMoney = command.on;
         return { ok: true, cost: 0, inverse: [] };
+      case 'settle':
+        // Handled by drainCommands, which only lets one end a batch.
+        return { ok: false, cost: 0, inverse: [], reason: 'invalid' };
     }
   }
 
@@ -2956,7 +2998,7 @@ class SimWorld implements WorkerSim {
       }
     }
     const cost = on ? newTiles * LANDFILL_PAINT_COST_PER_TILE : 0;
-    if (on && !this.unlimitedMoney && cost > this.stats.funds) {
+    if (on && this.cannotPay(cost)) {
       return { ok: false, cost: 0, inverse: [], reason: 'funds' };
     }
 
@@ -3028,7 +3070,7 @@ class SimWorld implements WorkerSim {
     const cost = on
       ? wouldChange * (cable ? POWER_CABLE_COST_PER_TILE : POWER_LINE_COST_PER_TILE)
       : 0;
-    if (on && !this.unlimitedMoney && cost > this.stats.funds) {
+    if (on && this.cannotPay(cost)) {
       return { ok: false, cost: 0, inverse: [], reason: 'funds' };
     }
 
@@ -3076,7 +3118,7 @@ class SimWorld implements WorkerSim {
       if (now !== on && (!on || canLayPipe(g, t.x, t.z))) wouldChange += 1;
     }
     const cost = on ? wouldChange * WATER_PIPE_COST_PER_TILE : 0;
-    if (on && !this.unlimitedMoney && cost > this.stats.funds) {
+    if (on && this.cannotPay(cost)) {
       return { ok: false, cost: 0, inverse: [], reason: 'funds' };
     }
 
@@ -3374,8 +3416,7 @@ class SimWorld implements WorkerSim {
     }
 
     const cost = changedCount * price.costPerTile + bridgeCost;
-    if (!this.unlimitedMoney && this.stats.funds < cost)
-      return { ok: false, cost: 0, inverse: [], reason: 'funds' };
+    if (this.cannotPay(cost)) return { ok: false, cost: 0, inverse: [], reason: 'funds' };
 
     // What this command lays decides the arms of those tiles, and what was
     // held apart there before is what its undo puts back.
@@ -3522,7 +3563,7 @@ class SimWorld implements WorkerSim {
     const plan = planSegment(this.grid, this.roads, req, lookup);
     if (!plan.ok) return { ok: false, cost: 0, inverse: [], reason: plan.reason };
     const cost = Math.round((plan.lengthM / TILE_METERS) * price.costPerTile);
-    if (!this.unlimitedMoney && this.stats.funds < cost) {
+    if (this.cannotPay(cost)) {
       return { ok: false, cost: 0, inverse: [], reason: 'funds' };
     }
     laySegment(this.grid, this.roads, plan, req);
@@ -3636,7 +3677,7 @@ class SimWorld implements WorkerSim {
     const clearedTiles = inBoundsTiles.filter((t) => asked.has(tileIndex(t.x, t.z)));
     // Exhuming a cemetery's graves is paid in hand, before anything is taken down.
     const exhumation = this.exhumationCharge(clearedTiles);
-    if (!this.unlimitedMoney && this.stats.funds < exhumation) {
+    if (this.cannotPay(exhumation)) {
       return { ok: false, cost: 0, inverse: [], reason: 'funds' };
     }
     const lifted = this.removeOverRoads(crossing);
@@ -3917,7 +3958,7 @@ class SimWorld implements WorkerSim {
     if (standing && !(standing.kind === 'sign' && stop.kind === 'shelter'))
       return refuse('invalid');
     const price = entry.cost - (standing ? this.stopPrice(standing.kind) : 0);
-    if (!this.unlimitedMoney && this.stats.funds < price) return refuse('funds');
+    if (this.cannotPay(price)) return refuse('funds');
 
     const alone = this.stops.onTile(stop.x, stop.z).length <= 1;
     const named = standing && alone ? this.linesNamingTile(stop.x, stop.z) : [];
@@ -3978,8 +4019,7 @@ class SimWorld implements WorkerSim {
     const plots = entry.deathCare?.plots;
     const restored = plots === undefined ? 0 : Math.max(0, Math.min(Math.floor(interments), plots));
     const price = entry.cost - restored * EXHUMATION_FEE_PER_INTERMENT;
-    if (!this.unlimitedMoney && this.stats.funds < price)
-      return { ok: false, cost: 0, inverse: [], reason: 'funds' };
+    if (this.cannotPay(price)) return { ok: false, cost: 0, inverse: [], reason: 'funds' };
 
     const { w, d } = footprintForRotation(entry, rotation);
     // A building put back on its curved parcel claims the tiles its frame
@@ -4054,8 +4094,7 @@ class SimWorld implements WorkerSim {
   private cmdTerraform(command: TerraformCommand): CommandResult {
     const result = computeTerraformPatch(this.grid, command);
     if (!result) return { ok: false, cost: 0, inverse: [], reason: 'invalid' };
-    if (!this.unlimitedMoney && this.stats.funds < result.cost)
-      return { ok: false, cost: 0, inverse: [], reason: 'funds' };
+    if (this.cannotPay(result.cost)) return { ok: false, cost: 0, inverse: [], reason: 'funds' };
 
     this.applyHeights(result.patch);
     this.stats.funds -= result.cost;

@@ -63,7 +63,10 @@ describe('stringing a power line past a street that already carries power', () =
     const tiles = column(65, 56, 9);
     const ack = run(h, 3, [line(tiles)]);
     expect(ack.ok).toBe(true);
-    expect(ack.inverse).toEqual([{ kind: 'stringPowerLine', tiles, on: false }]);
+    expect(ack.inverse).toEqual([
+      { kind: 'stringPowerLine', tiles, on: false },
+      { kind: 'settle', cost: -ack.cost },
+    ]);
     expect(savedGrid(h).powerLine[tileIndex(65, 60)]).toBe(PowerLineKind.Strung);
 
     expect(run(h, 4, ack.inverse).ok).toBe(true);

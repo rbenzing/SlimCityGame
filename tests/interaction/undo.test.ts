@@ -34,8 +34,9 @@ describe('terraform undo and redo through the undo stack', () => {
     const ack = h.ackFor(1)!;
     expect(ack).not.toBeNull();
     expect(ack.ok).toBe(true);
-    expect(ack.inverse).toHaveLength(1);
+    expect(ack.inverse).toHaveLength(2);
     expect(ack.inverse[0]!.kind).toBe('terraformSet');
+    expect(ack.inverse[1]!.kind).toBe('settle');
 
     // main.ts onAck: the acked edit lands on the undo stack.
     stack.push({ label: 'Raise', forward, inverse: ack.inverse, cost: ack.cost });

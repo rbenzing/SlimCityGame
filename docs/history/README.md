@@ -4,7 +4,7 @@ Delivered work, newest first, one file a month; the [roadmap](../ROADMAP.md) hol
 
 | Month | Entries |
 | ----- | ------- |
-| [November 2026](2026-11.md) | 23 |
+| [November 2026](2026-11.md) | 24 |
 | [October 2026](2026-10.md) | 93 |
 | [September 2026](2026-09.md) | 30 |
 | [August 2026](2026-08.md) | 2 |

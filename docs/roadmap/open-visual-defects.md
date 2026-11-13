@@ -37,7 +37,6 @@ What a review of every screenshot the shot tools write found wrong in the game, 
 ## Major: interface and messages
 
 - The Transit Lines panel gives a line that asks for no vehicles "0 of 0 vehicles, every 0.0 min", and a short tram line a headway of 0.1 minutes. — `src/ui/TransitLinesPanel.tsx`
-- Undoing a bulldoze charges the full build price where the bulldoze refunded half, so a mistake undone costs money. `[R-architecture-008]` — `shots-playthrough/25-bulldoze` to `27-redo`
 - The advisor writes "a elementary school" and the panel "1 riders"; the advisor tells the player to build a school that is still locked. — `shots-playthrough/09-advisor-gravel`
 - The city panel reads "POWER 0/0 MW" in a town its turbine powers. — `shots-playthrough/53-panel-city-info`
 - A lens shows no legend or scale with its picker open, and a lens with nothing to show is blank without saying so. — `shots-playthrough/33-lens-land-value`

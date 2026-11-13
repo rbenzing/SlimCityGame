@@ -54,7 +54,8 @@ describe('terraform: landscaping the ground', () => {
     expect(ack.cost).toBeCloseTo(expected!.cost, 5);
     expect(h.lastSnapshot()!.stats.funds).toBeCloseTo(START_FUNDS - ack.cost, 5);
 
-    expect(ack.inverse).toHaveLength(1);
+    expect(ack.inverse).toHaveLength(2);
+    expect(ack.inverse[1]).toEqual({ kind: 'settle', cost: -ack.cost });
     const inverse = ack.inverse[0]!;
     expect(inverse.kind).toBe('terraformSet');
     if (inverse.kind !== 'terraformSet') return;
@@ -125,9 +126,12 @@ describe('terraform: landscaping the ground', () => {
     h.ticks(2);
     const undoAck = h.ackFor(2)!;
     expect(undoAck.ok).toBe(true);
-    expect(undoAck.cost).toBe(0);
-    expect(undoAck.inverse).toHaveLength(1);
+    // Undoing costs minus the stroke, so the funds are back at the start.
+    expect(undoAck.cost).toBe(-forwardAck.cost);
+    expect(h.lastSnapshot()!.stats.funds).toBeCloseTo(START_FUNDS, 5);
+    expect(undoAck.inverse).toHaveLength(2);
     expect(undoAck.inverse[0]!.kind).toBe('terraformSet');
+    expect(undoAck.inverse[1]).toEqual({ kind: 'settle', cost: forwardAck.cost });
 
     h.sim.handleMessage({ type: 'requestSave' });
     const afterUndo = latestSaveGrid(h);

@@ -66,6 +66,12 @@ refused (`bulldozeReach` in `src/shared/corridor.ts`, which the bulldoze
 preview asks too). Every road its inverse lays back carries each tile's own
 `flows` and `elevations`.
 
+**`settle`** is written by the worker and by nothing else: it is the last
+command of an acked inverse, and no tool or panel sends one. It is honoured
+only as the last command of a batch that has others; alone, or anywhere but
+last, the batch is refused `'invalid'`. What it does to a batch's price is in
+[commandack.md](commandack.md).
+
 **`terraform`** is a brush stroke (`raise`/`lower`/`level`/`smooth`) funds-gated
 by its computed kernel cost; its inverse is a `terraformSet` carrying the exact
 pre-stroke heights as a `Float32Array`, not a re-solved brush, so undo is
