@@ -35,6 +35,11 @@ const LENSES: ReadonlyArray<{ id: LensId; label: string; icon: IconName }> = [
   { id: 'districts', label: 'Districts', icon: 'districts' },
 ];
 
+/** The name a lens carries in the grid and in the active-view chip. */
+export function lensLabel(id: LensId): string {
+  return LENSES.find((lens) => lens.id === id)?.label ?? String(id);
+}
+
 function lensButtonClass(active: boolean): string {
   return `flex flex-col items-center gap-1 rounded-md px-2.5 py-2 text-[10px] leading-tight transition-colors ${
     active ? 'bg-accent text-white' : 'bg-white/10 text-white/80 hover:bg-white/20'

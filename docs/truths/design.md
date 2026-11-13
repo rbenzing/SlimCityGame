@@ -75,4 +75,10 @@ Back to [the index](../GROUND-TRUTHS.md).
   A shipped design document stays as a record of intent, and the behaviour moves
   to the specifications. —
   [game-design/features/README.md](../specs/README.md)
+- [R-design-018] Every view the player can enter says on screen that it is on and carries its
+  own way out, and Escape pressed enough times always ends in the plain view
+  with no tool in hand. A lens and the underground view once showed nothing,
+  and Escape left them on. —
+  [top-corners.md](../ux/hud/top-corners.md), [input-mapping.md](../ux/input-mapping.md);
+  `ViewChip` in `src/ui/ViewChip.tsx`, `isUnderground` in `src/shared/view.ts`
 

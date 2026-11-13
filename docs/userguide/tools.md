@@ -259,7 +259,9 @@
   the whole system shows beneath them, the mains under every street, your
   pipes brighter, a lead into every served lot and a riser on each water
   building, blue where the water reaches and grey where it does not, brown
-  where a drain reaches. A pipe drag snaps onto the system a tile away and
+  where a drain reaches. A chip at the top left says you are underground;
+  its **Exit** button, or `Esc`, brings you back to the surface. A pipe drag
+  snaps onto the system a tile away and
   the cursor says what it will join; dragging along a street lays nothing,
   since the street carries a main. Houses on a dirt road with no main beside
   them are on wells and septic tanks and need neither.

@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import '@testing-library/jest-dom/vitest';
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { act } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createInitialStats, useCityStore } from './store';
 import { resetCityStore } from './test-helpers';
@@ -147,6 +148,40 @@ describe('MainDock', () => {
     expect(toggle).toHaveAttribute('aria-pressed', 'true');
     fireEvent.click(toggle);
     expect(onToggleInfoview).toHaveBeenCalledTimes(1);
+  });
+
+  it('reads the Infoviews button as on while a lens is active, grid closed or not', () => {
+    const { rerender } = render(
+      <MainDock
+        activeCategory={null}
+        onToggleCategory={noop}
+        infoviewOpen={false}
+        onToggleInfoview={noop}
+        onOpenMilestones={noop}
+      />,
+    );
+    expect(screen.getByRole('button', { name: 'Infoviews' })).toHaveAttribute(
+      'aria-pressed',
+      'false',
+    );
+    act(() => useCityStore.getState().setOverlay(3));
+    expect(screen.getByRole('button', { name: 'Infoviews' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    rerender(
+      <MainDock
+        activeCategory={null}
+        onToggleCategory={noop}
+        infoviewOpen={true}
+        onToggleInfoview={noop}
+        onOpenMilestones={noop}
+      />,
+    );
+    expect(screen.getByRole('button', { name: 'Infoviews' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
   });
 
   describe('overlay-off shortcut', () => {
