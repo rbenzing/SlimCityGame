@@ -9,7 +9,9 @@
 residents the building has lost to death and not had replaced, an integer from
 0 to the catalog's `residents`, absent meaning 0 (full). It is serialized only
 when above 0, so a save without it loads every building full, and a stored
-value above the catalog's current `residents` is clamped down on load. An id is assigned by an
+value above the catalog's current `residents` is clamped down on load. The
+optional `progress` is a building's construction progress, 0 to 1, as of its
+last drawn stage; it exists only while `Constructing` and is never saved. An id is assigned by an
 auto-incrementing `nextId` starting at 1 and is never reused within a
 session; `nextId` itself is part of `SerializedBuildingRegistry`, so ids stay
 unique across a save/load too. `BuildingRegistry.place` stamps the building's

@@ -75,6 +75,9 @@ export const MATERIALS = {
   // is its yellow plaster warmed; grazed pasture sits between lawn and rough
   // grass.
   tilledSoil: [52, 41, 33],
+  // Not a chart swatch: a building site's cleared, graded subgrade, the chart's
+  // dirt dried and lifted toward sand so bare ground reads as earth, not shade.
+  gradedEarth: [102, 86, 68],
   cropGreen: [54, 88, 34],
   ripeGrain: [112, 96, 56],
   pasture: [62, 94, 42],

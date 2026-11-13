@@ -97,6 +97,8 @@ import { TreeRenderer } from './render/trees';
 import { OverlayRenderer } from './render/overlays';
 import { BuildingInstancer } from './render/buildings';
 import { MassingRenderer } from './render/massing';
+import { SiteRenderer } from './render/sites';
+import { withoutProgressOnly } from './render/progressdelta';
 import { RoofPropRenderer } from './render/props';
 import { HouseRoofRenderer } from './render/houses';
 import { frontDoorOf } from './render/houselot';
@@ -488,6 +490,8 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
   // A farm's barn roof, farmhouse, silos, bins, orchard, fence and herd.
   const farms = new FarmRenderer(world.scene, heightAt, catalog, dirtAt);
   const massing = new MassingRenderer(world.scene, heightAt, catalog, roadAt, street);
+  // The fence, foundation, frame and walls a building shows while it goes up.
+  const sites = new SiteRenderer(world.scene, (b) => instancer.siteBodyOf(b));
   const roofProps = new RoofPropRenderer(world.scene, heightAt, catalog, roadAt, kerb);
   // Archetype kit: the parts that make a warehouse, a factory, a green works
   // and a shopfront read as different things rather than as boxes of different
@@ -1773,6 +1777,11 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
         const msg: MainToWorker = { type: 'devHoldConstruction', hold };
         worker.postMessage(msg);
       };
+      // Sets every building under construction to this share done (0..1).
+      (hook as Record<string, unknown>).constructionProgress = (progress: number): void => {
+        const msg: MainToWorker = { type: 'devConstructionProgress', progress };
+        worker.postMessage(msg);
+      };
       (hook as Record<string, unknown>).soilAt = (x: number, z: number): number =>
         clientGrid.soil[z * clientGrid.size + x] ?? 0;
       (hook as Record<string, unknown>).ghostBounds = (): {
@@ -2311,7 +2320,19 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
     }
   };
 
-  const onSnapshot = (snap: SimSnapshot): void => {
+  const onSnapshot = (incoming: SimSnapshot): void => {
+    // A building whose only change is how far it has got redraws its site and
+    // nothing else; the rest of the snapshot never hears of it.
+    const { snapshot: snap, progressOnly } = withoutProgressOnly(incoming, knownBuildings);
+    if (progressOnly.length > 0) {
+      sites.apply(
+        faceStreets({ added: [], removed: [], updated: progressOnly }, catalogById, street),
+      );
+      for (const inst of progressOnly) knownBuildings.set(inst.id, inst);
+      const selectedId = store.getState().selectedBuilding?.id;
+      const reselect = progressOnly.find((b) => b.id === selectedId);
+      if (reselect) store.getState().setSelectedBuilding(reselect);
+    }
     const state = store.getState();
     state.applySnapshotStats(snap.stats);
     autoSaver.onSnapshotTick(snap.stats.tick);
@@ -2381,6 +2402,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
     trees.setNightFactor(nightFactor);
     lots.setNightFactor(nightFactor);
     massing.setNightFactor(nightFactor);
+    sites.setNightFactor(nightFactor);
     roofProps.setNightFactor(nightFactor);
     houseRoofs.setNightFactor(nightFactor);
     garages.setNightFactor(nightFactor);
@@ -2531,6 +2553,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       instancer.apply(faced);
       farms.apply(snap.buildings);
       massing.apply(faced);
+      sites.apply(faced);
       roofProps.apply(faced);
       buildingKit.apply(faced);
       houseRoofs.apply(snap.buildings);
@@ -2616,6 +2639,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
         lots.apply(relaid);
         instancer.apply(relaidFaced);
         massing.apply(relaidFaced);
+        sites.apply(relaidFaced);
         roofProps.apply(relaidFaced);
         buildingKit.apply(relaidFaced);
         houseRoofs.apply(relaid);

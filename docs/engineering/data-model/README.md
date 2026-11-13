@@ -15,6 +15,6 @@ this, see the specs (start at the [documentation map](../../README.md)); this do
 | ------- | ----: |
 | [The tile grid](the-tile-grid.md) | 14699 |
 | [The save format](the-save-format.md) | 8740 |
-| [Entities beyond the grid](entities-beyond-the-grid.md) | 9336 |
+| [Entities beyond the grid](entities-beyond-the-grid.md) | 9498 |
 | [The data files](the-data-files.md) | 16153 |
 | [The scalar fields](the-scalar-fields.md) | 3074 |

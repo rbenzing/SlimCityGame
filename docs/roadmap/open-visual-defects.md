@@ -46,7 +46,6 @@ What two reviews of every screenshot the shot tools write found wrong in the gam
 
 ## Major: buildings and lots
 
-- A building under construction is a low dark slab with no progress cue: nothing shows what is going up or how far it has got, and a house reads as a black hole in its lot. — `shots-construction/house-street`
 - On sloping ground a civic or utility pad shows a dark footing wall along its low side, a storey high at the shore plants, and a drive's apron leaves grass wedges against the footway. `[R-render-034]` — `shots-civic-access/b2-fire-apron-low`, `shots-power/3a-reactor-from-across-the-water`
 - In a shop's car park two cars share a stall, a tree and a pylon sign stand in stalls, and stalls run to the shopfront and the door with no walk between. At the funeral home's door vehicles stand through each other. — `shots-storefronts/close-fuel`, `close-strip`, `shots-parking/com-market-2-above`, `shots-cemetery/c-hearse-ambulance-car`
 - Flare stacks stand alone on open ground; a food plant's stack stands in its car park; steel tanks and pipe poles cross the side drive. — `shots-industry/chem`, `food-heavy-food-2-court`

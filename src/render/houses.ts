@@ -34,11 +34,7 @@ import {
   VehicleKind,
 } from '../shared/types';
 import { maxHeightOverRect } from './footprint';
-import {
-  CONSTRUCTING_MASSING_HEIGHT_SCALE,
-  InstancedSlotPool,
-  massingLifecycleTint,
-} from './massing';
+import { InstancedSlotPool, massingLifecycleTint } from './massing';
 import { isHouseEntry } from './archetypes';
 import { sizeForKind, variantScaleForKind, VehicleKitPool, VEHICLE_PALETTE_HEX } from './vehicles';
 import { materialHex, rgb255ToHex, SATURATED } from './palette';
@@ -704,11 +700,11 @@ export class HouseRoofRenderer {
       fenceLotOf(building.id, plan, building.state !== BuildingState.Constructing),
     );
 
+    // A home going up shows only its site (sites.ts): no roof, door, garage or car yet.
+    if (building.state === BuildingState.Constructing) return;
     const slots: HouseSlots = { parts: [], cars: [] };
     this.buildingSlots.set(building.id, slots);
     const tint = massingLifecycleTint(building.state);
-    const heightScale =
-      building.state === BuildingState.Constructing ? CONSTRUCTING_MASSING_HEIGHT_SCALE : 1;
     // The body's own base: the highest ground under the body itself, which is
     // where BuildingInstancer seats it; the lot around it follows the ground.
     const corners = [
@@ -761,26 +757,15 @@ export class HouseRoofRenderer {
     const roofColour = roofColorHex(building.id);
     const wall = deriveFacadeParams(entry, building.id).wallColor;
     const trim = trimColor(building.id, wall);
-    // A height above the body's ground: a home going up is drawn squat, parts and all.
-    const up = (y: number): number => bodyGround + y * heightScale;
+    // A height above the body's ground.
+    const up = (y: number): number => bodyGround + y;
     const boxOf = (
       part: HousePart,
       box: KitBox,
       colour: number | readonly [number, number, number],
     ): void => {
       const b = worldBox(plan, box.rect);
-      put(
-        part,
-        b.x,
-        up(box.y0),
-        b.z,
-        b.yaw,
-        b.sx,
-        (box.y1 - box.y0) * heightScale,
-        b.sz,
-        colour,
-        true,
-      );
+      put(part, b.x, up(box.y0), b.z, b.yaw, b.sx, box.y1 - box.y0, b.sz, colour, true);
     };
     // A gable roof over `rect` at `slope`, its ridge along the frontage or across it, passing through `wallTop` at the wall line.
     const gable = (
@@ -792,7 +777,7 @@ export class HouseRoofRenderer {
     ): void => {
       const g = ridgeBox(plan, rect, ridgeAlongU);
       const y = up(wallTop - eave * slope);
-      const rise = (g.span / 2) * slope * heightScale;
+      const rise = (g.span / 2) * slope;
       put('roof', g.x, y, g.z, g.yaw, g.length, rise, g.span, roofColour, true);
     };
     const { roof } = kit;
@@ -814,18 +799,7 @@ export class HouseRoofRenderer {
     for (const chimney of kit.chimneys) boxOf('chimney', chimney, CHIMNEY_COLOR);
     for (const dormer of kit.dormers) {
       const at = lotToWorld(plan.frame, dormer.u, dormer.v);
-      put(
-        'dormer',
-        at.x,
-        up(dormer.y),
-        at.z,
-        outwardYaw(plan.frame),
-        1,
-        heightScale,
-        1,
-        wall,
-        true,
-      );
+      put('dormer', at.x, up(dormer.y), at.z, outwardYaw(plan.frame), 1, 1, 1, wall, true);
       const half = DORMER_WIDTH_M / 2 + DORMER_EAVE_M;
       const rect = {
         u0: dormer.u - half,
@@ -838,18 +812,7 @@ export class HouseRoofRenderer {
     for (const step of kit.stoops) boxOf('stoop', step, STOOP_COLOR);
     for (const portico of kit.porticos) {
       const at = lotToWorld(plan.frame, portico.u, portico.v);
-      put(
-        'portico',
-        at.x,
-        up(3 * RISER_M),
-        at.z,
-        outwardYaw(plan.frame),
-        1,
-        heightScale,
-        1,
-        trim,
-        true,
-      );
+      put('portico', at.x, up(3 * RISER_M), at.z, outwardYaw(plan.frame), 1, 1, 1, trim, true);
     }
     if (kit.porch) {
       boxOf('porch', kit.porch.floor, PORCH_FLOOR_COLOR);
@@ -864,7 +827,7 @@ export class HouseRoofRenderer {
         at.z,
         outwardYaw(plan.frame),
         rect.u1 - rect.u0,
-        (wallM - lowM) * heightScale,
+        wallM - lowM,
         rect.v1 - rect.v0,
         roofColour,
         true,
@@ -876,7 +839,7 @@ export class HouseRoofRenderer {
     for (const parapet of kit.parapets) {
       boxOf('parapet', parapet, wall);
       const g = ridgeBox(plan, parapet.rect, true);
-      const rise = roof.riseM * heightScale;
+      const rise = roof.riseM;
       put('parapetGable', g.x, up(parapet.y1), g.z, g.yaw, g.length, rise, g.span, wall, true);
     }
 
@@ -957,9 +920,7 @@ export class HouseRoofRenderer {
     }
 
     // --- the yard -----------------------------------------------------------
-    // Nobody lives in a home still going up; an abandoned one keeps what
-    // stands in the ground and loses what its family took with them.
-    if (building.state === BuildingState.Constructing) return;
+    // An abandoned home keeps what stands in the ground and loses what its family took with them.
     const { yard } = plan;
     const yardYaw = boxYaw(plan.frame);
     const stand = (part: HousePart, u: number, v: number, scale: number, lift = 0): void => {

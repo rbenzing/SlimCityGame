@@ -596,28 +596,25 @@ describe('MassingRenderer', () => {
     expect([c.r, c.g, c.b]).not.toEqual([...deriveFacadeParams(e, 9).wallColor]);
   });
 
-  it('scales Constructing buildings height (and yOffset) by 0.25 and tints grey', () => {
+  it('draws no podium for a Constructing building, and the whole podium once it is built', () => {
     const scene = new THREE.Scene();
     const e = tower({ color: 0xffffff });
     const renderer = new MassingRenderer(scene, flatHeightAt, [e]);
     renderer.apply(deltaAdd(building({ level: 3, state: BuildingState.Constructing })));
+    expect(renderer.upperBoxSlotsFor(1)).toHaveLength(0);
 
+    renderer.apply({
+      added: [],
+      updated: [building({ level: 3, state: BuildingState.Active })],
+      removed: [],
+    });
     const slot = renderer.upperBoxSlotsFor(1)[0]!;
     const m = new THREE.Matrix4();
     renderer.getBoxMatrix(slot, m);
     const { pos, scl } = decompose(m);
-
     const { podium } = computeSetbacks(e, 1);
-    expect(scl.x).toBeCloseTo(podium!.w, 5); // footprint is NOT scaled during construction
-    expect(scl.y).toBeCloseTo(podium!.h * 0.25, 5);
-    expect(pos.y).toBeCloseTo((podium!.yOffset + podium!.h / 2) * 0.25, 5);
-
-    const c = new THREE.Color();
-    renderer.getBoxColor(slot, c);
-    const { wallColor } = deriveFacadeParams(e, 1);
-    expect(c.r).toBeCloseTo(wallColor[0] * 0.55, 4);
-    expect(c.g).toBeCloseTo(wallColor[1] * 0.55, 4);
-    expect(c.b).toBeCloseTo(wallColor[2] * 0.55, 4);
+    expect(scl.y).toBeCloseTo(podium!.h, 5);
+    expect(pos.y).toBeCloseTo(podium!.yOffset + podium!.h / 2, 5);
   });
 
   it('tints Abandoned buildings dark (0.25x)', () => {

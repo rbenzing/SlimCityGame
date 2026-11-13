@@ -23,6 +23,8 @@ import {
 } from '../shared/constants';
 import { BuildingState, FieldId, Problem, RoadTier, ZoneType, isStreetTier } from '../shared/types';
 import type { KerbSurroundings } from '../shared/kerblayout';
+import { pictureKey } from '../shared/constructionstages';
+import { FLOOR_HEIGHT_METERS } from '../shared/floorarea';
 import { kerbCreditAlongFrame } from '../world/kerbcredit';
 import { claimedTiles, frameCorners } from '../shared/lotframe';
 import { holdsLotParkingAt, lotLayoutFor } from '../shared/lotparking';
@@ -881,6 +883,8 @@ export class GrowthSystem {
       const next = remaining - 1;
       if (next > 0) {
         this.constructing.set(id, next);
+        const inst = registry.get(id);
+        if (inst && this.reportProgress(inst, next)) updated.push(inst);
         continue;
       }
       this.constructing.delete(id);
@@ -888,9 +892,38 @@ export class GrowthSystem {
       if (inst && inst.state === BuildingState.Constructing) {
         inst.state = BuildingState.Active;
         delete inst.vacancies;
+        delete inst.progress;
         updated.push(inst);
       }
     }
+  }
+
+  /**
+   * Stamps the building with how far it has got; true only when that changes
+   * the picture of its site (a stage, or a lift of its frame), so a building
+   * is reported at most 3 + frameLifts times, never every tick.
+   */
+  private reportProgress(inst: BuildingInstance, remaining: number): boolean {
+    const entry = this.catalogIndex.get(inst.catalogId);
+    const storeys = entry ? Math.round(entry.height / FLOOR_HEIGHT_METERS) : 1;
+    const progress = (CONSTRUCTION_TICKS - remaining) / CONSTRUCTION_TICKS;
+    if (pictureKey(progress, storeys) === pictureKey(inst.progress ?? 0, storeys)) return false;
+    inst.progress = progress;
+    return true;
+  }
+
+  /** Dev tool: sets every building under construction to this share done and returns them as updated. */
+  setConstructionProgress(registry: BuildingRegistry, progress: number): BuildingInstance[] {
+    const moved: BuildingInstance[] = [];
+    const remaining = Math.max(1, Math.round((1 - progress) * CONSTRUCTION_TICKS));
+    for (const id of Array.from(this.constructing.keys())) {
+      const inst = registry.get(id);
+      if (!inst || inst.state !== BuildingState.Constructing) continue;
+      this.constructing.set(id, remaining);
+      inst.progress = progress;
+      moved.push(inst);
+    }
+    return moved;
   }
 
   private processProblemsAndAbandonment(

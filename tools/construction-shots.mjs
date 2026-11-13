@@ -1,7 +1,8 @@
 /** Construction shots: zones a block each of house, shop, works and a taller
  * kind along one street, holds every construction countdown where it is with
  * the dev hold, lets the lots fill with buildings going up, and photographs one
- * of each kind from the street and from above. Nothing finishes while the hold
+ * of each kind from the street and from above at each stage of the build (the
+ * dev hook sets how far every site has got). Nothing finishes while the hold
  * is on, so every frame shows a building under construction.
  *
  * Usage: node tools/construction-shots.mjs [baseUrl] [outDir]   (a dev server must be running) */
@@ -27,6 +28,14 @@ const BLOCKS = [
 ];
 const STREET_LENGTH = BLOCKS.length * BLOCK_W + 4;
 const GROW_SECONDS = 150;
+/** How far along the build each set of frames is taken: earth and fence, foundation, two heights of frame, enclosed. */
+const STAGES = [
+  { name: 'earth', progress: 0.05 },
+  { name: 'foundation', progress: 0.2 },
+  { name: 'frame-low', progress: 0.4 },
+  { name: 'frame-high', progress: 0.65 },
+  { name: 'enclosed', progress: 0.9 },
+];
 
 const browser = await chromium.launch({ headless: true, args: ['--use-angle=default'] });
 const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
@@ -133,17 +142,24 @@ try {
     await cmd('Phase', [{ kind: 'setUnlimitedMoney', on: true }]);
     for (const name of names) {
       const b = standing[name]?.[0];
-      if (!b) {
-        console.log('no building under construction in the', name, 'block');
-        continue;
+      if (b) console.log(name, b.catalogId, 'at', b.x, b.z);
+      else console.log('no building under construction in the', name, 'block');
+    }
+    for (const stage of STAGES) {
+      await hook((p) => window.__slimcity.constructionProgress(p), stage.progress);
+      // A paused sim posts a snapshot only when a command lands: this one carries the new progress.
+      await cmd('Progress', [{ kind: 'setUnlimitedMoney', on: true }]);
+      await page.waitForTimeout(500);
+      for (const name of names) {
+        const b = standing[name]?.[0];
+        if (!b) continue;
+        await camera(b.x + 1, b.z + 1, 150, 0.3, 0.45);
+        await page.waitForTimeout(1000);
+        await cleanShot(page, `${out}/${name}-${stage.name}-street.png`);
+        await camera(b.x + 1, b.z + 1, 150, 0.3, 1.3);
+        await page.waitForTimeout(1000);
+        await cleanShot(page, `${out}/${name}-${stage.name}-above.png`);
       }
-      console.log(name, b.catalogId, 'at', b.x, b.z);
-      await camera(b.x + 1, b.z + 1, 150, 0.3, 0.45);
-      await page.waitForTimeout(1500);
-      await cleanShot(page, `${out}/${name}-street.png`);
-      await camera(b.x + 1, b.z + 1, 150, 0.3, 1.3);
-      await page.waitForTimeout(1500);
-      await cleanShot(page, `${out}/${name}-above.png`);
     }
   };
 
@@ -157,11 +173,12 @@ try {
   // back on the moment both kinds have one going up, so those stay going up.
   for (const block of named('shop', 'works')) await zoneBlock(block);
   await hook(() => window.__slimcity.holdConstruction(false));
-  await hook(() => window.__slimcity.setSpeed(2));
-  for (let s = 0; s < GROW_SECONDS * 2; s++) {
+  await hook(() => window.__slimcity.setSpeed(4));
+  for (let s = 0; s < GROW_SECONDS * 8; s++) {
     await page.waitForTimeout(500);
     const standing = await goingUp();
     if (standing.shop?.length > 0 && standing.works?.length > 0) break;
+    if (s % 60 === 0) console.log('waiting for shops and works,', s / 2, 's');
   }
   await growHeldAndShoot(['shop', 'works']);
   await hook(() => window.__slimcity.holdConstruction(false));

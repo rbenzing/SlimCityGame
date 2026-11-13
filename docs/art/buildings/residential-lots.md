@@ -84,9 +84,11 @@ inside the house tier of
 there holds it.
 
 **Through the lifecycle.** The roof, garage and carport share the body's
-day/night tint and its construction grey; the fence, the yard parts, the
-trees and the car are lit like any other prop. A home under construction has
-its lawn, drive and cover but no yard; an Abandoned home keeps its fence,
+day/night tint; the fence, the yard parts, the trees and the car are lit
+like any other prop. A home under construction draws none of its kit: its
+lot is the building site (see
+[construction-and-abandonment.md](construction-and-abandonment.md)). An
+Abandoned home keeps its fence,
 bushes and trees but not its pool, trampoline or grill; only an Active home
 has its car.
 

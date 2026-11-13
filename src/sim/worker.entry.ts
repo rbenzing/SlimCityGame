@@ -745,6 +745,13 @@ class SimWorld implements WorkerSim {
       case 'devHoldConstruction':
         if (import.meta.env.DEV) this.growth.holdConstruction = msg.hold;
         break;
+      case 'devConstructionProgress':
+        if (import.meta.env.DEV) {
+          this.buildingsUpdated.push(
+            ...this.growth.setConstructionProgress(this.registry, msg.progress),
+          );
+        }
+        break;
       case 'requestField':
         this.postField(msg.field);
         break;
@@ -903,6 +910,7 @@ class SimWorld implements WorkerSim {
     // lots to Active so nothing is left permanently under construction.
     for (const inst of this.registry.all()) {
       if (inst.state === BuildingState.Constructing) inst.state = BuildingState.Active;
+      delete inst.progress;
     }
 
     this.stops.restore(payload.meta.busStops);

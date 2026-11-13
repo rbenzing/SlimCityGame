@@ -290,6 +290,12 @@ export class LotRenderer {
 
     const surface = lotSurfaceFor(entry);
     if (surface === null) return;
+    // A building going up stands on cleared, graded earth, whatever its lot will be paved or planted with.
+    if (building.state === BuildingState.Constructing) {
+      this.layBuildingSite(building, entry, positions, colors);
+      this.store(building, positions, colors);
+      return;
+    }
     // A dense block's lot is its drive, its walk and planting round the body and its garage.
     const garage = garagePlanAt(entry, building, this.roadAt);
     if (garage) {
@@ -424,6 +430,44 @@ export class LotRenderer {
       this.layHouseLot(plan, surface, lay);
     }
     this.store(building, positions, colors);
+  }
+
+  /** The earth pad a building site stands on: the lot's whole footprint, or its parcel turned with its street. */
+  private layBuildingSite(
+    building: BuildingInstance,
+    entry: BuildingCatalogEntry,
+    positions: number[],
+    colors: number[],
+  ): void {
+    const earth = materialUnit('gradedEarth');
+    if (building.frame) {
+      const frame = edgeFrameOfParcel(building.frame);
+      pushConformingTurnedQuad(
+        positions,
+        colors,
+        (u, v) => lotPointToWorld(frame, u, v),
+        0,
+        0,
+        entry.footprint.w * TILE_METERS,
+        entry.footprint.d * TILE_METERS,
+        LOT_Y_OFFSET,
+        earth,
+        this.heightAt,
+      );
+      return;
+    }
+    const bounds = lotBounds(building, entry);
+    pushConformingQuad(
+      positions,
+      colors,
+      bounds.x0,
+      bounds.z0,
+      bounds.x1,
+      bounds.z1,
+      LOT_Y_OFFSET,
+      earth,
+      this.heightAt,
+    );
   }
 
   /**
