@@ -268,7 +268,8 @@
   lenses and drag down happiness.
 - **Transit** — bus lines with stops and cosmetic buses; ridership depends on
   stops being close enough to demand. (Place stops within a few tiles of where
-  people are.) Later, **rail**: lay rail track like any road, plop **stations**
+  people are.) Buses, trams and trains show in every view while their line
+  runs; the Transit lens adds each line's coloured ribbon. Later, **rail**: lay rail track like any road, plop **stations**
   along it — a station must touch the track, or it is just a shed — and draw a
   **Rail Line** between them the same way you draw a bus line. Trains run it.
   People walk further to a train than to a bus stop and a train carries more of

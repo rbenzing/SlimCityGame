@@ -7,7 +7,13 @@
  */
 import { chromium } from 'playwright';
 import { mkdirSync } from 'node:fs';
-import { cleanShot, dismissToasts, readToasts, tileCamera, unlimitedMoneyOption } from './shotcam.mjs';
+import {
+  cleanShot,
+  dismissToasts,
+  readToasts,
+  tileCamera,
+  unlimitedMoneyOption,
+} from './shotcam.mjs';
 
 const base = process.argv[2] ?? 'http://localhost:5173';
 const url = base + (base.includes('?') ? '&' : '?') + 'nobloom';
@@ -104,7 +110,8 @@ await place(X + 15, Z + 12); // nowhere near track — must be refused
 const plop = (catalogId, x, z, rotation) =>
   cmd(catalogId, [{ kind: 'placeBuilding', catalogId, x, z, rotation }]);
 await plop('wind-turbine', X + 34, Z + STREET_ROW - 1, 0);
-await plop('rail-yard', X + 12, Z + 1, 1);await plop('bus-depot', X + 6, Z + STREET_ROW + 1, 2);
+await plop('rail-yard', X + 12, Z + 1, 1);
+await plop('bus-depot', X + 6, Z + STREET_ROW + 1, 2);
 await page.waitForTimeout(700);
 console.log('toasts after placing:', JSON.stringify(await readToasts(page)));
 // The third refusal is the check; it is not the subject of any shot.
@@ -112,11 +119,7 @@ await dismissToasts(page);
 
 const buildings = await readBuildings();
 const stations = buildings.filter((bl) => bl.catalogId === 'rail-station');
-console.log(
-  'stations placed:',
-  stations.length,
-  stations.map((s) => `(${s.x},${s.z})`).join(' '),
-);
+console.log('stations placed:', stations.length, stations.map((s) => `(${s.x},${s.z})`).join(' '));
 
 // The rail line between the two stations.
 await cmd('Rail line', [
@@ -224,7 +227,7 @@ const trainShot = async (name, tx, tz, d, yaw, pitch, minPixels = 300) => {
   await page.waitForTimeout(900);
   for (let i = 0; i < 120; i++) {
     const { n, x0, x1 } = await trainPixels(await page.screenshot());
-    if (n >= minPixels &&x0 > 320 && x1 < 1380) {
+    if (n >= minPixels && x0 > 320 && x1 < 1380) {
       console.log(name, 'train pixels', n, x0, x1);
       await cleanShot(page, `${out}/${name}.png`);
       console.log('shot', name);
@@ -235,9 +238,6 @@ const trainShot = async (name, tx, tz, d, yaw, pitch, minPixels = 300) => {
   throw new Error(`no train came into frame for ${name}`);
 };
 
-// A line's trains are drawn only under the transit lens, as every line's vehicles are.
-await call(() => window.__slimcity.setOverlay('transit'));
-await page.waitForTimeout(500);
 // From the north, so the platform and track are in front of the station.
 const NORTH = Math.PI;
 await trainShot('station', X + 6.5, Z + 1, 90, NORTH, 0.55);

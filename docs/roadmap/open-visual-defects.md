@@ -31,7 +31,6 @@ What a review of every screenshot the shot tools write found wrong in the game, 
 - A bus shelter on a street's south side turns its back to the road; a sign stop shows no sign plate. — `shots-busstops/kerbed-shelter-and-sign-south`
 - Tram poles lean and carry no wire; in the tram depot they stand through the parked trams. — `shots-tramways/tramway-rails-detail`, `shots-depots/b2-tram-depot-yard`
 - A bus depot's fence runs across its own door, and its buses stand through the fence. — `shots-depots/a2-bus-depot-close`
-- A line's buses, trams and trains are drawn only under the Transit lens or with a transit tool in hand; in the plain view the streets and tracks stand empty. — `src/main.ts` `transitRenderer.setVisible`
 - The airport has no runway. Its terminal is one slab over the middle of the plot, aircraft stand half under its walls, and its car park is an outline on lawn. — `shots-airport/airport-above`
 - A police car carries no light bar and reads as a plain blue car. An incident's pin stands over the back yard, not the building, and an answered pin differs from an open one only in colour. — `shots-servicevehicles/close-police`, `incident-pins`
 

@@ -235,4 +235,11 @@ Back to [the index](../GROUND-TRUTHS.md).
   grew at 4×; its longest stall is now 1.1 s. —
   [performance-budget.md](../engineering/performance-budget.md#the-main-thread-while-a-city-grows);
   `onSnapshot` in `src/main.ts`
+- [R-render-038] A line's buses, trams and trains are drawn in every view while the line is
+  in service, and so is a stop's shelter where no stop building stands. The
+  Transit lens and the transit tools add only the line's ribbon; a lens never
+  decides whether a vehicle is drawn. The streets once stood empty until the
+  lens was on. —
+  [transit-model.md](../world-sim/transit-model.md);
+  `setRibbonVisible` in `src/render/transit.ts`
 

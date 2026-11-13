@@ -1343,10 +1343,10 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
     e.preventDefault();
     if (music.addFiles(Array.from(files)) > 0) audio.play('notify');
   });
-  /** The dedicated renderers show only when their lens/tool is live. */
+  /** The dedicated renderers show only when their lens/tool is live; a line's vehicles are always drawn, its ribbon is the lens's. */
   const refreshEpicVisibility = (): void => {
     const { overlay, selectedTool } = store.getState();
-    transitRenderer.setVisible(overlay === 'transit' || selectedTool.startsWith('transit.'));
+    transitRenderer.setRibbonVisible(overlay === 'transit' || selectedTool.startsWith('transit.'));
     districtsRenderer.setVisible(overlay === 'districts' || selectedTool === 'district.paint');
     // The city goes underground while the player works on the water: a water
     // lens, the pipe tool, or any building of the Water tab in hand. The

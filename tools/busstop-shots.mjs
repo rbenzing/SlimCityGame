@@ -153,9 +153,9 @@ try {
   };
   const midZ = Z + GAP / 2;
 
-  // A bus at the shelter: a line's buses are drawn only under the transit lens,
-  // and no hook says where they are, so two frames a beat apart differ where one
-  // moves (the city is held still). Shoot once that movement is wholly in frame.
+  // A bus at the shelter: no hook says where a line's buses are, so two frames
+  // a beat apart differ where one moves (the city is held still). Shoot once
+  // that movement is wholly in frame.
   const motion = (a, b) =>
     page.evaluate(
       async ([pa, pb]) => {
@@ -173,7 +173,7 @@ try {
         let n = 0;
         let x0 = ia.width;
         let x1 = 0;
-        // Clear of the lens panel (top-left), the buttons and the bottom bar.
+        // Clear of the top-left panels, the buttons and the bottom bar.
         for (let y = 280; y < ia.height - 110; y++) {
           for (let x = 0; x < ia.width; x++) {
             const i = (y * ia.width + x) * 4;
@@ -192,7 +192,6 @@ try {
       },
       [a.toString('base64'), b.toString('base64')],
     );
-  await page.evaluate(() => window.__slimcity.setOverlay('transit'));
   await cam(X + BOTH_AT, Z, 70, 0, DEFAULT_PITCH);
   await page.waitForTimeout(1500);
   let shot = false;
@@ -210,7 +209,6 @@ try {
     await page.screenshot({ path: `${out}/bus-at-shelter-missing.png` });
     throw new Error('no bus came into frame for bus-at-shelter');
   }
-  await page.evaluate(() => window.__slimcity.setOverlay(null));
 
   const back = await closeUp(page, 2);
   // Both roads and the stops on them, close enough to read.
