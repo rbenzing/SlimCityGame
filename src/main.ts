@@ -404,6 +404,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
   });
   const districtsRenderer = new DistrictsRenderer(world.scene, heightAt);
   const overlays = new OverlayRenderer(world.scene);
+  overlays.onEmptyChange = (empty) => useCityStore.getState().setLensEmpty(empty);
   overlays.setSoil(clientGrid.soil);
   const idPicker = new IdPicker();
 

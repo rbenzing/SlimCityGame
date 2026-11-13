@@ -26,6 +26,15 @@ describe('InfoviewGrid', () => {
     );
   });
 
+  it('is a low wide band that wraps and scrolls, not a tall block over the map', () => {
+    render(<InfoviewGrid />);
+    const menu = screen.getByRole('menu', { name: 'Infoviews' });
+    expect(menu.className).not.toContain('grid-cols-4');
+    expect(menu.className).toContain('auto-fill');
+    expect(menu.className).toContain('max-h-[40vh]');
+    expect(menu.className).toContain('overflow-y-auto');
+  });
+
   it('gains Power, Water and Sewer lens buttons alongside the nine scalar fields (UI-SPEC §2)', () => {
     render(<InfoviewGrid />);
     expect(screen.getByRole('button', { name: /^Power$/ })).toBeInTheDocument();

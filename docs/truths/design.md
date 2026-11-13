@@ -87,4 +87,16 @@ Back to [the index](../GROUND-TRUTHS.md).
   incident's open and answered pins once differed only in colour. —
   [emergency-services.md](../specs/emergency-services.md);
   `src/render/servicevehicles.ts`
+- [R-design-020] Every lens and the underground view carry a legend while they are on: a
+  scale with both ends named, or the kinds drawn, read from the tables the
+  renderer paints from and never a copy. A lens with nothing to paint says
+  what is missing. A lens once showed colour with no key, and an empty one
+  showed nothing at all. — [top-corners.md](../ux/hud/top-corners.md);
+  `src/shared/lenses.ts`, `ViewLegend` in `src/ui/ViewLegend.tsx`
+- [R-design-021] The interface holds from 360 px wide and 600 px tall: no control is
+  covered, every HUD control is at least 24 px each way, and a floating panel
+  scrolls inside itself rather than run under the dock or past the edge
+  (WCAG 2.2 success criteria 1.4.10 and 2.5.8). —
+  [accessibility.md](../ux/accessibility.md); checked by
+  `tools/narrow-shots.mjs`
 

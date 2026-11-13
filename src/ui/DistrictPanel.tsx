@@ -11,7 +11,8 @@ import type { JSX } from 'react';
 import type { Policy } from '../shared/types';
 import { Icon } from './icons';
 import { useCityStore } from './store';
-import { LABEL, PANEL_ROUNDED } from './theme';
+import { hexColor } from './format';
+import { LABEL, PANEL_ROUNDED, SCROLL_FROM_TOP_28 } from './theme';
 
 const POLICY_DEFS: ReadonlyArray<{ id: Policy; label: string }> = [
   { id: 'lowTax', label: 'Low Tax' },
@@ -19,10 +20,6 @@ const POLICY_DEFS: ReadonlyArray<{ id: Policy; label: string }> = [
   { id: 'noHeavyTraffic', label: 'No Heavy Traffic' },
   { id: 'greenEnergy', label: 'Green Energy' },
 ];
-
-function hexColor(n: number): string {
-  return `#${n.toString(16).padStart(6, '0')}`;
-}
 
 export function DistrictPanel(): JSX.Element | null {
   const selectedTool = useCityStore((s) => s.selectedTool);
@@ -40,9 +37,9 @@ export function DistrictPanel(): JSX.Element | null {
   const activePolicies = districtPolicies[selectedDistrict] ?? [];
 
   return (
-    <div className="pointer-events-none fixed left-3 top-16 z-10 w-64">
+    <div className="pointer-events-none fixed left-3 top-28 z-10 w-64 max-w-[calc(100vw-1.5rem)]">
       <div
-        className={`pointer-events-auto flex flex-col gap-2 p-3 text-sm text-white/92 ${PANEL_ROUNDED}`}
+        className={`pointer-events-auto flex flex-col gap-2 p-3 text-sm text-white/92 ${SCROLL_FROM_TOP_28} ${PANEL_ROUNDED}`}
       >
         <div className="flex items-center gap-2 font-semibold">
           <Icon name="districts" className="h-5 w-5 text-white/70" />

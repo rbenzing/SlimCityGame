@@ -9,15 +9,11 @@
  * the advertising the warranted bus shelters earn it.
  */
 import type { JSX } from 'react';
-import { counted } from './format';
+import { counted, hexColor } from './format';
 import { Icon } from './icons';
 import { useCityStore } from './store';
-import { LABEL, PANEL_ROUNDED } from './theme';
+import { LABEL, PANEL_ROUNDED, SCROLL_FROM_TOP_28 } from './theme';
 import type { TransitMode } from '../shared/types';
-
-function hexColor(n: number): string {
-  return `#${n.toString(16).padStart(6, '0')}`;
-}
 
 /** Which mode a line runs as — the swatch alone cannot say bus from tram. */
 const MODE_LABEL: Record<TransitMode, string> = { bus: 'Bus', rail: 'Rail', tram: 'Tram' };
@@ -50,9 +46,9 @@ export function TransitLinesPanel(): JSX.Element | null {
   const runningTotal = fleet.runningCost.reduce((sum, c) => sum + c, 0);
 
   return (
-    <div className="pointer-events-none fixed left-3 top-16 z-10 w-72">
+    <div className="pointer-events-none fixed left-3 top-28 z-10 w-72 max-w-[calc(100vw-1.5rem)]">
       <div
-        className={`pointer-events-auto flex flex-col gap-2 p-3 text-sm text-white/92 ${PANEL_ROUNDED}`}
+        className={`pointer-events-auto flex flex-col gap-2 p-3 text-sm text-white/92 ${SCROLL_FROM_TOP_28} ${PANEL_ROUNDED}`}
       >
         <div className="flex items-center gap-2 font-semibold">
           <Icon name="transit" className="h-5 w-5 text-white/70" />

@@ -17,6 +17,7 @@
 import * as THREE from 'three';
 import type { TilePoint } from '../shared/types';
 import { TILE_METERS } from '../shared/constants';
+import { UNDERGROUND_CABLE_FOOT_HEX, UNDERGROUND_CABLE_HEX } from '../shared/lenses';
 
 /**
  * The conduit's strip, narrower than a pipe run (1.2 m), and the hub every
@@ -31,8 +32,8 @@ const CABLE_Y_OFFSET = 0.08;
 const FOOT_Y_OFFSET = 0.09;
 const CABLE_OPACITY = 0.95;
 /** A dull red-orange, which no pipe wears. */
-export const CABLE_RGB = 0xd0452a;
-const FOOT_RGB = 0xf0a060;
+export const CABLE_RGB = UNDERGROUND_CABLE_HEX;
+const FOOT_RGB = UNDERGROUND_CABLE_FOOT_HEX;
 
 type HeightSampler = (x: number, z: number) => number;
 

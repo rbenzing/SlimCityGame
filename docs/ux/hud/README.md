@@ -26,7 +26,7 @@ region, so you can find whatever you're looking at by where it sits.
 
 | Section | Size |
 | --- | --- |
-| [Top corners](top-corners.md) | 733 B |
+| [Top corners](top-corners.md) | 1,891 B |
 | [City info and Help popovers](city-info-and-help-popovers.md) | 1,397 B |
 | [Building info panel](building-info-panel.md) | 2,348 B |
 | [Junction panel](junction-panel.md) | 3,810 B |
@@ -35,9 +35,9 @@ region, so you can find whatever you're looking at by where it sits.
 | [Services panel](services-panel.md) | 2,614 B |
 | [Advisor panel](advisor-panel.md) | 1,234 B |
 | [Asset drawer and tool options](asset-drawer-and-tool-options.md) | 4,908 B |
-| [Main dock (bottom bar #1)](main-dock-bottom-bar-1.md) | 1,228 B |
+| [Main dock (bottom bar #1)](main-dock-bottom-bar-1.md) | 1,607 B |
 | [Milestone popover](milestone-popover.md) | 438 B |
-| [Status strip (bottom bar #2)](status-strip-bottom-bar-2.md) | 1,023 B |
+| [Status strip (bottom bar #2)](status-strip-bottom-bar-2.md) | 1,200 B |
 | [Start menu and game lifecycle](start-menu-and-game-lifecycle.md) | 3,157 B |
 | [In-world tool feedback (render-side, not DOM)](in-world-tool-feedback-render-side-not-dom.md) | 3,418 B |
 | [Not built yet](not-built-yet.md) | 659 B |

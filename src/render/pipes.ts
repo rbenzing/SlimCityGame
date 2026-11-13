@@ -25,6 +25,11 @@
 import * as THREE from 'three';
 import type { TilePoint } from '../shared/types';
 import { TILE_METERS } from '../shared/constants';
+import {
+  UNDERGROUND_DRY_HEX,
+  UNDERGROUND_SEWER_HEX,
+  UNDERGROUND_WATER_HEX,
+} from '../shared/lenses';
 
 /** Under the road plates (0.15), the brown a hair over the blue so their crossings never fight. */
 const WATER_Y_OFFSET = 0.05;
@@ -44,9 +49,9 @@ export const RISER_SIDE_M = 3;
 export const RISER_HEIGHT_M = 2.5;
 
 /** The lens's water accent, a drain-brown beside it, and the grey of a run nothing reaches. */
-const WATER_RGB = 0x38b6e3;
-const SEWER_RGB = 0x8a5a2b;
-const DRY_RGB = 0x6b6f73;
+const WATER_RGB = UNDERGROUND_WATER_HEX;
+const SEWER_RGB = UNDERGROUND_SEWER_HEX;
+const DRY_RGB = UNDERGROUND_DRY_HEX;
 
 type HeightSampler = (x: number, z: number) => number;
 

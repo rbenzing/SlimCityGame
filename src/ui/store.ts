@@ -174,6 +174,8 @@ export interface CityStoreState {
   selectedTool: ToolId;
   /** Active infoview lens: every scalar field plus power/watered coverage. */
   overlay: LensId | null;
+  /** The renderer found nothing for the active lens to paint (every tile zero). */
+  lensEmpty: boolean;
   speed: SimSpeed;
   notifications: CityNotification[];
   preview: PreviewInfo | null;
@@ -280,6 +282,7 @@ export interface CityStoreState {
   applySnapshotStats: (stats: CityStats) => void;
   setTool: (tool: ToolId) => void;
   setOverlay: (overlay: LensId | null) => void;
+  setLensEmpty: (empty: boolean) => void;
   /** Updates the local speed readout and forwards it to the bound worker bridge. */
   setSpeed: (speed: SimSpeed) => void;
   pushNotification: (note: CityNotification) => void;
@@ -346,6 +349,7 @@ export const useCityStore = create<CityStoreState>((set, get) => ({
   stats: createInitialStats(),
   selectedTool: 'select',
   overlay: null,
+  lensEmpty: false,
   speed: 1,
   notifications: [],
   preview: null,
@@ -410,6 +414,7 @@ export const useCityStore = create<CityStoreState>((set, get) => ({
       roadProfileEdits: tool === state.selectedTool ? state.roadProfileEdits : NO_EDITS,
     })),
   setOverlay: (overlay) => set({ overlay }),
+  setLensEmpty: (lensEmpty) => set({ lensEmpty }),
   setSpeed: (speed) => {
     set({ speed });
     get().bound?.setSpeed(speed);

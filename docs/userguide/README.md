@@ -15,7 +15,7 @@ the [documentation map](../README.md) — chiefly the [documentation map](../REA
 | [The core loop](the-core-loop.md) | 721 B |
 | [First five minutes](first-five-minutes.md) | 657 B |
 | [Tools](tools.md) | 22,583 B |
-| [Reading your city](reading-your-city.md) | 3,985 B |
+| [Reading your city](reading-your-city.md) | 4,278 B |
 | [Camera & controls](camera--controls.md) | 1,707 B |
 | [Sound and music](sound-and-music.md) | 1,079 B |
 | [Tips](tips.md) | 3,215 B |

@@ -14,7 +14,7 @@ import { schoolNameOf } from '../shared/schooling';
 import { counted, happinessFace, lotLine } from './format';
 import { Icon, type IconName } from './icons';
 import { useCityStore } from './store';
-import { PANEL_ROUNDED } from './theme';
+import { PANEL_ROUNDED, SCROLL_FROM_THIRD } from './theme';
 
 const catalog = (catalogData as { buildings: BuildingCatalogEntry[] }).buildings;
 const catalogById = new Map(catalog.map((entry) => [entry.id, entry]));
@@ -159,9 +159,9 @@ export function InfoPanel(): JSX.Element | null {
   const isZoned = entry?.zone !== undefined;
 
   return (
-    <div className="pointer-events-none fixed left-3 top-1/3 z-10 w-80">
+    <div className="pointer-events-none fixed left-3 top-1/3 z-10 w-80 max-w-[calc(100vw-1.5rem)]">
       <div
-        className={`pointer-events-auto flex flex-col gap-2 p-3 text-sm text-white/92 ${PANEL_ROUNDED}`}
+        className={`pointer-events-auto flex flex-col gap-2 p-3 text-sm text-white/92 ${SCROLL_FROM_THIRD} ${PANEL_ROUNDED}`}
       >
         <div className="flex items-start justify-between gap-2">
           <div className="flex items-center gap-2">

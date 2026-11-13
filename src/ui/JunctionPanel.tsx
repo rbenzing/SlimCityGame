@@ -23,7 +23,7 @@ import { RoadFlow } from '../shared/types';
 import type { Command, JunctionControl } from '../shared/types';
 import { Icon } from './icons';
 import { useCityStore } from './store';
-import { CARD_RADIUS, LABEL, PANEL_ROUNDED } from './theme';
+import { CARD_RADIUS, LABEL, PANEL_ROUNDED, SCROLL_FROM_THIRD } from './theme';
 
 /**
  * The controls the player may pick: the ladder least restrictive first — the
@@ -127,9 +127,9 @@ export function JunctionPanel(): JSX.Element | null {
     // A corner of a compact roundabout is one junction of four tiles: its
     // control, turns and lanes are the roundabout's, and it is taken out whole.
     return (
-      <div className="pointer-events-none fixed left-3 top-1/3 z-10 w-80">
+      <div className="pointer-events-none fixed left-3 top-1/3 z-10 w-80 max-w-[calc(100vw-1.5rem)]">
         <div
-          className={`pointer-events-auto flex flex-col gap-2 p-3 text-sm text-white/92 ${PANEL_ROUNDED}`}
+          className={`pointer-events-auto flex flex-col gap-2 p-3 text-sm text-white/92 ${SCROLL_FROM_THIRD} ${PANEL_ROUNDED}`}
           data-testid="junction-panel"
         >
           <div className="flex items-start justify-between gap-2">
@@ -171,9 +171,9 @@ export function JunctionPanel(): JSX.Element | null {
   }
 
   return (
-    <div className="pointer-events-none fixed left-3 top-1/3 z-10 w-80">
+    <div className="pointer-events-none fixed left-3 top-1/3 z-10 w-80 max-w-[calc(100vw-1.5rem)]">
       <div
-        className={`pointer-events-auto flex flex-col gap-2 p-3 text-sm text-white/92 ${PANEL_ROUNDED}`}
+        className={`pointer-events-auto flex flex-col gap-2 p-3 text-sm text-white/92 ${SCROLL_FROM_THIRD} ${PANEL_ROUNDED}`}
         data-testid="junction-panel"
       >
         <div className="flex items-start justify-between gap-2">

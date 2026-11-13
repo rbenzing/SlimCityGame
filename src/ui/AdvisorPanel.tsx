@@ -5,7 +5,7 @@
  */
 import type { JSX } from 'react';
 import type { CityIssue, IssueSeverity } from './advisor';
-import { PANEL_ROUNDED } from './theme';
+import { PANEL_ROUNDED, SCROLL_FROM_TOP_16 } from './theme';
 
 export interface AdvisorPanelProps {
   open: boolean;
@@ -36,9 +36,9 @@ export function AdvisorPanel({
   if (!open) return null;
 
   return (
-    <div className="pointer-events-none fixed right-3 top-16 z-10 w-96">
+    <div className="pointer-events-none fixed right-3 top-16 z-10 w-96 max-w-[calc(100vw-1.5rem)]">
       <div
-        className={`pointer-events-auto flex flex-col gap-2 p-3 text-sm text-white/92 ${PANEL_ROUNDED}`}
+        className={`pointer-events-auto flex flex-col gap-2 p-3 text-sm text-white/92 ${SCROLL_FROM_TOP_16} ${PANEL_ROUNDED}`}
         role="dialog"
         aria-label="Advisor"
       >

@@ -14,8 +14,11 @@
   reddens where garbage is going uncollected, and the soil lens shades the
   ground from deep green cropland through orchard slopes and amber pasture to
   red land nothing grows on. A chip at the top left names the lens that is
-  on; **Exit** there, or `Esc`, turns it off.
-- **Stats panel** — line charts of population, money, and other trends over time.
+  on; **Exit** there, or `Esc`, turns it off. Under the chip a legend says
+  what the colours mean, and says so when a lens has nothing to show yet.
+- **Stats panel** — line charts of population, money, and other trends over
+  time. Each line is scaled to its own range; its row gives the unit, the
+  latest value and the range.
 - **Roads sign themselves** — a junction carries the boards its control calls
   for and no others: a signal head on every approach where the junction is
   signalised, a stop board on every arm of a four-way stop, a stop or give-way

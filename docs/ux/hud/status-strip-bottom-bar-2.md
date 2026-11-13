@@ -20,3 +20,7 @@ divider:
 - **Happiness face**: a single emoji-style face stepped from the city's
   happiness score. Clicking it opens the Happiness infoview.
 
+Every control in the strip is at least 24 px in each direction. Below
+640 px wide the season chip and the city name are hidden and the strip
+scrolls sideways `[R-design-021]`.
+

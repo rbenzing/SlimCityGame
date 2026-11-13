@@ -3,7 +3,12 @@
  * No Math.random/Date.now — everything is a function of sim state
  * (stats.tick, stats.happiness, ...).
  */
-import { CLOCK_START_OFFSET_TICKS, TILE_METERS, VISUAL_DAY_TICKS } from '../shared/constants';
+import {
+  CLOCK_START_OFFSET_TICKS,
+  TILE_METERS,
+  VISUAL_DAY_TICKS,
+  tickToDate,
+} from '../shared/constants';
 import { LOT_EXTENT } from '../shared/lots';
 import type { BuildingCatalogEntry } from '../shared/types';
 
@@ -20,6 +25,32 @@ export function formatClock(tick: number): string {
   const hours = Math.floor(totalMinutes / 60) % 24;
   const minutes = totalMinutes % 60;
   return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+}
+
+/** A packed 0xRRGGBB number as a CSS hex colour. */
+export function hexColor(n: number): string {
+  return `#${n.toString(16).padStart(6, '0')}`;
+}
+
+const MONTH_NAMES = [
+  'Jan',
+  'Feb',
+  'Mar',
+  'Apr',
+  'May',
+  'Jun',
+  'Jul',
+  'Aug',
+  'Sep',
+  'Oct',
+  'Nov',
+  'Dec',
+];
+
+/** "Jan 2025": the calendar month a tick falls in, the game starting in 2025. */
+export function formatMonthYear(tick: number): string {
+  const date = tickToDate(tick);
+  return `${MONTH_NAMES[date.month - 1]} ${2025 + (date.year - 1)}`;
 }
 
 export type Season = 'Winter' | 'Spring' | 'Summer' | 'Fall';

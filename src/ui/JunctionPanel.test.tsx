@@ -279,6 +279,28 @@ describe('JunctionPanel', () => {
   });
 });
 
+describe('JunctionPanel — fit', () => {
+  it('scrolls inside itself so the lanes never run under the dock', () => {
+    useCityStore.getState().setSelectedJunction({
+      x: 5,
+      z: 5,
+      control: 'signal',
+      warranted: 'signal',
+      auto: true,
+      turns: 0,
+      arms: [RoadFlow.North],
+      laneTurns: [0, 0, 0, 0],
+      armLaneSets: {
+        [RoadFlow.North]: [Movement.Left, Movement.Through, Movement.Through | Movement.Right],
+      },
+    });
+    render(<JunctionPanel />);
+    const panel = screen.getByTestId('junction-panel');
+    expect(panel.className).toContain('overflow-y-auto');
+    expect(panel.className).toMatch(/max-h-\[calc\(/);
+  });
+});
+
 describe('JunctionPanel — the lanes of an arm', () => {
   const withLanes = (over: Record<string, unknown> = {}) =>
     useCityStore.getState().setSelectedJunction({

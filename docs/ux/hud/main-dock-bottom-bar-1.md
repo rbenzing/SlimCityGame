@@ -18,7 +18,13 @@ Left to right:
   five service categories, the [Services panel](services-panel.md) — once
   the category's own tool is actually in hand, not merely while its drawer
   is open.
-- **Right cluster**: an Infoviews toggle (opens the lens grid of overlay
-  choices) and an overlay-off button that clears whatever infoview is
-  active. The toggle shows as active while the grid is open or a lens is on.
+- **Right cluster**: an Infoviews toggle (opens the lens picker) and an
+  overlay-off button that clears whatever infoview is active. The toggle
+  shows as active while the picker is open or a lens is on. The picker is a
+  wrapping band above the dock, at most 40% of the window's height, so the
+  city stays in view behind it.
+
+Below 640 px wide the left cluster drops its glyph and the milestone's name,
+the demand bars shrink, and the category row scrolls sideways from its left
+end; nothing overlaps a control `[R-design-021]`.
 

@@ -23,4 +23,14 @@ button, **Exit** with the `Esc` key shown, returns to the plain view in one
 click: it turns the lens off and drops a tool that would keep the city
 underground. The chip's text shortens before it reaches the right cluster,
 and it is hidden with the rest of the chrome in photo mode `[R-design-018]`.
+Below 640 px wide the Exit button shows its icon only.
+
+Under the chip hangs the view's **legend**, with the lens picker open or
+shut `[R-design-020]`. A lens of a value shows its colour scale with both
+ends named in words and units; a lens of kinds (transit lines, districts)
+lists them. The underground view names each thing drawn: water pipe,
+sewer, a run nothing reaches, buried cable, junction box. A lens with
+nothing to paint says what is missing ("Nothing to show yet: no polluters
+built"). Colours and names are read from the tables the renderer paints
+from (`src/shared/lenses.ts`), never a copy.
 

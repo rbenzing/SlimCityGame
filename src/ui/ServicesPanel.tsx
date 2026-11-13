@@ -27,7 +27,7 @@ import type { LensId, ServiceKind } from '../shared/types';
 import { catalogEntryForTool } from './categories';
 import { Icon } from './icons';
 import { useCityStore } from './store';
-import { LABEL, PANEL_ROUNDED } from './theme';
+import { LABEL, PANEL_ROUNDED, SCROLL_FROM_TOP_28 } from './theme';
 
 /**
  * Every kind gets a row, capped or not — a park's row is where its slider is.
@@ -94,9 +94,9 @@ export function ServicesPanel(): JSX.Element | null {
   if (!visible) return null;
 
   return (
-    <div className="pointer-events-none fixed left-3 top-16 z-10 w-80">
+    <div className="pointer-events-none fixed left-3 top-28 z-10 w-96 max-w-[calc(100vw-1.5rem)]">
       <div
-        className={`pointer-events-auto flex flex-col gap-2 p-3 text-sm text-white/92 ${PANEL_ROUNDED}`}
+        className={`pointer-events-auto flex flex-col gap-2 p-3 text-sm text-white/92 ${SCROLL_FROM_TOP_28} ${PANEL_ROUNDED}`}
       >
         <div className="flex items-center gap-2 font-semibold">
           <Icon name="city" className="h-5 w-5 text-white/70" />
@@ -131,7 +131,7 @@ export function ServicesPanel(): JSX.Element | null {
             return (
               <div
                 key={kind}
-                className="flex items-center gap-1.5 rounded-md bg-white/5 px-2 py-1 text-[12px]"
+                className="flex flex-wrap items-center gap-1.5 rounded-md bg-white/5 px-2 py-1 text-[12px]"
               >
                 <span className="w-16 shrink-0">{label}</span>
                 {ownsSlider ? (
@@ -143,10 +143,10 @@ export function ServicesPanel(): JSX.Element | null {
                     step={FUNDING_STEP}
                     value={funding}
                     onChange={(e) => setServiceFunding(key, Number(e.target.value))}
-                    className="min-w-0 flex-1 accent-accent"
+                    className="min-w-0 flex-[1_1_3rem] accent-accent"
                   />
                 ) : (
-                  <span className="min-w-0 flex-1 truncate text-[11px] text-white/40">
+                  <span className="min-w-0 flex-[1_1_3rem] text-[11px] leading-tight text-white/60">
                     Education funding
                   </span>
                 )}
