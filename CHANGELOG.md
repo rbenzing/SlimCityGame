@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.85.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.84.0...slimcity-v1.85.0) (2026-11-13)
+
+
+### Features
+
+* **transit:** buses, trams and trains show in every view ([25e4657](https://github.com/rbenzing/SlimCityGame/commit/25e46578b6e7c02e52648c658b6c981e4f0f74b5))
+* **transit:** buses, trams and trains show in every view ([31af0a0](https://github.com/rbenzing/SlimCityGame/commit/31af0a0d8df793c19e06c5705ed49d2d2853b49d))
+
 ## [1.84.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.83.0...slimcity-v1.84.0) (2026-11-11)
 
 
