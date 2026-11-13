@@ -41,7 +41,7 @@ export function lensLabel(id: LensId): string {
 }
 
 function lensButtonClass(active: boolean): string {
-  return `flex flex-col items-center gap-1 rounded-md px-2.5 py-2 text-[10px] leading-tight transition-colors ${
+  return `flex min-h-10 flex-col items-center justify-center gap-0.5 rounded-md px-1 py-1.5 text-center text-[10px] leading-tight transition-colors ${
     active ? 'bg-accent text-white' : 'bg-white/10 text-white/80 hover:bg-white/20'
   }`;
 }
@@ -52,7 +52,7 @@ export function InfoviewGrid(): JSX.Element {
 
   return (
     <div
-      className={`pointer-events-auto grid grid-cols-4 gap-1.5 p-2 text-white ${PANEL_ROUNDED}`}
+      className={`pointer-events-auto grid w-[40rem] max-h-[40vh] max-w-[calc(100vw-1rem)] grid-cols-[repeat(auto-fill,minmax(3.5rem,1fr))] gap-1 overflow-y-auto p-1.5 text-white ${PANEL_ROUNDED}`}
       role="menu"
       aria-label="Infoviews"
     >

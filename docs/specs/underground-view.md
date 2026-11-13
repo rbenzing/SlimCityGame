@@ -12,6 +12,7 @@
 - Snap each end of a pipe drag onto the nearest carrier within one tile; a drag along a street lays nothing and sends nothing. `[R-world-033]`
 - Say what the run joins at each end, and lay a run that reaches nothing all the same. `[R-world-033]`
 - Read what is wet and what is drained from the lens coverage the sim sent; add no sim state and no message. `[R-world-033]` `[R-world-032]`
+- Draw one network under both lenses, water and sewer runs alike; the Water lens tints the ground by what is watered and the Sewer lens by what is drained, and the legend says which. `[R-design-020]`
 
 **Numbers:**
 

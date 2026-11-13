@@ -38,10 +38,7 @@ What two reviews of every screenshot the shot tools write found wrong in the gam
 
 ## Major: interface and messages
 
-- A lens shows no legend or scale with its picker open, and a lens with nothing to show is blank without saying so; the underground view's red cable and its orange box are unnamed; the picker covers the east end of the town. — `shots-playthrough/33-lens-land-value`, `shots-underground/lens-watered`
-- The City Stats chart opens empty, with no axes, units or word that there is nothing to plot yet. — `shots-playthrough/55-panel-city-stats`
-- The junction panel's lanes section runs under the toolbar; the Services panel cuts a label to "Educa…" and wraps its parks line to five. — `shots-playthrough/14-junction-panel`, `18-services`
-- The interface has no layout for a narrow window: at 480 px wide the dock's left cluster lies over its category buttons, which cannot be clicked. — `tools/viewexit-shots.mjs` checks at 768 px for that reason
+- Every lens paints its high end red, for good things too: a happy, healthy, well-schooled district reads as an alarm. The legend now says which end is which; the ramp should follow the meaning. — `src/shared/lenses.ts`
 
 ## Major: buildings and lots
 
@@ -76,9 +73,9 @@ What two reviews of every screenshot the shot tools write found wrong in the gam
 - Ploughed field patches have jagged edges; a house lot carries a skewed lawn wedge.
 - A shelter's roof overhangs a gravel road.
 - The landfill reads as loose tiles; the neighbourhood park and the plaza are bare.
-- A viaduct's shadow lies detached from it; a detached garage is a plain box; the season reads Winter over green ground.
+- A viaduct's shadow lies detached from it; a detached garage is a plain box; winter only dulls the trees' leaves a little, so the strip reads Winter over green ground.
 - A street's parking lane is painted with stalls and stands empty beside homes. — `shots-parking/kerb-parking-close`
-- A home's water and sewer leads stop short of the house; the water lens and the sewer lens draw the same picture. — `shots-underground/underground-view`, `lens-sewered`
+- A home's water and sewer leads stop short of the house. — `shots-underground/underground-view`
 
 ## Shot tools
 

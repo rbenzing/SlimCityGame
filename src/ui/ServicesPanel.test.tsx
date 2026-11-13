@@ -62,6 +62,32 @@ const KINDS: readonly ServiceKind[] = [
   'park',
 ];
 
+describe('ServicesPanel — fit', () => {
+  it('scrolls inside itself so no row runs under the dock', () => {
+    open();
+    render(<ServicesPanel />);
+    const panel = screen.getByText('Services').parentElement!;
+    expect(panel.className).toContain('overflow-y-auto');
+    expect(panel.className).toMatch(/max-h-\[calc\(100vh-/);
+  });
+
+  it('never clips a label to an ellipsis', () => {
+    open();
+    render(<ServicesPanel />);
+    const labels = screen.getAllByText('Education funding');
+    expect(labels.length).toBeGreaterThan(0);
+    for (const label of labels) expect(label.className).not.toContain('truncate');
+  });
+
+  it('gives the parks provision line a row of its own instead of squeezing it into the gauge row', () => {
+    open();
+    render(<ServicesPanel />);
+    const line = screen.getByTestId('service-provision-park');
+    expect(line.parentElement!.className).toContain('flex-wrap');
+    expect(line.className).toContain('basis-full');
+  });
+});
+
 describe('ServicesPanel', () => {
   it('stays shut until a service tool is in hand or a service lens is on', () => {
     const { container } = render(<ServicesPanel />);

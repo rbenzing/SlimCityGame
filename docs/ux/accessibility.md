@@ -71,6 +71,17 @@ they never surface as unlabelled noise to a screen reader; the meaningful
 text beside them (the actual number, the actual severity) is what gets
 read.
 
+### Narrow windows, target size and panels
+
+The interface holds from 360 px wide: nothing overlaps a control, the dock's
+category row and the status strip scroll sideways, and no panel runs past
+the window's edge (WCAG 2.2 success criterion 1.4.10, Reflow, asks 320 px).
+Every HUD control is at least 24 by 24 px (2.5.8, Target Size). A floating
+panel scrolls inside itself and never runs under the dock. A chart's series
+differ by dash pattern and marker shape as well as colour (1.4.1).
+`tools/narrow-shots.mjs` checks 360 and 480 px in a browser: what is under
+each control's centre, each control's size, and each panel's edges.
+
 ## What is genuinely not done
 
 - **No screen-reader pass.** The attributes above are the honest result of

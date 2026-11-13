@@ -17,6 +17,38 @@ afterEach(() => {
 
 const noop = (): void => {};
 
+describe('MainDock — narrow window', () => {
+  const dock = (): void => {
+    render(
+      <MainDock
+        activeCategory={null}
+        onToggleCategory={noop}
+        infoviewOpen={false}
+        onToggleInfoview={noop}
+        onOpenMilestones={noop}
+      />,
+    );
+  };
+
+  it('lets the category strip shrink and scroll from its first button rather than sit under the clusters', () => {
+    dock();
+    const strip = screen.getByRole('group', { name: 'Build categories' });
+    expect(strip.className).toContain('min-w-0');
+    expect(strip.className).toContain('overflow-x-auto');
+    // Centred overflow would hide the first buttons off the left edge.
+    expect(strip.className).toContain('justify-start');
+    expect(strip.className).toContain('sm:justify-center');
+  });
+
+  it('drops the decorative city glyph and the milestone name below the sm breakpoint', () => {
+    dock();
+    expect(screen.getByText('TINY VILLAGE').className).toContain('hidden');
+    expect(screen.getByText('TINY VILLAGE').className).toContain('sm:inline');
+    const milestone = screen.getByRole('button', { name: /Milestone progress/ });
+    expect(milestone).toBeInTheDocument();
+  });
+});
+
 describe('MainDock', () => {
   it('renders every dock category button (incl. Garbage + Landscaping), icon-only with a tooltip name', () => {
     render(

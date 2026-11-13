@@ -33,7 +33,10 @@ function DemandBar({
   testId: string;
 }): JSX.Element {
   return (
-    <div className="h-2 w-20 overflow-hidden rounded-full bg-white/10" title={`${label} demand`}>
+    <div
+      className="h-2 w-10 overflow-hidden rounded-full bg-white/10 sm:w-20"
+      title={`${label} demand`}
+    >
       <div
         data-testid={testId}
         className={`h-full rounded-full ${className}`}
@@ -93,12 +96,12 @@ export function MainDock({
 
   return (
     <div
-      className={`pointer-events-auto fixed bottom-7 left-2 right-2 z-10 flex h-16 items-center justify-between gap-4 px-3 text-white ${PANEL_ROUNDED}`}
+      className={`pointer-events-auto fixed bottom-7 left-2 right-2 z-10 flex h-16 items-center justify-between gap-2 px-3 text-white sm:gap-4 ${PANEL_ROUNDED}`}
       role="toolbar"
       aria-label="Main dock"
     >
-      <div className="flex shrink-0 items-center gap-3">
-        <Icon name="city" className="h-6 w-6 text-white/70" />
+      <div className="flex shrink-0 items-center gap-2 sm:gap-3">
+        <Icon name="city" className="hidden h-6 w-6 text-white/70 sm:block" />
         <div className="flex flex-col gap-1" aria-label="RCI demand">
           <DemandBar
             label="Residential"
@@ -126,14 +129,14 @@ export function MainDock({
           className="flex items-center gap-2 rounded-lg px-1.5 py-1 hover:bg-white/10"
         >
           <MilestoneRing progressPct={progressPct} />
-          <span className="text-xs font-semibold tracking-wide">
+          <span className="hidden text-xs font-semibold tracking-wide sm:inline">
             {(milestone?.name ?? '').toUpperCase()}
           </span>
         </button>
       </div>
 
       <div
-        className="flex flex-1 items-center justify-center gap-1.5 overflow-x-auto"
+        className="flex min-w-0 flex-1 items-center justify-start gap-1.5 overflow-x-auto sm:justify-center"
         role="group"
         aria-label="Build categories"
       >

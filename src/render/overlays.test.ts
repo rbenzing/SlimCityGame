@@ -95,6 +95,33 @@ describe('OverlayRenderer', () => {
     );
   });
 
+  it('reports a lens with every tile at zero as empty, and tells the listener', () => {
+    const overlay = new OverlayRenderer(new THREE.Scene());
+    const told: boolean[] = [];
+    overlay.onEmptyChange = (empty) => told.push(empty);
+    overlay.setActive(FieldId.Pollution);
+    expect(overlay.isEmpty()).toBe(false); // bytes not here yet: never flashes empty
+    overlay.setFieldData(FieldId.Pollution, new Uint8Array(MAP_SIZE * MAP_SIZE));
+    expect(overlay.isEmpty()).toBe(true);
+    const field = new Uint8Array(MAP_SIZE * MAP_SIZE);
+    field[5] = 1;
+    overlay.setFieldData(FieldId.Pollution, field);
+    expect(overlay.isEmpty()).toBe(false);
+    expect(told).toEqual([true, false]);
+  });
+
+  it('reads a coverage lens with no covered tile as empty, and a switch away as not', () => {
+    const overlay = new OverlayRenderer(new THREE.Scene());
+    overlay.setActive('power');
+    expect(overlay.isEmpty()).toBe(true);
+    overlay.setCoverage('power', [{ x: 1, z: 1, w: 1, h: 1, data: new Uint8Array([1]) }]);
+    expect(overlay.isEmpty()).toBe(false);
+    overlay.setActive('watered');
+    expect(overlay.isEmpty()).toBe(true);
+    overlay.setActive('transit');
+    expect(overlay.isEmpty()).toBe(false);
+  });
+
   it('setActive toggles mesh visibility', () => {
     const scene = new THREE.Scene();
     const overlay = new OverlayRenderer(scene);

@@ -20,6 +20,13 @@ import * as THREE from 'three';
 import type { LensId, ZonePatch } from '../shared/types';
 import { FieldId } from '../shared/types';
 import { MAP_SIZE, TILE_METERS } from '../shared/constants';
+import {
+  COVERAGE_COVERED_HEX,
+  COVERAGE_UNCOVERED_DIM_FACTOR,
+  COVERAGE_UNCOVERED_HEX,
+  LENS_RAMP_STOPS,
+  SOIL_LENS_COLORS,
+} from '../shared/lenses';
 
 const OVERLAY_Y = 45;
 const OVERLAY_OPACITY = 0.55;
@@ -27,13 +34,7 @@ const OVERLAY_OPACITY = 0.55;
 const clamp01 = (v: number): number => Math.min(1, Math.max(0, v));
 const lerp = (a: number, b: number, t: number): number => a + (b - a) * t;
 
-/** Stops for the blue -> green -> yellow -> red perceptual ramp, v in [0,255]. */
-const RAMP_STOPS: ReadonlyArray<readonly [number, readonly [number, number, number]]> = [
-  [0, [0.05, 0.1, 0.9]],
-  [85, [0.1, 0.75, 0.2]],
-  [170, [0.95, 0.85, 0.1]],
-  [255, [0.95, 0.15, 0.1]],
-];
+const RAMP_STOPS = LENS_RAMP_STOPS;
 
 /** Deterministic 0..255 -> RGB (0..1) heatmap ramp. Pure and exported for tests. */
 export function rampColor(v: number): [number, number, number] {
@@ -64,10 +65,9 @@ function hexToRgb01(hex: number): [number, number, number] {
   return [((hex >> 16) & 0xff) / 255, ((hex >> 8) & 0xff) / 255, (hex & 0xff) / 255];
 }
 
-const COVERAGE_COVERED: readonly [number, number, number] = hexToRgb01(0x38b6e3); // accent
-const COVERAGE_UNCOVERED_DIM_FACTOR = 0.55;
+const COVERAGE_COVERED: readonly [number, number, number] = hexToRgb01(COVERAGE_COVERED_HEX);
 const COVERAGE_UNCOVERED: readonly [number, number, number] = (() => {
-  const [r, g, b] = hexToRgb01(0xe5533f); // danger, dimmed
+  const [r, g, b] = hexToRgb01(COVERAGE_UNCOVERED_HEX);
   return [
     r * COVERAGE_UNCOVERED_DIM_FACTOR,
     g * COVERAGE_UNCOVERED_DIM_FACTOR,
@@ -83,17 +83,10 @@ export function coverageColor(value: number): [number, number, number] {
   return value > 0 ? [...COVERAGE_COVERED] : [...COVERAGE_UNCOVERED];
 }
 
-/**
- * The Soil lens, one colour per SoilGrade: the same dim red as ground no
- * service reaches for land no farm takes, then amber pasture, light green
- * orchard slopes and deep green cropland.
- */
-const SOIL_COLORS: ReadonlyArray<readonly [number, number, number]> = [
-  COVERAGE_UNCOVERED,
-  hexToRgb01(0xd9a441),
-  hexToRgb01(0x9fcf4a),
-  hexToRgb01(0x2f9e44),
-];
+/** The Soil lens, one colour per SoilGrade, from the table its legend reads. */
+const SOIL_COLORS: ReadonlyArray<readonly [number, number, number]> = SOIL_LENS_COLORS.map(
+  (grade, i) => (i === 0 ? COVERAGE_UNCOVERED : hexToRgb01(grade.hex)),
+);
 
 /** A SoilGrade's lens colour; anything out of range reads as unfit. Pure and exported for tests. */
 export function soilColor(grade: number): [number, number, number] {
@@ -118,6 +111,9 @@ export class OverlayRenderer {
   };
   /** The render mirror's live soil grades, read whenever the Soil lens paints. */
   private soil: Uint8Array | null = null;
+  private empty = false;
+  /** Told whenever the active lens gains or loses anything to show. */
+  onEmptyChange: ((empty: boolean) => void) | null = null;
 
   constructor(scene: THREE.Scene) {
     const mapMeters = MAP_SIZE * TILE_METERS;
@@ -184,6 +180,8 @@ export class OverlayRenderer {
    */
   setActive(lens: LensId | null): void {
     this.active = lens;
+    // A field lens reads as full until its bytes arrive, so a switch never flashes "empty".
+    this.setEmpty(false);
     // 'transit' and 'districts' are drawn by their own dedicated
     // terrain-conforming renderers (TransitRenderer / DistrictsRenderer),
     // not this scalar/coverage quad — so hide the quad for those two lenses.
@@ -207,8 +205,11 @@ export class OverlayRenderer {
   private paintSoil(): void {
     if (!this.soil) return;
     const count = Math.min(this.soil.length, MAP_SIZE * MAP_SIZE);
+    let any = false;
     for (let i = 0; i < count; i++) {
-      const [r, g, b] = soilColor(this.soil[i] ?? 0);
+      const grade = this.soil[i] ?? 0;
+      if (grade !== 0) any = true;
+      const [r, g, b] = soilColor(grade);
       const base = i * 4;
       this.textureData[base] = Math.round(r * 255);
       this.textureData[base + 1] = Math.round(g * 255);
@@ -216,6 +217,7 @@ export class OverlayRenderer {
       this.textureData[base + 3] = 255;
     }
     this.texture.needsUpdate = true;
+    this.setEmpty(!any);
   }
 
   /** Lenses handled by a dedicated renderer rather than this DataTexture quad. */
@@ -227,8 +229,10 @@ export class OverlayRenderer {
   setFieldData(field: FieldId, data: Uint8Array): void {
     if (field !== this.active) return;
     const count = Math.min(data.length, MAP_SIZE * MAP_SIZE);
+    let any = false;
     for (let i = 0; i < count; i++) {
       const value = data[i] ?? 0;
+      if (value !== 0) any = true;
       const [r, g, b] = rampColor(value);
       const base = i * 4;
       this.textureData[base] = Math.round(r * 255);
@@ -237,6 +241,7 @@ export class OverlayRenderer {
       this.textureData[base + 3] = 255;
     }
     this.texture.needsUpdate = true;
+    this.setEmpty(!any);
   }
 
   /**
@@ -275,8 +280,10 @@ export class OverlayRenderer {
     const cache = this.coverageCache[kind];
     const graded = GRADED_COVERAGE.has(kind);
     const count = MAP_SIZE * MAP_SIZE;
+    let any = false;
     for (let i = 0; i < count; i++) {
       const value = cache[i] ?? 0;
+      if (value !== 0) any = true;
       const [r, g, b] = graded ? rampColor(value) : coverageColor(value);
       const base = i * 4;
       this.textureData[base] = Math.round(r * 255);
@@ -285,5 +292,17 @@ export class OverlayRenderer {
       this.textureData[base + 3] = 255;
     }
     this.texture.needsUpdate = true;
+    this.setEmpty(!any);
+  }
+
+  /** Whether the active lens, as last painted, has nothing to show: every tile reads zero. */
+  isEmpty(): boolean {
+    return this.empty;
+  }
+
+  private setEmpty(empty: boolean): void {
+    if (empty === this.empty) return;
+    this.empty = empty;
+    this.onEmptyChange?.(empty);
   }
 }

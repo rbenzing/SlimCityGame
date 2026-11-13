@@ -9,6 +9,7 @@ import { FieldId } from '../shared/types';
 import {
   formatClock,
   formatFunds,
+  formatMonthYear,
   formatPopulation,
   happinessFace,
   seasonForMonth,
@@ -20,29 +21,14 @@ import { PANEL } from './theme';
 
 const CITY_NAME = 'Riverton'; // From map name — no map-select screen yet.
 
-const MONTH_NAMES = [
-  'Jan',
-  'Feb',
-  'Mar',
-  'Apr',
-  'May',
-  'Jun',
-  'Jul',
-  'Aug',
-  'Sep',
-  'Oct',
-  'Nov',
-  'Dec',
-] as const;
-
 const SPEED_OPTIONS: ReadonlyArray<{ value: 1 | 2 | 4; chevrons: number }> = [
   { value: 1, chevrons: 1 },
   { value: 2, chevrons: 2 },
   { value: 4, chevrons: 3 },
 ];
 
-function Divider(): JSX.Element {
-  return <div className="h-4 w-px shrink-0 bg-white/15" aria-hidden="true" />;
+function Divider({ className = '' }: { className?: string }): JSX.Element {
+  return <div className={`h-4 w-px shrink-0 bg-white/15 ${className}`} aria-hidden="true" />;
 }
 
 function TrendArrow({ trend, testId }: { trend: 'up' | 'down'; testId: string }): JSX.Element {
@@ -83,7 +69,7 @@ function SimControls(): JSX.Element {
             aria-label={`${opt.value}×`}
             aria-pressed={speed === opt.value}
             onClick={() => setSpeed(opt.value)}
-            className={`rounded px-1 text-[11px] leading-none ${speed === opt.value ? 'text-[var(--color-positive)]' : 'text-white/50 hover:text-white/80'}`}
+            className={`flex h-6 min-w-6 items-center justify-center rounded px-1 text-[11px] leading-none ${speed === opt.value ? 'text-[var(--color-positive)]' : 'text-white/50 hover:text-white/80'}`}
           >
             {'▶'.repeat(opt.chevrons)}
           </button>
@@ -125,7 +111,6 @@ export function StatusStrip(): JSX.Element {
   const setOverlay = useCityStore((s) => s.setOverlay);
 
   const date = tickToDate(tick);
-  const displayYear = 2025 + (date.year - 1);
   const season = seasonForMonth(date.month);
   const seasonIcon: IconName = season === 'Winter' || season === 'Fall' ? 'leaf' : 'sun';
 
@@ -137,7 +122,7 @@ export function StatusStrip(): JSX.Element {
 
   return (
     <div
-      className={`pointer-events-auto fixed bottom-0 left-0 right-0 z-10 flex h-7 items-center gap-3 px-3 text-xs text-white ${PANEL}`}
+      className={`pointer-events-auto fixed bottom-0 left-0 right-0 z-10 flex h-7 items-center gap-3 overflow-x-auto whitespace-nowrap px-3 text-xs text-white ${PANEL}`}
       role="contentinfo"
       aria-label="Status strip"
     >
@@ -145,18 +130,18 @@ export function StatusStrip(): JSX.Element {
       <Divider />
       <div className="flex shrink-0 items-center gap-2">
         <span>{formatClock(tick)}</span>
-        <span className="text-white/70">
-          {MONTH_NAMES[date.month - 1]} {displayYear}
-        </span>
+        <span className="text-white/70">{formatMonthYear(tick)}</span>
       </div>
       <Divider />
-      <div className="flex shrink-0 items-center gap-1 text-white/80">
+      <div className="hidden shrink-0 items-center gap-1 text-white/80 sm:flex">
         <Icon name={seasonIcon} className="h-3.5 w-3.5" />
         <span>{season}</span>
       </div>
-      <Divider />
-      <div className="flex-1 text-center font-semibold tracking-wide">{CITY_NAME}</div>
-      <Divider />
+      <Divider className="hidden sm:block" />
+      <div className="hidden flex-1 text-center font-semibold tracking-wide sm:block">
+        {CITY_NAME}
+      </div>
+      <Divider className="hidden sm:block" />
       <div className="flex shrink-0 items-center gap-1">
         <span aria-hidden="true">👥</span>
         <span>{formatPopulation(population)}</span>
@@ -190,7 +175,7 @@ export function StatusStrip(): JSX.Element {
         type="button"
         aria-label={`Happiness: ${Math.round(happiness)}`}
         onClick={() => setOverlay(FieldId.Happiness)}
-        className="flex shrink-0 items-center rounded px-1 hover:bg-white/10"
+        className="flex h-6 min-w-6 shrink-0 items-center justify-center rounded px-1 hover:bg-white/10"
       >
         <span aria-hidden="true">{happinessFace(happiness)}</span>
       </button>
