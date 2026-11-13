@@ -19,7 +19,7 @@ bridges.
 | [How roads meet: rank, replacement and transitions](how-roads-meet-rank-replacement-and-transitions.md) | 13884 |
 | [Ramps and interchanges](ramps-and-interchanges.md) | 9269 |
 | [Furniture and what gates it](furniture-and-what-gates-it.md) | 6158 |
-| [Markings](markings.md) | 15132 |
+| [Markings](markings.md) | 15235 |
 | [Capacity, control delay and warrants — the formulas](capacity-control-delay-and-warrants--the-formulas.md) | 6714 |
 | [Sound walls](sound-walls.md) | 2459 |
 | [The road tool](the-road-tool.md) | 1307 |

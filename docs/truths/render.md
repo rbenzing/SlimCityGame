@@ -158,7 +158,8 @@ Back to [the index](../GROUND-TRUTHS.md).
 - [R-render-026] A home faces the street it fronts: its lawn runs across the verge to the
   sidewalk, its front wall stands 5.5 m behind the sidewalk (never outside its
   lot), its door faces the street, and a drive — dirt or concrete — crosses
-  the sidewalk and verge to the carriageway. Its car stands on that drive,
+  the verge to the back of the sidewalk, which runs on unbroken across its
+  mouth; nothing of a drive lies on carriageway. Its car stands on that drive,
   never at the kerb. A home that fronts no street has no drive and no car.
   The street it fronts is the one bordering the most of its edge, so a home
   on a bend or beside a cul-de-sac faces the street it runs along; ties go

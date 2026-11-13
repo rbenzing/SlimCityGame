@@ -5,8 +5,10 @@ import { TILE_METERS } from '../../src/shared/constants';
 import {
   isStraightRunMask,
   kerbCreditFor,
+  lotDriveCuts,
   paintedKerbStallsAlong,
   parkingSetbacksAt,
+  withDriveCuts,
   type KerbSurroundings,
   type LotTiles,
 } from '../../src/shared/kerblayout';
@@ -150,7 +152,12 @@ describe('kerb credit — the stalls a lot fronts, counted alike by the sim and 
     const required = lotParkingRequirement(strip)!.spaces;
     const credited = lotPlanFor(strip, 12, 21, roadAt, 0, drawn())!;
     const bare = lotPlanFor(strip, 12, 21, roadAt, 0, null)!;
-    expect(credited.kerbCredit).toBe(kerbCreditFor(sim, { x: 12, z: 21, w: 4, d: 2 }, 'N'));
+    // The credit is the stalls the lot's own drive leaves marked, none that it blocks.
+    const lot = { x: 12, z: 21, w: 4, d: 2 };
+    const { curbCut } = credited.layout;
+    const withDrive = withDriveCuts(sim, lotDriveCuts(lot, 'N', curbCut.u0, curbCut.u1));
+    expect(credited.kerbCredit).toBe(kerbCreditFor(withDrive, lot, 'N'));
+    expect(credited.kerbCredit).toBeLessThan(kerbCreditFor(sim, lot, 'N'));
     expect(credited.kerbCredit).toBeGreaterThan(0);
     expect(credited.layout.required).toBe(required - credited.kerbCredit);
     expect(credited.layout.stalls).toHaveLength(credited.layout.provided);

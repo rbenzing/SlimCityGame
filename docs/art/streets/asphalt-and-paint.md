@@ -36,17 +36,13 @@
   line across its lanes, or where the kerb starts to turn. The coloured band
   sits just above the asphalt and below the white paint so markings and
   glyphs read on top of it.
-- **Parking lanes**: a solid white parking lane line on the traffic side, and
-  no edge line inside the lane. White stall ticks run from that line toward
-  the kerb and stop at least 0.3 m short of the edge of the pavement. Stalls
-  are 6.7 m (22 ft) long, pitched from world metre 0 so they run on across
-  every seam; the stall nearest a junction is 6.1 m (20 ft), measured from
-  the edge of the junction's no-parking zone. No stall is shorter than 6.1 m
-  or longer than 7.9 m (26 ft): the end stall takes up an odd length to
-  7.9 m, and beyond that the zone grows rather than a stall. No tick is painted within
-  9.1 m before a stop line, within 6.1 m of a crosswalk, or within 6.1 m of
-  the junction's mouth where its arm has no crosswalk, on both sides of the
-  junction; the parking lane line runs on through that zone to the mouth.
+- **Parking lanes**: white corner marks on the lane's traffic side, a T
+  where two stalls meet and an L at each end of a row, and no line along the
+  lane or inside it (the figures are in
+  [markings.md](../../world-sim/road-model/markings.md)). Whole stalls are
+  laid between the places nobody may park: the approach to a stop line, a
+  crosswalk, a junction's mouth, and every driveway with a short clear
+  length either side. A stretch too short for a stall is left bare.
 - **Angled and head-in parking**: the same white parking lane line on the
   traffic side, and white stall lines (~0.15 m) from it toward the kerb at
   the stall's angle, stopping at least 0.3 m short of the lane's outer edge:

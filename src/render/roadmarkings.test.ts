@@ -302,6 +302,44 @@ describe('markingPlan for composed profiles', () => {
     expect(p.edges?.map((l) => l.at)).toEqual([-3.75, 3.75]);
   });
 
+  it('flags the travel side of a parallel parking lane, which the stall corner marks stand in for, and no other line', () => {
+    const parallel = markingPlan({
+      class: 'local',
+      pieces: [
+        { kind: 'sidewalk', width: 1.875 },
+        { kind: 'parking', width: 2.25 },
+        { kind: 'travel', width: 3.75, flow: 'back' },
+        { kind: 'travel', width: 3.75, flow: 'fwd' },
+        { kind: 'parking', width: 2.25 },
+        { kind: 'sidewalk', width: 1.875 },
+      ],
+    });
+    expect(parallel.solid.map((l) => l.parallelParkingEdge)).toEqual([true, true]);
+    // An angled lane keeps its line, and a bike lane beside a parking lane keeps the one between them.
+    const angled = markingPlan({
+      class: 'local',
+      pieces: [
+        { kind: 'parking', width: 6, parking: 'angled' },
+        { kind: 'travel', width: 3.75, flow: 'back' },
+        { kind: 'travel', width: 3.75, flow: 'fwd' },
+        { kind: 'parking', width: 6, parking: 'angled' },
+      ],
+    });
+    expect(angled.solid.some((l) => l.parallelParkingEdge)).toBe(false);
+    const biked = markingPlan({
+      class: 'local',
+      pieces: [
+        { kind: 'parking', width: 2.25 },
+        { kind: 'bike', width: 1.6, flow: 'back' },
+        { kind: 'travel', width: 3.75, flow: 'back' },
+        { kind: 'travel', width: 3.75, flow: 'fwd' },
+        { kind: 'bike', width: 1.6, flow: 'fwd' },
+        { kind: 'parking', width: 2.25 },
+      ],
+    });
+    expect(biked.solid.some((l) => l.parallelParkingEdge)).toBe(false);
+  });
+
   it('paints the report’s street: an edge line and a bike-lane line left, a parking lane line right', () => {
     const p = markingPlan({
       class: 'local',

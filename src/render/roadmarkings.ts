@@ -52,6 +52,12 @@ export interface MarkingLine {
    * line closes onto the line on the bay's far side.
    */
   bayToward?: -1 | 1;
+  /**
+   * The travel side of a parallel parking lane: the lane's stalls are marked
+   * by corner marks, so a straight run paints no line here. Junctions still
+   * carry the line round their corners.
+   */
+  parallelParkingEdge?: true;
 }
 
 export interface MarkingPlan {
@@ -148,6 +154,8 @@ const PARKING_KINDS: ReadonlySet<LanePiece['kind']> = new Set(['parking']);
 interface KerbsideLine {
   at: number;
   parking: boolean;
+  /** Whether it is the travel side of a parallel parking lane with no bike lane beside it. */
+  plainParallel: boolean;
 }
 
 /**
@@ -165,11 +173,25 @@ function kerbsideLines(
   kerbed: boolean,
   travelEdge: (side: -1 | 1) => number,
 ): KerbsideLine[] {
-  const boundaries: { at: number; kinds: [LanePiece['kind'], LanePiece['kind']] }[] = [];
+  const boundaries: {
+    at: number;
+    kinds: [LanePiece['kind'], LanePiece['kind']];
+    /** Whether a parallel parking lane lies on one side with no bike lane on the other. */
+    plainParallel: boolean;
+  }[] = [];
   let edge = -half;
   for (let i = 0; i < pieces.length - 1; i++) {
     edge += pieces[i]!.width;
-    boundaries.push({ at: edge, kinds: [pieces[i]!.kind, pieces[i + 1]!.kind] });
+    const pair = [pieces[i]!, pieces[i + 1]!] as const;
+    const parked = pair.find((p) => p.kind === 'parking');
+    boundaries.push({
+      at: edge,
+      kinds: [pair[0].kind, pair[1].kind],
+      plainParallel:
+        parked !== undefined &&
+        (parked.parking ?? 'parallel') === 'parallel' &&
+        !pair.some((p) => p.kind === 'bike'),
+    });
   }
   const at: number[] = [travelEdge(-1), travelEdge(1)];
   for (const b of boundaries) {
@@ -192,7 +214,8 @@ function kerbsideLines(
     const parking = boundaries.some(
       (b) => Math.abs(b.at - a) < 1e-9 && b.kinds.includes('parking'),
     );
-    out.push({ at: a, parking });
+    const plainParallel = boundaries.some((b) => Math.abs(b.at - a) < 1e-9 && b.plainParallel);
+    out.push({ at: a, parking, plainParallel });
   }
   return out;
 }
@@ -415,7 +438,8 @@ export function markingPlan(profile: RoadProfile, flow: number = RoadFlow.None):
       const mine = lines.filter((l) => l.at * side > 0).sort((a, b) => (a.at - b.at) * side);
       return mine.map((l, i) => {
         const edge = i === mine.length - 1 && !l.parking;
-        return edge && yellowSide ? yellow(l.at) : white(l.at);
+        const line = edge && yellowSide ? yellow(l.at) : white(l.at);
+        return l.plainParallel ? { ...line, parallelParkingEdge: true as const } : line;
       });
     };
     const low = painted(-1, leftIsYellow);

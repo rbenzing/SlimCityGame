@@ -25,7 +25,7 @@ current behavior only and carry no dates of their own._
 
 ## Status (2026-09-29)
 
-**Test suite:** 8,035 tests passing across 238 test files, run 2026-11-13.
+**Test suite:** 8,158 tests passing across 242 test files, run 2026-11-13.
 This is the only test count in the documentation set. When the suite changes
 again, update the figure here and nowhere else.
 
@@ -90,8 +90,10 @@ again, update the figure here and nowhere else.
   report to the Toxics Release Inventory, so there is no like-for-like
   figure, and no water figure was found. The pocket park's 0.2 kL is a dial
   too.
-- The kerb paints stalls across curb cuts and house drives, so a lot's kerb
-  credit can count a stall a driveway would block.
+- The sim's kerb credit holds only the cut of the lot it is crediting: a
+  home's drive is planned in the renderer and a neighbour's cut is not
+  passed in, so a credit can still count a stall one of them blocks
+  `[R-roads-050]`. Moving the home ground plan into `src/shared` closes it.
 - A corner apron tile beside a road on a slope can keep a stale run-out
   height up to 0.4 m above the deck beside it (seen on a synthetic slope
   while tracing the junction step, not in the clipping sweep); the apron

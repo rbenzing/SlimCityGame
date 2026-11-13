@@ -1,19 +1,20 @@
 /**
- * The road tiles the lots' driveways cross, kept per building so a snapshot
- * redoes only the buildings its delta names. What decides a building's tiles
- * besides the building is the world around it — roads, their sections, junction
- * controls, water — so a change to any of those must `invalidate()`: the next
- * `apply` then recomputes every building.
+ * What the lots' driveways contribute, kept per building so a snapshot redoes
+ * only the buildings its delta names: the road tiles a drive crosses, and the
+ * cuts it makes on the kerb. What decides a building's items besides the
+ * building is the world around it — roads, their sections, junction controls,
+ * water — so a change to any of those must `invalidate()`: the next `apply`
+ * then recomputes every building.
  */
 import type { BuildingDelta, BuildingInstance } from '../shared/types';
 
-export class DrivewayTiles {
+export class DrivewayTiles<T = number> {
   private readonly known = new Map<number, BuildingInstance>();
-  private readonly keysById = new Map<number, readonly number[]>();
+  private readonly keysById = new Map<number, readonly T[]>();
   private stale = false;
   private readonly pending: ((inst: BuildingInstance) => boolean)[] = [];
 
-  /** Make the next `apply` recompute the tiles of every building it knows. */
+  /** Make the next `apply` recompute the items of every building it knows. */
   invalidate(): void {
     this.stale = true;
   }
@@ -24,7 +25,7 @@ export class DrivewayTiles {
   }
 
   /** Take a delta: recompute what it added or updated (everything, when stale) and drop what it removed. */
-  apply(delta: BuildingDelta, keysFor: (inst: BuildingInstance) => readonly number[]): void {
+  apply(delta: BuildingDelta, keysFor: (inst: BuildingInstance) => readonly T[]): void {
     for (const id of delta.removed) {
       this.known.delete(id);
       this.keysById.delete(id);
@@ -48,9 +49,9 @@ export class DrivewayTiles {
     for (const id of redo) this.keysById.set(id, keysFor(this.known.get(id)!));
   }
 
-  /** Every tile key any building contributes. */
-  keys(): Set<number> {
-    const out = new Set<number>();
+  /** Every item any building contributes. */
+  keys(): Set<T> {
+    const out = new Set<T>();
     for (const keys of this.keysById.values()) for (const key of keys) out.add(key);
     return out;
   }

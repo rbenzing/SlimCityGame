@@ -74,7 +74,9 @@ What two reviews of every screenshot the shot tools write found wrong in the gam
 - A shelter's roof overhangs a gravel road.
 - The landfill reads as loose tiles; the neighbourhood park and the plaza are bare.
 - A viaduct's shadow lies detached from it; a detached garage is a plain box; winter only dulls the trees' leaves a little, so the strip reads Winter over green ground.
-- A street's parking lane is painted with stalls and stands empty beside homes. — `shots-parking/kerb-parking-close`
+- A street's parking lane stands empty beside homes: a home's cars stand only on its drive `[R-render-026]`. — `shots-parking/kerb-both-1`
+- Angled and head-in stalls keep one rhythm for the whole street, so a driveway leaves up to a stall's width unmarked beside it; parallel stalls are laid run by run.
+- Seen in the player's own screenshot and not reproduced on any road the tools build: a darker, drive-wide patch on the parking lane at a home's drive.
 - A home's water and sewer leads stop short of the house. — `shots-underground/underground-view`
 
 ## Shot tools
