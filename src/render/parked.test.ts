@@ -42,6 +42,8 @@ import {
   ZoneType,
 } from '../shared/types';
 import { TILE_METERS } from '../shared/constants';
+import { junctionArmLayout } from '../shared/junctionpaint';
+import { NO_PARKING_BEFORE_STOP_M } from '../shared/kerbstalls';
 import type { RoadProfile } from '../shared/types';
 import { RoadMeshRenderer, SIDEWALK_WIDTH_M } from './roadsmesh';
 import { LotRenderer } from './lots';
@@ -51,6 +53,7 @@ import { RoadFlow, storedFlow } from '../shared/types';
 import {
   carriagewayHalfWidthOf,
   composeProfile,
+  kerbWidthOf,
   corridorHalfProfile,
   NO_EDITS,
   PARKING_STYLES,
@@ -1652,9 +1655,13 @@ describe('no kerbside car stands inside a junction’s no-parking zone', () => {
   it('keeps every car clear of the zone the stall marks keep clear of', () => {
     const setbacks = roads.parkingSetbacksAt(6, 4)!;
     // Eastbound traffic arrives on the south kerb, which keeps 9.1 m clear
-    // before the stop line.
+    // before the stop line, which stands beyond the side street's crossing.
+    const stopLine = junctionArmLayout(
+      carriagewayHalfWidthOf(presetProfileForTier(RoadTier.TwoLane)),
+      kerbWidthOf(laned),
+    ).stopLineFar;
     const zone = setbacks.hi![1];
-    expect(zone).toBeGreaterThan(8);
+    expect(zone).toBeCloseTo(NO_PARKING_BEFORE_STOP_M - (TILE_METERS / 2 - stopLine), 6);
     const junctionEdge = 7 * TILE_METERS;
     const without = parkedBeside(false).stallWorldPositions(1);
     const within = parkedBeside(true).stallWorldPositions(1);

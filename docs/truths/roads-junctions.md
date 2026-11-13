@@ -228,11 +228,16 @@ Back to [the index](../GROUND-TRUTHS.md).
   each car bound for each other leg alike. The delay curve reads the entry's
   v/c against that capacity. — [road-model.md](../world-sim/road-model/README.md);
   `roundaboutEntryCapacity` in `src/shared/junction.ts`
-- [R-roads-073] Crosswalks are derived (footway present, arm below top rank), lie against the
-  kerb line, are as deep as the footway but never under 1.8 m (MUTCD 3C.03
-  ¶05), and the stop line sits at least 1.2 m in advance of the crossing (MUTCD
-  3B.19 ¶13). Never over an alley mouth. —
-  [road-model.md](../world-sim/road-model/README.md); `src/render/roadsmesh.ts`
+- [R-roads-073] Crosswalks are derived (footway present, arm below top rank). The crossing
+  over an arm is the crossing road's footway carried across it (MUTCD 1C.02
+  def. 50): its inner edge lies on that road's kerb line and it runs outward,
+  as deep as the footway but never under 1.8 m (3C.03 ¶05), so it stands
+  outside the box. Every bar lies on carriageway, the crossing meets a kerb
+  at both ends, and no two crossings touch. The stop line sits at least
+  1.2 m in advance of it (3B.19 ¶13), and lane lines, centre lines and arrows
+  end by the stop line. Never over an alley mouth. —
+  [road-model.md](../world-sim/road-model/README.md); `junctionArmLayout` in
+  `src/shared/junctionpaint.ts`
 - [R-roads-074] An alley is an access, not a leg: no turn bay, no swept footway, no crossing
   at its mouth. A dirt track is a leg. —
   [road-model.md](../world-sim/road-model/README.md)
@@ -259,3 +264,11 @@ Back to [the index](../GROUND-TRUTHS.md).
   held off only by the junction's no-parking zone. —
   [buildings.md](../art/buildings/residential-lots.md); `drawnProfileAt` in
   `src/app/clientgrid.ts`
+- [R-roads-083] A street crossing a divided road is one intersection for everything
+  painted: the median stores no design vehicle between the two halves (MUTCD
+  1C.02 def. 113(c)). Between the halves the box carries no edge line, stop
+  line, crosswalk or arrow. The crossing over the divided road runs kerb to
+  kerb unbroken and the median's nose ends behind it. The graph still holds
+  a node on each half `[R-roads-054]`. —
+  [how roads meet](../world-sim/road-model/how-roads-meet-rank-replacement-and-transitions.md);
+  `src/shared/junctionpaint.ts`

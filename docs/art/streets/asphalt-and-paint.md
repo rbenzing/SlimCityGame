@@ -164,7 +164,8 @@
   a give-way, and every approach under an all-way stop or a signal, gets a
   zebra crosswalk where there is a footway to carry across: bars ~0.45 m wide
   at ~0.6 m spacing, as deep as that footway but never under 1.8 m, lying
-  against the kerb line, and never over an alley mouth. An approach that has
+  outside the box against the kerb line of the road the footway follows, and
+  never over an alley mouth. An approach that has
   to stop also gets a stop line: a 0.4 m bar across its arriving lanes, 1.2 m
   in advance of the crosswalk. The road running through a give-way or a
   minor-road stop is not painted, an uncontrolled junction carries neither,

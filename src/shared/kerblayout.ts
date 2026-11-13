@@ -13,12 +13,20 @@ import {
   auxiliaryLaneAt,
   drawnCrossSection,
   isJunctionTile,
+  isSeparateRoad,
   narrowingAhead,
   paintedCrossSection,
   sharedTurnLaneAt,
 } from './approachzone';
 import type { ApproachAhead, ApproachSurroundings } from './approachzone';
-import { junctionArmPaint, noParkingReach, type ArmSide } from './junctionpaint';
+import { corridorPartners } from './corridor';
+import {
+  junctionArmLayout,
+  junctionArmPaint,
+  noParkingReach,
+  paintReachBeyondEdge,
+  type ArmSide,
+} from './junctionpaint';
 import {
   downstreamBeside,
   kerbOrientation,
@@ -36,6 +44,7 @@ import {
   corridorHalfProfile,
   hasFootway,
   isParkingLane,
+  isServiceClass,
   kerbWidthOf,
   PARKING_STYLES,
   parkingLaneOffset,
@@ -256,10 +265,48 @@ export function walkableAlong(x: number, z: number, axis: 'x' | 'z', s: KerbSurr
   return profile !== null && hasFootway(profile);
 }
 
+/**
+ * The side of the tile at (x, z) its corridor partner lies on where the median
+ * is open there, null otherwise. At an opening the two halves join and the
+ * street crosses both as one intersection: the other half is a gap in the
+ * median, not an arm anything is painted across.
+ */
+export function openPartnerSide(x: number, z: number, s: KerbSurroundings): ArmSide | null {
+  const tile = s.roadAt(x, z);
+  const here = s.profileAt(x, z);
+  if (!tile || !here || here.seam !== undefined) return null;
+  const sides: ReadonlyArray<[ArmSide, number, number, number]> = [
+    ['n', 0, -1, NORTH],
+    ['e', 1, 0, EAST],
+    ['s', 0, 1, SOUTH],
+    ['w', -1, 0, WEST],
+  ];
+  for (const [side, dx, dz, bit] of sides) {
+    if ((tile.mask & bit) === 0) continue;
+    if (
+      corridorPartners(
+        s.corridorHalfAt(x, z),
+        s.corridorHalfAt(x + dx, z + dz),
+        s.profileIdAt(x, z),
+        s.profileIdAt(x + dx, z + dz),
+        s.flowAt(x, z),
+        dx,
+        dz,
+      ) &&
+      !isSeparateRoad(x, z, dx, dz, s)
+    ) {
+      return side;
+    }
+  }
+  return null;
+}
+
 /** One end of a straight tile at a junction: the zone kept on its two kerbs, and whether a crossing is painted across it. */
 export interface JunctionEnd {
   zone: readonly [number, number];
   crossed: boolean;
+  /** How far the junction's paint reaches back into this tile past its edge, in metres. */
+  reach: number;
 }
 
 /** The junctions directly at the two ends of a straight tile, null at an end that meets none. */
@@ -297,14 +344,15 @@ export function junctionEndsAt(x: number, z: number, s: KerbSurroundings): Junct
       dz < 0 ? RoadFlow.North : dx > 0 ? RoadFlow.East : dz > 0 ? RoadFlow.South : RoadFlow.West;
     // This tile is the junction's arm on the side facing back toward it.
     const side: ArmSide = dz < 0 ? 's' : dx > 0 ? 'w' : dz > 0 ? 'n' : 'e';
+    const partner = openPartnerSide(jx, jz, s);
     const paint = junctionArmPaint(
       {
         tier: junction.tier,
         has: {
-          n: (junction.mask & NORTH) !== 0,
-          e: (junction.mask & EAST) !== 0,
-          s: (junction.mask & SOUTH) !== 0,
-          w: (junction.mask & WEST) !== 0,
+          n: (junction.mask & NORTH) !== 0 && partner !== 'n',
+          e: (junction.mask & EAST) !== 0 && partner !== 'e',
+          s: (junction.mask & SOUTH) !== 0 && partner !== 's',
+          w: (junction.mask & WEST) !== 0 && partner !== 'w',
         },
         roads: {
           n: tierAlong(jx, jz - 1, 'z', s),
@@ -323,8 +371,38 @@ export function junctionEndsAt(x: number, z: number, s: KerbSurroundings): Junct
       },
       side,
     );
-    const armDepth = Math.max(0, TILE_HALF - carriagewayHalfWidthOf(section));
-    const footwayWidth = Math.min(kerbWidthOf(section), armDepth);
+    // The crossing road's kerb line: the widest of the roads crossing this
+    // arm, never the other half of a corridor, which is no road across it.
+    const across: ReadonlyArray<[ArmSide, number, number, number]> =
+      side === 'n' || side === 's'
+        ? [
+            ['e', jx + 1, jz, EAST],
+            ['w', jx - 1, jz, WEST],
+          ]
+        : [
+            ['n', jx, jz - 1, NORTH],
+            ['s', jx, jz + 1, SOUTH],
+          ];
+    const crossHalves = across
+      .filter(([a, ax, az, abit]) => {
+        const road = s.roadAt(ax, az);
+        return (
+          (junction.mask & abit) !== 0 &&
+          a !== partner &&
+          road !== undefined &&
+          !isServiceClass(presetProfileForTier(road.tier).class)
+        );
+      })
+      .map(([, ax, az]) => halfAt(ax, az, s));
+    // The street meeting the partner half from its far side crosses this arm
+    // too, and both halves take the wider of the two streets.
+    const beyond = across.find(([a]) => a === partner);
+    if (beyond) {
+      crossHalves.push(halfAt(2 * beyond[1] - jx, 2 * beyond[2] - jz, s));
+    }
+    const crossHalf =
+      crossHalves.length > 0 ? Math.max(...crossHalves) : carriagewayHalfWidthOf(section);
+    const footwayWidth = kerbWidthOf(section);
     // A stop line crosses only the lanes arriving, so it is only the kerb
     // beside an arriving lane that is kept clear for it.
     const arriving = approachingLanes(
@@ -339,12 +417,16 @@ export function junctionEndsAt(x: number, z: number, s: KerbSurroundings): Junct
     };
     const reach = (k: 0 | 1): number =>
       noParkingReach({
-        armDepth,
+        crossHalf,
         footwayWidth,
         crossed: paint.crossed,
         stopLine: paint.stops && kerbLaneArrives(k),
       });
-    return { zone: [reach(0), reach(1)] as const, crossed: paint.crossed };
+    return {
+      zone: [reach(0), reach(1)] as const,
+      crossed: paint.crossed,
+      reach: paintReachBeyondEdge(junctionArmLayout(crossHalf, footwayWidth), paint),
+    };
   };
   return alongX
     ? { alongX, lo: end(-1, 0), hi: end(1, 0) }

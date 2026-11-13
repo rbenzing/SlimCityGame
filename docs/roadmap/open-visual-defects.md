@@ -7,8 +7,6 @@ What two reviews of every screenshot the shot tools write found wrong in the gam
 - Roofs, back fences, sound walls, trampolines, bus tops and shop canopies render near-black in daylight. The shingle colours are the roofs' cause: charcoal reads about (9, 11, 13) at noon, and `nightlook-shots` fails on it. `[R-render-020]` — `shots-town/04b-tram-crossing`, `shots-soundwalls/walled-oblique`
 - Rail draws no rails through a crossing, a junction or a bend, only a ballast box. — `shots-roadmatrix/rail-cross`
 - Tram track ends at a bend tile and at a junction box. — `shots-roadmatrix/tram-turn`
-- At a junction of wide roads the four crosswalks form a square inside the box, their bars piled up at the corners and none landing on a footway; a tram tee and a one-way tee do the same. A crossing is set by its own arm's room, not the kerb returns. `[R-roads-073]` — `shots-furniture/close-stop-junction`, `shots-roadmatrix/tram-tee`; `crosswalkEnd` in `src/render/junctionpaint.ts`
-- A divided road's two halves are painted as two junctions: a white line runs through the box between the median noses, and crosswalk ladders stand inside the box either side of it. — `shots-corridor/corridor-top`, `shots-town/04c-median-opening`; the junction loop in `src/render/roadsmesh.ts`
 - Loose dark slabs lie on the grass both sides of a tram guideway's ramp; a raised station's lift tower hangs above the ground and its stair lands on grass, or at a junction across the carriageway, with a guideway column in the approach lanes. `[R-roads-011]` — `shots-tramways/guideway-ramp`, `station-junction`
 - A divided corridor draws its right half's turn bay on the side its lanes leave by; the grid has it where they arrive. `corridor-shots` fails on it. `[R-roads-052]`
 
@@ -24,7 +22,6 @@ What two reviews of every screenshot the shot tools write found wrong in the gam
 - Kerbs and footways step at a width change where they should bend; a gore's chevrons run along both edges of one carriageway. `[R-roads-064]` — `shots-tapers/taper-head`, `gore-close`
 - A sound wall ends blunt at a slip road, leaving gaps. `[R-roads-056]` — `shots-soundwalls/walled-far-side`
 - A raised deck on a slope stands on dark slabs that miss the ground; the rail truss bridge reads as loose members; a four-lane road at grade carries a dark wall strip along its footway past a bend, and a shaded seam across its lanes. Every viaduct's parapet stops short of the deck's end. `[R-roads-004]` — `shots-roadclip/worst-intrusion`, `shots-bridges/rail-truss-side`, `shots-roadmatrix/four-lane-turn`, `two-lane-viaduct-end`
-- Crosswalk ladders overlap inside a tram junction; a one-way arm carries turn arrows and no stop line. — `shots-roadmatrix/tram-cross`, `one-way-mixCross`
 - At a bend's seam the dashes start again: they touch or overlap on a four-lane road and leave an orphan stub on a two-lane one. `[R-roads-068]` — `shots-bends/four-lane-90-above`; `dashSegments(0, …)` in `drawBend`, `src/render/freeroadmesh.ts`
 - A roundabout sits to one side of the crossing it replaces: its arms meet the ring along one edge, not toward its centre. An entry carries no crosswalk, its splitter is a flat wedge with no kerb, the ring has no edge line or lamp of its own, and a one-way arm enters with no yield line. — `shots-roundabouts/fourway-above`, `fourway-entry-close`, `oneway-above`
 - Where a slip road leaves a motorway there is no gore paint, and the slip road's lines begin with a kink. The deck over the motorway has no parapet, its yellow lines weave into a diamond, it is dark between its end lamps, and a dark wall face stands between its end and the street. `[R-roads-064]` — `shots-interchanges/gore-close`, `deck-join-close`, `ramp-terminal-close`
@@ -74,7 +71,7 @@ What two reviews of every screenshot the shot tools write found wrong in the gam
 - Seen once and not since: terrain spiking through the cap of a raised road's dead end, in the frame `shots-roadmatrix/highway-viaduct-end` held before the tools were fixed. The regenerated frame stands clean, and the clipping sweep finds no ground above a deck. `[R-roads-004]`
 - A green hairline shows between carriageway and footway; footway corners carry notches; kerb arcs are faceted.
 - A motorway's gantry carries blank boards where no ramp leaves; dead-end caps carry odd painted arcs; stray dashes lie in lanes.
-- A lane line runs past the stop line into the crosswalk where a two-lane road crosses a four-lane one, and short white stubs lie beside the edge line where a road narrows. — `shots-conformity/twolane-x-fourlane-box`, `shots-transitions/fourlane-to-twolane-run`
+- Short white stubs lie beside the edge line where a road narrows. — `shots-transitions/fourlane-to-twolane-run`
 - A manhole cover is a near-black disc and reads as a hole in the lane; a lamp's or a signal arm's shadow lies on the road as a jagged scribble. — `shots-scale/shelter-along-street`, `shots-furniture/crossroads`
 - One two-lane street's broken centre line reads white, not yellow, beside a free curve. — `shots-curve/4b-grid-street-above`
 - A tree stands in a median; a boulder lies on a footway; bins stand on the grass.
@@ -90,3 +87,4 @@ What two reviews of every screenshot the shot tools write found wrong in the gam
 
 - Frames that do not show what they are named for: `shots-furniture/manholes-close`, `close-cover-lane`, `pedestal`, `cabinets` and `close-signal-corner`; `shots-powerline/buried-street-above` (no box or riser in frame); `shots-final/01` to `04`; `shots-transit/options-*`; `shots-apartments/roof-garden`; `shots-parking/res-tower-*-above`; `shots-power/3c` and `6b`.
 - `bend-shots` shoots no alley, bus-lane, bike-lane, tram, motorway or ramp bend; `nightlook-shots` and `construction-shots` show a clock that does not match their light.
+- `corridor-shots` shoots no T onto a corridor nothing divides, so the crossing over its two halves there is unchecked.

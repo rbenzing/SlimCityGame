@@ -173,6 +173,7 @@ import {
   junctionArmLayout,
   junctionArmPaint,
   type ArmSide,
+  type JunctionArmLayout,
   type JunctionArms,
 } from '../shared/junctionpaint';
 import {
@@ -183,6 +184,8 @@ import {
   isCollinearMask,
   isStraightRunMask,
   junctionAlong,
+  junctionEndsAt,
+  openPartnerSide,
   overAlong,
   overSection,
   overTileOf,
@@ -896,8 +899,15 @@ function emitAxisMarkings(
    * edge line has to let it through.
    */
   gap?: { side: 1 | -1; from: number; to: number },
+  /**
+   * How far back from each end of the run the centre line, the lane lines and
+   * the dashes stop, where a junction's stop line or crossing stands on this
+   * road. The edge lines run on to the corner.
+   */
+  laneEnd: { lo: number; hi: number } = { lo: 0, hi: 0 },
 ): void {
   const pair = suppressCenterPair ? centrePair(plan) : null;
+  const edges = [outermostLine(plan, 1), outermostLine(plan, -1)];
   /** Where a line sits at each end of the run: its seam values, or its own offset. */
   const ends = (line: MarkingLine, i: number, which: 'solid' | 'dashed'): [number, number] => [
     seam?.lo?.[which]?.[i] ?? line.at,
@@ -912,13 +922,14 @@ function emitAxisMarkings(
   plan.solid.forEach((line, i) => {
     if (pair && (line === pair[0] || line === pair[1])) return;
     const [atLo, atHi] = ends(line, i, 'solid');
+    const lane = !edges.includes(line);
     const spans: [number, number][] =
       gap && line === gapped && line.at * gap.side > 0
         ? [
             [lo, Math.max(lo, gap.from)],
             [Math.min(hi, gap.to), hi],
           ]
-        : [[lo, hi]];
+        : [[lane ? lo + laneEnd.lo : lo, lane ? hi - laneEnd.hi : hi]];
     const offsetAt = driftBetween(atLo, atHi, lo, hi);
     for (const [a0, a1] of spans) {
       if (a1 <= a0) continue;
@@ -944,7 +955,7 @@ function emitAxisMarkings(
     // so the phase carries over seams exactly as it did; only where the paint
     // sits ACROSS the road has become a function of how far along it is.
     const origin = vertical ? centerZ : centerX;
-    for (const [segLo, segHi] of dashSegments(origin + lo, origin + hi)) {
+    for (const [segLo, segHi] of dashSegments(origin + lo + laneEnd.lo, origin + hi - laneEnd.hi)) {
       const a0 = segLo - origin;
       const a1 = segHi - origin;
       pushMarkingRun(
@@ -2210,15 +2221,10 @@ function emitRailwayTrack(
 // Proper intersections: each
 // connecting arm of a junction tile (mask popcount >= 3) gets a stop line and
 // a zebra crosswalk, laid out along the arm's travel axis by distance `d`
-// from the box edge (d=0, i.e. the tile's core/coreHalf boundary) outward
-// toward the tile edge. The target depths (2.4m crosswalk + 1.0m gap
-// + 0.4m stop line = 3.8m) assume more per-arm depth than a 16m tile's
-// carriageway ratios leave available on every tier once the box itself takes
-// its share (TILE_HALF - coreHalf: 3.2m two-lane, 1.2m avenue, 0.64m
-// highway) — so junctionArmLayout scales all three measurements down
-// together to fit whatever depth the arm actually has, preserving their
-// relative order (crosswalk nearest the box, stop line farthest) and never
-// overlapping or spilling past the tile edge.
+// from the junction's centre. The crosswalk starts on the crossing road's
+// kerb line and runs outward as deep as that road's footway, the stop line
+// stands 1.2 m beyond it. Both may reach past the junction tile's edge onto
+// the arm, so the arm's lane lines end where the stop line begins.
 // ---------------------------------------------------------------------------
 
 /** Across-travel-axis single-stripe width (~0.45m). */
@@ -2233,29 +2239,65 @@ const CROSSWALK_BAR_GAP_M = 0.6;
 const STOP_LINE_Y_OFFSET = MARK_Y_OFFSET + 0.002;
 
 /**
- * Deterministic zebra-stripe center offsets (across the travel axis, i.e.
- * symmetric about the carriageway centerline) that fit within
- * [-carriagewayHalfWidth, carriagewayHalfWidth] at CROSSWALK_BAR_WIDTH_M
- * width / CROSSWALK_BAR_GAP_M spacing. Always at least one stripe (for any
- * positive width) — a pure function of the carriageway width alone, so it's
- * identical for every arm of a given tier regardless of tile coords.
+ * Zebra-stripe centres (across the travel axis) for a crossing that runs from
+ * `lo` to `hi`: as many bars as fit at CROSSWALK_BAR_WIDTH_M width and
+ * CROSSWALK_BAR_GAP_M spacing, spread evenly so the first and last bars meet
+ * the two kerbs. Always at least one bar for any positive span, and
+ * symmetric about the middle of the span.
  */
-export function crosswalkBarOffsets(carriagewayHalfWidth: number): number[] {
-  if (carriagewayHalfWidth <= 0) return [];
+export function crosswalkBarCentres(lo: number, hi: number): number[] {
+  const span = hi - lo;
+  if (span <= 0) return [];
   const period = CROSSWALK_BAR_WIDTH_M + CROSSWALK_BAR_GAP_M;
-  const usable = carriagewayHalfWidth * 2;
-  const count = Math.max(1, Math.floor((usable + CROSSWALK_BAR_GAP_M) / period));
-  const totalSpan = count * CROSSWALK_BAR_WIDTH_M + (count - 1) * CROSSWALK_BAR_GAP_M;
-  const start = -totalSpan / 2 + CROSSWALK_BAR_WIDTH_M / 2;
-  const offsets: number[] = [];
-  for (let i = 0; i < count; i++) offsets.push(start + i * period);
-  return offsets;
+  const count = Math.max(1, Math.floor((span + CROSSWALK_BAR_GAP_M) / period));
+  if (count === 1) return [(lo + hi) / 2];
+  const first = lo + CROSSWALK_BAR_WIDTH_M / 2;
+  const pitch = (span - CROSSWALK_BAR_WIDTH_M) / (count - 1);
+  const centres: number[] = [];
+  for (let i = 0; i < count; i++) centres.push(first + i * pitch);
+  return centres;
 }
 
 /**
- * Emits one arm's stop line + zebra crosswalk. `dAt(d)` maps an
- * along-travel-axis distance from the box edge to a LOCAL coordinate
- * (relative to tile center) on that axis — the caller supplies the correct
+ * How far a crossing stops short of the crossing across the corner it shares
+ * with it, so the two never touch.
+ */
+const CROSSING_CORNER_CLEAR_M = 0.3;
+
+/** Bar centres at a whole pitch either side of `mid`, every bar wholly within [lo, hi]. */
+function anchoredBarCentres(lo: number, hi: number, mid: number): number[] {
+  const pitch = CROSSWALK_BAR_WIDTH_M + CROSSWALK_BAR_GAP_M;
+  const edge = CROSSWALK_BAR_WIDTH_M / 2;
+  const first = Math.ceil((lo + edge - mid) / pitch - 1e-9);
+  const last = Math.floor((hi - edge - mid) / pitch + 1e-9);
+  const centres: number[] = [];
+  for (let k = first; k <= last; k++) centres.push(mid + k * pitch);
+  return centres;
+}
+
+/** What a crossing spans across the arm, and which of its bars this tile paints. */
+export interface CrossingSpan {
+  /** Where the crossing meets the kerb on each side, in the tile's local coordinates across the arm. */
+  lo: number;
+  hi: number;
+  /**
+   * A crossing that carries on across a median opening is one run of bars
+   * shared by both halves: the half whose centre bars lie within `own` paints
+   * them. Absent, the tile paints every bar.
+   */
+  own?: { lo: number; hi: number };
+  /**
+   * Where the bars of a shared crossing are anchored: one on this line and
+   * the rest at a whole pitch either side, so both halves lay the same
+   * rhythm whatever their outer kerbs reach.
+   */
+  mid?: number;
+}
+
+/**
+ * Emits one arm's stop line + zebra crosswalk. `dAt(d)` maps a distance from
+ * the junction's centre, along the arm, to a LOCAL coordinate (relative to
+ * tile centre) on that axis — the caller supplies the correct
  * direction/origin per side (N/E/S/W).
  */
 function emitJunctionArmMarkings(
@@ -2264,7 +2306,8 @@ function emitJunctionArmMarkings(
   vertical: boolean,
   centerX: number,
   centerZ: number,
-  coreHalf: number,
+  /** Half the arm's carriageway: how far across it a stop line may reach. */
+  armHalf: number,
   dAt: (d: number) => number,
   hAt: (x: number, z: number) => number,
   /** Whether the road has footways: no footway, no crossing to paint. */
@@ -2275,14 +2318,10 @@ function emitJunctionArmMarkings(
    * junction nothing controls, is not painted one.
    */
   stops: boolean,
-  /** How much tile there is between the junction box and the tile edge. */
-  armDepth: number,
-  /**
-   * The footway this crossing carries across the road, which is how deep it is
-   * drawn. Not the same thing as `armDepth`: that is the room available, and
-   * on a narrow road there is a great deal more of it than a crossing wants.
-   */
-  footwayWidth: number,
+  /** Where the crossing and the stop line lie along the arm. */
+  layout: JunctionArmLayout,
+  /** What the crossing spans across the arm, kerb to kerb. */
+  span: CrossingSpan,
   /**
    * How far across the road the lanes ARRIVING on this arm reach. A stop line
    * is painted across the approach and stops at the centreline (MUTCD 3B.16);
@@ -2294,8 +2333,6 @@ function emitJunctionArmMarkings(
    */
   approachAcross: { from: number; to: number } | null | undefined,
 ): void {
-  const layout = junctionArmLayout(armDepth, footwayWidth);
-
   // Stop line: one bar across the arriving lanes. It is painted back down the
   // APPROACH, past this tile's edge, because that is where a stop line stands
   // — so it lies over the approach's own lane lines and takes a hair of lift
@@ -2307,13 +2344,13 @@ function emitJunctionArmMarkings(
       ? null
       : approachAcross
         ? [
-            Math.max(-coreHalf, Math.min(approachAcross.from, approachAcross.to)),
-            Math.min(coreHalf, Math.max(approachAcross.from, approachAcross.to)),
+            Math.max(-armHalf, Math.min(approachAcross.from, approachAcross.to)),
+            Math.min(armHalf, Math.max(approachAcross.from, approachAcross.to)),
           ]
-        : [-coreHalf, coreHalf];
+        : [-armHalf, armHalf];
   if (stops && stopAcross && stopAcross[1] > stopAcross[0]) {
-    const stopLo = Math.min(dAt(layout.stopLineStart), dAt(layout.stopLineEnd));
-    const stopHi = Math.max(dAt(layout.stopLineStart), dAt(layout.stopLineEnd));
+    const stopLo = Math.min(dAt(layout.stopLineNear), dAt(layout.stopLineFar));
+    const stopHi = Math.max(dAt(layout.stopLineNear), dAt(layout.stopLineFar));
     const across = stopAcross;
     const along: [number, number] = [stopLo, stopHi];
     const [xLo, xHi] = vertical ? across : along;
@@ -2334,13 +2371,19 @@ function emitJunctionArmMarkings(
   }
 
   // Zebra crosswalk: bars spaced across the carriageway, each spanning
-  // [crosswalkStart, crosswalkEnd] along the travel axis. A road with no
+  // [crosswalkNear, crosswalkFar] along the travel axis. A road with no
   // footway has nobody to cross, so it paints none.
   if (!hasFootways) return;
-  const crossLo = Math.min(dAt(layout.crosswalkStart), dAt(layout.crosswalkEnd));
-  const crossHi = Math.max(dAt(layout.crosswalkStart), dAt(layout.crosswalkEnd));
+  const crossLo = Math.min(dAt(layout.crosswalkNear), dAt(layout.crosswalkFar));
+  const crossHi = Math.max(dAt(layout.crosswalkNear), dAt(layout.crosswalkFar));
   if (crossHi <= crossLo) return;
-  for (const offset of crosswalkBarOffsets(coreHalf)) {
+  const own = span.own;
+  const centres =
+    span.mid === undefined
+      ? crosswalkBarCentres(span.lo, span.hi)
+      : anchoredBarCentres(span.lo, span.hi, span.mid);
+  for (const offset of centres) {
+    if (own && (offset < own.lo || offset > own.hi)) continue;
     const barLo = offset - CROSSWALK_BAR_WIDTH_M / 2;
     const barHi = offset + CROSSWALK_BAR_WIDTH_M / 2;
     if (vertical)
@@ -4575,6 +4618,20 @@ export interface NeighborHalves {
    */
   junctions?: { n: boolean; e: boolean; s: boolean; w: boolean };
   /**
+   * The side this tile's corridor partner lies on where the median is open:
+   * the street crossing joins the two halves, and what lies between them is a
+   * gap in the median rather than an arm. Omitted, no side is.
+   */
+  partner?: ArmSide | null;
+  /** Half the carriageway of the street meeting the partner half from its far side, 0 where none does. */
+  partnerAcross?: number;
+  /**
+   * How far the junction beside each side paints back into this tile past its
+   * edge, in metres — its stop line or crossing standing on this road. The
+   * lane lines and arrows of this tile end before it. Omitted, zero.
+   */
+  reach?: { n: number; e: number; s: number; w: number };
+  /**
    * What each neighbour PAINTS, so a line can meet its opposite number half
    * way across the boundary instead of stopping at this tile's edge and
    * restarting somewhere else on the other side. Omitted, every line runs at
@@ -4944,16 +5001,69 @@ export function roadTileVertices(
     return edgedArm(has, tier, footway) ? half : coreHalf;
   };
   const walk = neighborHalves.footways;
-  const halfN = armHalf(hasN, neighbors.n, walk?.n, neighborHalves.n);
-  const halfS = armHalf(hasS, neighbors.s, walk?.s, neighborHalves.s);
-  const halfE = armHalf(hasE, neighbors.e, walk?.e, neighborHalves.e);
-  const halfW = armHalf(hasW, neighbors.w, walk?.w, neighborHalves.w);
+  const armHalves = {
+    n: armHalf(hasN, neighbors.n, walk?.n, neighborHalves.n),
+    s: armHalf(hasS, neighbors.s, walk?.s, neighborHalves.s),
+    e: armHalf(hasE, neighbors.e, walk?.e, neighborHalves.e),
+    w: armHalf(hasW, neighbors.w, walk?.w, neighborHalves.w),
+  };
   // A corner is turned where the arm is a LEG. A street no more sweeps its
   // footway round into an alley than it does into a driveway.
   const legN = hasN && !serviceN;
   const legS = hasS && !serviceS;
   const legE = hasE && !serviceE;
   const legW = hasW && !serviceW;
+  const legOf = { n: legN, e: legE, s: legS, w: legW };
+
+  // What a junction paints across each arm. Where a street crosses a divided
+  // road the median is open and the two halves are ONE intersection: the
+  // other half is not an arm, so nothing is painted across it and it is no
+  // road crossing the arms either side.
+  const partner: ArmSide | null =
+    isJunction && neighborHalves.partner && legOf[neighborHalves.partner]
+      ? neighborHalves.partner
+      : null;
+  const arms: JunctionArms = {
+    tier,
+    has: {
+      n: hasN && partner !== 'n',
+      e: hasE && partner !== 'e',
+      s: hasS && partner !== 's',
+      w: hasW && partner !== 'w',
+    },
+    roads: neighbors,
+    footways: neighborHalves.footways,
+    ownFootway: hasFootway(crossSection),
+    control,
+  };
+  const footwayAcross = kerbWidthOf(crossSection);
+  // The crossing over an arm is the footway of the road crossing it carried
+  // across, so it starts on that road's kerb line: half its carriageway, the
+  // widest where two roads cross it, and this tile's own where none does.
+  const crossingOf = (side: ArmSide): JunctionArmLayout => {
+    const across: ArmSide[] = side === 'n' || side === 's' ? ['e', 'w'] : ['n', 's'];
+    const halves = across.filter((a) => legOf[a] && a !== partner).map((a) => armHalves[a]);
+    // Across a median opening the street on the other half's far side crosses
+    // the same arm, so both halves take the wider of the two streets.
+    if (partner && across.includes(partner) && neighborHalves.partnerAcross) {
+      halves.push(neighborHalves.partnerAcross);
+    }
+    return junctionArmLayout(halves.length > 0 ? Math.max(...halves) : coreHalf, footwayAcross);
+  };
+  // The gap between the halves is paved as wide as the crossings over the
+  // arms either side are deep, so the median's nose ends behind them.
+  const partnerHalf = (side: ArmSide): number => {
+    if (side !== partner) return armHalves[side];
+    const sides: ArmSide[] = side === 'e' || side === 'w' ? ['n', 's'] : ['e', 'w'];
+    const reach = sides
+      .filter((a) => legOf[a] && junctionArmPaint(arms, a).crossed)
+      .map((a) => crossingOf(a).crosswalkFar);
+    return Math.max(armHalves[side], ...reach);
+  };
+  const halfN = partnerHalf('n');
+  const halfS = partnerHalf('s');
+  const halfE = partnerHalf('e');
+  const halfW = partnerHalf('w');
   // The radius a corner between two arms can actually turn through, in the
   // quadrant (signX, signZ).
   const cornerRadius = (halfX: number, halfZ: number, signX: 1 | -1, signZ: 1 | -1): number =>
@@ -5295,14 +5405,34 @@ export function roadTileVertices(
     // climbs over it, which is what a dropped kerb is.
     // Nothing turns at a merge or a diverge, so there is no corner to round.
     if (!rampNode) {
+      // The edge line follows each arm's own kerb, not the gap's paved width.
+      const kerbHalf = armHalves;
       if (legN && legE)
-        cornerFill(1, -1, halfN, halfE, cornerEdgeInset(planN, halfN, 1, planE, halfE, -1));
+        cornerFill(
+          1,
+          -1,
+          halfN,
+          halfE,
+          cornerEdgeInset(planN, kerbHalf.n, 1, planE, kerbHalf.e, -1),
+        );
       if (legS && legE)
-        cornerFill(1, 1, halfS, halfE, cornerEdgeInset(planS, halfS, 1, planE, halfE, 1));
+        cornerFill(1, 1, halfS, halfE, cornerEdgeInset(planS, kerbHalf.s, 1, planE, kerbHalf.e, 1));
       if (legS && legW)
-        cornerFill(-1, 1, halfS, halfW, cornerEdgeInset(planS, halfS, -1, planW, halfW, 1));
+        cornerFill(
+          -1,
+          1,
+          halfS,
+          halfW,
+          cornerEdgeInset(planS, kerbHalf.s, -1, planW, kerbHalf.w, 1),
+        );
       if (legN && legW)
-        cornerFill(-1, -1, halfN, halfW, cornerEdgeInset(planN, halfN, -1, planW, halfW, -1));
+        cornerFill(
+          -1,
+          -1,
+          halfN,
+          halfW,
+          cornerEdgeInset(planN, kerbHalf.n, -1, planW, kerbHalf.w, -1),
+        );
     }
 
     // The sides no road leaves by — or only an alley, which is an access the
@@ -5709,6 +5839,10 @@ export function roadTileVertices(
           hAt,
           seam,
           verticalGap,
+          {
+            lo: hasN ? (neighborHalves.reach?.n ?? 0) : 0,
+            hi: hasS ? (neighborHalves.reach?.s ?? 0) : 0,
+          },
         );
         if (plan.bands.length > 0)
           emitColoredLaneBands(
@@ -5757,6 +5891,10 @@ export function roadTileVertices(
           hAt,
           seam,
           horizontalGap,
+          {
+            lo: hasW ? (neighborHalves.reach?.w ?? 0) : 0,
+            hi: hasE ? (neighborHalves.reach?.e ?? 0) : 0,
+          },
         );
         if (plan.bands.length > 0)
           emitColoredLaneBands(
@@ -5820,7 +5958,18 @@ export function roadTileVertices(
             approach.laneAllowed,
             approach.allowed,
           );
-          const shift = ahead * (TILE_HALF - LANE_ARROW_SETBACK_M);
+          // Back from the stop line when it stands on this tile.
+          const standing = neighborHalves.reach;
+          const stopReach = !standing
+            ? 0
+            : approachToward === RoadFlow.North
+              ? standing.n
+              : approachToward === RoadFlow.East
+                ? standing.e
+                : approachToward === RoadFlow.South
+                  ? standing.s
+                  : standing.w;
+          const shift = ahead * (TILE_HALF - LANE_ARROW_SETBACK_M - stopReach);
           for (let i = 0; i < ordered.length; i++) {
             emitLaneUseArrow(
               positions,
@@ -5944,14 +6093,6 @@ export function roadTileVertices(
     // are NOT junctions by this gate and keep their plain suppression/marking
     // behavior above.
     if (isJunction) {
-      const arms: JunctionArms = {
-        tier,
-        has: { n: hasN, e: hasE, s: hasS, w: hasW },
-        roads: neighbors,
-        footways: neighborHalves.footways,
-        ownFootway: hasFootway(crossSection),
-        control,
-      };
       // Which half of each arm is arriving here, so its stop line stops at
       // that road's centreline instead of barring the traffic leaving.
       const approaches = neighborHalves.approaches ?? presetHalves(neighbors).approaches!;
@@ -5973,10 +6114,74 @@ export function roadTileVertices(
         ['e', paintHalf(halfE, neighborHalves.e), false, edgeX(1), approaches.e, seamAt.x === 1],
         ['w', paintHalf(halfW, neighborHalves.w), false, -edgeX(-1), approaches.w, seamAt.x === -1],
       ];
+      const paintedHalf = { n: halfN, e: halfE, s: halfS, w: halfW };
+      /**
+       * How far across the arm, from its centre, a crossing reaches on one
+       * side: the arm's kerb line, plus however far the kerb return bulges
+       * out from it at the crossing's far edge, so the bars meet the kerb.
+       * Where the road across that corner is crossed too, the two crossings
+       * would share the corner, so this one stops short of the other.
+       */
+      const reachAt = (
+        side: ArmSide,
+        vertical: boolean,
+        armSign: 1 | -1,
+        across: 1 | -1,
+        far: number,
+      ): number => {
+        const kerb = paintedHalf[side];
+        const cross: ArmSide = vertical ? (across > 0 ? 'e' : 'w') : across > 0 ? 's' : 'n';
+        if (!legOf[cross] || rampNode) return kerb;
+        const crossHalf = paintedHalf[cross];
+        const r = vertical
+          ? cornerRadius(kerb, crossHalf, across, armSign)
+          : cornerRadius(crossHalf, kerb, armSign, across);
+        const t = Math.max(0, far - crossHalf);
+        const bulge = r > 0 && t < r ? r - Math.sqrt(r * r - (r - t) * (r - t)) : 0;
+        const shared = junctionArmPaint(arms, cross).crossed
+          ? crossingOf(cross).crosswalkNear - CROSSING_CORNER_CLEAR_M
+          : Infinity;
+        return Math.min(kerb + bulge, shared);
+      };
+      // Which way along the arm's crossing the partner half lies, when it does.
+      const partnerToward = (vertical: boolean): 1 | -1 | 0 => {
+        if (vertical) return partner === 'e' ? 1 : partner === 'w' ? -1 : 0;
+        return partner === 's' ? 1 : partner === 'n' ? -1 : 0;
+      };
       for (const [side, half, vertical, edge, approaching, seam] of armAt) {
-        if (seam) continue;
+        if (seam || side === partner) continue;
         const paint = junctionArmPaint(arms, side);
         if (!paint.stops && !paint.crossed) continue;
+        const layout = crossingOf(side);
+        const armSign: 1 | -1 = edge < 0 ? -1 : 1;
+        const toward = partnerToward(vertical);
+        let span: CrossingSpan;
+        if (toward === 0) {
+          span = {
+            lo: -reachAt(side, vertical, armSign, -1, layout.crosswalkFar),
+            hi: reachAt(side, vertical, armSign, 1, layout.crosswalkFar),
+          };
+        } else {
+          // Over a median opening the crossing is one run from this half's
+          // outer kerb to the other's, shared between the two tiles.
+          const reach =
+            2 * TILE_HALF +
+            reachAt(side, vertical, armSign, -toward as 1 | -1, layout.crosswalkFar);
+          span =
+            toward > 0
+              ? {
+                  lo: -(reach - 2 * TILE_HALF),
+                  hi: reach,
+                  own: { lo: -Infinity, hi: TILE_HALF + 1e-6 },
+                  mid: TILE_HALF,
+                }
+              : {
+                  lo: -reach,
+                  hi: reach - 2 * TILE_HALF,
+                  own: { lo: -TILE_HALF + 1e-6, hi: Infinity },
+                  mid: -TILE_HALF,
+                };
+        }
         emitJunctionArmMarkings(
           positions,
           colors,
@@ -5984,15 +6189,12 @@ export function roadTileVertices(
           centerX,
           centerZ,
           half,
-          (d: number): number => edge - Math.sign(edge) * d,
+          (d: number): number => armSign * d,
           hAt,
           paint.crossed,
           paint.stops,
-          // The strip of tile between the box and the tile edge: it caps how
-          // far a crossing can reach. How DEEP the crossing is comes from the
-          // footway it carries across, which is the next argument.
-          Math.abs(edge) - coreHalf,
-          kerbBand,
+          layout,
+          span,
           approaching,
         );
       }
@@ -6013,7 +6215,7 @@ export function roadTileVertices(
           if (bikes.length === 0) continue;
           const paint = junctionArmPaint(arms, side);
           const depth = Math.abs(edge) - coreHalf;
-          const layout = junctionArmLayout(depth, kerbBand);
+          const layout = crossingOf(side);
           const armSign: 1 | -1 = edge < 0 ? -1 : 1;
           for (const band of bikes) {
             const across: 1 | -1 = band.from + band.to < 0 ? -1 : 1;
@@ -6026,10 +6228,11 @@ export function roadTileVertices(
                 : cornerRadius(otherHalf, halves[side], armSign, across);
               limit = Math.abs(edge) - (otherHalf + r);
             }
-            if (paint.crossed) limit = Math.min(limit, layout.crosswalkStart);
+            if (paint.crossed) limit = Math.min(limit, Math.abs(edge) - layout.crosswalkFar);
             const arrives =
               !!approaching && (across > 0 ? approaching.to > 0.5 : approaching.from < -0.5);
-            if (paint.stops && arrives) limit = Math.min(limit, layout.stopLineStart);
+            if (paint.stops && arrives)
+              limit = Math.min(limit, Math.abs(edge) - layout.stopLineFar);
             if (limit <= 1e-6) continue;
             const a0 = Math.min(edge, edge - armSign * limit);
             const a1 = Math.max(edge, edge - armSign * limit);
@@ -7464,6 +7667,14 @@ export class RoadMeshRenderer {
           },
         },
       };
+      // How far the junctions at the ends of a straight tile paint back onto it.
+      const partner = openPartnerSide(tile.x, tile.z, this.surroundings);
+      const ends = junctionEndsAt(tile.x, tile.z, this.surroundings);
+      const reach = ends
+        ? ends.alongX
+          ? { n: 0, s: 0, w: ends.lo?.reach ?? 0, e: ends.hi?.reach ?? 0 }
+          : { w: 0, e: 0, n: ends.lo?.reach ?? 0, s: ends.hi?.reach ?? 0 }
+        : undefined;
       const vertices = roadTileVertices(
         tile.x,
         tile.z,
@@ -7473,6 +7684,15 @@ export class RoadMeshRenderer {
         neighbors,
         this.ownProfileFor(tile),
         {
+          partner,
+          partnerAcross: partner
+            ? this.halfAlong(
+                tile.x + (partner === 'e' ? 2 : partner === 'w' ? -2 : 0),
+                tile.z + (partner === 's' ? 2 : partner === 'n' ? -2 : 0),
+                partner === 'e' || partner === 'w' ? 'x' : 'z',
+              )
+            : 0,
+          reach,
           n: this.halfAlong(tile.x, tile.z - 1, 'z'),
           e: this.halfAlong(tile.x + 1, tile.z, 'x'),
           s: this.halfAlong(tile.x, tile.z + 1, 'z'),

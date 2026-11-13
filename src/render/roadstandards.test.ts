@@ -10,6 +10,7 @@ import {
   SIDEWALK_COLOR,
 } from './roadsmesh';
 import { junctionArmLayout } from '../shared/junctionpaint';
+import { drawnSectionAt, halfAt } from '../shared/kerblayout';
 import {
   NO_PARKING_BEFORE_STOP_M,
   NO_PARKING_FROM_CROSSWALK_M,
@@ -412,10 +413,15 @@ describe('a parking lane', () => {
     );
   // What the junction lays on each arm: a crossing as deep as its footway
   // against the kerb line, and a stop line 1.2 m in advance of it.
-  const armDepth = TILE_METERS / 2 - carriagewayHalfWidthOf(PARKED);
-  const layout = junctionArmLayout(armDepth, Math.min(kerbWidthOf(PARKED), armDepth));
-  const BEFORE_STOP = NO_PARKING_BEFORE_STOP_M - layout.stopLineStart;
-  const FROM_CROSSING = NO_PARKING_FROM_CROSSWALK_M - layout.crosswalkStart;
+  // The road crossing the west arm is the street running north-south, drawn
+  // as wide as it is at the junction's mouth, turn bays included.
+  const mouth = crossroads().kerbSurroundings();
+  const layout = junctionArmLayout(
+    Math.max(halfAt(4, 1, mouth), halfAt(4, 3, mouth)),
+    kerbWidthOf(drawnSectionAt(4, 2, mouth)!),
+  );
+  const BEFORE_STOP = NO_PARKING_BEFORE_STOP_M - (TILE_METERS / 2 - layout.stopLineFar);
+  const FROM_CROSSING = NO_PARKING_FROM_CROSSWALK_M - (TILE_METERS / 2 - layout.crosswalkNear);
 
   it('is kept clear 9.1 m before a stop line and 6.1 m from a crossing, on both sides', () => {
     const r = crossroads();
