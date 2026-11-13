@@ -161,10 +161,12 @@ export function MainDock({
         <button
           type="button"
           aria-label="Infoviews"
-          aria-pressed={infoviewOpen}
+          aria-pressed={infoviewOpen || overlay !== null}
           onClick={onToggleInfoview}
           className={`flex h-9 w-9 items-center justify-center rounded-full transition-colors ${
-            infoviewOpen ? 'bg-accent text-white' : 'text-white/80 hover:bg-white/10'
+            infoviewOpen || overlay !== null
+              ? 'bg-accent text-white'
+              : 'text-white/80 hover:bg-white/10'
           }`}
         >
           <Icon name="infoviews" />

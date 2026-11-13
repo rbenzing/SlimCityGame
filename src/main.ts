@@ -87,6 +87,7 @@ import { roundaboutGroundOf } from './world/roundabouts';
 import { platOf, platSourceOf, type Parcel } from './world/plat';
 import { buildRoadCells, type RoadCells } from './world/roadnet';
 import { ROUNDABOUT_CODE } from './shared/roundabout';
+import { isUnderground } from './shared/view';
 import { createRenderer, createWorldScene, timeOfDayColors } from './render/scene';
 import { createBloomPipeline, type BloomPipeline } from './render/bloom';
 import { CloudLayer } from './render/clouds';
@@ -689,6 +690,11 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
         snapshotIntervalMs = DEFAULT_SNAPSHOT_INTERVAL_MS;
       },
       getStats: (): CityStats => useCityStore.getState().stats,
+      /** The tool in hand and the lens on, as the store holds them. */
+      getView: (): { tool: ToolId; overlay: LensId | null } => {
+        const { selectedTool, overlay } = useCityStore.getState();
+        return { tool: selectedTool, overlay };
+      },
       // What the last frame drew, whole: the renderer resets its counters at the
       // top of each animation-loop frame, so every pass of the frame (scene,
       // shadow, bloom) is in the figure. frameMs is that frame's loop delta.
@@ -1348,17 +1354,8 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
     const { overlay, selectedTool } = store.getState();
     transitRenderer.setRibbonVisible(overlay === 'transit' || selectedTool.startsWith('transit.'));
     districtsRenderer.setVisible(overlay === 'districts' || selectedTool === 'district.paint');
-    // The city goes underground while the player works on the water: a water
-    // lens, the pipe tool, or any building of the Water tab in hand. The
-    // pipes show only there.
-    // Laying a buried cable takes the city underground too, where the pipes
-    // it must keep clear of show beside it.
-    const onWater =
-      overlay === 'watered' ||
-      overlay === 'sewered' ||
-      selectedTool === 'water.pipe' ||
-      selectedTool === 'power.cable' ||
-      selectedTool.startsWith('plop.water-');
+    // The pipes and cables show only while the city is underground.
+    const onWater = isUnderground(overlay, selectedTool);
     if (onWater && !pipes.isVisible()) flushPipes(true);
     if (onWater && !cableOverlay.isVisible()) flushCables(true);
     pipes.setVisible(onWater);

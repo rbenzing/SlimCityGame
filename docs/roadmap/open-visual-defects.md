@@ -42,6 +42,7 @@ What a review of every screenshot the shot tools write found wrong in the game, 
 - A lens shows no legend or scale with its picker open, and a lens with nothing to show is blank without saying so. — `shots-playthrough/33-lens-land-value`
 - The junction panel's lanes section runs under the toolbar; the Services panel cuts a label to "Educa…" and wraps its parks line to five. — `shots-playthrough/14-junction-panel`, `18-services`
 - The help panel numbers the toolbar's categories 1 to 7; the toolbar shows fourteen.
+- The interface has no layout for a narrow window: at 480 px wide the dock's left cluster lies over its category buttons, which cannot be clicked. — `tools/viewexit-shots.mjs` checks at 768 px for that reason
 
 ## Major: buildings and lots
 

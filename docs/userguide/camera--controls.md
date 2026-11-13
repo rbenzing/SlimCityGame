@@ -8,7 +8,7 @@
 | `Space`                    | Pause / resume                                                     |
 | `1`–`7`                    | Jump to a tool category (roads / zoning / power / … / landscaping) |
 | `R`                        | Turn the building you're placing to the next street it can face    |
-| `Esc`                      | Cancel the current tool / deselect                                 |
+| `Esc`                      | Cancel the current tool / deselect, then leave the lens or view    |
 | `Ctrl+Z` / `Ctrl+Y`        | Undo / redo (refunds are exact)                                    |
 | `Ctrl+S` / `Ctrl+Shift+L`  | Save / load latest                                                 |
 

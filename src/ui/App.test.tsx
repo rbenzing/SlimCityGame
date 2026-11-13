@@ -3,6 +3,7 @@ import '@testing-library/jest-dom/vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { act } from 'react';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { FieldId } from '../shared/types';
 import { useCityStore } from './store';
 import { resetCityStore } from './test-helpers';
 import App, { mountUi } from './App';
@@ -189,6 +190,67 @@ describe('App', () => {
 
       pressEscape(); // stage 3: tool deselected
       expect(useCityStore.getState().selectedTool).toBe('select');
+    });
+
+    it('Escape closes the open Infoviews grid and leaves the lens on', () => {
+      useCityStore.getState().setOverlay(FieldId.Pollution);
+      render(<App />);
+      fireEvent.click(screen.getByRole('button', { name: 'Infoviews' }));
+      expect(screen.getByRole('menu', { name: 'Infoviews' })).toBeInTheDocument();
+
+      pressEscape();
+      expect(screen.queryByRole('menu', { name: 'Infoviews' })).not.toBeInTheDocument();
+      expect(useCityStore.getState().overlay).toBe(FieldId.Pollution);
+    });
+
+    it('Escape clears the active lens once nothing else is left to close', () => {
+      useCityStore.getState().setOverlay(FieldId.Pollution);
+      render(<App />);
+      pressEscape();
+      expect(useCityStore.getState().overlay).toBeNull();
+    });
+
+    it('ends in the plain view in order: drawer, grid, tool and building, lens', () => {
+      const store = useCityStore.getState();
+      store.setOverlay('watered');
+      render(<App />);
+      fireEvent.click(screen.getByRole('button', { name: 'Water' }));
+      fireEvent.click(screen.getByText('Water Tower'));
+      fireEvent.click(screen.getByRole('button', { name: 'Infoviews' }));
+      store.setSelectedBuilding({
+        id: 1,
+        catalogId: 'res-low-1',
+        x: 0,
+        z: 0,
+        rotation: 0,
+        level: 1,
+        state: 1,
+        problems: 0,
+      });
+
+      pressEscape(); // the drawer
+      expect(screen.queryByText('Water Tower')).not.toBeInTheDocument();
+      expect(screen.getByRole('menu', { name: 'Infoviews' })).toBeInTheDocument();
+      expect(useCityStore.getState().selectedTool).toBe('plop.water-tower');
+
+      pressEscape(); // the grid
+      expect(screen.queryByRole('menu', { name: 'Infoviews' })).not.toBeInTheDocument();
+      expect(useCityStore.getState().selectedTool).toBe('plop.water-tower');
+
+      pressEscape(); // the tool and the building
+      expect(useCityStore.getState().selectedTool).toBe('select');
+      expect(useCityStore.getState().selectedBuilding).toBeNull();
+      expect(useCityStore.getState().overlay).toBe('watered');
+
+      pressEscape(); // the lens
+      expect(useCityStore.getState().overlay).toBeNull();
+    });
+
+    it('a defaultPrevented Escape leaves the lens on', () => {
+      useCityStore.getState().setOverlay(FieldId.Pollution);
+      render(<App />);
+      pressEscape(true);
+      expect(useCityStore.getState().overlay).toBe(FieldId.Pollution);
     });
   });
 

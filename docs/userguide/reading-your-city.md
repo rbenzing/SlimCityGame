@@ -13,7 +13,8 @@
   coverage, trash and soil. Turn a lens on to see the city as data — the trash lens
   reddens where garbage is going uncollected, and the soil lens shades the
   ground from deep green cropland through orchard slopes and amber pasture to
-  red land nothing grows on.
+  red land nothing grows on. A chip at the top left names the lens that is
+  on; **Exit** there, or `Esc`, turns it off.
 - **Stats panel** — line charts of population, money, and other trends over time.
 - **Roads sign themselves** — a junction carries the boards its control calls
   for and no others: a signal head on every approach where the junction is

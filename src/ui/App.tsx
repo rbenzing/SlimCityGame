@@ -31,6 +31,7 @@ import { useCityStore } from './store';
 import { Toasts } from './Toasts';
 import { ToolOptionsPanel } from './ToolOptionsPanel';
 import { TransitLinesPanel } from './TransitLinesPanel';
+import { ViewChip } from './ViewChip';
 
 export default function App() {
   const [activeCategory, setActiveCategory] = useState<DockCategory | null>(null);
@@ -52,12 +53,12 @@ export default function App() {
   // world/worker, so none of the panels below have anything to read.
   const screen = useCityStore((s) => s.screen);
 
-  // The staged escape stack. Stage 1 (cancel an active drag) is
-  // main.ts's tool-level concern: its window keydown listener registers
-  // before this one and marks a consumed press via preventDefault(). The
-  // remaining stages live here — one stage per press: stage 2 closes an open
-  // drawer (which is the category selection in this layout); stage 3 drops
-  // the tool back to `select` and deselects any selected building.
+  // The staged escape stack. Photo mode and cancelling an active drag are
+  // main.ts's concern: its window keydown listener registers before this one
+  // and marks a consumed press via preventDefault(). The remaining stages live
+  // here, one per press: close an open drawer (the category selection in this
+  // layout), close the Infoviews grid, drop the tool back to `select` and
+  // deselect any selected building, then clear the active lens.
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent): void {
       if (e.key !== 'Escape' || e.defaultPrevented) return;
@@ -65,13 +66,21 @@ export default function App() {
         setActiveCategory(null);
         return;
       }
+      if (infoviewOpen) {
+        setInfoviewOpen(false);
+        return;
+      }
       const store = useCityStore.getState();
-      if (store.selectedTool !== 'select') store.setTool('select');
-      if (store.selectedBuilding !== null) store.setSelectedBuilding(null);
+      if (store.selectedTool !== 'select' || store.selectedBuilding !== null) {
+        if (store.selectedTool !== 'select') store.setTool('select');
+        if (store.selectedBuilding !== null) store.setSelectedBuilding(null);
+        return;
+      }
+      if (store.overlay !== null) store.setOverlay(null);
     }
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [activeCategory]);
+  }, [activeCategory, infoviewOpen]);
 
   return (
     <>
@@ -110,6 +119,7 @@ export default function App() {
             </div>
           )}
 
+          <ViewChip />
           <InfoPanel />
           <JunctionPanel />
           <StopPanel />

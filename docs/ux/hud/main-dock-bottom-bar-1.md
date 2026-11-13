@@ -20,5 +20,5 @@ Left to right:
   is open.
 - **Right cluster**: an Infoviews toggle (opens the lens grid of overlay
   choices) and an overlay-off button that clears whatever infoview is
-  active.
+  active. The toggle shows as active while the grid is open or a lens is on.
 
