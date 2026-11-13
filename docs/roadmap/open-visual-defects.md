@@ -29,11 +29,8 @@ What two reviews of every screenshot the shot tools write found wrong in the gam
 
 ## Major: transit
 
-- A bus shelter on a street's south side turns its back to the road; a sign stop shows no sign plate. — `shots-busstops/kerbed-shelter-and-sign-south`
 - Tram poles lean and carry no wire; in the tram depot they stand through the parked trams, which stand nose to tail with pantographs overlapping. — `shots-tramways/tramway-rails-detail`, `shots-depots/b2-tram-depot-yard`
 - A flat rail yard's lead reaches the main line's ballast and stops, with no rails joining; a tram depot's lead ends square in the carriageway. `[R-roads-082]` — `shots-depots/c4-rail-lead-close`, `b4-tram-lead-close`
-- A bus depot's fence runs across its own door, and its buses stand through the fence. — `shots-depots/a2-bus-depot-close`
-- A station's platform canopy hides the building, and its ramp stops partway. — `shots-ploppables/b-station-track`
 - The airport has no runway. Its terminal is one slab over the middle of the plot, aircraft stand half under its walls, and its car park is an outline on lawn. — `shots-airport/airport-above`
 
 ## Major: interface and messages
@@ -69,9 +66,8 @@ What two reviews of every screenshot the shot tools write found wrong in the gam
 - A lamp's or a signal arm's shadow lies on the road as a jagged scribble; a vehicle's wheels are near-black boxes. — `shots-furniture/crossroads`
 - One two-lane street's broken centre line reads white, not yellow, beside a free curve. — `shots-curve/4b-grid-street-above`
 - A tree stands in a median; a boulder lies on a footway; bins stand on the grass.
-- A solar farm's transformer hut straddles its fence; a rail yard's shed stands on the railway.
+- A solar farm's transformer hut straddles its fence.
 - Ploughed field patches have jagged edges; a house lot carries a skewed lawn wedge.
-- A shelter's roof overhangs a gravel road.
 - The landfill reads as loose tiles; the neighbourhood park and the plaza are bare.
 - A viaduct's shadow lies detached from it; a detached garage is a plain box; winter only dulls the trees' leaves a little, so the strip reads Winter over green ground.
 - A street's parking lane stands empty beside homes: a home's cars stand only on its drive `[R-render-026]`. — `shots-parking/kerb-both-1`

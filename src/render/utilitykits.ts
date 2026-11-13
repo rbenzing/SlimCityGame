@@ -7898,6 +7898,21 @@ function buildDepotGroundsGeometry(footprint: FootprintSize): THREE.BufferGeomet
 /** A platform's edge stands this far from the centre of the straight track it serves. */
 export const DEPOT_TRACK_EDGE_M = 1.55;
 
+/** The ramp from the platform down to the lot's own level: at most 1 in 12 (ADA 405.2), with a 60 in landing at its platform end (405.7). */
+export const DEPOT_RAMP = { grade: 1 / 12, landing: 1.525 };
+/** The least headroom under the canopy: 80 in (ADA 307.4). */
+const DEPOT_CANOPY_HEADROOM_M = 2.03;
+/** The canopy's top stands this far under the depot's wall plate, so the building reads over it. */
+const DEPOT_CANOPY_UNDER_EAVE_M = 0.3;
+
+/** One run of the platform's paving along Z, from height `y0` at `z0` to `y1` at `z1`. */
+export interface DepotPavePiece {
+  z0: number;
+  z1: number;
+  y0: number;
+  y1: number;
+}
+
 /** What a station lays out beyond its lot edge to the track: the paving, the tactile strip, the canopy over it and its posts, and the lot-edge strip it repaves. */
 export interface DepotTrackside {
   platform: Rect[];
@@ -7905,22 +7920,58 @@ export interface DepotTrackside {
   canopy: Rect[];
   posts: Vec2[];
   repave: Rect[];
+  /** The platform's surface at the track's edge and the lot's platform's, from the lot's highest ground. */
+  levels: { edgeTop: number; lotTop: number };
+  /** The paving along each platform tile, track edge to lot edge: the flat platform, then the ramp down or up to the lot's platform. */
+  approach: DepotPavePiece[];
+  /** The canopy slab's underside. */
+  canopyBottom: number;
 }
 
 /**
  * The platform carried from the lot's -Z edge out to DEPOT_TRACK_EDGE_M from
  * the track's centre, along every tile of the edge that has track beside it
  * (`tiles[i]`, from the frame's -X end). The tactile strip lies at the new
- * edge, and the canopy's track-side edge moves with it. Pure.
+ * edge. Only the 12 ft platform at the track is roofed; the paving beyond it is
+ * one ramp to the lot's platform, as long as its rise needs for 1 in 12
+ * within the strip. `rise` is how far the track's ground lies over the lot's.
+ * Pure.
  */
 export function computeDepotTrackside(
   footprint: FootprintSize,
   tiles: readonly boolean[],
+  rise = 0,
 ): DepotTrackside {
   const { halfW, halfD } = footprintHalfExtents(footprint);
   const lay = computeDepotLayout(footprint);
   const edge = -halfD - TILE_METERS / 2 + DEPOT_TRACK_EDGE_M;
-  const out: DepotTrackside = { platform: [], tactile: [], canopy: [], posts: [], repave: [] };
+  const lotTop = RECYCLING_YARD_HEIGHT + DEPOT_PLATFORM.h;
+  const edgeTop = rise + ROAD_Y_OFFSET + 0.012 + DEPOT_PLATFORM.h;
+  const rampEnd = -halfD;
+  const flatEnd = edge + DEPOT_PLATFORM.w;
+  const needed = Math.abs(lotTop - edgeTop) / DEPOT_RAMP.grade;
+  const rampStart =
+    needed > rampEnd - flatEnd ? Math.max(edge + DEPOT_RAMP.landing, rampEnd - needed) : flatEnd;
+  const approach: DepotPavePiece[] = [
+    { z0: edge, z1: rampStart, y0: edgeTop, y1: edgeTop },
+    { z0: rampStart, z1: rampEnd, y0: edgeTop, y1: lotTop },
+  ];
+  // The canopy stands its clear height over the platform, held under the depot's eave and over a person's head.
+  const eave = lotTop + DEPOT_BODY.plate - DEPOT_CANOPY_UNDER_EAVE_M - DEPOT_CANOPY.slab;
+  const canopyBottom = Math.max(
+    edgeTop + DEPOT_CANOPY_HEADROOM_M,
+    Math.min(edgeTop + DEPOT_CANOPY.clear, eave),
+  );
+  const out: DepotTrackside = {
+    platform: [],
+    tactile: [],
+    canopy: [],
+    posts: [],
+    repave: [],
+    levels: { edgeTop, lotTop },
+    approach,
+    canopyBottom,
+  };
   tiles.forEach((onTrack, i) => {
     if (!onTrack) return;
     const x0 = -halfW + i * TILE_METERS;
@@ -7930,7 +7981,7 @@ export function computeDepotTrackside(
     const cx0 = Math.max(x0, lay.canopy.x0);
     const cx1 = Math.min(x1, lay.canopy.x1);
     if (cx1 > cx0) {
-      out.canopy.push({ x0: cx0, x1: cx1, z0: edge, z1: -halfD });
+      out.canopy.push({ x0: cx0, x1: cx1, z0: edge, z1: flatEnd });
       for (let x = cx0 + DEPOT_CANOPY.postPitch / 2; x < cx1; x += DEPOT_CANOPY.postPitch) {
         out.posts.push({ x, z: edge + DEPOT_CANOPY.post / 2 + 0.3 });
       }
@@ -7948,30 +7999,33 @@ function buildDepotTracksideGeometry(
   tiles: readonly boolean[],
   rise = 0,
 ): THREE.BufferGeometry {
-  const layout = computeDepotTrackside(footprint, tiles);
-  const lotTop = RECYCLING_YARD_HEIGHT + DEPOT_PLATFORM.h;
-  // The track edge stands 0.2 m over the line's rail; the paving ramps evenly to the lot's platform across its depth.
-  const edgeTop = rise + ROAD_Y_OFFSET + 0.012 + DEPOT_PLATFORM.h;
+  const layout = computeDepotTrackside(footprint, tiles, rise);
+  const { lotTop, edgeTop } = layout.levels;
   const bottom = Math.min(-0.3, rise - 0.3);
-  const { halfD } = footprintHalfExtents(footprint);
-  const edgeZ = layout.platform[0]?.z0 ?? -halfD;
-  const topAt = (z: number): number =>
-    edgeTop + (lotTop - edgeTop) * Math.min(1, Math.max(0, (z - edgeZ) / (-halfD - edgeZ)));
   const parts: THREE.BufferGeometry[] = [];
   const centre = (r: Rect): Vec2 => ({ x: (r.x0 + r.x1) / 2, z: (r.z0 + r.z1) / 2 });
   // The paving runs down to the ground, so it never floats over the verge.
   for (const r of layout.platform) {
-    parts.push(slopedSlab(r, bottom, topAt(r.z0), topAt(r.z1), DEPOT_PLATFORM_RGB));
+    for (const piece of layout.approach) {
+      parts.push(
+        slopedSlab(
+          { x0: r.x0, x1: r.x1, z0: piece.z0, z1: piece.z1 },
+          bottom,
+          piece.y0,
+          piece.y1,
+          DEPOT_PLATFORM_RGB,
+        ),
+      );
+    }
   }
   for (const r of layout.repave) {
     const c = centre(r);
     parts.push(flatQuad(r.x1 - r.x0, r.z1 - r.z0, c.x, lotTop + 0.01, c.z, DEPOT_PLATFORM_RGB));
   }
   for (const r of layout.tactile) {
-    parts.push(slopedQuad(r, topAt(r.z0) + 0.005, topAt(r.z1) + 0.005, YELLOW_MARKING_COLOR));
+    parts.push(slopedQuad(r, edgeTop + 0.005, edgeTop + 0.005, YELLOW_MARKING_COLOR));
   }
-  // The canopy stands level over the higher of the platform's two ends.
-  const slabY = Math.max(lotTop, edgeTop) + DEPOT_CANOPY.clear;
+  const slabY = layout.canopyBottom;
   for (const r of layout.canopy) {
     const c = centre(r);
     parts.push(
@@ -7979,7 +8033,7 @@ function buildDepotTracksideGeometry(
     );
   }
   for (const p of layout.posts) {
-    const base = topAt(p.z);
+    const base = edgeTop;
     parts.push(
       standingBox(
         DEPOT_CANOPY.post,
@@ -8246,6 +8300,14 @@ export const BUS_BASE_STALL = { w: 3.6, l: 11.5 };
 export const BUS_BASE_AISLE_M = 12.2;
 /** The drive from the street, through a gate in the 2.1 m fence. */
 export const BUS_BASE_DRIVE_M = 7.2;
+/**
+ * The stall blocks stand this far in from the fence, so a parked bus, which
+ * leaves a margin inside its own stall, is clear of the fence by 1 m. The
+ * drive's place on the lot follows it (src/shared/civicaccess.ts).
+ */
+export const BUS_BASE_SET_IN_M = { x: 0.55, z: 0.4 };
+/** The strip between the drive and the shop's yard face, door frames included. */
+const BUS_BASE_HALL_GAP_M = 0.6;
 /** A drive-through bay: 4.9 m wide under a 4.1 m clear door, 60 ft long where the lot has the room. */
 export const BUS_BASE_BAY = { w: 4.9, l: 18.3, clear: 4.1 };
 /** The roof over the bays' clear height, up to the depot's 5.5 m. */
@@ -8309,6 +8371,8 @@ export interface BusBaseLayout {
   drive: Rect;
   gate: Gap;
   fence: Rect;
+  /** Where the street-side fence is left open: the drive and the shop's frontage. */
+  fenceGaps: FenceGap[];
   hall: Rect;
   office: Rect;
   hallHeight: number;
@@ -8337,14 +8401,16 @@ export function computeBusBaseLayout(footprint: FootprintSize): BusBaseLayout {
   const plan = busBasePlan(footprint);
   const { halfW, halfD } = footprintHalfExtents(footprint);
   const inset = GEN_FENCE_INSET_M;
-  const x0 = -halfW + inset;
+  const shiftX = BUS_BASE_SET_IN_M.x;
+  const shiftZ = BUS_BASE_SET_IN_M.z;
+  const x0 = -halfW + inset + shiftX;
   const rowW = plan.perRow * BUS_BASE_STALL.w;
   const moduleD = 2 * BUS_BASE_STALL.l + BUS_BASE_AISLE_M;
   const rows: Rect[] = [];
   const aisles: Rect[] = [];
   const stalls: BusBaseStall[] = [];
   for (let m = 0; m < plan.modules; m++) {
-    const base = -halfD + inset + m * moduleD;
+    const base = -halfD + inset + shiftZ + m * moduleD;
     const a: Rect = { x0, x1: x0 + rowW, z0: base, z1: base + BUS_BASE_STALL.l };
     const aisle: Rect = { x0, x1: x0 + rowW, z0: a.z1, z1: a.z1 + BUS_BASE_AISLE_M };
     const b: Rect = { x0, x1: x0 + rowW, z0: aisle.z1, z1: aisle.z1 + BUS_BASE_STALL.l };
@@ -8359,13 +8425,15 @@ export function computeBusBaseLayout(footprint: FootprintSize): BusBaseLayout {
       }
     }
   }
+  const fence = lotRect(footprint, inset);
   const drive: Rect = {
     x0: x0 + rowW,
     x1: x0 + rowW + BUS_BASE_DRIVE_M,
     z0: aisles[0]!.z0,
     z1: halfD,
   };
-  const hallX0 = drive.x1 + 0.6;
+  // The shop stands where it did: the room the stalls took from the fence comes out of the gap before its doors.
+  const hallX0 = drive.x1 + BUS_BASE_HALL_GAP_M - shiftX;
   const hallX1 = halfW - inset - BUS_BASE_WALL_M;
   const officeD = Math.min(BUS_BASE_OFFICE_DEPTH_M, BUS_BASE_OFFICE_M2 / (hallX1 - hallX0));
   const office: Rect = {
@@ -8463,7 +8531,12 @@ export function computeBusBaseLayout(footprint: FootprintSize): BusBaseLayout {
     stalls,
     drive,
     gate: { x0: drive.x0, x1: drive.x1 },
-    fence: lotRect(footprint, inset),
+    fence,
+    // The fence stops at the gate and does not return across the shop's frontage: the office's own front is the street line there.
+    fenceGaps: [
+      { side: 0, a: drive.x0, b: drive.x1 },
+      { side: 0, a: drive.x1, b: fence.x1 },
+    ],
     hall,
     office,
     hallHeight,
@@ -8630,7 +8703,7 @@ function buildBusBaseShopGeometry(footprint: FootprintSize): THREE.BufferGeometr
     wallBox(entrance.w, entrance.h, 0.12, entrance.x, 0, entrance.z, 0, 1, 0, STATION_ENTRANCE_RGB),
   );
   for (const island of layout.fuel) parts.push(...fuelIslandParts(island));
-  fenceLoop(parts, layout.fence, GEN_FENCE_HEIGHT_M, layout.gate);
+  fenceLoopWithGaps(parts, layout.fence, GEN_FENCE_HEIGHT_M, layout.fenceGaps);
   return mergeParts(parts);
 }
 
@@ -8743,6 +8816,8 @@ const YARD_BALLAST = { halfW: 1.7, h: 0.08 };
 const YARD_TRACKBED_HALF_M = 1.3;
 /** A road's far end keeps this far inside the lot; a road's rails keep this clear of the fence. */
 const YARD_TRACK_EDGE_M = 0.3;
+/** A yard's fence stands this far inside the lot's line, so the roads' ends and the sets on them are inside it. */
+const YARD_FENCE_INSET_M = 0.15;
 const YARD_ROAD_CLEAR_M = 1.5;
 const YARD_WALL_M = 0.3;
 const YARD_OFFICE_H = 3.6;
@@ -9079,7 +9154,7 @@ function layoutYard(
     }
   }
 
-  const fence = lotRect(footprint, inset);
+  const fence = lotRect(footprint, YARD_FENCE_INSET_M);
   // The lead's own gaps are cut where its path crosses; only the gate is here.
   const fenceGaps: FenceGap[] = [];
   // The gate opens across the office's frontage and the drive beside it.
@@ -11328,9 +11403,9 @@ export class UtilityKitRenderer {
         [frame.long ? 'depotGroundsLong' : 'depotGrounds']: [
           this.placeAt(grounds, centerX, groundY, centerZ, turn),
         ],
-        [frame.long ? 'depotCanopyLong' : 'depotCanopy']: [
-          this.placeAt(canopy, centerX, groundY, centerZ, turn),
-        ],
+        // Beside a track the platform is at the track's edge and its own canopy roofs that; the lot's stands only where no track is.
+        [frame.long ? 'depotCanopyLong' : 'depotCanopy']:
+          mask === 0 ? [this.placeAt(canopy, centerX, groundY, centerZ, turn)] : [],
         depotBuilding: [placeLocal(depotBuilding, depotAt, floor, turn)],
         depotLit: [placeLocal(depotLit, depotAt, floor, turn)],
         depotCar: cars,

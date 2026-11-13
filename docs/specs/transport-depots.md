@@ -16,6 +16,8 @@
 - Never delete, re-route or strip a line because of a depot: it runs fewer vehicles or none, and says so.
 - Join a yard's and a depot's lead to the line beside it through a turnout on that line; a lead never ends at its own fence. `[R-roads-082]`
 - Stand a station's platform at its track, along every tile of track beside the lot. `[R-roads-082]`
+- Roof only the platform, below the building's eaves, and reach it by one unbroken ramp no steeper than 1 in 12 with a landing at each end.
+- Open a depot's fence for the full width of its gate and its shop front, and park every vehicle at least 1 m inside it. `[R-render-035]`
 
 **Numbers:** derivations and sources are in [the sources](../sources/transport-depots.md).
 
@@ -46,6 +48,9 @@
 | Turnout frog angle | cos φ = 1 − 1.5 / radius: 15.6 at 40 m | ° | derived, same |
 | Platform edge from the track's centre | 1.55 (5 ft 1 in) | m | [the platform](../sources/transport-depots.md#the-platform) |
 | Platform height, tactile strip | 0.2 (8 in), 0.61 (24 in) | m | same; `DEPOT_PLATFORM` |
+| Platform under the canopy | 3.66 | m | the boarding pad's length; the canopy's top 0.3 m under the wall plate |
+| Ramp, landing, headroom | 1 in 12; 1.525 (60 in); 2.03 (80 in) | m | ADA Standards 405.2, 405.7, 307.4 |
+| Bus stalls in from the fence; yard fence in from the lot line | 0.55 by 0.4; 0.15 | m | dial: a bus stands 1 m inside the fence |
 | Old cosmetic bus speed | `TILE_METERS * 2` = 40 m/s, 144 km/h | m/s | removed |
 | `MAX_BUSES_PER_LINE` (old) | 6; 192 render slots | buses | removed |
 | Utility kit catalog ids | 38 | ids | `UTILITY_KIT_CATALOG_IDS` |
@@ -85,6 +90,7 @@
 - A lead whose line gives its curve no run (track only along the lot's own edge) ends at a buffer stop inside the fence; a yard off the end of a line is never laid mirrored.
 - A tram depot's apron lies over a kerb that is not dropped, and its lead's meeting with the street's rail is laid from the lane's offset, not tested rail to rail.
 - The lead's and the platform's fit to sloped ground is held by tests; no shot shows it yet.
+- Where the ground stands more than about 0.6 m off the lot, the station's ramp has no room for 1 in 12 and steepens.
 
 ## Why the rules are what they are
 

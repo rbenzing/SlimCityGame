@@ -349,6 +349,63 @@ describe('the bus base', () => {
   });
 });
 
+describe('the bus base fence', () => {
+  /** The fence's own parts: every shop vertex within a post's thickness of the street-side fence line, below the fence's top. */
+  function frontFenceXs(entry: BuildingCatalogEntry): number[] {
+    const renderer = new UtilityKitRenderer(new THREE.Scene(), flat, [entry]);
+    const position = renderer.partGeometry(entry.id, 'busBaseShop')!.getAttribute('position');
+    const line = computeBusBaseLayout(entry.footprint).fence.z1;
+    const xs: number[] = [];
+    for (let i = 0; i < position.count; i++) {
+      if (Math.abs(position.getZ(i) - line) <= 0.13 && position.getY(i) < 2.3)
+        xs.push(position.getX(i));
+    }
+    return xs;
+  }
+
+  it.each([DEPOT, GARAGE])(
+    'opens across the drive and the office door at %s with a post each side of the gap',
+    (entry) => {
+      const layout = computeBusBaseLayout(entry.footprint);
+      const xs = frontFenceXs(entry);
+      expect(xs.length).toBeGreaterThan(0);
+      const door = layout.officeDoor;
+      // Nothing of the fence stands across the drive's mouth or in front of the office door.
+      const gateOpen = (x: number): boolean => x > layout.gate.x0 + 0.2 && x < layout.gate.x1 - 0.2;
+      const doorOpen = (x: number): boolean => Math.abs(x - door.x) < door.w / 2 + 0.5;
+      for (const x of xs) {
+        expect(gateOpen(x), `${entry.id} fence at x ${x} in the drive`).toBe(false);
+        expect(doorOpen(x), `${entry.id} fence at x ${x} in front of the door`).toBe(false);
+      }
+      // A gate post stands each side of the drive.
+      for (const edge of [layout.gate.x0, layout.gate.x1]) {
+        if (edge >= layout.fence.x1 - 0.3) continue;
+        expect(
+          xs.some((x) => Math.abs(x - edge) < 0.2),
+          `${entry.id} post at ${edge}`,
+        ).toBe(true);
+      }
+    },
+  );
+
+  it.each([DEPOT, GARAGE])('keeps every parked bus 1 m inside the fence at %s', (entry) => {
+    const renderer = new UtilityKitRenderer(new THREE.Scene(), flat, [entry]);
+    renderer.apply(add(instance(1, entry.id, { x: 10, z: 10, rotation: 0 })));
+    const layout = computeBusBaseLayout(entry.footprint);
+    const cx = (10 + entry.footprint.w / 2) * TILE_METERS;
+    const cz = (10 + entry.footprint.d / 2) * TILE_METERS;
+    const slots = renderer.partSlotsFor(1, 'busBaseBus');
+    expect(slots).toHaveLength(layout.stalls.length);
+    for (const slot of slots) {
+      const box = placedBounds(renderer, entry.id, 'busBaseBus', slot);
+      expect(box.min.x - (cx + layout.fence.x0), 'west').toBeGreaterThanOrEqual(1 - 1e-6);
+      expect(cx + layout.fence.x1 - box.max.x, 'east').toBeGreaterThanOrEqual(1 - 1e-6);
+      expect(box.min.z - (cz + layout.fence.z0), 'back').toBeGreaterThanOrEqual(1 - 1e-6);
+      expect(cz + layout.fence.z1 - box.max.z, 'front').toBeGreaterThanOrEqual(1 - 1e-6);
+    }
+  });
+});
+
 describe('the fleet at home', () => {
   it('parks the whole catalog fleet until the sim says what is out', () => {
     const renderer = new UtilityKitRenderer(new THREE.Scene(), flat, [DEPOT, GARAGE]);
@@ -409,6 +466,83 @@ describe('the fleet at home', () => {
     expect(box.max.z - box.min.z).toBeCloseTo(10, 0);
     expect(box.max.y - box.min.y).toBeCloseTo(3, 0);
   });
+});
+
+describe('a yard’s shop stands beside its own sidings, never on a running track', () => {
+  const joins = [
+    { reach: 'full', mirror: false },
+    { reach: 'full', mirror: true },
+    { reach: 'short', mirror: false },
+    { reach: 'short', mirror: true },
+    { reach: 'stop', mirror: false },
+  ] as const;
+  /** Whether a segment passes through the rect grown by `m` metres. */
+  const crosses = (
+    a: { x: number; z: number },
+    b: { x: number; z: number },
+    r: Rect,
+    m: number,
+  ): boolean => {
+    const steps = Math.max(2, Math.ceil(Math.hypot(b.x - a.x, b.z - a.z) / 0.25));
+    for (let i = 0; i <= steps; i++) {
+      const x = a.x + ((b.x - a.x) * i) / steps;
+      const z = a.z + ((b.z - a.z) * i) / steps;
+      if (x > r.x0 - m && x < r.x1 + m && z > r.z0 - m && z < r.z1 + m) return true;
+    }
+    return false;
+  };
+  it.each([
+    ['the rail yard', RAIL, RAIL_YARD_SPEC, YARD_CARS.rail],
+    ['the tram depot', TRAM, TRAM_DEPOT_SPEC, YARD_CARS.tram],
+  ] as const)(
+    'at %s, the lead, the ladder and the stabling roads keep off the shop',
+    (_n, entry, spec, cars) => {
+      const footprint = yardFootprint(entry);
+      for (const fromEnd of [false, true]) {
+        for (const join of joins) {
+          const lay = computeYardLayout(footprint, spec, fromEnd, cars, join);
+          const tracks = [...lay.lead, lay.ladder, ...lay.roads];
+          for (const t of tracks) {
+            expect(
+              crosses({ x: t.x0, z: t.z0 }, { x: t.x1, z: t.z1 }, lay.hall, 0),
+              `${fromEnd} ${join.reach} ${join.mirror}`,
+            ).toBe(false);
+          }
+          for (let i = 1; i < lay.joinPath.length; i++) {
+            expect(crosses(lay.joinPath[i - 1]!, lay.joinPath[i]!, lay.hall, 0)).toBe(false);
+          }
+        }
+      }
+    },
+  );
+});
+
+describe('the parked sets of a yard stand inside its fence', () => {
+  it.each([
+    ['the rail yard', RAIL, RAIL_YARD_SPEC, YARD_CARS.rail],
+    ['the tram depot', TRAM, TRAM_DEPOT_SPEC, YARD_CARS.tram],
+  ] as const)(
+    'at %s, no car or road end crosses the fence, in every frame',
+    (_n, entry, spec, cars) => {
+      const footprint = yardFootprint(entry);
+      for (const fromEnd of [false, true]) {
+        for (const mirror of [false, true]) {
+          const lay = computeYardLayout(footprint, spec, fromEnd, cars, { reach: 'full', mirror });
+          const f = lay.fence;
+          for (const road of lay.roads) {
+            for (const x of [road.x0, road.x1]) {
+              expect(x, `${fromEnd} ${mirror} road end`).toBeGreaterThan(f.x0 + 0.1);
+              expect(x, `${fromEnd} ${mirror} road end`).toBeLessThan(f.x1 - 0.1);
+            }
+          }
+          for (const car of lay.sets.flat()) {
+            expect(car.x - cars.length / 2, `${fromEnd} ${mirror} car`).toBeGreaterThan(f.x0);
+            expect(car.x + cars.length / 2, `${fromEnd} ${mirror} car`).toBeLessThan(f.x1);
+          }
+        }
+      }
+    },
+  );
 });
 
 describe('the tram depot', () => {
