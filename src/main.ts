@@ -393,18 +393,12 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
   transitRenderer.setGuideway(guideway.seatAt);
   // A tram stop on the guideway at full height is a raised station over it.
   const tramStations = new TramStationRenderer(world.scene, roadSurfaceAt);
-  // A call's pin hovers over the roof of the building it marks, at its lot
-  // centre: the same anchor the selection pin stands on. A call's own tile
-  // may be the lot's back yard.
+  // A call's pin hovers over the roof of the building it marks, where its body
+  // stands on the lot. A call's own tile may be the lot's back yard.
   const serviceVehicles = new ServiceVehicleRenderer(world.scene, heightAt, undefined, (x, z) => {
     if (!inBounds(x, z)) return null;
     const building = knownBuildings.get(clientGrid.buildingId[z * clientGrid.size + x] ?? 0);
-    const entry = building ? catalogById.get(building.catalogId) : undefined;
-    if (!building || !entry) return null;
-    const lot = footprintForRotation(entry, building.rotation);
-    const centerX = (building.x + lot.w / 2) * TILE_METERS;
-    const centerZ = (building.z + lot.d / 2) * TILE_METERS;
-    return { x: centerX, y: heightAt(centerX, centerZ) + entry.height, z: centerZ };
+    return building ? instancer.roofAnchorOf(building) : null;
   });
   const districtsRenderer = new DistrictsRenderer(world.scene, heightAt);
   const overlays = new OverlayRenderer(world.scene);

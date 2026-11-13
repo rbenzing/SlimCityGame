@@ -25,22 +25,24 @@ no draw-call growth:
   centre paint.
 - **No wheel spin** — imperceptible at RTS zoom, skipped deliberately.
 
-**Service liveries.** Fire, Police, Ambulance and Garbage vehicles carry a
-fixed, baked livery per kind rather than the randomized civilian palette
-above, built from the same body + cabin-band + wheel-box parts:
+**Service vehicles.** Each kind has its own body at its real size, so it is
+named by its shape before its colour. Drawn as one box each, they differed
+only in paint.
 
-- **Fire** — red body, red roof light-bar, the largest of the four bodies.
-- **Police** — blue body, blue roof light-bar, sedan-sized.
-- **Ambulance** — white body, the same red light-bar as fire, plus a small
-  red-cross accent on the roof in front of the bar; a US Type III box on a
-  van chassis, 6.9 × 2.5 × 2.7 m (the figure is derived in
+- **Fire engine** — a pumper: a four-door cab with a roof light bar, a pump
+  section behind it with a panel each side, a lower hose bed, and a ladder
+  carried along the right side. Red.
+- **Police** — a patrol SUV with a light bar over the front doors and a
+  white door panel each side, so it never reads as a private car.
+- **Ambulance** — a US Type III: a van cab and hood in front of a box
+  taller and wider than the cab, a red stripe and cross, and a light bar at
+  the front of the box (the size is derived in
   [healthcare-and-death-care.md](../../specs/healthcare-and-death-care.md)).
-- **Garbage** — municipal green body, no light-bar; instead a raised rear
-  hopper/compactor box in a darker green over the back ~40% of the body, plus
-  a small amber beacon.
+- **Refuse truck** — a rear loader: a cab-over cab, a tall packer body and
+  a hopper sloping down at the tail. The recycling truck is the same truck
+  in another colour, as it is on the street.
 
-All four share the dark cabin/window band and simple wheel boxes from the
-civilian kit's construction above.
+A light bar is paint, not a lamp: nothing on a vehicle body is emissive.
 
 **The hearse** is a fifth service body with its own construction, **6.2 × 1.9 ×
 1.9 m** at real size: a long hood, a short glazed cabin and a closed landau coach
@@ -52,11 +54,14 @@ choice**; no source for a coach colour was found. It reads apart from the
 ambulance (white, red light-bar, 2.7 m tall) by height and colour, and from a car
 (4.0 m, 1.5 m tall) by length.
 
-| Kind      | Size (w × h × l, m) | Livery                          |
-| --------- | ------------------- | ------------------------------- |
-| Car       | 1.8 × 1.5 × 4.0     | randomized palette              |
-| Ambulance | 2.5 × 2.7 × 6.9     | white, red light-bar, red cross |
-| Hearse    | 1.9 × 1.9 × 6.2     | black, chrome-grey trim, no bar |
+| Kind         | Size (w × h × l, m) | Source of the size                                                                                             |
+| ------------ | ------------------- | -------------------------------------------------------------------------------------------------------------- |
+| Car          | 1.8 × 1.5 × 4.0     | the scale anchor                                                                                               |
+| Police SUV   | 2.0 × 1.76 × 5.05   | Ford Police Interceptor Utility ([state fleet listing](https://apps.des.wa.gov/CARS/VehicleSpecifications.aspx?id=2964)); light bar 1.2 m, the common 48 in bar, a dial |
+| Fire engine  | 2.5 × 3.0 × 10      | length is the scale anchor; custom pumpers run 24–35 ft long, 98–100 in wide, 9–12 ft high ([Firehouse](https://www.firehouse.com/apparatus/article/55361340/when-large-is-too-large-for-a-fire-department-apparatus)) |
+| Ambulance    | 2.5 × 2.7 × 6.9     | [healthcare sources](../../sources/healthcare-and-death-care.md#vehicles)                                       |
+| Refuse truck | 2.44 × 3.5 × 9      | length is the scale anchor; makers' rear loaders are 96 in wide and 27–31 ft long ([Heil](https://www.heil.com/wp-content/uploads/2021/09/PowerTrak-Commercial-brochure-2025.pdf)); height a dial |
+| Hearse       | 1.9 × 1.9 × 6.2     | the paragraph above                                                                                            |
 
 Like every kind it is one InstancedMesh, in the service-vehicle renderer.
 

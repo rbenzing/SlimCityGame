@@ -95,25 +95,12 @@ const RECYCLING_CAB = hexToRGB(0xf2f5f7);
 const CABIN_DARK = hexToRGB(0x1a1f26);
 const LIGHTBAR_RED = hexToRGB(0xff2a20);
 const LIGHTBAR_BLUE = hexToRGB(0x274b8f);
-const BEACON_AMBER = hexToRGB(0xe0a020);
 const RED_CROSS = hexToRGB(0xc21f2b);
 
-function bodyColorForKind(kind: ServiceVehicleKind): readonly [number, number, number] {
-  switch (kind) {
-    case VehicleKind.Fire:
-      return FIRE_RED;
-    case VehicleKind.Police:
-      return POLICE_BLUE;
-    case VehicleKind.Recycling:
-      return RECYCLING_TEAL;
-    case VehicleKind.Ambulance:
-      return AMBULANCE_WHITE;
-    case VehicleKind.Garbage:
-    default:
-      // A kind this renderer has no livery for is drawn as a refuse truck.
-      return GARBAGE_GREEN;
-  }
-}
+const POLICE_PANEL = hexToRGB(0xf2f4f6);
+const BUMPER_STEEL = hexToRGB(0x3a4048);
+const PUMP_PANEL = hexToRGB(0x5b6670);
+const LADDER_GREY = hexToRGB(0xb4bcc4);
 
 function tagGeometry(
   geo: THREE.BufferGeometry,
@@ -145,14 +132,73 @@ function box(
   return tagGeometry(geo, colorRGB);
 }
 
-function buildWheelParts(): THREE.BufferGeometry[] {
-  const centers: ReadonlyArray<readonly [number, number, number]> = [
-    [0.46, -0.28, 0.34],
-    [0.46, -0.28, -0.34],
-    [-0.46, -0.28, 0.34],
-    [-0.46, -0.28, -0.34],
-  ];
-  return centers.map(([cx, cy, cz]) => box(0.16, 0.34, 0.34, cx, cy, cz, CABIN_DARK));
+type Rgb = readonly [number, number, number];
+
+/**
+ * A metre-space box builder for one kind: x across, y up from the road, z
+ * front-to-rear with +z the nose, normalised by the kind's own size into the
+ * unit box the instance matrix scales back up (so a part reads as its real
+ * dimensions).
+ */
+type Slab = (
+  x0: number,
+  x1: number,
+  y0: number,
+  y1: number,
+  z0: number,
+  z1: number,
+  colorRGB: Rgb,
+) => THREE.BufferGeometry;
+
+function slabFor(kind: ServiceVehicleKind): Slab {
+  const [sx, sy, sz] = sizeForKind(kind);
+  return (x0, x1, y0, y1, z0, z1, colorRGB) =>
+    box(
+      (x1 - x0) / sx,
+      (y1 - y0) / sy,
+      (z1 - z0) / sz,
+      (x0 + x1) / 2 / sx,
+      (y0 + y1) / 2 / sy - 0.5,
+      (z0 + z1) / 2 / sz,
+      colorRGB,
+    );
+}
+
+/** A box whose top edge at the rear end is dropped by `dropM`, so its roof slopes down to the tail. */
+function rampFor(kind: ServiceVehicleKind, slab: Slab) {
+  const [, sy, sz] = sizeForKind(kind);
+  return (...args: [...Parameters<Slab>, number]): THREE.BufferGeometry => {
+    const [x0, x1, y0, y1, z0, z1, colorRGB, dropM] = args;
+    const geo = slab(x0, x1, y0, y1, z0, z1, colorRGB);
+    const pos = geo.getAttribute('position');
+    const midY = (y0 + y1) / 2 / sy - 0.5;
+    const midZ = (z0 + z1) / 2 / sz;
+    for (let i = 0; i < pos.count; i++) {
+      if (pos.getY(i) > midY && pos.getZ(i) < midZ) pos.setY(i, pos.getY(i) - dropM / sy);
+    }
+    geo.computeVertexNormals();
+    return geo;
+  };
+}
+
+/** One tyre either side of the body at each of `zs`, `radius` high and reaching the width `outer` from the centre line. */
+function tyres(
+  slab: Slab,
+  zs: readonly number[],
+  outer: number,
+  radius: number,
+): THREE.BufferGeometry[] {
+  const parts: THREE.BufferGeometry[] = [];
+  for (const z of zs) {
+    for (const side of [-1, 1]) {
+      const a = side * outer;
+      const b = side * (outer - 0.3);
+      parts.push(
+        slab(Math.min(a, b), Math.max(a, b), 0, radius * 2, z - radius, z + radius, CABIN_DARK),
+      );
+    }
+  }
+  return parts;
 }
 
 // The hearse's livery is the game's own choice: no source for a coach colour
@@ -176,25 +222,7 @@ function buildHearseGeometry(): THREE.BufferGeometry {
   const [sx, sy, sz] = sizeForKind(VehicleKind.Hearse);
   const hw = sx / 2;
   const hl = sz / 2;
-  // Metre extents (x0..x1 across, y0..y1 up from the road, z0..z1 front-to-rear with +z the nose).
-  const slab = (
-    x0: number,
-    x1: number,
-    y0: number,
-    y1: number,
-    z0: number,
-    z1: number,
-    colorRGB: readonly [number, number, number],
-  ): THREE.BufferGeometry =>
-    box(
-      (x1 - x0) / sx,
-      (y1 - y0) / sy,
-      (z1 - z0) / sz,
-      (x0 + x1) / 2 / sx,
-      (y0 + y1) / 2 / sy - 0.5,
-      (z0 + z1) / 2 / sz,
-      colorRGB,
-    );
+  const slab = slabFor(VehicleKind.Hearse);
   const body = hw - 0.02;
   const parts: THREE.BufferGeometry[] = [
     slab(-body, body, 0.3, 1.05, -hl + 0.1, hl - 0.1, HEARSE_BLACK),
@@ -248,45 +276,207 @@ function buildHearseGeometry(): THREE.BufferGeometry {
 }
 
 /**
- * Builds the merged multi-part geometry for one service-vehicle kind: body
- * slab (livery color) + cabin/window band (dark) + 4 simple wheel boxes, all
- * vertex-colored (no per-instance tinting is needed since the livery is fixed
- * per kind, not randomized). Emergency kinds add a roof light-bar (kind's
- * accent color); garbage adds a raised rear hopper + amber beacon instead.
+ * A patrol SUV, 2.0 x 1.76 x 5.05 m: a livery body, a glasshouse under a roof,
+ * a white door panel each side so it reads as a patrol car without its bar,
+ * and a roof light bar (red and blue halves, 1.2 m wide) over the front doors.
+ * The first part is the body, in the kind's livery colour.
+ */
+function buildPoliceParts(): THREE.BufferGeometry[] {
+  const slab = slabFor(VehicleKind.Police);
+  const parts = [
+    slab(-0.97, 0.97, 0.38, 1.0, -2.525, 2.525, POLICE_BLUE),
+    slab(-0.88, 0.88, 1.0, 1.5, -1.75, 1.0, CABIN_DARK),
+    slab(-0.9, 0.9, 1.5, 1.62, -1.8, 1.05, POLICE_BLUE),
+    slab(-0.9, 0.9, 1.0, 1.55, -2.4, -1.75, POLICE_BLUE),
+    slab(-0.6, 0, 1.62, 1.76, 0.15, 0.5, LIGHTBAR_RED),
+    slab(0, 0.6, 1.62, 1.76, 0.15, 0.5, LIGHTBAR_BLUE),
+    ...tyres(slab, [1.5, -1.5], 1.0, 0.38),
+  ];
+  for (const side of [-1, 1]) {
+    for (const [z0, z1] of [
+      [0.1, 1.2],
+      [-1.3, 0],
+    ] as const) {
+      parts.push(
+        slab(
+          Math.min(side * 0.97, side),
+          Math.max(side * 0.97, side),
+          0.5,
+          0.95,
+          z0,
+          z1,
+          POLICE_PANEL,
+        ),
+      );
+    }
+  }
+  return parts;
+}
+
+/**
+ * A pumper, 2.5 x 3.0 x 10 m: a four-door cab with a light bar on its roof,
+ * a pump section with a pump panel on each side, a lower hose bed behind it,
+ * and a ladder carried along the right side over both.
+ */
+function buildFireParts(): THREE.BufferGeometry[] {
+  const slab = slabFor(VehicleKind.Fire);
+  const parts = [
+    slab(-1.22, 1.22, 0.45, 1.3, -5, 4.95, FIRE_RED),
+    slab(-1.2, 1.2, 1.3, 2.8, 2.6, 4.9, FIRE_RED),
+    slab(-1.21, 1.21, 1.9, 2.55, 2.7, 4.8, CABIN_DARK),
+    slab(-1.0, 1.0, 1.9, 2.55, 4.9, 4.95, CABIN_DARK),
+    slab(-1.22, 1.22, 1.3, 2.2, 0.1, 2.6, FIRE_RED),
+    slab(-1.22, 1.22, 1.3, 1.65, -5, 0.1, FIRE_RED),
+    slab(-1.2, 1.2, 0.5, 0.85, 4.95, 5, BUMPER_STEEL),
+    slab(-0.55, 0.55, 2.8, 3.0, 3.5, 4.0, LIGHTBAR_RED),
+    // The ladder: on the pump section's roof, then on two posts over the hose bed.
+    slab(0.45, 0.95, 2.2, 2.35, -4, 2.4, LADDER_GREY),
+    slab(0.5, 0.9, 1.65, 2.2, -3.9, -3.7, FIRE_RED),
+    slab(0.5, 0.9, 1.65, 2.2, -0.4, -0.2, FIRE_RED),
+    ...tyres(slab, [4.0, -1.8, -3.2], 1.25, 0.5),
+  ];
+  for (const side of [-1, 1]) {
+    const outer = side * 1.25;
+    const inner = side * 1.19;
+    // The pump panel, and the lines between the cab's four doors.
+    parts.push(
+      slab(Math.min(outer, inner), Math.max(outer, inner), 1.0, 1.9, 0.7, 2.3, PUMP_PANEL),
+    );
+    for (const z of [3.2, 3.75, 4.5]) {
+      parts.push(
+        slab(
+          Math.min(side * 1.2, side * 1.215),
+          Math.max(side * 1.2, side * 1.215),
+          1.3,
+          2.7,
+          z,
+          z + 0.04,
+          CABIN_DARK,
+        ),
+      );
+    }
+  }
+  return parts;
+}
+
+/**
+ * A Type III ambulance, 2.5 x 2.7 x 6.9 m: a van cab and hood low in front
+ * of a taller, wider box body, a red stripe along both, a red cross on the
+ * box's sides, and a light bar across the front of the box's roof.
+ */
+function buildAmbulanceParts(): THREE.BufferGeometry[] {
+  const slab = slabFor(VehicleKind.Ambulance);
+  const parts = [
+    slab(-1.23, 1.23, 0.55, 2.58, -3.45, 1.85, AMBULANCE_WHITE),
+    slab(-1.12, 1.12, 0.9, 2.1, 1.85, 2.65, AMBULANCE_WHITE),
+    slab(-1.12, 1.12, 0.4, 1.15, 2.65, 3.45, AMBULANCE_WHITE),
+    slab(-1.0, 1.0, 1.2, 2.05, 2.62, 2.7, CABIN_DARK),
+    slab(-0.8, 0.8, 2.58, 2.7, 1.3, 1.8, LIGHTBAR_RED),
+    ...tyres(slab, [2.55, -1.9], 1.25, 0.45),
+  ];
+  for (const side of [-1, 1]) {
+    const range = (a: number, b: number): [number, number] => [
+      Math.min(side * a, side * b),
+      Math.max(side * a, side * b),
+    ];
+    const [bx0, bx1] = range(1.23, 1.25);
+    const [cx0, cx1] = range(1.12, 1.14);
+    parts.push(slab(cx0, cx1, 1.35, 1.95, 2.0, 2.6, CABIN_DARK));
+    parts.push(slab(bx0, bx1, 1.0, 1.25, -3.4, 1.8, RED_CROSS));
+    parts.push(slab(cx0, cx1, 0.75, 0.95, 1.9, 3.4, RED_CROSS));
+    parts.push(slab(bx0, bx1, 1.7, 2.4, -1.1, -0.9, RED_CROSS));
+    parts.push(slab(bx0, bx1, 1.95, 2.15, -1.35, -0.65, RED_CROSS));
+  }
+  return parts;
+}
+
+/**
+ * A rear-loading refuse truck (or the recycling truck, which is the same
+ * body in its own colours), 2.44 x 3.5 x 9 m: a cab-over cab in front, a tall
+ * packer body behind it, and a hopper at the tail whose roof slopes down to
+ * the loading sill.
+ */
+function buildRefuseParts(kind: ServiceVehicleKind): THREE.BufferGeometry[] {
+  const slab = slabFor(kind);
+  const ramp = rampFor(kind, slab);
+  const recycling = kind === VehicleKind.Recycling;
+  const body = recycling ? RECYCLING_TEAL : GARBAGE_GREEN;
+  const hopper = recycling ? RECYCLING_HOPPER : GARBAGE_HOPPER;
+  const cab = recycling ? RECYCLING_CAB : GARBAGE_GREEN;
+  return [
+    slab(-1.2, 1.2, 0.6, 3.5, -3.0, 2.5, body),
+    slab(-1.2, 1.2, 0.6, 2.7, 2.55, 4.45, cab),
+    slab(-1.21, 1.21, 1.6, 2.45, 3.4, 4.4, CABIN_DARK),
+    slab(-1.0, 1.0, 1.5, 2.5, 4.45, 4.5, CABIN_DARK),
+    ramp(-1.15, 1.15, 0.6, 3.2, -4.5, -3.0, hopper, 1.6),
+    ...tyres(slab, [3.4, -1.8], 1.22, 0.55),
+  ];
+}
+
+/**
+ * Builds the merged multi-part geometry for one service-vehicle kind, drawn in
+ * metres on the ground and normalised by the kind's own size so the instance
+ * scale restores them. Every part carries its own vertex colour (the livery
+ * region it belongs to), so no per-instance tint is needed. The first part is
+ * always the body, in the kind's livery colour.
  */
 export function buildServiceVehicleGeometry(kind: ServiceVehicleKind): THREE.BufferGeometry {
   if (kind === VehicleKind.Hearse) return buildHearseGeometry();
-  const body = bodyColorForKind(kind);
-
-  const parts: THREE.BufferGeometry[] = [
-    box(0.92, 0.56, 0.94, 0, -0.2, 0, body),
-    box(0.7, 0.3, 0.5, 0, 0.22, 0.05, kind === VehicleKind.Recycling ? RECYCLING_CAB : CABIN_DARK),
-    ...buildWheelParts(),
-  ];
-
-  if (kind === VehicleKind.Garbage || kind === VehicleKind.Recycling) {
-    // Refuse/recycling truck: a raised rear hopper/compactor box over the back
-    // ~40% of the body (darker than the body) plus a small amber beacon -- no
-    // emergency bar.
-    const hopper = kind === VehicleKind.Recycling ? RECYCLING_HOPPER : GARBAGE_HOPPER;
-    parts.push(box(0.86, 0.66, 0.38, 0, 0.13, -0.27, hopper));
-    parts.push(box(0.16, 0.1, 0.14, 0, 0.42, 0.05, BEACON_AMBER));
-  } else {
-    // Emergency roof light-bar (blue for police, red for fire/ambulance).
-    const lightbar = kind === VehicleKind.Police ? LIGHTBAR_BLUE : LIGHTBAR_RED;
-    parts.push(box(0.5, 0.12, 0.32, 0, 0.42, -0.05, lightbar));
+  let parts: THREE.BufferGeometry[];
+  switch (kind) {
+    case VehicleKind.Police:
+      parts = buildPoliceParts();
+      break;
+    case VehicleKind.Fire:
+      parts = buildFireParts();
+      break;
+    case VehicleKind.Ambulance:
+      parts = buildAmbulanceParts();
+      break;
+    case VehicleKind.Recycling:
+      parts = buildRefuseParts(VehicleKind.Recycling);
+      break;
+    case VehicleKind.Garbage:
+    default:
+      // A kind this renderer has no livery for is drawn as a refuse truck.
+      parts = buildRefuseParts(VehicleKind.Garbage);
   }
-
-  if (kind === VehicleKind.Ambulance) {
-    // Small red-cross accent on the roof, front of the light bar.
-    parts.push(box(0.22, 0.08, 0.08, 0, 0.42, 0.2, RED_CROSS));
-    parts.push(box(0.08, 0.08, 0.22, 0, 0.42, 0.2, RED_CROSS));
-  }
-
   const merged = mergeGeometries(parts, false);
   for (const part of parts) part.dispose();
   if (!merged)
     throw new Error(`buildServiceVehicleGeometry: mergeGeometries failed for kind ${kind}`);
+  return merged;
+}
+
+/** The pin of a call nobody is coming to: a plain cone, point at y = 0 and base at y = 1. */
+function buildOpenPinGeometry(): THREE.BufferGeometry {
+  const cone = new THREE.ConeGeometry(1, 1, 8);
+  cone.rotateX(Math.PI);
+  cone.translate(0, 0.5, 0);
+  return cone;
+}
+
+/** The halo's ring in the cone's unit space (1 unit across is 0.8 m at severity 0): radius, tube and how far up the cone it floats. */
+const PIN_HALO_RADIUS = 1.8;
+const PIN_HALO_TUBE = 0.28;
+const PIN_HALO_HEIGHT = 0.6;
+
+/**
+ * The pin of an answered call: the open pin's cone with a flat ring floating
+ * around it, wider than the cone's base. The ring is flattened by the pin's
+ * height so it stays as thick as it is wide once the instance scale stretches
+ * the cone up.
+ */
+function buildAnsweredPinGeometry(): THREE.BufferGeometry {
+  const ring = new THREE.TorusGeometry(PIN_HALO_RADIUS, PIN_HALO_TUBE, 6, 20);
+  ring.rotateX(Math.PI / 2);
+  ring.scale(1, INCIDENT_PIN_BASE_M / 2 / INCIDENT_PIN_HEIGHT_M, 1);
+  ring.translate(0, PIN_HALO_HEIGHT, 0);
+  const cone = buildOpenPinGeometry();
+  const merged = mergeGeometries([cone, ring], false);
+  cone.dispose();
+  ring.dispose();
+  if (!merged) throw new Error('buildAnsweredPinGeometry: mergeGeometries failed');
   return merged;
 }
 
@@ -311,7 +501,10 @@ export class ServiceVehicleRenderer {
   private prevBuffer: Float32Array | null = null;
   private currBuffer: Float32Array | null = null;
 
+  /** Pins of calls a station has taken. */
   private readonly incidentMesh: THREE.InstancedMesh;
+  /** Pins of calls nobody is coming to. */
+  private readonly openMesh: THREE.InstancedMesh;
   private readonly incidentCapacity: number;
 
   constructor(
@@ -350,22 +543,31 @@ export class ServiceVehicleRenderer {
     // instancing regardless of the material's own vertexColors flag). Turned
     // point down, with its point at y = 0 and its base at y = 1, so an
     // instance's position is where the point hovers.
-    const pinGeometry = new THREE.ConeGeometry(1, 1, 8);
-    pinGeometry.rotateX(Math.PI);
-    pinGeometry.translate(0, 0.5, 0);
-    const pinMaterial = new THREE.MeshBasicMaterial();
-    this.incidentMesh = new THREE.InstancedMesh(pinGeometry, pinMaterial, incidentCapacity);
-    this.incidentMesh.frustumCulled = false;
-    this.incidentMesh.count = incidentCapacity;
+    // An open call is that plain cone; a call a station has taken is the cone
+    // ringed by a halo, so the two differ in outline and not only in colour.
+    this.incidentMesh = this.makePinMesh(buildAnsweredPinGeometry(), 'answered');
+    this.openMesh = this.makePinMesh(buildOpenPinGeometry(), 'open');
+    scene.add(this.incidentMesh, this.openMesh);
+  }
+
+  private makePinMesh(geometry: THREE.BufferGeometry, state: string): THREE.InstancedMesh {
+    const mesh = new THREE.InstancedMesh(
+      geometry,
+      new THREE.MeshBasicMaterial(),
+      this.incidentCapacity,
+    );
+    mesh.frustumCulled = false;
+    mesh.count = this.incidentCapacity;
+    mesh.userData.incidentPin = state;
     // The colour buffer has to exist before the first draw: a material compiled
     // without it never picks one up later, and every pin drew white.
     _color.setRGB(1, 1, 1);
-    for (let i = 0; i < incidentCapacity; i++) {
-      this.incidentMesh.setMatrixAt(i, HIDDEN_MATRIX);
-      this.incidentMesh.setColorAt(i, _color);
+    for (let i = 0; i < this.incidentCapacity; i++) {
+      mesh.setMatrixAt(i, HIDDEN_MATRIX);
+      mesh.setColorAt(i, _color);
     }
-    this.incidentMesh.instanceMatrix.needsUpdate = true;
-    scene.add(this.incidentMesh);
+    mesh.instanceMatrix.needsUpdate = true;
+    return mesh;
   }
 
   private meshFor(kind: ServiceVehicleKind): THREE.InstancedMesh {
@@ -484,10 +686,10 @@ export class ServiceVehicleRenderer {
         (INCIDENT_PIN_BASE_M / 2) * grown,
       );
       _matrix.compose(_position, _quaternion, _scale);
-      this.incidentMesh.setMatrixAt(i, _matrix);
 
+      const open = incident.answered === false;
       const [r, g, b] = this.colorForIncident(incident.kind);
-      if (incident.answered === false) {
+      if (open) {
         _color.setRGB(
           r * UNANSWERED_KIND_SHARE + UNANSWERED_ASH * (1 - UNANSWERED_KIND_SHARE),
           g * UNANSWERED_KIND_SHARE + UNANSWERED_ASH * (1 - UNANSWERED_KIND_SHARE),
@@ -496,12 +698,17 @@ export class ServiceVehicleRenderer {
       } else {
         _color.setRGB(r, g, b);
       }
-      this.incidentMesh.setColorAt(i, _color);
+      // The call's shape is its state: it shows in one mesh and is hidden in the other.
+      const shown = open ? this.openMesh : this.incidentMesh;
+      const hidden = open ? this.incidentMesh : this.openMesh;
+      shown.setMatrixAt(i, _matrix);
+      shown.setColorAt(i, _color);
+      hidden.setMatrixAt(i, HIDDEN_MATRIX);
     }
-    for (let i = n; i < this.incidentCapacity; i++) {
-      this.incidentMesh.setMatrixAt(i, HIDDEN_MATRIX);
+    for (const mesh of [this.incidentMesh, this.openMesh]) {
+      for (let i = n; i < this.incidentCapacity; i++) mesh.setMatrixAt(i, HIDDEN_MATRIX);
+      mesh.instanceMatrix.needsUpdate = true;
+      if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
     }
-    this.incidentMesh.instanceMatrix.needsUpdate = true;
-    if (this.incidentMesh.instanceColor) this.incidentMesh.instanceColor.needsUpdate = true;
   }
 }

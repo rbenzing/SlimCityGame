@@ -198,11 +198,11 @@ const KIND_SIZE: Record<VehicleKind, readonly [number, number, number]> = {
   [VehicleKind.Car]: [1.8, 1.5, 4.0],
   [VehicleKind.Truck]: [2.2, 2.6, 7.0],
   [VehicleKind.Bus]: [2.5, 3.0, 10.0],
-  [VehicleKind.Fire]: [2.5, 3.3, 10.0],
-  [VehicleKind.Police]: [1.9, 1.6, 5.0],
+  [VehicleKind.Fire]: [2.5, 3.0, 10.0],
+  [VehicleKind.Police]: [2.0, 1.76, 5.05],
   [VehicleKind.Ambulance]: [2.5, 2.7, 6.9],
-  [VehicleKind.Garbage]: [2.5, 3.2, 9.0],
-  [VehicleKind.Recycling]: [2.5, 3.2, 9.0],
+  [VehicleKind.Garbage]: [2.44, 3.5, 9.0],
+  [VehicleKind.Recycling]: [2.44, 3.5, 9.0],
   [VehicleKind.Hearse]: [1.9, 1.9, 6.2],
 };
 

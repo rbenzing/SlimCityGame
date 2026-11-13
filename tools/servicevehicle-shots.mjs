@@ -55,8 +55,7 @@ try {
   await page.waitForTimeout(3000);
 
   const hook = (fn, arg) => page.evaluate(fn, arg);
-  const cmd = (label, commands) =>
-    hook(([l, c]) => window.__slimcity.cmd(l, c), [label, commands]);
+  const cmd = (label, commands) => hook(([l, c]) => window.__slimcity.cmd(l, c), [label, commands]);
   const camera = tileCamera(page);
   const shot = async (name, settle = 1800) => {
     await page.waitForTimeout(settle);
@@ -121,8 +120,8 @@ try {
   for (const x of homesNorth) await place('res-low-1', x, Z - 2, 0);
   await page.waitForTimeout(1200);
 
-  const standing = await hook(() =>
-    window.__slimcity.readBuildings().filter((b) => b.catalogId === 'res-low-1').length,
+  const standing = await hook(
+    () => window.__slimcity.readBuildings().filter((b) => b.catalogId === 'res-low-1').length,
   );
   console.log('homes standing', standing);
   check(standing === 6, `homes missing (${standing} of 6)`);
@@ -164,17 +163,21 @@ try {
     await shot(`close-${order[i].toLowerCase()}`);
   }
 
-  // Incident pins over three homes: fire and medical unanswered, crime answered.
+  // Incident pins over three homes, each on its home's anchor tile (the lot's
+  // back corner, away from the street): fire and medical unanswered, crime
+  // answered. Incident tiles are whole numbers; the pin must still stand over
+  // the home's body, not over the tile.
   const pins = [
-    { kind: 'fire', x: X + 16.5, z: Z - 1.5, severity: 0.8, answered: false },
-    { kind: 'crime', x: X + 20.5, z: Z - 1.5, severity: 0.5, answered: true },
-    { kind: 'medical', x: X + 24.5, z: Z - 1.5, severity: 0.9, answered: false },
+    { kind: 'fire', x: X + 16, z: Z - 2, severity: 0.8, answered: false },
+    { kind: 'crime', x: X + 20, z: Z - 2, severity: 0.5, answered: true },
+    { kind: 'medical', x: X + 24, z: Z - 2, severity: 0.9, answered: false },
   ];
   await hook((p) => window.__slimcity.setIncidents(p), pins);
   await page.waitForTimeout(600);
   await camera(X + 20.5, Z - 1, 170, 0, 0.7);
   await shot('incident-pins');
-  await camera(X + 16.5, Z - 1.5, 40, 0, 0.7);
+  // An open call and an answered one side by side.
+  await camera(X + 18.5, Z - 1.5, 85, 0, 0.55);
   await shot('incident-pin-close');
 
   // The lineup again at night.

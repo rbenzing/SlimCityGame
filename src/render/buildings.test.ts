@@ -1227,6 +1227,60 @@ describe('plinth mode (UI-SPEC §6.15) — additive-only 4th constructor arg, de
     expect(() => instancer.apply({ added, removed: [], updated: [] })).not.toThrow();
     expect(instancer.instanceCount()).toBe(realCatalog.length);
   });
+
+  describe('roofAnchorOf (where a call pins its building)', () => {
+    const realCatalog = (catalogData as { buildings: BuildingCatalogEntry[] }).buildings;
+    const northRoad = (_x: number, z: number): boolean => z === 9;
+    const sampled = ['res', 'com', 'ind', 'service']
+      .flatMap((category) =>
+        realCatalog
+          .filter((e) => e.category === category && e.footprint.w !== e.footprint.d)
+          .slice(0, 2),
+      )
+      .concat(realCatalog.filter((e) => e.footprint.w * e.footprint.d >= 6).slice(0, 2));
+
+    it('samples multi-tile, non-square buildings', () => {
+      expect(sampled.length).toBeGreaterThanOrEqual(4);
+    });
+
+    for (const rotation of [0, 1, 2, 3] as const) {
+      it(`stands over the body it marks, inside its footprint, at rotation ${rotation}`, () => {
+        for (const entry of sampled) {
+          const instancer = new BuildingInstancer(
+            new THREE.Scene(),
+            [entry],
+            flatHeightAt,
+            undefined,
+            northRoad,
+          );
+          const building = instanceAt(1, 10, 10, { catalogId: entry.id, rotation });
+          instancer.apply({ added: [building], removed: [], updated: [] });
+          const anchor = instancer.roofAnchorOf(building)!;
+          expect(anchor, entry.id).not.toBeNull();
+
+          const lot =
+            rotation % 2 === 1 ? { w: entry.footprint.d, d: entry.footprint.w } : entry.footprint;
+          expect(anchor.x, entry.id).toBeGreaterThan(10 * TILE_METERS);
+          expect(anchor.x, entry.id).toBeLessThan((10 + lot.w) * TILE_METERS);
+          expect(anchor.z, entry.id).toBeGreaterThan(10 * TILE_METERS);
+          expect(anchor.z, entry.id).toBeLessThan((10 + lot.d) * TILE_METERS);
+
+          // It is the centre of the drawn body, not of the lot the body is slid within.
+          const mesh = instancer.getPickables()[0]!.mesh;
+          const { pos } = decomposeAt(mesh, 0);
+          // The matrix holds float32 metres.
+          expect(anchor.x, entry.id).toBeCloseTo(pos.x, 3);
+          expect(anchor.z, entry.id).toBeCloseTo(pos.z, 3);
+          expect(anchor.y, entry.id).toBeGreaterThan(0);
+        }
+      });
+    }
+
+    it('says nothing of a building whose catalog entry it does not hold', () => {
+      const instancer = new BuildingInstancer(new THREE.Scene(), [HOUSE], flatHeightAt);
+      expect(instancer.roofAnchorOf(instanceAt(1, 0, 0, { catalogId: 'ghost' }))).toBeNull();
+    });
+  });
 });
 
 describe('frontage parking setback — additive-only 5th constructor arg, default byte-identical', () => {
