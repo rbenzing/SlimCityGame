@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.86.1](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.86.0...slimcity-v1.86.1) (2026-11-13)
+
+
+### Bug Fixes
+
+* **ui:** panels state what the sim knows, and refusals say why ([b7fe450](https://github.com/rbenzing/SlimCityGame/commit/b7fe45079c6460291a226ffa9db6509c8ca2e25f))
+* **ui:** panels state what the sim knows, and refusals say why ([fa2f7b0](https://github.com/rbenzing/SlimCityGame/commit/fa2f7b013906c497690b7d23170f9c8310e47b07))
+
 ## [1.86.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.85.0...slimcity-v1.86.0) (2026-11-13)
 
 
