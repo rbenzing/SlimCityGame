@@ -1,5 +1,32 @@
 # Changelog
 
+## [1.87.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.86.1...slimcity-v1.87.0) (2026-11-13)
+
+
+### Features
+
+* **render:** a building site shows what is going up and how far it has got ([641e84b](https://github.com/rbenzing/SlimCityGame/commit/641e84b3bc4f42f8cf5c6c6010e92b8898629b7f))
+* **render:** a building site shows what is going up and how far it has got ([77ef912](https://github.com/rbenzing/SlimCityGame/commit/77ef91247c4d8b1131744f69f2d35be34c2aded2))
+
+
+### Bug Fixes
+
+* **render:** bus stop sign plate and set-back, depot fences, and the station's canopy and ramp ([5521588](https://github.com/rbenzing/SlimCityGame/commit/55215885f982bd02fc2a4b81dfafe316b2077016))
+* **render:** bus stop sign plate and set-back, depot fences, and the station's canopy and ramp ([35bafb6](https://github.com/rbenzing/SlimCityGame/commit/35bafb6b248be000fec057e3ca37fb5417f2f6e4))
+* **render:** one palette number is one colour, so roofs and fences stop reading black ([dace388](https://github.com/rbenzing/SlimCityGame/commit/dace388f51ac32d71f5ebd29dac515f8acf2b747))
+* **render:** one palette number is one colour, so roofs and fences stop reading black ([da5b859](https://github.com/rbenzing/SlimCityGame/commit/da5b85903ea85dab7a7282c0f267bf919cd40977))
+* **render:** park kits read as real parks ([6f0c6ac](https://github.com/rbenzing/SlimCityGame/commit/6f0c6aca762dd87bdb78a8f3cfbe1b51e7efe747))
+* **render:** park kits read as real parks ([1e3d489](https://github.com/rbenzing/SlimCityGame/commit/1e3d489a6c652537925ef75c42a032b8fd5e5e20))
+* **render:** service vehicles read by shape, and call pins stand over the building ([ec7be6e](https://github.com/rbenzing/SlimCityGame/commit/ec7be6e3035bf17acd7cf57a9fbeec9c77d98ef5))
+* **render:** service vehicles read by shape, and call pins stand over the building ([47b096a](https://github.com/rbenzing/SlimCityGame/commit/47b096a95020117d808e36a1fa8a33da644c0af4))
+* **roads:** a raised median is one kerbed island with a nose at each end ([1d7f998](https://github.com/rbenzing/SlimCityGame/commit/1d7f9986c31f8f029eaec3e2ddb5ded71d5603cf))
+* **roads:** a raised median is one kerbed island with a nose at each end ([995b54b](https://github.com/rbenzing/SlimCityGame/commit/995b54b6a752d6d814d3ccaa24f025cfe48bbe28))
+* **roads:** crosswalks stand outside the box, and a divided road is one intersection ([611049e](https://github.com/rbenzing/SlimCityGame/commit/611049ebec0ce91acdb35f0c5f34169b1a69315f))
+* **roads:** parking lanes are marked round driveways, with corner marks and whole stalls ([be58b97](https://github.com/rbenzing/SlimCityGame/commit/be58b97546d471bcb2318bdf627fe3104a2a83c9))
+* **roads:** parking lanes are marked round driveways, with corner marks and whole stalls ([89ba117](https://github.com/rbenzing/SlimCityGame/commit/89ba117f870ab2b22865fa1f750bcee386dc95f0))
+* **ui:** lens legends, a readable stats chart, panels that fit, and a HUD that holds at 360 px ([9fec451](https://github.com/rbenzing/SlimCityGame/commit/9fec45115b4894e271e3e6e6b53c9bdf4b6baecf))
+* **ui:** lens legends, a readable stats chart, panels that fit, and a HUD that holds at 360 px ([8e87dd4](https://github.com/rbenzing/SlimCityGame/commit/8e87dd4648a1edf605677e71c84f037170c298d2))
+
 ## [1.86.1](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.86.0...slimcity-v1.86.1) (2026-11-13)
 
 
