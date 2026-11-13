@@ -363,8 +363,13 @@ await step(
   { fresh: false },
 );
 await step('grown-on-the-line', async () => {
-  await dock('Turn off overlay');
+  // Escape clears the lens as its last stage, so it may already be off.
+  if (await dockButton('Turn off overlay').isEnabled()) await dock('Turn off overlay');
   await tidy();
+  check(
+    'the overlay is off before the town grows',
+    await dockButton('Turn off overlay').isDisabled(),
+  );
   await run(40);
   const g = await grid();
   check(
