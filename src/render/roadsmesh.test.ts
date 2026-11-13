@@ -1617,13 +1617,14 @@ describe('isAvenueMedianEligible (UI-SPEC §6.7 Roads v2)', () => {
 });
 
 describe('roadTileVertices — avenue median (UI-SPEC §6.7 Roads v2)', () => {
-  it('a straight avenue run carries a raised concrete-edged grass median; a corner and a junction do not', () => {
+  it('a straight avenue run and a corner carry a raised concrete-edged grass median; a junction does not', () => {
     const straight = roadTileVertices(0, 0, RoadTier.Avenue, N | S, flatHeightAt).colors;
     const corner = roadTileVertices(0, 0, RoadTier.Avenue, N | E, flatHeightAt).colors;
     const junction = roadTileVertices(0, 0, RoadTier.Avenue, N | E | S, flatHeightAt).colors;
     expect(countWhere(straight, isMedianGrass)).toBeGreaterThan(0);
     expect(countWhere(straight, isConcreteBand)).toBeGreaterThan(0);
-    expect(countWhere(corner, isMedianGrass)).toBe(0);
+    expect(countWhere(corner, isMedianGrass)).toBeGreaterThan(0);
+    expect(countWhere(corner, isConcreteBand)).toBeGreaterThan(0);
     expect(countWhere(junction, isMedianGrass)).toBe(0);
   });
 
@@ -1733,10 +1734,11 @@ describe('roadTileVertices — vertex count sanity per tile kind', () => {
   it('a lone tile of a divided road still carries its median — it is a run one tile long, not a bare patch', () => {
     const lone = roadTileVertices(0, 0, RoadTier.Avenue, 0, flatHeightAt);
     const run = roadTileVertices(0, 0, RoadTier.Avenue, E | W, flatHeightAt);
-    // The same median geometry a straight run of this road lays down.
-    const band = countWhere(run.colors, isConcreteBand);
-    expect(band).toBeGreaterThan(0);
-    expect(countWhere(lone.colors, isConcreteBand)).toBe(band);
+    // The same island a straight run of this road lays down, but a nose at each
+    // end of it, where the run goes on into the next tile.
+    expect(countWhere(run.colors, isConcreteBand)).toBeGreaterThan(0);
+    expect(countWhere(lone.colors, isConcreteBand)).toBeGreaterThan(0);
+    expect(countWhere(lone.colors, isMedianGrass)).toBeGreaterThan(0);
   });
 
   it('T-junction (mask N|E|S, popcount 3): the structural quad count matches the hand-derived total, plus non-zero marking geometry', () => {

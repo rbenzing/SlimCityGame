@@ -12,8 +12,7 @@ What two reviews of every screenshot the shot tools write found wrong in the gam
 ## Major: roads
 
 - Bus-lane and bike-lane paint ends square at every junction and bend, and the far side of a T loses the lane. The corner's painted edge arc sits inside the kerb return and leaves a bare wedge, a dead end leaves a bare crescent, and a bus lane takes no stop line. `[R-roads-065]` `[R-roads-046]` — `shots-roadmatrix/bus-lane-tee`, `bus-lane-straight-end`; `cornerRadius` against `kerbReturnFor` in `src/render/roadsmesh.ts`
-- An avenue's median is cut square at a bend, ends blunt at a width change and stops flat against the crosswalk at every junction, with no nose, its yellow lines stopping with it; a corridor's median gets a rounded nose. On the grid it is a hairline that becomes a wide strip where a bend's arc begins, one of its lines turning from white to yellow. `[R-roads-065]` — `shots-roadmatrix/avenue-turn`, `shots-conformity/twolane-x-avenue-box`, `shots-bends/grid-avenue-90-above`; `emitAvenueMedian` in `src/render/roadsmesh.ts`, the median ribbon in `src/render/freeroadmesh.ts`
-- Where an avenue becomes a one-way road the yellow lines cross, and a white line crosses them. `[R-roads-044]` — `shots-transitions/avenue-to-oneway`
+- A corridor's median nose keeps a footway-grey kerb where an avenue's is yellow, and is drawn by its own code, not the shared island. `[R-roads-084]` — `shots-corridor/corridor-top`
 - An alley carries a stop bar and a yellow stub and flares to twice its width; on an avenue it opens the median and takes stop lines, arrows and signals; at a street's dead end its lines run slanted across the whole street. `[R-roads-074]` — `shots-conformity/alley-t-twolane-box`, `alley-t-avenue-box`, `alley-corner-twolane-box`
 - A gravel arm funnels into a junction with a crosswalk and a stop line at its mouth, and gravel changes colour tile to tile. `[R-roads-044]` — `shots-roadmatrix/gravel-mixCross`
 - A one-way road's flow arrow is painted on the lane line between its two lanes. `[R-roads-069]` — `shots-oneway/arrow-northward`
@@ -64,7 +63,7 @@ What two reviews of every screenshot the shot tools write found wrong in the gam
 - Short white stubs lie beside the edge line where a road narrows. — `shots-transitions/fourlane-to-twolane-run`
 - A lamp's or a signal arm's shadow lies on the road as a jagged scribble; a vehicle's wheels are near-black boxes. — `shots-furniture/crossroads`
 - One two-lane street's broken centre line reads white, not yellow, beside a free curve. — `shots-curve/4b-grid-street-above`
-- A tree stands in a median; a boulder lies on a footway; bins stand on the grass.
+- Trees are planted in the avenue's 1.2 m median, narrower than a street tree's planting strip; a boulder lies on a footway; bins stand on the grass.
 - A solar farm's transformer hut straddles its fence.
 - Ploughed field patches have jagged edges; a house lot carries a skewed lawn wedge.
 - The landfill reads as loose tiles; a sports ground's stand and a park's shelter are plain grey blocks.

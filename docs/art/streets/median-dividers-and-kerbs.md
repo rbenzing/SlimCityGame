@@ -1,9 +1,20 @@
 # Median, dividers and kerbs
 
-- **Avenue median**: a straight avenue run carries a raised ~1.8 m centre
-  median — a concrete-tinted edge with a grass-green top — planted with a
-  simple deterministic tree (trunk plus canopy) roughly every second tile.
-  The median and its trees break at intersections and corners so turn paths
+- **Avenue median**: a raised kerbed island at the width its section gives
+  (1.2 m on the avenue preset; 1.8 m where a section names none), a concrete
+  kerb round a grass-green top, raised 0.15 m. It is one island wherever the
+  road runs: straight, round a bend on the road's own arc, and tapering over
+  half a tile where a neighbouring median is narrower `[R-roads-084]`. Where
+  it ends, at a junction, a dead end or a road with no median, it ends in a
+  rounded nose: a half-circle of its own half-width with a yellow kerb,
+  standing behind the stop line. The solid yellow lines either side of it
+  end where the nose begins. One function draws it for the grid and for
+  roads off it (`emitIsland` in `src/render/medianisland.ts`); drawn by two,
+  it was a hairline on the grid and a wide strip round a bend. The half-circle
+  nose is the convention for a narrow median; the geometric standard is the
+  AASHTO Green Book, which is not held here. It is planted with a
+  simple deterministic tree (trunk plus canopy) roughly every second tile,
+  and the trees break at intersections so turn paths
   stay clear, giving the tree-lined-boulevard read. A tree is planted only
   where the section has a median to plant it in: an avenue-sized road built
   without one plants none, rather than one in a running lane. A road laid as two

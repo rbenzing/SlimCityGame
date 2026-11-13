@@ -156,12 +156,24 @@ import type { TaperStep } from '../shared/taper';
 import type { ApproachAhead, AuxiliaryLane, RampMouth } from '../shared/approachzone';
 import {
   centrePair,
+  isMedianSideLine,
   markingPlan,
   PAINT_HALF_WIDTH_M,
   seamBetween,
   type MarkingLine,
   type MarkingPlan,
 } from './roadmarkings';
+import {
+  emitIsland,
+  MEDIAN_CONCRETE_COLOR,
+  MEDIAN_CONCRETE_EDGE_M,
+  MEDIAN_GRASS_COLOR,
+  MEDIAN_RAISE,
+  MEDIAN_WIDTH_M,
+  stationsAlong,
+  type IslandPath,
+  type Pt,
+} from './medianisland';
 import { approachingLanes, approachingSpan, travelLanes } from '../shared/travellanes';
 import {
   PARKING_TICK_KERB_CLEARANCE_M,
@@ -907,6 +919,12 @@ function emitAxisMarkings(
    * road. The edge lines run on to the corner.
    */
   laneEnd: { lo: number; hi: number } = { lo: 0, hi: 0 },
+  /**
+   * The lines running beside a raised median stop where its nose begins, and
+   * stay where they are rather than drifting toward a seam: the island they
+   * follow does not drift either.
+   */
+  median?: { is: (line: MarkingLine) => boolean; lo: number; hi: number },
 ): void {
   const pair = suppressCenterPair ? centrePair(plan) : null;
   const edges = [outermostLine(plan, 1), outermostLine(plan, -1)];
@@ -926,14 +944,18 @@ function emitAxisMarkings(
     if (line.parallelParkingEdge) return;
     const [atLo, atHi] = ends(line, i, 'solid');
     const lane = !edges.includes(line);
+    const besideMedian =
+      median !== undefined && median.is(line) && (median.lo > 0 || median.hi > 0);
     const spans: [number, number][] =
       gap && line === gapped && line.at * gap.side > 0
         ? [
             [lo, Math.max(lo, gap.from)],
             [Math.min(hi, gap.to), hi],
           ]
-        : [[lane ? lo + laneEnd.lo : lo, lane ? hi - laneEnd.hi : hi]];
-    const offsetAt = driftBetween(atLo, atHi, lo, hi);
+        : besideMedian
+          ? [[lo + median.lo, hi - median.hi]]
+          : [[lane ? lo + laneEnd.lo : lo, lane ? hi - laneEnd.hi : hi]];
+    const offsetAt = besideMedian ? () => line.at : driftBetween(atLo, atHi, lo, hi);
     for (const [a0, a1] of spans) {
       if (a1 <= a0) continue;
       pushMarkingRun(
@@ -2464,21 +2486,15 @@ function emitJunctionArmMarkings(
 // sidewalk/shoulder curb quad at a dead end.
 // ---------------------------------------------------------------------------
 
-/** What a median is drawn to when the section does not say — the old avenue's. */
-const MEDIAN_WIDTH_M = 1.8;
 const MEDIAN_HALF_WIDTH_M = MEDIAN_WIDTH_M / 2;
 
 /** Half the median a cross-section carries, or the default where it has none. */
-function medianHalfWidthOf(profile: RoadProfile): number {
+export function medianHalfWidthOf(profile: RoadProfile): number {
   const piece = profile.pieces.find((p) => p.kind === 'median');
   return piece ? piece.width / 2 : MEDIAN_HALF_WIDTH_M;
 }
-/** Concrete edge tint's width on each side of the median, before the grass top. */
-const MEDIAN_CONCRETE_EDGE_M = 0.15;
-export const MEDIAN_RAISE = 0.15;
+export { MEDIAN_RAISE, MEDIAN_GRASS_COLOR };
 const MEDIAN_Y_OFFSET = ROAD_Y_OFFSET + MEDIAN_RAISE;
-const MEDIAN_CONCRETE_COLOR: readonly [number, number, number] = [0.55, 0.55, 0.53];
-export const MEDIAN_GRASS_COLOR: readonly [number, number, number] = [0.28, 0.5, 0.26];
 
 /** Highway divider total width (low ~0.6m concrete barrier band). */
 const HIGHWAY_BARRIER_WIDTH_M = 0.6;
@@ -2784,6 +2800,11 @@ function emitCurvedMarkings(
   hasE: boolean,
   flow: number,
   hAt: (x: number, z: number) => number,
+  /**
+   * The lines along a raised median, which stop where its nose begins: this far
+   * round the arc from the N/S opening and from the E/W one, in metres.
+   */
+  median?: { is: (line: MarkingLine) => boolean; start: number; end: number },
 ): void {
   if (coreHalf <= 0 || armDepth <= 0) return;
   const pxSign = hasE ? 1 : -1;
@@ -2829,8 +2850,14 @@ function emitCurvedMarkings(
     const rA = r - PAINT_HALF_WIDTH_M;
     const rB = r + PAINT_HALF_WIDTH_M;
     const arcLen = r * (Math.PI / 2);
-    const segs = dashed ? dashSegments(0, arcLen) : [[0, arcLen] as [number, number]];
+    const trim = median !== undefined && !dashed && median.is(line);
+    const segs = dashed
+      ? dashSegments(0, arcLen)
+      : trim
+        ? [[(median.start / rMid) * r, arcLen - (median.end / rMid) * r] as [number, number]]
+        : [[0, arcLen] as [number, number]];
     for (const [s0, s1] of segs) {
+      if (s1 <= s0) continue;
       const steps = Math.max(1, Math.ceil((s1 - s0) / STEP_M));
       for (let k = 0; k < steps; k++) {
         const ta = (s0 + ((s1 - s0) * k) / steps) / r;
@@ -2844,6 +2871,60 @@ function emitCurvedMarkings(
   // On a curve the "across" direction is radial.
   for (const line of plan.solid) arcLine(line, false);
   for (const line of plan.dashed) arcLine(line, true);
+}
+
+/**
+ * The raised median round a TURN tile, on the arc the road's centre takes: the
+ * same island a straight tile draws, the same width and height, so the two
+ * meet with no step. `start` and `end` finish it at the N/S opening and at the
+ * E/W one, each as `emitAvenueMedian` does, with `tip` metres of the arc left
+ * to the junction paint beyond it.
+ */
+function emitCurvedMedian(
+  positions: number[],
+  colors: number[],
+  centerX: number,
+  centerZ: number,
+  coreHalf: number,
+  armDepth: number,
+  hasN: boolean,
+  hasE: boolean,
+  flow: number,
+  hAt: (x: number, z: number) => number,
+  halfWidth: number,
+  offset: number,
+  start: { end: MedianEnd; tip: number },
+  end: { end: MedianEnd; tip: number },
+): void {
+  if (coreHalf <= 0 || armDepth <= 0) return;
+  const pxSign = hasE ? 1 : -1;
+  const pzSign = hasN ? -1 : 1;
+  const pivotX = pxSign * TILE_HALF;
+  const pivotZ = pzSign * TILE_HALF;
+  const rMid = (armDepth + TILE_HALF + coreHalf) / 2;
+  const direction = flowDirection(flow);
+  const offsetsAlongX = direction === RoadFlow.North || direction === RoadFlow.South;
+  const outward = direction === RoadFlow.None ? 1 : offsetsAlongX ? -pxSign : -pzSign;
+  const nosed = (e: { end: MedianEnd }): number => (e.end.nose ? halfWidth : 0);
+  const t0 = (start.tip + nosed(start)) / rMid;
+  const t1 = Math.PI / 2 - (end.tip + nosed(end)) / rMid;
+  if (t1 - t0 <= 1e-6) return;
+  const steps = Math.max(2, Math.ceil(((t1 - t0) * rMid) / 0.6));
+  const angle = (k: number): number => t0 + ((t1 - t0) * k) / steps;
+  const path: IslandPath = {
+    count: steps + 1,
+    at: (k, across): Pt => {
+      const r = rMid + outward * (offset + across);
+      return [pivotX + r * -pxSign * Math.cos(angle(k)), pivotZ + r * -pzSign * Math.sin(angle(k))];
+    },
+    half: () => halfWidth,
+  };
+  emitIsland(
+    path,
+    { noseStart: start.end.nose, noseEnd: end.end.nose, noseColor: YELLOW_MARKING_COLOR },
+    (a, b, c, color) =>
+      pushGroundTri(positions, colors, centerX, centerZ, a, b, c, MEDIAN_Y_OFFSET, color, hAt),
+  );
 }
 
 /**
@@ -3865,51 +3946,50 @@ function emitAvenueMedian(
    * edge, and drawing it at the tile centre puts it in the running lanes.
    */
   offset = 0,
+  /**
+   * How each end finishes. `along` is tip to tip, so a nosed end spends the
+   * median's own half-width of it on the half-circle. An end that meets a
+   * median of another width tapers to the narrower of the two over half a tile.
+   */
+  ends: { lo: MedianEnd; hi: MedianEnd } = SQUARE_ENDS,
 ): void {
   const m = halfWidth;
-  const e = Math.min(MEDIAN_CONCRETE_EDGE_M, m / 2);
-  const lo = offset - m;
-  const hi = offset + m;
-  pushCenterBand(
-    positions,
-    colors,
-    centerX,
-    centerZ,
-    vertical,
-    lo,
-    lo + e,
-    along,
-    MEDIAN_Y_OFFSET,
-    MEDIAN_CONCRETE_COLOR,
-    hAt,
-  );
-  pushCenterBand(
-    positions,
-    colors,
-    centerX,
-    centerZ,
-    vertical,
-    hi - e,
-    hi,
-    along,
-    MEDIAN_Y_OFFSET,
-    MEDIAN_CONCRETE_COLOR,
-    hAt,
-  );
-  pushCenterBand(
-    positions,
-    colors,
-    centerX,
-    centerZ,
-    vertical,
-    lo + e,
-    hi - e,
-    along,
-    MEDIAN_Y_OFFSET,
-    MEDIAN_GRASS_COLOR,
-    hAt,
+  const first = along.lo + (ends.lo.nose ? m : 0);
+  const last = along.hi - (ends.hi.nose ? m : 0);
+  if (last - first < 1e-6) return;
+  const stations = stationsAlong(first, last);
+  const taper = (a: number): number => {
+    let half = m;
+    for (const [end, dist] of [
+      [ends.lo, a - along.lo],
+      [ends.hi, along.hi - a],
+    ] as const) {
+      if (end.nose || end.seamHalf === undefined || end.seamHalf >= m) continue;
+      const share = Math.max(0, 1 - dist / TILE_HALF);
+      half = Math.min(half, m - (m - end.seamHalf) * share);
+    }
+    return half;
+  };
+  const path: IslandPath = {
+    count: stations.length,
+    at: (k, across): Pt =>
+      vertical ? [offset + across, stations[k]!] : [stations[k]!, offset + across],
+    half: (k) => taper(stations[k]!),
+  };
+  emitIsland(
+    path,
+    { noseStart: ends.lo.nose, noseEnd: ends.hi.nose, noseColor: YELLOW_MARKING_COLOR },
+    (a, b, c, color) =>
+      pushGroundTri(positions, colors, centerX, centerZ, a, b, c, MEDIAN_Y_OFFSET, color, hAt),
   );
 }
+
+/** How one end of a median finishes: a rounded nose, or on into a median of `seamHalf`. */
+interface MedianEnd {
+  nose: boolean;
+  seamHalf?: number;
+}
+const SQUARE_ENDS: { lo: MedianEnd; hi: MedianEnd } = { lo: { nose: false }, hi: { nose: false } };
 
 // --- Mini roundabout ---------------------------------------------------------
 // One tile is 20 m, which by inscribed-circle diameter is a MINI roundabout —
@@ -4654,6 +4734,13 @@ export interface NeighborHalves {
    */
   junctions?: { n: boolean; e: boolean; s: boolean; w: boolean };
   /**
+   * Half the width of the raised median each neighbour's road carries, zero
+   * where it carries none. It decides whether this tile's median runs on into
+   * the neighbour or ends in a nose, and where one tapers to meet another.
+   * Omitted, a neighbour's median is the same as this tile's own.
+   */
+  medians?: { n: number; e: number; s: number; w: number };
+  /**
    * The side this tile's corridor partner lies on where the median is open:
    * the street crossing joins the two halves, and what lies between them is a
    * gap in the median rather than an arm. Omitted, no side is.
@@ -5190,6 +5277,37 @@ export function roadTileVertices(
     return half;
   };
 
+  const medianHalf = medianHalfWidthOf(crossSection);
+  /** The solid yellow lines that run along each side of the median. */
+  const besideMedian = (line: MarkingLine): boolean =>
+    isMedianSideLine(line, medianOffsetOf(crossSection), medianHalf);
+  /**
+   * How this tile's median finishes toward the neighbour on `side`: on into a
+   * median, tapering to meet a narrower one, or in a nose — at a dead end, at
+   * a road with no median, or behind the crossing of a junction. `tip` is how
+   * far in from the run's end the nose's tip stands; `lineEnd` how far in the
+   * lines beside the island stop, where the nose begins. Half of a corridor
+   * keeps its own ends, which its footways round.
+   */
+  const medianEnd = (
+    side: ArmSide,
+    connected: boolean,
+  ): { end: MedianEnd; tip: number; lineEnd: number } => {
+    const open = { end: { nose: false }, tip: 0, lineEnd: 0 };
+    if (crossSection.seam || Math.abs(medianOffsetOf(crossSection)) > 1e-6) return open;
+    if (!connected) return { end: { nose: true }, tip: 0, lineEnd: medianHalf };
+    const beside = neighborHalves.medians?.[side];
+    const toJunction = neighborHalves.junctions?.[side] === true;
+    if (toJunction || beside === 0) {
+      const tip = toJunction ? (neighborHalves.reach?.[side] ?? 0) : 0;
+      return { end: { nose: true }, tip, lineEnd: tip + medianHalf };
+    }
+    if (beside !== undefined && Math.abs(beside - medianHalf) > 1e-6) {
+      return { end: { nose: false, seamHalf: beside }, tip: 0, lineEnd: 0 };
+    }
+    return open;
+  };
+
   // A TURN tile (exactly 2 adjacent connections) is a curved quarter-annulus
   // road; every other shape (straight run, dead end, junction) is the
   // rectangular core + extensions + corner-fills + straight sidewalks below.
@@ -5223,7 +5341,32 @@ export function roadTileVertices(
       hasE,
       flow,
       hAt,
+      plan.hasMedian && !crossSection.seam
+        ? {
+            is: besideMedian,
+            start: medianEnd(hasN ? 'n' : 's', true).lineEnd,
+            end: medianEnd(hasE ? 'e' : 'w', true).lineEnd,
+          }
+        : undefined,
     );
+    if (plan.hasMedian && !crossSection.seam) {
+      emitCurvedMedian(
+        positions,
+        colors,
+        centerX,
+        centerZ,
+        coreHalf,
+        armDepth,
+        hasN,
+        hasE,
+        flow,
+        hAt,
+        medianHalf,
+        medianOffsetOf(crossSection),
+        medianEnd(hasN ? 'n' : 's', true),
+        medianEnd(hasE ? 'e' : 'w', true),
+      );
+    }
   }
 
   // A merge or a diverge that changes width lays its motorway the same way, and
@@ -5879,6 +6022,13 @@ export function roadTileVertices(
             lo: hasN ? (neighborHalves.reach?.n ?? 0) : 0,
             hi: hasS ? (neighborHalves.reach?.s ?? 0) : 0,
           },
+          medianEligible
+            ? {
+                is: besideMedian,
+                lo: medianEnd('n', hasN).lineEnd,
+                hi: medianEnd('s', hasS).lineEnd,
+              }
+            : undefined,
         );
         if (plan.bands.length > 0)
           emitColoredLaneBands(
@@ -5931,6 +6081,13 @@ export function roadTileVertices(
             lo: hasW ? (neighborHalves.reach?.w ?? 0) : 0,
             hi: hasE ? (neighborHalves.reach?.e ?? 0) : 0,
           },
+          medianEligible
+            ? {
+                is: besideMedian,
+                lo: medianEnd('w', hasW).lineEnd,
+                hi: medianEnd('e', hasE).lineEnd,
+              }
+            : undefined,
         );
         if (plan.bands.length > 0)
           emitColoredLaneBands(
@@ -6360,19 +6517,22 @@ export function roadTileVertices(
     const vertical = hasVertical;
     const lo = vertical ? (hasN ? -TILE_HALF : -coreHalf) : hasW ? -TILE_HALF : -coreHalf;
     const hi = vertical ? (hasS ? TILE_HALF : coreHalf) : hasE ? TILE_HALF : coreHalf;
-    if (medianEligible)
+    if (medianEligible) {
+      const atLo = medianEnd(vertical ? 'n' : 'w', vertical ? hasN : hasW);
+      const atHi = medianEnd(vertical ? 's' : 'e', vertical ? hasS : hasE);
       emitAvenueMedian(
         positions,
         colors,
         centerX,
         centerZ,
         vertical,
-        { lo, hi },
+        { lo: lo + atLo.tip, hi: hi - atHi.tip },
         hAt,
-        medianHalfWidthOf(crossSection),
+        medianHalf,
         medianOffsetOf(crossSection),
+        { lo: atLo.end, hi: atHi.end },
       );
-    else emitHighwayDivider(positions, colors, centerX, centerZ, vertical, { lo, hi }, hAt);
+    } else emitHighwayDivider(positions, colors, centerX, centerZ, vertical, { lo, hi }, hAt);
   }
   // A reservation is the guideway's column line, kerbed as a median over its
   // own span and broken where the median would be: at corners and junctions.
@@ -7145,6 +7305,17 @@ export class RoadMeshRenderer {
     return carriagewayHalfWidthOf(this.overProfileOf(over));
   }
 
+  /** Half the width of the raised median the road met along `axis` at (x, z) carries; zero where it carries none. */
+  private medianHalfAlong(x: number, z: number, axis: 'x' | 'z'): number {
+    const over = overAlong(x, z, axis, this.surroundings);
+    const tier = this.tierAlong(x, z, axis);
+    const profile = over
+      ? this.overProfileOf(over)
+      : (this.profileAt(x, z) ?? (tier === RoadTier.None ? null : presetProfileForTier(tier)));
+    const piece = profile?.pieces.find((p) => p.kind === 'median');
+    return piece ? piece.width / 2 : 0;
+  }
+
   /** Whether the road met along `axis` at (x, z) is a junction an arriving road meets. */
   private junctionAlong(x: number, z: number, axis: 'x' | 'z'): boolean {
     return junctionAlong(x, z, axis, this.surroundings);
@@ -7772,6 +7943,12 @@ export class RoadMeshRenderer {
             e: this.walkableAlong(tile.x + 1, tile.z, 'x'),
             s: this.walkableAlong(tile.x, tile.z + 1, 'z'),
             w: this.walkableAlong(tile.x - 1, tile.z, 'x'),
+          },
+          medians: {
+            n: this.medianHalfAlong(tile.x, tile.z - 1, 'z'),
+            e: this.medianHalfAlong(tile.x + 1, tile.z, 'x'),
+            s: this.medianHalfAlong(tile.x, tile.z + 1, 'z'),
+            w: this.medianHalfAlong(tile.x - 1, tile.z, 'x'),
           },
           junctions: {
             n: this.junctionAlong(tile.x, tile.z - 1, 'z'),
