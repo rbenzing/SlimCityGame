@@ -922,6 +922,8 @@ export interface BuildingInstance {
   problems: number; // Problem bit-flags
   /** Residents the building has lost and not had replaced, 0..catalog residents; absent is 0 (full). */
   vacancies?: number;
+  /** While under construction, the share done, 0..1 in steps of a twentieth; absent is 0, and absent once built. */
+  progress?: number;
   /**
    * The parcel's frame where the building stands on a curved street; absent
    * on a grid lot. A framed building has rotation 0, and `x, z` is the min
@@ -1253,6 +1255,8 @@ export type MainToWorker =
   | { type: 'setSpeed'; speed: SimSpeed }
   /** Dev builds only: holds every construction countdown where it is until released. The worker ignores it in production. */
   | { type: 'devHoldConstruction'; hold: boolean }
+  /** Dev builds only: sets every building under construction to this share done (0..1). The worker ignores it in production. */
+  | { type: 'devConstructionProgress'; progress: number }
   | { type: 'requestField'; field: FieldId }
   | { type: 'requestSave' }
   | { type: 'loadSave'; data: ArrayBuffer }

@@ -4,6 +4,8 @@ import { MeshStandardNodeMaterial } from 'three/webgpu';
 import {
   BuildingInstancer,
   COOL_WINDOW_COLOR,
+  SITE_TRACE_SCALE as TRACE,
+  SITE_TRACE_SINK_M,
   isBuildingLitEligible,
   isRowHouseArchetype,
   isWindowCool,
@@ -215,7 +217,7 @@ describe('BuildingInstancer', () => {
     },
   );
 
-  it('scales Constructing buildings to 25% height and tints them grey', () => {
+  it('flattens Constructing buildings to a trace under their site and tints them grey', () => {
     const instancer = new BuildingInstancer(new THREE.Scene(), CATALOG, flatHeightAt);
     instancer.apply({
       added: [instanceAt(1, 0, 0, { state: BuildingState.Constructing })],
@@ -224,14 +226,32 @@ describe('BuildingInstancer', () => {
     });
     const mesh = instancer.getPickables()[0]?.mesh as THREE.InstancedMesh;
     const { pos, scl } = decomposeAt(mesh, 0);
-    expect(scl.y).toBeCloseTo(10 * 0.25, 5);
-    expect(pos.y).toBeCloseTo((10 * 0.25) / 2, 5);
+    expect(scl.y).toBeCloseTo(10 * TRACE, 5);
+    // Sunk clear of the earth pad a site lays 8 cm above the ground, so nothing of it shows.
+    expect(pos.y).toBeCloseTo((10 * TRACE) / 2 - SITE_TRACE_SINK_M, 5);
+    expect(pos.y + scl.y / 2).toBeLessThan(0);
 
     const color = new THREE.Color();
     mesh.getColorAt(0, color);
     expect(color.r).toBeCloseTo(0.55, 5);
     expect(color.g).toBeCloseTo(0.55, 5);
     expect(color.b).toBeCloseTo(0.55, 5);
+  });
+
+  it('hands the site renderer the body a building will have, its lot and where it stands', () => {
+    const instancer = new BuildingInstancer(new THREE.Scene(), CATALOG, flatHeightAt);
+    const site = instancer.siteBodyOf(instanceAt(1, 2, 3, { state: BuildingState.Constructing }));
+    expect(site).not.toBeNull();
+    const top = Math.max(...site!.boxes.map((b) => b.yOffset + b.h));
+    expect(top).toBeCloseTo(10, 5);
+    expect(site!.lot).toEqual({
+      x0: 2 * TILE_METERS,
+      z0: 3 * TILE_METERS,
+      x1: 3 * TILE_METERS,
+      z1: 4 * TILE_METERS,
+    });
+    expect(site!.seat.groundY).toBe(0);
+    expect(instancer.siteBodyOf(instanceAt(2, 0, 0, { catalogId: 'no-such-entry' }))).toBeNull();
   });
 
   it('tints Abandoned buildings dark and leaves Active-with-problems untinted', () => {
@@ -971,7 +991,7 @@ describe('day facade (UI-SPEC §6.6 Stage 1) — extends the §6.5 material, no 
     const industrialMesh = instancer.getPickables().find((p) => p.catalogId === INDUSTRIAL.id)
       ?.mesh as THREE.InstancedMesh;
     const { scl: industrialScale } = decomposeAt(industrialMesh, 0);
-    expect(industrialScale.y).toBeCloseTo(INDUSTRIAL.height * 0.25, 5); // Constructing scale unchanged
+    expect(industrialScale.y).toBeCloseTo(INDUSTRIAL.height * TRACE, 5);
 
     const towerMesh = instancer.getPickables().find((p) => p.catalogId === GLASS_RES_TOWER.id)
       ?.mesh as THREE.InstancedMesh;
@@ -1163,7 +1183,7 @@ describe('plinth mode (UI-SPEC §6.15) — additive-only 4th constructor arg, de
     const mesh = instancer.getPickables().find((p) => p.catalogId === UTILITY_ENTRY.id)
       ?.mesh as THREE.InstancedMesh;
     const { scl } = decomposeAt(mesh, 0);
-    expect(scl.y).toBeCloseTo(PLINTH_TOP * 0.25, 5); // PLINTH_PAD_HEIGHT × Constructing scale
+    expect(scl.y).toBeCloseTo(PLINTH_TOP * TRACE, 5); // PLINTH_PAD_HEIGHT × Constructing scale
   });
 
   it('gives plinth-designated entries a PLAIN material with no emissive/window graph at all', () => {
@@ -1511,8 +1531,11 @@ describe('BuildingInstancer draws a grown building as its stacked tiers', () => 
     const { boxes } = computeSetbacks(STEPPED, 1);
     for (let tier = 0; tier < 3; tier++) {
       const { pos, scl } = decomposeAt(mesh, tier);
-      expect(scl.y).toBeCloseTo(boxes[tier]!.h * 0.25, 5);
-      expect(pos.y).toBeCloseTo((boxes[tier]!.yOffset + boxes[tier]!.h / 2) * 0.25, 5);
+      expect(scl.y).toBeCloseTo(boxes[tier]!.h * TRACE, 5);
+      expect(pos.y).toBeCloseTo(
+        (boxes[tier]!.yOffset + boxes[tier]!.h / 2) * TRACE - SITE_TRACE_SINK_M,
+        5,
+      );
       expect(instancer.activeAt('stepped', tier)).toBe(0);
     }
     const color = new THREE.Color();

@@ -45,6 +45,11 @@ standing is sent as removed only, one added and removed again before the
 snapshot is not sent as added, and an id removed and standing again (only a
 `loadSave` reuses an id) is sent as updated.
 
+A building under construction is also sent as updated when its drawn stage
+changes, carrying `progress` (0 to 1): at most eight times a building. The
+main thread hands an update that changes only `progress` to the site
+renderer and takes it out of the delta before anything else reads it.
+
 `junctions[i].laneTurns` is itself conditional a second time: it is present
 only when at least one of that junction's four arms has a non-zero packed
 lane value — "nearly every junction in the city," per the worker's own

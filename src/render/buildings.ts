@@ -35,6 +35,8 @@ import {
 import { NIGHT_WINDOW_LIT_MAX, NIGHT_WINDOW_LIT_MIN, TILE_METERS } from '../shared/constants';
 import { footprintForRotation } from '../shared/footprint';
 import { encodeId, buildIdColorArray } from './picking';
+import { lotBounds } from './lots';
+import type { SiteBody } from './sites';
 import {
   bodyMetresFor,
   computeSetbacks,
@@ -91,8 +93,15 @@ import {
 import { PLINTH_TOP } from './plotground';
 
 const INITIAL_CAPACITY = 64;
-/** Constructing buildings render at this fraction of their final height. */
+/** A farm's barn under construction renders at this fraction of its final height. */
 const CONSTRUCTING_HEIGHT_SCALE = 0.25;
+/**
+ * Any other body under construction is a flat trace of this fraction of its
+ * height, sunk below its seat: it stays to be picked and outlined and is
+ * never seen, the site (sites.ts) being what shows.
+ */
+export const SITE_TRACE_SCALE = 0.001;
+export const SITE_TRACE_SINK_M = 0.5;
 /**
  * Catalog ids whose visual identity comes from a utilitykits.ts detail kit
  * render their footprint as a thin ground PAD (a paved lot the kit sits on),
@@ -995,6 +1004,21 @@ export class BuildingInstancer {
     return computeSetbacks(entry, instance.id, frontage).boxes;
   }
 
+  /**
+   * The body a building will have and where it stands, for the site drawn
+   * while it goes up; null for a farm or a kit-carried plinth, which have no
+   * stacked body to frame, and for an unknown catalog id.
+   */
+  siteBodyOf(instance: BuildingInstance): SiteBody | null {
+    const entry = this.buckets.get(instance.catalogId)?.entry;
+    if (!entry || planFarm(instance, entry, this.dirtAt) || this.plinthIds.has(entry.id)) {
+      return null;
+    }
+    const boxes = this.boxesFor(entry, instance);
+    const seat = this.seatFor(entry, instance, boxes[0]!);
+    return { boxes, seat, lot: instance.frame ? null : lotBounds(instance, entry) };
+  }
+
   private frontageOf(entry: BuildingCatalogEntry, instance: BuildingInstance): FrontageSetback {
     return frontageSetbackFor(
       entry,
@@ -1033,8 +1057,7 @@ export class BuildingInstancer {
     instance: BuildingInstance,
   ): void {
     const entry = bucket.entry;
-    const heightScale =
-      instance.state === BuildingState.Constructing ? CONSTRUCTING_HEIGHT_SCALE : 1;
+    const constructing = instance.state === BuildingState.Constructing;
     const farm = planFarm(instance, entry, this.dirtAt);
     if (farm) {
       this.writeBarn(
@@ -1042,10 +1065,13 @@ export class BuildingInstancer {
         slots[0]!,
         instance,
         farm.barn,
-        entry.height * BARN_EAVE_SHARE * heightScale,
+        entry.height * BARN_EAVE_SHARE * (constructing ? CONSTRUCTING_HEIGHT_SCALE : 1),
       );
       return;
     }
+    // Any other body under construction is a flat trace under its site (sites.ts),
+    // there to be picked and outlined, never seen.
+    const heightScale = constructing ? SITE_TRACE_SCALE : 1;
     // Plinth-designated ids collapse to a low slab (picking/outline/bulldoze
     // keep working through this same instancer path) while utilitykits.ts
     // carries the real visual identity beside it.
@@ -1135,7 +1161,8 @@ export class BuildingInstancer {
   ): void {
     const { centerX, centerZ, groundY, yaw } = seat;
     const h = box.h * heightScale;
-    _position.set(centerX, groundY + box.yOffset * heightScale + h / 2, centerZ);
+    const sink = instance.state === BuildingState.Constructing ? SITE_TRACE_SINK_M : 0;
+    _position.set(centerX, groundY + box.yOffset * heightScale + h / 2 - sink, centerZ);
     _quaternion.setFromAxisAngle(_yAxis, yaw);
     _scale.set(box.w, h, box.d);
     _matrix.compose(_position, _quaternion, _scale);

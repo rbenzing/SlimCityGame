@@ -626,29 +626,25 @@ describe('RoofPropRenderer', () => {
     expect(renderer.instanceCount('ac')).toBe(before);
   });
 
-  it('Constructing buildings sit at the height-scaled (0.25x) roof level', () => {
+  it('Constructing buildings carry no roof props until they are built', () => {
     const scene = new THREE.Scene();
     const e = entry({ footprint: { w: 1, d: 1 }, height: 20, level: 1 });
-    const activeRenderer = new RoofPropRenderer(scene, flatHeightAt, [e]);
-    activeRenderer.apply(deltaAdd(building({ id: 1, state: BuildingState.Active })));
-
-    const scene2 = new THREE.Scene();
-    const constructingRenderer = new RoofPropRenderer(scene2, flatHeightAt, [e]);
-    constructingRenderer.apply(deltaAdd(building({ id: 1, state: BuildingState.Constructing })));
-
-    const activeSlot = activeRenderer.slotsFor(1, 'ac')[0]!;
-    const constructingSlot = constructingRenderer.slotsFor(1, 'ac')[0]!;
-    const m1 = new THREE.Matrix4();
-    const m2 = new THREE.Matrix4();
-    activeRenderer.getMatrix('ac', activeSlot, m1);
-    constructingRenderer.getMatrix('ac', constructingSlot, m2);
+    const renderer = new RoofPropRenderer(scene, flatHeightAt, [e]);
+    renderer.apply(deltaAdd(building({ id: 1, state: BuildingState.Constructing })));
+    expect(renderer.slotsFor(1, 'ac')).toHaveLength(0);
+    expect(renderer.slotsFor(1, 'vent')).toHaveLength(0);
 
     const { boxes } = computeSetbacks(e, 1);
     const topBox = boxes[boxes.length - 1]!;
-    const activeY = decompose(m1).pos.y;
-    const constructingY = decompose(m2).pos.y;
-    expect(activeY).toBeCloseTo(topBox.yOffset + topBox.h, 4);
-    expect(constructingY).toBeCloseTo((topBox.yOffset + topBox.h) * 0.25, 4);
+    renderer.apply({
+      added: [],
+      updated: [building({ id: 1, state: BuildingState.Active })],
+      removed: [],
+    });
+    const slot = renderer.slotsFor(1, 'ac')[0]!;
+    const m = new THREE.Matrix4();
+    renderer.getMatrix('ac', slot, m);
+    expect(decompose(m).pos.y).toBeCloseTo(topBox.yOffset + topBox.h, 4);
   });
 
   it('setNightFactor drives warningLightEmissiveIntensity, clamped to [0,1], defaulting to 0', () => {

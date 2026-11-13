@@ -15,6 +15,6 @@ this file covers the window geometry and the day-side facade only.
 | [Residential kinds](residential-kinds/README.md) | 27,961 B |
 | [Commercial kinds](commercial-kinds/README.md) | 19,034 B |
 | [Industrial kinds](industrial-kinds/README.md) | 18,492 B |
-| [Residential lots](residential-lots.md) | 5,643 B |
-| [Construction and abandonment](construction-and-abandonment.md) | 536 B |
+| [Residential lots](residential-lots.md) | 5,748 B |
+| [Construction and abandonment](construction-and-abandonment.md) | 2,780 B |
 | [Deferred](deferred.md) | 654 B |

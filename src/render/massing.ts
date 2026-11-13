@@ -384,9 +384,6 @@ export function massingLifecycleTint(state: BuildingState): readonly [number, nu
   return TINT_ACTIVE;
 }
 
-/** Mirrors buildings.ts's CONSTRUCTING_HEIGHT_SCALE so overlaid tiers/props shrink in lockstep with the base box. */
-export const CONSTRUCTING_MASSING_HEIGHT_SCALE = 0.25;
-
 // ---------------------------------------------------------------------------
 // InstancedSlotPool: generic capacity-doubling instanced-mesh slot allocator.
 // Reused by MassingRenderer (below) and props.ts's several prop layers.
@@ -625,10 +622,10 @@ export class MassingRenderer {
     // building's own facade; only the podium is left to draw here.
     const tiers = podium ? [podium] : [];
     if (tiers.length === 0) return;
+    // A body going up shows only its site (sites.ts), so it has no podium yet.
+    if (building.state === BuildingState.Constructing) return;
     const base = boxes[0]!;
 
-    const heightScale =
-      building.state === BuildingState.Constructing ? CONSTRUCTING_MASSING_HEIGHT_SCALE : 1;
     const tint = massingLifecycleTint(building.state);
     const { wallColor } = deriveFacadeParams(entry, building.id);
     const podiumColor = entry.kind === 'midrise' ? MIDRISE_PODIUM_COLOR : wallColor;
@@ -651,11 +648,9 @@ export class MassingRenderer {
     for (const box of tiers) {
       const slot = this.pool.allocate();
 
-      const scaledYOffset = box.yOffset * heightScale;
-      const scaledH = box.h * heightScale;
-      _position.set(centerX, groundY + scaledYOffset + scaledH / 2, centerZ);
+      _position.set(centerX, groundY + box.yOffset + box.h / 2, centerZ);
       _quaternion.setFromAxisAngle(_yAxis, building.rotation * (Math.PI / 2));
-      _scale.set(box.w, scaledH, box.d);
+      _scale.set(box.w, box.h, box.d);
       _matrix.compose(_position, _quaternion, _scale);
       this.pool.setMatrixAt(slot, _matrix);
 

@@ -33,7 +33,6 @@ import { NO_STREETS } from './frontage';
 import type { KerbSurroundings } from '../shared/kerblayout';
 import {
   computeSetbacks,
-  CONSTRUCTING_MASSING_HEIGHT_SCALE,
   DEFAULT_BODY_M_PER_TILE,
   frontageSetbackFor,
   InstancedSlotPool,
@@ -535,6 +534,8 @@ export class RoofPropRenderer {
     // and an apartment block's roof is its kit's: a hip, or units, a bulkhead
     // or a penthouse placed by the kit.
     if (isHouseEntry(entry) || isFarmEntry(entry) || isApartmentEntry(entry)) return;
+    // A building going up has no roof to carry anything yet.
+    if (building.state === BuildingState.Constructing) return;
 
     // Same frontage setback as the body renderers so com/ind rooftop clutter
     // stays on the set-back roof instead of floating over the parking bays.
@@ -551,8 +552,6 @@ export class RoofPropRenderer {
     const topBox = boxes[boxes.length - 1]!;
     const { floors } = deriveFacadeParams(entry, building.id);
 
-    const heightScale =
-      building.state === BuildingState.Constructing ? CONSTRUCTING_MASSING_HEIGHT_SCALE : 1;
     const tint = massingLifecycleTint(building.state);
 
     const lot = footprintForRotation(entry, building.rotation);
@@ -568,7 +567,7 @@ export class RoofPropRenderer {
       boxes[0]!.d,
       building.rotation,
     );
-    const roofY = groundY + (topBox.yOffset + topBox.h) * heightScale;
+    const roofY = groundY + topBox.yOffset + topBox.h;
 
     const slots = emptySlots();
 

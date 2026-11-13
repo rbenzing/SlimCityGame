@@ -295,6 +295,10 @@ try {
   await setTool('select');
 
   // --- let it grow --------------------------------------------------------------
+  // CURVE_CONSTRUCTION=1: hold every build where it is and shoot a parcel on the bend at each
+  // stage of its going up (the fence takes its own path round a turned parcel), then stop.
+  const siteShots = process.env.CURVE_CONSTRUCTION === '1';
+  if (siteShots) await call(() => window.__slimcity.holdConstruction(true));
   await setSpeed(4);
   let framed = [];
   // The shops are zoned once the works' jobs give the town room for more than
@@ -324,10 +328,26 @@ try {
       console.log('poll', i, 'homes', grown, 'framed', framed.length, 'shops', shops, 'walk-ups', walkUps);
     }
     const strips = framed.filter((bl) => isShop(bl) && widthOf(bl.catalogId) >= 2).length;
+    if (siteShots && framed.length >= 3) break;
     if (framed.length >= 10 && grown >= 16 && shops >= 2 && walkUps >= 1 && strips >= 1) break;
   }
   await setSpeed(0);
   await page.waitForTimeout(800);
+  if (siteShots) {
+    const site = framed[0];
+    if (!site) throw new Error('no framed building grew on the bend');
+    const f = site.frame;
+    const at = { x: f.x / T - 0.5, z: f.z / T - 0.5 };
+    console.log('site', site.catalogId, JSON.stringify(f));
+    for (const [name, progress] of [['earth', 0.05], ['foundation', 0.2], ['frame', 0.5], ['enclosed', 0.9]]) {
+      await call((p) => window.__slimcity.constructionProgress(p), progress);
+      // A paused sim posts a snapshot only when a command lands.
+      await cmd('Progress', [{ kind: 'setUnlimitedMoney', on: true }]);
+      await cam(at.x + 1, at.z + 1, 90, f.heading + Math.PI / 2, 0.8);
+      await shot(`site-${name}`, 1500);
+    }
+    process.exit(0);
+  }
   const s = await stats();
   console.log(
     'population',

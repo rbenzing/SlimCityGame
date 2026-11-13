@@ -341,7 +341,12 @@ describe('GrowthSystem', () => {
     for (let t = 1; t < 100; t++) {
       const delta = growth.tick(g, registry, fullResDemand, 0, t);
       expect(registry.get(id)!.state).toBe(BuildingState.Constructing);
-      expect(delta.updated.some((b) => b.id === id)).toBe(false);
+      // Only a step of progress is ever reported while it goes up, never a state change.
+      for (const b of delta.updated.filter((u) => u.id === id)) {
+        expect(b.state).toBe(BuildingState.Constructing);
+        expect(b.progress).toBeGreaterThan(0);
+        expect(b.progress).toBeLessThan(1);
+      }
     }
 
     const finishDelta = growth.tick(g, registry, fullResDemand, 0, 100);
@@ -377,6 +382,47 @@ describe('GrowthSystem', () => {
       for (let t = 401; t < 460; t++) growth.tick(g, registry, fullResDemand, 0, t);
       expect(registry.get(id)!.state).toBe(BuildingState.Constructing);
       growth.tick(g, registry, fullResDemand, 0, 460);
+      expect(registry.get(id)!.state).toBe(BuildingState.Active);
+    });
+
+    it('reports how far a building has got, a step at a time, and drops it when it finishes', () => {
+      const g = makeGrid();
+      serviceTile(g, 0, 0, ZoneType.ResLow);
+      const registry = new BuildingRegistry(growthCatalog);
+      const growth = new GrowthSystem(growthCatalog, constantRng(0), alwaysTrue);
+      const placed = growth.tick(g, registry, fullResDemand, 0, 0).added[0]!;
+      expect(placed.progress ?? 0).toBe(0);
+      const seen: number[] = [];
+      for (let t = 1; t <= 100; t++) {
+        const delta = growth.tick(g, registry, fullResDemand, 0, t);
+        for (const u of delta.updated) {
+          if (u.id === placed.id && u.progress !== undefined) seen.push(u.progress);
+        }
+      }
+      // Only where the drawn site changes: the three stage boundaries and the frame's lifts,
+      // never one a tick (at most 3 + 5 for the tallest).
+      expect(seen.length).toBeGreaterThanOrEqual(3);
+      expect(seen.length).toBeLessThanOrEqual(3 + 5);
+      expect(seen).toEqual([...seen].sort((a, b) => a - b));
+      expect(new Set(seen).size).toBe(seen.length);
+      expect(Math.max(...seen)).toBeLessThan(1);
+      expect(registry.get(placed.id)!.state).toBe(BuildingState.Active);
+      expect(registry.get(placed.id)!.progress).toBeUndefined();
+    });
+
+    it('sets every building to the asked progress for a dev tool', () => {
+      const g = makeGrid();
+      serviceTile(g, 0, 0, ZoneType.ResLow);
+      const registry = new BuildingRegistry(growthCatalog);
+      const growth = new GrowthSystem(growthCatalog, constantRng(0), alwaysTrue);
+      const id = growth.tick(g, registry, fullResDemand, 0, 0).added[0]!.id;
+      const moved = growth.setConstructionProgress(registry, 0.5);
+      expect(moved.map((b) => b.id)).toEqual([id]);
+      expect(registry.get(id)!.progress).toBe(0.5);
+      // Half of the hundred ticks remain.
+      for (let t = 1; t < 50; t++) growth.tick(g, registry, fullResDemand, 0, t);
+      expect(registry.get(id)!.state).toBe(BuildingState.Constructing);
+      growth.tick(g, registry, fullResDemand, 0, 50);
       expect(registry.get(id)!.state).toBe(BuildingState.Active);
     });
 

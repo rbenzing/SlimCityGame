@@ -373,8 +373,13 @@ describe('HouseRoofRenderer', () => {
       0,
     );
     expect(roofs).toBeGreaterThan(homes.length);
-    expect(building.roof).toBe(roofs);
+    expect(active.roof).toBe(roofs);
+    // A home going up shows only its site (sites.ts): no roof, door, garage door or car.
     expect(building.car).toBe(0);
+    for (const part of EVERY_PART) expect(building[part], `constructing ${part}`).toBe(0);
+    for (const part of ['door', 'garageLeaf']) {
+      expect(active[part], `active ${part}`).toBeGreaterThan(0);
+    }
 
     for (const part of ['fence', 'bush', 'tree']) expect(abandoned[part]).toBe(active[part]);
     for (const part of ['pool', 'trampoline', 'grill', 'car']) expect(abandoned[part]).toBe(0);
@@ -721,7 +726,7 @@ describe('HouseRoofRenderer — the house kit', () => {
     expect(c.getHex()).toBe(w.getHex());
   });
 
-  it('follows the body through construction (squat, as the roof is), abandonment (kept, darkened) and removal (freed)', () => {
+  it('follows the body through construction (nothing drawn), abandonment (kept, darkened), finishing (drawn) and removal (freed)', () => {
     const b = home('cape', 2);
     const active = build([b]);
     const building = build([{ ...b, state: BuildingState.Constructing }]);
@@ -736,25 +741,15 @@ describe('HouseRoofRenderer — the house kit', () => {
       'shutter',
     ] as const;
     for (const part of kitParts) {
-      expect(count(building, 2, part), `constructing ${part}`).toBe(count(active, 2, part));
+      expect(count(building, 2, part), `constructing ${part}`).toBe(0);
       expect(count(abandoned, 2, part), `abandoned ${part}`).toBe(count(active, 2, part));
     }
-    // Squat: a shutter's height and its height above the ground shrink to a quarter.
+    // Finishing draws the kit the home goes up to.
+    building.apply({ added: [], updated: [b], removed: [] });
+    for (const part of kitParts) {
+      expect(count(building, 2, part), `finished ${part}`).toBe(count(active, 2, part));
+    }
     const [whole] = active.slotsFor(2, 'shutter');
-    const [squat] = building.slotsFor(2, 'shutter');
-    expect(scaleAt(building, 'shutter', squat!).y).toBeCloseTo(
-      scaleAt(active, 'shutter', whole!).y * 0.25,
-      4,
-    );
-    expect(positionAt(building, 'shutter', squat!).y).toBeCloseTo(
-      positionAt(active, 'shutter', whole!).y * 0.25,
-      4,
-    );
-    const chimney = (r: HouseRoofRenderer): number => {
-      const [slot] = r.slotsFor(2, 'chimney');
-      return positionAt(r, 'chimney', slot!).y + scaleAt(r, 'chimney', slot!).y;
-    };
-    expect(chimney(building)).toBeCloseTo(chimney(active) * 0.25, 4);
     // Abandoned: the same parts, darkened.
     const [dark] = abandoned.slotsFor(2, 'shutter');
     const c = new THREE.Color();
