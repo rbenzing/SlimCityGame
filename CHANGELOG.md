@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.86.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.85.0...slimcity-v1.86.0) (2026-11-13)
+
+
+### Features
+
+* **ui:** every view shows its way out ([29517b7](https://github.com/rbenzing/SlimCityGame/commit/29517b7d321c85a0be482b45a2480bf32a1e4b3d))
+* **ui:** every view shows its way out ([c444e15](https://github.com/rbenzing/SlimCityGame/commit/c444e157a25ca3d095b880e5323777b49f1a53d7))
+
+
+### Bug Fixes
+
+* **sim:** undoing an edit puts the funds back exactly ([8614439](https://github.com/rbenzing/SlimCityGame/commit/8614439c078709919b4e24bae146c72276e9ab0e))
+* **sim:** undoing an edit puts the funds back exactly ([7c4bf41](https://github.com/rbenzing/SlimCityGame/commit/7c4bf41669d23f7ab6fcc1aedb6eaf4b7b9b9a5c))
+* **transit:** a line's vehicles follow its route ([77e7b2e](https://github.com/rbenzing/SlimCityGame/commit/77e7b2e005945add6b2735bf949928fea804bcd1))
+* **transit:** a line's vehicles follow its route ([3fc7c10](https://github.com/rbenzing/SlimCityGame/commit/3fc7c10f4d7805b777870e62910541ac8addfc75))
+
 ## [1.85.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.84.0...slimcity-v1.85.0) (2026-11-13)
 
 
