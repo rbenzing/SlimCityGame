@@ -259,4 +259,10 @@ Back to [the index](../GROUND-TRUTHS.md).
   near-black beside a road that read right. —
   [texture-standards.md](../art/texture-standards.md); `paletteHex` in
   `src/render/palette.ts`
+- [R-render-041] Anything drawn on draped ground (a path, a play zone, a pond and its bank)
+  is cut from that ground's own triangles and lifted a fixed amount, never
+  sampled from the terrain on a lattice of its own. A park's ring path on
+  its own lattice sank under the lawn wherever the ground curved, and read
+  as a path with gaps. — [parks-and-recreation.md](../specs/parks-and-recreation.md);
+  `overlayOnLawn` in `src/render/utilitykits.ts`
 

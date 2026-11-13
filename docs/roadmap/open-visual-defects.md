@@ -46,7 +46,6 @@ What two reviews of every screenshot the shot tools write found wrong in the gam
 - A garden walk-up's stair reaches only its lower landing, dark slabs lie on its lawn and no walk or car park reaches the street; a tower's roof plant covers half the roof; its shopfront band and lobby stay dark at night; lit panes are slabs over whole bays. `[R-render-021]` — `shots-apartments/close-garden-breezeway`, `garden-res-medium-3-night`
 - A colonial's chimney is a thin post leaning from the ridge to the ground; a car parks through a porch's columns. — `shots-houses/street-colonial-west`
 - A row house's roof carries two loose diagonal bars; its stoop stairs stand at the head of its parking bays; a person stands inside a parked car. — `shots-houses/street-attached-west`
-- In a park trees stand on a pitch's touchline, a perimeter path has gaps, a grandstand stands over the footway and the road's edge, and a district park's pond is a flat blue rectangle. — `shots-parks/sports`, `district-pond`
 - A cemetery's gatehouse is a blank box with trees through its roof; a civic crossing's kerb is not dropped. — `shots-cemetery/b2-cemetery-gatehouse`
 - The crematorium is a stack of plain boxes with a door-sized entrance; the hospital's ambulance canopy has no door and its parking deck no ramp. — `shots-healthcare/crematorium-close`, `hospital-entrance-close`
 - A garage's top deck runs into the building above it, and a mixed-use block's garage shows no way in from the street. — `shots-parking/com-office-2-rear`, `shots-mixeduse/rear`
@@ -68,7 +67,7 @@ What two reviews of every screenshot the shot tools write found wrong in the gam
 - A tree stands in a median; a boulder lies on a footway; bins stand on the grass.
 - A solar farm's transformer hut straddles its fence.
 - Ploughed field patches have jagged edges; a house lot carries a skewed lawn wedge.
-- The landfill reads as loose tiles; the neighbourhood park and the plaza are bare.
+- The landfill reads as loose tiles; a sports ground's stand and a park's shelter are plain grey blocks.
 - A viaduct's shadow lies detached from it; a detached garage is a plain box; winter only dulls the trees' leaves a little, so the strip reads Winter over green ground.
 - A street's parking lane stands empty beside homes: a home's cars stand only on its drive `[R-render-026]`. — `shots-parking/kerb-both-1`
 - Angled and head-in stalls keep one rhythm for the whole street, so a driveway leaves up to a stall's width unmarked beside it; parallel stalls are laid run by run.
