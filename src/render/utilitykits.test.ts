@@ -223,6 +223,8 @@ const ALL_KINDS: readonly UtilityKitPartKind[] = [
   'plazaGround',
   'sportsGround',
   'playFrame',
+  'swingSet',
+  'parkLamp',
   'pitchGoal',
   'pavilionBlock',
   'clinicGrounds',
@@ -1529,7 +1531,7 @@ describe('the district park layout (pure)', () => {
     }
   });
 
-  it('centres the pond on the lowest sampled ground and floats its surface just over the highest ground under it', () => {
+  it('centres the pond on the lowest sampled ground, clear of the paths and specimens', () => {
     const basin = { x: -90, z: 60 };
     const heightAt = (x: number, z: number): number => 10 + 0.01 * distance({ x, z }, basin);
     const layout = computeDistrictParkLayout(DISTRICT.footprint, heightAt);
@@ -1538,10 +1540,6 @@ describe('the district park layout (pure)', () => {
     expect(layout.pond.x1 - layout.pond.x0).toBe(DISTRICT_POND.w);
     expect(layout.pond.z1 - layout.pond.z0).toBe(DISTRICT_POND.d);
     expect(layout.pondLowest).toBe(10);
-    // The highest ground under the pond is at its corners, 25 m from the basin.
-    expect(layout.pondHighest).toBeCloseTo(10.25, 9);
-    expect(layout.pondY).toBeCloseTo(10.25 + DISTRICT_POND.lift, 9);
-    expect(layout.pondY).toBeLessThan(layout.pondHighest + 0.15);
     for (const path of layout.paths) {
       const crosses =
         path.x0 < layout.pond.x1 &&
@@ -1551,13 +1549,6 @@ describe('the district park layout (pure)', () => {
       expect(crosses).toBe(false);
     }
     for (const s of layout.specimens) expect(rectHas(layout.pond, s, 1)).toBe(false);
-  });
-
-  it('cuts the lawn into four pieces that tile the footprint about the pond', () => {
-    const layout = computeDistrictParkLayout(DISTRICT.footprint, () => 0);
-    const area = (r: Rect): number => (r.x1 - r.x0) * (r.z1 - r.z0);
-    const lawnArea = layout.lawnPieces.reduce((sum, r) => sum + area(r), 0);
-    expect(lawnArea).toBeCloseTo(area(layout.lawn) - area(layout.pond), 6);
   });
 });
 
@@ -1574,7 +1565,7 @@ describe('the sports ground layout (pure)', () => {
     for (const goal of layout.goals) expect([layout.pitch.x0, layout.pitch.x1]).toContain(goal.x);
   });
 
-  it('keeps the run-off inside the plate and the pavilion, fence and benches off the pitch on the street side', () => {
+  it('keeps the run-off inside the plate and the pavilion and benches off the pitch', () => {
     expect(layout.pitch.z0 - PITCH.runOff).toBeGreaterThanOrEqual(layout.plate.z0);
     expect(layout.pitch.x0 - PITCH.runOff).toBeGreaterThanOrEqual(layout.plate.x0);
     const pavilion: Rect = {
@@ -1589,16 +1580,13 @@ describe('the sports ground layout (pure)', () => {
       pavilion.z0 < layout.pitch.z1 &&
       pavilion.z1 > layout.pitch.z0;
     expect(overlapsPitch).toBe(false);
-    // Street side is local +Z: the pavilion sits on that edge, the fence and benches between it and the pitch.
-    expect(pavilion.z1).toBe(layout.plate.z1);
-    expect(layout.fenceLine.az).toBeGreaterThan(layout.pitch.z1);
-    expect(layout.fenceLine.az).toBeLessThan(pavilion.z0);
-    for (const post of layout.fencePosts) expect(rectHas(layout.pitch, post)).toBe(false);
+    // Street side is local +Z: the pavilion stands a metre back from that edge; the benches are at the two ends, facing in.
+    expect(pavilion.z1).toBe(layout.plate.z1 - 1);
     for (const bench of layout.benches) {
       expect(rectHas(layout.pitch, bench)).toBe(false);
       expect(rectHas(pavilion, bench)).toBe(false);
-      expect(bench.z).toBeGreaterThan(layout.pitch.z1);
-      expect(bench.rotation).toBe(0);
+      expect(Math.abs(bench.x)).toBeGreaterThan(layout.pitch.x1 + PITCH.runOff);
+      expect([1, 3]).toContain(bench.rotation);
     }
   });
 });
@@ -1638,11 +1626,18 @@ describe('the park kits in the renderer', () => {
     expect(renderer.partGeometry('district-park', 'pavilionBlock')).toBe(
       renderer.partGeometry('sports-ground', 'pavilionBlock'),
     );
-    expect(renderer.poolKinds('civic-plaza')).toEqual(['plazaGround', 'parkTree', 'parkBench']);
+    expect(renderer.poolKinds('civic-plaza')).toEqual([
+      'plazaGround',
+      'parkTree',
+      'parkBench',
+      'parkLamp',
+    ]);
     expect(renderer.poolKinds('neighbourhood-park')).toEqual([
       'parkTree',
       'parkBench',
       'playFrame',
+      'swingSet',
+      'pavilionBlock',
     ]);
     expect(renderer.poolKinds('district-park')).toEqual(['parkTree', 'parkBench', 'pavilionBlock']);
     expect(renderer.poolKinds('sports-ground')).toEqual([
@@ -1652,8 +1647,8 @@ describe('the park kits in the renderer', () => {
       'pitchGoal',
       'pavilionBlock',
     ]);
-    // Five ground/part pools in all: parkGround, plazaGround, sportsGround, and the shared tree, bench, frame, goal, pavilion.
-    expect(instancedMeshes(scene)).toHaveLength(8);
+    // Ten pools in all: parkGround, plazaGround, sportsGround, and the shared tree, bench, frame, swing set, lamp, goal, pavilion.
+    expect(instancedMeshes(scene)).toHaveLength(10);
   });
 
   it('draws N district parks as N draped meshes over the three pools the kit owns', () => {
@@ -1689,12 +1684,15 @@ describe('the park kits in the renderer', () => {
       ),
     );
     expect(renderer.partSlotsFor(1, 'plazaGround')).toHaveLength(1);
-    expect(renderer.partSlotsFor(1, 'parkTree')).toHaveLength(17);
+    expect(renderer.partSlotsFor(1, 'parkTree')).toHaveLength(17 + 16);
     expect(renderer.partSlotsFor(1, 'parkBench')).toHaveLength(8);
+    expect(renderer.partSlotsFor(1, 'parkLamp')).toHaveLength(8);
     expect(renderer.drapedMesh(1)).toBeNull();
-    expect(renderer.partSlotsFor(2, 'parkTree')).toHaveLength(30);
+    expect(renderer.partSlotsFor(2, 'parkTree')).toHaveLength(30 + 5);
     expect(renderer.partSlotsFor(2, 'parkBench')).toHaveLength(7);
     expect(renderer.partSlotsFor(2, 'playFrame')).toHaveLength(2);
+    expect(renderer.partSlotsFor(2, 'swingSet')).toHaveLength(2);
+    expect(renderer.partSlotsFor(2, 'pavilionBlock')).toHaveLength(1);
     expect(renderer.drapedMesh(2)).not.toBeNull();
     expect(renderer.partSlotsFor(3, 'sportsGround')).toHaveLength(1);
     expect(renderer.partSlotsFor(3, 'parkTree')).toHaveLength(17);
@@ -1727,10 +1725,8 @@ describe('the park kits in the renderer', () => {
     }
   });
 
-  it('lays the district pond as one flat water-coloured rect over the ground under it, both triangles facing up', () => {
-    const basin = { x: 400 - 90, z: 400 + 60 };
-    // A shallow basin: its 0.025 m of relief under the pond is inside what a flat surface may span.
-    const heightAt = (x: number, z: number): number => 10 + 0.001 * distance({ x, z }, basin);
+  it('lays the district pond as water-coloured triangles all facing up, filling its shoreline', () => {
+    const heightAt = (): number => 10;
     const renderer = new UtilityKitRenderer(new THREE.Scene(), heightAt, [DISTRICT]);
     renderer.apply(deltaAdd(makeInstance(1, 'district-park', { x: 10, z: 10 })));
     const geometry = renderer.drapedMesh(1)!.geometry;
@@ -1742,10 +1738,8 @@ describe('the park kits in the renderer', () => {
       Math.abs(color.getY(i) - SHALLOW_WATER_COLOR[1]) < 0.02 &&
       Math.abs(color.getZ(i) - SHALLOW_WATER_COLOR[2]) < 0.02;
 
-    // Every water-coloured triangle, wound to face up (positive area seen from +Y), tiles the whole 40 × 30 m.
+    // Every water-coloured triangle, wound to face up (positive area seen from +Y), tiles the shoreline.
     let waterArea = 0;
-    let waterTriangles = 0;
-    const waterYs = new Set<number>();
     for (let t = 0; t < index.count; t += 3) {
       const [a, b, c] = [index.getX(t), index.getX(t + 1), index.getX(t + 2)];
       if (!isWater(a) || !isWater(b) || !isWater(c)) continue;
@@ -1755,27 +1749,18 @@ describe('the park kits in the renderer', () => {
       const vz = position.getZ(c) - position.getZ(a);
       // (b - a) × (c - a) has a +Y component when the triangle faces up.
       const signedArea = (uz * vx - ux * vz) / 2;
-      expect(signedArea).toBeGreaterThan(0);
+      expect(signedArea).toBeGreaterThanOrEqual(0);
       waterArea += signedArea;
-      waterTriangles++;
-      for (const i of [a, b, c]) waterYs.add(Math.round(position.getY(i) * 1e4) / 1e4);
     }
-    expect(waterTriangles).toBe(2);
-    expect(waterArea).toBeCloseTo(DISTRICT_POND.w * DISTRICT_POND.d, 3);
-    expect(waterYs.size).toBe(1);
-    // The water lies over the highest ground under the pond, never under the terrain, and under the lawn there.
-    const pondY = [...waterYs][0]!;
-    expect(pondY).toBeCloseTo(10.025 + DISTRICT_POND.lift, 3);
-    for (const [x, z] of [
-      [basin.x - 20, basin.z - 15],
-      [basin.x + 20, basin.z - 15],
-      [basin.x - 20, basin.z + 15],
-      [basin.x + 20, basin.z + 15],
-      [basin.x, basin.z],
-    ]) {
-      expect(pondY).toBeGreaterThan(heightAt(x!, z!));
+    const layout = computeDistrictParkLayout(DISTRICT.footprint, heightAt, 1);
+    let shore = 0;
+    const pts = layout.pondOutline;
+    for (let i = 0; i < pts.length; i++) {
+      const p = pts[i]!;
+      const q = pts[(i + 1) % pts.length]!;
+      shore += (p.x * q.z - q.x * p.z) / 2;
     }
-    expect(pondY).toBeLessThan(10.025 + 0.15);
+    expect(waterArea).toBeCloseTo(Math.abs(shore), -1);
   });
 
   it('lays the pond and its banks in a sloped park within the lot band of the ground at every vertex', () => {

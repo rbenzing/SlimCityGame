@@ -14,6 +14,8 @@
 - Write recreation into LandValue only; no `Recreation` field and no write into `Happiness`.
 - Keep an airport out of the Parks drawer and out of open space: it is `transit` with no `service` block.
 - Draw every park from instanced or one merged plate; props scale with perimeter, never area.
+- Keep a pitch's run-off clear of every tree, bench, lamp, path and fence, and every furnishing 1 m inside a street-side lot line.
+- Cut a path, a play zone, a pond and its bank from the lawn's own triangles; never sample one from the terrain on a lattice of its own. `[R-render-041]`
 
 **Numbers:** derivations and sources are in [the sources](../sources/parks-and-recreation.md).
 
@@ -30,7 +32,11 @@
 | Walk radiated by coverage | 2 | tiles | [range](../sources/parks-and-recreation.md#walking-distance-converted-to-range) |
 | Walking speed | 1.33 (1,200 m in 15 min) | m/s | same |
 | Pitch | 105 × 68, 3 m run-off, 111 × 74 | m | [FIFA, The FA](../sources/parks-and-recreation.md#sizes-from-ground-rather-than-floor-area) |
-| Pavilion | 36 occupants × 4.6 m², 0.65 efficiency, 255 m², 2×1 | | same |
+| Pavilion | 36 occupants × 4.6 m², 0.65 efficiency, 255 m², 51 × 5 m along the street side, behind the run-off | | same |
+| Run-off beyond touchlines and goal lines | 3 (10 ft, the US high-school rule book's recommendation) | m | same |
+| Street-side setback of furnishings | 1 | m | dial |
+| Pond | 24-point shoreline from the park's id; bank 1.5 m | | dial |
+| Shelter; swing set; plaza lamp; fountain basin; planter grid | 9 × 6; 4 wide, 2.4 to the beam; 4.5 pole; 4.5 radius; 30 pitch | m | dials: no source found |
 | Pocket park anchor | $366k build, $6k a year | $ | [Lewisville TDLR, NRPA](../sources/parks-and-recreation.md#cost) |
 | Real cost a rung | $13.0M / $4.6M / $40.2M / $1.26M | plaza / neighbourhood / district / sports | same |
 | Upkeep a rung real | $24k / $76k / $374k / $36k | $ a year | NRPA $9,470 an acre |
@@ -64,7 +70,9 @@
 **Open:**
 
 - The pocket park's 0.2 kL water draw is a dial.
-- A pond is a flat sheet on a draped park, so on a slope it stands proud of its lawn on the downhill side.
+- The sports ground's stand and a park's shelter are plain blocks, and the district park has no furniture beyond its pond and paths.
+- The sports ground's rear run-off reaches its back lot line: 3 m all round and a 1 m street setback do not both fit four tiles.
+- A pond follows a slope's ground, so its water tilts with it.
 
 ## Why the rules are what they are
 

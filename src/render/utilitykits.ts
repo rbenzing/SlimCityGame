@@ -171,7 +171,7 @@ import { markingPlan } from './roadmarkings';
 import { presetProfileForTier } from '../shared/roadprofile';
 import { RoadTier, type RoadProfile } from '../shared/types';
 import { maxHeightOverRect } from './footprint';
-import { PLOT_BAND_TOP, PLOT_SURFACE_M, PLOT_YARD_TOP } from './plotground';
+import { PLOT_SURFACE_M, PLOT_YARD_TOP } from './plotground';
 import { InstancedSlotPool } from './massing';
 import { buildSubstationGeometry, type SubstationPart } from './substationkit';
 import { sunDirection } from './sun';
@@ -341,6 +341,8 @@ export type UtilityKitPartKind =
   | 'plazaGround'
   | 'sportsGround'
   | 'playFrame'
+  | 'swingSet'
+  | 'parkLamp'
   | 'pitchGoal'
   | 'pavilionBlock'
   | 'clinicGrounds'
@@ -6184,8 +6186,8 @@ const PARK_PATH_WIDTH_FRACTION = 0.16; // of the tile's shorter side
 const PARK_PATH_Y_OFFSET = PLOT_SURFACE_M;
 const PARK_PATH_HEIGHT = PLOT_SURFACE_M;
 
-const PARK_LAWN_RGB: RGB = [0.16, 0.42, 0.2]; // lush green
-const PARK_PATH_RGB: RGB = [0.81, 0.78, 0.67];
+export const PARK_LAWN_RGB: RGB = [0.16, 0.42, 0.2]; // lush green
+export const PARK_PATH_RGB: RGB = [0.81, 0.78, 0.67];
 
 export const PARK_TREE_MIN = 2; // "2-3 simple trees"
 export const PARK_TREE_MAX = 3;
@@ -6197,7 +6199,7 @@ const PARK_TREE_MARGIN_FRACTION = 0.68; // keeps trees inside the tile
 const PARK_TREE_TRUNK_HEIGHT = 1.6;
 const PARK_TREE_TRUNK_RADIUS_TOP = 0.14;
 const PARK_TREE_TRUNK_RADIUS_BOTTOM = 0.2;
-const PARK_TREE_CANOPY_RADIUS = 1.1;
+export const PARK_TREE_CANOPY_RADIUS = 1.1;
 const PARK_TRUNK_RGB: RGB = [0.42, 0.29, 0.18];
 const PARK_CANOPY_RGB: RGB = [0.18, 0.42, 0.23];
 
@@ -6339,10 +6341,15 @@ const PLAY_SURFACE_RGB: RGB = [0.78, 0.63, 0.42];
 const PLAY_FRAME_RGB: RGB = [0.9, 0.3, 0.1];
 const PITCH_RGB: RGB = [0.13, 0.38, 0.17];
 const PITCH_LINE_RGB: RGB = [0.95, 0.95, 0.93];
-export const POND_BANK_RGB: RGB = [0.44, 0.35, 0.24];
+/** A little lighter than the lawn it rims. */
+export const POND_BANK_RGB: RGB = [0.27, 0.5, 0.28];
 const PAVILION_WALL_RGB: RGB = [0.8, 0.78, 0.72];
 const PAVILION_ROOF_RGB: RGB = [0.38, 0.38, 0.4];
-const FENCE_RGB: RGB = [0.45, 0.47, 0.5];
+const LAMP_POLE_RGB: RGB = [0.24, 0.25, 0.27];
+const LAMP_HEAD_RGB: RGB = [0.85, 0.82, 0.7];
+const FOUNTAIN_RGB: RGB = [0.62, 0.6, 0.55];
+const SWING_FRAME_RGB: RGB = [0.2, 0.36, 0.7];
+const SWING_SEAT_RGB: RGB = [0.1, 0.1, 0.12];
 
 export const PLAZA_BAND_PITCH_M = 10;
 export const PLAZA_BAND_WIDTH_M = 0.6;
@@ -6356,19 +6363,22 @@ const PLAY_FRAME_GAP_M = 8;
 
 export const DISTRICT_RING_INSET_M = 10;
 /**
- * The pond's water lies `lift` above the highest ground under it, under the
- * lawn's own lift: the terrain cannot be cut, so a surface sunk below the
- * ground would be hidden by it. Where the ground under the pond varies by
- * more than `POND_FLAT_RELIEF_M` a flat surface would stand over the lot band
- * on its downhill side, so the water and its banks follow the ground instead.
+ * The pond fits this rect; its shoreline is a closed curve inside it. Its
+ * water and bank are cut from the lawn's own triangles and lie on them, so
+ * they follow the ground within the lot band and are never hidden by the lawn.
  */
-export const DISTRICT_POND = { w: 40, d: 30, lift: 0.08 } as const;
-/** The most the ground under the pond may vary for its water to lie flat and stay in the lot band. */
-export const POND_FLAT_RELIEF_M = PLOT_BAND_TOP - DISTRICT_POND.lift;
+export const DISTRICT_POND = { w: 40, d: 30 } as const;
+/** Points on the shoreline. */
+export const POND_POINTS = 24;
+/** The bank rims the water this wide. */
+const POND_BANK_WIDTH_M = 1.5;
+/** The bank and the water stand this far over the lawn, the water topping out at the lot band. */
+const POND_BANK_LIFT_M = 0.02;
+const POND_WATER_LIFT_M = PLOT_SURFACE_M;
 const POND_LATTICE_M = 10;
-/** How finely the ground under the pond is sampled for its highest point. */
-const POND_SAMPLE_M = 5;
 const POND_MARGIN_M = 4;
+/** A park's furnishings stand at least this far back from the lot line on a street side. */
+export const PARK_STREET_SETBACK_M = 1;
 export const DISTRICT_SPECIMEN = { count: 8, radius: 60, scale: 1.3 } as const;
 export const DISTRICT_PAVILION = { w: 12, d: 8 } as const;
 export const PAVILION_HEIGHT_M = 3.2;
@@ -6391,14 +6401,15 @@ export const PITCH = {
   goalPost: 0.12,
 } as const;
 /**
- * The changing pavilion: two tiles along the street edge (local +Z), as deep
- * as the strip beyond the pitch's run-off allows — a 6×4 site holds a FIFA
- * pitch with its run-off and 6 m to spare across, so a full tile's depth
- * would stand on the pitch.
+ * The changing pavilion and its stand: a 255 m² block along the street edge
+ * (local +Z), as deep as the strip between the pitch's run-off and the street
+ * setback allows. A 6×4 site holds the 111 × 74 m graded field and 6 m to
+ * spare across, of which 1 m is the setback, so the block is 5 m deep and
+ * 51 m long and faces the pitch from outside the run-off.
  */
-export const SPORTS_PAVILION = { w: 2 * TILE_METERS, d: 6 } as const;
-const SPORTS_BENCH_GAP_M = 4;
-const FENCE = { post: 0.1, height: 0.9, pitch: 4, rail: 0.06, railYs: [0.45, 0.85] } as const;
+export const SPORTS_PAVILION = { w: 51, d: 5 } as const;
+/** The benches stand in the strip beyond a goal line's run-off, this far in from the lot line. */
+const SPORTS_BENCH_INSET_M = 1.5;
 
 export interface Strip {
   ax: number;
@@ -6611,10 +6622,28 @@ export interface PlazaLayout {
   feature: Rect;
   /** The raised planters, one tree in each, along the two side edges. */
   planters: Vec2[];
+  /** Planters in a grid over the paving, between the bands. */
+  gridPlanters: Vec2[];
   benches: BenchPlacement[];
+  lamps: Vec2[];
+  /** The fountain basin at the centre of the feature square. */
+  fountain: Vec2 & { radius: number };
 }
 
-/** Paving the whole footprint, a band every 10 m both ways, a 12 m feature square, 17 planters and 8 benches about it. Pure. */
+/** Planters on a grid this far from the centre either way, on a 30 m pitch. */
+const PLAZA_GRID_M = [-35, -15, 15, 35] as const;
+/** Lamps stand at the corners and edge midpoints of a square this far from the centre. */
+const PLAZA_LAMP_M = 25;
+export const PLAZA_FOUNTAIN = {
+  radius: 4.5,
+  rim: 0.5,
+  wall: 0.5,
+  spout: 0.4,
+  spoutHeight: 2.4,
+} as const;
+export const PARK_LAMP = { pole: 0.08, height: 4.5, arm: 0.6, head: 0.35 } as const;
+
+/** Paving the whole footprint, a band every 10 m both ways, a 12 m feature square with a fountain, 17 edge and 16 grid planters, 8 benches and 8 lamps. Pure. */
 export function computePlazaLayout(footprint: FootprintSize): PlazaLayout {
   const plate = footprintRect(footprint);
   const half = PLAZA_BAND_WIDTH_M / 2;
@@ -6636,7 +6665,13 @@ export function computePlazaLayout(footprint: FootprintSize): PlazaLayout {
     benchLine,
     computePathBenchCount(2 * (plate.x1 - plate.x0 + (plate.z1 - plate.z0))),
   );
-  return { plate, bands, feature, planters, benches };
+  const gridPlanters = PLAZA_GRID_M.flatMap((z) => PLAZA_GRID_M.map((x) => ({ x, z })));
+  const lamps: Vec2[] = [];
+  for (const z of [-PLAZA_LAMP_M, 0, PLAZA_LAMP_M]) {
+    for (const x of [-PLAZA_LAMP_M, 0, PLAZA_LAMP_M]) if (x !== 0 || z !== 0) lamps.push({ x, z });
+  }
+  const fountain = { x: 0, z: 0, radius: PLAZA_FOUNTAIN.radius };
+  return { plate, bands, feature, planters, gridPlanters, benches, lamps, fountain };
 }
 
 export interface NeighbourhoodParkLayout {
@@ -6644,11 +6679,31 @@ export interface NeighbourhoodParkLayout {
   paths: Rect[];
   playZone: Rect;
   playFrames: Vec2[];
+  /** Swing sets, their beam along local X. */
+  swings: BenchPlacement[];
   trees: Vec2[];
+  /** Larger trees on the lawn that shade the shelter and the play area. */
+  shadeTrees: Vec2[];
+  /** The picnic shelter, in the -X/-Z quadrant. */
+  shelter: PlacedBlock;
   benches: BenchPlacement[];
 }
 
-/** A lawn with a path cross and a ring 6 m in, 30 trees outside the ring, 7 benches on it, a play zone in the +X/+Z quadrant. Pure. */
+/**
+ * A picnic shelter: 9 × 6 m, the 20 × 30 ft pavilion the usual park shelter
+ * is sold as.
+ */
+export const NEIGHBOURHOOD_SHELTER = { w: 9, d: 6 } as const;
+/** A swing set: a 4 m beam on two A-frames, 2.4 m to the beam. */
+export const SWING_SET = { w: 4, d: 2.4, height: 2.4, post: 0.1, seat: 0.4, drop: 1.8 } as const;
+/** The shade trees sit at these offsets from the quadrant centres, clear of the shelter and the play zone. */
+const NEIGHBOURHOOD_SHADE_OFFSETS: readonly Vec2[] = [
+  { x: -14, z: -7 },
+  { x: 11, z: -12 },
+  { x: -11, z: 12 },
+];
+
+/** A lawn with a path cross and a ring 6 m in, 30 trees outside the ring, 7 benches on it, a play zone in the +X/+Z quadrant with two frames and two swing sets, a shelter and shade trees in the -X/-Z quadrant, and the -X/+Z quadrant left open. Pure. */
 export function computeNeighbourhoodParkLayout(footprint: FootprintSize): NeighbourhoodParkLayout {
   const lawn = footprintRect(footprint);
   const ring = insetRect(lawn, NEIGHBOURHOOD_RING_INSET_M);
@@ -6669,23 +6724,36 @@ export function computeNeighbourhoodParkLayout(footprint: FootprintSize): Neighb
     { x: cx - PLAY_FRAME_GAP_M / 2, z: cz },
     { x: cx + PLAY_FRAME_GAP_M / 2, z: cz },
   ];
-  return { lawn, paths, playZone, playFrames, trees, benches };
+  const swings: BenchPlacement[] = [-1, 1].map((s) => ({
+    x: cx + s * (SWING_SET.w / 2 + 2),
+    z: cz + 9,
+    rotation: 0,
+  }));
+  const shelter: PlacedBlock = {
+    x: -ring.x1 / 2,
+    z: -ring.z1 / 2,
+    w: NEIGHBOURHOOD_SHELTER.w,
+    d: NEIGHBOURHOOD_SHELTER.d,
+  };
+  const shadeTrees = [
+    ...NEIGHBOURHOOD_SHADE_OFFSETS.map((o) => ({ x: shelter.x + o.x, z: shelter.z + o.z })),
+    { x: cx - PLAY_ZONE_M / 2 - 5, z: cz - 6 },
+    { x: cx + 4, z: cz - PLAY_ZONE_M / 2 - 5 },
+  ];
+  return { lawn, paths, playZone, playFrames, swings, trees, shadeTrees, shelter, benches };
 }
 
 export interface DistrictParkLayout {
   lawn: Rect;
-  /** The lawn in four rects about the pond. */
-  lawnPieces: Rect[];
   paths: Rect[];
+  /** The rect the pond fits in. */
   pond: Rect;
   /** The lowest ground sampled inside the ring, where the pond is centred. */
   pondLowest: number;
-  /** The highest ground sampled under the pond itself. */
-  pondHighest: number;
-  /** The highest ground under the pond less the lowest, over the same samples. */
-  pondRelief: number;
-  /** The pond's flat surface: just above the highest ground under it, below the lawn there. */
-  pondY: number;
+  /** The shoreline: a closed curve inside `pond`, the same for the same park id. */
+  pondOutline: Vec2[];
+  /** The outer edge of the bank, point for point beyond `pondOutline`. */
+  pondBank: Vec2[];
   specimens: Vec2[];
   trees: Vec2[];
   benches: BenchPlacement[];
@@ -6696,11 +6764,13 @@ export interface DistrictParkLayout {
  * Open ground ringed with 67 trees, 8 specimens on an inner ring, a path ring
  * 10 m in with two crossing paths, 16 benches, a pond where the ground is
  * lowest and a pavilion inside the ring on the street side (local +Z).
- * `heightAtLocal` samples the terrain in the park's own frame. Pure.
+ * `heightAtLocal` samples the terrain in the park's own frame; `seed` (the
+ * park's id) shapes the pond's shoreline. Pure.
  */
 export function computeDistrictParkLayout(
   footprint: FootprintSize,
   heightAtLocal: (x: number, z: number) => number,
+  seed = 0,
 ): DistrictParkLayout {
   const lawn = footprintRect(footprint);
   const ring = insetRect(lawn, DISTRICT_RING_INSET_M);
@@ -6770,26 +6840,7 @@ export function computeDistrictParkLayout(
     z0: centre.z - halfPondD,
     z1: centre.z + halfPondD,
   };
-  let pondHighest = -Infinity;
-  let pondGroundLowest = Infinity;
-  const nx = Math.ceil(DISTRICT_POND.w / POND_SAMPLE_M);
-  const nz = Math.ceil(DISTRICT_POND.d / POND_SAMPLE_M);
-  for (let iz = 0; iz <= nz; iz++) {
-    for (let ix = 0; ix <= nx; ix++) {
-      const ground = heightAtLocal(
-        pond.x0 + (DISTRICT_POND.w * ix) / nx,
-        pond.z0 + (DISTRICT_POND.d * iz) / nz,
-      );
-      if (ground > pondHighest) pondHighest = ground;
-      if (ground < pondGroundLowest) pondGroundLowest = ground;
-    }
-  }
-  const lawnPieces: Rect[] = [
-    { x0: lawn.x0, x1: pond.x0, z0: lawn.z0, z1: lawn.z1 },
-    { x0: pond.x1, x1: lawn.x1, z0: lawn.z0, z1: lawn.z1 },
-    { x0: pond.x0, x1: pond.x1, z0: lawn.z0, z1: pond.z0 },
-    { x0: pond.x0, x1: pond.x1, z0: pond.z1, z1: lawn.z1 },
-  ];
+  const shore = pondShoreline(centre, seed);
 
   const trees = computeParkEdgeTrees(footprint, {
     mouths: rectMidpoints(insetRect(lawn, PARK_TREE_INSET_M)),
@@ -6803,13 +6854,11 @@ export function computeDistrictParkLayout(
   );
   return {
     lawn,
-    lawnPieces,
     paths,
     pond,
     pondLowest: centre.height,
-    pondHighest,
-    pondRelief: pondHighest - pondGroundLowest,
-    pondY: pondHighest + DISTRICT_POND.lift,
+    pondOutline: shore.outline,
+    pondBank: shore.bank,
     specimens,
     trees,
     benches,
@@ -6817,34 +6866,70 @@ export function computeDistrictParkLayout(
   };
 }
 
+const POND_HASH_MULT = 4096;
+const POND_HASH_SLOT = 201;
+
+/**
+ * A pond's shoreline: `POND_POINTS` points round an ellipse that fills most of
+ * the pond rect, its radius swung by three smooth lobes whose size and turn
+ * come from the park's id, so it is the same every time and rounded, never a
+ * rectangle. The bank's outer edge stands a bank-width beyond it. Pure.
+ */
+function pondShoreline(centre: Vec2, seed: number): { outline: Vec2[]; bank: Vec2[] } {
+  const lobes = [2, 3, 4].map((k, i) => ({
+    k,
+    amp: [0.08, 0.06, 0.04][i]!,
+    phase: hash1(seed * POND_HASH_MULT + POND_HASH_SLOT + i) * 2 * Math.PI,
+  }));
+  const outline: Vec2[] = [];
+  const bank: Vec2[] = [];
+  for (let i = 0; i < POND_POINTS; i++) {
+    const a = (i * 2 * Math.PI) / POND_POINTS;
+    const r = lobes.reduce((sum, l) => sum + l.amp * Math.cos(l.k * a + l.phase), 0.8);
+    const ux = Math.cos(a);
+    const uz = Math.sin(a);
+    const px = centre.x + (DISTRICT_POND.w / 2) * r * ux;
+    const pz = centre.z + (DISTRICT_POND.d / 2) * r * uz;
+    outline.push({ x: px, z: pz });
+    bank.push({ x: px + POND_BANK_WIDTH_M * ux, z: pz + POND_BANK_WIDTH_M * uz });
+  }
+  return { outline, bank };
+}
+
 export interface SportsGroundLayout {
   plate: Rect;
   pitch: Rect;
+  /** The pitch and its run-off all round: nothing stands in it. */
+  runOff: Rect;
   /** Every white line, as a run from a to b. */
   lines: Strip[];
   goals: BenchPlacement[];
   trees: Vec2[];
   benches: BenchPlacement[];
   pavilion: PlacedBlock;
-  fencePosts: Vec2[];
-  fenceLine: Strip;
 }
 
-/** A FIFA pitch behind the street-side strip (local +Z) the changing pavilion takes, its lines and goals, a fenced apron and two benches on the street-side touchline, trees along the long sides. Pure. */
+/** A FIFA pitch with its run-off, behind the street-side strip (local +Z) the pavilion takes a metre back from the lot line; its lines and goals, a bench at each end and trees along the two end strips, all beyond the run-off. Pure. */
 export function computeSportsGroundLayout(footprint: FootprintSize): SportsGroundLayout {
   const plate = footprintRect(footprint);
   const pavilion: PlacedBlock = {
     x: 0,
-    z: plate.z1 - SPORTS_PAVILION.d / 2,
+    z: plate.z1 - PARK_STREET_SETBACK_M - SPORTS_PAVILION.d / 2,
     w: SPORTS_PAVILION.w,
     d: SPORTS_PAVILION.d,
   };
-  const pitchZ1 = plate.z1 - SPORTS_PAVILION.d - PITCH.runOff;
+  const pitchZ1 = pavilion.z - SPORTS_PAVILION.d / 2 - PITCH.runOff;
   const pitch: Rect = {
     x0: -PITCH.length / 2,
     x1: PITCH.length / 2,
     z0: pitchZ1 - PITCH.width,
     z1: pitchZ1,
+  };
+  const runOff = {
+    x0: pitch.x0 - PITCH.runOff,
+    x1: pitch.x1 + PITCH.runOff,
+    z0: pitch.z0 - PITCH.runOff,
+    z1: pitch.z1 + PITCH.runOff,
   };
   const cz = (pitch.z0 + pitch.z1) / 2;
 
@@ -6883,20 +6968,12 @@ export function computeSportsGroundLayout(footprint: FootprintSize): SportsGroun
     { x: pitch.x0, z: cz, rotation: 1 },
     { x: pitch.x1, z: cz, rotation: 1 },
   ];
-  const trees = computeParkEdgeTrees(footprint, { sides: 'x' });
-  const benchZ = pitch.z1 + PITCH.runOff / 2;
   const benches: BenchPlacement[] = [
-    { x: -SPORTS_BENCH_GAP_M / 2, z: benchZ, rotation: 0 },
-    { x: SPORTS_BENCH_GAP_M / 2, z: benchZ, rotation: 0 },
+    { x: plate.x0 + SPORTS_BENCH_INSET_M, z: cz, rotation: RING_BENCH_ROTATION[3]! },
+    { x: plate.x1 - SPORTS_BENCH_INSET_M, z: cz, rotation: RING_BENCH_ROTATION[1]! },
   ];
-  const fenceZ = pitch.z1 + PITCH.runOff - 0.5;
-  const fencePosts: Vec2[] = [];
-  const intervals = Math.floor(PITCH.length / FENCE.pitch);
-  for (let i = 0; i <= intervals; i++) {
-    fencePosts.push({ x: pitch.x0 + (i * PITCH.length) / intervals, z: fenceZ });
-  }
-  const fenceLine: Strip = { ax: pitch.x0, az: fenceZ, bx: pitch.x1, bz: fenceZ };
-  return { plate, pitch, lines, goals, trees, benches, pavilion, fencePosts, fenceLine };
+  const trees = computeParkEdgeTrees(footprint, { sides: 'z', mouths: benches, clearance: 2 });
+  return { plate, pitch, runOff, lines, goals, trees, benches, pavilion };
 }
 
 /** A box laid along a strip from a to b, `width` across, standing on `y0`. */
@@ -6915,7 +6992,7 @@ function buildPlazaGroundGeometry(footprint: FootprintSize): THREE.BufferGeometr
     rectBox(layout.plate, 0, PARK_LAWN_HEIGHT, PLAZA_PAVING_RGB),
     ...layout.bands.map((b) => rectBox(b, PARK_LAWN_HEIGHT, PARK_MARK_HEIGHT_M, PLAZA_BAND_RGB)),
     rectBox(layout.feature, PARK_LAWN_HEIGHT, PARK_MARK_HEIGHT_M * 1.5, PLAZA_BAND_RGB),
-    ...layout.planters.map((p) =>
+    ...[...layout.planters, ...layout.gridPlanters].map((p) =>
       standingBox(
         PLAZA_PLANTER.size,
         PLAZA_PLANTER.height,
@@ -6926,10 +7003,47 @@ function buildPlazaGroundGeometry(footprint: FootprintSize): THREE.BufferGeometr
         PLAZA_BAND_RGB,
       ),
     ),
+    ...fountainParts(layout.fountain),
   ]);
 }
 
-/** The sports ground's plate: lawn, the pitch and its lines, the fence posts and rails merged in. Local Y=0 is the GROUND plane. */
+/** A cylinder standing on `y0`, centred on (x, z), painted one colour. */
+function standingCylinder(
+  radius: number,
+  height: number,
+  x: number,
+  y0: number,
+  z: number,
+  rgb: RGB,
+): THREE.BufferGeometry {
+  const cylinder = new THREE.CylinderGeometry(radius, radius, height, FOUNTAIN_SEGMENTS);
+  cylinder.translate(x, y0 + height / 2, z);
+  return paintVertexColor(cylinder, hexFromRgb(rgb));
+}
+
+const FOUNTAIN_SEGMENTS = 24;
+
+/** A round stone basin with its rim, the water in it, and a spout on a bowl. Local Y=0 is the GROUND plane. */
+function fountainParts(f: Vec2 & { radius: number }): THREE.BufferGeometry[] {
+  const { rim, wall, spout, spoutHeight } = PLAZA_FOUNTAIN;
+  const base = PARK_LAWN_HEIGHT;
+  return [
+    standingCylinder(f.radius, rim, f.x, base, f.z, FOUNTAIN_RGB),
+    standingCylinder(
+      f.radius - wall,
+      PARK_MARK_HEIGHT_M,
+      f.x,
+      base + rim,
+      f.z,
+      SHALLOW_WATER_COLOR,
+    ),
+    standingCylinder(spout * 3, 0.3, f.x, base + rim, f.z, FOUNTAIN_RGB),
+    standingCylinder(spout, spoutHeight, f.x, base + rim, f.z, FOUNTAIN_RGB),
+    standingCylinder(spout * 2.5, 0.2, f.x, base + rim + spoutHeight - 0.2, f.z, FOUNTAIN_RGB),
+  ];
+}
+
+/** The sports ground's plate: lawn, the pitch and its lines merged in. Local Y=0 is the GROUND plane. */
 function buildSportsGroundGeometry(footprint: FootprintSize): THREE.BufferGeometry {
   const layout = computeSportsGroundLayout(footprint);
   const pitchTop = PARK_LAWN_HEIGHT + PARK_MARK_HEIGHT_M;
@@ -6939,19 +7053,47 @@ function buildSportsGroundGeometry(footprint: FootprintSize): THREE.BufferGeomet
     ...layout.lines.map((l) =>
       stripBox(l, PITCH.line, pitchTop, PARK_MARK_HEIGHT_M, PITCH_LINE_RGB),
     ),
-    ...layout.fencePosts.map((p) =>
-      standingBox(FENCE.post, FENCE.height, FENCE.post, p.x, PARK_LAWN_HEIGHT, p.z, FENCE_RGB),
-    ),
-    ...FENCE.railYs.map((y) =>
-      stripBox(
-        layout.fenceLine,
-        FENCE.rail,
-        PARK_LAWN_HEIGHT + y - FENCE.rail / 2,
-        FENCE.rail,
-        FENCE_RGB,
-      ),
-    ),
   ]);
+}
+
+/** A lamp: a slim pole with an arm and a lantern head. Local Y=0 is the surface it stands on. */
+function buildParkLampGeometry(): THREE.BufferGeometry {
+  const { pole, height, arm, head } = PARK_LAMP;
+  return mergeParts([
+    standingCylinder(pole, height, 0, 0, 0, LAMP_POLE_RGB),
+    standingBox(arm, 0.06, 0.06, arm / 2, height - 0.06, 0, LAMP_POLE_RGB),
+    standingBox(head, 0.2, head, arm, height - 0.2, 0, LAMP_HEAD_RGB),
+  ]);
+}
+
+/** A swing set: a top beam on four posts, two seats hung on chains from it. Local Y=0 is the surface it stands on. */
+function buildSwingSetGeometry(): THREE.BufferGeometry {
+  const { w, d, height, post, seat, drop } = SWING_SET;
+  const parts: THREE.BufferGeometry[] = [
+    standingBox(w, post * 1.5, post * 1.5, 0, height - post, 0, SWING_FRAME_RGB),
+  ];
+  for (const sx of [-1, 1]) {
+    for (const sz of [-1, 1]) {
+      parts.push(
+        standingBox(
+          post,
+          height,
+          post,
+          sx * (w / 2 - post),
+          0,
+          sz * (d / 2 - post),
+          SWING_FRAME_RGB,
+        ),
+      );
+    }
+  }
+  for (const sx of [-0.5, 0.5]) {
+    parts.push(
+      standingBox(seat, 0.06, seat * 0.6, sx * (w / 2), height - drop - 0.06, 0, SWING_SEAT_RGB),
+    );
+    parts.push(standingBox(0.03, drop, 0.03, sx * (w / 2), height - drop, 0, SWING_SEAT_RGB));
+  }
+  return mergeParts(parts);
 }
 
 /** Two posts and a crossbar, white; the mouth runs along local X. Local Y=0 is the GROUND plane. */
@@ -7067,6 +7209,99 @@ export function drapedQuad(
   geometry.setIndex(new THREE.BufferAttribute(indices, 1));
   geometry.computeVertexNormals();
   return paintVertexColor(geometry, hexFromRgb(rgb));
+}
+
+type Point3 = [number, number, number];
+
+/** The triangles of an indexed geometry, as corner positions. */
+function trianglesOf(geometry: THREE.BufferGeometry): Point3[][] {
+  const position = geometry.getAttribute('position');
+  const index = geometry.getIndex()!;
+  const corner = (i: number): Point3 => [position.getX(i), position.getY(i), position.getZ(i)];
+  const out: Point3[][] = [];
+  for (let t = 0; t < index.count; t += 3) {
+    out.push([corner(index.getX(t)), corner(index.getX(t + 1)), corner(index.getX(t + 2))]);
+  }
+  return out;
+}
+
+/** A polygon cut to a convex clip (Sutherland-Hodgman in X/Z), height carried along the polygon's own plane. */
+function clipToConvex(subject: Point3[], clip: readonly Vec2[]): Point3[] {
+  let area = 0;
+  for (let i = 0; i < clip.length; i++) {
+    const p = clip[i]!;
+    const q = clip[(i + 1) % clip.length]!;
+    area += p.x * q.z - q.x * p.z;
+  }
+  const sign = area >= 0 ? 1 : -1;
+  let polygon = subject;
+  for (let i = 0; i < clip.length && polygon.length > 0; i++) {
+    const a = clip[i]!;
+    const b = clip[(i + 1) % clip.length]!;
+    const side = (p: Point3): number =>
+      sign * ((b.x - a.x) * (p[2] - a.z) - (b.z - a.z) * (p[0] - a.x));
+    const input = polygon;
+    polygon = [];
+    for (let j = 0; j < input.length; j++) {
+      const cur = input[j]!;
+      const prev = input[(j + input.length - 1) % input.length]!;
+      const sc = side(cur);
+      const sp = side(prev);
+      const cross = (): Point3 => {
+        const t = sp / (sp - sc);
+        return [
+          prev[0] + (cur[0] - prev[0]) * t,
+          prev[1] + (cur[1] - prev[1]) * t,
+          prev[2] + (cur[2] - prev[2]) * t,
+        ];
+      };
+      if (sc >= 0) {
+        if (sp < 0) polygon.push(cross());
+        polygon.push(cur);
+      } else if (sp >= 0) {
+        polygon.push(cross());
+      }
+    }
+  }
+  return polygon;
+}
+
+/**
+ * Surface laid on a lawn: the lawn's own triangles cut to each convex clip and
+ * lifted `lift`, so the overlay lies in the lawn's planes at one height over
+ * them wherever the ground rolls, and the lawn never covers it. Pure.
+ */
+function overlayOnLawn(
+  lawn: readonly Point3[][],
+  clips: readonly (readonly Vec2[])[],
+  lift: number,
+  rgb: RGB,
+): THREE.BufferGeometry {
+  const positions: number[] = [];
+  for (const triangle of lawn) {
+    for (const clip of clips) {
+      const polygon = clipToConvex(triangle, clip);
+      for (let k = 1; k + 1 < polygon.length; k++) {
+        for (const p of [polygon[0]!, polygon[k]!, polygon[k + 1]!]) {
+          positions.push(p[0], p[1] + lift, p[2]);
+        }
+      }
+    }
+  }
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geometry.computeVertexNormals();
+  return paintVertexColor(geometry, hexFromRgb(rgb));
+}
+
+/** A rect as a convex polygon. */
+function rectPolygon(r: Rect): Vec2[] {
+  return [
+    { x: r.x0, z: r.z0 },
+    { x: r.x1, z: r.z0 },
+    { x: r.x1, z: r.z1 },
+    { x: r.x0, z: r.z1 },
+  ];
 }
 
 interface WallOptions {
@@ -10805,6 +11040,7 @@ export class UtilityKitRenderer {
           INITIAL_KIT_CAPACITY,
         ),
         ...this.parkProps(),
+        parkLamp: this.sharedPool('parkLamp', buildParkLampGeometry, INITIAL_KIT_CAPACITY),
       },
     };
   }
@@ -10815,6 +11051,12 @@ export class UtilityKitRenderer {
       pools: {
         ...this.parkProps(),
         playFrame: this.sharedPool('playFrame', buildPlayFrameGeometry, INITIAL_KIT_CAPACITY),
+        swingSet: this.sharedPool('swingSet', buildSwingSetGeometry, INITIAL_KIT_CAPACITY),
+        pavilionBlock: this.sharedPool(
+          'pavilionBlock',
+          buildPavilionBlockGeometry,
+          INITIAL_KIT_CAPACITY,
+        ),
       },
     };
   }
@@ -12147,7 +12389,8 @@ export class UtilityKitRenderer {
     const groundPool = kit.pools.plazaGround;
     const treePool = kit.pools.parkTree;
     const benchPool = kit.pools.parkBench;
-    if (!groundPool || !treePool || !benchPool) return;
+    const lampPool = kit.pools.parkLamp;
+    if (!groundPool || !treePool || !benchPool || !lampPool) return;
 
     const layout = computePlazaLayout(entry.footprint);
     const planterTop = (): number => groundY + PLAZA_PLANTER.height;
@@ -12158,11 +12401,19 @@ export class UtilityKitRenderer {
         plazaGround: [this.placeAt(groundPool, centerX, groundY, centerZ, rotation)],
         parkTree: this.placeParkProps(
           treePool,
-          layout.planters,
+          [...layout.planters, ...layout.gridPlanters],
           centerX,
           centerZ,
           rotation,
           planterTop,
+        ),
+        parkLamp: this.placeParkProps(
+          lampPool,
+          layout.lamps,
+          centerX,
+          centerZ,
+          rotation,
+          () => groundY + PARK_LAWN_HEIGHT,
         ),
         parkBench: this.placeParkBenches(
           benchPool,
@@ -12187,42 +12438,62 @@ export class UtilityKitRenderer {
     const treePool = kit.pools.parkTree;
     const benchPool = kit.pools.parkBench;
     const framePool = kit.pools.playFrame;
-    if (!treePool || !benchPool || !framePool) return;
+    const swingPool = kit.pools.swingSet;
+    const pavilionPool = kit.pools.pavilionBlock;
+    if (!treePool || !benchPool || !framePool || !swingPool || !pavilionPool) return;
 
     const layout = computeNeighbourhoodParkLayout(entry.footprint);
     const toWorld = (r: Rect): Rect => worldRect(r, centerX, centerZ, rotation);
-    const quad = (r: Rect, lift: number, rgb: RGB): THREE.BufferGeometry => {
-      const w = toWorld(r);
-      return drapedQuad(w.x0, w.z0, w.x1, w.z1, { lift, rgb, heightAt: this.heightAt });
-    };
     const lawnOptions: DrapeOptions = {
       lift: PARK_LAWN_HEIGHT,
       rgb: PARK_LAWN_RGB,
       heightAt: this.heightAt,
     };
-    const pathLift = PARK_LAWN_HEIGHT + PARK_PATH_Y_OFFSET;
-    const playLift = PARK_LAWN_HEIGHT + PARK_MARK_HEIGHT_M;
+    const lawnRect = toWorld(layout.lawn);
+    const lawn = drapedQuad(lawnRect.x0, lawnRect.z0, lawnRect.x1, lawnRect.z1, lawnOptions);
+    const lawnTriangles = trianglesOf(lawn);
+    const laid = (rects: readonly Rect[], lift: number, rgb: RGB): THREE.BufferGeometry =>
+      overlayOnLawn(
+        lawnTriangles,
+        rects.map((r) => rectPolygon(toWorld(r))),
+        lift,
+        rgb,
+      );
+    const playLift = PARK_MARK_HEIGHT_M;
     const drape = this.addDrape(
+      [lawn, ...drapedSkirt(lawnRect, lawnOptions)],
       [
-        quad(layout.lawn, PARK_LAWN_HEIGHT, PARK_LAWN_RGB),
-        ...drapedSkirt(toWorld(layout.lawn), lawnOptions),
-      ],
-      [
-        ...layout.paths.map((p) => quad(p, pathLift, PARK_PATH_RGB)),
-        quad(layout.playZone, playLift, PLAY_SURFACE_RGB),
+        laid(layout.paths, PARK_PATH_Y_OFFSET, PARK_PATH_RGB),
+        laid([layout.playZone], playLift, PLAY_SURFACE_RGB),
       ],
     );
-    const onSurface = (x: number, z: number): number => this.heightAt(x, z) + playLift;
+    const onSurface = (x: number, z: number): number =>
+      this.heightAt(x, z) + PARK_LAWN_HEIGHT + playLift;
+    const shelter = (): number =>
+      this.placePavilion(pavilionPool, layout.shelter, centerX, centerZ, rotation, this.heightAt);
     this.instances.set(building.id, {
       catalogId: building.catalogId,
       slots: {
-        parkTree: this.placeParkProps(
-          treePool,
-          layout.trees,
+        parkTree: [
+          ...this.placeParkProps(treePool, layout.trees, centerX, centerZ, rotation, this.heightAt),
+          ...this.placeParkProps(
+            treePool,
+            layout.shadeTrees,
+            centerX,
+            centerZ,
+            rotation,
+            this.heightAt,
+            _scale.setScalar(DISTRICT_SPECIMEN.scale),
+          ),
+        ],
+        pavilionBlock: [shelter()],
+        swingSet: this.placeParkBenches(
+          swingPool,
+          layout.swings,
           centerX,
           centerZ,
           rotation,
-          this.heightAt,
+          onSurface,
         ),
         parkBench: this.placeParkBenches(
           benchPool,
@@ -12263,16 +12534,11 @@ export class UtilityKitRenderer {
       const r = rotateLocalXZ(x, z, rotation);
       return this.heightAt(centerX + r.x, centerZ + r.z);
     };
-    const layout = computeDistrictParkLayout(entry.footprint, heightAtLocal);
+    const layout = computeDistrictParkLayout(entry.footprint, heightAtLocal, building.id);
     const toWorld = (r: Rect): Rect => worldRect(r, centerX, centerZ, rotation);
-    const quad = (r: Rect, lift: number, rgb: RGB): THREE.BufferGeometry => {
-      const w = toWorld(r);
-      return drapedQuad(w.x0, w.z0, w.x1, w.z1, {
-        step: DISTRICT_DRAPE_STEP_M,
-        lift,
-        rgb,
-        heightAt: this.heightAt,
-      });
+    const worldPoint = (p: Vec2): Vec2 => {
+      const r = rotateLocalXZ(p.x, p.z, rotation);
+      return { x: centerX + r.x, z: centerZ + r.z };
     };
     const lawnOptions: DrapeOptions = {
       step: DISTRICT_DRAPE_STEP_M,
@@ -12280,37 +12546,39 @@ export class UtilityKitRenderer {
       rgb: PARK_LAWN_RGB,
       heightAt: this.heightAt,
     };
-    const pathLift = PARK_LAWN_HEIGHT + PARK_PATH_Y_OFFSET;
-    const pond = toWorld(layout.pond);
-    // Ground that varies more than the lot band allows carries the water and
-    // its banks with it, so no side wall shows on the downhill side; nearly
-    // level ground keeps one flat surface.
-    const follows = layout.pondRelief > POND_FLAT_RELIEF_M;
-    const pondSurface = drapedQuad(pond.x0, pond.z0, pond.x1, pond.z1, {
-      step: follows ? DISTRICT_DRAPE_STEP_M : DISTRICT_POND.w,
-      lift: follows ? DISTRICT_POND.lift : 0,
-      rgb: SHALLOW_WATER_COLOR,
-      heightAt: follows ? this.heightAt : () => layout.pondY,
+    const lawnRect = toWorld(layout.lawn);
+    const lawn = drapedQuad(lawnRect.x0, lawnRect.z0, lawnRect.x1, lawnRect.z1, lawnOptions);
+    const lawnTriangles = trianglesOf(lawn);
+    // The water is a fan from the pond's centre to its shoreline and the bank
+    // a ring of quads out to its edge, each cut from the lawn's own triangles.
+    const outline = layout.pondOutline.map(worldPoint);
+    const bank = layout.pondBank.map(worldPoint);
+    const centre = worldPoint({
+      x: (layout.pond.x0 + layout.pond.x1) / 2,
+      z: (layout.pond.z0 + layout.pond.z1) / 2,
     });
-    // The banks run from the lawn to the water, which lies below it on the
-    // high side and may stand above it on the low side of a slope, so each
-    // is drawn facing both ways: the loop as it is and walked the other way.
-    const bankOptions: WallOptions = {
-      step: DISTRICT_DRAPE_STEP_M,
-      rgb: POND_BANK_RGB,
-      topAt: (x, z) => this.heightAt(x, z) + PARK_LAWN_HEIGHT,
-      bottomAt: follows ? (x, z) => this.heightAt(x, z) + DISTRICT_POND.lift : () => layout.pondY,
-    };
-    const banks = rectLoop(pond).flatMap((s) => [
-      drapedWall(s, bankOptions),
-      drapedWall({ ax: s.bx, az: s.bz, bx: s.ax, bz: s.az }, bankOptions),
+    const next = (i: number): number => (i + 1) % outline.length;
+    const water = outline.map((p, i) => [centre, p, outline[next(i)]!]);
+    const rim = outline.flatMap((p, i) => [
+      [p, bank[i]!, bank[next(i)]!],
+      [p, bank[next(i)]!, outline[next(i)]!],
     ]);
+    const laid = (
+      clips: readonly (readonly Vec2[])[],
+      lift: number,
+      rgb: RGB,
+    ): THREE.BufferGeometry => overlayOnLawn(lawnTriangles, clips, lift, rgb);
     const drape = this.addDrape(
+      [lawn, ...drapedSkirt(lawnRect, lawnOptions)],
       [
-        ...layout.lawnPieces.map((r) => quad(r, PARK_LAWN_HEIGHT, PARK_LAWN_RGB)),
-        ...drapedSkirt(toWorld(layout.lawn), lawnOptions),
+        laid(
+          layout.paths.map((p) => rectPolygon(toWorld(p))),
+          PARK_PATH_Y_OFFSET,
+          PARK_PATH_RGB,
+        ),
+        laid(rim, POND_BANK_LIFT_M, POND_BANK_RGB),
+        laid(water, POND_WATER_LIFT_M, SHALLOW_WATER_COLOR),
       ],
-      [...layout.paths.map((p) => quad(p, pathLift, PARK_PATH_RGB)), pondSurface, ...banks],
     );
     const specimenScale = _scale.setScalar(DISTRICT_SPECIMEN.scale);
     const specimens = this.placeParkProps(
