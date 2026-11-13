@@ -205,6 +205,21 @@ describe('buildings held at level 2 by schooling', () => {
     expect(later[0]?.detail).not.toContain('unlock');
   });
 
+  it('writes an elementary school with an, and a middle school with a', () => {
+    const issues = cityIssues([held('res-half-2')], healthyStats({ milestoneLevel: 1 }));
+    expect(issues[0]?.title).toContain('want of an elementary school');
+    expect(issues[0]?.detail).toContain('Build an elementary school on a street');
+  });
+
+  it('tells the player to build only what is unlocked, and says what unlocks the rest', () => {
+    const locked = cityIssues([held('res-high-2')], healthyStats({ milestoneLevel: 1 }));
+    expect(locked[0]?.detail).not.toMatch(/Build/);
+    expect(locked[0]?.detail).toContain('unlock at Big Town');
+    const college = cityIssues([held('com-office-2')], healthyStats({ milestoneLevel: 3 }));
+    expect(college[0]?.detail).not.toMatch(/Build/);
+    expect(college[0]?.detail).toContain('College unlocks at Grand City');
+  });
+
   it('points at the lowest-id building whatever order the mirror is in', () => {
     const a = held('res-high-2', { x: 4, z: 5 });
     const b = held('res-high-2', { x: 40, z: 50 });

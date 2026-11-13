@@ -27,13 +27,13 @@ region, so you can find whatever you're looking at by where it sits.
 | Section | Size |
 | --- | --- |
 | [Top corners](top-corners.md) | 733 B |
-| [City info and Help popovers](city-info-and-help-popovers.md) | 927 B |
+| [City info and Help popovers](city-info-and-help-popovers.md) | 1,397 B |
 | [Building info panel](building-info-panel.md) | 2,348 B |
 | [Junction panel](junction-panel.md) | 3,810 B |
 | [District panel](district-panel.md) | 1,403 B |
-| [Transit lines panel](transit-lines-panel.md) | 1,430 B |
+| [Transit lines panel](transit-lines-panel.md) | 1,680 B |
 | [Services panel](services-panel.md) | 2,614 B |
-| [Advisor panel](advisor-panel.md) | 902 B |
+| [Advisor panel](advisor-panel.md) | 1,234 B |
 | [Asset drawer and tool options](asset-drawer-and-tool-options.md) | 4,908 B |
 | [Main dock (bottom bar #1)](main-dock-bottom-bar-1.md) | 1,228 B |
 | [Milestone popover](milestone-popover.md) | 438 B |

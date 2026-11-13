@@ -33,6 +33,13 @@ elevation always resets to ground level when the road tool is put down, so a
 height set for one viaduct never becomes a stray hump under the next
 unrelated drag.
 
+A refused span says which of three things stopped it and what to do, in
+the same sentence from the tool's preview and from the world
+(`bridgeRefusalText` in `src/world/bridges.ts`): too steep, where it cannot
+meet a road already there within the grade; nothing to land on, where it
+ends in the air over dry ground; too high, where the deck would pass the
+ceiling.
+
 Every tier bridges under its own rules, in one of four structural families
 by class — a plank deck on light posts for gravel, alley and bike-lane
 roads; a concrete beam on round columns for every ordinary street; a deep

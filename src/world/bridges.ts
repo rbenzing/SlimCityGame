@@ -12,6 +12,7 @@ import {
   BRIDGE_MAX_ELEVATION,
   BRIDGE_MAX_GRADE,
   SEA_LEVEL,
+  TILE_METERS,
 } from '../shared/constants';
 import { partnerTileOf } from '../shared/corridor';
 import { atOneLevel } from '../shared/overpass';
@@ -35,8 +36,23 @@ export type DeckGround = Pick<
   'size' | 'height' | 'water' | 'roadTier' | 'roadElevation'
 >;
 
+/** Why a deck cannot be laid: it cannot meet a built road, has nothing to land on, or stands too high. */
+export type BridgeRefusal = 'step' | 'landing' | 'height';
+
 export type ElevationProfile =
-  { ok: true; elevations: number[]; cost: number } | { ok: false; reason: 'grade' | 'height' };
+  { ok: true; elevations: number[]; cost: number } | { ok: false; reason: BridgeRefusal };
+
+/** The sentence a refused deck is answered with, by the worker and the tool's preview alike. */
+export function bridgeRefusalText(reason: BridgeRefusal): string {
+  switch (reason) {
+    case 'step':
+      return `Too steep: this span cannot meet the road already there, because a road climbs at most ${Math.round((BRIDGE_MAX_GRADE / TILE_METERS) * 100)}%; end it short of that road or match that road's height.`;
+    case 'landing':
+      return 'Nothing to land on: the span ends in the air over dry ground; extend it onto the bank or end it on a road.';
+    case 'height':
+      return `Too high: the deck would stand more than ${BRIDGE_MAX_ELEVATION} m above the ground, from water too deep or banks too far apart; cross where it is narrower and shallower.`;
+  }
+}
 
 /** Terrain height (metres, world Y) at a tile. */
 function groundY(g: DeckGround, t: TilePoint): number {
@@ -244,7 +260,7 @@ function solveRun(
   // span joins onto are already built and cannot be raised to suit it.
   for (let i = 0; i < n; i++) {
     for (const joined of joins[i]!) {
-      if (!atOneLevel(deckY[i]!, joined)) return { ok: false, reason: 'grade' };
+      if (!atOneLevel(deckY[i]!, joined)) return { ok: false, reason: 'step' };
     }
   }
 
@@ -267,7 +283,7 @@ function solveRun(
     if (elevations[end] === 0) continue;
     if (endAnchor(end) === null) continue; // over water: capped like any dead end
     if (joins[end]!.length > 0) continue; // handed off to a built road
-    return { ok: false, reason: 'grade' };
+    return { ok: false, reason: 'landing' };
   }
 
   const cost = Math.round(elevations.reduce((sum, e) => sum + e * BRIDGE_COST_PER_METER_TILE, 0));

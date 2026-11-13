@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { allCardsFor, CATEGORY_DEFS, catalogEntryForTool, subTabsFor } from './categories';
+import {
+  allCardsFor,
+  CATEGORY_DEFS,
+  CATEGORY_HOTKEYS,
+  catalogEntryForTool,
+  subTabsFor,
+} from './categories';
 import { LANDFILL_PAINT_COST_PER_TILE } from '../shared/constants';
 
 describe('CATEGORY_DEFS', () => {
@@ -322,5 +328,17 @@ describe('transit line tools', () => {
       unlockMilestone: 3,
     });
     expect(card('rail-yard')).toMatchObject({ name: 'Rail Yard', cost: 11800, unlockMilestone: 3 });
+  });
+});
+
+describe('category hotkeys', () => {
+  it('binds each key to a tool of a category the toolbar really has', () => {
+    const ids = new Set(CATEGORY_DEFS.map((c) => c.id));
+    for (const [code, binding] of Object.entries(CATEGORY_HOTKEYS)) {
+      expect(code).toMatch(/^Digit[1-9]$/);
+      expect(ids.has(binding.category)).toBe(true);
+    }
+    const categories = Object.values(CATEGORY_HOTKEYS).map((b) => b.category);
+    expect(new Set(categories).size).toBe(categories.length);
   });
 });

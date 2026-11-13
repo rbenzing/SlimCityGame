@@ -5,7 +5,8 @@
  */
 import type { JSX, ReactNode } from 'react';
 import { MILESTONES } from '../shared/constants';
-import { formatFunds } from './format';
+import { CATEGORY_DEFS, CATEGORY_HOTKEYS } from './categories';
+import { amount, formatFunds } from './format';
 import { Icon } from './icons';
 import { useCityStore } from './store';
 import { PANEL_ROUNDED } from './theme';
@@ -76,17 +77,38 @@ export function CityInfoPopover(): JSX.Element {
     </div>
   );
 
+  /** A utility's supply and use, and in words how far use runs past supply. */
+  const utility = (
+    label: string,
+    supply: number,
+    demand: number,
+    unit: string,
+    shortfall: string,
+    note = '',
+  ): JSX.Element => (
+    <>
+      {row(label, `${amount(supply, unit)} made, ${amount(demand, unit)} used${note}`)}
+      {demand > supply && (
+        <div className="text-right text-[11px] text-[#e5533f]">
+          Short by {amount(demand - supply, unit)}: {shortfall}
+        </div>
+      )}
+    </>
+  );
+
   return (
     <PopoverFrame title="City Info">
       {row('Jobs', `${Math.round(stats.employed)}/${Math.round(stats.jobs)}`)}
-      {row('Power', `${Math.round(stats.powerSupply)}/${Math.round(stats.powerDemand)} MW`)}
-      {row(
+      {utility('Power', stats.powerSupply, stats.powerDemand, 'MW', 'some buildings go dark')}
+      {utility(
         'Water',
-        `${Math.round(stats.waterSupply)}/${Math.round(stats.waterDemand)} kL${
-          stats.waterFouled > 0 ? ` (${Math.round(stats.waterFouled)} lost to fouled water)` : ''
-        }`,
+        stats.waterSupply,
+        stats.waterDemand,
+        'kL',
+        'some buildings go dry',
+        stats.waterFouled > 0 ? ` (${Math.round(stats.waterFouled)} kL lost to fouled water)` : '',
       )}
-      {row('Sewer', `${Math.round(stats.sewerSupply)}/${Math.round(stats.sewerDemand)} kL`)}
+      {utility('Sewer', stats.sewerSupply, stats.sewerDemand, 'kL', 'sewage backs up')}
       {row('Loan', formatFunds(stats.loanBalance))}
     </PopoverFrame>
   );
@@ -95,7 +117,6 @@ export function CityInfoPopover(): JSX.Element {
 const SHORTCUTS: ReadonlyArray<{ keys: string; label: string }> = [
   { keys: 'Space', label: 'Play / Pause' },
   { keys: 'Esc', label: 'Cancel drag / close drawer / deselect' },
-  { keys: '1–7', label: 'Toolbar categories' },
   { keys: 'R', label: 'Rotate ploppable' },
   { keys: 'Ctrl+Z', label: 'Undo' },
   { keys: 'Ctrl+Y / Ctrl+Shift+Z', label: 'Redo' },
@@ -114,6 +135,26 @@ export function HelpPopover(): JSX.Element {
             <span className="shrink-0 rounded bg-white/10 px-1.5 py-0.5 text-[11px]">{s.keys}</span>
           </li>
         ))}
+      </ul>
+      <div className="text-xs font-semibold uppercase tracking-wide text-white/70">
+        Toolbar categories
+      </div>
+      <ul className="flex flex-col gap-1">
+        {CATEGORY_DEFS.map((c) => {
+          const code = Object.entries(CATEGORY_HOTKEYS).find(([, b]) => b.category === c.id)?.[0];
+          return (
+            <li
+              key={c.id}
+              data-testid={`help-category-${c.id}`}
+              className="flex items-center justify-between gap-3"
+            >
+              <span className="text-white/60">{c.label}</span>
+              <span className="shrink-0 rounded bg-white/10 px-1.5 py-0.5 text-[11px]">
+                {code ? code.replace('Digit', '') : 'Click its icon'}
+              </span>
+            </li>
+          );
+        })}
       </ul>
     </PopoverFrame>
   );

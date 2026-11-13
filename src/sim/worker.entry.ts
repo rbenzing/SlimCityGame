@@ -211,7 +211,7 @@ import {
   rampMeetingRefusal,
 } from '../shared/corridor';
 import type { RoadLayerReader } from '../shared/corridor';
-import { shareCorridorLifts, solveElevationProfile } from '../world/bridges';
+import { bridgeRefusalText, shareCorridorLifts, solveElevationProfile } from '../world/bridges';
 import {
   applyHeightPatch,
   computeTerraformPatch,
@@ -3242,7 +3242,9 @@ class SimWorld implements WorkerSim {
     const profile = exact
       ? ({ ok: true, elevations: exact, cost: 0 } as const)
       : solveElevationProfile(g, tiles, elevation);
-    if (!profile.ok) return { ok: false, cost: 0, inverse: [], reason: profile.reason };
+    if (!profile.ok) {
+      return { ok: false, cost: 0, inverse: [], reason: bridgeRefusalText(profile.reason) };
+    }
     // The two halves of a corridor rise and fall together; a half left on the
     // ground beside one on a deck stood on ground the deck's half never
     // levelled, and that ground came up through its carriageway.

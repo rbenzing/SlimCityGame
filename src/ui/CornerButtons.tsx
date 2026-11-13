@@ -4,6 +4,7 @@
  * button (no settings system exists yet).
  */
 import type { JSX } from 'react';
+import { counted } from './format';
 import { Icon, type IconName } from './icons';
 import { PANEL_ROUNDED } from './theme';
 
@@ -84,7 +85,7 @@ export function CornerButtons({
           />
           {advisorAlerts > 0 && (
             <span
-              aria-label={`${advisorAlerts} critical issue${advisorAlerts === 1 ? '' : 's'}`}
+              aria-label={counted(advisorAlerts, 'critical issue')}
               className="pointer-events-none absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-semibold text-white"
             >
               {advisorAlerts}

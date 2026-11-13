@@ -25,7 +25,7 @@ current behavior only and carry no dates of their own._
 
 ## Status (2026-09-29)
 
-**Test suite:** 8,021 tests passing across 238 test files, run 2026-11-13.
+**Test suite:** 8,035 tests passing across 238 test files, run 2026-11-13.
 This is the only test count in the documentation set. When the suite changes
 again, update the figure here and nowhere else.
 
@@ -131,6 +131,12 @@ again, update the figure here and nowhere else.
 - The crematorium's upkeep of ¢600 is the design's dial: no US operating
   cost for a crematory was found (gas is 12.5–28.5 therms a cremation by one
   maker's metering, staff unpublished).
+- A one-vehicle bus or tram line shorter than about four tiles has a round
+  trip, and so a headway, under a minute; the panel reads "under 1 min".
+  Street-running service holds about a minute between buses and two
+  between trams at best. A stop dwell and a terminal layover in
+  `cycleSeconds` (`src/shared/transitfleet.ts`) is the fix; it moves
+  ridership, so it needs its own sourced change.
 
 Before writing "not built" anywhere in this document, check the code.
 

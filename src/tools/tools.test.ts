@@ -2497,6 +2497,26 @@ describe('ToolManager — a road crossing over another', () => {
     expect(previews.at(-1)?.deckLifts).toBeUndefined();
   });
 
+  it('previews a refused deck invalid, with the sentence the world refuses it with', () => {
+    const { env, previews } = withRoads([]);
+    env.deckRefusal = () => 'Nothing to land on: extend the span onto the bank.';
+    const tm = new ToolManager(env);
+    tm.setTool('road.two');
+    drag(tm, 0, 20);
+    const preview = previews.at(-1)!;
+    expect(preview.valid).toBe(false);
+    expect(preview.invalidReason).toBe('Nothing to land on: extend the span onto the bank.');
+  });
+
+  it('previews a deck the world accepts as valid', () => {
+    const { env, previews } = withRoads([]);
+    env.deckRefusal = () => null;
+    const tm = new ToolManager(env);
+    tm.setTool('road.two');
+    drag(tm, 0, 20);
+    expect(previews.at(-1)?.valid).toBe(true);
+  });
+
   it('previews a deck the world cannot solve on the ground', () => {
     const { env, previews } = withRoads([]);
     env.deckLifts = () => null;

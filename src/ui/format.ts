@@ -81,3 +81,25 @@ export function lotLine(entry: BuildingCatalogEntry): string | null {
 export function formatFunds(amount: number): string {
   return `¢${Math.round(Math.abs(amount)).toLocaleString('en-US')}`;
 }
+
+/** "1 rider", "2 riders": `n` with the noun in the number it takes. */
+export function counted(n: number, singular: string, plural = `${singular}s`): string {
+  return `${n} ${n === 1 ? singular : plural}`;
+}
+
+/** Words that open on a vowel letter but a consonant sound, and the reverse. */
+const CONSONANT_SOUND = /^(uni([^n]|n[aeiou])|use|usu|eu|one|once|ubiq)/i;
+const VOWEL_SOUND = /^(hour|honest|honor|heir)/i;
+
+/** "an elementary school", "a middle school": the word with the article its sound takes. */
+export function withArticle(phrase: string): string {
+  const an =
+    VOWEL_SOUND.test(phrase) || (/^[aeiou]/i.test(phrase) && !CONSONANT_SOUND.test(phrase));
+  return `${an ? 'an' : 'a'} ${phrase}`;
+}
+
+/** A supply figure as the player reads it: whole units once it is big, two places below ten. */
+export function amount(value: number, unit: string): string {
+  const shown = value >= 10 ? Math.round(value) : Math.round(value * 100) / 100;
+  return `${shown} ${unit}`;
+}

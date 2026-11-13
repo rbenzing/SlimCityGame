@@ -80,7 +80,7 @@ import {
   segmentHalfWidthM,
   snapRoadEnd,
 } from './world/freeroads';
-import { solveElevationProfile } from './world/bridges';
+import { bridgeRefusalText, solveElevationProfile } from './world/bridges';
 import { isRoadBuildable } from './world/grid';
 import { alongStreetRefusal, feedsLines, sourceEndRefusal } from './world/powerline';
 import { roundaboutGroundOf } from './world/roundabouts';
@@ -151,6 +151,7 @@ import { LandfillRenderer } from './render/landfill';
 import { PhotoModeController } from './render/photomode';
 import { StatsHistory } from './ui/statshistory';
 import { ADVISOR_REFRESH_SNAPSHOTS, cityIssues } from './ui/advisor';
+import { CATEGORY_HOTKEYS } from './ui/categories';
 import { GhostRenderer, type GhostKind, type SetPreviewOptions } from './render/ghosts';
 import { UtilityKitRenderer, tramLaneOffsetOf } from './render/utilitykits';
 import { BusStopRenderer, stopRoadAt } from './render/busstops';
@@ -232,7 +233,7 @@ const OVERLAY_REFRESH_MS = 500; // 2 Hz while an infoview lens is active
  * Refusal reasons that are codes rather than sentences. Any other reason the
  * worker sends is already written for the player and is shown as it is.
  */
-const UNWORDED_REASONS: ReadonlySet<string> = new Set(['invalid', 'grade', 'height']);
+const UNWORDED_REASONS: ReadonlySet<string> = new Set(['invalid']);
 
 /** What the player is told when the world refuses an edit. */
 function refusalText(reason: string | undefined): string {
@@ -243,17 +244,6 @@ function refusalText(reason: string | undefined): string {
 
 const catalog = (catalogData as { buildings: BuildingCatalogEntry[] }).buildings;
 const roadSpecs = (roadsData as { specs: RoadSpec[] }).specs;
-
-/** Keyboard 1..6 jump to a representative tool of each toolbar category. */
-const CATEGORY_HOTKEYS: Record<string, ToolId> = {
-  Digit1: 'road.two',
-  Digit2: 'zone.resLow',
-  Digit3: 'plop.wind-turbine',
-  Digit4: 'plop.police-station',
-  Digit5: 'plop.small-park',
-  Digit6: 'bulldoze',
-  Digit7: 'terraform.raise', // Landscaping, appended past the original six
-};
 
 async function startGame(session: Extract<AppSession, { screen: 'playing' }>): Promise<void> {
   const viewport = document.getElementById('viewport');
@@ -2036,6 +2026,10 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       const deck = solveElevationProfile(clientGrid, tiles, elevation);
       return deck.ok ? deck.elevations : null;
     },
+    deckRefusal: (tiles, elevation) => {
+      const deck = solveElevationProfile(clientGrid, tiles, elevation);
+      return deck.ok ? null : bridgeRefusalText(deck.reason);
+    },
     worldPointAt: groundPointAt,
     snapRoadEnd: (p) => snapRoadEnd(clientGrid, p),
     roadEndNear: (p) => (clientGrid.roads ? nearestRoadEnd(clientGrid.roads, p) : null),
@@ -3120,9 +3114,9 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       void loadLatest(worker);
       return;
     }
-    const tool = CATEGORY_HOTKEYS[e.code];
-    if (tool && !e.ctrlKey && !e.metaKey && !e.altKey) {
-      store.getState().setTool(tool);
+    const hotkey = CATEGORY_HOTKEYS[e.code];
+    if (hotkey && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      store.getState().setTool(hotkey.tool);
     }
   });
 

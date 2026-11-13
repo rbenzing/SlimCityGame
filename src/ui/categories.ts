@@ -55,6 +55,22 @@ export const CATEGORY_DEFS: ReadonlyArray<{ id: DockCategory; label: string; ico
   { id: 'landscaping', label: 'Landscaping', icon: 'landscaping' },
 ];
 
+/**
+ * The digit keys that jump to a representative tool of a toolbar category,
+ * keyed by `KeyboardEvent.code`. The keydown handler and the help panel both
+ * read this table; a category without an entry has no key.
+ */
+export const CATEGORY_HOTKEYS: Readonly<Record<string, { tool: ToolId; category: DockCategory }>> =
+  {
+    Digit1: { tool: 'road.two', category: 'roads' },
+    Digit2: { tool: 'zone.resLow', category: 'zoning' },
+    Digit3: { tool: 'plop.wind-turbine', category: 'electricity' },
+    Digit4: { tool: 'plop.police-station', category: 'police' },
+    Digit5: { tool: 'plop.small-park', category: 'parks' },
+    Digit6: { tool: 'bulldoze', category: 'bulldoze' },
+    Digit7: { tool: 'terraform.raise', category: 'landscaping' },
+  };
+
 export interface AssetCard {
   id: ToolId;
   name: string;

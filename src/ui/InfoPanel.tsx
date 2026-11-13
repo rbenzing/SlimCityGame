@@ -11,7 +11,7 @@ import { BuildingState, Problem, ZoneType } from '../shared/types';
 import type { BuildingCatalogEntry, BuildingState as BuildingStateValue } from '../shared/types';
 import { averageOutputMW, formatMW } from '../shared/power';
 import { schoolNameOf } from '../shared/schooling';
-import { happinessFace, lotLine } from './format';
+import { counted, happinessFace, lotLine } from './format';
 import { Icon, type IconName } from './icons';
 import { useCityStore } from './store';
 import { PANEL_ROUNDED } from './theme';
@@ -235,7 +235,11 @@ export function InfoPanel(): JSX.Element | null {
             />
           )}
           {info?.depot && (
-            <Row label="Holds" value={`${info.depot.holds} vehicles`} testId="depot-holds-row" />
+            <Row
+              label="Holds"
+              value={counted(info.depot.holds, 'vehicle')}
+              testId="depot-holds-row"
+            />
           )}
           {info?.depot && (
             <Row label="Fields" value={`${info.depot.fields}`} testId="depot-fields-row" />

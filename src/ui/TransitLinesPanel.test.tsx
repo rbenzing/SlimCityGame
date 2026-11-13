@@ -66,7 +66,7 @@ describe('TransitLinesPanel', () => {
     useCityStore.setState({ selectedTool: 'transit.line' });
     render(<TransitLinesPanel />);
     expect(screen.getByTestId('line-2-service')).toHaveTextContent(
-      '1 of 1 vehicles · every 12.5 min · ¢142/mo',
+      '1 of 1 vehicle · every 12.5 min · ¢142/mo',
     );
     expect(screen.getByTestId('line-3-service')).toHaveTextContent(
       '2 of 3 vehicles · every 4.1 min · ¢140/mo',
@@ -86,7 +86,7 @@ describe('TransitLinesPanel', () => {
     });
     render(<TransitLinesPanel />);
     expect(screen.getByTestId('line-2-service')).toHaveTextContent(
-      '1 of 1 vehicles · every 12.5 min · ¢142/mo · from Rail Yard',
+      '1 of 1 vehicle · every 12.5 min · ¢142/mo · from Rail Yard',
     );
     expect(screen.getByTestId('line-3-service')).not.toHaveTextContent('from');
   });
@@ -127,11 +127,70 @@ describe('TransitLinesPanel', () => {
     expect(screen.getByTestId('shelter-advertising')).toHaveTextContent('+¢21/mo');
   });
 
-  it('reads every line as running nothing before a snapshot carries fleet figures', () => {
+  it('states no service before a snapshot carries fleet figures, rather than a made-up zero', () => {
     useCityStore.setState({ selectedTool: 'transit.line' });
     useCityStore.getState().setTransit(LINES, [40, 300, 120]);
     render(<TransitLinesPanel />);
     expect(screen.queryByTestId('line-1-no-depot')).not.toBeInTheDocument();
-    expect(screen.getByTestId('line-1-service')).toHaveTextContent('0 of 0 vehicles');
+    expect(screen.queryByTestId('line-1-service')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('line-1-idle')).not.toBeInTheDocument();
+  });
+
+  it('says a line that asks for no vehicles is not running, and why', () => {
+    useCityStore.setState({
+      selectedTool: 'transit.line',
+      transitLines: [
+        { id: 1, stops: [], color: 0xef5350 },
+        { id: 2, stops: [], color: 0x42a5f5, vehicles: 0 },
+      ],
+      transitRidership: [0, 0],
+      transitFleet: {
+        served: [0, 0],
+        requested: [0, 0],
+        headwayMin: [0, 0],
+        runningCost: [0, 0],
+      },
+    });
+    render(<TransitLinesPanel />);
+    expect(screen.getByTestId('line-1-idle')).toHaveTextContent(
+      'Not running — its stops are not joined by a route',
+    );
+    expect(screen.getByTestId('line-2-idle')).toHaveTextContent(
+      'Not running — set to run no vehicles',
+    );
+    expect(screen.queryByTestId('line-1-service')).not.toBeInTheDocument();
+    expect(screen.queryByText(/0 of 0/)).not.toBeInTheDocument();
+  });
+
+  it('reads one rider and one vehicle in the singular', () => {
+    useCityStore.setState({
+      selectedTool: 'transit.line',
+      transitRidership: [1, 300, 120],
+      transitFleet: {
+        served: [1, 1, 2],
+        requested: [1, 1, 3],
+        headwayMin: [12, 12.5, 4.1],
+        runningCost: [40, 142, 140],
+      },
+    });
+    render(<TransitLinesPanel />);
+    expect(screen.getByText('1 rider')).toBeInTheDocument();
+    expect(screen.getByTestId('line-2-service')).toHaveTextContent('1 of 1 vehicle · every');
+  });
+
+  it('does not claim a headway under a minute to a tenth of one', () => {
+    useCityStore.setState({
+      selectedTool: 'transit.line',
+      transitFleet: {
+        served: [1, 1, 1],
+        requested: [1, 1, 1],
+        headwayMin: [0.1, 12.5, 0.96],
+        runningCost: [40, 142, 70],
+      },
+    });
+    render(<TransitLinesPanel />);
+    expect(screen.getByTestId('line-1-service')).toHaveTextContent('every under 1 min');
+    expect(screen.getByTestId('line-1-service')).not.toHaveTextContent('0.1');
+    expect(screen.getByTestId('line-3-service')).toHaveTextContent('every under 1 min');
   });
 });
