@@ -662,31 +662,67 @@ describe('TransitRenderer.apply', () => {
   });
 });
 
-describe('TransitRenderer.setVisible', () => {
-  it('toggles visibility on every owned mesh without disposing them', () => {
+describe('TransitRenderer.setRibbonVisible', () => {
+  const route = [
+    { x: 0, z: 0 },
+    { x: 5, z: 0 },
+  ];
+  const build = () => {
     const scene = new THREE.Scene();
     const renderer = new TransitRenderer(scene, flatHeightAt);
-    renderer.apply({
-      lines: [
-        line(
-          1,
-          [
-            { x: 0, z: 0 },
-            { x: 5, z: 0 },
-          ],
-          1,
-        ),
-      ],
-      ridership: [40],
-      served: [1],
-    });
+    renderer.apply({ lines: [line(1, route, 1)], ridership: [40], served: [3] });
+    // Three buses and two stops: the only instanced mesh of three is the buses'.
+    const ribbon = scene.children.find(
+      (c) => c instanceof THREE.Mesh && !(c instanceof THREE.InstancedMesh),
+    )!;
+    const instanced = scene.children.filter(
+      (c): c is THREE.InstancedMesh => c instanceof THREE.InstancedMesh,
+    );
+    const buses = instanced.find((c) => c.count === 3)!;
+    return { scene, renderer, ribbon, buses, furniture: instanced.filter((c) => c !== buses) };
+  };
 
-    renderer.setVisible(false);
-    expect(renderer.isVisible()).toBe(false);
-    for (const child of scene.children) expect((child as THREE.Object3D).visible).toBe(false);
+  it('draws the vehicles and the stop furniture with the lens off, and only the ribbon follows the lens', () => {
+    const { renderer, ribbon, buses, furniture } = build();
 
-    renderer.setVisible(true);
-    for (const child of scene.children) expect((child as THREE.Object3D).visible).toBe(true);
+    expect(ribbon.visible).toBe(false);
+    expect(buses.visible).toBe(true);
+    expect(furniture.length).toBeGreaterThan(0);
+    for (const mesh of furniture) expect(mesh.visible).toBe(true);
+
+    renderer.setRibbonVisible(true);
+    expect(ribbon.visible).toBe(true);
+    expect(buses.visible).toBe(true);
+
+    renderer.setRibbonVisible(false);
+    expect(ribbon.visible).toBe(false);
+    expect(buses.visible).toBe(true);
+    for (const mesh of furniture) expect(mesh.visible).toBe(true);
+  });
+
+  it('keeps the ribbon choice across a rebuild of the lines', () => {
+    const { scene, renderer } = build();
+    renderer.setRibbonVisible(true);
+    renderer.apply({ lines: [line(1, route, 1)], ridership: [40], served: [3] });
+    const ribbon = scene.children.find(
+      (c) => c instanceof THREE.Mesh && !(c instanceof THREE.InstancedMesh),
+    )!;
+    expect(ribbon.visible).toBe(true);
+  });
+
+  it('still hides the vehicles outside the service hours while the ribbon is on', () => {
+    const { renderer, ribbon, buses } = build();
+    renderer.setRibbonVisible(true);
+    renderer.setDayHour(3);
+    renderer.update(0.1);
+
+    const m = new THREE.Matrix4();
+    const s = new THREE.Vector3();
+    for (let i = 0; i < 3; i += 1) {
+      buses.getMatrixAt(i, m);
+      expect(s.setFromMatrixScale(m).x).toBe(0);
+    }
+    expect(ribbon.visible).toBe(true);
   });
 });
 

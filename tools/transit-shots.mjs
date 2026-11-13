@@ -3,7 +3,9 @@
  * offer Bus Lane / Bike Lane / Tram Track as cards, and the road tool's
  * options row must offer Bus and Tram where the class carries them and nowhere
  * else — then lays what those controls compose and shoots the result. The DOM
- * proves the controls; the picture proves the road they build.
+ * proves the controls; the picture proves the road they build. Last, a bus,
+ * tram and train line in service are shot in the plain view, no lens on: their
+ * vehicles are on the street and track.
  *
  * Usage: node tools/transit-shots.mjs [url] [outDir]
  */
@@ -304,6 +306,166 @@ await shot('bus-kerbside-close', X + 8, Z, 30, 0.0, 0.9);
 await shot('tram-reservation-close', X + 8, Z + 4, 34, 0.0, 0.9);
 await shot('bus-both-close', X + 8, Z + 8, 34, 0.0, 0.9);
 await shot('tram-mixed-close', X + 8, Z + 16, 34, 0.0, 0.9);
+
+// ---------------------------------------------------------------------------
+// The plain view: a bus line, a tram line and a train line in service, with no
+// lens on and no transit tool in hand. Their vehicles are drawn all the same.
+// ---------------------------------------------------------------------------
+await call(() => window.__slimcity.setOverlay(null));
+await page.keyboard.press('Escape');
+
+// A fresh dry block clear of the road variants above.
+let block = null;
+for (let z = 40; z < N - 40 && !block; z++) {
+  for (let x = 40; x < N - 60; x++) {
+    const overlaps = x < X + 20 && x + 44 > X && z - 4 < Z + 28 && z + 22 > Z - 4;
+    let ok = !overlaps;
+    for (let k = 0; k < 44 && ok; k++) {
+      for (let dz = -4; dz <= 22 && ok; dz++) {
+        const i = idx(x + k, z + dz);
+        if (g0.water[i] || Math.abs(g0.height[i]) > 22) ok = false;
+      }
+    }
+    if (ok) {
+      block = { x, z };
+      break;
+    }
+  }
+}
+if (!block) {
+  console.log('no dry block for the lines');
+  await b.close();
+  process.exit(1);
+}
+const { x: LX, z: LZ } = block;
+console.log('line block', JSON.stringify(block));
+
+const BUS_ROW = LZ;
+const TRAM_ROW = LZ + 10;
+const RAIL_ROW = LZ + 16;
+const lay = (z, tier, x0, x1) =>
+  cmd('Road', [
+    {
+      kind: 'buildRoad',
+      tier,
+      tiles: Array.from({ length: x1 - x0 + 1 }, (_, i) => ({ x: LX + x0 + i, z })),
+    },
+  ]);
+await lay(BUS_ROW, TWO_LANE, 0, 40);
+await cmd('Road', [
+  {
+    kind: 'buildRoad',
+    tier: TWO_LANE,
+    tiles: Array.from({ length: 20 }, (_, i) => ({ x: LX + 38, z: BUS_ROW + 1 + i })),
+  },
+]);
+await lay(TRAM_ROW, 10, 0, 38);
+await lay(RAIL_ROW, 11, 0, 36);
+await lay(RAIL_ROW + 4, TWO_LANE, 0, 38);
+await page.waitForTimeout(800);
+
+const put = (catalogId, x, z, rotation) =>
+  cmd(catalogId, [{ kind: 'placeBuilding', catalogId, x, z, rotation }]);
+await put('wind-turbine', LX + 36, BUS_ROW - 1, 0);
+await put('bus-depot', LX + 2, BUS_ROW + 1, 2);
+await put('tram-depot', LX + 12, TRAM_ROW + 1, 1);
+await put('rail-yard', LX + 12, RAIL_ROW + 1, 1);
+await put('rail-station', LX + 6, RAIL_ROW + 1, 0);
+await put('rail-station', LX + 22, RAIL_ROW + 1, 0);
+for (const dx of [14, 24]) {
+  await cmd('Stop', [
+    { kind: 'placeStop', stop: { x: LX + dx, z: BUS_ROW, side: 0, kind: 'shelter' } },
+  ]);
+}
+await page.waitForTimeout(800);
+const lineAt = (id, color, mode, row, x0, x1) =>
+  cmd(`${mode} line`, [
+    {
+      kind: 'createTransitLine',
+      line: {
+        id,
+        color,
+        mode,
+        vehicles: 2,
+        stops: [
+          { x: LX + x0, z: row },
+          { x: LX + x1, z: row },
+        ],
+      },
+    },
+  ]);
+await lineAt(0, 0xef5350, 'bus', BUS_ROW, 14, 24);
+await lineAt(1, 0x3cb45a, 'tram', TRAM_ROW, 20, 30);
+await lineAt(2, 0x42a5f5, 'rail', RAIL_ROW, 6, 22);
+await page.waitForTimeout(1500);
+
+// Let the depots field their vehicles, then hold the city still.
+await call(() => window.__slimcity.setSpeed(1));
+await page.waitForTimeout(8000);
+await call(() => window.__slimcity.setSpeed(0));
+await page.waitForTimeout(600);
+console.log(
+  'line transit',
+  JSON.stringify(await call(() => window.__slimcity.readTransit().served)),
+);
+
+/** Pixels that changed between two frames, below the top panels and above the bottom bar. */
+const motion = (a, c) =>
+  page.evaluate(
+    async ([pa, pc]) => {
+      const load = async (b64) => {
+        const bytes = Uint8Array.from(atob(b64), (ch) => ch.charCodeAt(0));
+        const bmp = await createImageBitmap(new Blob([bytes], { type: 'image/png' }));
+        const cv = document.createElement('canvas');
+        cv.width = bmp.width;
+        cv.height = bmp.height;
+        const ctx = cv.getContext('2d');
+        ctx.drawImage(bmp, 0, 0);
+        return ctx.getImageData(0, 0, cv.width, cv.height);
+      };
+      const [ia, ic] = await Promise.all([load(pa), load(pc)]);
+      let n = 0;
+      let x0 = ia.width;
+      let x1 = 0;
+      for (let y = 280; y < ia.height - 110; y++) {
+        for (let x = 0; x < ia.width; x++) {
+          const i = (y * ia.width + x) * 4;
+          const d =
+            Math.abs(ia.data[i] - ic.data[i]) +
+            Math.abs(ia.data[i + 1] - ic.data[i + 1]) +
+            Math.abs(ia.data[i + 2] - ic.data[i + 2]);
+          if (d > 60) {
+            n++;
+            if (x < x0) x0 = x;
+            if (x > x1) x1 = x;
+          }
+        }
+      }
+      return { n, x0, x1, width: ia.width };
+    },
+    [a.toString('base64'), c.toString('base64')],
+  );
+
+/** Vehicles are drawn on real time and no hook says where they are: shoot a frame once something moves wholly inside it. */
+const plainShot = async (name, tx, tz, d, yaw, pitch) => {
+  await cam(tx, tz, d, yaw, pitch);
+  await page.waitForTimeout(1200);
+  for (let i = 0; i < 150; i++) {
+    const a = await page.screenshot();
+    await page.waitForTimeout(150);
+    const m = await motion(a, await page.screenshot());
+    if (m.n >= 300 && m.x0 > 320 && m.x1 < m.width - 160) {
+      console.log(name, 'vehicle motion', m.n, m.x0, m.x1);
+      await cleanShot(page, `${out}/${name}.png`);
+      console.log('shot', name);
+      return;
+    }
+  }
+  failures.push(`no vehicle came into frame for ${name}`);
+};
+await plainShot('plain-bus-line', LX + 19, BUS_ROW, 90, Math.PI, 0.6);
+await plainShot('plain-tram-line', LX + 25, TRAM_ROW, 90, Math.PI, 0.6);
+await plainShot('plain-train-line', LX + 14, RAIL_ROW, 110, Math.PI, 0.55);
 
 console.log(failures.length === 0 ? 'PASS' : 'FAIL:\n - ' + failures.join('\n - '));
 console.log('done ->', out);

@@ -219,9 +219,9 @@ const placeCars = () =>
   );
 await placeCars();
 
-// A line's trams are drawn under the transit lens, as every line's vehicles
-// are, and the lens paints its own wedges and opens the Transit Lines panel
-// over the corner: it is on for the shots of the lines and off for the rest.
+// A line's trams are drawn in every view; the lens adds the line's ribbon, its
+// own wedges and the Transit Lines panel over the corner: it is on for the
+// shots of the lines and off for the rest.
 const lens = (on) => hook((o) => window.__slimcity.setOverlay(o), on ? 'transit' : null);
 const PITCH = 0.7;
 const views = [];
@@ -302,7 +302,14 @@ const tramShot = async (name, tx, tz, d, yaw, pitch) => {
     await page.waitForTimeout(150);
     const m = await motion(a, await page.screenshot());
     if (m.n >= 300 && m.x0 > 320 && m.x1 < m.width - 160) {
-      console.log(name, 'tram motion', m.n, m.x0, m.x1, `after ${Math.round((Date.now() - started) / 1000)} s`);
+      console.log(
+        name,
+        'tram motion',
+        m.n,
+        m.x0,
+        m.x1,
+        `after ${Math.round((Date.now() - started) / 1000)} s`,
+      );
       await shot(name, 0);
       return;
     }

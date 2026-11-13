@@ -113,7 +113,9 @@ one per headway at the commercial speed and are dropped at the first stop;
 at pull-in the same number drive it back and are dropped at the gate; a new
 run takes over from whatever of the last is still out. The renderer hides a
 line's looping vehicles outside the span, so the street shows buses pulling
-out at dawn, the line running by day and the buses going home at night. A
+out at dawn, the line running by day and the buses going home at night.
+Inside the span a line's vehicles are drawn in every view, and the Transit
+lens adds only its ribbon `[R-render-038]`. A
 tram or a train dead-runs over its own graph, which carries no traffic, and
 no vehicle kind draws it: neither loads nor animates anything.
 

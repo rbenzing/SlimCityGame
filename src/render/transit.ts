@@ -507,7 +507,8 @@ export class TransitRenderer {
 
   private buses: ActiveVehicle[] = [];
   private busColors: number[] = [];
-  private visible = true;
+  /** Whether the ribbon is drawn: the Transit lens or a transit tool turns it on. */
+  private ribbonVisible = false;
   /** The clock hour the lines are drawn at; they run only inside the service span. */
   private dayHour = 12;
   private stopTotal = 0;
@@ -545,7 +546,7 @@ export class TransitRenderer {
     this.buildRibbon(snapshot.lines);
     this.buildBuses(snapshot.lines, snapshot.served ?? []);
 
-    this.applyVisibility();
+    if (this.ribbonMesh) this.ribbonMesh.visible = this.ribbonVisible;
   }
 
   /**
@@ -646,14 +647,10 @@ export class TransitRenderer {
     return car ? (this.carMeshes[car.mesh]?.geometry ?? null) : null;
   }
 
-  /** Transit-lens visibility toggle: hides/shows every owned mesh without disposing them. */
-  setVisible(visible: boolean): void {
-    this.visible = visible;
-    this.applyVisibility();
-  }
-
-  isVisible(): boolean {
-    return this.visible;
+  /** Shows or hides the lines' ribbon without disposing it; vehicles and stop furniture are always drawn. */
+  setRibbonVisible(visible: boolean): void {
+    this.ribbonVisible = visible;
+    if (this.ribbonMesh) this.ribbonMesh.visible = visible;
   }
 
   stopCount(): number {
@@ -691,14 +688,6 @@ export class TransitRenderer {
   }
 
   // -- internals -------------------------------------------------------------
-
-  private applyVisibility(): void {
-    if (this.shelterMesh) this.shelterMesh.visible = this.visible;
-    if (this.signPoleMesh) this.signPoleMesh.visible = this.visible;
-    if (this.signMesh) this.signMesh.visible = this.visible;
-    if (this.ribbonMesh) this.ribbonMesh.visible = this.visible;
-    for (const mesh of this.carMeshes) mesh.visible = this.visible;
-  }
 
   private buildShelters(
     lines: readonly TransitLine[],

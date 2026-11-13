@@ -181,8 +181,7 @@ for (const [name, tx, tz, d, yaw, pitch] of views) {
   if (restore) await restore();
 }
 
-// The line's own shelter shows under the transit lens, where every line's does.
-await hook(() => window.__slimcity.setOverlay('transit'));
+// The line's own shelter, at stops that hold no bus stop.
 for (const [name, tx, tz, d, yaw, pitch] of [
   ['c3-line-both-stops', X + 15.5, Z + 0.7, 105, Math.PI, 0.7],
   ['c4-line-far-stop', X + 17.5, Z + 0.5, 42, Math.PI + 0.4, 0.5],
@@ -190,7 +189,6 @@ for (const [name, tx, tz, d, yaw, pitch] of [
   await camera(tx, tz, d, yaw, pitch);
   await shot(name);
 }
-await hook(() => window.__slimcity.setOverlay(null));
 
 await hook(() => window.__slimcity.setDayT(0.96));
 await cmd('Phase', [{ kind: 'setUnlimitedMoney', on: true }]);
