@@ -781,7 +781,10 @@ export type Command =
   | { kind: 'setSandbox'; on: boolean }
   // Unlimited money (testing): when on, funds/cost gates are ignored so anything
   // can be built even in the red. Cash flow is still tracked; the HUD shows ∞.
-  | { kind: 'setUnlimitedMoney'; on: boolean };
+  | { kind: 'setUnlimitedMoney'; on: boolean }
+  // Ends an undo batch: the batch costs exactly `cost` in all (negative =
+  // refund), whatever its other commands charged or refunded.
+  | { kind: 'settle'; cost: number };
 
 /**
  * Worker acknowledges each command batch: actual cost charged, and the

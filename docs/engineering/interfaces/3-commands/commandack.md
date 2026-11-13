@@ -18,9 +18,10 @@ One `ack` answers one whole `commands` batch, not one command. A batch is
   takes back every command of the batch that had landed, by replaying their
   inverses newest first. It also puts `funds` back as they stood before the
   batch, since an inverse is not priced like its original: a road's is a
-  bulldoze, which refunds half. The ack is `ok: false`, with the refused
-  command's `reason`, `cost: 0` and an empty `inverse`, and the world is as it
-  was.
+  bulldoze, which refunds half. The take-back passes the commands' funds
+  gates, so a city too poor to buy back a building the batch had bulldozed
+  still has it. The ack is `ok: false`, with the refused command's `reason`,
+  `cost: 0` and an empty `inverse`, and the world is as it was.
 - **Why atomic:** a three-command batch whose second command is refused leaves
   nothing behind. That matters for a corridor's `defineRoadProfile` plus two
   `buildRoad` runs, an interchange stamp's ramps, a grid drag's streets and an
@@ -39,4 +40,13 @@ to resend as an ordinary (silent) `commands` batch. That batch is atomic too.
 If the world refuses it, `refused(commands)` moves the edit those commands
 belong to back where it was before the undo or redo, and the player is told
 it failed.
+
+**An undo is exact for money** `[R-architecture-008]`. Every non-empty
+`inverse` ends in `{ kind: 'settle', cost }`, the opposite of what the batch
+cost. A batch that ends in a `settle` costs exactly that in all: its other
+commands run with their funds gates aside, then `funds` is what it was
+before the batch less the settled cost. It is refused `'funds'` before
+anything is applied when the city cannot pay a positive settled cost, which
+means the refund the undo would take back has been spent. Redo resends
+`forward`, priced as the original was.
 

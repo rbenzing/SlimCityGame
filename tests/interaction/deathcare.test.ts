@@ -310,16 +310,16 @@ describe('demolishing a cemetery that holds interments', () => {
     const undone = run(h, 21, demolished.inverse);
 
     expect(undone.ok).toBe(true);
-    // The cemetery's price less the exhumation charge returned: the charge nets out exactly.
-    expect(undone.cost).toBe(cemeteryEntry.cost - EXHUMATION);
+    // Undoing costs exactly what the demolition returned, so the pair nets out.
+    expect(undone.cost).toBe(-demolished.cost);
     const id = standing(h)!;
     expect(id).toBeDefined();
     expect(interred(h)).toEqual([{ id, count: GRAVES }]);
     h.ticks(10);
     expect(deathCare(h).facilities).toEqual([{ id, used: GRAVES, total: 780 }]);
     expect(selectionOf(h, id).deathCare).toEqual({ used: GRAVES, total: 780 });
-    // The same funds an empty cemetery's demolition and undo leave: half its price lost, as for any building, and nothing for the graves.
-    expect(funds(h)).toBeCloseTo(before - REFUND, 6);
+    // The funds stand where they stood before the demolition.
+    expect(funds(h)).toBeCloseTo(before, 6);
   });
 
   it('refuses a demolition the funds cannot pay, and leaves the cemetery standing with its dead', () => {

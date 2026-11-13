@@ -757,6 +757,7 @@ describe('roads off the grid — the world lays them, undoes them and keeps them
     expect(moved).toMatchObject({ ok: true, cost: 0 });
     expect(moved.inverse).toEqual([
       { kind: 'moveSegmentEnd', from: at(1010, 1010), to: at(1000, 1000) },
+      { kind: 'settle', cost: 0 },
     ]);
     const nowhere = run(h, 3, [
       { kind: 'moveSegmentEnd', from: at(1100, 1100), to: at(1110, 1110) },

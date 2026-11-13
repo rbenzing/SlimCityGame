@@ -161,7 +161,7 @@ Hearses depot at a crematorium exactly as at a cemetery.
 
 The usual 50% refund of build price stands and the charge is subtracted from it; the ack's cost is the net. Clearing a full cemetery costs about three times what it cost to build. An empty one demolishes normally.
 
-The inverse is a `placeBuilding` carrying `interments`, sent only by this undo. It stands the cemetery back through `DeathCareSystem.setInterments`, prices the placement at build cost less the charge, and hands the charge back exactly. The bulldoze cursor quotes the charge and the grave count first.
+The inverse is a `placeBuilding` carrying `interments`, sent only by this undo. It stands the cemetery back through `DeathCareSystem.setInterments`, and the undo's `settle` puts the funds back where they stood before the demolition, charge and refund both `[R-architecture-008]`. The bulldoze cursor quotes the charge and the grave count first.
 
 ### The uncollected-body penalty
 
