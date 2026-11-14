@@ -18,7 +18,7 @@ How to use it:
 | Roads: rail, tram and transit          | [roads-transit.md](truths/roads-transit.md)   | 11    | `R-roads-007, 008, 011–014, 037–039, 082, 088` |
 | World: grid and simulation core        | [world-grid.md](truths/world-grid.md)         | 22    | `R-world-001–006, 019–024, 027, 030–035, 049–051` |
 | World: growth, lots and population     | [world-growth.md](truths/world-growth.md)     | 29    | `R-world-007–018, 025, 026, 028, 029, 036–048` |
-| Utilities and services                 | [services.md](truths/services.md)             | 41    | `R-services-001` to `R-services-041` |
+| Utilities and services                 | [services.md](truths/services.md)             | 42    | `R-services-001` to `R-services-042` |
 | Saves and the data model               | [saves.md](truths/saves.md)                   | 12    | `R-saves-001` to `R-saves-012`       |
 | Architecture and the thread boundary   | [architecture.md](truths/architecture.md)     | 17    | `R-architecture-001` to `R-architecture-017` |
 | Rendering and art                      | [render.md](truths/render.md)                 | 41    | `R-render-001` to `R-render-041`     |

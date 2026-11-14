@@ -2388,6 +2388,37 @@ export function signalYaw(axis: FurnitureAxis, side: FurnitureSide): number {
   return side > 0 ? Math.PI / 2 : -Math.PI / 2;
 }
 
+/**
+ * The solid parts of a traffic signal as polylines in world metres, `groundY`
+ * being the ground its mast stands on: the mast, the arm out over the road and
+ * the head that hangs from the arm's end.
+ */
+export function signalPolylines(
+  p: SignPlacement,
+  groundY: number,
+): (readonly [number, number, number])[][] {
+  const at = signWorldTransform(p);
+  const armDx = Math.cos(at.yaw);
+  const armDz = -Math.sin(at.yaw);
+  const armY = groundY + SIGNAL_MAST_HEIGHT - SIGNAL_ARM_THICKNESS;
+  const tipX = at.x + armDx * SIGNAL_ARM_LENGTH;
+  const tipZ = at.z + armDz * SIGNAL_ARM_LENGTH;
+  return [
+    [
+      [at.x, groundY, at.z],
+      [at.x, groundY + SIGNAL_MAST_HEIGHT, at.z],
+    ],
+    [
+      [at.x, armY, at.z],
+      [tipX, armY, tipZ],
+    ],
+    [
+      [tipX, armY, tipZ],
+      [tipX, armY - SIGNAL_HEAD_HEIGHT, tipZ],
+    ],
+  ];
+}
+
 const _matrix = new THREE.Matrix4();
 const _position = new THREE.Vector3();
 const _quat = new THREE.Quaternion();

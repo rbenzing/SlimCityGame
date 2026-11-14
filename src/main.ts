@@ -164,12 +164,15 @@ import { UtilityKitRenderer, tramLaneOffsetOf } from './render/utilitykits';
 import { BusStopRenderer, stopPostSpots, stopRoadAt } from './render/busstops';
 import { FarmRenderer } from './render/farms';
 import { ZoneGridRenderer } from './render/zonegrid';
-import { LampRenderer, ringLampStands, STOP_CLEAR_HALF_M } from './render/lamps';
+import { LampRenderer, ringLampStands, STOP_CLEAR_HALF_M, type LampSettle } from './render/lamps';
+import { carryLampsOnPoles } from './render/wireclearance';
 import { FREE_ROAD_SLOT, PowerLineRenderer, STRUNG_LINE_SLOT } from './render/powerlines';
 import {
   cableBoxSpots,
   chunksAroundTile,
   layStreetChunk,
+  layStreetChunks,
+  roadChunksOf,
   cablePlaceOf,
   layStrungLine,
   streetPoleSpots,
@@ -1625,7 +1628,25 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
         : []),
       ...clientGrid.ringLampSites().flatMap(ringLampStands),
     ];
-    lamps.rebuild(latestRoadTiles, keepOff, free, poles, latestStops, held);
+    // A lamp a power line passes too near is hung on the nearest power pole
+    // instead: the poles are laid with the remaining posts held clear, and the
+    // lamps checked again, until none moves.
+    const lineSources = poleSources();
+    const settle: LampSettle = (stands) =>
+      carryLampsOnPoles(
+        stands,
+        (posts, chunks) => {
+          const world: PowerWorld = {
+            tileSet: latestRoadTileSet,
+            ...lineSources,
+            roadside: { clear, taken: ahead.clone().addAll(posts) },
+            ...cableWorld(),
+          };
+          return layStreetChunks(world, chunks ?? roadChunksOf(world));
+        },
+        roadSurfaceAt,
+      );
+    lamps.rebuild(latestRoadTiles, keepOff, free, poles, latestStops, held, settle);
     const upper = ahead.clone().addAll(lamps.standSpots());
     roadsideUpper = { clear, taken: upper };
     // A pole is laid again only where something it keeps clear of has moved.
