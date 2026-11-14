@@ -59,6 +59,7 @@ import {
   layRefusal,
   NO_EDITS,
   rankedTogether,
+  reversedInWorld,
   roadRank,
   withArticle,
   presetProfileForTier,
@@ -69,7 +70,9 @@ import {
   type RoadPrice,
   tilesAcross,
   type ProfileEdits,
+  type SectionBand,
   isOneWayProfile,
+  sectionBands,
 } from '../shared/roadprofile';
 import {
   isTileCentre,
@@ -140,6 +143,12 @@ export interface ToolPreview extends CursorChip {
    * the split is made. Absent for every tool that is not laying a road.
    */
   widthMeters?: number;
+  /**
+   * The cross-section of each of `tiles` as the road mesh draws it, in world
+   * order, so the ghost shows the carriageway, footways and any median or
+   * reservation rather than one slab. A corridor tile carries its own half.
+   */
+  bands?: SectionBand[][];
   /**
    * How high above its ground each of `tiles` would be laid, metres, where
    * any of them would stand off it: a raised road, a bridge or an overpass.
@@ -2088,6 +2097,30 @@ export class ToolManager {
     return [...runs.near.map(() => near), ...runs.far.map(() => far)];
   }
 
+  /**
+   * The cross-section the ghost draws on each of `tiles`, in world order for the
+   * way each tile runs, and for a corridor the half that tile carries — the
+   * same section the mesh is built from. Tiles of one kind share one array.
+   */
+  private ghostBands(
+    section: RoadProfile,
+    runs: CorridorRuns | null,
+    tiles: TilePoint[],
+  ): SectionBand[][] {
+    const cache = new Map<string, SectionBand[]>();
+    const bandsFor = (flow: number): SectionBand[] => {
+      const half = runs ? corridorHalfOf(flow) : 'none';
+      const key = `${reversedInWorld(flow)}|${half}`;
+      let bands = cache.get(key);
+      if (!bands) {
+        bands = sectionBands(corridorHalfProfile(worldOrderedProfile(section, flow), half));
+        cache.set(key, bands);
+      }
+      return bands;
+    };
+    return this.roadFlows(runs, tiles).map(bandsFor);
+  }
+
   /** A pipe run: the drag's path, its ends snapped onto the system where one is a tile away. */
   private pipeRun(start: TilePoint, end: TilePoint): TilePoint[] {
     const world = this.env.pipeWorld;
@@ -2444,6 +2477,7 @@ export class ToolManager {
       this.env.onPreview({
         ...(deckLifts ? { deckLifts } : {}),
         ...(bandShifts ? { bandShifts } : {}),
+        bands: this.ghostBands(previewProfile, corridor.runs, tiles),
         tiles,
         valid,
         cost,

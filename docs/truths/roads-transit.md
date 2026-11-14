@@ -26,8 +26,11 @@ Back to [the index](../GROUND-TRUTHS.md).
   platforms at the trams' floor outside the beams, a canopy each, a stair and
   a lift each side down to the footway, derived from the stop and the road
   every rebuild and never saved. The stair lands at the platform's low end
-  unless that tile is a crossing street or junction box, when it swaps ends;
-  a stair never lands in a junction. No kerb shelter stands under it, and no
+  unless its run would cross a junction box, a crossing street or a kerb
+  standing out under it, when it swaps ends; a stair never lands in a
+  junction. Stair and lift stand on the lowest ground under them, the lift
+  at the kerb of its own tile, and where a street has no footway a paved
+  apron reaches the carriageway's edge. No kerb shelter stands under it, and no
   lamp or pole on its tiles; its idlers stand on the platforms, never at the
   kerb where the shelter would be. A stop on a ramp tile, a junction box or
   a turn draws no station; the line serves it all the same. —
@@ -40,12 +43,14 @@ Back to [the index](../GROUND-TRUTHS.md).
 - [R-roads-013] A street's track is drawn as a street tramway's is: per tram lane, two
   grooved rails at standard gauge flush in a 2.7 m concrete slab, and no
   sleepers. Only the railway, on its ballast, has sleepers. Contact poles
-  stand at the kerb of a street whose trams share its lanes, one every 22 m
-  phased from world-metre zero, never in a junction box or a driveway's
-  mouth, and a street lamp within 2 m of one is not drawn. —
+  stand in pairs at both kerbs of a street whose trams share its lanes,
+  every 22 m phased from world-metre zero and never over 36.6 m apart, never
+  in a junction box or a driveway's mouth. A span wire joins each pair and a
+  contact wire runs 5.8 m over every track, unbroken through bends and
+  junctions. A street lamp within 2 m of a pole is not drawn. —
   [streets.md](../art/streets/README.md); `emitStreetTrack` in
-  `src/render/roadsmesh.ts`, `computeTramPolePlacements` in
-  `src/render/roadfurniture.ts`
+  `src/render/roadsmesh.ts`, `computeTramPolePlacements` and
+  `computeTramWireRuns` in `src/render/roadfurniture.ts`
 - [R-roads-014] A tramway crosses a street straight over the junction. A straight run of one
   or two joined street tiles that are not tram track, with tram track joined at
   both ends, is a tram crossing: each tile keeps its own road, the tram graph

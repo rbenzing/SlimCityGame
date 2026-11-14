@@ -15,6 +15,7 @@
 - Build and level up only onto a lot that meets the code, smallest first; a larger lot is never a kind of its own; a lot that stops meeting it is legal nonconforming. `[R-services-037]`
 - Compute the kerb stalls and no-parking zones in `src/shared`, so the sim counts exactly the stalls the paint shows. `[R-roads-050]`
 - Count lot and deck parking by the ADA table, never the kerbside table. `[R-services-032]`
+- Keep 36 in of walk between a shop's stall heads and its wall, and no stall across its door; the door's walk reaches the footway or an aisle. `[R-services-041]`
 
 **Numbers:**
 
@@ -37,6 +38,7 @@
 | Island kerb                      | 6                                                                      | in              | dial                                                                                    |
 | Interior landscaping, not applied | 5–10 asked; ours 2–11                                                 | % of paved park | [sources](../sources/parking-to-code.md#planting)                                       |
 | `ENTRANCE_WALK_M`                | 8 ft (2.44 m) deep, and wide from street to door                       | ft              | Fort Collins LUC 3.5.4                                                                  |
+| `MIN_FRONT_WALK_M` | 36 in (0.914 m), stall head to shopfront, held to the layout's 1 cm | in | ADA 2010 §403.5.1, §502.7 |
 | Fuel forecourt / tank farm       | 12 in front of the kiosk / 8 behind the body                           | m               | dial                                                                                    |
 | `WALK_Y_OFFSET`                  | 0.11                                                                   | m               | dial                                                                                    |
 | `layoutLot` cache                | 512, oldest dropped                                                    | entries         | dial                                                                                    |

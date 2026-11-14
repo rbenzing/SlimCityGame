@@ -161,10 +161,10 @@ import { ADVISOR_REFRESH_SNAPSHOTS, cityIssues } from './ui/advisor';
 import { CATEGORY_HOTKEYS } from './ui/categories';
 import { GhostRenderer, type GhostKind, type SetPreviewOptions } from './render/ghosts';
 import { UtilityKitRenderer, tramLaneOffsetOf } from './render/utilitykits';
-import { BusStopRenderer, stopRoadAt } from './render/busstops';
+import { BusStopRenderer, stopPostSpots, stopRoadAt } from './render/busstops';
 import { FarmRenderer } from './render/farms';
 import { ZoneGridRenderer } from './render/zonegrid';
-import { LampRenderer, STOP_CLEAR_HALF_M } from './render/lamps';
+import { LampRenderer, ringLampStands, STOP_CLEAR_HALF_M } from './render/lamps';
 import { FREE_ROAD_SLOT, PowerLineRenderer, STRUNG_LINE_SLOT } from './render/powerlines';
 import {
   cableBoxSpots,
@@ -192,6 +192,7 @@ import {
   buildTileSet,
   computeSignPlacements,
   computeTramPolePlacements,
+  computeTramWireRuns,
   controlSignSpots,
   hasCrossingRoad,
   lateralAxis,
@@ -1487,8 +1488,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
   let roadsideUpper: Roadside = { clear: KEEP_CLEAR_NONE, taken: new Standing() };
   /** Where those stood when the poles were last laid, by place, so a change re-lays only its own chunks. */
   let upperSpots = new Map<string, Spot>();
-  let upperStops: ReadonlySet<number> = new Set();
-  /**
+  let upperStops: ReadonlySet<number> = new Set(); /**
    * Where a buried cable lies and where a line on poles stands, as the pole
    * layout keys tiles. Read off the mirror once, and again after the layer moves.
    */
@@ -1601,28 +1601,36 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
     );
     const control = controlSignSpots(latestRoadTiles, freeJunctionTiles);
     roadsideControl = control;
+    // A bus stop's sign post is held like a mast: nothing stands within reach of it.
+    const held = [
+      ...control,
+      ...stopPostSpots(latestStops, (x, z) => stopRoadAt(latestRoadTileSet, x, z)),
+    ];
     // The tram's contact poles keep off the same kerbs, and a lamp beside one
     // gives way to it, so both are placed from the one answer.
     const poles = computeTramPolePlacements(latestRoadTiles, keepOff, {
       clear,
-      taken: new Standing().addAll(control),
+      taken: new Standing().addAll(held),
     });
-    roadFurniture.setTramPoles(poles);
-    const ahead = new Standing().addAll(control).addAll(poles);
-    const free = clientGrid.roads
-      ? freeRoadLampStands(
-          clientGrid.roads,
-          (id) => clientGrid.profileById(id),
-          (wx, wz) => clientGrid.poweredAt(worldToTile(wx), worldToTile(wz)),
-          { clear, taken: ahead },
-        )
-      : [];
-    lamps.rebuild(latestRoadTiles, keepOff, free, poles, latestStops, control);
+    roadFurniture.setTramPoles(poles, computeTramWireRuns(latestRoadTiles));
+    const ahead = new Standing().addAll(held).addAll(poles);
+    const free = [
+      ...(clientGrid.roads
+        ? freeRoadLampStands(
+            clientGrid.roads,
+            (id) => clientGrid.profileById(id),
+            (wx, wz) => clientGrid.poweredAt(worldToTile(wx), worldToTile(wz)),
+            { clear, taken: ahead },
+          )
+        : []),
+      ...clientGrid.ringLampSites().flatMap(ringLampStands),
+    ];
+    lamps.rebuild(latestRoadTiles, keepOff, free, poles, latestStops, held);
     const upper = ahead.clone().addAll(lamps.standSpots());
     roadsideUpper = { clear, taken: upper };
     // A pole is laid again only where something it keeps clear of has moved.
     const spots = new Map<string, Spot>();
-    for (const s of [...control, ...poles, ...lamps.standSpots()]) {
+    for (const s of [...held, ...poles, ...lamps.standSpots()]) {
       spots.set(`${Math.round(s.x * 4)}:${Math.round(s.z * 4)}`, s);
     }
     let moved = false;
@@ -1826,13 +1834,16 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
         minY: number;
         maxY: number;
       } | null => {
-        const base = ghosts.layers().base;
-        const geometry = base.geometry;
-        const position = geometry.getAttribute('position');
-        if (!position || position.count === 0) return null;
-        geometry.computeBoundingBox();
-        const box = geometry.boundingBox;
-        if (!box) return null;
+        // A road ghost's footways and median are in the fill layer, so the
+        // extent of the preview is both layers together.
+        const box = new THREE.Box3();
+        for (const mesh of [ghosts.layers().base, ghosts.layers().fill]) {
+          const position = mesh.geometry.getAttribute('position');
+          if (!position || position.count === 0) continue;
+          mesh.geometry.computeBoundingBox();
+          if (mesh.geometry.boundingBox) box.union(mesh.geometry.boundingBox);
+        }
+        if (box.isEmpty()) return null;
         return {
           minX: box.min.x,
           maxX: box.max.x,
@@ -2170,6 +2181,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
         if (preview.widthMeters !== undefined) {
           opts = { ...opts, roadWidthMeters: preview.widthMeters };
         }
+        if (preview.bands) opts = { ...opts, roadBands: preview.bands };
         if (preview.deckLifts) opts = { ...opts, deckLifts: preview.deckLifts };
         if (preview.disc) opts = { ...opts, disc: preview.disc };
         if (preview.bandShifts) opts = { ...opts, roadBandShifts: preview.bandShifts };

@@ -50,6 +50,7 @@ import {
   RING_APRON_WIDTH_M,
   RING_OUTER_RADIUS_M,
   RING_ROADWAY_WIDTH_M,
+  SPLITTER_WIDTH_M,
 } from '../shared/roundabout';
 import type { NeighborHalves, NeighborTiers } from './roadsmesh';
 import { junctionArmLayout } from '../shared/junctionpaint';
@@ -68,9 +69,15 @@ import {
   withTurnPocket,
   worldOrderedProfile,
 } from '../shared/roadprofile';
-import { BIKE_PAINT_MAX_WIDTH_M, EDGE_LINE_MARGIN_M, markingPlan } from './roadmarkings';
+import {
+  BIKE_PAINT_MAX_WIDTH_M,
+  EDGE_LINE_MARGIN_M,
+  markingPlan,
+  seamBetween,
+} from './roadmarkings';
 import { CHUNK_TILES, CHUNKS_PER_SIDE, MAP_SIZE, TILE_METERS } from '../shared/constants';
 import { DEFAULT_ALLOWED, Movement } from '../shared/approach';
+import { travelLanes } from '../shared/travellanes';
 import { SECTION_REACH_TILES } from '../shared/approachzone';
 
 const flatHeightAt = (): number => 0;
@@ -135,6 +142,37 @@ function isMarkingWhite(t: readonly number[]): boolean {
 function isMarkingYellow(t: readonly number[]): boolean {
   const [r, g, b] = t as [number, number, number];
   return r > 0.85 && g > 0.6 && g < 0.85 && b < 0.35;
+}
+
+/**
+ * Where along the road the tip of the flow arrow in the lane `lane` metres right of the road's
+ * centre lies: the narrower of the arrow's two ends, a point against the stem's blunt tail.
+ * `alongZ` reads a road running north-south, else east-west.
+ */
+function arrowTip(
+  positions: readonly number[],
+  colors: readonly number[],
+  lane: number,
+  alongZ: boolean,
+): number {
+  const colorTriples = toTriples(colors);
+  const rows = new Map<number, { lo: number; hi: number }>();
+  toTriples(positions).forEach((p, i) => {
+    if (!isMarkingWhite(colorTriples[i] as number[])) return;
+    const along = alongZ ? p[2]! : p[0]!;
+    const across = (alongZ ? p[0]! : p[2]!) - TILE_METERS / 2 - lane;
+    if (Math.abs(across) > 0.9) return;
+    const key = Math.round(along * 100) / 100;
+    const row = rows.get(key) ?? { lo: Infinity, hi: -Infinity };
+    row.lo = Math.min(row.lo, across);
+    row.hi = Math.max(row.hi, across);
+    rows.set(key, row);
+  });
+  const ordered = [...rows].sort((a, b) => a[0] - b[0]);
+  const first = ordered[0]!;
+  const last = ordered[ordered.length - 1]!;
+  const width = (r: { lo: number; hi: number }): number => r.hi - r.lo;
+  return width(first[1]) < width(last[1]) ? first[0] : last[0];
 }
 
 /** Any painted line, whichever colour it is. */
@@ -972,6 +1010,26 @@ describe('dashSegments — a broken line at the size one is painted', () => {
       return;
     }
     throw new Error('test setup failed to find a straddling segment in [−10,+29]');
+  });
+
+  describe('where the line is cut', () => {
+    it('drops a remainder shorter than 2 ft at a cut end, and keeps it at a seam', () => {
+      const sliverLo = DASH_PERIOD_M + DASH_PAINT_LENGTH_M - 0.3;
+      expect(dashSegments(sliverLo, 30, { lo: true })[0]![0]).toBeGreaterThan(
+        DASH_PERIOD_M * 2 - 1e-9,
+      );
+      expect(dashSegments(sliverLo, 30)[0]![0]).toBeCloseTo(sliverLo, 9);
+      const sliverHi = DASH_PERIOD_M + 0.3;
+      const cutHi = dashSegments(0, sliverHi, { hi: true });
+      expect(cutHi.length).toBe(1);
+      expect(dashSegments(0, sliverHi).length).toBe(2);
+    });
+
+    it('keeps a remainder of 2 ft or more at a cut end, and a dash a cut leaves whole', () => {
+      const keptLo = DASH_PERIOD_M + DASH_PAINT_LENGTH_M - 0.6;
+      expect(dashSegments(keptLo, 30, { lo: true })[0]![0]).toBeCloseTo(keptLo, 9);
+      expect(dashSegments(0, 100, { lo: true, hi: true })[0]).toEqual([0, DASH_PAINT_LENGTH_M]);
+    });
   });
 });
 
@@ -2609,13 +2667,17 @@ describe('roadTileVertices — One-Way (tier 6, UI-SPEC §6.7 Roads v3)', () => 
       for (const c of [-5, -2, 1, 2, 4, 5]) expect(isArrowTile(c)).toBe(false);
     });
 
-    it('adds exactly one arrow (stem + 2 head quads = 3 quads) worth of extra marking geometry on an arrow tile vs a non-arrow tile with the same dash phase parity', () => {
+    const ONE_WAY_LANES = travelLanes(presetProfileForTier(RoadTier.OneWay)).length;
+    // A through arrow is a stem rectangle (6 vertices) and a head triangle (3).
+    const ARROW_VERTICES = 6 + 3;
+
+    it('adds exactly one arrow per lane (a stem and a head) worth of extra marking geometry on an arrow tile vs a non-arrow tile with the same dash phase parity', () => {
       // z=0 and z=3 are both arrow tiles; z=1,2,4,5 are not. Compare an arrow
       // tile against a non-arrow tile and account for dash-count difference.
       for (const z of [0, 1, 2, 3, 4, 5]) {
         const { colors } = roadTileVertices(0, z, RoadTier.OneWay, N | S, flatHeightAt);
         const expectedDash = dashCountForZ(z) * 6;
-        const expectedArrow = isArrowTile(z) ? 3 * 6 : 0;
+        const expectedArrow = isArrowTile(z) ? ONE_WAY_LANES * ARROW_VERTICES : 0;
         expect(countWhere(colors, isMarkingWhite)).toBe(expectedDash + expectedArrow + 1 * 6);
       }
     });
@@ -2624,52 +2686,25 @@ describe('roadTileVertices — One-Way (tier 6, UI-SPEC §6.7 Roads v3)', () => 
       for (const x of [0, 1, 2, 3]) {
         const { colors } = roadTileVertices(x, 0, RoadTier.OneWay, E | W, flatHeightAt);
         const expectedDash = dashCountForX(x) * 6;
-        const expectedArrow = isArrowTile(x) ? 3 * 6 : 0;
+        const expectedArrow = isArrowTile(x) ? ONE_WAY_LANES * ARROW_VERTICES : 0;
         expect(countWhere(colors, isMarkingWhite)).toBe(expectedDash + expectedArrow + 1 * 6);
       }
     });
 
-    it('on a vertical run, the arrow head sits toward the low->high (+Z) coordinate', () => {
+    it('on a vertical run, the arrow points toward the low->high (+Z) coordinate', () => {
       // z=3 is an arrow tile.
       const { positions, colors } = roadTileVertices(0, 3, RoadTier.OneWay, N | S, flatHeightAt);
-      const posTriples = toTriples(positions);
-      const colorTriples = toTriples(colors);
-      const centerX = 0.5 * TILE_METERS;
-      const centerZ = 3.5 * TILE_METERS;
-      const head: number[] = [];
-      for (let i = 0; i < posTriples.length; i++) {
-        if (!isMarkingWhite(colorTriples[i] as number[])) continue;
-        const worldX = (posTriples[i] as number[])[0] as number;
-        // The dashed centerline and the arrow's stem never exceed ±0.16m
-        // across the travel axis; only the arrow's head wings reach further —
-        // isolating them lets us check orientation unambiguously.
-        // The arrow's head wings reach past the stem but stay well inside the
-        // edge lines, which sit at the carriageway edge.
-        const across = Math.abs(worldX - centerX);
-        if (across > 0.2 && across < 2) head.push((posTriples[i] as number[])[2] as number);
+      for (const lane of [-PRESET_LANE_WIDTH_M / 2, PRESET_LANE_WIDTH_M / 2]) {
+        expect(arrowTip(positions, colors, lane, true)).toBeGreaterThan(3.5 * TILE_METERS);
       }
-      expect(head.length).toBeGreaterThan(0);
-      // A standard head is more than half its arrow, so its base crosses the
-      // arrow's middle; the head as a whole lies ahead of it.
-      expect(head.reduce((s, v) => s + v, 0) / head.length).toBeGreaterThan(centerZ);
     });
 
-    it('on a horizontal run, the arrow head sits toward the low->high (+X) coordinate', () => {
+    it('on a horizontal run, the arrow points toward the low->high (+X) coordinate', () => {
       // x=3 is an arrow tile.
       const { positions, colors } = roadTileVertices(3, 0, RoadTier.OneWay, E | W, flatHeightAt);
-      const posTriples = toTriples(positions);
-      const colorTriples = toTriples(colors);
-      const centerX = 3.5 * TILE_METERS;
-      const centerZ = 0.5 * TILE_METERS;
-      const head: number[] = [];
-      for (let i = 0; i < posTriples.length; i++) {
-        if (!isMarkingWhite(colorTriples[i] as number[])) continue;
-        const worldZ = (posTriples[i] as number[])[2] as number;
-        const across = Math.abs(worldZ - centerZ);
-        if (across > 0.2 && across < 2) head.push((posTriples[i] as number[])[0] as number);
+      for (const lane of [-PRESET_LANE_WIDTH_M / 2, PRESET_LANE_WIDTH_M / 2]) {
+        expect(arrowTip(positions, colors, lane, false)).toBeGreaterThan(3.5 * TILE_METERS);
       }
-      expect(head.length).toBeGreaterThan(0);
-      expect(head.reduce((s, v) => s + v, 0) / head.length).toBeGreaterThan(centerX);
     });
 
     it('no arrow (no head-wing-range vertex) on a non-arrow tile', () => {
@@ -2683,6 +2718,111 @@ describe('roadTileVertices — One-Way (tier 6, UI-SPEC §6.7 Roads v3)', () => 
         const across = Math.abs((posTriples[i] as number[])[0] as number) - centerX;
         // Nothing between the stem and the edge lines: no arrow head here.
         expect(Math.abs(across) > 0.2 && Math.abs(across) < 2).toBe(false);
+      }
+    });
+
+    it('paints one through arrow in each lane of a two-lane one-way road, centred on the lane', () => {
+      const { positions, colors } = roadTileVertices(
+        0,
+        3,
+        RoadTier.OneWay,
+        N | S,
+        flatHeightAt,
+        undefined,
+        undefined,
+        undefined,
+        RoadFlow.South,
+      );
+      const colorTriples = toTriples(colors);
+      const white = toTriples(positions).filter((_, i) =>
+        isMarkingWhite(colorTriples[i] as number[]),
+      );
+      expect(travelLanes(presetProfileForTier(RoadTier.OneWay)).length).toBe(2);
+      for (const laneCentre of [-PRESET_LANE_WIDTH_M / 2, PRESET_LANE_WIDTH_M / 2]) {
+        const mine = white.filter((p) => Math.abs(p[0]! - TILE_METERS / 2 - laneCentre) < 0.9);
+        const across = mine.map((p) => p[0]! - TILE_METERS / 2);
+        const along = mine.map((p) => p[2]!);
+        expect((Math.min(...across) + Math.max(...across)) / 2).toBeCloseTo(laneCentre, 2);
+        expect(Math.max(...along) - Math.min(...along)).toBeCloseTo(2.9, 2);
+      }
+    });
+
+    it('paints a single arrow on the centre of a one-lane one-way road', () => {
+      const full = presetProfileForTier(RoadTier.OneWay);
+      const firstTravel = full.pieces.findIndex((p) => p.kind === 'travel');
+      const oneLane: RoadProfile = {
+        ...full,
+        pieces: full.pieces.filter((p, i) => p.kind !== 'travel' || i === firstTravel),
+      };
+      expect(travelLanes(oneLane).length).toBe(1);
+      const { positions, colors } = roadTileVertices(
+        0,
+        3,
+        RoadTier.OneWay,
+        N | S,
+        flatHeightAt,
+        undefined,
+        oneLane,
+        undefined,
+        RoadFlow.South,
+      );
+      const colorTriples = toTriples(colors);
+      const centre = travelLanes(oneLane)[0]!.centre;
+      const arrow = toTriples(positions).filter(
+        (p, i) =>
+          isMarkingWhite(colorTriples[i] as number[]) &&
+          Math.abs(p[0]! - TILE_METERS / 2 - centre) < 0.9,
+      );
+      const across = arrow.map((p) => p[0]! - TILE_METERS / 2);
+      expect((Math.min(...across) + Math.max(...across)) / 2).toBeCloseTo(centre, 2);
+      const along = arrow.map((p) => p[2]!);
+      expect(Math.max(...along) - Math.min(...along)).toBeCloseTo(2.9, 2);
+    });
+
+    it("draws the flow arrow with the lane-use through arrow's outline, along the stored flow", () => {
+      const key = (x: number, z: number): string => `${x.toFixed(3)},${z.toFixed(3)}`;
+      const lanes = travelLanes(presetProfileForTier(RoadTier.OneWay));
+      for (const [flow, ahead] of [
+        [RoadFlow.South, 1],
+        [RoadFlow.North, -1],
+      ] as const) {
+        const { positions, colors } = roadTileVertices(
+          0,
+          3,
+          RoadTier.OneWay,
+          N | S,
+          flatHeightAt,
+          undefined,
+          undefined,
+          undefined,
+          flow,
+        );
+        const colorTriples = toTriples(colors);
+        const painted = new Set(
+          toTriples(positions)
+            .filter((_, i) => isMarkingWhite(colorTriples[i] as number[]))
+            .map((p) => key(p[0]!, p[2]!)),
+        );
+        for (const lane of lanes) {
+          const expected: number[] = [];
+          emitLaneUseArrow(
+            expected,
+            [],
+            true,
+            TILE_METERS / 2,
+            3.5 * TILE_METERS,
+            lane.centre,
+            ahead,
+            Movement.Through,
+            flatHeightAt,
+          );
+          expect(expected.length).toBeGreaterThan(0);
+          for (const p of toTriples(expected)) {
+            expect(painted.has(key(p[0]!, p[2]!)), `flow ${flow} vertex ${key(p[0]!, p[2]!)}`).toBe(
+              true,
+            );
+          }
+        }
       }
     });
 
@@ -3411,25 +3551,8 @@ describe('roadTileVertices — a one-way street points the way it was drawn', ()
         undefined,
         flow,
       );
-      const byZ = new Map<number, { lo: number; hi: number }>();
-      toTriples(colors).forEach((c, i) => {
-        if (!isMarkingWhite(c)) return;
-        const x = positions[i * 3]!;
-        // The edge lines are white too and sit at the carriageway edge; the
-        // arrow lives near the centreline.
-        if (Math.abs(x - TILE_METERS / 2) > 2) return;
-        const z = Math.round(positions[i * 3 + 2]! * 100) / 100;
-        const span = byZ.get(z) ?? { lo: Infinity, hi: -Infinity };
-        span.lo = Math.min(span.lo, x);
-        span.hi = Math.max(span.hi, x);
-        byZ.set(z, span);
-      });
-      // The head is the paint wider than the stem. A standard head is more
-      // than half its arrow, so its base crosses the arrow's middle; where the
-      // head lies as a whole is the end it points to.
-      const widest = Math.max(...[...byZ.values()].map((s) => s.hi - s.lo));
-      const headRows = [...byZ].filter(([, s]) => s.hi - s.lo > widest / 2).map(([z]) => z);
-      return headRows.reduce((s, z) => s + z, 0) / headRows.length;
+      // The arrow lies in the lane on the high side of the centreline.
+      return arrowTip(positions, colors, PRESET_LANE_WIDTH_M / 2, true);
     };
     // A southward arrow puts its head past the tile's centre, a northward one
     // before it.
@@ -4030,9 +4153,9 @@ describe('roadTileVertices — a street crossing a divided road is one intersect
       { kind: 'median', width: 1.0 },
     ],
   });
+  const mirrored = (p: RoadProfile): RoadProfile => ({ ...p, pieces: [...p.pieces].reverse() });
   const halfOfCorridor = carriagewayHalfWidthOf(lanes());
   const streetHalf = carriagewayHalfWidthOf(presetProfileForTier(street));
-  const kerb = kerbWidthOf(presetProfileForTier(street));
 
   const west = (partner: 'e' | null, w = streetHalf, partnerAcross = 0) =>
     roadTileVertices(
@@ -4062,7 +4185,8 @@ describe('roadTileVertices — a street crossing a divided road is one intersect
       N | E | S | W,
       flatHeightAt,
       { n: corridorHalf, s: corridorHalf, e: street, w: corridorHalf },
-      lanes(),
+      // The east half's median is on its west side, against the other half's.
+      mirrored(lanes()),
       {
         n: halfOfCorridor,
         s: halfOfCorridor,
@@ -4155,58 +4279,95 @@ describe('roadTileVertices — a street crossing a divided road is one intersect
       for (const pitch of pitches) expect(pitch).toBeCloseTo(pitches[0]!, 6);
     });
 
-    it('shapes the nose the same on both halves, with no step between them', () => {
-      const noseStart = (
-        v: { positions: number[]; colors: number[] },
-        cx: number,
-        mirror: 1 | -1,
-      ) => {
-        const at: number[] = [];
-        for (let i = 0; i < v.colors.length; i += 3) {
-          const c = v.colors.slice(i, i + 3);
-          const x = (v.positions[i]! - cx) * mirror;
-          const z = v.positions[i + 2]! - centre;
-          if (
-            c[0]! > 0.72 &&
-            c[0]! < 0.9 &&
-            c[1]! > 0.72 &&
-            c[1]! < 0.9 &&
-            z < 0 &&
-            x > halfOfCorridor + 0.3
-          ) {
-            at.push(-z);
-          }
-        }
-        return Math.min(...at);
-      };
-      expect(noseStart(w(), cxWest, 1)).toBeCloseTo(noseStart(e(), cxEast, -1), 6);
-      expect(noseStart(w(), cxWest, 1)).toBeGreaterThanOrEqual(wide + depth - 1e-6);
+    it('lays no kerb in the opening of either half, however the streets differ', () => {
+      expect(kerbedInTheOpening(w(), cxWest, 1)).toBe(0);
+      expect(kerbedInTheOpening(e(), cxEast, -1)).toBe(0);
     });
   });
 
-  it('ends the median’s nose behind the crossing, away from the box', () => {
-    const v = west('e');
-    const crossFar = streetHalf + Math.max(kerb, 1.8);
-    // Nothing kerbed stands on the pavement side of the crossing's far edge
-    // east of the half's carriageway: the nose starts beyond it.
-    const kerbed: number[] = [];
+  // Footway-grey geometry on the median side of a half's carriageway.
+  const kerbedInTheOpening = (
+    v: { positions: number[]; colors: number[] },
+    cx: number,
+    mirror: 1 | -1,
+  ): number => {
+    let n = 0;
     for (let i = 0; i < v.colors.length; i += 3) {
       const c = v.colors.slice(i, i + 3);
-      const x = v.positions[i]! - cxWest;
-      const z = v.positions[i + 2]! - centre;
-      if (
-        c[0]! > 0.72 &&
-        c[0]! < 0.9 &&
-        c[1]! > 0.72 &&
-        c[1]! < 0.9 &&
-        z < 0 &&
-        x > halfOfCorridor + 0.3
-      ) {
-        kerbed.push(-z);
+      const x = (v.positions[i]! - cx) * mirror;
+      if (c[0]! > 0.72 && c[0]! < 0.9 && c[1]! > 0.72 && c[1]! < 0.9 && x > halfOfCorridor + 0.3) {
+        n++;
       }
     }
-    expect(kerbed.length).toBeGreaterThan(0);
-    expect(Math.min(...kerbed)).toBeGreaterThanOrEqual(crossFar - 1e-6);
+    return n;
+  };
+
+  it('opens the median with no kerbed corner round it, which is behind the crossing', () => {
+    expect(kerbedInTheOpening(west('e'), cxWest, 1)).toBe(0);
+    expect(kerbedInTheOpening(east('w'), cxEast, -1)).toBe(0);
+  });
+
+  describe('the median island before the opening', () => {
+    // The tile before the crossing on each half, with the junction ahead to
+    // the south. The west half's median is on its east side and the east
+    // half's on its west, so the west half draws the island both share.
+    const medianAhead = { n: 0.5, e: 0.5, s: 0.5, w: 0.5 };
+    const approachTile = (x: number, flip: boolean, partnerIsland = ownIsland) => {
+      const profile = flip ? mirrored(lanes()) : lanes();
+      return roadTileVertices(
+        x,
+        4,
+        corridorHalf,
+        N | S,
+        flatHeightAt,
+        { n: corridorHalf, s: corridorHalf, e: RoadTier.None, w: RoadTier.None },
+        profile,
+        {
+          n: halfOfCorridor,
+          s: halfOfCorridor,
+          e: halfOfCorridor,
+          w: halfOfCorridor,
+          medians: medianAhead,
+          junctions: { n: false, e: false, s: true, w: false },
+          partnerIslandHalf: partnerIsland,
+        },
+        flow,
+      );
+    };
+    // From the inner edge of the running lanes to the tile edge: the section
+    // is a footway, three 3.6 m lanes and a 1 m share of the median.
+    const ownIsland = TILE_METERS / 2 - ((1.9 + 3 * 3.6 + 1.0) / 2 - 1.0);
+    const isYellow = (t: readonly number[]): boolean =>
+      t[0]! > 0.85 && t[1]! > 0.7 && t[1]! < 0.85 && t[2]! < 0.3;
+    const isIslandGrass = (t: readonly number[]): boolean =>
+      Math.abs(t[0]! - MEDIAN_GRASS_COLOR[0]) < 0.01 &&
+      Math.abs(t[1]! - MEDIAN_GRASS_COLOR[1]) < 0.01;
+
+    it('is one island drawn by the half on its low side, yellow at its nose', () => {
+      const west = approachTile(5, false);
+      expect(countWhere(west.colors, isIslandGrass)).toBeGreaterThan(0);
+      expect(countWhere(west.colors, isYellow)).toBeGreaterThan(0);
+      const east = approachTile(6, true);
+      expect(countWhere(east.colors, isIslandGrass)).toBe(0);
+    });
+
+    it('kerbs neither half’s edge of it with a footway', () => {
+      expect(kerbedInTheOpening(approachTile(5, false), 5.5 * TILE_METERS, 1)).toBe(0);
+      expect(kerbedInTheOpening(approachTile(6, true), 6.5 * TILE_METERS, -1)).toBe(0);
+    });
+
+    it('reaches across the gap to the other half’s lanes, which a turn bay holds further back', () => {
+      const reach = (partnerIsland: number): number => {
+        const v = approachTile(5, false, partnerIsland);
+        let farthest = -Infinity;
+        for (let i = 0; i < v.colors.length; i += 3) {
+          if (!isIslandGrass(v.colors.slice(i, i + 3))) continue;
+          farthest = Math.max(farthest, v.positions[i]! - 5.5 * TILE_METERS);
+        }
+        return farthest;
+      };
+      expect(reach(ownIsland - 1.8)).toBeCloseTo(reach(ownIsland) - 1.8, 5);
+    });
   });
 });
 
@@ -4313,6 +4474,111 @@ describe('roadTileVertices — a corridor half that has earned a turn bay', () =
     expect(countWhere(tile(true).colors, isMarkingWhite)).toBeGreaterThanOrEqual(
       countWhere(tile(false).colors, isMarkingWhite),
     );
+  });
+});
+
+describe('RoadMeshRenderer — a T onto a corridor nothing divides', () => {
+  // Six lanes with no median, two tiles wide, running south; a street joins
+  // the east half from the east at row JZ. Both halves are one junction.
+  const lane = (flow: 'fwd' | 'back') => ({ kind: 'travel' as const, width: 3.6, flow });
+  const undivided: RoadProfile = {
+    class: 'arterial',
+    pieces: [
+      { kind: 'sidewalk', width: 1.9 },
+      lane('back'),
+      lane('back'),
+      lane('back'),
+      lane('fwd'),
+      lane('fwd'),
+      lane('fwd'),
+      { kind: 'sidewalk', width: 1.9 },
+    ],
+  };
+  const ID = 41;
+  const LEFT = 4;
+  const RIGHT = 5;
+  const JZ = 6;
+  const COLS = 48;
+
+  /** The paint on a 12 m window about the edge the halves share, just before the junction row. */
+  const paint = (): string[][] => {
+    const renderer = new RoadMeshRenderer(new THREE.Scene(), flatHeightAt, (id) =>
+      id === ID ? undivided : null,
+    );
+    const deltas: RoadTileDelta[] = [];
+    for (const [x, half] of [
+      [LEFT, 'left'],
+      [RIGHT, 'right'],
+    ] as const) {
+      for (let z = 0; z <= 12; z++) {
+        const mask = (z === 0 ? 0 : N) | (z === 12 ? 0 : S);
+        const joins = z === JZ ? (x === LEFT ? E : E | W) : 0;
+        deltas.push({
+          x,
+          z,
+          tier: RoadTier.Avenue,
+          mask: mask | joins,
+          elevation: 0,
+          profile: ID,
+          flow: storedFlow(RoadFlow.South, half),
+        });
+      }
+    }
+    for (let x = RIGHT + 1; x <= 12; x++) {
+      deltas.push(
+        makeDelta(x, JZ, RoadTier.TwoLane, (x === RIGHT + 1 ? W : E | W) | (x === 12 ? 0 : E)),
+      );
+    }
+    renderer.apply(deltas);
+    renderer.setJunctionControls([
+      { x: LEFT, z: JZ, control: 'signal' },
+      { x: RIGHT, z: JZ, control: 'signal' },
+    ]);
+    const x0 = RIGHT * TILE_METERS - 6;
+    const z0 = JZ * TILE_METERS - 4;
+    const cells = renderer.surfaceGridAt(x0, z0, x0 + 12, z0 + 12, COLS);
+    return Array.from({ length: COLS }, (_, r) =>
+      cells.slice(r * COLS, r * COLS + COLS).map((c) => c ?? ''),
+    );
+  };
+
+  /** The runs of white paint along a row, as [first cell, length]. */
+  const runs = (row: string[]): Array<[number, number]> => {
+    const out: Array<[number, number]> = [];
+    let start = -1;
+    for (let c = 0; c <= row.length; c++) {
+      const white = c < row.length && row[c]!.startsWith('0.95');
+      if (white && start < 0) start = c;
+      if (!white && start >= 0) {
+        out.push([start, c - start]);
+        start = -1;
+      }
+    }
+    return out;
+  };
+  const seam = COLS / 2;
+
+  it('stops the stop line at the edge the halves share', () => {
+    const rows = paint().map(runs);
+    const lines = rows.flat().filter(([, len]) => len >= 16);
+    expect(lines.length).toBeGreaterThan(0);
+    for (const [start, len] of lines) {
+      expect(start < seam && start + len > seam, `a line over cells ${start}..${start + len}`).toBe(
+        false,
+      );
+    }
+  });
+
+  it('lays one crosswalk over both halves, its bars on an even pitch across the shared edge', () => {
+    const bars = paint()
+      .map(runs)
+      .find((r) => r.length >= 8);
+    expect(bars).toBeDefined();
+    expect(bars!.some(([s]) => s < seam)).toBe(true);
+    expect(bars!.some(([s]) => s >= seam)).toBe(true);
+    const pitches = bars!.slice(1).map(([s], i) => s - bars![i]![0]);
+    // A cell is a quarter metre and the pitch is not a whole number of them.
+    expect(Math.max(...pitches) - Math.min(...pitches)).toBeLessThanOrEqual(1);
   });
 });
 
@@ -5392,10 +5658,16 @@ describe('a compact roundabout', () => {
   const centre = { x: 21 * TILE_METERS, z: 21 * TILE_METERS };
   const asphalt: readonly [number, number, number] = [0.3, 0.3, 0.32];
   /** A two-lane street into the ring on `side`, its arriving half the driver's right. */
-  const street = (side: RoadFlow, entering: RingLeg['entering'], leaving = true): RingLeg => ({
+  const street = (
+    side: RoadFlow,
+    entering: RingLeg['entering'],
+    leaving = true,
+    footway = true,
+  ): RingLeg => ({
     side,
     half: 3.75,
     kerb: 1.875,
+    footway,
     entering,
     leaving,
   });
@@ -5414,45 +5686,184 @@ describe('a compact roundabout', () => {
   };
   const radius = (p: readonly number[]): number => Math.hypot(p[0]! - centre.x, p[2]! - centre.z);
 
+  // The west leg's centre line is the row z = 410; the ring's edge meets it at x = 405.03.
+  const armZ = 20.5 * TILE_METERS;
+  const ringEdgeX = centre.x - Math.sqrt(RING_OUTER_RADIUS_M ** 2 - (TILE_METERS / 2) ** 2);
+  /** Where the crosswalk's near edge stands, 20 ft (6.1 m) back from the ring's outer edge. */
+  const crosswalkNearX = ringEdgeX - 6.1;
+  const crosswalkFarX = crosswalkNearX - SIDEWALK_WIDTH_M;
+  const isYellowPaint = (c: readonly number[]): boolean => isMarkingYellow(c);
+  /** The paint on the road beyond the ring's footway: crosswalk bars and nothing else white. */
+  const crossingPaint = (d: { positions: number[]; colors: number[] }) =>
+    points(d, isMarkingWhite).filter((p) => radius(p) > RING_OUTER_RADIUS_M + 1.5);
+
   it('draws its quarter of the ring inside its own tile, island, apron and roadway', () => {
     const d = drawn(20, 20, [west, north]);
-    for (const p of toTriples(d.positions)) {
-      expect(p[0]!).toBeGreaterThanOrEqual(20 * TILE_METERS - 1e-6);
-      expect(p[0]!).toBeLessThanOrEqual(21 * TILE_METERS + 1e-6);
-      expect(p[2]!).toBeGreaterThanOrEqual(20 * TILE_METERS - 1e-6);
-      expect(p[2]!).toBeLessThanOrEqual(21 * TILE_METERS + 1e-6);
+    // Only the roads' crossings and splitters run on past the tile's edge.
+    for (const [i, p] of toTriples(d.positions).entries()) {
+      const colour = toTriples(d.colors)[i]!;
+      const inside =
+        p[0]! >= 20 * TILE_METERS - 1e-6 &&
+        p[0]! <= 21 * TILE_METERS + 1e-6 &&
+        p[2]! >= 20 * TILE_METERS - 1e-6 &&
+        p[2]! <= 21 * TILE_METERS + 1e-6;
+      if (!inside) {
+        expect(
+          isMarkingWhite(colour) ||
+            isMarkingYellow(colour) ||
+            isConcreteBand(colour) ||
+            isMedianGrass(colour),
+        ).toBe(true);
+      }
     }
     const island = RING_OUTER_RADIUS_M - RING_ROADWAY_WIDTH_M - RING_APRON_WIDTH_M;
-    const grass = points(d, isMedianGrass);
+    const grass = points(d, isMedianGrass).filter((p) => radius(p) < RING_OUTER_RADIUS_M);
     expect(grass.length).toBeGreaterThan(0);
     for (const p of grass) expect(radius(p)).toBeLessThanOrEqual(island + 1e-6);
-    // Nothing on the ring is painted but the yield lines, outside its edge.
-    const paint = points(d, isMarkingWhite);
-    expect(paint.length).toBeGreaterThan(0);
-    for (const p of paint) {
-      expect(radius(p)).toBeGreaterThanOrEqual(RING_OUTER_RADIUS_M);
-      expect(radius(p)).toBeLessThan(RING_OUTER_RADIUS_M + 1.5);
+    // On the ring the paint is the white edge line just inside its outer edge, the
+    // yield lines outside it, and the crossings out along the roads.
+    for (const p of points(d, isMarkingWhite)) {
+      expect(radius(p)).toBeGreaterThanOrEqual(RING_OUTER_RADIUS_M - 0.5);
     }
   });
 
   it('gives way across every road into it, and only those', () => {
-    const both = points(drawn(20, 20, [west, north]), isMarkingWhite).length;
-    const one = points(drawn(20, 20, [west]), isMarkingWhite).length;
+    const yields = (d: { positions: number[]; colors: number[] }): number =>
+      points(d, isMarkingWhite).filter(
+        (p) => radius(p) >= RING_OUTER_RADIUS_M && radius(p) < RING_OUTER_RADIUS_M + 1.5,
+      ).length;
+    const both = yields(drawn(20, 20, [west, north]));
+    const one = yields(drawn(20, 20, [west]));
     expect(one).toBeGreaterThan(0);
     expect(both).toBeGreaterThan(one);
-    // A corner no road comes into paints nothing, and a road only leaving the
-    // ring gives way to nothing.
-    expect(points(drawn(21, 21, []), isMarkingWhite)).toHaveLength(0);
-    expect(points(drawn(20, 20, [street(RoadFlow.West, null)]), isMarkingWhite)).toHaveLength(0);
+    // A corner no road comes into gives way to nothing, and a road only leaving
+    // the ring gives way to nothing.
+    expect(yields(drawn(21, 21, []))).toBe(0);
+    expect(yields(drawn(20, 20, [street(RoadFlow.West, null)]))).toBe(0);
   });
 
-  it('puts a splitter island between a two-way road’s directions, and none on a one-way road', () => {
-    const outside = (d: { positions: number[]; colors: number[] }): number =>
-      points(d, isConcreteBand).filter((p) => radius(p) > RING_OUTER_RADIUS_M).length;
-    expect(outside(drawn(20, 20, [west]))).toBeGreaterThan(0);
-    expect(outside(drawn(20, 20, [street(RoadFlow.West, { from: -3.75, to: 3.75 }, false)]))).toBe(
-      0,
+  it('marks one crosswalk across an arm with footways, 20 ft back from the ring, and none across one without', () => {
+    const bars = crossingPaint(drawn(20, 20, [west]));
+    expect(bars.length).toBeGreaterThan(0);
+    for (const p of bars) {
+      expect(p[0]!).toBeLessThanOrEqual(crosswalkNearX + 1e-6);
+      expect(p[0]!).toBeGreaterThanOrEqual(crosswalkFarX - 1e-6);
+      // Across the whole carriageway, entry and exit lanes together.
+      expect(Math.abs(p[2]! - armZ)).toBeLessThanOrEqual(3.75 + 1e-6);
+    }
+    expect(Math.max(...bars.map((p) => p[0]!))).toBeCloseTo(crosswalkNearX, 6);
+    expect(Math.min(...bars.map((p) => p[2]!))).toBeLessThan(armZ - 3);
+    expect(Math.max(...bars.map((p) => p[2]!))).toBeGreaterThan(armZ + 3);
+    // Beyond the island and to it nothing is crossed.
+    for (const p of points(drawn(20, 20, [west, north]), isMarkingWhite)) {
+      expect(radius(p)).toBeGreaterThan(RING_OUTER_RADIUS_M - 0.5);
+    }
+    expect(
+      crossingPaint(drawn(20, 20, [street(RoadFlow.West, { from: 0, to: 3.75 }, true, false)])),
+    ).toHaveLength(0);
+  });
+
+  it('puts a raised splitter island between a two-way road’s directions, cut level at the crosswalk, and none on a one-way road', () => {
+    const island = (d: { positions: number[]; colors: number[] }) =>
+      points(d, isConcreteBand).filter((p) => radius(p) > RING_OUTER_RADIUS_M);
+    const raised = island(drawn(20, 20, [west]));
+    expect(raised.length).toBeGreaterThan(0);
+    for (const p of raised) {
+      // A kerbed island lifted above the road's own surface and the markings.
+      expect(p[1]!).toBeGreaterThan(0.25);
+      expect(Math.abs(p[2]! - armZ)).toBeLessThanOrEqual(SPLITTER_WIDTH_M / 2 + 1e-6);
+      // Nothing of it between the crosswalk's two edges.
+      expect(p[0]! > crosswalkNearX - 1e-6 || p[0]! < crosswalkFarX + 1e-6).toBe(true);
+    }
+    // It runs from the ring to the crosswalk and again from the crosswalk on.
+    expect(Math.max(...raised.map((p) => p[0]!))).toBeGreaterThan(ringEdgeX - 1);
+    expect(Math.min(...raised.map((p) => p[0]!))).toBeLessThan(crosswalkFarX - 1);
+    expect(raised.some((p) => p[0]! > crosswalkNearX - 1e-6)).toBe(true);
+    // Its nose is yellow, as a median's approach end is.
+    expect(points(drawn(20, 20, [west]), isYellowPaint).some((p) => radius(p) > 14)).toBe(true);
+    const oneWay = drawn(20, 20, [street(RoadFlow.West, { from: -3.75, to: 3.75 }, false)]);
+    expect(island(oneWay)).toHaveLength(0);
+  });
+
+  it('paints the ring’s edge: solid, dotted across an entry, absent across an exit, yellow inside', () => {
+    const edge = (d: { positions: number[]; colors: number[] }) =>
+      points(d, isMarkingWhite).filter((p) => radius(p) < RING_OUTER_RADIUS_M);
+    const onWest = (p: readonly number[]) => p[0]! < centre.x - 12 && Math.abs(p[2]! - armZ) < 3.75;
+    // A corner with no road is edged all the way round.
+    expect(edge(drawn(21, 21, [])).length).toBeGreaterThan(0);
+    for (const p of edge(drawn(21, 21, []))) {
+      expect(radius(p)).toBeGreaterThan(RING_OUTER_RADIUS_M - 0.5);
+    }
+    // None crosses an exit.
+    expect(edge(drawn(20, 20, [street(RoadFlow.West, null)])).filter(onWest)).toHaveLength(0);
+    // Across an entry it is broken: dashes with gaps between.
+    const dots = edge(drawn(20, 20, [street(RoadFlow.West, { from: 0, to: 3.75 }, false)]))
+      .filter(onWest)
+      .sort((a, b) => a[2]! - b[2]!);
+    expect(dots.length).toBeGreaterThan(0);
+    let widest = 0;
+    for (let i = 1; i < dots.length; i++)
+      widest = Math.max(widest, dots[i]![2]! - dots[i - 1]![2]!);
+    expect(widest).toBeGreaterThan(0.9);
+    // Yellow round the inner edge of the roadway, where the apron begins.
+    const inner = RING_OUTER_RADIUS_M - RING_ROADWAY_WIDTH_M;
+    const yellow = points(drawn(20, 20, [west]), isMarkingYellow).filter((p) => radius(p) < 15);
+    expect(yellow.length).toBeGreaterThan(0);
+    for (const p of yellow) {
+      expect(radius(p)).toBeGreaterThanOrEqual(inner);
+      expect(radius(p)).toBeLessThan(inner + 0.6);
+    }
+  });
+
+  /** A whole compact roundabout through the renderer, its west arm one-way and flowing east. */
+  const oneWayWest = (): THREE.Scene => {
+    const scene = new THREE.Scene();
+    const oneLane: RoadProfile = {
+      class: 'oneWay',
+      pieces: [
+        { kind: 'sidewalk', width: 1.875 },
+        { kind: 'travel', width: 3.05, flow: 'fwd' },
+        { kind: 'sidewalk', width: 1.875 },
+      ],
+    };
+    const renderer = new RoadMeshRenderer(scene, flatHeightAt, (id) =>
+      id === 99 ? oneLane : presetProfileForTier(id as RoadTier),
     );
+    renderer.apply([
+      makeDelta(20, 20, RoadTier.TwoLane, N | E | S | W),
+      makeDelta(21, 20, RoadTier.TwoLane, E | S | W),
+      makeDelta(20, 21, RoadTier.TwoLane, N | E | S),
+      makeDelta(21, 21, RoadTier.TwoLane, N | W),
+      { ...makeDelta(19, 20, RoadTier.OneWay, E | W), profile: 99, flow: RoadFlow.East },
+      makeDelta(18, 20, RoadTier.TwoLane, E | W),
+      makeDelta(22, 20, RoadTier.TwoLane, E | W),
+      makeDelta(20, 19, RoadTier.TwoLane, N | S),
+      makeDelta(20, 22, RoadTier.TwoLane, N | S),
+    ]);
+    renderer.setRoundabouts([block]);
+    return scene;
+  };
+  const meshPoints = (scene: THREE.Scene, pred: (c: readonly number[]) => boolean) =>
+    scene.children
+      .filter((c): c is THREE.Mesh => c instanceof THREE.Mesh)
+      .flatMap((m) =>
+        points(
+          {
+            positions: Array.from(m.geometry.getAttribute('position').array),
+            colors: Array.from(m.geometry.getAttribute('color').array),
+          },
+          pred,
+        ),
+      );
+
+  it('gives way across a one-way road flowing into it, like any other entry', () => {
+    const yieldWest = meshPoints(oneWayWest(), isMarkingWhite).filter(
+      (p) =>
+        radius(p) >= RING_OUTER_RADIUS_M &&
+        radius(p) < RING_OUTER_RADIUS_M + 1.5 &&
+        p[0]! < centre.x,
+    );
+    expect(yieldWest.length).toBeGreaterThan(0);
   });
 
   it('is drawn in place of the four junctions once the world says the block is a roundabout', () => {
@@ -5585,6 +5996,105 @@ describe('roadTileVertices — the far side of a T is the kerb of the road runni
     expect(same.colors).toEqual(plain.colors);
     for (const dx of [-centre, centre])
       expect(Math.min(...southAt(same, isSidewalk, dx))).toBeCloseTo(coreHalf, 6);
+  });
+});
+
+describe('roadTileVertices — a lane line that closes into the edge line leaves no stubs beside it', () => {
+  it('paints no lane-line dash within a metre of the edge line it is merging into', () => {
+    const four = presetProfileForTier(RoadTier.FourLane);
+    const two = presetProfileForTier(RoadTier.TwoLane);
+    const planFour = markingPlan(four);
+    const planTwo = markingPlan(two);
+    const halfFour = carriagewayHalfWidthOf(four);
+    const halfTwo = carriagewayHalfWidthOf(two);
+    const edgeIndex = planFour.solid.reduce(
+      (best, l, i) => (l.at > planFour.solid[best]!.at ? i : best),
+      0,
+    );
+    const edgeLo = planFour.solid[edgeIndex]!.at;
+    const edgeHi = seamBetween(planFour, planTwo, halfTwo, halfFour).solid[edgeIndex]!;
+    const halves: NeighborHalves = {
+      n: halfFour,
+      e: 0,
+      s: halfTwo,
+      w: 0,
+      plans: { n: planFour, e: null, s: planTwo, w: null },
+    };
+    let dashes = 0;
+    for (let z = 0; z < 12; z++) {
+      const { positions, colors } = roadTileVertices(
+        0,
+        z,
+        RoadTier.FourLane,
+        N | S,
+        flatHeightAt,
+        { n: RoadTier.FourLane, e: RoadTier.None, s: RoadTier.TwoLane, w: RoadTier.None },
+        undefined,
+        halves,
+      );
+      const pos = toTriples(positions);
+      const col = toTriples(colors);
+      const centreZ = (z + 0.5) * TILE_METERS;
+      for (let i = 0; i + 5 < pos.length; i += 6) {
+        if (!isMarkingWhite(col[i] as number[])) continue;
+        const quad = pos.slice(i, i + 6);
+        const along = quad.map((p) => p[2]!);
+        const length = Math.max(...along) - Math.min(...along);
+        const across = quad.map((p) => p[0]! - TILE_METERS / 2);
+        const mid = (Math.max(...across) + Math.min(...across)) / 2;
+        // Paint on the high side of the road, in slices; the edge line's own are on the edge.
+        if (length > DASH_PAINT_LENGTH_M + 0.01 || mid < 1) continue;
+        const a = (Math.max(...along) + Math.min(...along)) / 2 - centreZ;
+        const edge = edgeLo + ((edgeHi - edgeLo) * (a + TILE_METERS / 2)) / TILE_METERS;
+        const gap = Math.abs(mid - edge);
+        if (gap < 0.1) continue;
+        dashes++;
+        expect(gap, `tile z=${z}`).toBeGreaterThanOrEqual(1 - 0.05);
+      }
+    }
+    expect(dashes).toBeGreaterThan(0);
+  });
+});
+
+describe('roadTileVertices — a broken line ends in no sliver at a dead end', () => {
+  it('paints no centre dash shorter than 2 ft at the end of the road, whatever its phase', () => {
+    const coreHalf = carriagewayHalfWidthMeters(RoadTier.TwoLane);
+    // Open ground beyond the end: the cap stands past the tile's edge.
+    const halves: NeighborHalves = {
+      n: 0,
+      e: 0,
+      s: coreHalf,
+      w: 0,
+      open: { n: true, e: true, s: true, w: true },
+    };
+    const neighbors = { n: RoadTier.None, e: RoadTier.None, s: RoadTier.TwoLane, w: RoadTier.None };
+    let seen = 0;
+    for (let z = 0; z < 40; z++) {
+      const { positions, colors } = roadTileVertices(
+        0,
+        z,
+        RoadTier.TwoLane,
+        S,
+        flatHeightAt,
+        neighbors,
+        undefined,
+        halves,
+      );
+      const pos = toTriples(positions);
+      const col = toTriples(colors);
+      const dashes: number[][] = [];
+      for (let i = 0; i + 5 < pos.length; i += 6) {
+        if (!isMarkingYellow(col[i] as number[])) continue;
+        if (Math.abs((pos[i] as number[])[0]! - TILE_METERS / 2) > 0.2) continue;
+        dashes.push(pos.slice(i, i + 6).map((p) => p[2]!));
+      }
+      if (dashes.length === 0) continue;
+      const ends = dashes.map((d) => [Math.min(...d), Math.max(...d)] as const);
+      const north = ends.reduce((a, b) => (b[0] < a[0] ? b : a));
+      seen++;
+      expect(north[1] - north[0], `tile z=${z}`).toBeGreaterThanOrEqual(0.6 - 1e-6);
+    }
+    expect(seen).toBeGreaterThan(0);
   });
 });
 

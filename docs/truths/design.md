@@ -99,4 +99,10 @@ Back to [the index](../GROUND-TRUTHS.md).
   (WCAG 2.2 success criteria 1.4.10 and 2.5.8). —
   [accessibility.md](../ux/accessibility.md); checked by
   `tools/narrow-shots.mjs`
+- [R-design-022] A value lens is coloured by what its value means, declared once per lens and
+  read by map and legend alike: red only where more is worse, never on a
+  lens where more is better, and every scale runs light to dark. Every lens
+  once ran blue to red, so a happy, well-schooled district read as an
+  alarm. — [top-corners.md](../ux/hud/top-corners.md); `LENS_MEANING` in
+  `src/shared/lenses.ts`
 

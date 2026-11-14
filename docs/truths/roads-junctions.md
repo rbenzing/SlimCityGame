@@ -198,20 +198,28 @@ Back to [the index](../GROUND-TRUTHS.md).
   carry none, so they carry no covers; the test is the water flag, never a
   tier list. — [road-model.md](../world-sim/road-model/README.md); `src/render/roadfurniture.ts`
 - [R-roads-068] A broken line is 3.05 m of paint and a 9.15 m gap (a 12.2 m period), 0.15 m
-  wide, with its phase anchored at world metre 0 across every seam. —
-  [road-model.md](../world-sim/road-model/README.md); `src/render/roadsmesh.ts`
+  wide, with its phase anchored at world metre 0 across every seam. Through
+  a bend the pattern runs on from the run before and its gaps stretch to
+  meet the run after (MUTCD 3A.04 ¶06). Where a line is cut, a remainder
+  under 0.6 m is not painted, and a lane line within 1 m of the edge line
+  beside it is not painted. —
+  [road-model.md](../world-sim/road-model/README.md); `src/render/roadsmesh.ts`,
+  `drawBend` in `src/render/freeroadmesh.ts`
 - [R-roads-069] Turn arrows exist only where a lane's resolved movement set says the movement
   exists, and a single-lane approach is unmarked (MUTCD 3D.06 ¶01). Every
   arrow is the _Standard Highway Signs_ size the MUTCD points to (§3B.20 ¶05):
   a through arrow 2.90 m, a turn arrow 2.44 m, turn and through 3.89 m, stems
-  0.30 m, never wider than its lane. Gore
+  0.30 m, never wider than its lane. A one-way road's flow arrow is the
+  through arrow, one centred in each lane, never on a line (3B.23). Gore
   hatching slants away from the adjacent traffic (MUTCD 3B.25 ¶08–09). —
   [road-model.md](../world-sim/road-model/README.md)
 - [R-roads-070] A roundabout carries a yield line of white triangles pointing at approaching
   traffic on every entry (MUTCD 3B.19 ¶10) and a YIELD sign on every approach
   (MUTCD 2B.10 ¶06); it is the only junction where a yield faces every approach.
-  No stop bar, crosswalk or centre line runs through it, and the edge line never
-  crosses an exit (MUTCD 3D.03). — [road-model.md](../world-sim/road-model/README.md)
+  No stop bar or centre line runs through it and no crosswalk reaches the
+  island; an arm with footways carries one crosswalk 6.1 m back from the ring
+  (3C.09). The ring's edge line is dotted across an entry and never crosses
+  an exit (3D.03). — [roundabouts.md](../specs/roundabouts.md)
 - [R-roads-071] A compact roundabout is the roundabout control stored on all four tiles of a
   2×2 block of street tiles on the ground, joined round the square, and
   nothing else is stored. One predicate decides it for the worker, the graph
@@ -275,7 +283,9 @@ Back to [the index](../GROUND-TRUTHS.md).
   painted: the median stores no design vehicle between the two halves (MUTCD
   1C.02 def. 113(c)). Between the halves the box carries no edge line, stop
   line, crosswalk or arrow. The crossing over the divided road runs kerb to
-  kerb unbroken and the median's nose ends behind it. The graph still holds
+  kerb unbroken and the median's nose ends behind it. Where nothing divides
+  a corridor's halves the crossing is one run of bars over both, and each
+  stop line ends at their shared edge. The graph still holds
   a node on each half `[R-roads-054]`. —
   [how roads meet](../world-sim/road-model/how-roads-meet-rank-replacement-and-transitions.md);
   `src/shared/junctionpaint.ts`
@@ -286,7 +296,8 @@ Back to [the index](../GROUND-TRUTHS.md).
   behind the stop line at a junction. Solid yellow lines run both sides
   (3J.05 ¶02) and end where the nose begins. Where two roads meet in line no
   closing line crosses another. One function draws it for grid and free
-  roads. — [median, dividers and kerbs](../art/streets/median-dividers-and-kerbs.md);
+  roads, and for a divided corridor, whose island is drawn once between its
+  two halves. — [median, dividers and kerbs](../art/streets/median-dividers-and-kerbs.md);
   `emitIsland` in `src/render/medianisland.ts`
 - [R-roads-085] A plain dead end is frontage along its two sides only: the ground it faces
   is never zoned from it, and no drive or walk meets its rounded cap. Its
