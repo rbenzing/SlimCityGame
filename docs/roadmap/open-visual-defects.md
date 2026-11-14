@@ -4,19 +4,14 @@ What two reviews of every screenshot the shot tools write found wrong in the gam
 
 ## Critical
 
-- Rail draws no rails through a crossing, a junction or a bend, only a ballast box. — `shots-roadmatrix/rail-cross`
-- Tram track ends at a bend tile and at a junction box. — `shots-roadmatrix/tram-turn`
 - Loose dark slabs lie on the grass both sides of a tram guideway's ramp; a raised station's lift tower hangs above the ground and its stair lands on grass, or at a junction across the carriageway, with a guideway column in the approach lanes. `[R-roads-011]` — `shots-tramways/guideway-ramp`, `station-junction`
 - A divided corridor draws its right half's turn bay on the side its lanes leave by; the grid has it where they arrive. `corridor-shots` fails on it. `[R-roads-052]`
 
 ## Major: roads
 
-- Bus-lane and bike-lane paint ends square at every junction and bend, and the far side of a T loses the lane. The corner's painted edge arc sits inside the kerb return and leaves a bare wedge, a dead end leaves a bare crescent, and a bus lane takes no stop line. `[R-roads-065]` `[R-roads-046]` — `shots-roadmatrix/bus-lane-tee`, `bus-lane-straight-end`; `cornerRadius` against `kerbReturnFor` in `src/render/roadsmesh.ts`
 - A corridor's median nose keeps a footway-grey kerb where an avenue's is yellow, and is drawn by its own code, not the shared island. `[R-roads-084]` — `shots-corridor/corridor-top`
-- An alley carries a stop bar and a yellow stub and flares to twice its width; on an avenue it opens the median and takes stop lines, arrows and signals; at a street's dead end its lines run slanted across the whole street. `[R-roads-074]` — `shots-conformity/alley-t-twolane-box`, `alley-t-avenue-box`, `alley-corner-twolane-box`
-- A gravel arm funnels into a junction with a crosswalk and a stop line at its mouth, and gravel changes colour tile to tile. `[R-roads-044]` — `shots-roadmatrix/gravel-mixCross`
 - A one-way road's flow arrow is painted on the lane line between its two lanes. `[R-roads-069]` — `shots-oneway/arrow-northward`
-- A ramp meets its motorway through a dogleg with kinked kerbs and notched corners; at a ramp's T an edge line runs diagonally through the box. At a street a ramp's arm takes crosswalks though it has no footway. `[R-roads-061]` — `shots-ramps/ramp-merge`, `shots-roadmatrix/ramp-tee`, `ramp-mixCross`
+- A ramp meets its motorway through a dogleg with kinked kerbs and notched corners; at a ramp's T an edge line runs diagonally through the box. `[R-roads-061]` — `shots-ramps/ramp-merge`, `shots-roadmatrix/ramp-tee`
 - Kerbs and footways step at a width change where they should bend; a gore's chevrons run along both edges of one carriageway. `[R-roads-064]` — `shots-tapers/taper-head`, `gore-close`
 - A sound wall ends blunt at a slip road, leaving gaps. `[R-roads-056]` — `shots-soundwalls/walled-far-side`
 - A raised deck on a slope stands on dark slabs that miss the ground; the rail truss bridge reads as loose members; a four-lane road at grade carries a dark wall strip along its footway past a bend, and a shaded seam across its lanes. Every viaduct's parapet stops short of the deck's end. `[R-roads-004]` — `shots-roadclip/worst-intrusion`, `shots-bridges/rail-truss-side`, `shots-roadmatrix/four-lane-turn`, `two-lane-viaduct-end`
@@ -29,7 +24,6 @@ What two reviews of every screenshot the shot tools write found wrong in the gam
 ## Major: transit
 
 - Tram poles lean and carry no wire; in the tram depot they stand through the parked trams, which stand nose to tail with pantographs overlapping. — `shots-tramways/tramway-rails-detail`, `shots-depots/b2-tram-depot-yard`
-- A flat rail yard's lead reaches the main line's ballast and stops, with no rails joining; a tram depot's lead ends square in the carriageway. `[R-roads-082]` — `shots-depots/c4-rail-lead-close`, `b4-tram-lead-close`
 - The airport has no runway. Its terminal is one slab over the middle of the plot, aircraft stand half under its walls, and its car park is an outline on lawn. — `shots-airport/airport-above`
 
 ## Major: interface and messages
@@ -39,17 +33,14 @@ What two reviews of every screenshot the shot tools write found wrong in the gam
 ## Major: buildings and lots
 
 - On sloping ground a civic or utility pad shows a dark footing wall along its low side, a storey high at the shore plants, and a drive's apron leaves grass wedges against the footway. `[R-render-034]` — `shots-civic-access/b2-fire-apron-low`, `shots-power/3a-reactor-from-across-the-water`
-- In a shop's car park two cars share a stall, a tree and a pylon sign stand in stalls, and stalls run to the shopfront and the door with no walk between. At the funeral home's door vehicles stand through each other. — `shots-storefronts/close-fuel`, `close-strip`, `shots-parking/com-market-2-above`, `shots-cemetery/c-hearse-ambulance-car`
+- In a shop's car park two cars share a stall, a tree and a pylon sign stand in stalls, and stalls run to the shopfront and the door with no walk between. — `shots-storefronts/close-fuel`, `close-strip`, `shots-parking/com-market-2-above`
 - Flare stacks stand alone on open ground; a food plant's stack stands in its car park; steel tanks and pipe poles cross the side drive. — `shots-industry/chem`, `food-heavy-food-2-court`
 - The office entrance is a slab two storeys tall, and the tower and the mid-rise share it; neither has a walk from its door to the footway. — `shots-storefronts/office`, `shots-apartments/close-tower-podium`
 - A garden walk-up's stair reaches only its lower landing, dark slabs lie on its lawn and no walk or car park reaches the street; a tower's roof plant covers half the roof; its shopfront band and lobby stay dark at night; lit panes are slabs over whole bays. `[R-render-021]` — `shots-apartments/close-garden-breezeway`, `garden-res-medium-3-night`
 - A colonial's chimney is a thin post leaning from the ridge to the ground; a car parks through a porch's columns. — `shots-houses/street-colonial-west`
 - A row house's roof carries two loose diagonal bars; its stoop stairs stand at the head of its parking bays; a person stands inside a parked car. — `shots-houses/street-attached-west`
-- A cemetery's gatehouse is a blank box with trees through its roof; a civic crossing's kerb is not dropped. — `shots-cemetery/b2-cemetery-gatehouse`
-- The crematorium is a stack of plain boxes with a door-sized entrance; the hospital's ambulance canopy has no door and its parking deck no ramp. — `shots-healthcare/crematorium-close`, `hospital-entrance-close`
 - A garage's top deck runs into the building above it, and a mixed-use block's garage shows no way in from the street. — `shots-parking/com-office-2-rear`, `shots-mixeduse/rear`
 - A farm's yard does not meet its dirt road, a strip of grass between. — `shots-industry/close-farm-pasture-2-yard`
-- A restaurant's sign bar hangs skewed off its frame, and a black arch stands alone in grass beside it. — `shots-storefronts/close-restaurant`
 - A street's light pool ends in a hard edge mid-road at night, and stall paint glows brighter than the buildings; shopfronts and the hospital stay dark. — `shots-storefronts/main-night`, `shots-healthcare/hospital-night`
 - A mixed-use block's shopfront is plain glass with a black rectangle for a door, no sign and no awning. — `shots-mixeduse/street`, `close-mixed-1`
 - Where a zone has no room for its car park a level-1 office, hotel, mixed-use block or mid-rise still stands on a bare pad and parks at the kerb, and a level-2 hotel on its own 2 × 2 footprint has no garage. `[R-services-040]` — `shots-mixeduse/close-mixed-1`
@@ -58,7 +49,10 @@ What two reviews of every screenshot the shot tools write found wrong in the gam
 ## Lesser
 
 - Seen once and not since: terrain spiking through the cap of a raised road's dead end, in the frame `shots-roadmatrix/highway-viaduct-end` held before the tools were fixed. The regenerated frame stands clean, and the clipping sweep finds no ground above a deck. `[R-roads-004]`
-- A green hairline shows between carriageway and footway; footway corners carry notches; kerb arcs are faceted.
+- A green hairline shows between carriageway and footway; footway corners carry notches.
+- A tram depot's lead crosses the footway as a darker strip with no dropped kerb; a rail bend's first sleeper doubles the straight's last; a rail junction's turnouts are 10 m in radius, the tile's limit, and tram turns assume like lanes on both arms. `[R-roads-088]` — `shots-depots/b5-tram-turnout`, `shots-roadmatrix/rail-turn`, `rail-cross`
+- Where two bike-lane extensions meet at a crossroads corner their marks crowd into a small L. — `shots-roadmatrix/bike-lane-cross`
+- At a gravel road's mouth the street's kerb return ends about 0.7 m short of the gravel's edge, leaving a sliver of asphalt; an alley's mouth draws no dropped kerb across the footway. `[R-roads-074]` — `shots-conformity/gravel-t-twolane-box`, `alley-t-twolane-box`
 - A motorway's gantry carries blank boards where no ramp leaves; dead-end caps carry odd painted arcs; stray dashes lie in lanes.
 - Short white stubs lie beside the edge line where a road narrows. — `shots-transitions/fourlane-to-twolane-run`
 - A lamp's or a signal arm's shadow lies on the road as a jagged scribble; a vehicle's wheels are near-black boxes. — `shots-furniture/crossroads`
@@ -76,5 +70,6 @@ What two reviews of every screenshot the shot tools write found wrong in the gam
 ## Shot tools
 
 - Frames that do not show what they are named for: `shots-furniture/manholes-close`, `close-cover-lane`, `pedestal`, `cabinets` and `close-signal-corner`; `shots-powerline/buried-street-above` (no box or riser in frame); `shots-final/01` to `04`; `shots-transit/options-*`; `shots-apartments/roof-garden`; `shots-parking/res-tower-*-above`; `shots-power/3c` and `6b`.
+- `deadend-shots` places no homes on its free (off-grid) dead end, and shoots no avenue's dead end.
 - `bend-shots` shoots no alley, bus-lane, bike-lane, tram, motorway or ramp bend; `nightlook-shots` and `construction-shots` show a clock that does not match their light.
 - `corridor-shots` shoots no T onto a corridor nothing divides, so the crossing over its two halves there is unchecked.
