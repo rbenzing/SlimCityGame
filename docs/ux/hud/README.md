@@ -26,7 +26,7 @@ region, so you can find whatever you're looking at by where it sits.
 
 | Section | Size |
 | --- | --- |
-| [Top corners](top-corners.md) | 1,891 B |
+| [Top corners](top-corners.md) | 2,514 B |
 | [City info and Help popovers](city-info-and-help-popovers.md) | 1,397 B |
 | [Building info panel](building-info-panel.md) | 2,348 B |
 | [Junction panel](junction-panel.md) | 3,810 B |

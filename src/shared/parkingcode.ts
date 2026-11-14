@@ -80,6 +80,12 @@ export const CURB_CUT_M = AISLE_WIDTH_M;
  * standards' figure (Fort Collins Land Use Code 3.5.4, widely copied).
  */
 export const ENTRANCE_WALK_M = 8 * FOOT_M;
+/**
+ * The least walk kept between a shopfront and the heads of the stalls: the
+ * 36 in (0.915 m) clear accessible route of the 2010 ADA Standards (403.5.1),
+ * which a parked vehicle may not obstruct (502.7).
+ */
+export const MIN_FRONT_WALK_M = 36 * 0.0254;
 
 /**
  * How many accessible spaces an off-street lot or deck of `provided` spaces
