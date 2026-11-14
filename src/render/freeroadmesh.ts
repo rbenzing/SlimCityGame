@@ -65,6 +65,9 @@ import {
   ROAD_Y_OFFSET,
   SIDEWALK_COLOR,
   YELLOW_MARKING_COLOR,
+  DASH_GAP_LENGTH_M,
+  DASH_PAINT_LENGTH_M,
+  DASH_PERIOD_M,
   dashSegments,
   medianHalfWidthOf,
   roadNightTint,
@@ -558,13 +561,23 @@ const shade = (c: Rgb, f: number): Rgb => [c[0] * f, c[1] * f, c[2] * f];
  * pattern from world metre 0 along its axis, as the tiles beside it do; a road
  * off the grid measures it along itself.
  */
-function dashRuns(lay: Lay, from: number, to: number): Array<[number, number]> {
+function dashRuns(
+  lay: Lay,
+  from: number,
+  to: number,
+  /** Which ends of the stretch the line is cut at, rather than runs on from. */
+  cut: { from: boolean; to: boolean } = { from: false, to: false },
+): Array<[number, number]> {
   const axis = lay.axis;
-  if (!axis) return dashSegments(from, to);
+  if (!axis) return dashSegments(from, to, { lo: cut.from, hi: cut.to });
   const w0 = axis.origin + axis.sign * from;
   const w1 = axis.origin + axis.sign * to;
-  return dashSegments(Math.min(w0, w1), Math.max(w0, w1)).map(([lo, hi]) =>
-    axis.sign > 0 ? [lo - axis.origin, hi - axis.origin] : [axis.origin - hi, axis.origin - lo],
+  const forward = axis.sign > 0;
+  return dashSegments(Math.min(w0, w1), Math.max(w0, w1), {
+    lo: forward ? cut.from : cut.to,
+    hi: forward ? cut.to : cut.from,
+  }).map(([lo, hi]) =>
+    forward ? [lo - axis.origin, hi - axis.origin] : [axis.origin - hi, axis.origin - lo],
   );
 }
 
@@ -582,8 +595,8 @@ function drawSegment(
   if (to - from < 1e-6) return;
   const samples = sampleCentreLine(segmentGeom(net, seg));
   const st = stations(samples, from, to, lay.flip);
-  const dashes = isPaved(lay.profile)
-    ? dashRuns(lay, from, to).map(([lo, hi]) => stations(samples, lo, hi, lay.flip))
+  const runs = isPaved(lay.profile)
+    ? dashRuns(lay, from, to, nose).map(([lo, hi]) => stations(samples, lo, hi, lay.flip))
     : [];
   // A median that ends here ends in a nose, which spends its half-width of the run.
   const half = medianHalfWidthOf(lay.profile);
@@ -597,11 +610,17 @@ function drawSegment(
           noseEnd: nose.to,
         }
       : undefined;
-  drawSweep(soup, lay, st, dashes, island);
+  drawSweep(soup, lay, st, () => runs, island);
 }
 
 /** A bend: the cross-section swept along its centre line, the arc and what is driven straight to and from it. */
-function drawBend(soup: Soup, at: BendAt, lay: Lay): void {
+function drawBend(
+  soup: Soup,
+  at: BendAt,
+  lay: Lay,
+  /** The pattern phase of the run before the bend and of the run after it, where each meets it. */
+  phases: { near: DashPhase; far: DashPhase },
+): void {
   const { path, arc, radius, turn } = at.bend;
   const samples: Sample[] = path.map((p, k) => ({
     x: p.x,
@@ -613,10 +632,141 @@ function drawBend(soup: Soup, at: BendAt, lay: Lay): void {
   }));
   const length = path[path.length - 1]!.s;
   if (length < 1e-6) return;
-  const dashes = isPaved(lay.profile)
-    ? dashSegments(0, length).map(([lo, hi]) => stations(samples, lo, hi))
-    : [];
-  drawSweep(soup, lay, stations(samples, 0, length), dashes);
+  // Each broken line is cut to its own length round the arc: an outer line is
+  // longer than the centre line, an inner one shorter.
+  const dashesOf = (line: { at: number }): Station[][] => {
+    const reach = (p: Sample): number =>
+      p.inner === undefined
+        ? line.at
+        : p.inner * line.at <= p.radius!
+          ? line.at
+          : p.inner * p.radius!;
+    const scale = (p: Sample): number =>
+      p.inner === undefined ? 1 : (p.radius! - p.inner * reach(p)) / p.radius!;
+    const own: number[] = [0];
+    for (let i = 1; i < samples.length; i++) {
+      const ds = samples[i]!.s - samples[i - 1]!.s;
+      own.push(own[i - 1]! + (ds * (scale(samples[i - 1]!) + scale(samples[i]!))) / 2);
+    }
+    const centreAt = (len: number): number => {
+      let i = 1;
+      while (i < own.length - 1 && own[i]! < len) i++;
+      const span = own[i]! - own[i - 1]!;
+      const f = span > 0 ? (len - own[i - 1]!) / span : 0;
+      return samples[i - 1]!.s + (samples[i]!.s - samples[i - 1]!.s) * f;
+    };
+    return bendDashes(phases.near, phases.far, own[own.length - 1]!).map(([lo, hi]) =>
+      stations(samples, centreAt(lo), centreAt(hi)),
+    );
+  };
+  drawSweep(soup, lay, stations(samples, 0, length), isPaved(lay.profile) ? dashesOf : () => []);
+}
+
+/** Where a broken line's pattern lies: the metre of the pattern at a point, and which way it grows along the line. */
+interface DashPhase {
+  origin: number;
+  sign: 1 | -1;
+}
+
+/**
+ * The dashes of the broken line through a bend `length` metres along it, given
+ * the pattern of the run before it (its phase at the bend's start) and of the
+ * run after it (its phase at the bend's end). The line is one line: its dashes
+ * stay 3.05 m and its gaps stretch or shrink evenly, so that the pattern leaves
+ * the bend exactly in the phase the next run starts with. The number of periods
+ * through the bend is the one that changes the gap least; a bend too short for
+ * a gap of half the standard one paints no dash at all.
+ */
+export function bendDashes(
+  near: DashPhase,
+  far: DashPhase,
+  length: number,
+): Array<[number, number]> {
+  /** Every dash of a pattern, as metres along the line, that touches `lo..hi`; `shift` puts the pattern's own origin there. */
+  const dashesOf = (
+    phase: DashPhase,
+    shift: number,
+    lo: number,
+    hi: number,
+  ): [number, number][] => {
+    const a = lo - shift;
+    const b = hi - shift;
+    const [from, to] =
+      phase.sign > 0 ? [phase.origin + a, phase.origin + b] : [phase.origin - b, phase.origin - a];
+    const out: [number, number][] = [];
+    for (
+      let k = Math.floor(from / DASH_PERIOD_M) - 1;
+      k <= Math.ceil(to / DASH_PERIOD_M) + 1;
+      k++
+    ) {
+      const start = k * DASH_PERIOD_M;
+      const end = start + DASH_PAINT_LENGTH_M;
+      out.push(
+        phase.sign > 0
+          ? [start - phase.origin + shift, end - phase.origin + shift]
+          : [phase.origin - end + shift, phase.origin - start + shift],
+      );
+    }
+    return out.sort((p, q) => p[0] - q[0]);
+  };
+  // The dash the run before is in at the bend's start (or the next to come), and
+  // the last dash of the run after that begins inside the bend.
+  const opening = dashesOf(near, 0, -DASH_PERIOD_M, length + DASH_PERIOD_M).find(
+    ([, end]) => end > 1e-9,
+  );
+  const closing = dashesOf(far, length, -DASH_PERIOD_M, length + DASH_PERIOD_M)
+    .filter(([start]) => start < length - 1e-9)
+    .at(-1);
+  if (!opening || !closing || opening[0] >= length) return [];
+  const span = closing[0] - opening[0];
+  const clip = (start: number): [number, number] => [
+    Math.max(0, start),
+    Math.min(length, start + DASH_PAINT_LENGTH_M),
+  ];
+  if (Math.abs(span) < 1e-9) return [clip(opening[0])];
+  const fewest = Math.floor(span / DASH_PERIOD_M);
+  const minGap = DASH_GAP_LENGTH_M / 2;
+  const counts = [fewest, fewest + 1].filter(
+    (n) => n >= 1 && span / n - DASH_PAINT_LENGTH_M >= minGap - 1e-9,
+  );
+  if (span < 0 || counts.length === 0) return [];
+  const periods = counts.reduce((best, n) =>
+    Math.abs(span / n - DASH_PERIOD_M) < Math.abs(span / best - DASH_PERIOD_M) ? n : best,
+  );
+  const stride = span / periods;
+  const out: [number, number][] = [];
+  for (let k = 0; k <= periods; k++) {
+    const [lo, hi] = clip(opening[0] + k * stride);
+    if (hi - lo > 1e-9) out.push([lo, hi]);
+  }
+  return out;
+}
+
+/**
+ * The pattern phase of the run on one side of a bend where it meets the bend: the
+ * line's own length there, and the way that length grows along the bend's line.
+ * A broken line is one line through a bend, so the bend carries on from where the
+ * run before it stopped and ends where the run after it starts, whatever each run
+ * measures its phase from.
+ */
+function bendPhase(
+  net: RoadNet,
+  at: BendAt,
+  node: number,
+  lookup: ProfileFor,
+  side: 'near' | 'far',
+): DashPhase {
+  const run = side === 'near' ? at.first : at.second;
+  const setback = at.bend.setback[side === 'near' ? 0 : 1];
+  const length = sampleCentreLine(segmentGeom(net, run)).at(-1)!.s;
+  const fromFirstEnd = net.segA[run] === node;
+  const seam = fromFirstEnd ? setback : length - setback;
+  // Along the bend's line the run before it is entered and the run after it left.
+  const growth = fromFirstEnd === (side === 'far') ? 1 : -1;
+  const axis = layOf(net, run, lookup).axis;
+  return axis
+    ? { origin: axis.origin + axis.sign * seam, sign: (axis.sign * growth) as 1 | -1 }
+    : { origin: seam, sign: growth };
 }
 
 /** A cross-section swept along stations: surface, median, kerbs, bands and paint, with each dash drawn along its own run. */
@@ -624,7 +774,7 @@ function drawSweep(
   soup: Soup,
   lay: Lay,
   st: readonly Station[],
-  dashes: readonly (readonly Station[])[],
+  dashes: (line: { at: number }) => readonly (readonly Station[])[],
   /**
    * The stretch the median's island and the lines beside it run, where it ends
    * in a nose: the stations without the nose's own length. Omitted, the island
@@ -681,7 +831,7 @@ function drawSweep(
     const besideMedian = median !== null && isMedianSideLine(line, median.offset, median.half);
     paint(line, besideMedian && island ? island.stations : st);
   }
-  for (const run of dashes) for (const line of plan.dashed) paint(line, run);
+  for (const line of plan.dashed) for (const run of dashes(line)) paint(line, run);
 }
 
 /**
@@ -694,7 +844,12 @@ export function freeRoadSoup(net: RoadNet, lookup: ProfileFor, surfaceAt: Surfac
   const soup = new Soup(surfaceAt);
   const { junctions, spans, caps, bends } = layout(net, lookup);
   for (const j of junctions) drawJunction(soup, net, j.node, j.arms, j.color);
-  for (const b of bends) drawBend(soup, b.at, b.lay);
+  for (const b of bends) {
+    drawBend(soup, b.at, b.lay, {
+      near: bendPhase(net, b.at, b.node, lookup, 'near'),
+      far: bendPhase(net, b.at, b.node, lookup, 'far'),
+    });
+  }
   for (const span of spans) {
     drawSegment(soup, net, span.seg, span.lay, span.from, span.to, span.nose);
   }
@@ -733,7 +888,7 @@ function layout(
   spans: Span[];
   gridTiles: TilePoint[];
   caps: Cap[];
-  bends: { at: BendAt; lay: Lay }[];
+  bends: { at: BendAt; lay: Lay; node: number }[];
 } {
   const setbackAt = new Map<string, number>();
   /** The segment ends that meet a junction or a dead end, where a median finishes in a nose. */
@@ -742,7 +897,7 @@ function layout(
   const spans: Span[] = [];
   const gridTiles: TilePoint[] = [];
   const caps: Cap[] = [];
-  const bends: { at: BendAt; lay: Lay }[] = [];
+  const bends: { at: BendAt; lay: Lay; node: number }[] = [];
   const bendAt = bendsOf(net, (seg) => bendRadiusOf(profileOf(net.segProfile[seg]!, lookup)));
   for (let node = 0; node < net.nodeSlots; node++) {
     if (net.nodeLive[node] !== 1) continue;
@@ -752,7 +907,7 @@ function layout(
       for (const seg of [bend.first, bend.second]) {
         setbackAt.set(`${seg}:${node}`, bend.bend.setback[0]);
       }
-      bends.push({ at: bend, lay: layOf(net, bend.frame, lookup) });
+      bends.push({ at: bend, lay: layOf(net, bend.frame, lookup), node });
       // Off a grid road the whole tile is this renderer's, as at a junction: the
       // grid road runs from the tile's edge to where the arc begins.
       const gridSeg = [bend.first, bend.second].find((seg) => !isFreeSegment(net, seg));
@@ -922,7 +1077,10 @@ function drawCap(soup: Soup, net: RoadNet, cap: Cap): void {
     const run = lineStations(ahead ? path : [...path].reverse());
     const length = run.at(-1)!.s;
     const color = line.color === 'yellow' ? YELLOW_MARKING_COLOR : MARKING_COLOR;
-    const pieces = dashed ? dashSegments(0, length) : [[0, length] as [number, number]];
+    // Each side's line starts on the road and is cut where the two meet at the tip.
+    const pieces = dashed
+      ? dashSegments(0, length, { hi: true })
+      : [[0, length] as [number, number]];
     for (const [lo, hi] of pieces) {
       soup.ribbon(
         stations(run, lo, hi),

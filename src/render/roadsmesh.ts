@@ -34,7 +34,7 @@
  *   `emitAxisMarkings` case), but still `paved: true` so junction arm
  *   markings apply like every other paved tier.
  * - **One-Way** (tier 6): two-lane width/color/markings, plus a periodic
- *   pavement direction arrow (`emitDirectionArrow`) on straight axes every
+ *   pavement direction arrow (`emitLaneUseArrow`, through) on straight axes every
  *   `ARROW_PERIOD_TILES` global tiles, always pointing toward the
  *   low->high coordinate along that axis (the render-side half of the
  *   sim's directed-edge convention — RoadTileDelta carries no explicit
@@ -313,6 +313,10 @@ export { PAINT_HALF_WIDTH_M };
 export const DASH_PAINT_LENGTH_M = 3.05;
 export const DASH_GAP_LENGTH_M = 9.15;
 export const DASH_PERIOD_M = DASH_PAINT_LENGTH_M + DASH_GAP_LENGTH_M;
+/** The shortest line segment the MUTCD uses, 2 ft; a broken line is never cut shorter. */
+export const MIN_DASH_LENGTH_M = 0.6;
+/** A lane line closer than this to the edge line beside it bounds no lane: the strip between is narrower than any vehicle. */
+const LANE_LINE_MERGE_M = 1;
 
 /**
  * Painted sub-segments of a metric dash pattern (period DASH_PERIOD_M,
@@ -322,8 +326,16 @@ export const DASH_PERIOD_M = DASH_PAINT_LENGTH_M + DASH_GAP_LENGTH_M;
  * segments (one per query) that together reconstruct the same coverage as
  * one wider query — see the seam-continuity tests. Returns [] for an empty
  * or inverted range.
+ *
+ * An end the line is CUT at (it stops there, rather than running on into the
+ * next tile) paints no remainder shorter than MIN_DASH_LENGTH_M: a broken line
+ * never ends in a sliver.
  */
-export function dashSegments(lo: number, hi: number): Array<[number, number]> {
+export function dashSegments(
+  lo: number,
+  hi: number,
+  cut: { lo?: boolean; hi?: boolean } = {},
+): Array<[number, number]> {
   if (hi <= lo) return [];
   const segments: Array<[number, number]> = [];
   const firstK = Math.floor(lo / DASH_PERIOD_M) - 1;
@@ -333,7 +345,11 @@ export function dashSegments(lo: number, hi: number): Array<[number, number]> {
     const segEnd = segStart + DASH_PAINT_LENGTH_M;
     const clippedStart = Math.max(segStart, lo);
     const clippedEnd = Math.min(segEnd, hi);
-    if (clippedEnd > clippedStart) segments.push([clippedStart, clippedEnd]);
+    if (clippedEnd <= clippedStart) continue;
+    const sliver =
+      clippedEnd - clippedStart < MIN_DASH_LENGTH_M - 1e-9 &&
+      ((cut.lo === true && clippedStart === lo) || (cut.hi === true && clippedEnd === hi));
+    if (!sliver) segments.push([clippedStart, clippedEnd]);
   }
   return segments;
 }
@@ -846,7 +862,9 @@ export function paintBulbStreet(
     if (!run) continue;
     const [lo, hi] = span(run.s0, run.s1);
     // Dashes keep the street's own phase, measured from the world's origin.
-    for (const [a, b] of dashSegments(origin + lo, origin + hi)) {
+    // The street's end at the circle is cut; its other end meets the block edge.
+    const atCircle = sign > 0 ? { lo: true } : { hi: true };
+    for (const [a, b] of dashSegments(origin + lo, origin + hi, atCircle)) {
       push(line.at, a - origin, b - origin, line);
     }
   }
@@ -954,6 +972,8 @@ function emitAxisMarkings(
    * follow does not drift either.
    */
   median?: { is: (line: MarkingLine) => boolean; lo: number; hi: number },
+  /** Which ends of the run are dead ends, where the broken lines stop rather than run on into a tile. */
+  deadEnd: { lo: boolean; hi: boolean } = { lo: false, hi: false },
 ): void {
   const pair = suppressCenterPair ? centrePair(plan) : null;
   const edges = [outermostLine(plan, 1), outermostLine(plan, -1)];
@@ -1009,9 +1029,33 @@ function emitAxisMarkings(
     // so the phase carries over seams exactly as it did; only where the paint
     // sits ACROSS the road has become a function of how far along it is.
     const origin = vertical ? centerZ : centerX;
-    for (const [segLo, segHi] of dashSegments(origin + lo + laneEnd.lo, origin + hi - laneEnd.hi)) {
+    // A tile's own edge is a seam the line runs on across; a dead end or a stop
+    // line is where it is cut.
+    const cut = {
+      lo: deadEnd.lo || lo > -TILE_HALF || laneEnd.lo > 0,
+      hi: deadEnd.hi || hi < TILE_HALF || laneEnd.hi > 0,
+    };
+    // The edge line of the same colour on this line's side of the road, where a
+    // lane line that has nowhere left to go closes into it.
+    const edge = edges.find((e) => e && e.color === line.color && e.at * line.at > 0);
+    const edgeAt = edge
+      ? driftBetween(...ends(edge, plan.solid.indexOf(edge), 'solid'), lo, hi)
+      : undefined;
+    for (const [segLo, segHi] of dashSegments(
+      origin + lo + laneEnd.lo,
+      origin + hi - laneEnd.hi,
+      cut,
+    )) {
       const a0 = segLo - origin;
       const a1 = segHi - origin;
+      // A dash that reaches the edge line is not a lane's boundary, only a stub
+      // beside the line it has run into.
+      if (
+        edgeAt &&
+        (Math.abs(offsetAt(a0) - edgeAt(a0)) < LANE_LINE_MERGE_M ||
+          Math.abs(offsetAt(a1) - edgeAt(a1)) < LANE_LINE_MERGE_M)
+      )
+        continue;
       pushMarkingRun(
         positions,
         colors,
@@ -1303,68 +1347,6 @@ export function emitLaneUseArrow(
       at(hookAlong + ARROW_HEAD_HALF_WIDTH_M, neck),
       at(hookAlong, outer),
     );
-  }
-}
-
-/**
- * Emits one direction arrow (stem + two head-wing quads) centered on the
- * tile, oriented along `vertical`'s travel axis and always pointing toward
- * the low->high coordinate on that axis (+Z for vertical, +X for
- * horizontal) — see the direction-convention note above.
- */
-function emitDirectionArrow(
-  positions: number[],
-  colors: number[],
-  vertical: boolean,
-  centerX: number,
-  centerZ: number,
-  /** Point the other way: toward the low coordinate on the travel axis. */
-  reversed: boolean,
-  hAt: (x: number, z: number) => number,
-): void {
-  const tip = THROUGH_ARROW_LENGTH_M / 2;
-  const headBase = tip - ARROW_HEAD_LENGTH_M;
-  const tail = -tip;
-  const rects: Array<[number, number, number, number]> = [
-    // [alongLo, alongHi, acrossLo, acrossHi]
-    [tail, headBase, -ARROW_STEM_HALF_WIDTH_M, ARROW_STEM_HALF_WIDTH_M], // stem
-    [headBase, tip, ARROW_STEM_HALF_WIDTH_M, ARROW_HEAD_HALF_WIDTH_M], // head wing, + side
-    [headBase, tip, -ARROW_HEAD_HALF_WIDTH_M, -ARROW_STEM_HALF_WIDTH_M], // head wing, - side
-  ];
-  for (const [rawLo, rawHi, acrossLo, acrossHi] of rects) {
-    // Reversing mirrors the arrow along its travel axis, so the same three
-    // rectangles point the other way.
-    const alongLo = reversed ? -rawHi : rawLo;
-    const alongHi = reversed ? -rawLo : rawHi;
-    if (vertical) {
-      pushLocalRect(
-        positions,
-        colors,
-        centerX,
-        centerZ,
-        acrossLo,
-        acrossHi,
-        alongLo,
-        alongHi,
-        MARK_Y_OFFSET,
-        MARKING_COLOR,
-        hAt,
-      );
-    } else {
-      pushLocalRect(
-        positions,
-        colors,
-        centerX,
-        centerZ,
-        alongLo,
-        alongHi,
-        acrossLo,
-        acrossHi,
-        MARK_Y_OFFSET,
-        MARKING_COLOR,
-        hAt,
-      );
-    }
   }
 }
 
@@ -6582,6 +6564,7 @@ export function roadTileVertices(
                 hi: medianEnd('s', legS).lineEnd,
               }
             : undefined,
+          { lo: !legN, hi: !legS },
         );
         if (plan.bands.length > 0)
           emitColoredLaneBands(
@@ -6649,6 +6632,7 @@ export function roadTileVertices(
                 hi: medianEnd('e', legE).lineEnd,
               }
             : undefined,
+          { lo: !legW, hi: !legE },
         );
         if (plan.bands.length > 0)
           emitColoredLaneBands(
@@ -6826,27 +6810,34 @@ export function roadTileVertices(
       // coordinate along the flow axis, pointing the way the road was drawn.
       // A road laid before its direction was stored points low->high, which is
       // the way it has always been drawn and the way it is still routed.
+      // One arrow lies in each lane, centred on it.
       if (tier === RoadTier.OneWay) {
-        if (hasVertical && isArrowTile(z))
-          emitDirectionArrow(
-            positions,
-            colors,
-            true,
-            centerX,
-            centerZ,
-            flow === RoadFlow.North,
-            hAt,
-          );
-        if (hasHorizontal && isArrowTile(x))
-          emitDirectionArrow(
-            positions,
-            colors,
-            false,
-            centerX,
-            centerZ,
-            flow === RoadFlow.West,
-            hAt,
-          );
+        for (const lane of travelLanes(crossSection)) {
+          if (hasVertical && isArrowTile(z))
+            emitLaneUseArrow(
+              positions,
+              colors,
+              true,
+              centerX,
+              centerZ,
+              lane.centre,
+              flow === RoadFlow.North ? -1 : 1,
+              Movement.Through,
+              hAt,
+            );
+          if (hasHorizontal && isArrowTile(x))
+            emitLaneUseArrow(
+              positions,
+              colors,
+              false,
+              centerX,
+              centerZ,
+              lane.centre,
+              flow === RoadFlow.West ? -1 : 1,
+              Movement.Through,
+              hAt,
+            );
+        }
       }
     }
 
