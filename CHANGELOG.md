@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.88.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.87.0...slimcity-v1.88.0) (2026-11-14)
+
+
+### Features
+
+* **roads:** dead ends keep drives off their cap, and a Cul-de-sac tool lets homes form round an end ([3e8c1e8](https://github.com/rbenzing/SlimCityGame/commit/3e8c1e84b47f3ddfaf4e224a1ce9182b7f36e9fa))
+
+
+### Bug Fixes
+
+* **render:** civic kits read as what they are: a lodge, a porch, emergency doors ([cef2f42](https://github.com/rbenzing/SlimCityGame/commit/cef2f427c3174fbf82231f620cf97d849b374308))
+* **roads:** an alley is an access, a gravel road a leg without paint, and no crossing lies over a ramp ([4c928b4](https://github.com/rbenzing/SlimCityGame/commit/4c928b447884bde885b9998bec7bebb41b9a6a97))
+* **roads:** bus and bike lanes keep their colour round bends, dead ends and junctions ([d8a2b96](https://github.com/rbenzing/SlimCityGame/commit/d8a2b961a9f250d0e4fe4711ead08b3a5facba14))
+* **roads:** track runs unbroken through bends, junctions and yard leads ([d78723a](https://github.com/rbenzing/SlimCityGame/commit/d78723a18eefccf5ba13e28635fcebc90cf75c62))
+
 ## [1.87.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.86.1...slimcity-v1.87.0) (2026-11-13)
 
 
