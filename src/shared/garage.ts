@@ -11,6 +11,7 @@ import { bodyMetresFor, grossFloorM2, SQ_FT_PER_M2, storeysOf } from './floorare
 import type { LotRect } from './lotlayout';
 import {
   AISLE_WIDTH_M,
+  ENTRANCE_WALK_M,
   FOOT_M,
   HOTEL_ROOM_M2,
   STALL_LENGTH_M,
@@ -43,6 +44,8 @@ export const GARAGE_BAY_STALLS = 4;
 export const GARAGE_STAIR_M = 2 * STALL_WIDTH_M;
 /** How far a podium stands proud of the body on each side of it. */
 export const PODIUM_OVERHANG_M = 0.05;
+/** How far a body's rear-face bands stand proud of it, which the deck keeps clear of: a precast band's 0.1 m. */
+export const BODY_REAR_PROUD_M = 0.1;
 /** The side margin the drive keeps clear of the body. */
 const DRIVE_BODY_GAP_M = 0.4;
 /** The least aisle a deck keeps between its rows, a one-way 90° aisle of 17.7 ft: a dial. */
@@ -56,7 +59,7 @@ export const GARAGE_MIN_AISLE_M = 5.4;
 export const GARAGE_FRONT_PROJECTION_M: Readonly<Record<string, number>> = {
   office: 1.5,
   hotel: 6,
-  mixed: 0,
+  mixed: 1.5,
   midrise: 1.8,
   tower: 1.8,
 };
@@ -194,7 +197,7 @@ function layGarage(entry: BuildingCatalogEntry): Garage | null {
     v0: bodyV0,
     v1: bodyV0 + bodyM.d,
   };
-  const deckV0 = body.v1 + (podium ? PODIUM_OVERHANG_M : 0);
+  const deckV0 = body.v1 + (podium ? PODIUM_OVERHANG_M : BODY_REAR_PROUD_M);
   const deck: LotRect = { u0: 0, u1: lotW, v0: deckV0, v1: lotD };
   const margin = lotD - deckV0;
 
@@ -278,6 +281,25 @@ function layGarage(entry: BuildingCatalogEntry): Garage | null {
     tiers,
     provided,
     shortfall: Math.max(0, required - provided),
+  };
+}
+
+/** The height of a deck's top: its top tier's floor and the barrier along its edge. Nothing of the body stands in the deck below it. */
+export function garageTopM(garage: Garage): number {
+  return GARAGE_GROUND_M + (garage.tiers - 1) * GARAGE_TIER_M + GARAGE_SPANDREL_M;
+}
+
+/**
+ * The walk from a dense block's street door to the footway: the entrance walk's
+ * width, centred on the body, from the street line to the body's street face.
+ */
+export function garageEntranceWalk(garage: Garage): LotRect {
+  const mid = (garage.body.u0 + garage.body.u1) / 2;
+  return {
+    u0: mid - ENTRANCE_WALK_M / 2,
+    u1: mid + ENTRANCE_WALK_M / 2,
+    v0: 0,
+    v1: garage.body.v0,
   };
 }
 

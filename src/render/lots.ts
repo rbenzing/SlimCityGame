@@ -57,6 +57,7 @@ import { bulbClearRuns, bulbFanToWorld, bulbReachM } from './bulbfront';
 import { NEAR_WHITE_STRIPE_COLOR, STRIPE_LINE_HALF_WIDTH_M, STRIPE_LINE_Y_OFFSET } from './parked';
 import type { KerbSurroundings } from '../shared/kerblayout';
 import { lotPaving } from '../shared/lotlayout';
+import { garageEntranceWalk } from '../shared/garage';
 import { ENTRANCE_WALK_M, isDenseLotEntry } from '../shared/parkingcode';
 import {
   framedLotPlanFor,
@@ -578,10 +579,13 @@ export class LotRenderer {
     };
     lay({ u0: 0, u1: garage.lotW, v0: 0, v1: garage.lotD }, LOT_Y_OFFSET, 'mownLawn');
     lay(garage.drive, DRIVE_Y_OFFSET, 'darkAsphalt');
+    const doorWalk = garageEntranceWalk(garage);
     lay(walk, WALK_Y_OFFSET, 'cleanConcrete');
+    lay(doorWalk, WALK_Y_OFFSET, 'cleanConcrete');
     if (verge > 0) {
       lay({ ...garage.drive, v0: -verge, v1: 0 }, DRIVE_Y_OFFSET, 'darkAsphalt');
       lay({ ...walk, v0: -verge, v1: 0 }, WALK_Y_OFFSET, 'cleanConcrete');
+      lay({ ...doorWalk, v0: -verge, v1: 0 }, WALK_Y_OFFSET, 'cleanConcrete');
     }
   }
 
