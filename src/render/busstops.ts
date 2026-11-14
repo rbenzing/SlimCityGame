@@ -36,7 +36,7 @@ import {
   type RoadTileIndex,
 } from './roadfurniture';
 import { sidewalkDepthMeters } from './frontage';
-import { SIGN_NO_KERB_M } from './roadsidespace';
+import { SIGN_NO_KERB_M, type Spot } from './roadsidespace';
 import { CURB_Y_OFFSET, ROAD_Y_OFFSET } from './roadsmesh';
 
 /** The boarding pad: 96 in out from the kerb, 12 ft along it, the shelter's length. */
@@ -187,6 +187,24 @@ export function stopRoadAt(tileSet: RoadTileIndex, x: number, z: number): StopRo
     flow: tile.flow ?? 0,
     lateral: lateralAxis(tileSet, x, z),
   };
+}
+
+/**
+ * Where each stop's sign post stands, for the roadside objects that keep their
+ * distance from it. A stop on a tile with no road has no post.
+ */
+export function stopPostSpots(
+  stops: readonly BusStop[],
+  roadAt: (x: number, z: number) => StopRoad | null,
+): Spot[] {
+  const out: Spot[] = [];
+  for (const stop of stops) {
+    const road = roadAt(stop.x, stop.z);
+    if (!road) continue;
+    const { pole } = busStopPlacement(stop, road.tier, road.profile, road.flow, road.lateral);
+    out.push({ x: pole.x, z: pole.z });
+  }
+  return out;
 }
 
 // --- geometry ---------------------------------------------------------------
