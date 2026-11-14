@@ -24,7 +24,7 @@
 import * as THREE from 'three';
 import { uniform } from 'three/tsl';
 import { nightBodyMaterial } from './nightlook';
-import { BuildingState, RoadTier } from '../shared/types';
+import { BuildingState } from '../shared/types';
 import type { BuildingCatalogEntry, BuildingDelta, BuildingInstance } from '../shared/types';
 import { CHUNK_TILES, CHUNKS_PER_SIDE, TILE_METERS } from '../shared/constants';
 import { footprintForRotation } from '../shared/footprint';
@@ -38,13 +38,7 @@ import { LOT_Y_OFFSET } from './plotground';
 import { massingLifecycleTint } from './massing';
 import { isFarmEntry, isHouseEntry, isWalkUpEntry } from './archetypes';
 import { cropBands, planFarm, type FarmPlan, type FarmRect } from './farmlot';
-import {
-  edgeFrameOfParcel,
-  NO_STREETS,
-  sidewalkDepthMeters,
-  type EdgeFrame,
-  type StreetLookup,
-} from './frontage';
+import { edgeFrameOfParcel, NO_STREETS, type EdgeFrame, type StreetLookup } from './frontage';
 import {
   civicCrossingRects,
   civicSiteFor,
@@ -60,12 +54,7 @@ import {
   type LotRect,
 } from './houselot';
 import { bulbClearRuns, bulbFanToWorld, bulbReachM } from './bulbfront';
-import {
-  CURB_CUT_Y_OFFSET,
-  NEAR_WHITE_STRIPE_COLOR,
-  STRIPE_LINE_HALF_WIDTH_M,
-  STRIPE_LINE_Y_OFFSET,
-} from './parked';
+import { NEAR_WHITE_STRIPE_COLOR, STRIPE_LINE_HALF_WIDTH_M, STRIPE_LINE_Y_OFFSET } from './parked';
 import type { KerbSurroundings } from '../shared/kerblayout';
 import { lotPaving } from '../shared/lotlayout';
 import { ENTRANCE_WALK_M, isDenseLotEntry } from '../shared/parkingcode';
@@ -488,10 +477,11 @@ export class LotRenderer {
   }
 
   /**
-   * A civic building's crossings: each span's verge strip and its footway cut,
-   * paved the way a shop's drive is (asphalt, a drive's and an apron's) or a
-   * home's walk is (concrete). A framed parcel's front line is the back of its
-   * free road's footway, so it has no verge and a street's footway is assumed.
+   * A civic building's crossings: each span's verge strip, paved the way a
+   * shop's drive is (asphalt, a drive's and an apron's) or a home's walk is
+   * (concrete). The strip stops at the back of the footway, which runs through
+   * unbroken. A framed parcel's front line is the back of its free road's
+   * footway, so it has no verge and lays nothing.
    */
   private layCivicCrossing(
     site: CivicSite,
@@ -502,11 +492,9 @@ export class LotRenderer {
     const road = this.street(site.edge.roadTileX, site.edge.roadTileZ);
     if (!road && !site.framed) return;
     const vergeM = site.framed ? 0 : (road?.vergeM ?? 0);
-    const sidewalkM = road?.sidewalkM ?? sidewalkDepthMeters(RoadTier.TwoLane);
-    for (const { rect, kind, layer } of civicCrossingRects(site.crossings, vergeM, sidewalkM)) {
+    for (const { rect, kind } of civicCrossingRects(site.crossings, vergeM)) {
       const color = tinted(kind === 'walk' ? 'cleanConcrete' : 'brightAsphalt');
-      const y =
-        layer === 'footway' ? CURB_CUT_Y_OFFSET : kind === 'walk' ? WALK_Y_OFFSET : DRIVE_Y_OFFSET;
+      const y = kind === 'walk' ? WALK_Y_OFFSET : DRIVE_Y_OFFSET;
       if (site.framed) {
         pushConformingTurnedQuad(
           positions,

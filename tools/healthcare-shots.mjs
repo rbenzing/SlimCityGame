@@ -29,7 +29,6 @@ const OVERHEAD_PITCH = 1.2;
 const NIGHT = 22 / 24;
 /** Vehicle kinds (src/shared/types.ts VehicleKind). */
 const CAR = 0;
-const AMBULANCE = 5;
 const HEARSE = 8;
 
 /** What stands along the north side: the id, the tile offset along the street, its width and depth in tiles. */
@@ -154,15 +153,13 @@ try {
     return { x: c.x + lx, z: c.z + lz };
   };
   const [hosp, clin, crem] = SUBJECTS;
-  // The ambulance stands under the hospital's canopy at the facade's west end; the hearse on the crematorium's drive.
-  const amb = at(hosp, -37, 23.5);
+  // The hospital's kit parks its own ambulance under the canopy; the hearse stands on the crematorium's drive.
   const hearse = at(crem, 0, crem.d * 10 + 3);
   const car = at(clin, 0, clin.d * 10 + 6);
   await page.evaluate(
     ([list]) => window.__slimcity.setVehicles(list),
     [
       [
-        { ...amb, heading: Math.PI, kind: AMBULANCE },
         { ...hearse, heading: Math.PI, kind: HEARSE },
         { ...car, heading: Math.PI, kind: CAR },
       ],
@@ -186,6 +183,8 @@ try {
   const restore = await closeUp(page, 2);
   const entrance = at(hosp, -18, 24);
   await shoot('hospital-entrance-close', ...tile(entrance), 40, 0.25, 0.5);
+  // The ambulance bay from its side, low: the emergency doors in the wall behind the ambulance.
+  await shoot('hospital-emergency-close', ...tile(at(hosp, -37, 21)), 40, 1.0, 0.3);
   const deck = at(hosp, 40, 5);
   await shoot('hospital-deck-close', ...tile(deck), 40, -0.5, 0.6);
   // Straight down on the deck's roof tier: one car to a stall or not.

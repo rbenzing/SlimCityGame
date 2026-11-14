@@ -129,39 +129,25 @@ export function civicSiteFor(
   };
 }
 
-/** Which part of the crossing a rectangle is: the grass verge, or the footway the kerb is dropped across. */
-export type CivicLayer = 'verge' | 'footway';
-
 export interface CivicCrossingRect {
   rect: LotRect;
   kind: CivicSpanKind;
-  layer: CivicLayer;
 }
 
-/** Each crossing as its verge strip and its footway strip, from the footprint's edge out to the carriageway. */
+/**
+ * Each crossing's verge strip, from the footprint's edge to the back of the
+ * footway. The drive stops there: the footway runs through unbroken in its own
+ * paving, and nothing of the crossing lies over it or the carriageway.
+ */
 export function civicCrossingRects(
   crossings: readonly CivicCrossing[],
   vergeM: number,
-  sidewalkM: number,
 ): CivicCrossingRect[] {
-  const rects: CivicCrossingRect[] = [];
-  for (const c of crossings) {
-    if (vergeM > 0) {
-      rects.push({
-        rect: { u0: c.u0, u1: c.u1, v0: -vergeM, v1: 0 },
-        kind: c.kind,
-        layer: 'verge',
-      });
-    }
-    if (sidewalkM > 0) {
-      rects.push({
-        rect: { u0: c.u0, u1: c.u1, v0: -vergeM - sidewalkM, v1: -vergeM },
-        kind: c.kind,
-        layer: 'footway',
-      });
-    }
-  }
-  return rects;
+  if (vergeM <= 0) return [];
+  return crossings.map((c) => ({
+    rect: { u0: c.u0, u1: c.u1, v0: -vergeM, v1: 0 },
+    kind: c.kind,
+  }));
 }
 
 /** A crossing's end sits a hair inside its edge, so a cut ending on a tile boundary names its own tile. */

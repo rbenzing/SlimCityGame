@@ -496,6 +496,8 @@ export const DUMPSTER_DEPTH_M = 3.05;
 export const DUMPSTER_WALL_HEIGHT_M = 1.83;
 const DUMPSTER_WALL_THICKNESS_M = 0.2;
 const DUMPSTER_REAR_GAP_M = 0.8;
+/** How near the lot's paving an enclosure must stand: its slab joins the paving. */
+const DUMPSTER_PAVING_REACH_M = 0.3;
 
 /** The forecourt canopy's and the tank farm's ground, which the lot plan keeps clear for them. */
 export { FUEL_CANOPY_GAP_M, FUEL_CANOPY_DEPTH_M, TANK_DIAMETER_M, TANK_GAP_M };
@@ -1264,7 +1266,11 @@ function dumpsterSpot(
   baseBox: SetbackBox,
   side: Side,
   lot: KitLot,
+  avoid: readonly LocalRect[],
 ): { centre: LocalPoint; away: LocalPoint } | null {
+  // The enclosure's slab joins the lot's paving: it stands within this reach of a
+  // stall, aisle or lane, never alone in the grass.
+  const paving = [...lot.hard, ...(lot.lane?.rects ?? [])];
   const back = sideNormal(oppositeSide(side));
   const halfBack = halfDepthTo(baseBox, oppositeSide(side));
   const target = {
@@ -1289,6 +1295,14 @@ function dumpsterSpot(
       const rect = { x0: x - w / 2, x1: x + w / 2, z0: z - d / 2, z1: z + d / 2 };
       if (!rectInside(rect, lot.lot) || rectsOverlap(rect, body)) continue;
       if (lot.taken.some((t) => rectsOverlap(t, rect))) continue;
+      if (avoid.some((a) => rectsOverlap(a, rect))) continue;
+      const reach = {
+        x0: rect.x0 - DUMPSTER_PAVING_REACH_M,
+        x1: rect.x1 + DUMPSTER_PAVING_REACH_M,
+        z0: rect.z0 - DUMPSTER_PAVING_REACH_M,
+        z1: rect.z1 + DUMPSTER_PAVING_REACH_M,
+      };
+      if (!paving.some((p) => rectsOverlap(p, reach))) continue;
       best = { centre: { x, z }, away, cost };
     }
   }
@@ -3660,7 +3674,20 @@ export function computePartPlacements(
       }
       case 'dumpsterEnclosure': {
         if (!side || !lot?.lane) break;
-        const spot = dumpsterSpot(baseBox, side, lot);
+        // The pylon's pole and cabinet stand where the lot's front corner is clear: keep off them.
+        const sign = signStand(side, lot, PYLON_WIDTH_M, PYLON_POLE_M);
+        const signRects = sign
+          ? signOnPole(
+              'pylon',
+              side,
+              sign,
+              PYLON_WIDTH_M,
+              PYLON_CABINET_M,
+              PYLON_POLE_M,
+              PYLON_POLE_M,
+            ).map(placementBounds)
+          : [];
+        const spot = dumpsterSpot(baseBox, side, lot, signRects);
         if (spot) out.push(...dumpsterWalls(spot.centre, spot.away));
         break;
       }

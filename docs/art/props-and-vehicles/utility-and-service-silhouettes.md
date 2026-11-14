@@ -97,10 +97,12 @@ of the generic building facade box:
 - **Hospital**: a six-storey block of about 2,800 m² a floor in light
   cladding, 27 m to its parapet, with a dark window band on every floor at
   its 4.5 m storey; a glazed main entrance under a canopy and, beside it, an
-  ambulance canopy over the emergency drop-off with an ambulance parked
-  under it. Next to the block stands the 3×2 parking deck: an open two-level
+  ambulance canopy, 4.3 m clear, over the emergency drop-off, with an
+  ambulance parked under it beside the emergency doors: two framed glass
+  leaves of 1.2 m, 2.4 m high, in the wall behind the bay. Next to the block
+  stands the 3×2 parking deck: an open two-level
   deck, 3.35 m floor to floor, its roof edged by a precast spandrel band,
-  with a ramp up its far side, two stair-and-lift cores at its street corners
+  with a ramp of 1 in 8 up its far side, two stair-and-lift cores at its street corners
   and cars in its painted stalls on both levels. Between the entrance and the
   deck lie the five accessible spaces, each painted with the accessibility
   symbol the kerbside stalls use, the van space wider, every access aisle

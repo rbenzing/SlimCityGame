@@ -26,8 +26,8 @@ it that does the work, and that part is the one modelled:
 
 | Section | Size |
 | --- | --- |
-| [The cemetery](the-cemetery.md) | 1,960 B |
-| [The crematorium](the-crematorium.md) | 1,481 B |
+| [The cemetery](the-cemetery.md) | 2,317 B |
+| [The crematorium](the-crematorium.md) | 1,781 B |
 | [The fire and police stations](the-fire-and-police-stations.md) | 4,128 B |
 | [The schools, the college and the library](the-schools-the-college-and-the-library.md) | 5,250 B |
 | [The generators: solar, gas, combined cycle and the reactor](the-generators-solar-gas-combined-cycle-and-the-reactor.md) | 3,461 B |
