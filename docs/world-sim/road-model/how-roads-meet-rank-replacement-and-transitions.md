@@ -49,9 +49,20 @@ the junction: it takes no turn bay for it, does not sweep its footway round
 into it, and does not bend itself to become it. The footway runs straight past
 the mouth and the alley climbs over it, which is what a dropped kerb is; and a
 road whose only other arm is an alley has ENDED, so it runs straight to its own
-turning head with the alley as a leg off the side. A farm track is not one of
-these: it is a poor road, but it is a road, so a lane really does bend into a
-track and the pavement really does end there.
+turning head with the alley as a leg off the side. The street's paint does not
+see the alley either: centre line, lane lines, median, edge line and arrows run
+unbroken past the mouth, the control warrant and the approach walk count the
+junction's legs without it (MUTCD 1C.02 keeps an alley's junction out of
+"intersection"), and the alley keeps its own width and carries no paint. A
+farm track is not one of these: it is a poor road, but it is a road, so a lane
+really does bend into a track and the pavement really does end there.
+
+**An unpaved road is a leg without paint.** A gravel road or a dirt track that
+meets a paved street is a leg of the junction, but takes no stop line, no
+crossing and no turn bay, and keeps its own width to the junction; the paved
+street's edge line breaks across its mouth. A crossing is laid only over an
+arm with a footway of its own, so none lies over a ramp. Gravel is one colour
+on every tile `[R-roads-074]`.
 
 **Which corner is turned.** The corner is the one the two ARMS make, and an
 arm is exactly as wide as its own road: where a two-lane street meets an

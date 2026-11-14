@@ -11,7 +11,6 @@ import {
   crosswalkBarCentres,
   isAvenueMedianEligible,
   hasMedianTree,
-  gravelColorAt,
   isArrowTile,
   ARROW_PERIOD_TILES,
   DASH_PAINT_LENGTH_M,
@@ -2491,20 +2490,13 @@ describe('roadTileVertices — Gravel (tier 4, UI-SPEC §6.7 Roads v3)', () => {
     for (const c of core) expect(isGravelTan(c)).toBe(true);
   });
 
-  it('applies slight deterministic per-tile color variation, not a single flat shade', () => {
+  it('is one surface: every tile lays the same colour, so no seam shows between neighbours', () => {
     const colorsAt = (x: number, z: number): number[] =>
       roadTileVertices(x, z, RoadTier.Gravel, 0, flatHeightAt).colors.slice(0, 3);
     const samples = new Set<string>();
-    for (let x = 0; x < 10; x++) samples.add(JSON.stringify(colorsAt(x, 0)));
-    expect(samples.size).toBeGreaterThan(1); // not every tile is identical
-  });
-
-  it('gravelColorAt is pure and deterministic, and stays within a small jitter of the base color', () => {
-    expect(gravelColorAt(4, 9)).toEqual(gravelColorAt(4, 9));
-    const [r, g, b] = gravelColorAt(4, 9);
-    expect(Math.abs(r - 0.62)).toBeLessThanOrEqual(0.05 + 1e-9);
-    expect(Math.abs(g - 0.55)).toBeLessThanOrEqual(0.05 + 1e-9);
-    expect(Math.abs(b - 0.42)).toBeLessThanOrEqual(0.05 + 1e-9);
+    for (let x = 0; x < 10; x++)
+      for (let z = 0; z < 3; z++) samples.add(JSON.stringify(colorsAt(x, z)));
+    expect(samples.size).toBe(1);
   });
 
   it('has NO curbs — a lone tile is bare plate and rounded ends, with no sidewalk quads at all', () => {
@@ -3330,10 +3322,10 @@ describe('roadTileVertices — width transitions on a straight run', () => {
     expect(linking.length).toBeGreaterThan(0);
   });
 
-  it('lays none of it where the arm has no footway to carry on from', () => {
+  it('lays no footway across the mouth of an arm that has none to carry on from', () => {
     // A crossing is for the people on a pavement. An unpaved track has none,
-    // so nothing is carried round to meet it — even though the track is
-    // narrower than the junction and the room is there.
+    // so no footway is laid across its mouth, which keeps its own width to the
+    // junction; the street's kerb return only rounds into it.
     const junction = roadTileVertices(0, 0, RoadTier.FourLane, E | W | N | S, flatHeightAt, {
       n: RoadTier.Gravel,
       e: RoadTier.Gravel,
@@ -3345,12 +3337,7 @@ describe('roadTileVertices — width transitions on a straight run', () => {
     const linking = toTriples(junction.colors).filter((c, i) => {
       const x = junction.positions[i * 3]!;
       const z = junction.positions[i * 3 + 2]!;
-      return (
-        isSidewalk(c) &&
-        cz - z > four + 1e-6 &&
-        Math.abs(x - cz) > armHalf + 1e-6 &&
-        Math.abs(x - cz) < four - 1e-6
-      );
+      return isSidewalk(c) && cz - z > four + 1e-6 && Math.abs(x - cz) < armHalf - 1e-6;
     });
     expect(linking.length).toBe(0);
   });

@@ -240,9 +240,14 @@ Back to [the index](../GROUND-TRUTHS.md).
   end by the stop line. Never over an alley mouth. —
   [road-model.md](../world-sim/road-model/README.md); `junctionArmLayout` in
   `src/shared/junctionpaint.ts`
-- [R-roads-074] An alley is an access, not a leg: no turn bay, no swept footway, no crossing
-  at its mouth. A dirt track is a leg. —
-  [road-model.md](../world-sim/road-model/README.md)
+- [R-roads-074] An alley is an access, not a leg: no turn bay, no swept footway, no crossing,
+  no control and no paint at its mouth, and the street's lines, median and
+  footway run unbroken past it (MUTCD 1C.02: an alley's junction is no
+  intersection). A gravel road or a dirt track is a leg, but unpaved: no stop
+  line, crossing or turn bay, its own width and one colour. A crossing lies
+  only over an arm with a footway of its own. —
+  [road-model.md](../world-sim/road-model/README.md); `warrantedControl` in
+  `src/shared/junction.ts`, `junctionArmPaint` in `src/shared/junctionpaint.ts`
 - [R-roads-075] A turn bay exists only where the junction's control holds that road. A
   short block's shared centre turn lane stands in for two bays, so it appears
   only where BOTH junctions would give the road one: never on a two-lane

@@ -11,7 +11,7 @@
  *
  * Pure: bit sets, tile counts and cardinals, no grid and no graph.
  */
-import { isServiceClass } from './roadprofile';
+import { isServiceClass, roadClass } from './roadprofile';
 import { RoadFlow } from './types';
 import type { RoadClassId } from './types';
 import type { JunctionControl } from './types';
@@ -348,6 +348,9 @@ export function pocketWarranted(
   // that is one van long. Its default movement set says it goes through and
   // turns left, like any arm, which is how it was earning one.
   if (isServiceClass(armClass)) return false;
+  // An unpaved road carries no lane lines to open a bay between, and a road
+  // keeps its own width to the junction mouth.
+  if (roadClass(armClass).surface !== 'paved') return false;
   return (allowed & Movement.Through) !== 0 && (allowed & Movement.Left) !== 0;
 }
 

@@ -16,6 +16,7 @@ import type { MovementSet, PackedLaneTurns, PackedTurns } from './approach';
 import {
   isDividedCorridor,
   isOneWayProfile,
+  isServiceClass,
   reversedInWorld,
   roadRank,
   runsAgainstDrawing,
@@ -216,10 +217,15 @@ export function oppositeFlow(flow: RoadFlow): RoadFlow {
  * junction it really arrives at.
  */
 export function roadDegree(x: number, z: number, world: ApproachSurroundings): number {
+  const own = world.profileAt(x, z);
+  const ownIsAccess = own !== null && isServiceClass(own.class);
   let n = 0;
   for (const [dx, dz] of STEPS) {
     if (!world.hasRoad(x + dx, z + dz)) continue;
     if (isSeparateRoad(x, z, dx, dz, world)) continue;
+    // An alley is an access: it joins a street without being a leg of it.
+    const there = world.profileAt(x + dx, z + dz);
+    if (!ownIsAccess && there !== null && isServiceClass(there.class)) continue;
     n++;
   }
   return n;

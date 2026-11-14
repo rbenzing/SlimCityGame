@@ -27,8 +27,7 @@
  * corner plates, curbs, axis markings, junction arm markings) through
  * `tierSpec`'s `hasCurbs`/`paved` flags plus new `emitAxisMarkings` cases,
  * rather than duplicating the per-tile assembly logic:
- * - **Gravel** (tier 4): dusty tan, per-tile jittered vertex color
- *   (`gravelColorAt`), a narrower ~7m core, no curbs (bare shoulder — the
+ * - **Gravel** (tier 4): dusty tan, one colour on every tile, a narrower ~7m core, no curbs (bare shoulder — the
  *   underlying terrain shows through), and no paint of any kind (its
  *   `paved: false` gates out both axis markings and junction arm markings).
  * - **Alley** (tier 5): narrow ~6m dark asphalt, no curbs, no centerline (no
@@ -381,7 +380,7 @@ export const TRAM_HALF_WIDTH_FRACTION = laneFraction(2);
 /** Rail Track: a dedicated single-track ballast corridor (~5.6m wide), no traffic lanes. */
 export const RAIL_HALF_WIDTH_FRACTION = laneFraction(1.5);
 
-/** Gravel's dusty tan base color family, before per-tile jitter. */
+/** Gravel's dusty tan: one surface, the same on every tile so no seam shows. */
 const GRAVEL_BASE_COLOR: readonly [number, number, number] = [0.62, 0.55, 0.42];
 /**
  * Asphalt: one shade for every paved road, quiet street to motorway. It sits
@@ -518,27 +517,6 @@ function quadSpecFor(_tier: RoadTier, profile: RoadProfile): QuadSpec {
     paved: isPaved(profile),
   };
 }
-
-/**
- * Deterministic per-tile jitter on Gravel's dusty tan base color — same
- * avalanche hash shape as `hasMedianTree`, just widened to a byte per channel
- * instead
- * of a single bit. Pure function of (x, z); never Math.random.
- */
-export function gravelColorAt(x: number, z: number): [number, number, number] {
-  let h = (Math.imul(x | 0, 374761393) + Math.imul(z | 0, 668265263) + 0x9e3779b9) >>> 0;
-  h = Math.imul(h ^ (h >>> 15), 0x85ebca6b) >>> 0;
-  h = Math.imul(h ^ (h >>> 13), 0xc2b2ae35) >>> 0;
-  h = (h ^ (h >>> 16)) >>> 0;
-  const jitter = (byte: number): number => (byte / 255 - 0.5) * 2 * GRAVEL_COLOR_JITTER;
-  const jr = jitter(h & 0xff);
-  const jg = jitter((h >>> 8) & 0xff);
-  const jb = jitter((h >>> 16) & 0xff);
-  return [GRAVEL_BASE_COLOR[0] + jr, GRAVEL_BASE_COLOR[1] + jg, GRAVEL_BASE_COLOR[2] + jb];
-}
-
-/** Max per-channel deviation `gravelColorAt` applies around GRAVEL_BASE_COLOR. */
-const GRAVEL_COLOR_JITTER = 0.05;
 
 function pushVertex(
   positions: number[],
@@ -3729,8 +3707,6 @@ export const GRAVEL_SEAM_DEPTH_M = 2.6;
 function emitGravelSeam(
   positions: number[],
   colors: number[],
-  tileX: number,
-  tileZ: number,
   centerX: number,
   centerZ: number,
   coreHalf: number,
@@ -3743,10 +3719,7 @@ function emitGravelSeam(
   const edge = edgeSign * TILE_HALF;
   const inner = edge - edgeSign * GRAVEL_SEAM_DEPTH_M;
   const y = ROAD_Y_OFFSET + 0.004; // above the carriageway plate, below curbs
-  const tan = gravelColorAt(
-    vertical ? tileX : tileX + edgeSign,
-    vertical ? tileZ + edgeSign : tileZ,
-  );
+  const tan = GRAVEL_BASE_COLOR;
   const pt = (along: number, cross: number): [number, number] =>
     vertical ? [cross, along] : [along, cross];
   const innerL = pt(inner, -coreHalf);
@@ -5309,10 +5282,32 @@ export function roadTileVertices(
 
   // Gravel's dusty tan gets deterministic per-tile jitter instead of the
   // tier's flat spec color; every other tier keeps its flat tier shade.
-  const plateColor = tier === RoadTier.Gravel ? gravelColorAt(x, z) : spec.color;
+  const plateColor = spec.color;
 
   const connections = (hasN ? 1 : 0) + (hasE ? 1 : 0) + (hasS ? 1 : 0) + (hasW ? 1 : 0);
-  const isJunction = connections >= 3;
+  // What SHAPE this tile is, is decided by the arms that are legs of the
+  // network. A service access — an alley — is not one: it is no intersection
+  // with the street it meets, a road does not bend itself round to become an
+  // alley, and a road that ends beside one has still ended. So a service arm
+  // still takes asphalt and still connects, but it does not make a junction,
+  // does not turn the road and does not stop it being a dead end.
+  const serviceArm = (has: boolean, nTier: RoadTier): boolean =>
+    has && nTier !== RoadTier.None && isServiceClass(presetProfileForTier(nTier).class);
+  const serviceN = serviceArm(hasN, neighbors.n);
+  const serviceS = serviceArm(hasS, neighbors.s);
+  const serviceE = serviceArm(hasE, neighbors.e);
+  const serviceW = serviceArm(hasW, neighbors.w);
+  const legMask =
+    (serviceN ? mask & ~NORTH : mask) &
+    (serviceS ? ~SOUTH : ~0) &
+    (serviceE ? ~EAST : ~0) &
+    (serviceW ? ~WEST : ~0);
+  const legs =
+    (legMask & NORTH ? 1 : 0) +
+    (legMask & EAST ? 1 : 0) +
+    (legMask & SOUTH ? 1 : 0) +
+    (legMask & WEST ? 1 : 0);
+  const isJunction = legs >= 3;
   // A junction with nothing but LESSER roads joining it is a side turning, not
   // a crossing: the road running through keeps its markings, the way a main
   // road's centre line runs unbroken past a farm track. A junction where any
@@ -5404,27 +5399,6 @@ export function roadTileVertices(
   // would run, and no road runs THROUGH a roundabout.
   const breaksMarkings =
     isJunction && !rampNode && (!joinedByLesserOnly || control === 'roundabout');
-  // What SHAPE this tile is, is decided by the arms that are legs of the
-  // network. A service access — an alley — is not one: a road does not bend
-  // itself round to become an alley, and a road that ends beside one has still
-  // ended. So a service arm still takes asphalt and still connects, but it
-  // does not turn the road and does not stop it being a dead end.
-  const serviceArm = (has: boolean, nTier: RoadTier): boolean =>
-    has && nTier !== RoadTier.None && isServiceClass(presetProfileForTier(nTier).class);
-  const serviceN = serviceArm(hasN, neighbors.n);
-  const serviceS = serviceArm(hasS, neighbors.s);
-  const serviceE = serviceArm(hasE, neighbors.e);
-  const serviceW = serviceArm(hasW, neighbors.w);
-  const legMask =
-    (serviceN ? mask & ~NORTH : mask) &
-    (serviceS ? ~SOUTH : ~0) &
-    (serviceE ? ~EAST : ~0) &
-    (serviceW ? ~WEST : ~0);
-  const legs =
-    (legMask & NORTH ? 1 : 0) +
-    (legMask & EAST ? 1 : 0) +
-    (legMask & SOUTH ? 1 : 0) +
-    (legMask & WEST ? 1 : 0);
   const isTurn = legs === 2 && !isCollinearMask(legMask);
   // A junction of railway has no road plate: its ballast lies under the rails
   // of each movement, laid with the track below.
@@ -5432,10 +5406,10 @@ export function roadTileVertices(
 
   // How wide each arm is drawn where it meets this tile: its own road's width,
   // footways or not, so a road arriving at a junction keeps its width to the
-  // mouth and the corners round from there. Only an arm with no edge to be
-  // tangent to keeps the junction's own: a gravel track, which is a gap in the
-  // kerb the way a driveway is, and an alley, which is an access rather than
-  // a leg. An arm whose road is not named is this tile's own.
+  // mouth and the corners round from there. That holds for a gravel track and
+  // an alley too, which have no kerb of their own: they meet the street at
+  // their own width and never flare. An arm whose road is not named is this
+  // tile's own.
   const walkableArm = (has: boolean, tier: RoadTier, footway: boolean | undefined): boolean =>
     has && (tier === RoadTier.None || footway === undefined ? true : footway);
   const edgedArm = (has: boolean, tier: RoadTier, footway: boolean | undefined): boolean =>
@@ -5444,24 +5418,26 @@ export function roadTileVertices(
       tier !== RoadTier.None &&
       !serviceArm(has, tier) &&
       isPaved(presetProfileForTier(tier)));
-  const armHalf = (
-    has: boolean,
-    tier: RoadTier,
-    footway: boolean | undefined,
-    half: number,
-  ): number => {
+  const armHalf = (half: number): number => {
     if (half <= 0) return coreHalf;
     // At a merge or a diverge each arm is exactly its own road: the ramp's
     // mouth is as wide as the ramp, not as wide as the motorway it leaves.
     if (rampNode) return Math.min(half, coreHalf);
-    return edgedArm(has, tier, footway) ? half : coreHalf;
+    return half;
   };
   const walk = neighborHalves.footways;
   const armHalves = {
-    n: armHalf(hasN, neighbors.n, walk?.n, neighborHalves.n),
-    s: armHalf(hasS, neighbors.s, walk?.s, neighborHalves.s),
-    e: armHalf(hasE, neighbors.e, walk?.e, neighborHalves.e),
-    w: armHalf(hasW, neighbors.w, walk?.w, neighborHalves.w),
+    n: armHalf(neighborHalves.n),
+    s: armHalf(neighborHalves.s),
+    e: armHalf(neighborHalves.e),
+    w: armHalf(neighborHalves.w),
+  };
+  /** Arms with no kerb of their own to round into: they keep their width to the street. */
+  const unkerbed = {
+    n: hasN && neighbors.n !== RoadTier.None && !edgedArm(hasN, neighbors.n, walk?.n),
+    s: hasS && neighbors.s !== RoadTier.None && !edgedArm(hasS, neighbors.s, walk?.s),
+    e: hasE && neighbors.e !== RoadTier.None && !edgedArm(hasE, neighbors.e, walk?.e),
+    w: hasW && neighbors.w !== RoadTier.None && !edgedArm(hasW, neighbors.w, walk?.w),
   };
   // A corner is turned where the arm is a LEG. A street no more sweeps its
   // footway round into an alley than it does into a driveway.
@@ -5677,8 +5653,8 @@ export function roadTileVertices(
       coreHalf,
       armDepth,
       kerbBand,
-      hasN,
-      hasE,
+      legN,
+      legE,
       plateColor,
       spec.hasCurbs,
       hAt,
@@ -5694,15 +5670,15 @@ export function roadTileVertices(
       centerZ,
       coreHalf,
       armDepth,
-      hasN,
-      hasE,
+      legN,
+      legE,
       flow,
       hAt,
       plan.hasMedian && !crossSection.seam
         ? {
             is: besideMedian,
-            start: medianEnd(hasN ? 'n' : 's', true).lineEnd,
-            end: medianEnd(hasE ? 'e' : 'w', true).lineEnd,
+            start: medianEnd(legN ? 'n' : 's', true).lineEnd,
+            end: medianEnd(legE ? 'e' : 'w', true).lineEnd,
           }
         : undefined,
     );
@@ -5714,14 +5690,14 @@ export function roadTileVertices(
         centerZ,
         coreHalf,
         armDepth,
-        hasN,
-        hasE,
+        legN,
+        legE,
         flow,
         hAt,
         medianHalf,
         medianOffsetOf(crossSection),
-        medianEnd(hasN ? 'n' : 's', true),
-        medianEnd(hasE ? 'e' : 'w', true),
+        medianEnd(legN ? 'n' : 's', true),
+        medianEnd(legE ? 'e' : 'w', true),
       );
     }
   }
@@ -5777,14 +5753,19 @@ export function roadTileVertices(
       arm: RoadFlow,
       half: number,
       armWidth: number,
+      unkerbedArm: boolean,
     ): { from: number; to: number } => {
       if (rampNode && rampMouth?.arm === arm) return mouthSpan(half);
+      // An arm with no kerb keeps its own width; it has no return to round it
+      // into the street, so the street's width would show as a flare.
       const h =
         rampNode && half > 0
           ? Math.min(half, coreHalf)
-          : isJunction
-            ? Math.max(coreHalf, armWidth)
-            : coreHalf;
+          : unkerbedArm && half > 0
+            ? armWidth
+            : isJunction
+              ? Math.max(coreHalf, armWidth)
+              : coreHalf;
       // Half of a corridor nothing divides, and the tiles along it, all keep
       // the edge they share with the other half; an arm narrower than this
       // tile is narrower on the far side. A street joining across the run is
@@ -5801,10 +5782,10 @@ export function roadTileVertices(
       }
       return { from: -h, to: h };
     };
-    const extN = extensionSpan(RoadFlow.North, neighborHalves.n, halfN);
-    const extS = extensionSpan(RoadFlow.South, neighborHalves.s, halfS);
-    const extE = extensionSpan(RoadFlow.East, neighborHalves.e, halfE);
-    const extW = extensionSpan(RoadFlow.West, neighborHalves.w, halfW);
+    const extN = extensionSpan(RoadFlow.North, neighborHalves.n, halfN, unkerbed.n);
+    const extS = extensionSpan(RoadFlow.South, neighborHalves.s, halfS, unkerbed.s);
+    const extE = extensionSpan(RoadFlow.East, neighborHalves.e, halfE, unkerbed.e);
+    const extW = extensionSpan(RoadFlow.West, neighborHalves.w, halfW, unkerbed.w);
     // The tile's own edges, from a centre that may have moved across the road:
     // an arm still reaches the tile it joins. Where the motorway was laid as a
     // run, only the ramp's arm is left, and it reaches in to the middle of the
@@ -6373,10 +6354,12 @@ export function roadTileVertices(
   // track and median down its axis that the same road carries anywhere else —
   // the alternative is a stub whose only markings are the ones wrapped round
   // its ends.
-  const medianEligible = plan.hasMedian && (alone || isStraightRunMask(mask));
-  const dividerEligible = plan.barrier && (alone || isStraightRunMask(mask));
-  const hasVertical = hasN || hasS || (alone && aloneVertical);
-  const hasHorizontal = hasE || hasW || (alone && !aloneVertical);
+  const medianEligible = plan.hasMedian && (alone || isStraightRunMask(legMask));
+  const dividerEligible = plan.barrier && (alone || isStraightRunMask(legMask));
+  // The axes run between LEGS: an alley's mouth is no end of the street's
+  // lines, which carry on past it as on any plain run.
+  const hasVertical = legN || legS || (alone && aloneVertical);
+  const hasHorizontal = legE || legW || (alone && !aloneVertical);
 
   // Paint: Gravel is unpaved (`paved: false`) and gets none of axis markings
   // / one-way arrows / junction arm markings — gravel junctions stay
@@ -6404,9 +6387,9 @@ export function roadTileVertices(
       else emitStreetTrack(positions, colors, centerX, centerZ, vertical, lo, hi, hAt, across);
     };
     for (const across of tramAt) {
-      if (hasVertical) emit(true, hasN ? -TILE_HALF : -reachN, hasS ? TILE_HALF : reachS, across);
+      if (hasVertical) emit(true, legN ? -TILE_HALF : -reachN, legS ? TILE_HALF : reachS, across);
       if (hasHorizontal)
-        emit(false, hasW ? -TILE_HALF : -reachW, hasE ? TILE_HALF : reachE, across);
+        emit(false, legW ? -TILE_HALF : -reachW, legE ? TILE_HALF : reachE, across);
     }
   }
   // A tramway crossing this street goes straight over the junction box, so its
@@ -6559,18 +6542,18 @@ export function roadTileVertices(
       const kerbAlong = (alongX: boolean): TileKerbFaces | undefined =>
         kerbFaces && kerbFaces.alongX === alongX ? kerbFaces : undefined;
       if (hasVertical && (!rampNode || rampNodeVertical)) {
-        const zLo = hasN ? -TILE_HALF : -reachN;
-        const zHi = hasS ? TILE_HALF : reachS;
+        const zLo = legN ? -TILE_HALF : -reachN;
+        const zHi = legS ? TILE_HALF : reachS;
         const seam = {
           lo: seamWith(
             plan,
-            hasN ? (neighborHalves.plans?.n ?? null) : null,
+            legN ? (neighborHalves.plans?.n ?? null) : null,
             neighborHalves.n,
             coreHalf,
           ),
           hi: seamWith(
             plan,
-            hasS ? (neighborHalves.plans?.s ?? null) : null,
+            legS ? (neighborHalves.plans?.s ?? null) : null,
             neighborHalves.s,
             coreHalf,
           ),
@@ -6589,14 +6572,14 @@ export function roadTileVertices(
           seam,
           verticalGap,
           {
-            lo: hasN ? (neighborHalves.reach?.n ?? 0) : 0,
-            hi: hasS ? (neighborHalves.reach?.s ?? 0) : 0,
+            lo: legN ? (neighborHalves.reach?.n ?? 0) : 0,
+            hi: legS ? (neighborHalves.reach?.s ?? 0) : 0,
           },
           medianEligible
             ? {
                 is: besideMedian,
-                lo: medianEnd('n', hasN).lineEnd,
-                hi: medianEnd('s', hasS).lineEnd,
+                lo: medianEnd('n', legN).lineEnd,
+                hi: medianEnd('s', legS).lineEnd,
               }
             : undefined,
         );
@@ -6626,18 +6609,18 @@ export function roadTileVertices(
           );
       }
       if (hasHorizontal && (!rampNode || !rampNodeVertical)) {
-        const xLo = hasW ? -TILE_HALF : -reachW;
-        const xHi = hasE ? TILE_HALF : reachE;
+        const xLo = legW ? -TILE_HALF : -reachW;
+        const xHi = legE ? TILE_HALF : reachE;
         const seam = {
           lo: seamWith(
             plan,
-            hasW ? (neighborHalves.plans?.w ?? null) : null,
+            legW ? (neighborHalves.plans?.w ?? null) : null,
             neighborHalves.w,
             coreHalf,
           ),
           hi: seamWith(
             plan,
-            hasE ? (neighborHalves.plans?.e ?? null) : null,
+            legE ? (neighborHalves.plans?.e ?? null) : null,
             neighborHalves.e,
             coreHalf,
           ),
@@ -6656,14 +6639,14 @@ export function roadTileVertices(
           seam,
           horizontalGap,
           {
-            lo: hasW ? (neighborHalves.reach?.w ?? 0) : 0,
-            hi: hasE ? (neighborHalves.reach?.e ?? 0) : 0,
+            lo: legW ? (neighborHalves.reach?.w ?? 0) : 0,
+            hi: legE ? (neighborHalves.reach?.e ?? 0) : 0,
           },
           medianEligible
             ? {
                 is: besideMedian,
-                lo: medianEnd('w', hasW).lineEnd,
-                hi: medianEnd('e', hasE).lineEnd,
+                lo: medianEnd('w', legW).lineEnd,
+                hi: medianEnd('e', legE).lineEnd,
               }
             : undefined,
         );
@@ -7188,11 +7171,11 @@ export function roadTileVertices(
   // never overruns into a sidewalk/shoulder curb quad.
   if (medianEligible || dividerEligible) {
     const vertical = hasVertical;
-    const lo = vertical ? (hasN ? -TILE_HALF : -reachN) : hasW ? -TILE_HALF : -reachW;
-    const hi = vertical ? (hasS ? TILE_HALF : reachS) : hasE ? TILE_HALF : reachE;
+    const lo = vertical ? (legN ? -TILE_HALF : -reachN) : legW ? -TILE_HALF : -reachW;
+    const hi = vertical ? (legS ? TILE_HALF : reachS) : legE ? TILE_HALF : reachE;
     if (medianEligible) {
-      const atLo = medianEnd(vertical ? 'n' : 'w', vertical ? hasN : hasW);
-      const atHi = medianEnd(vertical ? 's' : 'e', vertical ? hasS : hasE);
+      const atLo = medianEnd(vertical ? 'n' : 'w', vertical ? legN : legW);
+      const atHi = medianEnd(vertical ? 's' : 'e', vertical ? legS : legE);
       emitAvenueMedian(
         positions,
         colors,
@@ -7211,8 +7194,8 @@ export function roadTileVertices(
   // own span and broken where the median would be: at corners and junctions.
   if (reservation && (alone || isStraightRunMask(mask))) {
     const vertical = hasVertical;
-    const lo = vertical ? (hasN ? -TILE_HALF : -reachN) : hasW ? -TILE_HALF : -reachW;
-    const hi = vertical ? (hasS ? TILE_HALF : reachS) : hasE ? TILE_HALF : reachE;
+    const lo = vertical ? (legN ? -TILE_HALF : -reachN) : legW ? -TILE_HALF : -reachW;
+    const hi = vertical ? (legS ? TILE_HALF : reachS) : legE ? TILE_HALF : reachE;
     emitAvenueMedian(
       positions,
       colors,
@@ -7329,11 +7312,11 @@ export function roadTileVertices(
       emitGravelSeam(
         positions,
         colors,
-        x,
-        z,
         centerX,
         centerZ,
-        coreHalf,
+        // A gravel road meeting a junction keeps its own width to the box: the
+        // surface changes along it, the road does not funnel.
+        isJunction ? gravelHalf : coreHalf,
         gravelHalf,
         edgeSign,
         vertical,
