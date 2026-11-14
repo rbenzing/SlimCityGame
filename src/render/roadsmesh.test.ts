@@ -4152,9 +4152,9 @@ describe('roadTileVertices — a street crossing a divided road is one intersect
       { kind: 'median', width: 1.0 },
     ],
   });
+  const mirrored = (p: RoadProfile): RoadProfile => ({ ...p, pieces: [...p.pieces].reverse() });
   const halfOfCorridor = carriagewayHalfWidthOf(lanes());
   const streetHalf = carriagewayHalfWidthOf(presetProfileForTier(street));
-  const kerb = kerbWidthOf(presetProfileForTier(street));
 
   const west = (partner: 'e' | null, w = streetHalf, partnerAcross = 0) =>
     roadTileVertices(
@@ -4184,7 +4184,8 @@ describe('roadTileVertices — a street crossing a divided road is one intersect
       N | E | S | W,
       flatHeightAt,
       { n: corridorHalf, s: corridorHalf, e: street, w: corridorHalf },
-      lanes(),
+      // The east half's median is on its west side, against the other half's.
+      mirrored(lanes()),
       {
         n: halfOfCorridor,
         s: halfOfCorridor,
@@ -4277,58 +4278,95 @@ describe('roadTileVertices — a street crossing a divided road is one intersect
       for (const pitch of pitches) expect(pitch).toBeCloseTo(pitches[0]!, 6);
     });
 
-    it('shapes the nose the same on both halves, with no step between them', () => {
-      const noseStart = (
-        v: { positions: number[]; colors: number[] },
-        cx: number,
-        mirror: 1 | -1,
-      ) => {
-        const at: number[] = [];
-        for (let i = 0; i < v.colors.length; i += 3) {
-          const c = v.colors.slice(i, i + 3);
-          const x = (v.positions[i]! - cx) * mirror;
-          const z = v.positions[i + 2]! - centre;
-          if (
-            c[0]! > 0.72 &&
-            c[0]! < 0.9 &&
-            c[1]! > 0.72 &&
-            c[1]! < 0.9 &&
-            z < 0 &&
-            x > halfOfCorridor + 0.3
-          ) {
-            at.push(-z);
-          }
-        }
-        return Math.min(...at);
-      };
-      expect(noseStart(w(), cxWest, 1)).toBeCloseTo(noseStart(e(), cxEast, -1), 6);
-      expect(noseStart(w(), cxWest, 1)).toBeGreaterThanOrEqual(wide + depth - 1e-6);
+    it('lays no kerb in the opening of either half, however the streets differ', () => {
+      expect(kerbedInTheOpening(w(), cxWest, 1)).toBe(0);
+      expect(kerbedInTheOpening(e(), cxEast, -1)).toBe(0);
     });
   });
 
-  it('ends the median’s nose behind the crossing, away from the box', () => {
-    const v = west('e');
-    const crossFar = streetHalf + Math.max(kerb, 1.8);
-    // Nothing kerbed stands on the pavement side of the crossing's far edge
-    // east of the half's carriageway: the nose starts beyond it.
-    const kerbed: number[] = [];
+  // Footway-grey geometry on the median side of a half's carriageway.
+  const kerbedInTheOpening = (
+    v: { positions: number[]; colors: number[] },
+    cx: number,
+    mirror: 1 | -1,
+  ): number => {
+    let n = 0;
     for (let i = 0; i < v.colors.length; i += 3) {
       const c = v.colors.slice(i, i + 3);
-      const x = v.positions[i]! - cxWest;
-      const z = v.positions[i + 2]! - centre;
-      if (
-        c[0]! > 0.72 &&
-        c[0]! < 0.9 &&
-        c[1]! > 0.72 &&
-        c[1]! < 0.9 &&
-        z < 0 &&
-        x > halfOfCorridor + 0.3
-      ) {
-        kerbed.push(-z);
+      const x = (v.positions[i]! - cx) * mirror;
+      if (c[0]! > 0.72 && c[0]! < 0.9 && c[1]! > 0.72 && c[1]! < 0.9 && x > halfOfCorridor + 0.3) {
+        n++;
       }
     }
-    expect(kerbed.length).toBeGreaterThan(0);
-    expect(Math.min(...kerbed)).toBeGreaterThanOrEqual(crossFar - 1e-6);
+    return n;
+  };
+
+  it('opens the median with no kerbed corner round it, which is behind the crossing', () => {
+    expect(kerbedInTheOpening(west('e'), cxWest, 1)).toBe(0);
+    expect(kerbedInTheOpening(east('w'), cxEast, -1)).toBe(0);
+  });
+
+  describe('the median island before the opening', () => {
+    // The tile before the crossing on each half, with the junction ahead to
+    // the south. The west half's median is on its east side and the east
+    // half's on its west, so the west half draws the island both share.
+    const medianAhead = { n: 0.5, e: 0.5, s: 0.5, w: 0.5 };
+    const approachTile = (x: number, flip: boolean, partnerIsland = ownIsland) => {
+      const profile = flip ? mirrored(lanes()) : lanes();
+      return roadTileVertices(
+        x,
+        4,
+        corridorHalf,
+        N | S,
+        flatHeightAt,
+        { n: corridorHalf, s: corridorHalf, e: RoadTier.None, w: RoadTier.None },
+        profile,
+        {
+          n: halfOfCorridor,
+          s: halfOfCorridor,
+          e: halfOfCorridor,
+          w: halfOfCorridor,
+          medians: medianAhead,
+          junctions: { n: false, e: false, s: true, w: false },
+          partnerIslandHalf: partnerIsland,
+        },
+        flow,
+      );
+    };
+    // From the inner edge of the running lanes to the tile edge: the section
+    // is a footway, three 3.6 m lanes and a 1 m share of the median.
+    const ownIsland = TILE_METERS / 2 - ((1.9 + 3 * 3.6 + 1.0) / 2 - 1.0);
+    const isYellow = (t: readonly number[]): boolean =>
+      t[0]! > 0.85 && t[1]! > 0.7 && t[1]! < 0.85 && t[2]! < 0.3;
+    const isIslandGrass = (t: readonly number[]): boolean =>
+      Math.abs(t[0]! - MEDIAN_GRASS_COLOR[0]) < 0.01 &&
+      Math.abs(t[1]! - MEDIAN_GRASS_COLOR[1]) < 0.01;
+
+    it('is one island drawn by the half on its low side, yellow at its nose', () => {
+      const west = approachTile(5, false);
+      expect(countWhere(west.colors, isIslandGrass)).toBeGreaterThan(0);
+      expect(countWhere(west.colors, isYellow)).toBeGreaterThan(0);
+      const east = approachTile(6, true);
+      expect(countWhere(east.colors, isIslandGrass)).toBe(0);
+    });
+
+    it('kerbs neither half’s edge of it with a footway', () => {
+      expect(kerbedInTheOpening(approachTile(5, false), 5.5 * TILE_METERS, 1)).toBe(0);
+      expect(kerbedInTheOpening(approachTile(6, true), 6.5 * TILE_METERS, -1)).toBe(0);
+    });
+
+    it('reaches across the gap to the other half’s lanes, which a turn bay holds further back', () => {
+      const reach = (partnerIsland: number): number => {
+        const v = approachTile(5, false, partnerIsland);
+        let farthest = -Infinity;
+        for (let i = 0; i < v.colors.length; i += 3) {
+          if (!isIslandGrass(v.colors.slice(i, i + 3))) continue;
+          farthest = Math.max(farthest, v.positions[i]! - 5.5 * TILE_METERS);
+        }
+        return farthest;
+      };
+      expect(reach(ownIsland - 1.8)).toBeCloseTo(reach(ownIsland) - 1.8, 5);
+    });
   });
 });
 
@@ -4435,6 +4473,111 @@ describe('roadTileVertices — a corridor half that has earned a turn bay', () =
     expect(countWhere(tile(true).colors, isMarkingWhite)).toBeGreaterThanOrEqual(
       countWhere(tile(false).colors, isMarkingWhite),
     );
+  });
+});
+
+describe('RoadMeshRenderer — a T onto a corridor nothing divides', () => {
+  // Six lanes with no median, two tiles wide, running south; a street joins
+  // the east half from the east at row JZ. Both halves are one junction.
+  const lane = (flow: 'fwd' | 'back') => ({ kind: 'travel' as const, width: 3.6, flow });
+  const undivided: RoadProfile = {
+    class: 'arterial',
+    pieces: [
+      { kind: 'sidewalk', width: 1.9 },
+      lane('back'),
+      lane('back'),
+      lane('back'),
+      lane('fwd'),
+      lane('fwd'),
+      lane('fwd'),
+      { kind: 'sidewalk', width: 1.9 },
+    ],
+  };
+  const ID = 41;
+  const LEFT = 4;
+  const RIGHT = 5;
+  const JZ = 6;
+  const COLS = 48;
+
+  /** The paint on a 12 m window about the edge the halves share, just before the junction row. */
+  const paint = (): string[][] => {
+    const renderer = new RoadMeshRenderer(new THREE.Scene(), flatHeightAt, (id) =>
+      id === ID ? undivided : null,
+    );
+    const deltas: RoadTileDelta[] = [];
+    for (const [x, half] of [
+      [LEFT, 'left'],
+      [RIGHT, 'right'],
+    ] as const) {
+      for (let z = 0; z <= 12; z++) {
+        const mask = (z === 0 ? 0 : N) | (z === 12 ? 0 : S);
+        const joins = z === JZ ? (x === LEFT ? E : E | W) : 0;
+        deltas.push({
+          x,
+          z,
+          tier: RoadTier.Avenue,
+          mask: mask | joins,
+          elevation: 0,
+          profile: ID,
+          flow: storedFlow(RoadFlow.South, half),
+        });
+      }
+    }
+    for (let x = RIGHT + 1; x <= 12; x++) {
+      deltas.push(
+        makeDelta(x, JZ, RoadTier.TwoLane, (x === RIGHT + 1 ? W : E | W) | (x === 12 ? 0 : E)),
+      );
+    }
+    renderer.apply(deltas);
+    renderer.setJunctionControls([
+      { x: LEFT, z: JZ, control: 'signal' },
+      { x: RIGHT, z: JZ, control: 'signal' },
+    ]);
+    const x0 = RIGHT * TILE_METERS - 6;
+    const z0 = JZ * TILE_METERS - 4;
+    const cells = renderer.surfaceGridAt(x0, z0, x0 + 12, z0 + 12, COLS);
+    return Array.from({ length: COLS }, (_, r) =>
+      cells.slice(r * COLS, r * COLS + COLS).map((c) => c ?? ''),
+    );
+  };
+
+  /** The runs of white paint along a row, as [first cell, length]. */
+  const runs = (row: string[]): Array<[number, number]> => {
+    const out: Array<[number, number]> = [];
+    let start = -1;
+    for (let c = 0; c <= row.length; c++) {
+      const white = c < row.length && row[c]!.startsWith('0.95');
+      if (white && start < 0) start = c;
+      if (!white && start >= 0) {
+        out.push([start, c - start]);
+        start = -1;
+      }
+    }
+    return out;
+  };
+  const seam = COLS / 2;
+
+  it('stops the stop line at the edge the halves share', () => {
+    const rows = paint().map(runs);
+    const lines = rows.flat().filter(([, len]) => len >= 16);
+    expect(lines.length).toBeGreaterThan(0);
+    for (const [start, len] of lines) {
+      expect(start < seam && start + len > seam, `a line over cells ${start}..${start + len}`).toBe(
+        false,
+      );
+    }
+  });
+
+  it('lays one crosswalk over both halves, its bars on an even pitch across the shared edge', () => {
+    const bars = paint()
+      .map(runs)
+      .find((r) => r.length >= 8);
+    expect(bars).toBeDefined();
+    expect(bars!.some(([s]) => s < seam)).toBe(true);
+    expect(bars!.some(([s]) => s >= seam)).toBe(true);
+    const pitches = bars!.slice(1).map(([s], i) => s - bars![i]![0]);
+    // A cell is a quarter metre and the pitch is not a whole number of them.
+    expect(Math.max(...pitches) - Math.min(...pitches)).toBeLessThanOrEqual(1);
   });
 });
 

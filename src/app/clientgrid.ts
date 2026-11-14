@@ -449,7 +449,7 @@ export class ClientGridMirror {
         this.inBounds(x, z) && (this.roadTier[this.idx(x, z)] ?? RoadTier.None) !== RoadTier.None,
       controlAt: (x, z) => this.junctionAt(x, z)?.control,
       turnsAt: (x, z) => this.junctionAt(x, z)?.turns ?? 0,
-      profileAt: (x, z) => this.profileAt(x, z),
+      profileAt: (x, z) => this.ownProfileAt(x, z),
       flowAt: (x, z) =>
         this.inBounds(x, z) ? flowDirection(this.roadFlow[this.idx(x, z)] ?? 0) : RoadFlow.None,
       corridorHalfAt: (x, z) =>
