@@ -115,8 +115,16 @@ export function approachingSpan(
 ): { from: number; to: number } | null {
   const lanes = approachingLanes(drawn, own, runsToward, leftSign);
   if (lanes.length === 0) return null;
+  // A bus or bike lane beside the arriving lanes is one a driver or rider
+  // arrives in too: the bar runs on across it, out to the kerb.
+  const side = Math.sign(lanes.reduce((sum, l) => sum + l.centre, 0));
+  const reserved = carriagewaySpans(drawn).filter(
+    ({ piece, from, to }) =>
+      (piece.kind === 'bus' || piece.kind === 'bike') && (from + to) * side > 0,
+  );
+  const spans = [...lanes, ...reserved];
   return {
-    from: Math.min(...lanes.map((l) => l.from)),
-    to: Math.max(...lanes.map((l) => l.to)),
+    from: Math.min(...spans.map((l) => l.from)),
+    to: Math.max(...spans.map((l) => l.to)),
   };
 }

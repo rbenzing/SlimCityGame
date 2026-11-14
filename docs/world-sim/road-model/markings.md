@@ -52,8 +52,13 @@ per-tier:
   Bike Lane preset and a composed one alike. The lane, its green and its
   lines run on into the junction up to where the intersection begins for it
   (§9E.02): the crossing over its arm, the stop line across its own lanes, or
-  else the point where its kerb starts to turn the corner; its outermost line
-  goes on round the corner with the kerb return.
+  else the point where its kerb starts to turn the corner. From there the
+  green follows the kerb return round the corner, between the edge line and
+  the kerb. Across an arm's mouth the lane is carried between two dotted
+  lines, 0.6 m marks 1.2 m apart (§9E.03 ¶07; §3B.11's 2 ft marks and 2 to
+  6 ft gaps), with green only between each pair of marks (§3H.06 ¶04). A
+  junction side with no arm keeps the plain lane, solid lines and all
+  `[R-roads-087]`.
 - **A parallel parking lane marks its stalls with corner marks**, white
   (§3B.27 ¶01), on the lane's travel edge: a T where two stalls meet and an
   L at each end of a run, as the MUTCD's Figure 3B-23 draws them. The bar
@@ -137,7 +142,10 @@ per-tier:
   one to the other round the sweep, so it leaves each arm exactly where that
   arm's own line runs. A kerbside bus lane's inner edge is marked once,
   solid, rather than dashed as a boundary between two ordinary same-way lanes
-  would be.
+  would be. Its red runs round a bend and a dead end's cap and past a
+  junction side with no arm; there is none in a kerb return's wedge or
+  across a mouth, where general traffic turns (§3H.07 ¶03). No lane colour
+  lies in a crosswalk: green by §3H.06 ¶03, red by the same rule.
 - **Centre line** is derived per class: dirt, alley, one-way, highway,
   ramp and rail paint no centre line at all (a one-way or a motorway has no
   opposing traffic to separate, and dirt/alley carry no paint of any kind).

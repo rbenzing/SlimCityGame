@@ -300,3 +300,11 @@ Back to [the index](../GROUND-TRUTHS.md).
   the ring's footway along a line through its centre. —
   [cul-de-sacs.md](../specs/cul-de-sacs.md); `culDeSacBlockOf` in
   `src/shared/culdesac.ts`
+- [R-roads-087] A reserved lane's colour follows its lane: round a bend and a dead end's cap
+  on the road's arc, and past a junction side with no arm, never inside a
+  crosswalk (MUTCD 3H.06 ¶03). A bike lane crosses an arm's mouth between
+  two dotted lines, green only between each pair of marks (9E.03 ¶07, ¶10;
+  3H.06 ¶04). A bus lane's red lies only where general traffic may not go:
+  none in a kerb return's wedge or across a mouth (3H.07 ¶03). A stop line
+  crosses every arriving lane, reserved ones too. — [markings.md](../world-sim/road-model/markings.md);
+  `src/render/roadsmesh.ts`

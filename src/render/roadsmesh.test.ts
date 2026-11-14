@@ -194,9 +194,25 @@ describe('roadTileVertices — transit lane variants (Bus Lane / Bike Lane)', ()
 
   it('breaks the colored band at junctions (paint stops at crossings)', () => {
     const straight = roadTileVertices(0, 0, RoadTier.BusLane, N | S, flatHeightAt);
-    const junction = roadTileVertices(0, 0, RoadTier.BusLane, N | E | S | W, flatHeightAt);
+    const bus = RoadTier.BusLane;
+    const junction = roadTileVertices(0, 0, bus, N | E | S | W, flatHeightAt, {
+      n: bus,
+      e: bus,
+      s: bus,
+      w: bus,
+    });
     expect(countWhere(straight.colors, isBusPaint)).toBeGreaterThan(0);
-    expect(countWhere(junction.colors, isBusPaint)).toBe(0);
+    // Red follows the kerb round the corners but is never carried through the
+    // box: nothing lies between the two lanes' widths, in the middle of it.
+    const half = carriagewayHalfWidthMeters(RoadTier.BusLane) - 3.75;
+    let inBox = 0;
+    for (let i = 0; i < junction.colors.length; i += 3) {
+      if (!isBusPaint(junction.colors.slice(i, i + 3))) continue;
+      const dx = Math.abs(junction.positions[i]! - TILE_METERS / 2);
+      const dz = Math.abs(junction.positions[i + 2]! - TILE_METERS / 2);
+      if (dx < half - 0.01 && dz < half - 0.01) inBox++;
+    }
+    expect(inBox).toBe(0);
   });
 
   it('places lane glyphs periodically + deterministically', () => {
@@ -2293,8 +2309,8 @@ describe('roadTileVertices — curved turn (quarter-annulus)', () => {
     }
   });
 
-  it('the carriageway is one quad per arc segment (TURN_ARC_SEGMENTS = 12 quads of plate color)', () => {
-    expect(TURN_ARC_SEGMENTS).toBe(12);
+  it('the carriageway is one quad per arc segment (TURN_ARC_SEGMENTS = 24 quads of plate color)', () => {
+    expect(TURN_ARC_SEGMENTS).toBe(24);
     const pts = carriagewayPoints(RoadTier.TwoLane, 0, 0, N | E);
     expect(pts.length).toBe(TURN_ARC_SEGMENTS * 6); // one 2-triangle quad per segment
   });

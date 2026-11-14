@@ -65,6 +65,33 @@ export function junctionArmLayout(
   return { crosswalkNear, crosswalkFar, stopLineNear, stopLineFar };
 }
 
+/** Whether the lanes at `across` offsets from an arm's centre arrive at the junction, given the arm's approaching span. */
+export function arrivesOn(
+  approaching: { from: number; to: number } | null | undefined,
+  across: 1 | -1,
+): boolean {
+  return !!approaching && (across > 0 ? approaching.to > 0.5 : approaching.from < -0.5);
+}
+
+/**
+ * Where a reserved lane's colour is left bare across an arm the lane runs on
+ * past, outward from the junction's centre: from the crossing's near edge to
+ * its far edge, or on to the stop line where the lane arrives at one. Null
+ * where the arm paints nothing over the lane.
+ */
+export function laneBareSpan(
+  layout: JunctionArmLayout,
+  paint: { crossed: boolean; stops: boolean },
+  arrives: boolean,
+): { near: number; far: number } | null {
+  const stops = paint.stops && arrives;
+  if (!paint.crossed && !stops) return null;
+  return {
+    near: paint.crossed ? layout.crosswalkNear : layout.stopLineNear,
+    far: stops ? layout.stopLineFar : layout.crosswalkFar,
+  };
+}
+
 /**
  * How far from the junction's centre the outermost paint across an arm
  * reaches: the stop line where one is painted, else the crossing, else
