@@ -164,7 +164,7 @@ import { UtilityKitRenderer, tramLaneOffsetOf } from './render/utilitykits';
 import { BusStopRenderer, stopRoadAt } from './render/busstops';
 import { FarmRenderer } from './render/farms';
 import { ZoneGridRenderer } from './render/zonegrid';
-import { LampRenderer, STOP_CLEAR_HALF_M } from './render/lamps';
+import { LampRenderer, ringLampStands, STOP_CLEAR_HALF_M } from './render/lamps';
 import { FREE_ROAD_SLOT, PowerLineRenderer, STRUNG_LINE_SLOT } from './render/powerlines';
 import {
   cableBoxSpots,
@@ -1610,14 +1610,17 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
     });
     roadFurniture.setTramPoles(poles, computeTramWireRuns(latestRoadTiles));
     const ahead = new Standing().addAll(control).addAll(poles);
-    const free = clientGrid.roads
-      ? freeRoadLampStands(
-          clientGrid.roads,
-          (id) => clientGrid.profileById(id),
-          (wx, wz) => clientGrid.poweredAt(worldToTile(wx), worldToTile(wz)),
-          { clear, taken: ahead },
-        )
-      : [];
+    const free = [
+      ...(clientGrid.roads
+        ? freeRoadLampStands(
+            clientGrid.roads,
+            (id) => clientGrid.profileById(id),
+            (wx, wz) => clientGrid.poweredAt(worldToTile(wx), worldToTile(wz)),
+            { clear, taken: ahead },
+          )
+        : []),
+      ...clientGrid.ringLampSites().flatMap(ringLampStands),
+    ];
     lamps.rebuild(latestRoadTiles, keepOff, free, poles, latestStops, control);
     const upper = ahead.clone().addAll(lamps.standSpots());
     roadsideUpper = { clear, taken: upper };

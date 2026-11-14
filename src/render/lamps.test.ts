@@ -12,6 +12,7 @@ import {
   LampRenderer,
   lampRuleOf,
   POOL_VERTICES_PER_LAMP,
+  ringLampStands,
   standOf,
   standsOf,
   STOP_CLEAR_HALF_M,
@@ -34,6 +35,7 @@ import {
 import { BUS_STOP_PAD, busStopPlacement } from './busstops';
 import { LAMP_SPACING_TILES, LAMP_SPACING_WIDE_TILES, TILE_METERS } from '../shared/constants';
 import { carriagewayHalfWidthMeters, SIDEWALK_WIDTH_M } from './roadsmesh';
+import { RING_OUTER_RADIUS_M } from '../shared/roundabout';
 
 const flatHeightAt = (): number => 0;
 
@@ -55,6 +57,73 @@ function strip(fixed: number, from: number, to: number, orientation: 'ew' | 'ns'
   }
   return tiles;
 }
+
+describe('ringLampStands', () => {
+  const block = { x: 20, z: 20 };
+  const centre = { x: 21 * TILE_METERS, z: 21 * TILE_METERS };
+  const two = presetProfileForTier(RoadTier.TwoLane);
+  const arm = (x: number, z: number, side: RoadFlow) => ({ from: { x, z }, side });
+  const fourWay = [
+    arm(20, 20, RoadFlow.North),
+    arm(20, 20, RoadFlow.West),
+    arm(21, 20, RoadFlow.East),
+    arm(20, 21, RoadFlow.South),
+  ];
+  const site = (arms = fourWay, powered = true) => ({ block, arms, profile: two, powered });
+  const radiusOf = (s: { x: number; z: number }): number =>
+    Math.hypot(s.x - centre.x, s.z - centre.z);
+  const angleOf = (s: { x: number; z: number }): number =>
+    Math.atan2(s.z - centre.z, s.x - centre.x);
+
+  it('stands lamps outside the ring, behind its footway, never on the island', () => {
+    const stands = ringLampStands(site());
+    expect(stands.length).toBeGreaterThan(0);
+    for (const s of stands) {
+      expect(radiusOf(s)).toBeGreaterThan(RING_OUTER_RADIUS_M);
+      expect(radiusOf(s)).toBeCloseTo(
+        RING_OUTER_RADIUS_M + lampLateralOffset(undefined, two) - carriagewayHalfWidthOf(two),
+        6,
+      );
+      // The arm reaches in over the ring.
+      const inward = (centre.x - s.x) * s.reachX + (centre.z - s.z) * s.reachZ;
+      expect(inward).toBeGreaterThan(0);
+      expect(s.height).toBe(lampRuleOf(two).height);
+    }
+  });
+
+  it('keeps clear of every road coming in', () => {
+    // The arms meet the ring at the angles of their lines through the tile centres.
+    const armAngles = [
+      Math.atan2(-Math.sqrt(18 ** 2 - 10 ** 2), -10),
+      Math.atan2(-10, -Math.sqrt(18 ** 2 - 10 ** 2)),
+      Math.atan2(-10, Math.sqrt(18 ** 2 - 10 ** 2)),
+      Math.atan2(Math.sqrt(18 ** 2 - 10 ** 2), -10),
+    ];
+    for (const s of ringLampStands(site())) {
+      for (const a of armAngles) {
+        const apart = Math.abs(Math.atan2(Math.sin(angleOf(s) - a), Math.cos(angleOf(s) - a)));
+        expect(apart * radiusOf(s)).toBeGreaterThan(carriagewayHalfWidthOf(two));
+      }
+    }
+  });
+
+  it('is lit by the street spacing: no dark arc longer than two spacings', () => {
+    const stands = ringLampStands(site());
+    const spacing = lampRuleOf(two).spacingTiles * TILE_METERS;
+    const angles = stands.map(angleOf).sort((a, b) => a - b);
+    expect(angles.length).toBeGreaterThanOrEqual(2);
+    for (let i = 0; i < angles.length; i++) {
+      const next = angles[(i + 1) % angles.length]! + (i + 1 === angles.length ? 2 * Math.PI : 0);
+      const arc = (next - angles[i]!) * (RING_OUTER_RADIUS_M + POLE_BEHIND_KERB_M);
+      expect(arc).toBeLessThan(2 * spacing);
+    }
+  });
+
+  it('stands none on an unpowered street, and none where no road comes in', () => {
+    expect(ringLampStands(site(fourWay, false))).toHaveLength(0);
+    expect(ringLampStands(site([]))).toHaveLength(0);
+  });
+});
 
 describe('computeLampPlacements (pure)', () => {
   it('respects the shared lamp spacing constants', () => {

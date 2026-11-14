@@ -11,7 +11,7 @@
 - Treat the ring as one thing: refuse `setJunctionControl`, `setJunctionTurns` and `setJunctionLaneTurns` on a ring tile. Bulldozing any tile removes the roundabout, and undo restores it. `[R-roads-071]`
 - Drive the ring anticlockwise only, on the circle, never across the island. Only a driver arriving on a leg pays the entry delay. `[R-roads-071]`
 - An entry, mini or compact, carries `1,380 · e^(−0.00102 · v_c)` veh/h against the traffic circulating in front of it. `[R-roads-072]`
-- Paint a yield line of white triangles on every entry, a give-way board on every approach, and no stop bar, crosswalk or centre line. `[R-roads-070]`
+- Paint a yield line of white triangles on every entry, a give-way board on every approach, and no stop bar or centre line; on an arm with footways one crosswalk 6.1 m back from the ring, and none to the island. `[R-roads-070]`
 - Refuse a block with a road above one lane each way, a motorway, corridor or tramway, fewer than three or two on a side, a junction on a leg's first tile, or grade over 4%.
 - The tool sends a `buildRoad` per tile to lay, then `buildRoundabout`; it sends nothing the world would refuse partway, since batches are not atomic.
 
@@ -27,7 +27,8 @@
 | Island                 | 17.6                               | m     | dial: what remains inside the apron                                                                                         |
 | Entry width            | 4.65                               | m     | FHWA §6.3.2: 4.3–4.9 m single-lane entry                                                                                    |
 | `SPLITTER_WIDTH_M`     | 1.8 (6 ft)                         | m     | FHWA §6.3.8 narrowest refuge                                                                                                |
-| Splitter length        | 15 (50 ft) asked, about 5 held     | m     | FHWA §6.3.8; the tile holds about 5 m, the rest lies on the undrawn road                                                    |
+| Splitter length        | 15 (50 ft)                         | m     | FHWA §6.3.8; a kerbed island from the ring out over the leg tile, cut level at the crosswalk |
+| Crosswalk setback      | 6.1 (20 ft) from the ring's edge   | m     | MUTCD 3C.09 ¶03 |
 | Far kerb radius        | 15 (50 ft)                         | m     | FHWA §6.3.6.1 least exit radius                                                                                             |
 | Near kerb return       | up to 3                            | m     | dial: FHWA §6.3.5.1 wants an entry radius of 10–30 m                                                                        |
 | Leg offset             | 10 (half a tile)                   | m     | dial: roads run down tile centres                                                                                           |
@@ -51,7 +52,7 @@
 - `src/world/roundabouts.ts`: rules read off a grid or the mirror; `miniRoundaboutConflicting`; the graph shaped round each ring.
 - `src/world/roadgraph.ts`, `pathfind.ts`: one-way ring edges on an arc; `junctionDelay` on entry only.
 - `src/render/roadsmesh.ts` `roundaboutQuarterVertices`: a ring tile's quarter of the ring and its legs' entries.
-- `src/render/roadfurniture.ts`, `lamps.ts`: nothing stands on a ring tile.
+- `src/render/roadfurniture.ts`: no kerb furniture on a ring tile; `ringLampStands` in `lamps.ts`: the ring's own lamps.
 - `src/app/clientgrid.ts`, `src/main.ts`: the mirror keeps the roundabouts; the tool's reader; the inspector.
 - `src/tools/tools.ts`: the `roundabout` tool, hover preview and click to lay.
 - `src/ui/categories.ts`, `AssetDrawer.tsx`, `JunctionPanel.tsx`: the card; the inspector on a ring tile.
@@ -61,11 +62,11 @@
 - `src/shared/roundabout.test.ts` — block and legs, intact and broken, every refusal, tiles to lay and the batch, ring points and arcs.
 - `tests/interaction/roundabouts.test.ts` — on a crossroads and a T through real commands: every leg-to-leg movement routes and none runs against the ring; left costs more than right; one undo restores the grid; bulldoze and its undo; a control on a ring tile is refused.
 - Graph tests — ring edges one-way, arc routes, entry-only delay, the leg-to-leg turn at a two-legged ring tile.
-- Render tests — a ring tile draws island and yield lines, no stop bar, no crossing; furniture places nothing on it.
+- Render tests — a ring tile draws island, yield and edge lines, a crosswalk only on an arm with footways, no stop bar; kerb furniture places nothing on it and lamps stand outside the ring.
 - Tool and UI tests — the preview's quarter, refusal, cost and label; commit sends nothing when refused; the inspector on a ring tile.
 - Browser check — a ring on a crossroads and on a T, from above and at an angle, laid through the drawer's card with traffic round it; cars stay off the island (69 sampled car positions near a ring in a small town, none inside the apron).
 
-**Open:** none. Not built, by choice: a two-lane roundabout, crossings set back from the yield line, lamps round the ring, a roundabout-ahead sign, a tramway through one.
+**Open:** none. Not built, by choice: a two-lane roundabout, a roundabout-ahead sign, a tramway through one.
 
 ## Why the rules are what they are
 
@@ -150,9 +151,9 @@ Compact roundabouts carry up to about 15,000 vehicles a day.
 - each leg, carried from the tile's edge until it meets the ring, with its kerbs;
 - a yield line across each leg's entry lanes, at the edge of the circulatory roadway (FHWA Exhibit 6-1; MUTCD 3D.04).
 
-Nothing else is painted: a single-lane roundabout carries no lane lines, and no crossings or stop bars, as on the mini roundabout. Real crossings stand a car length back from the yield line (FHWA §6.3.7); neither roundabout paints them.
+A single-lane roundabout carries no lane lines and no stop bars. An arm with footways carries one crosswalk across its whole carriageway, 6.1 m back from the ring (MUTCD 3C.09 ¶02–03); none runs to the island (¶01). The ring's outer edge is white: solid beside a splitter and where no arm opens, a wide dotted line across each entry, nothing across an exit; a yellow line runs round the apron (3D.03).
 
-Each leg is flared by half the splitter's width on each side over the part of the ring tile outside the ring. The splitter island, only where a road runs both ways, narrows to a point at the tile's edge. Its 15 m of splitter does not fit the tile: that is the grid's compression, stated rather than hidden. The leg tile beyond is plain road.
+Each leg is flared by half the splitter's width on each side over the part of the ring tile outside the ring. The splitter, only where a road runs both ways, is a raised kerbed island with a yellow nose, 15 m from the ring out over the leg tile and cut level where the crosswalk passes, a refuge. Past the flare it narrows each lane of the leg tile by 0.9 m.
 
 A leg's kerbs never meet the ring at a step. Each curves in on an arc tangent to the kerb and the ring's edge, its footway following into the footway about the ring.
 
@@ -166,7 +167,7 @@ The footway about the ring opens between each leg's two curves and between two l
 
 - A leg tile keeps the give-way board an approach to a roundabout already gets.
 - A ring tile carries no board, signal, bend sign or kerbside furniture; counted as an approach to its neighbours, it would stand boards in the ring.
-- Lamps skip ring tiles; nothing stands on the ring.
+- Kerb furniture skips ring tiles. The ring's own lamps stand outside it, behind its footway between the arms, at the street lamps' offset, height and spacing; none stands on the island.
 - Parking already skips a tile with roads across and along it, which every ring tile is.
 
 ## Tuning
@@ -180,5 +181,5 @@ Every figure in the Numbers table above is sourced and scaled to the 20 m tile t
 - A 2×2 block, over 3×3 with radial legs: 60 m is a two-lane roundabout's diameter, not a compact one's.
 - Legs stay where the roads are, over having the stamp move them; a pinwheel the player lays is accepted.
 - The ring is the four tiles' own roads read as a roundabout through the control, not a new kind of road.
-- Not built: a two-lane roundabout (a two-lane road or two-tile corridor would need one), lamps round the ring, a roundabout-ahead sign, a tramway crossing.
+- Not built: a two-lane roundabout (a two-lane road or two-tile corridor would need one), a roundabout-ahead sign, a tramway crossing.
 - A save already holding a coded 2×2 block would read as a compact roundabout, or as broken and inert; it could only come from four mini roundabouts round a square, which needs eight legs, and none is known.

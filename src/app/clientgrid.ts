@@ -47,7 +47,8 @@ import { frontingTurns, frontTouchesStreet, touchesStreet, type FrontingTurn } f
 import { deriveRoadFootprint } from '../world/freeroads';
 import { decodeRoadNetwork } from '../world/roadnet';
 import { axisOfFlow } from '../shared/overpass';
-import { blockTiles } from '../shared/roundabout';
+import { blockTiles, roundaboutLegs } from '../shared/roundabout';
+import type { RingLampSite } from '../render/lamps';
 import type {
   BuildingCatalogEntry,
   BuildingDelta,
@@ -349,6 +350,31 @@ export class ClientGridMirror {
   roundaboutAt(x: number, z: number): TilePoint | null {
     if (!this.inBounds(x, z)) return null;
     return this.roundabouts.get(this.idx(x, z)) ?? null;
+  }
+
+  /** Each compact roundabout as its lamps are placed: its roads in, their section, and whether it has power. */
+  ringLampSites(): RingLampSite[] {
+    const sites: RingLampSite[] = [];
+    const seen = new Set<number>();
+    for (const block of this.roundabouts.values()) {
+      const key = this.idx(block.x, block.z);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const maskAt = (x: number, z: number): number =>
+        this.inBounds(x, z) ? (this.roadMask[this.idx(x, z)] ?? 0) : 0;
+      const legs = roundaboutLegs(block, maskAt);
+      const profile = legs
+        .map((leg) => this.drawnProfileAt(leg.tile.x, leg.tile.z))
+        .find((p): p is RoadProfile => p !== null);
+      if (!profile) continue;
+      sites.push({
+        block,
+        arms: legs.map(({ from, side }) => ({ from, side })),
+        profile,
+        powered: blockTiles(block).some((t) => this.poweredAt(t.x, t.z)),
+      });
+    }
+    return sites;
   }
 
   /**
