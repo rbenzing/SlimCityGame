@@ -83,6 +83,7 @@ export function lotLayoutFor(
     spaces: onSiteSpaces(requirement.spaces, kerbCredit),
     berths: requirement.berths,
     ...lotYardsFor(entry),
+    ...(entry.category === 'com' && !isDenseLotEntry(entry) ? { shopfrontWalk: true } : {}),
     ...(entry.kind === 'restaurant' ? { driveThrough: true } : {}),
     ...(entry.kind && TRUCK_COURT_KINDS.has(entry.kind) ? { trailerCourt: true } : {}),
   });
