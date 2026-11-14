@@ -22,7 +22,7 @@ How to use it:
 | Saves and the data model               | [saves.md](truths/saves.md)                   | 12    | `R-saves-001` to `R-saves-012`       |
 | Architecture and the thread boundary   | [architecture.md](truths/architecture.md)     | 17    | `R-architecture-001` to `R-architecture-017` |
 | Rendering and art                      | [render.md](truths/render.md)                 | 41    | `R-render-001` to `R-render-041`     |
-| Game design and interface              | [design.md](truths/design.md)                 | 21    | `R-design-001` to `R-design-021`     |
+| Game design and interface              | [design.md](truths/design.md)                 | 22    | `R-design-001` to `R-design-022`     |
 | Process                                | [process.md](truths/process.md)               | 10    | `R-process-001` to `R-process-010`   |
 
 Read the file of every area a task touches, and nothing else of the truths.
