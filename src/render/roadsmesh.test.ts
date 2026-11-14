@@ -78,7 +78,7 @@ import {
 import { CHUNK_TILES, CHUNKS_PER_SIDE, MAP_SIZE, TILE_METERS } from '../shared/constants';
 import { DEFAULT_ALLOWED, Movement } from '../shared/approach';
 import { travelLanes } from '../shared/travellanes';
-import { SECTION_REACH_TILES } from '../shared/approachzone';
+import { SECTION_REACH_TILES, drawnCrossSection } from '../shared/approachzone';
 
 const flatHeightAt = (): number => 0;
 
@@ -3768,6 +3768,14 @@ describe('a motorway closes its lane with paint and keeps the tarmac', () => {
     expect(white(closing(11))).toBeGreaterThan(white(plain));
     expect(white(closing(0))).toBeGreaterThan(white(closing(11)));
   });
+
+  it('hatches beside a yellow edge line in yellow, and beside a white one in white', () => {
+    const yellow = (v: { colors: number[] }): number => countWhere(v.colors, isMarkingYellow);
+    const whiteCount = (v: { colors: number[] }): number => countWhere(v.colors, isMarkingWhite);
+    // The strip beside the yellow edge adds yellow paint, and the other adds white.
+    expect(yellow(closing(0))).toBeGreaterThan(yellow(closing(11)));
+    expect(whiteCount(closing(0))).toBeGreaterThan(whiteCount(closing(11)));
+  });
 });
 
 describe('roadTileVertices — an undivided arterial laid across two tiles draws one road', () => {
@@ -6226,5 +6234,218 @@ describe('roadTileVertices — an avenue dead end ends its median in a nose insi
 
   it('the open-ground median reaches the edge and the blocked one stops short of it', () => {
     expect(Math.min(...medianZs(true))).toBeLessThan(Math.min(...medianZs(false)) - 1e-6);
+  });
+});
+
+describe('where a corridor opens a bay, its island and its lines bend and never step', () => {
+  const lane = (flow: 'fwd' | 'back') => ({ kind: 'travel' as const, width: 3.6, flow });
+  const walk = { kind: 'sidewalk' as const, width: 1.9 };
+  const divided = (median: number): RoadProfile => ({
+    class: 'divided',
+    pieces: [
+      walk,
+      lane('back'),
+      lane('back'),
+      lane('back'),
+      { kind: 'median', width: median },
+      lane('fwd'),
+      lane('fwd'),
+      lane('fwd'),
+      walk,
+    ],
+  });
+  const flow = storedFlow(RoadFlow.South, 'left');
+  const half = (median: number): RoadProfile =>
+    corridorHalfProfile(worldOrderedProfile(divided(median), flow), 'left');
+  const tiers = { n: RoadTier.Avenue, e: RoadTier.None, s: RoadTier.Avenue, w: RoadTier.None };
+  const centreX = 4.5 * TILE_METERS;
+  const northEdge = 4 * TILE_METERS;
+  const southEdge = 5 * TILE_METERS;
+  const halves = (extra: Partial<NeighborHalves> = {}): NeighborHalves => ({
+    n: 9,
+    e: 0,
+    s: 9,
+    w: 0,
+    ...extra,
+  });
+  const tile = (extra: Partial<NeighborHalves> = {}, own = half(2)) =>
+    roadTileVertices(4, 4, RoadTier.Avenue, N | S, flatHeightAt, tiers, own, halves(extra), flow);
+  /** The innermost x of the island's concrete edge on the row at `z`, from the tile's centre. */
+  const islandLowAt = (v: { positions: number[]; colors: number[] }, z: number): number => {
+    const col = toTriples(v.colors);
+    const xs = toTriples(v.positions)
+      .filter((p, i) => Math.abs(p[2]! - z) < 1e-6 && isConcreteBand(col[i] as number[]))
+      .map((p) => p[0]! - centreX);
+    return Math.min(...xs);
+  };
+
+  it('runs the island from the edges of the island beside it to its own, across the tile', () => {
+    const own = islandLowAt(tile(), southEdge);
+    const wider = {
+      n: { low: own - 0.4, high: own + 20 },
+    };
+    const bent = tile({ islands: wider });
+    expect(islandLowAt(bent, northEdge)).toBeCloseTo(own - 0.4, 3);
+    expect(islandLowAt(bent, southEdge)).toBeCloseTo(own, 3);
+    const middle = islandLowAt(bent, (northEdge + southEdge) / 2);
+    expect(middle).toBeGreaterThan(own - 0.4 + 0.1);
+    expect(middle).toBeLessThan(own - 0.1);
+  });
+
+  it('meets a narrower island at its own edge, since the wider side is the one that gives', () => {
+    const own = islandLowAt(tile(), southEdge);
+    const narrower = tile({ islands: { n: { low: own + 0.4, high: own + 20 } } });
+    expect(islandLowAt(narrower, northEdge)).toBeCloseTo(own, 3);
+  });
+
+  it('keeps the island square where nothing lies beside it, as it always was', () => {
+    const plain = tile();
+    expect(islandLowAt(plain, northEdge)).toBeCloseTo(islandLowAt(plain, southEdge), 6);
+  });
+
+  it('runs the yellow beside the island from the seam value to its own where it ends in a nose', () => {
+    // The tile before it carries a wider median, so its yellow lines stand
+    // elsewhere; the tile ends in a nose at a junction to the south.
+    const next = markingPlan(half(3), flow);
+    const yellowAts = next.solid.filter((l) => l.color === 'yellow').map((l) => l.at);
+    expect(yellowAts.length).toBeGreaterThan(0);
+    const v = tile({
+      n: 1,
+      junctions: { n: false, e: false, s: true, w: false },
+      plans: { n: next, e: null, s: null, w: null },
+    });
+    const col = toTriples(v.colors);
+    const xs = toTriples(v.positions)
+      .filter((p, i) => Math.abs(p[2]! - northEdge) < 0.02 && isMarkingYellow(col[i] as number[]))
+      .map((p) => p[0]! - centreX);
+    expect(xs.length).toBeGreaterThan(0);
+    for (const x of xs) {
+      expect(Math.min(...yellowAts.map((a) => Math.abs(a - x)))).toBeLessThan(0.1);
+    }
+  });
+});
+
+describe('a taper bends the kerb, footway and edge line across every tile seam', () => {
+  const wide = presetProfileForTier(RoadTier.FourLane);
+  const centreX = 4.5 * TILE_METERS;
+  const LENGTH = 7;
+  const step = (remaining: number) => ({
+    toward: RoadFlow.South,
+    remaining,
+    length: LENGTH,
+    closed: 7.5,
+  });
+  /** Half the carriageway the tile `remaining` tiles from the foot lays; the wide road beyond the head, the foot below it. */
+  const sectionAt = (remaining: number): RoadProfile =>
+    remaining >= LENGTH ? wide : drawnCrossSection(wide, undefined, step(remaining), RoadFlow.None);
+  const halfAt = (remaining: number): number => carriagewayHalfWidthOf(sectionAt(remaining));
+  const planAt = (remaining: number) => markingPlan(sectionAt(remaining), RoadFlow.None);
+  /** The tile `remaining` tiles from the foot, on row `row` of a run heading south. */
+  const tileAt = (row: number, remaining: number) =>
+    roadTileVertices(
+      4,
+      row,
+      RoadTier.FourLane,
+      N | S,
+      flatHeightAt,
+      { n: RoadTier.FourLane, e: RoadTier.None, s: RoadTier.FourLane, w: RoadTier.None },
+      wide,
+      {
+        n: halfAt(remaining + 1),
+        e: 0,
+        s: halfAt(remaining - 1),
+        w: 0,
+        plans: { n: planAt(remaining + 1), e: null, s: planAt(remaining - 1), w: null },
+      },
+      RoadFlow.None,
+      undefined,
+      undefined,
+      step(remaining),
+    );
+  /** The outermost x of what satisfies `is` on the row at `z`, from the centreline. */
+  const reachAt = (
+    v: { positions: number[]; colors: number[] },
+    z: number,
+    is: (c: number[]) => boolean,
+  ): number => {
+    const col = toTriples(v.colors);
+    return Math.max(
+      ...toTriples(v.positions)
+        .filter((p, i) => Math.abs(p[2]! - z) < 1e-6 && is(col[i] as number[]))
+        .map((p) => Math.abs(p[0]! - centreX)),
+    );
+  };
+
+  it('has no jog in the footway where one tile hands over to the next', () => {
+    for (let remaining = LENGTH - 1; remaining >= 1; remaining--) {
+      const row = LENGTH - remaining;
+      const seamZ = (row + 1) * TILE_METERS;
+      const before = reachAt(tileAt(row, remaining), seamZ, isSidewalk);
+      const after = reachAt(tileAt(row + 1, remaining - 1), seamZ, isSidewalk);
+      expect(Math.abs(before - after)).toBeLessThan(0.02);
+    }
+  });
+
+  it('has no jog in the edge line either', () => {
+    for (let remaining = LENGTH - 1; remaining >= 1; remaining--) {
+      const row = LENGTH - remaining;
+      const seamZ = (row + 1) * TILE_METERS;
+      const before = reachAt(tileAt(row, remaining), seamZ, isMarkingWhite);
+      const after = reachAt(tileAt(row + 1, remaining - 1), seamZ, isMarkingWhite);
+      expect(Math.abs(before - after)).toBeLessThan(0.02);
+    }
+  });
+});
+
+describe('the far kerb of a corridor half at a junction meets the approach it follows', () => {
+  const lane = (flow: 'fwd' | 'back') => ({ kind: 'travel' as const, width: 3.6, flow });
+  const walk = { kind: 'sidewalk' as const, width: 1.9 };
+  const arterial: RoadProfile = {
+    class: 'arterial',
+    pieces: [
+      walk,
+      lane('back'),
+      lane('back'),
+      lane('back'),
+      lane('fwd'),
+      lane('fwd'),
+      lane('fwd'),
+      walk,
+    ],
+  };
+  const flow = storedFlow(RoadFlow.South, 'left');
+  const own = corridorHalfProfile(worldOrderedProfile(arterial, flow), 'left');
+  const centreX = 4.5 * TILE_METERS;
+  const northEdge = 4 * TILE_METERS;
+  const southEdge = 5 * TILE_METERS;
+  const tiers = { n: RoadTier.Avenue, e: RoadTier.Avenue, s: RoadTier.Avenue, w: RoadTier.None };
+  /** A T whose through arms are the corridor half, the far half standing east. */
+  const tee = (shifts?: { n: number; e: number; s: number; w: number }) =>
+    roadTileVertices(
+      4,
+      4,
+      RoadTier.Avenue,
+      N | E | S,
+      flatHeightAt,
+      tiers,
+      own,
+      { n: 9, e: 0, s: 0, w: 0, partner: 'e', ...(shifts ? { shifts } : {}) },
+      flow,
+    );
+  /** How far out the west kerb stands from the tile's centre on the row at `z`. */
+  const westKerb = (v: { positions: number[]; colors: number[] }, z: number): number => {
+    const col = toTriples(v.colors);
+    const xs = toTriples(v.positions)
+      .filter((p, i) => Math.abs(p[2]! - z) < 1e-6 && isSidewalk(col[i] as number[]))
+      .map((p) => centreX - p[0]!);
+    return Math.max(...xs);
+  };
+
+  it('stands out where the approach tile put it when that tile is centred elsewhere', () => {
+    const flush = tee();
+    // The approach's centre lies 1.8 m toward the west of this tile's own.
+    const moved = tee({ n: -1.8, e: 0, s: 0, w: 0 });
+    expect(westKerb(moved, northEdge)).toBeCloseTo(westKerb(flush, northEdge) + 1.8, 3);
+    expect(westKerb(moved, southEdge)).toBeCloseTo(westKerb(flush, southEdge), 3);
   });
 });
