@@ -761,7 +761,15 @@ describe('a tram contact pole stands in place of a lamp beside it', () => {
     const victim = standOf(all[1]!);
     // A pole on the same kerb, 1.4 m along: the lamp gives way to it, sliding
     // along its own strip to the nearest place 1.5 m clear.
-    const near: TramPoleStand = { x: victim.x + 1.4, z: victim.z, reachX: 0, reachZ: 0 };
+    const near: TramPoleStand = {
+      x: victim.x + 1.4,
+      z: victim.z,
+      reachX: 0,
+      reachZ: 0,
+      bracket: true,
+      spanTo: null,
+      hangs: [],
+    };
     const moved = computeLampPlacements(row, undefined, [near]);
     expect(moved.length).toBe(all.length);
     expect(moved.filter((_, i) => i !== 1)).toEqual(all.filter((_, i) => i !== 1));
