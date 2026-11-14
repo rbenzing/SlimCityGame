@@ -17,7 +17,7 @@
 - Lay a manhole cover in the middle of a lane, never on a painted line, an arrow, a crosswalk or a bike lane. `[R-roads-067]`
 - Measure a meter from the kerb face, not from the lanes: it stands behind the kerb of the stall it serves.
 - Keep a street tree out of a stop's span, off a road's end cap and clear of lamps, signs, signals and drives.
-- One object to a place: nothing stands within 1.5 m of another along the strip. `[R-render-028]`
+- One object to a place: nothing stands within 1.5 m of another along the strip, a bus stop's sign post included: it is held first, like a signal's mast. `[R-render-028]`
 
 **Numbers:** every source is in [the sources](../sources/street-furniture.md).
 

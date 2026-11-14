@@ -50,6 +50,17 @@ import { isSeparateRoad } from '../shared/approachzone';
 import type { SeparateRoadSurroundings } from '../shared/approachzone';
 import type { JunctionControl, RoadProfile } from '../shared/types';
 import { materialHex } from './palette';
+import { markingPlan } from './roadmarkings';
+import {
+  buildWireGeometry,
+  contactWireSegments,
+  dropperSegment,
+  spanWireSegment,
+  TRAM_SUPPORT_HEIGHT_M,
+  type WireSegment,
+} from './tramwire';
+import { allMovements, trackPaths } from './trackpaths';
+import type { TrackSide } from './trackpaths';
 import { MIN_INSTANCE_CAPACITY, setInstanceCount } from './groundquad';
 import {
   firstFreeAlong,
@@ -228,14 +239,24 @@ const SPEED_SIGN_PERIOD = 10; // a speed marker on every (x+z) multiple of 10
 
 // --- Tram contact pole ------------------------------------------------------
 // A streetcar's overhead pole: 35 ft (10.7 m) with a bracket arm reaching
-// 1.9 m over the track, the arm at the contact wire's height (19 ft, rounded up
-// to clear the arm), one every 22 m — El Paso's 420 poles over 29,500 ft and
-// Oklahoma City's 243 over 18,000 ft. The wire itself is not drawn.
+// 1.9 m over the track, the arm at the support height (the contact wire's 19 ft,
+// rounded up to clear the arm), one every 22 m — El Paso's 420 poles over
+// 29,500 ft and Oklahoma City's 243 over 18,000 ft. Where the arm falls short of
+// a track's centre line, the pole instead holds a span wire to the pole across
+// the street, and the contact wire hangs from that.
 export const TRAM_POLE_HEIGHT_M = 10.7;
 export const TRAM_POLE_RADIUS_M = 0.125;
 export const TRAM_POLE_ARM_LENGTH_M = 1.9;
-export const TRAM_POLE_ARM_HEIGHT_M = 6.0;
+export const TRAM_POLE_ARM_HEIGHT_M = TRAM_SUPPORT_HEIGHT_M;
 export const TRAM_POLE_SPACING_M = 22;
+/** How far an arm's tip may lie from a track's centre line and still carry the wire over it. */
+const TRAM_ARM_TOLERANCE_M = 0.1;
+/** A support the junction or a driveway took the place of stands this far inside the tile before it. */
+const TRAM_SUBSTITUTE_SETBACK_M = 2;
+/** A substitute is not stood within this of a support already there. */
+const TRAM_SUBSTITUTE_CLEAR_M = 6;
+/** The wire over a straight track is sampled this often, as the track's own path is. */
+const TRAM_WIRE_STEP_M = 2;
 const TRAM_POLE_ARM_THICKNESS_M = 0.1;
 const TRAM_POLE_SEGMENTS = 8;
 const TRAM_POLE_COLOR = materialHex('metalPlates');
@@ -1066,6 +1087,19 @@ export interface TramPoleStand {
   z: number;
   reachX: number;
   reachZ: number;
+  /** Whether the arm itself carries the wire over a track, its tip on the track's centre line. */
+  bracket: boolean;
+  /** The pole across the street that this pole's span wire runs to; null on the other pole of the pair and on a bracket pole. */
+  spanTo: { x: number; z: number } | null;
+  /** Where the contact wires hang from this pole's span wire, one over each track; empty off the owning pole. */
+  hangs: { x: number; z: number }[];
+}
+
+/** The tram lanes of a tile's road: how far each track's centre line lies from the tile's centre, signed. */
+function tramLaneOffsets(tile: FurnitureRoadTile): number[] {
+  return markingPlan(profileOf(tile))
+    .bands.filter((band) => band.kind === 'tram')
+    .map((band) => (band.from + band.to) / 2);
 }
 
 /**
@@ -1105,47 +1139,178 @@ export function computeTramPolePlacements(
   roadside?: Roadside,
 ): TramPoleStand[] {
   const tileSet = buildTileSet(roadTiles);
-  const out: TramPoleStand[] = [];
+  const tramTileAt = (x: number, z: number): FurnitureRoadTile | null => {
+    const tile = tileSet.get(tileKey(x, z));
+    return tile && !tile.ring && runsTramsInTraffic(tile) ? tile : null;
+  };
+  const standsOn = (tile: FurnitureRoadTile): boolean =>
+    !keepOff?.has(tileKey(tile.x, tile.z)) && !hasCrossingRoad(tileSet, tile.x, tile.z);
+
+  // A support is where a pole, or a pair of them, stands: its tile and its
+  // place along the run, before it gives way to anything beside the road.
+  interface Support {
+    tile: FurnitureRoadTile;
+    base: number;
+  }
+  const supports: Support[] = [];
+  const taken: { tile: FurnitureRoadTile }[] = [];
   for (const tile of roadTiles) {
-    if (tile.ring) continue;
-    if (!runsTramsInTraffic(tile)) continue;
-    if (keepOff?.has(tileKey(tile.x, tile.z))) continue;
-    if (hasCrossingRoad(tileSet, tile.x, tile.z)) continue;
-    const axis = lateralAxis(tileSet, tile.x, tile.z);
-    const runsAlongX = axis === 'z';
-    const start = (runsAlongX ? tile.x : tile.z) * TILE_METERS;
-    const free = (s: FurnitureSide): boolean =>
-      !tileSet.has(tileKey(tile.x + (axis === 'x' ? s : 0), tile.z + (axis === 'z' ? s : 0)));
-    const oneWay = oneWayPoleSide(tile);
+    if (!tramTileAt(tile.x, tile.z)) continue;
+    const alongX = lateralAxis(tileSet, tile.x, tile.z) === 'z';
+    const start = (alongX ? tile.x : tile.z) * TILE_METERS;
     for (
       let k = Math.ceil(start / TRAM_POLE_SPACING_M);
       k * TRAM_POLE_SPACING_M < start + TILE_METERS;
       k++
     ) {
-      const preferred: FurnitureSide = oneWay ?? (k % 2 === 0 ? 1 : -1);
-      const other: FurnitureSide = preferred === 1 ? -1 : 1;
-      const side = free(preferred) ? preferred : free(other) ? other : null;
-      if (side === null) continue;
-      const lateral = side * (tramPoleOffset(tile) + flankShift(tileSet, tile, { axis, side }));
       const base = k * TRAM_POLE_SPACING_M;
-      const at = (a: number): Spot =>
-        runsAlongX
-          ? { x: a, z: tileToWorld(tile.z) + lateral }
-          : { x: tileToWorld(tile.x) + lateral, z: a };
-      const slide = roadside
-        ? firstFreeAlong((s) => {
-            const a = base + s;
-            if (a < start || a >= start + TILE_METERS) return false;
-            const p = at(a);
+      if (standsOn(tile)) supports.push({ tile, base });
+      else taken.push({ tile });
+    }
+  }
+  // Where a junction or a driveway takes a support's place, the tiles either
+  // side of it each take one at their edge, so the wire is never left
+  // unsupported for more than the old limit.
+  for (const { tile } of taken) {
+    const toX = tramTileAt(tile.x - 1, tile.z) ?? tramTileAt(tile.x + 1, tile.z);
+    const toZ = tramTileAt(tile.x, tile.z - 1) ?? tramTileAt(tile.x, tile.z + 1);
+    if (!toX === !toZ) continue;
+    const dx = toX ? 1 : 0;
+    const dz = toX ? 0 : 1;
+    const start = (toX ? tile.x : tile.z) * TILE_METERS;
+    const edges = [
+      { tile: tramTileAt(tile.x - dx, tile.z - dz), base: start - TRAM_SUBSTITUTE_SETBACK_M },
+      {
+        tile: tramTileAt(tile.x + dx, tile.z + dz),
+        base: start + TILE_METERS + TRAM_SUBSTITUTE_SETBACK_M,
+      },
+    ];
+    for (const edge of edges) {
+      if (!edge.tile || !standsOn(edge.tile)) continue;
+      const near = supports.some(
+        (s) => s.tile === edge.tile && Math.abs(s.base - edge.base) < TRAM_SUBSTITUTE_CLEAR_M,
+      );
+      if (!near) supports.push({ tile: edge.tile, base: edge.base });
+    }
+  }
+
+  const out: TramPoleStand[] = [];
+  for (const { tile, base } of supports) {
+    const axis = lateralAxis(tileSet, tile.x, tile.z);
+    const runsAlongX = axis === 'z';
+    const start = (runsAlongX ? tile.x : tile.z) * TILE_METERS;
+    const free = (s: FurnitureSide): boolean =>
+      !tileSet.has(tileKey(tile.x + (axis === 'x' ? s : 0), tile.z + (axis === 'z' ? s : 0)));
+    const lateralOf = (s: FurnitureSide): number =>
+      s * (tramPoleOffset(tile) + flankShift(tileSet, tile, { axis, side: s }));
+    const lanes = tramLaneOffsets(tile);
+    // The arm reaches a track when its tip, the kerb pole's lateral less the arm, lies on the lane.
+    const reaches = (s: FurnitureSide): boolean =>
+      lanes.length === 1 &&
+      Math.abs(lateralOf(s) - s * TRAM_POLE_ARM_LENGTH_M - lanes[0]!) <= TRAM_ARM_TOLERANCE_M;
+    const oneWay = oneWayPoleSide(tile);
+    const preferred: FurnitureSide =
+      oneWay ?? (Math.round(base / TRAM_POLE_SPACING_M) % 2 === 0 ? 1 : -1);
+    const other: FurnitureSide = preferred === 1 ? -1 : 1;
+    const open = [preferred, other].filter(free);
+    const bracketSide = open.find(reaches);
+    const sides: FurnitureSide[] =
+      bracketSide !== undefined ? [bracketSide] : open.length === 2 ? [1, -1] : open;
+    if (sides.length === 0) continue;
+    const pair = sides.length === 2;
+    const spotAt = (s: FurnitureSide, a: number): Spot =>
+      runsAlongX
+        ? { x: a, z: tileToWorld(tile.z) + lateralOf(s) }
+        : { x: tileToWorld(tile.x) + lateralOf(s), z: a };
+    const slide = roadside
+      ? firstFreeAlong((d) => {
+          const a = base + d;
+          if (a < start || a >= start + TILE_METERS) return false;
+          return sides.every((s) => {
+            const p = spotAt(s, a);
             return placeIsFree(roadside, p.x, p.z);
-          }, SLIDE_LIMIT_M)
-        : 0;
-      if (slide === null) continue;
-      const p = at(base + slide);
+          });
+        }, SLIDE_LIMIT_M)
+      : 0;
+    if (slide === null) continue;
+    const a = base + slide;
+    const hangs = lanes.map((lane) =>
+      runsAlongX
+        ? { x: a, z: tileToWorld(tile.z) + lane }
+        : { x: tileToWorld(tile.x) + lane, z: a },
+    );
+    sides.forEach((s, i) => {
+      const p = spotAt(s, a);
+      const reach = runsAlongX ? { reachX: 0, reachZ: -s } : { reachX: -s, reachZ: 0 };
+      const across = pair ? spotAt(s === 1 ? -1 : 1, a) : null;
+      out.push({
+        x: p.x,
+        z: p.z,
+        ...reach,
+        bracket: !pair,
+        spanTo: i === 0 && across ? across : null,
+        hangs: i === 0 && pair ? hangs : [],
+      });
+    });
+  }
+  return out;
+}
+
+/**
+ * The plan points of the wire over every street track, one polyline per track
+ * path through a tile, in world metres. A tile's track runs along its tram
+ * lanes: edge to edge down a straight, half a tile to a dead end, and round a
+ * bend or through a junction along the tile's own track paths between the arms
+ * that carry a tramway, so the wire is unbroken from tile to tile. A road with
+ * no street track, and a reservation, whose trams run on the guideway, have none.
+ */
+export function computeTramWireRuns(
+  roadTiles: readonly FurnitureRoadTile[],
+): { x: number; z: number }[][] {
+  const tileSet = buildTileSet(roadTiles);
+  const isTram = (x: number, z: number): boolean => {
+    const tile = tileSet.get(tileKey(x, z));
+    return !!tile && !tile.ring && runsTramsInTraffic(tile);
+  };
+  const out: { x: number; z: number }[][] = [];
+  for (const tile of roadTiles) {
+    if (tile.ring || !runsTramsInTraffic(tile)) continue;
+    const lanes = tramLaneOffsets(tile);
+    if (lanes.length === 0) continue;
+    const { x, z } = tile;
+    const open = presentSides(tileSet, x, z);
+    const arms = (['n', 'e', 's', 'w'] as const).filter((side) => open[side]);
+    const cx = tileToWorld(x);
+    const cz = tileToWorld(z);
+    const turn = isTurnTile(tileSet, x, z);
+    if (turn || arms.length >= 3) {
+      const tramArm = (side: TrackSide): boolean =>
+        isTram(
+          x + (side === 'e' ? 1 : side === 'w' ? -1 : 0),
+          z + (side === 's' ? 1 : side === 'n' ? -1 : 0),
+        );
+      const linked = turn ? arms : arms.filter(tramArm);
+      if (linked.length >= 2) {
+        for (const path of trackPaths(allMovements(linked), lanes)) {
+          out.push(path.samples.map((s) => ({ x: cx + s.x, z: cz + s.z })));
+        }
+        continue;
+      }
+      if (linked.length === 0) continue;
+      arms.length = 0;
+      arms.push(linked[0]!);
+    }
+    // A straight run: the whole tile between two opposite arms, half of it toward a lone one.
+    const vertical = arms.length === 0 ? false : arms.includes('n') || arms.includes('s');
+    const lo = arms.length === 1 && (arms[0] === 'e' || arms[0] === 's') ? 0 : -TILE_METERS / 2;
+    const hi = arms.length === 1 && (arms[0] === 'n' || arms[0] === 'w') ? 0 : TILE_METERS / 2;
+    const steps = Math.ceil((hi - lo) / TRAM_WIRE_STEP_M);
+    for (const lane of lanes) {
       out.push(
-        runsAlongX
-          ? { x: p.x, z: p.z, reachX: 0, reachZ: -side }
-          : { x: p.x, z: p.z, reachX: -side, reachZ: 0 },
+        Array.from({ length: steps + 1 }, (_, i) => {
+          const along = lo + ((hi - lo) * i) / steps;
+          return vertical ? { x: cx + lane, z: cz + along } : { x: cx + along, z: cz + lane };
+        }),
       );
     }
   }
@@ -2223,6 +2388,37 @@ export function signalYaw(axis: FurnitureAxis, side: FurnitureSide): number {
   return side > 0 ? Math.PI / 2 : -Math.PI / 2;
 }
 
+/**
+ * The solid parts of a traffic signal as polylines in world metres, `groundY`
+ * being the ground its mast stands on: the mast, the arm out over the road and
+ * the head that hangs from the arm's end.
+ */
+export function signalPolylines(
+  p: SignPlacement,
+  groundY: number,
+): (readonly [number, number, number])[][] {
+  const at = signWorldTransform(p);
+  const armDx = Math.cos(at.yaw);
+  const armDz = -Math.sin(at.yaw);
+  const armY = groundY + SIGNAL_MAST_HEIGHT - SIGNAL_ARM_THICKNESS;
+  const tipX = at.x + armDx * SIGNAL_ARM_LENGTH;
+  const tipZ = at.z + armDz * SIGNAL_ARM_LENGTH;
+  return [
+    [
+      [at.x, groundY, at.z],
+      [at.x, groundY + SIGNAL_MAST_HEIGHT, at.z],
+    ],
+    [
+      [at.x, armY, at.z],
+      [tipX, armY, tipZ],
+    ],
+    [
+      [tipX, armY, tipZ],
+      [tipX, armY - SIGNAL_HEAD_HEIGHT, tipZ],
+    ],
+  ];
+}
+
 const _matrix = new THREE.Matrix4();
 const _position = new THREE.Vector3();
 const _quat = new THREE.Quaternion();
@@ -2343,6 +2539,8 @@ export class RoadFurnitureRenderer {
   private readonly tramPoleLayer: KeptInstances;
   private readonly tramArmLayer: KeptInstances;
   private tramPoles: readonly TramPoleStand[] = [];
+  /** The tram's wires, contact and span, as one merged mesh; null while none hangs. */
+  private tramWireMesh: THREE.Mesh | null = null;
 
   private manholes: ManholePlacement[] = [];
   private boxes: BoxPlacement[] = [];
@@ -2514,21 +2712,56 @@ export class RoadFurnitureRenderer {
    * furniture because they keep off the driveways, which change with the
    * buildings rather than the roads, and the street lamps step aside for them.
    */
-  setTramPoles(poles: readonly TramPoleStand[]): void {
+  setTramPoles(
+    poles: readonly TramPoleStand[],
+    wireRuns: readonly (readonly { x: number; z: number }[])[] = [],
+  ): void {
     this.tramPoles = poles;
+    this.setTramWire(poles, wireRuns);
+    const brackets = poles.filter((p) => p.bracket);
     const pole = this.tramPoleLayer.fit(poles.length);
-    const arm = this.tramArmLayer.fit(poles.length);
-    if (!pole || !arm) return;
-    poles.forEach((p, i) => {
-      _position.set(p.x, this.heightAt(p.x, p.z), p.z);
-      _matrix.compose(_position, _identityQuat, _scale);
-      pole.setMatrixAt(i, _matrix);
-      _quat.setFromAxisAngle(_yAxis, Math.atan2(-p.reachZ, p.reachX));
-      _matrix.compose(_position, _quat, _scale);
-      arm.setMatrixAt(i, _matrix);
-    });
-    pole.instanceMatrix.needsUpdate = true;
-    arm.instanceMatrix.needsUpdate = true;
+    const arm = this.tramArmLayer.fit(brackets.length);
+    if (pole) {
+      poles.forEach((p, i) => {
+        _position.set(p.x, this.heightAt(p.x, p.z), p.z);
+        _matrix.compose(_position, _identityQuat, _scale);
+        pole.setMatrixAt(i, _matrix);
+      });
+      pole.instanceMatrix.needsUpdate = true;
+    }
+    if (arm) {
+      brackets.forEach((p, i) => {
+        _position.set(p.x, this.heightAt(p.x, p.z), p.z);
+        _quat.setFromAxisAngle(_yAxis, Math.atan2(-p.reachZ, p.reachX));
+        _matrix.compose(_position, _quat, _scale);
+        arm.setMatrixAt(i, _matrix);
+      });
+      arm.instanceMatrix.needsUpdate = true;
+    }
+  }
+
+  /** Hangs the contact wire over each track and a span wire, with its droppers, between each pair of kerb poles. */
+  private setTramWire(
+    poles: readonly TramPoleStand[],
+    runs: readonly (readonly { x: number; z: number }[])[],
+  ): void {
+    const segments: WireSegment[] = [];
+    for (const run of runs) segments.push(...contactWireSegments(run, this.heightAt));
+    for (const p of poles) {
+      if (!p.spanTo) continue;
+      segments.push(spanWireSegment(p, p.spanTo, this.heightAt));
+      for (const h of p.hangs) segments.push(dropperSegment(h, this.heightAt(h.x, h.z)));
+    }
+    if (this.tramWireMesh) {
+      this.scene.remove(this.tramWireMesh);
+      this.tramWireMesh.geometry.dispose();
+      this.tramWireMesh = null;
+    }
+    if (segments.length === 0) return;
+    const mesh = new THREE.Mesh(buildWireGeometry(segments), this.tramPoleMaterial);
+    mesh.userData.furnitureKind = 'tramWire';
+    this.scene.add(mesh);
+    this.tramWireMesh = mesh;
   }
 
   /** The tram poles standing, from the last setTramPoles(). */
@@ -2707,6 +2940,7 @@ export class RoadFurnitureRenderer {
     this.lampMesh = null;
     this.signalHeads = [];
     this.tramPoles = [];
+    this.setTramWire([], []);
     this.tramPoleGeometry.dispose();
     this.tramArmGeometry.dispose();
     this.tramPoleMaterial.dispose();

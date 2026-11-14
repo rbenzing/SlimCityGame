@@ -22,6 +22,11 @@ active:
   dividing it — a six-lane motorway, an undivided arterial — previews as one
   unbroken band across the edge its halves share, and only a divided road
   shows the median's gap between them.
+  The ghost shows the road's parts too, read from the cross-section the road
+  is built from (`sectionBands` in `src/shared/roadprofile.ts`): carriageways
+  solid, footways and a median or reservation paler in the same tint, so an
+  avenue previews as two carriageways about its median. Lines, arrows and
+  furniture are not previewed; a turn tile is one solid band.
   The tile frame is still drawn around the tiles themselves, so which tiles
   are claimed and how much of them the road covers are both readable at once.
 - **A road ghost stands at the road's own deck**: a raised road, a bridge or

@@ -34,9 +34,10 @@ panes, on the stations' material.
   design asks is what eight 22.4 m roads behind a 45° ladder leave of a
   60 m lot), fans into eight
   **stabling roads** at 3.5 m centres, 22.4 m long, each a pair of rails
-  on the road kit's rail geometry over a concrete apron, under **catenary
-  poles** 6 m tall every 10 m along the roads' centre line with a crossarm
-  (the wire is not drawn: the model draws no wires anywhere); a tram set
+  on the road kit's rail geometry over a concrete apron, under a contact
+  wire over each road, hung from two span wires between four **poles** at
+  the yard's sides, 6.4 m tall, each at least 0.38 m clear of a tram's side
+  (15 in, old UK practice); no pole stands among the trams; a tram set
   (two of the transit renderer's 11 m cars) on each road the fleet has at
   home. The **shop** beside the roads, a hall over one **maintenance road**
   and one **wash road** 4.9 m wide and 28.4 m long with doors at 4.6 m

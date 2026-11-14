@@ -21,7 +21,8 @@
  * Cheap instanced geometry, not per-pixel lighting.
  */
 import * as THREE from 'three';
-import { RoadTier } from '../shared/types';
+import { RoadFlow, RoadTier } from '../shared/types';
+import { RING_OUTER_RADIUS_M, ringCentre, type RoundaboutBlock } from '../shared/roundabout';
 import {
   LAMP_SPACING_TILES,
   LAMP_SPACING_WIDE_TILES,
@@ -34,11 +35,12 @@ import {
   carriagewayShiftOf,
   carriagewayWidth,
   centralReserveOffsetOf,
+  FOOTWAY_WIDTH_M,
   hasKerbs,
   postedKmhOf,
   presetProfileForTier,
 } from '../shared/roadprofile';
-import type { RoadProfile } from '../shared/types';
+import type { RoadProfile, TilePoint } from '../shared/types';
 import { MIN_INSTANCE_CAPACITY, setInstanceCount } from './groundquad';
 import {
   buildTileSet,
@@ -573,9 +575,74 @@ export interface LampStand {
   reachZ: number;
   /** Pole height, metres; absent reads as the lowest pole. */
   height?: number;
+  /**
+   * The luminaire hangs on a bracket from a power pole standing at (x, z), so
+   * it has no post of its own: `height` is where its bracket mounts on that pole.
+   */
+  bracket?: true;
 }
 
+/** The lamps of a street after the ones a wire passes close to are hung on the power poles. */
+export interface LampSettling {
+  /** Lamps on a post of their own. */
+  posts: LampStand[];
+  /** Luminaires on a power pole's bracket. */
+  carried: LampStand[];
+}
+
+/** Sees to the lamps a wire passes close to: given every lamp on a post, says which stay and which go on a pole. */
+export type LampSettle = (stands: LampStand[]) => LampSettling;
+
 const heightOf = (stand: LampStand): number => stand.height ?? POLE_HEIGHT;
+
+/** A luminaire and its bracket hang at least this far under the lowest conductor on the pole that carries them, metres. */
+export const BRACKET_BELOW_WIRE_M = 0.76;
+
+/** A point in world metres, x, y, z. */
+export type Point3 = readonly [number, number, number];
+
+/**
+ * The tallest mounting height whose bracket, at its highest, stays
+ * BRACKET_BELOW_WIRE_M under a conductor `wireM` over the ground: the arm rises
+ * ARM_RISE and grows with the mounting height by `lampScaleOf`.
+ */
+export function bracketHeightUnder(wireM: number): number {
+  const limit = wireM - BRACKET_BELOW_WIRE_M;
+  return (limit + ARM_MOUNT_BELOW_TOP_M - ARM_RISE * 0.5) / (1 + (ARM_RISE * 0.5) / POLE_HEIGHT);
+}
+
+/**
+ * The solid parts of a lamp as polylines in world metres, `groundY` being the
+ * ground its post stands on: the post, the arm that rises and reaches over the
+ * road, and the housing and lens that hang from its end. A lamp on a bracket has
+ * no post.
+ */
+export function lampPolylines(stand: LampStand, groundY: number): Point3[][] {
+  const height = heightOf(stand);
+  const scale = lampScaleOf(height);
+  const mountY = groundY + height - ARM_MOUNT_BELOW_TOP_M;
+  const attachY = mountY - HOUSING_DROP * scale;
+  const { x: hx, z: hz } = housingWorldXZ(stand);
+  const neck = ARM_NECK_LENGTH * scale;
+  const parts: Point3[][] = [
+    [
+      [stand.x, mountY, stand.z],
+      [stand.x + stand.reachX * neck, mountY + ARM_RISE * scale, stand.z + stand.reachZ * neck],
+      [hx, attachY, hz],
+    ],
+    [
+      [hx, attachY, hz],
+      [hx, attachY - (LENS_DROP + LENS_RADIUS) * scale, hz],
+    ],
+  ];
+  if (!stand.bracket) {
+    parts.unshift([
+      [stand.x, groundY, stand.z],
+      [stand.x, groundY + height, stand.z],
+    ]);
+  }
+  return parts;
+}
 
 /** The stand a grid lamp placement describes: curbside, offset along its axis. */
 export function standOf(placement: LampPlacement): LampStand {
@@ -597,6 +664,77 @@ export function standsOf(placement: LampPlacement): LampStand[] {
   if (!placement.twin) return [first];
   // `0 -` rather than a negation, which would turn a zero component into -0.
   return [first, { ...first, reachX: 0 - first.reachX, reachZ: 0 - first.reachZ }];
+}
+
+/** A compact roundabout as its lamps are placed: where its roads come in, and whether it has power. */
+export interface RingLampSite {
+  block: RoundaboutBlock;
+  /** Each road into the ring: the corner it joins and the side of the block it meets. */
+  arms: readonly { from: TilePoint; side: RoadFlow }[];
+  /** The cross-section of the roads, which sets the pole's height, spacing and distance behind the kerb. */
+  profile: RoadProfile;
+  powered: boolean;
+}
+
+/** The roads' own width beside the pole's place, kept clear either side of a road's kerb line. */
+const RING_POLE_ARM_CLEAR_M = 1;
+
+/**
+ * The lamps of one compact roundabout: on the outside of the ring, behind its
+ * footway the way a street's poles stand behind its kerb, in the arcs between
+ * the roads and never on the island. Each arc takes as many poles as the
+ * street's spacing asks for, at least one, spread evenly along it, each
+ * reaching in over the ring. An unpowered ring has none.
+ */
+export function ringLampStands(site: RingLampSite): LampStand[] {
+  if (!site.powered || site.arms.length === 0) return [];
+  const rule = lampRuleOf(site.profile);
+  const half = carriagewayHalfWidthOf(site.profile);
+  const poleRadius = RING_OUTER_RADIUS_M + lampLateralOffset(undefined, site.profile) - half;
+  const centre = ringCentre(site.block);
+  const lineOffset = TILE_METERS / 2;
+  const along = Math.sqrt(RING_OUTER_RADIUS_M ** 2 - lineOffset ** 2);
+  // Where each road's centre line meets the ring, as an angle about its centre.
+  const angles = site.arms
+    .map(({ from, side }) => {
+      const across = (from.x === site.block.x ? -1 : 1) * lineOffset;
+      const acrossZ = (from.z === site.block.z ? -1 : 1) * lineOffset;
+      switch (side) {
+        case RoadFlow.North:
+          return Math.atan2(-along, across);
+        case RoadFlow.South:
+          return Math.atan2(along, across);
+        case RoadFlow.West:
+          return Math.atan2(acrossZ, -along);
+        default:
+          return Math.atan2(acrossZ, along);
+      }
+    })
+    .sort((a, b) => a - b);
+  const clear = (half + FOOTWAY_WIDTH_M + RING_POLE_ARM_CLEAR_M) / poleRadius;
+  const spacing = rule.spacingTiles * TILE_METERS;
+  const stands: LampStand[] = [];
+  angles.forEach((from, i) => {
+    const to =
+      (angles[(i + 1) % angles.length] ?? from) + (i + 1 === angles.length ? 2 * Math.PI : 0);
+    const lo = from + clear;
+    const hi = to - clear;
+    if (hi <= lo) return;
+    const count = Math.max(1, Math.round(((hi - lo) * poleRadius) / spacing));
+    for (let k = 0; k < count; k++) {
+      const a = lo + ((hi - lo) * (k + 0.5)) / count;
+      const ux = Math.cos(a);
+      const uz = Math.sin(a);
+      stands.push({
+        x: centre.x + poleRadius * ux,
+        z: centre.z + poleRadius * uz,
+        reachX: -ux,
+        reachZ: -uz,
+        height: rule.height,
+      });
+    }
+  });
+  return stands;
 }
 
 /** World XZ of the luminaire — the arm end, out over the outer lane. */
@@ -771,7 +909,9 @@ export class LampRenderer {
   private lensMesh: THREE.InstancedMesh | null = null;
   /** Not instanced: each disc carries its own terrain-sampled vertex heights. */
   private poolMesh: THREE.Mesh | null = null;
+  /** The lamps on a post of their own come first, the luminaires on a power pole's bracket after. */
   private stands: LampStand[] = [];
+  private postCount = 0;
   /** Instances each of the four layers can hold; only ever doubles. */
   private capacity = 0;
 
@@ -792,11 +932,15 @@ export class LampRenderer {
     poles: readonly TramPoleStand[] = [],
     stops: readonly LampStopSite[] = [],
     fixed: readonly Spot[] = [],
+    settle?: LampSettle,
   ): void {
-    this.stands = [
+    const placed = [
       ...computeLampPlacements(roadTiles, drivewayTiles, poles, stops, fixed).flatMap(standsOf),
       ...freeStands,
     ];
+    const settled = settle ? settle(placed) : { posts: placed, carried: [] };
+    this.stands = [...settled.posts, ...settled.carried];
+    this.postCount = settled.posts.length;
 
     const count = this.stands.length;
     // The meshes outlive a rebuild: a disposed mesh takes its material's
@@ -836,7 +980,8 @@ export class LampRenderer {
     this.poolMesh.visible = count > 0;
 
     for (const mesh of [poleMesh, armMesh, housingMesh, lensMesh]) {
-      setInstanceCount(mesh, count);
+      // A luminaire on a power pole's bracket has no post, so the posts are fewer.
+      setInstanceCount(mesh, mesh === poleMesh ? this.postCount : count);
       // The lamps move between rebuilds: a bound from an earlier set would cull them.
       mesh.boundingSphere = null;
     }
@@ -860,8 +1005,13 @@ export class LampRenderer {
     this.poolMaterial.opacity = f * POOL_MAX_OPACITY;
   }
 
-  /** Where each lamp of the last rebuild() stands, world metres. */
+  /** Where each lamp post of the last rebuild() stands, world metres; a luminaire on a power pole holds no place of its own. */
   standSpots(): readonly Spot[] {
+    return this.stands.slice(0, this.postCount);
+  }
+
+  /** The lamps of the last rebuild(), posts first. */
+  lampStands(): readonly LampStand[] {
     return this.stands;
   }
 
@@ -1014,10 +1164,12 @@ export class LampRenderer {
     // by positive scales so no instance is mirrored.
     const height = heightOf(stand);
     const scale = lampScaleOf(height);
-    _scale.set(scale, height / POLE_HEIGHT, scale);
-    _position.set(poleX, groundY + height / 2, poleZ);
-    _matrix.compose(_position, _identityQuat, _scale);
-    this.poleMesh!.setMatrixAt(slot, _matrix);
+    if (!stand.bracket) {
+      _scale.set(scale, height / POLE_HEIGHT, scale);
+      _position.set(poleX, groundY + height / 2, poleZ);
+      _matrix.compose(_position, _identityQuat, _scale);
+      this.poleMesh!.setMatrixAt(slot, _matrix);
+    }
     _scale.setScalar(scale);
 
     // Arm mounts at the pole-top attach point; the bracket geometry itself

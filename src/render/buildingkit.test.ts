@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import catalogData from '../data/catalog.json';
 import { footprintForRotation } from '../shared/footprint';
 import { DRIVE_THROUGH_STACK_M } from '../shared/lotlayout';
+import { garageFor, garageTopM } from '../shared/garage';
 import { isApartmentEntry, partsFor, type BuildingPart } from './archetypes';
 import {
   alongPath,
@@ -75,6 +76,7 @@ import {
   DOCK_SCREEN_M,
   FUEL_FASCIA_HEIGHT_M,
   LOBBY_HEIGHT_M,
+  LOBBY_WIDTH_M,
   MANSARD_BAND_M,
   MENU_BOARD_HEIGHT_M,
   PARAPET_STEP_M,
@@ -682,7 +684,7 @@ describe('the second pass: what tells the kinds apart at 40 m', () => {
     expect(SPANDREL_BAND_M).toBe(1);
     expect(CORNICE_HEIGHT_M).toBe(0.5);
     expect(TOWER_OVER_PARAPET_M).toBe(FLOOR_HEIGHT_METERS);
-    expect(LOBBY_HEIGHT_M).toBe(2 * FLOOR_HEIGHT_METERS);
+    expect(LOBBY_HEIGHT_M).toBe(4.5);
   });
 
   it('stands every identifying part on a south-fronting example of each kind, given a lot with room for its lane and drive', () => {
@@ -1057,13 +1059,15 @@ describe('a filling station', () => {
 });
 
 describe('an office and a hotel', () => {
-  it('has a lit lobby portal 4 m wide and two storeys tall, projecting 1.5 m', () => {
+  it('has a lit lobby portal 4 m wide and 4.5 m tall, its glass 1.4 m out and its canopy trim reaching 1.5 m', () => {
     for (const id of ['com-high-1', 'com-office-2', 'com-high-2']) {
       const plan = southern(byId(id));
       const [portal] = only(plan, 'lobbyPortal');
-      expect(portal!.size).toEqual([4, 2 * FLOOR_HEIGHT_METERS, 1.5]);
+      expect(portal!.size).toEqual([4, 4.5, 1.4]);
       expect(bottomOf(portal!)).toBeCloseTo(0, 9);
       expect(placementBounds(portal!).z0).toBeCloseTo(plan.baseBox.d / 2, 9);
+      const [canopy] = only(plan, 'lobbyCanopy');
+      expect(placementBounds(canopy!).z1).toBeCloseTo(plan.baseBox.d / 2 + 1.5, 9);
     }
     expect(LIT_PARTS.has('lobbyPortal')).toBe(true);
   });
@@ -1750,6 +1754,7 @@ const lotOf = (half: number, over: Partial<KitLot> = {}): KitLot => ({
   hard: [],
   lane: null,
   taken: [],
+  farm: null,
   ...over,
 });
 
@@ -2352,9 +2357,22 @@ describe('the apartment kit: where every part stands', () => {
     const podium = podiumOf(e)!;
     expect(podium.h).toBe(4.6);
     const parts = placed(e);
-    const { count } = windowBays(e, podium.w);
+    const { count, width } = windowBays(e, podium.w);
     const piers = ofKind(parts, 'brickPier');
-    expect(piers).toHaveLength(count + 1);
+    // The entrance takes the middle of the face: the piers it would stand on are left out.
+    const entrance = ofKind(parts, 'lobbyPortal')[0]!;
+    expect(piers.length).toBeGreaterThanOrEqual(2);
+    expect(piers.length).toBeLessThanOrEqual(count + 1);
+    for (const p of piers) expect(overlaps(p, entrance)).toBe(false);
+    expect(
+      Array.from({ length: count + 1 }, (_, i) =>
+        i === 0
+          ? -podium.w / 2 + BRICK_PIER_M / 2
+          : i === count
+            ? podium.w / 2 - BRICK_PIER_M / 2
+            : -podium.w / 2 + i * width,
+      ).filter((at) => Math.abs(at) >= LOBBY_WIDTH_M / 2 + BRICK_PIER_M / 2 - 1e-9),
+    ).toHaveLength(piers.length);
     for (const p of piers) {
       expect(p.size[0]).toBe(BRICK_PIER_M);
       expect(p.size[1]).toBe(podium.h);
@@ -2366,8 +2384,9 @@ describe('the apartment kit: where every part stands', () => {
     );
     const glazing = ofKind(parts, 'storefrontBand');
     const bulkheads = ofKind(parts, 'bulkhead');
-    expect(glazing).toHaveLength(count);
-    expect(bulkheads).toHaveLength(count);
+    expect(glazing.length).toBeGreaterThanOrEqual(count - 2);
+    expect(bulkheads).toHaveLength(glazing.length);
+    for (const g of [...glazing, ...bulkheads]) expect(overlaps(g, entrance)).toBe(false);
     for (const g of glazing) {
       expect(g.size[1]).toBe(STOREFRONT_GLAZING_M);
       expect(bottom(g)).toBeCloseTo(BULKHEAD_HEIGHT_M, 9);
@@ -2380,6 +2399,7 @@ describe('the apartment kit: where every part stands', () => {
     const e = aptById('res-high-2');
     const parts = placed(e);
     const body = bodyOf(e);
+    const deckTop = garageTopM(garageFor(e)!);
     const { count, width } = windowBays(e, body.w);
     const boxes = ofKind(parts, 'boxBay');
     expect(boxes).toHaveLength(2 * Math.ceil(count / 2));
@@ -2387,7 +2407,8 @@ describe('the apartment kit: where every part stands', () => {
     for (const b of boxes) {
       expect(b.size[0]).toBeCloseTo(width - 1, 9);
       expect(Math.min(b.size[0], b.size[2])).toBe(BOX_BAY_PROUD_M);
-      expect(bottom(b)).toBeCloseTo(4.6, 9);
+      // The rear face's bays begin above the garage's top, the street face's on the podium.
+      expect(bottom(b)).toBeCloseTo(b.offset[2] > 0 ? 4.6 : Math.max(4.6, deckTop), 9);
       expect(b.offset[1] + b.size[1] / 2).toBeCloseTo(e.height - BLOCK_PARAPET_M, 9);
       expect(fields).toContainEqual(b.color);
     }
@@ -2403,7 +2424,9 @@ describe('the apartment kit: where every part stands', () => {
     const upper = Array.from({ length: rows - 1 }, (_, i) => (i + 1) * pitch).filter(
       (y) => y >= 4.6,
     );
-    expect(slabs).toHaveLength(2 * Math.floor(count / 2) * upper.length);
+    // The rear face keeps only the floors above the garage's top.
+    const rearUpper = upper.filter((y) => y >= deckTop);
+    expect(slabs).toHaveLength(Math.floor(count / 2) * (upper.length + rearUpper.length));
     for (const s of slabs) {
       expect(s.size[1]).toBe(BLOCK_BALCONY_SLAB_M);
       expect(bottom(s)).toBeGreaterThanOrEqual(4.6);
@@ -2491,6 +2514,7 @@ describe('the apartment kit: where every part stands', () => {
     const e = aptById('res-tower-1');
     const parts = placed(e);
     const body = bodyOf(e);
+    const deckTop = garageTopM(garageFor(e)!);
     const podium = podiumOf(e)!;
     const { rows, pitch } = storeysOf(e, body);
     // 38.4 m is eleven floors of about 3.5 m (3.6 m rounded into the height); the podium is two of them.
@@ -2504,7 +2528,9 @@ describe('the apartment kit: where every part stands', () => {
     );
     expect(upper).toHaveLength(9);
     const slabs = ofKind(parts, 'balconySlab');
-    expect(slabs).toHaveLength(2 * upper.length);
+    // The rear face keeps only the floors above the garage's top.
+    const rearUpper = upper.filter((y) => y >= deckTop);
+    expect(slabs).toHaveLength(upper.length + rearUpper.length);
     expect(slabs.map((s) => Math.sign(s.offset[2])).filter((s) => s > 0)).toHaveLength(
       upper.length,
     );

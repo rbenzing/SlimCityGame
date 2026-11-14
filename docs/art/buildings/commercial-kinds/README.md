@@ -51,4 +51,4 @@ colours.
 
 | Section | Size |
 | --- | --- |
-| [The storefront kit's parts](the-storefront-kits-parts.md) | 13,006 B |
+| [The storefront kit's parts](the-storefront-kits-parts.md) | 13,225 B |

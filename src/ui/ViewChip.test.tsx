@@ -88,7 +88,7 @@ describe('ViewChip', () => {
       useCityStore.getState().setOverlay(FieldId.Noise);
       render(<ViewChip />);
       const bar = legend().querySelector<HTMLElement>('[style*="linear-gradient"]')!;
-      const [, [r, g, b]] = LENS_RAMP_STOPS[0]!;
+      const [, [r, g, b]] = LENS_RAMP_STOPS.worse[0]!;
       const first = `rgb(${Math.round(r * 255)}, ${Math.round(g * 255)}, ${Math.round(b * 255)})`;
       expect(bar.style.backgroundImage).toContain(first);
     });

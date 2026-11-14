@@ -294,4 +294,17 @@ Back to [the index](../GROUND-TRUTHS.md).
   `src/shared/garage.ts`, `src/render/garagekit.ts`,
   `denseLotRequirement` in `src/shared/parkingcode.ts`,
   `footprintsOf` in `src/sim/growth.ts`
+- [R-services-041] A suburban commercial lot keeps a clear walk of 36 in between its stall
+  heads and the shopfront wall, and no stall heads onto the door, whose walk
+  reaches the footway or an aisle (2010 ADA Standards 403.5.1 and 502.7). An
+  18 ft stall already holds its car, so nothing more is added for a bumper.
+  — [parking-to-code.md](../specs/parking-to-code.md); `MIN_FRONT_WALK_M` in
+  `src/shared/parkingcode.ts`, `layoutLot` in `src/shared/lotlayout.ts`
+- [R-services-042] A street's power wire keeps 1.83 m, in any direction, from every lamp
+  post, lamp head, signal mast and signal arm that is not on its own poles
+  (California GO 95, Rule 37, Table 1, Case 10). A lamp on the pole line's
+  kerb that would stand nearer hangs on the nearest power pole, its bracket
+  at least 0.76 m under the lowest wire, and no street span passes 45.72 m.
+  — [power-distribution.md](../specs/power-distribution.md);
+  `src/render/wireclearance.ts`
 

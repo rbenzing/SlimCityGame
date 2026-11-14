@@ -10,7 +10,14 @@
  */
 import { chromium } from 'playwright';
 import { mkdirSync } from 'node:fs';
-import { CAMERA_MIN_DISTANCE, cleanShot, closeUp, logAlerts, tileCamera, unlimitedMoneyOption } from './shotcam.mjs';
+import {
+  CAMERA_MIN_DISTANCE,
+  cleanShot,
+  closeUp,
+  logAlerts,
+  tileCamera,
+  unlimitedMoneyOption,
+} from './shotcam.mjs';
 
 const base = process.argv[2] ?? 'http://localhost:5173';
 const url = base + (base.includes('?') ? '&' : '?') + 'nobloom';
@@ -155,7 +162,8 @@ for (const [name, x] of [
   const a = await approach(X + x, Z + 12);
   console.log(`${name} half:`, JSON.stringify({ lanes: a?.lanes, width: a?.width }));
   if (!a) continue;
-  if (a.lanes !== 3) failures.push(`${name} half carries ${a.lanes} lanes, not the three it should`);
+  if (a.lanes !== 3)
+    failures.push(`${name} half carries ${a.lanes} lanes, not the three it should`);
 }
 
 // --- A street crossing the corridor -----------------------------------------
@@ -243,8 +251,112 @@ for (const [name, x, side] of [
     );
 }
 
+// --- A T onto a corridor nothing divides -------------------------------------
+// Six lanes with no median or barrier at the middle are one carriageway the
+// halves share, so a street meeting either half is a full junction on both and
+// the crossing over the road runs across the two as one.
+const UNDIVIDED = 41;
+const T_LEFT_X = 14;
+const T_RIGHT_X = 15;
+const T_RUN = [14, 24];
+const T_Z = 19;
+await cmd('define undivided', [
+  {
+    kind: 'defineRoadProfile',
+    id: UNDIVIDED,
+    profile: {
+      class: 'arterial',
+      pieces: [
+        { kind: 'sidewalk', width: 1.9 },
+        lane('back'),
+        lane('back'),
+        lane('back'),
+        lane('fwd'),
+        lane('fwd'),
+        lane('fwd'),
+        { kind: 'sidewalk', width: 1.9 },
+      ],
+    },
+  },
+]);
+for (const [x, bits] of [
+  [T_LEFT_X, SOUTH | CORRIDOR],
+  [T_RIGHT_X, SOUTH | CORRIDOR | CORRIDOR_RIGHT],
+]) {
+  await cmd('undivided half', [
+    {
+      kind: 'buildRoad',
+      tier: 2,
+      tiles: col(x, T_RUN[0], T_RUN[1]),
+      profile: UNDIVIDED,
+      flows: col(x, T_RUN[0], T_RUN[1]).map(() => bits),
+    },
+  ]);
+}
+await cmd('T street', [
+  { kind: 'buildRoad', tier: TWO_LANE, tiles: row(T_Z, T_RIGHT_X + 1, T_RIGHT_X + 9) },
+]);
+await page.waitForTimeout(2000);
+await cmd('T signal', [
+  { kind: 'setJunctionControl', x: X + T_LEFT_X, z: Z + T_Z, control: 'signal' },
+  { kind: 'setJunctionControl', x: X + T_RIGHT_X, z: Z + T_Z, control: 'signal' },
+]);
+await page.waitForTimeout(2500);
+// The crossing over the corridor's northern arm is one intersection across both
+// halves: one run of bars with an even rhythm over the edge they share, and no
+// stop line running on over it. Read the paint off the mesh in a 12 m window
+// about that edge, from just before the junction row to a little way into it.
+{
+  const COLS = 48;
+  const SEAM_COL = COLS / 2;
+  const wx = (X + T_RIGHT_X) * 20 - 6;
+  const wz = (Z + T_Z) * 20 - 4;
+  const cells = await call(
+    ([a, b, n]) => window.__slimcity.readSurface(a, b, a + 12, b + 12, n),
+    [wx, wz, COLS],
+  );
+  const isWhite = (c) => typeof c === 'string' && c.startsWith('0.95');
+  const rows = Array.from({ length: COLS }, (_, r) => {
+    const runs = [];
+    let start = -1;
+    for (let c = 0; c <= COLS; c++) {
+      const white = c < COLS && isWhite(cells[r * COLS + c]);
+      if (white && start < 0) start = c;
+      if (!white && start >= 0) {
+        runs.push({ start, len: c - start });
+        start = -1;
+      }
+    }
+    return runs;
+  });
+  const crossesSeam = (run) => run.start < SEAM_COL && run.start + run.len > SEAM_COL;
+  if (rows.some((runs) => runs.some((run) => run.len >= 16 && crossesSeam(run))))
+    failures.push('a stop line runs on over the edge the two halves of the corridor share');
+  const bars = rows.find((runs) => runs.length >= 8);
+  if (!bars) failures.push('no crosswalk was painted over the undivided corridor');
+  else {
+    const pitches = bars.slice(1).map((run, i) => run.start - bars[i].start);
+    // Bars sit on a pitch the cells cannot quite resolve, so it wobbles by one cell.
+    if (Math.max(...pitches) - Math.min(...pitches) > 1)
+      failures.push(`the crosswalk's bars lose their rhythm across the corridor: ${pitches}`);
+    if (!bars.some((run) => run.start < SEAM_COL) || !bars.some((run) => run.start >= SEAM_COL))
+      failures.push('the crosswalk does not run across both halves of the corridor');
+  }
+}
+const tJunctions = (await call(() => window.__slimcity.readJunctions())).filter(
+  (j) => j.z === Z + T_Z && (j.x === X + T_LEFT_X || j.x === X + T_RIGHT_X),
+);
+console.log('T junctions:', JSON.stringify(tJunctions));
+if (tJunctions.length !== 2)
+  failures.push(
+    `a T onto an undivided corridor made ${tJunctions.length} junctions, wanted one on each half`,
+  );
+
 await logAlerts(page, 'corridor');
 const shots = [
+  ['corridor-t-top', X + T_LEFT_X + 1, Z + T_Z, 60, 0, 1.45],
+  ['corridor-t-oblique', X + T_LEFT_X + 1, Z + T_Z, 50, 0.7, 0.6],
+  ['corridor-t-junction', X + T_LEFT_X + 1, Z + T_Z, 44, 0, 1.5],
   ['corridor-top', X + 10, Z + 12, 70, 0, 1.45],
   ['corridor-eye', X + 10, Z + 20, 34, 0, 0.3],
   ['corridor-oblique', X + 10, Z + 12, 60, 0.6, 0.6],

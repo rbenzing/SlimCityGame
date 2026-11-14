@@ -6,34 +6,23 @@ import { coverageColor, OverlayRenderer, rampColor, soilColor } from './overlays
 import { SoilGrade } from '../shared/soil';
 
 describe('rampColor', () => {
-  it('is blue-dominant at 0 and red-dominant at 255', () => {
-    const low = rampColor(0);
-    const high = rampColor(255);
-    expect(low[2]).toBeGreaterThan(low[0]);
-    expect(high[0]).toBeGreaterThan(high[2]);
+  it('paints the top of a worse lens red and the top of a better lens not red', () => {
+    const worse = rampColor(FieldId.Pollution, 255);
+    const better = rampColor(FieldId.Happiness, 255);
+    expect(worse[0]).toBeGreaterThan(0.6);
+    expect(worse[1]).toBeLessThan(0.35);
+    expect(better[0]).toBeLessThan(0.4);
+    expect(better[2]).toBeGreaterThan(better[0]);
   });
 
   it('clamps out-of-range inputs to the endpoints', () => {
-    expect(rampColor(-50)).toEqual(rampColor(0));
-    expect(rampColor(500)).toEqual(rampColor(255));
-  });
-
-  it('has non-decreasing red and non-increasing blue across the range (monotonic blue->green->yellow->red hue rotation)', () => {
-    const samples = [0, 20, 42, 64, 85, 110, 128, 150, 170, 200, 220, 255];
-    let prevR = -Infinity;
-    let prevB = Infinity;
-    for (const v of samples) {
-      const [r, , b] = rampColor(v);
-      expect(r).toBeGreaterThanOrEqual(prevR - 1e-9);
-      expect(b).toBeLessThanOrEqual(prevB + 1e-9);
-      prevR = r;
-      prevB = b;
-    }
+    expect(rampColor(FieldId.Noise, -50)).toEqual(rampColor(FieldId.Noise, 0));
+    expect(rampColor(FieldId.Noise, 500)).toEqual(rampColor(FieldId.Noise, 255));
   });
 
   it('stays within [0,1] for every channel across the range', () => {
     for (let v = 0; v <= 255; v += 5) {
-      const [r, g, b] = rampColor(v);
+      const [r, g, b] = rampColor(FieldId.Health, v);
       for (const c of [r, g, b]) {
         expect(c).toBeGreaterThanOrEqual(0);
         expect(c).toBeLessThanOrEqual(1);
@@ -89,9 +78,11 @@ describe('OverlayRenderer', () => {
     const red = (texel: number): number => getTextureData(scene)[texel * 4]!;
     const tileCentre = (x: number, z: number): [number, number] =>
       uvAt((x + 0.5) * TILE_METERS, (z + 0.5) * TILE_METERS);
-    expect(red(texelAt(tileCentre(hot.x, hot.z)))).toBe(Math.round(rampColor(255)[0] * 255));
+    expect(red(texelAt(tileCentre(hot.x, hot.z)))).toBe(
+      Math.round(rampColor(FieldId.Pollution, 255)[0] * 255),
+    );
     expect(red(texelAt(tileCentre(hot.x, MAP_SIZE - 1 - hot.z)))).toBe(
-      Math.round(rampColor(0)[0] * 255),
+      Math.round(rampColor(FieldId.Pollution, 0)[0] * 255),
     );
   });
 
@@ -152,7 +143,7 @@ describe('OverlayRenderer', () => {
     overlay.setFieldData(FieldId.Traffic, data);
 
     const bytes = getTextureData(scene);
-    const expected = rampColor(255);
+    const expected = rampColor(FieldId.Traffic, 255);
     expect(bytes[0]).toBe(Math.round(expected[0] * 255));
     expect(bytes[1]).toBe(Math.round(expected[1] * 255));
     expect(bytes[2]).toBe(Math.round(expected[2] * 255));
@@ -173,8 +164,8 @@ describe('OverlayRenderer', () => {
     overlay.setFieldData(FieldId.LandValue, data);
 
     const bytes = getTextureData(scene);
-    const low = rampColor(0);
-    const high = rampColor(255);
+    const low = rampColor(FieldId.LandValue, 0);
+    const high = rampColor(FieldId.LandValue, 255);
     expect(bytes[0]).toBe(Math.round(low[0] * 255));
     expect(bytes[4]).toBe(Math.round(high[0] * 255));
   });
@@ -396,7 +387,7 @@ describe('OverlayRenderer trash coverage lens (graded 0..255, SPEC §21)', () =>
       [1, 128],
       [2, 255],
     ] as const) {
-      const [r, g, b] = rampColor(value);
+      const [r, g, b] = rampColor('trash', value);
       const base = tile * 4;
       expect(bytes[base]).toBe(Math.round(r * 255));
       expect(bytes[base + 1]).toBe(Math.round(g * 255));

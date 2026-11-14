@@ -16,6 +16,7 @@
 - Hold on site at levels 2 and 3 the downtown share of the code; the kerb and the city carry the rest.
 - Draw a garage to be read as one: open tiers between spandrels, a street entry under a clearance bar, a ramp, a stair tower, cars on the roof tier.
 - Keep the shopfront or lobby on a podium's street face; the tiers show on the other faces.
+- Let no part of the body stand in the deck: a rear balcony or bay below the deck's top is not drawn, and the deck stands 0.1 m clear of the body. Lay a walk from the street door to the footway.
 - Count garage stalls by the lot table, and park one car a stall by the hour, as a lot does. `[R-services-032]`
 - Never test a standing building against this, and add no step to a town below the milestones these kinds unlock at.
 
