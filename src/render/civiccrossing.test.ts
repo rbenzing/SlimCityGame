@@ -10,12 +10,7 @@ import {
   type CivicSpanKind,
 } from '../shared/civicaccess';
 import { TILE_METERS } from '../shared/constants';
-import {
-  BuildingState,
-  RoadTier,
-  type BuildingCatalogEntry,
-  type BuildingInstance,
-} from '../shared/types';
+import { BuildingState, type BuildingCatalogEntry, type BuildingInstance } from '../shared/types';
 import {
   civicCrossingRects,
   civicCutTiles,
@@ -23,7 +18,7 @@ import {
   civicSiteFor,
   type KitSensors,
 } from './civiccrossing';
-import { sidewalkDepthMeters, type StreetLookup } from './frontage';
+import type { StreetLookup } from './frontage';
 import { LotRenderer } from './lots';
 import { lotPointToWorld } from './lotplan';
 import { CURB_CUT_Y_OFFSET } from './parked';
@@ -254,7 +249,7 @@ describe('the crossing on the lot edge', () => {
     expect(civicSiteFor(fire, at(), rowStreet(9), noSensors)).toBeNull();
   });
 
-  it('lays a fire apron across the verge and the footway at the width of its bays', () => {
+  it('lays a fire apron across the verge at the width of its bays and leaves the footway out', () => {
     // A 2x2 at (10, 10) with its street along row 12, just south of it.
     const site = civicSiteFor(fire, at(), rowStreet(12), noSensors)!;
     expect(site.edge.side).toBe('S');
@@ -262,18 +257,14 @@ describe('the crossing on the lot edge', () => {
     expect(apron.u0).toBeCloseTo(3, 6);
     expect(apron.u1 - apron.u0).toBeCloseTo(span('fire-station', 'apron').u1 - 3, 6);
 
-    const rects = civicCrossingRects([apron], VERGE_M, SIDEWALK_M);
-    const verge = rects.find((r) => r.layer === 'verge')!.rect;
-    const footway = rects.find((r) => r.layer === 'footway')!.rect;
-    // Verge from the footprint's edge, then the footway out to the kerb line.
+    // Only the verge, from the footprint's edge to the back of the footway: the footway runs through unbroken.
+    const rects = civicCrossingRects([apron], VERGE_M);
+    expect(rects).toHaveLength(1);
+    const verge = rects[0]!.rect;
     expect([verge.v0, verge.v1]).toEqual([-VERGE_M, 0]);
-    expect([footway.v0, footway.v1]).toEqual([-VERGE_M - SIDEWALK_M, -VERGE_M]);
     const south = (10 + 2) * TILE_METERS;
     expect(lotPointToWorld(site.frame, apron.u0, 0).z).toBeCloseTo(south, 6);
-    expect(lotPointToWorld(site.frame, apron.u0, footway.v0).z).toBeCloseTo(
-      south + VERGE_M + SIDEWALK_M,
-      6,
-    );
+    expect(lotPointToWorld(site.frame, apron.u0, verge.v0).z).toBeCloseTo(south + VERGE_M, 6);
     expect(lotPointToWorld(site.frame, apron.u0, 0).x).toBeCloseTo(10 * TILE_METERS + 3, 6);
   });
 
@@ -339,7 +330,7 @@ describe('the crossing on the lot edge', () => {
     expect(apron.u0).toBeCloseTo(TILE_METERS * 2 - local.u1, 6);
   });
 
-  it('crosses a framed parcel’s front, its verge none and its footway the free road’s', () => {
+  it('crosses a framed parcel’s front with no verge, so nothing is laid over the free road’s footway', () => {
     const frame = { x: 200, z: 300, heading: 0 };
     const framed = at({ frame });
     const lookup: StreetLookup = () => null;
@@ -348,11 +339,8 @@ describe('the crossing on the lot edge', () => {
     const apron = site.crossings.find((c) => c.kind === 'apron')!;
     const local = span('fire-station', 'apron');
     expect(apron.u0).toBeCloseTo(TILE_METERS * 2 - local.u1, 6);
-    const sidewalk = sidewalkDepthMeters(RoadTier.TwoLane);
-    const [rect] = civicCrossingRects([apron], 0, sidewalk);
-    // The footway lies outward of the parcel's front line, the kerb line sidewalk out.
-    expect(lotPointToWorld(site.frame, apron.u0, rect!.rect.v0).z).toBeCloseTo(300 - sidewalk, 6);
-    expect(lotPointToWorld(site.frame, apron.u0, rect!.rect.v1).z).toBeCloseTo(300, 6);
+    // The parcel's front line is the back of the footway: the drive ends there.
+    expect(civicCrossingRects([apron], 0)).toEqual([]);
   });
 
   it('puts a shore kit’s way in on its land side, opposite the water it faces', () => {
@@ -454,7 +442,7 @@ describe('the lot renderer’s crossing', () => {
     return scene;
   };
 
-  it('paves a fire apron from the footprint edge out to the kerb line, over the footway’s cut', () => {
+  it('paves a fire apron from the footprint edge out to the back of the footway, never over it', () => {
     const scene = add(at(), rowStreet(12));
     const e = extent(scene);
     const apron = span('fire-station', 'apron');
@@ -466,8 +454,8 @@ describe('the lot renderer’s crossing', () => {
       4,
     );
     expect(e.z0).toBeCloseTo(12 * TILE_METERS, 4);
-    expect(e.z1).toBeCloseTo(12 * TILE_METERS + VERGE_M + SIDEWALK_M, 4);
-    expect(e.top).toBeCloseTo(CURB_CUT_Y_OFFSET, 6);
+    expect(e.z1).toBeCloseTo(12 * TILE_METERS + VERGE_M, 4);
+    expect(e.top).toBeLessThan(CURB_CUT_Y_OFFSET);
   });
 
   it('lays nothing for a civic building with no street along its front', () => {

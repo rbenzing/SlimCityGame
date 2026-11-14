@@ -335,9 +335,10 @@ describe('the turn pocket an approach earns', () => {
     expect(pocketWarranted('signal', DEFAULT_ALLOWED, true, 'alley')).toBe(false);
     expect(pocketWarranted('stop', DEFAULT_ALLOWED, true, 'alley')).toBe(false);
     expect(pocketWarranted('allWayStop', DEFAULT_ALLOWED, true, 'alley')).toBe(false);
-    // A farm track is a poor road, not an access, and keeps the ordinary
-    // warrant — the distinction the whole service rule turns on.
-    expect(pocketWarranted('signal', DEFAULT_ALLOWED, true, 'dirt')).toBe(true);
+    // A farm track is a leg, not an access, but it is unpaved: it carries no
+    // lane lines to open a bay between and keeps its own width to the junction.
+    expect(pocketWarranted('signal', DEFAULT_ALLOWED, true, 'dirt')).toBe(false);
+    expect(pocketWarranted('stop', DEFAULT_ALLOWED, true, 'dirt')).toBe(false);
   });
 
   it('gives the pocket to the left turn alone, and leaves the rest as they were', () => {

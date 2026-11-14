@@ -17,6 +17,7 @@ import {
   restrictiveness,
   signalAspect,
   stricterOf,
+  takesControl,
   warrantedControl,
 } from './junction';
 import type { JunctionApproach } from './junction';
@@ -53,7 +54,22 @@ describe('warrantedControl reads the classes that meet', () => {
     // classification meets a higher one.
     expect(warrantedControl([arm('local'), arm('urban'), arm('urban')])).toBe('stop');
     expect(warrantedControl([arm('dirt'), arm('local'), arm('local')])).toBe('stop');
-    expect(warrantedControl([arm('alley'), arm('urban'), arm('urban')])).toBe('stop');
+    expect(warrantedControl([arm('dirt'), arm('urban'), arm('urban')])).toBe('stop');
+  });
+
+  it('an alley is an access, not a leg: it never makes a junction or changes the street meeting it', () => {
+    // MUTCD 1C.02 def. 113(b): where a street meets an access nothing controls,
+    // it is not an intersection.
+    expect(warrantedControl([arm('alley'), arm('urban'), arm('urban')])).toBe('none');
+    expect(warrantedControl([arm('alley', 0.9), arm('arterial'), arm('arterial')])).toBe('none');
+    // The street's own junction ignores the alley beside it.
+    const withAlley = warrantedControl([arm('alley'), arm('local'), arm('urban'), arm('urban')]);
+    expect(withAlley).toBe(warrantedControl([arm('local'), arm('urban'), arm('urban')]));
+  });
+
+  it('a junction with only two legs besides an alley cannot be controlled by hand', () => {
+    expect(takesControl(['urban', 'urban', 'alley'])).toBe(false);
+    expect(takesControl(['urban', 'urban', 'dirt'])).toBe(true);
   });
 
   it('two collectors, or any junction an arterial touches, is signalised', () => {

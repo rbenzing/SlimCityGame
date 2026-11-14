@@ -63,7 +63,8 @@ of tenants.
   room for three cars (18 m) gets a short lane with the board at its head;
   one that leaves less gets no lane, no board, no bar and no window canopy,
   and the smallest restaurant never does. The dumpster enclosure stands on
-  whatever rear or side ground the lot leaves, nearest the back wall.
+  whatever rear or side ground the lot leaves, nearest the back wall, always
+  within 0.3 m of the lot's paving and clear of the pylon sign.
 - **The supermarket's tower** stands before the street face, so the sign
   band and the brick base run in two wings either side of it.
 - **The menu board** is a 1.2 m panel on two 0.9 m posts, 2.1 m overall.

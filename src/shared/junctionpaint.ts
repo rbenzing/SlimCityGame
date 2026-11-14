@@ -8,7 +8,13 @@
 import { TILE_METERS } from './constants';
 import { armGivesWay } from './junction';
 import { NO_PARKING_BEFORE_STOP_M, NO_PARKING_FROM_CROSSWALK_M } from './kerbstalls';
-import { FOOTWAY_WIDTH_M, isServiceClass, presetProfileForTier, rankForTier } from './roadprofile';
+import {
+  FOOTWAY_WIDTH_M,
+  isPaved,
+  isServiceClass,
+  presetProfileForTier,
+  rankForTier,
+} from './roadprofile';
 import { RoadTier } from './types';
 import type { JunctionControl } from './types';
 
@@ -63,6 +69,33 @@ export function junctionArmLayout(
   const stopLineNear = crosswalkFar + STOP_LINE_GAP_M;
   const stopLineFar = stopLineNear + STOP_LINE_THICKNESS_M;
   return { crosswalkNear, crosswalkFar, stopLineNear, stopLineFar };
+}
+
+/** Whether the lanes at `across` offsets from an arm's centre arrive at the junction, given the arm's approaching span. */
+export function arrivesOn(
+  approaching: { from: number; to: number } | null | undefined,
+  across: 1 | -1,
+): boolean {
+  return !!approaching && (across > 0 ? approaching.to > 0.5 : approaching.from < -0.5);
+}
+
+/**
+ * Where a reserved lane's colour is left bare across an arm the lane runs on
+ * past, outward from the junction's centre: from the crossing's near edge to
+ * its far edge, or on to the stop line where the lane arrives at one. Null
+ * where the arm paints nothing over the lane.
+ */
+export function laneBareSpan(
+  layout: JunctionArmLayout,
+  paint: { crossed: boolean; stops: boolean },
+  arrives: boolean,
+): { near: number; far: number } | null {
+  const stops = paint.stops && arrives;
+  if (!paint.crossed && !stops) return null;
+  return {
+    near: paint.crossed ? layout.crosswalkNear : layout.stopLineNear,
+    far: stops ? layout.stopLineFar : layout.crosswalkFar,
+  };
 }
 
 /**
@@ -155,6 +188,20 @@ export function junctionArmPaint(
   const control = j.control;
   if (control === undefined || control === 'none' || control === 'roundabout') return none;
   if (!j.has[side]) return none;
+  // A service access is no leg of the junction: it is never controlled, so it
+  // takes no paint and puts none on the street it meets. An arm whose road is
+  // not named is unknown, not absent, and reads as this tile's own road —
+  // which is never a service access here.
+  const accessRoad = (s: ArmSide): boolean =>
+    j.roads[s] !== RoadTier.None && isServiceClass(presetProfileForTier(j.roads[s]).class);
+  const road = j.roads[side];
+  if (accessRoad(side)) return none;
+  // Without its accesses the junction has fewer than three legs: a bend or a
+  // plain run with driveways off it, which paints nothing for them.
+  const joined = (['n', 'e', 's', 'w'] as const).filter((s) => j.has[s]);
+  if (joined.some(accessRoad) && joined.filter((s) => !accessRoad(s)).length < 3) return none;
+  // An unpaved road carries no paint of any kind: no stop line, no crossing.
+  if (road !== RoadTier.None && !isPaved(presetProfileForTier(road))) return none;
   // Which arms stop. A minor road meeting a bigger one gives way to it: the
   // side street gets the stop line and the crosswalk, and the road running
   // through gets neither, the way a real junction reads. Where every arm
@@ -162,10 +209,9 @@ export function junctionArmPaint(
   // all-way junction.
   const sides: readonly ArmSide[] = ['n', 'e', 's', 'w'];
   const armRanks = sides
-    .filter((s) => j.has[s] && j.roads[s] !== RoadTier.None)
+    .filter((s) => j.has[s] && !accessRoad(s) && j.roads[s] !== RoadTier.None)
     .map((s) => rankForTier(j.roads[s]));
   const ranks = armRanks.length > 0 ? armRanks : [rankForTier(j.tier)];
-  const road = j.roads[side];
   const armStops = road === RoadTier.None || armGivesWay(rankForTier(road), ranks);
   // A signal and an all-way stop hold EVERY approach, the road running
   // through included: it stops on red like everything else, and a stop line
@@ -174,20 +220,17 @@ export function junctionArmPaint(
   const holdsEveryArm = control === 'signal' || control === 'allWayStop';
   if (!holdsEveryArm && !armStops) return none;
   const stops = control === 'stop' || control === 'allWayStop' || control === 'signal';
-  // A service access carries the footway straight across its mouth rather
-  // than breaking it for a crossing, so there is no crossing to paint over
-  // one: the pavement IS the way across. An arm whose road is not named is
-  // unknown, not absent, and reads as this tile's own road — which is never a
-  // service access here.
-  const service = road !== RoadTier.None && isServiceClass(presetProfileForTier(road).class);
   // Who walks over a crossing on this arm: the people going the other way, on
   // the footways of the arms ACROSS from it. A road with a raised kerb but no
   // footway — a motorway, an avenue built without one — has nobody to send
-  // over the road it meets, so its arms get no crossing.
+  // over the road it meets, so its arms get no crossing. An access is no arm
+  // to walk along either.
   const walkable = (s: ArmSide): boolean =>
     j.has[s] &&
+    !accessRoad(s) &&
     (j.roads[s] === RoadTier.None || j.footways?.[s] === undefined ? j.ownFootway : j.footways[s]);
   const vertical = side === 'n' || side === 's';
   const crossedOnFoot = vertical ? walkable('e') || walkable('w') : walkable('n') || walkable('s');
-  return { crossed: !service && crossedOnFoot, stops };
+  // The footway is carried across the arm's road, so the arm has to have one.
+  return { crossed: walkable(side) && crossedOnFoot, stops };
 }

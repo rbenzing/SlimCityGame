@@ -197,7 +197,10 @@ import {
   accessibilitySymbolPaint,
   CURB_Y_OFFSET,
   MARKING_COLOR,
+  RAILWAY_GAUGE_HALF_M,
   ROAD_Y_OFFSET,
+  TRAM_GAUGE_HALF_M,
+  TRAM_SLAB_COLOR,
   YELLOW_MARKING_COLOR,
 } from './roadsmesh';
 import { UNIT_HEIGHT_M, UNIT_LENGTH_M, UNIT_WIDTH_M } from './buildingkit';
@@ -2781,6 +2784,12 @@ const HOSPITAL_WINDOW = { sill: 1.1, h: 2, proud: 0.06 };
 const HOSPITAL_ENTRANCE = { x: 2, doorW: 6, doorH: 3, canopyW: 10, canopyD: 4, canopyY: 3.6 };
 /** The ambulance canopy: over an ambulance with its rear doors open, clear of its roof lights; its west edge `inset` from the block's. */
 export const AMBULANCE_CANOPY = { inset: 4, w: 16, d: 9, clear: 4.3, slab: 0.5 };
+/**
+ * The emergency entrance behind the ambulance bay: a pair of 4 ft leaves (2.4 m
+ * clear between the frame, over the 1.8 m a stretcher and its crew need) in a
+ * frame, 2.4 m high, with an emergency band over them. A dial; no source gives a hospital's.
+ */
+export const EMERGENCY_DOORS = { leaf: 1.2, leaves: 2, h: 2.4, frame: 0.25, band: 0.5, thick: 0.3 };
 /** The walk along the facade, between the block and the accessible spaces' heads. */
 const HOSPITAL_FACADE_WALK_M = 0.5;
 
@@ -2834,6 +2843,8 @@ const HOSPITAL_CLADDING_RGB: RGB = [0.8, 0.79, 0.75];
 const HOSPITAL_GLASS_RGB: RGB = [0.2, 0.27, 0.33];
 const HOSPITAL_ROOF_RGB: RGB = [0.45, 0.46, 0.47];
 const HOSPITAL_DOOR_RGB: RGB = [0.14, 0.19, 0.23];
+const HOSPITAL_FRAME_RGB: RGB = [0.92, 0.92, 0.9];
+const HOSPITAL_EMERGENCY_GLASS_RGB: RGB = [0.55, 0.72, 0.82];
 const HOSPITAL_CANOPY_RGB: RGB = [0.84, 0.84, 0.82];
 const HOSPITAL_POST_RGB: RGB = [0.5, 0.52, 0.54];
 const HOSPITAL_SIGN_RGB: RGB = [0.86, 0.86, 0.86];
@@ -2872,6 +2883,8 @@ export interface HospitalLayout {
   /** The main entrance's centre, on the facade. */
   entrance: Vec2;
   ambulanceCanopy: Rect;
+  /** The emergency entrance's door leaves, in plan, in the wall behind the ambulance bay. */
+  emergencyDoors: Rect[];
   /** Where the ambulance stands under its canopy, nose to the street. */
   ambulance: Vec2;
   deck: Rect;
@@ -2944,11 +2957,18 @@ export function computeHospitalLayout(footprint: FootprintSize): HospitalLayout 
     z1: front + AMBULANCE_CANOPY.d,
   };
   const ambulanceLength = sizeForKind(VehicleKind.Ambulance)[2];
+  // It stands in the west half of the bay, so the doors in the middle of the wall are not hidden behind it.
   const ambulance: Vec2 = {
-    x: (ambulanceCanopy.x0 + ambulanceCanopy.x1) / 2,
+    x: ambulanceCanopy.x0 + AMBULANCE_CANOPY.w / 4,
     z: front + 1 + ambulanceLength / 2,
   };
   const entrance: Vec2 = { x: block.x + HOSPITAL_ENTRANCE.x, z: front };
+  const { leaf, leaves, thick } = EMERGENCY_DOORS;
+  const bayMid = (ambulanceCanopy.x0 + ambulanceCanopy.x1) / 2;
+  const emergencyDoors: Rect[] = Array.from({ length: leaves }, (_, i) => {
+    const x0 = bayMid + (i - leaves / 2) * leaf;
+    return { x0, x1: x0 + leaf, z0: front, z1: front + thick };
+  });
 
   const deck: Rect = { x0: halfW - DECK_WIDTH_M, x1: halfW, z0: -halfD, z1: halfD };
   const deckLayout = layDeck(deck);
@@ -2979,6 +2999,7 @@ export function computeHospitalLayout(footprint: FootprintSize): HospitalLayout 
     block,
     entrance,
     ambulanceCanopy,
+    emergencyDoors,
     ambulance,
     deck,
     ...deckLayout,
@@ -3081,17 +3102,45 @@ function buildHospitalBlockGeometry(footprint: FootprintSize): THREE.BufferGeome
     );
   }
   const bayX = (bay.x0 + bay.x1) / 2;
-  const doorT = 0.3;
-  for (const x of [entrance.x, bayX]) {
+  const doorT = EMERGENCY_DOORS.thick;
+  parts.push(
+    standingBox(
+      HOSPITAL_ENTRANCE.doorW,
+      HOSPITAL_ENTRANCE.doorH,
+      doorT,
+      entrance.x,
+      y0,
+      front + doorT / 2,
+      HOSPITAL_DOOR_RGB,
+    ),
+  );
+
+  // The emergency entrance behind the bay: a pale frame standing proud of the wall, a
+  // pair of lit glass leaves in it, and a red emergency band over them.
+  const { leaf, leaves, h, frame, band } = EMERGENCY_DOORS;
+  const doorsW = leaf * leaves;
+  parts.push(
+    standingBox(doorsW + 2 * frame, h + frame, 0.15, bayX, y0, front + 0.075, HOSPITAL_FRAME_RGB),
+    standingBox(
+      doorsW + 2 * frame,
+      band,
+      0.2,
+      bayX,
+      y0 + h + frame,
+      front + 0.1,
+      HOSPITAL_CROSS_RGB,
+    ),
+  );
+  for (const door of layout.emergencyDoors) {
     parts.push(
       standingBox(
-        HOSPITAL_ENTRANCE.doorW,
-        HOSPITAL_ENTRANCE.doorH,
-        doorT,
-        x,
+        door.x1 - door.x0 - 0.06,
+        h,
+        door.z1 - door.z0,
+        (door.x0 + door.x1) / 2,
         y0,
-        front + doorT / 2,
-        HOSPITAL_DOOR_RGB,
+        (door.z0 + door.z1) / 2,
+        HOSPITAL_EMERGENCY_GLASS_RGB,
       ),
     );
   }
@@ -3300,8 +3349,17 @@ export const GRAVE_SPACE = { w: 1.07, l: 2.44 };
 export const CEMETERY_DRIVE_M = 20 * FOOT_M;
 /** Cemetery fences run 4-6 ft (Roslyn WA caps them at 6 ft); this is the game's 1.5 m, a little under 5 ft. */
 export const CEMETERY_FENCE_HEIGHT_M = 1.5;
-/** The gatehouse: one storey, 128 m² on the floor, under the catalog's 3.2 m. */
-export const CEMETERY_GATEHOUSE = { w: 12, d: 10.67, h: 3.2, wall: 2.6, eave: 0.4 };
+/**
+ * The gatehouse: a one-storey lodge, 128 m² on the floor. Its walls are the
+ * catalog's 3.2 m storey; the pitched roof rises `rise` over them (about 21
+ * degrees over its 5.7 m half span with the eaves, a dial) and overhangs by `eave`.
+ */
+export const CEMETERY_GATEHOUSE = { w: 12, d: 10.67, h: 3.2, rise: 2.2, eave: 0.4 };
+/** The lodge's door and windows, on the wall that faces the entrance drive: a 1.2 × 2.1 m door and 1.5 × 1.2 m windows, `windowDz` either side of it. */
+export const CEMETERY_LODGE_DOOR = { w: 1.2, h: 2.1 };
+const CEMETERY_LODGE_WINDOW = { w: 1.5, h: 1.2, sill: 0.9, dz: 3.2 };
+/** A gate pier either side of the drive: stone, taller than the fence, with a cap that overhangs it. */
+export const CEMETERY_GATE_PIER = { w: 0.6, h: 2.1, cap: 0.12, capOver: 0.1 };
 /** The paved forecourt between the gatehouse door and the lot's front fence. */
 const CEMETERY_FORECOURT_DEPTH_M = 6;
 /** An upright headstone of the common US single-upright range (24-36 in tall, 20-30 in wide, 6-8 in thick). */
@@ -3329,7 +3387,8 @@ const CEMETERY_PAVING_PROUD_M = 0.02;
 const CEMETERY_PATCH_PROUD_M = 0.012;
 const CEMETERY_FENCE_POST_SPACING_M = 2.5;
 const CEMETERY_PICKET_SPACING_M = 0.5;
-const CEMETERY_GATE_PIER_M = 0.45;
+/** A tree's canopy is the park tree's. */
+const CEMETERY_TREE_RADIUS_M = 1.1;
 
 const CEMETERY_LAWN_RGB: RGB = [0.2, 0.46, 0.2];
 const CEMETERY_PATCH_RGB: RGB = [0.15, 0.38, 0.17];
@@ -3358,6 +3417,10 @@ export interface CemeteryLayout {
   /** The drive's rectangle, street edge to the back fence. */
   drive: Rect;
   gatehouse: Rect;
+  /** The lodge's door on the gatehouse wall that faces the drive: its centre on that wall. */
+  lodgeDoor: Vec2;
+  /** The paved step between the drive's edge and the lodge's door. */
+  lodgeStep: Rect;
   forecourt: Rect;
   /** The gap the fence leaves for the drive. */
   gate: { x0: number; x1: number };
@@ -3438,7 +3501,15 @@ export function computeCemeteryLayout(footprint: FootprintSize, plots: number): 
     z0: gatehouse.z1,
     z1: gatehouse.z1 + CEMETERY_FORECOURT_DEPTH_M,
   };
-  const treeX = (gatehouse.x1 + lotX1) / 2;
+  const lodgeDoor: Vec2 = { x: gatehouse.x0, z: (gatehouse.z0 + gatehouse.z1) / 2 };
+  const lodgeStep: Rect = {
+    x0: drive.x1,
+    x1: gatehouse.x0,
+    z0: lodgeDoor.z - CEMETERY_LODGE_DOOR.w,
+    z1: lodgeDoor.z + CEMETERY_LODGE_DOOR.w,
+  };
+  // Against the lot's far fence, a canopy's width from it, so the canopy clears the lodge and its eaves.
+  const treeX = lotX1 - CEMETERY_TREE_RADIUS_M;
   // Between the first two columns of burial sections the grids leave a clear lane.
   const gridEdge = (c: number, side: 'x0' | 'x1'): number => {
     const rect = sections.find((s) => s.c === c)!.rect;
@@ -3455,6 +3526,8 @@ export function computeCemeteryLayout(footprint: FootprintSize, plots: number): 
   return {
     drive,
     gatehouse,
+    lodgeDoor,
+    lodgeStep,
     forecourt,
     gate: { x0: drive.x0, x1: drive.x1 },
     graves: graves.slice(0, plots),
@@ -3462,7 +3535,7 @@ export function computeCemeteryLayout(footprint: FootprintSize, plots: number): 
   };
 }
 
-/** A box `w` long on X, `rise` tall, `d` deep, its top drawn in to a ridge along X: a gabled roof from the eaves up. */
+/** A box `w` long on X, `rise` tall, `d` deep, its top drawn in to a ridge along X (or along Z): a gabled roof from the eaves up. */
 function gableRoof(
   w: number,
   rise: number,
@@ -3471,11 +3544,15 @@ function gableRoof(
   y0: number,
   z: number,
   rgb: RGB,
+  ridge: 'x' | 'z' = 'x',
 ): THREE.BufferGeometry {
   const roof = new THREE.BoxGeometry(w, rise, d);
   const position = roof.getAttribute('position');
   for (let i = 0; i < position.count; i++) {
-    if (position.getY(i) > 0) position.setZ(i, 0);
+    if (position.getY(i) > 0) {
+      if (ridge === 'x') position.setZ(i, 0);
+      else position.setX(i, 0);
+    }
   }
   roof.computeVertexNormals();
   roof.translate(x, y0 + rise / 2, z);
@@ -3503,7 +3580,7 @@ function buildCemeteryGroundsGeometry(
   plots: number,
 ): THREE.BufferGeometry {
   const { halfW, halfD } = footprintHalfExtents(footprint);
-  const { drive, forecourt, graves } = computeCemeteryLayout(footprint, plots);
+  const { drive, forecourt, lodgeStep, graves } = computeCemeteryLayout(footprint, plots);
   const top = CEMETERY_LAWN_HEIGHT;
   const depth = top + YARD_FOOTING_DEPTH;
   const lawn = new THREE.BoxGeometry(halfW * 2, depth, halfD * 2);
@@ -3522,6 +3599,7 @@ function buildCemeteryGroundsGeometry(
     paintVertexColor(lawn, hexFromRgb(CEMETERY_LAWN_RGB)),
     box(drive, CEMETERY_DRIVE_RGB),
     box(forecourt, CEMETERY_FORECOURT_RGB),
+    box(lodgeStep, CEMETERY_FORECOURT_RGB),
   ];
   for (const g of graves) {
     parts.push(
@@ -3538,24 +3616,61 @@ function buildCemeteryGroundsGeometry(
   return mergeParts(parts);
 }
 
-/** The gatehouse: walls, gabled roof with eaves, a door and windows on the forecourt side; local Y=0 is the lawn plate's top. */
+/**
+ * The gatehouse as a lodge at the gate: walls under a pitched roof with eaves,
+ * a door with a window either side of it on the wall that faces the entrance
+ * drive, and windows on the forecourt side; local Y=0 is the lawn plate's top.
+ */
 function buildCemeteryGatehouseGeometry(
   footprint: FootprintSize,
   plots: number,
 ): THREE.BufferGeometry {
-  const { gatehouse } = computeCemeteryLayout(footprint, plots);
-  const { w, d, h, wall, eave } = CEMETERY_GATEHOUSE;
+  const { gatehouse, lodgeDoor } = computeCemeteryLayout(footprint, plots);
+  const { w, d, h, rise, eave } = CEMETERY_GATEHOUSE;
   const y0 = CEMETERY_LAWN_HEIGHT;
   const cx = (gatehouse.x0 + gatehouse.x1) / 2;
   const cz = (gatehouse.z0 + gatehouse.z1) / 2;
   const front = gatehouse.z1;
+  const proud = 0.1;
   const parts: THREE.BufferGeometry[] = [
-    standingBox(w, wall, d, cx, y0, cz, GATEHOUSE_WALL_RGB),
-    gableRoof(w + 2 * eave, h - wall, d + 2 * eave, cx, y0 + wall, cz, GATEHOUSE_ROOF_RGB),
-    standingBox(1.1, 2.1, 0.1, cx, y0, front + 0.05, GATEHOUSE_DOOR_RGB),
+    standingBox(w, h, d, cx, y0, cz, GATEHOUSE_WALL_RGB),
+    gableRoof(w + 2 * eave, rise, d + 2 * eave, cx, y0 + h, cz, GATEHOUSE_ROOF_RGB),
+    standingBox(
+      proud,
+      CEMETERY_LODGE_DOOR.h,
+      CEMETERY_LODGE_DOOR.w,
+      lodgeDoor.x - proud / 2,
+      y0,
+      lodgeDoor.z,
+      GATEHOUSE_DOOR_RGB,
+    ),
   ];
+  const window = CEMETERY_LODGE_WINDOW;
+  for (const side of [-1, 1]) {
+    parts.push(
+      standingBox(
+        proud,
+        window.h,
+        window.w,
+        lodgeDoor.x - proud / 2,
+        y0 + window.sill,
+        lodgeDoor.z + side * window.dz,
+        GATEHOUSE_GLASS_RGB,
+      ),
+    );
+  }
   for (const dx of [-4.6, -2.6, 2.6, 4.6]) {
-    parts.push(standingBox(1.5, 1.2, 0.1, cx + dx, y0 + 0.9, front + 0.05, GATEHOUSE_GLASS_RGB));
+    parts.push(
+      standingBox(
+        window.w,
+        window.h,
+        proud,
+        cx + dx,
+        y0 + window.sill,
+        front + proud / 2,
+        GATEHOUSE_GLASS_RGB,
+      ),
+    );
   }
   return mergeParts(parts);
 }
@@ -3598,21 +3713,27 @@ function buildCemeteryFenceGeometry(footprint: FootprintSize, plots: number): TH
       at(a + (i * length) / pickets, 0.03, height - 0.2, 0.1, 0.03);
     }
   };
-  run(x0, gate.x0 - CEMETERY_GATE_PIER_M, zFront, true);
-  run(gate.x1 + CEMETERY_GATE_PIER_M, x1, zFront, true);
+  const pier = CEMETERY_GATE_PIER;
+  // A pier's cap ends at the drive's edge; the fence runs up to the other side of the cap.
+  const reach = pier.w + 2 * pier.capOver;
+  run(x0, gate.x0 - reach, zFront, true);
+  run(gate.x1 + reach, x1, zFront, true);
   run(x0, x1, zBack, true);
   run(zBack, zFront, x0, false);
   run(zBack, zFront, x1, false);
 
-  for (const px of [gate.x0 - CEMETERY_GATE_PIER_M / 2, gate.x1 + CEMETERY_GATE_PIER_M / 2]) {
+  // The cap's overhang reaches the lot's front edge, no further.
+  const pierZ = halfD - pier.w / 2 - pier.capOver;
+  for (const px of [gate.x0 - reach / 2, gate.x1 + reach / 2]) {
     parts.push(
+      standingBox(pier.w, pier.h, pier.w, px, y0, pierZ, CEMETERY_PIER_RGB),
       standingBox(
-        CEMETERY_GATE_PIER_M,
-        height,
-        CEMETERY_GATE_PIER_M,
+        pier.w + 2 * pier.capOver,
+        pier.cap,
+        pier.w + 2 * pier.capOver,
         px,
-        y0,
-        zFront,
+        y0 + pier.h,
+        pierZ,
         CEMETERY_PIER_RGB,
       ),
     );
@@ -3666,10 +3787,24 @@ export const CREMATORIUM_RIDGE_M = 6.4;
 const CREMATORIUM_CHAPEL_EAVE_M = 3.6;
 /** The flat-roofed cremator hall is 4.5 m (15 ft), the game's own height: enough to clear a retort and its breeching duct. */
 export const CREMATORIUM_HALL_HEIGHT_M = 4.5;
-const CREMATORIUM_FOYER_HEIGHT_M = 3.6;
+/** The entrance bay is taller than the office and the hall's lean-to roofs: walls to 4 m under a front gable of 2 m, so its ridge stands under the chapel's. */
+export const CREMATORIUM_FOYER_HEIGHT_M = 4;
+const CREMATORIUM_FOYER_RISE_M = 2;
 const CREMATORIUM_OFFICE_HEIGHT_M = 3.2;
 export const CREMATORIUM_ROOF_CAP_M = 0.3;
 const CREMATORIUM_FORECOURT_WIDTH_M = 9;
+/**
+ * The porch a hearse stands under to unload at the door, over the forecourt
+ * from the entrance wall. A hearse is 6.2 × 1.9 × 1.9 m: the porch is 7.2 m
+ * deep (the hearse and a metre), 4 m wide (a 12 ft carriageway) with 3.2 m clear
+ * under the slab (10.5 ft; a porte-cochère clears 10 ft or more). No plan of
+ * a crematorium's porch is sourced, so these are the game's dials.
+ */
+export const CREMATORIUM_PORCH = { w: 4, d: 7.2, clear: 3.2, slab: 0.3, post: 0.3 };
+/** The double doors of the entrance and the full-height glass either side of them. */
+export const CREMATORIUM_ENTRANCE = { doorW: 2.4, doorH: 3, glassW: 1.2, glassH: 2.4 };
+/** The chapel's tall narrow windows on its street wall. */
+const CREMATORIUM_CHAPEL_WINDOW = { w: 0.9, h: 2.4, sill: 0.6 };
 
 const CREMATORIUM_CHAPEL_WALL_RGB: RGB = [0.8, 0.76, 0.68];
 const CREMATORIUM_CHAPEL_ROOF_RGB: RGB = [0.3, 0.33, 0.37];
@@ -3690,6 +3825,8 @@ export interface CrematoriumLayout {
   foyer: Rect;
   office: Rect;
   forecourt: Rect;
+  /** The covered porch over the forecourt, on the entrance wall. */
+  porch: Rect;
   /** The flue's centre, over the back of the cremator hall. */
   flue: Vec2;
 }
@@ -3718,6 +3855,12 @@ export function computeCrematoriumLayout(footprint: FootprintSize): CrematoriumL
       x1: foyerX0 + foyer.w / 2 + CREMATORIUM_FORECOURT_WIDTH_M / 2,
       z0: foyerZ1,
       z1: halfD,
+    },
+    porch: {
+      x0: foyerX0 + foyer.w / 2 - CREMATORIUM_PORCH.w / 2,
+      x1: foyerX0 + foyer.w / 2 + CREMATORIUM_PORCH.w / 2,
+      z0: foyerZ1,
+      z1: foyerZ1 + CREMATORIUM_PORCH.d,
     },
     flue: { x: hallX0 + hall.w - 2, z: front - 1.5 },
   };
@@ -3765,7 +3908,8 @@ function roomBox(r: Rect, height: number, rgb: RGB): THREE.BufferGeometry {
  * ground, the rooms standing on the lawn plate.
  */
 function buildCrematoriumBuildingGeometry(footprint: FootprintSize): THREE.BufferGeometry {
-  const { chapel, hall, foyer, office, flue } = computeCrematoriumLayout(footprint);
+  const layout = computeCrematoriumLayout(footprint);
+  const { chapel, hall, foyer, office, flue } = layout;
   const y0 = CEMETERY_LAWN_HEIGHT;
   const cx = (chapel.x0 + chapel.x1) / 2;
   const cz = (chapel.z0 + chapel.z1) / 2;
@@ -3801,26 +3945,81 @@ function buildCrematoriumBuildingGeometry(footprint: FootprintSize): THREE.Buffe
       CREMATORIUM_DUCT_RGB,
     ),
     roomBox(foyer, CREMATORIUM_FOYER_HEIGHT_M, CREMATORIUM_FOYER_RGB),
-    standingBox(
-      1.8,
-      2.4,
-      0.1,
+    // The entrance bay's own gable, its ridge running toward the street.
+    gableRoof(
+      foyer.x1 - foyer.x0,
+      CREMATORIUM_FOYER_RISE_M,
+      foyer.z1 - foyer.z0,
       (foyer.x0 + foyer.x1) / 2,
-      y0,
-      foyer.z1 + 0.05,
-      CREMATORIUM_DOOR_RGB,
+      y0 + CREMATORIUM_FOYER_HEIGHT_M,
+      (foyer.z0 + foyer.z1) / 2,
+      CREMATORIUM_CHAPEL_ROOF_RGB,
+      'z',
     ),
     roomBox(office, CREMATORIUM_OFFICE_HEIGHT_M, CREMATORIUM_OFFICE_RGB),
   ];
-  for (const dx of [-3, 3]) {
+
+  // The tall entrance: double doors with full-height glass either side, under the porch.
+  const { doorW, doorH, glassW, glassH } = CREMATORIUM_ENTRANCE;
+  const doorX = (foyer.x0 + foyer.x1) / 2;
+  parts.push(standingBox(doorW, doorH, 0.12, doorX, y0, foyer.z1 + 0.06, CREMATORIUM_DOOR_RGB));
+  for (const side of [-1, 1]) {
     parts.push(
       standingBox(
-        1.4,
-        1.2,
+        glassW,
+        glassH,
         0.1,
-        (foyer.x0 + foyer.x1) / 2 + dx,
-        y0 + 1,
+        doorX + side * (doorW / 2 + 0.3 + glassW / 2),
+        y0 + 0.3,
         foyer.z1 + 0.05,
+        CREMATORIUM_GLASS_RGB,
+      ),
+    );
+  }
+  // A gable window over the porch.
+  parts.push(
+    standingBox(
+      2,
+      1.2,
+      0.1,
+      doorX,
+      y0 + CREMATORIUM_PORCH.clear + CREMATORIUM_PORCH.slab + 0.3,
+      foyer.z1 + 0.05,
+      CREMATORIUM_GLASS_RGB,
+    ),
+  );
+
+  // The porch: a slab on a post at each corner of its street end and one half way along each side.
+  const { porch } = layout;
+  const { clear, slab, post } = CREMATORIUM_PORCH;
+  parts.push(
+    standingBox(
+      porch.x1 - porch.x0,
+      slab,
+      porch.z1 - porch.z0,
+      (porch.x0 + porch.x1) / 2,
+      y0 + clear,
+      (porch.z0 + porch.z1) / 2,
+      CREMATORIUM_CAP_RGB,
+    ),
+  );
+  for (const x of [porch.x0 + post / 2, porch.x1 - post / 2]) {
+    for (const z of [porch.z1 - post / 2, (porch.z0 + porch.z1) / 2]) {
+      parts.push(standingBox(post, clear, post, x, y0, z, CREMATORIUM_FLUE_RGB));
+    }
+  }
+
+  // Tall narrow windows along the chapel's street wall.
+  const lancet = CREMATORIUM_CHAPEL_WINDOW;
+  for (const dx of [-4.5, 0, 4.5]) {
+    parts.push(
+      standingBox(
+        lancet.w,
+        lancet.h,
+        0.1,
+        cx + dx,
+        y0 + lancet.sill,
+        chapel.z1 + 0.05,
         CREMATORIUM_GLASS_RGB,
       ),
     );
@@ -9043,7 +9242,8 @@ export const RAIL_YARD_SPEC: YardSpec = {
 /** Catenary poles 6 m tall every 10 m along a pair of roads, each with a crossarm over both. */
 export const CATENARY_POLE = { h: 6, pitch: 10, size: 0.2, arm: 5.5, armT: 0.12 };
 /** The track as the road mesh lays it: rails at the gauge on sleepers, over ballast on the railway. */
-const YARD_GAUGE_HALF_M = 0.75;
+const yardGaugeHalf = (ballast: boolean): number =>
+  ballast ? RAILWAY_GAUGE_HALF_M : TRAM_GAUGE_HALF_M;
 const YARD_RAIL = { w: 0.14, h: 0.12 };
 const YARD_SLEEPER = { l: 2.3, w: 0.32, h: 0.1, pitch: 1.6 };
 const YARD_BALLAST = { halfW: 1.7, h: 0.08 };
@@ -9569,7 +9769,7 @@ function trackParts(
   }
   for (const s of [-1, 1]) {
     parts.push(
-      alongSegment(seg, YARD_RAIL.w, YARD_RAIL.h, railY, s * YARD_GAUGE_HALF_M, YARD_RAIL_RGB),
+      alongSegment(seg, YARD_RAIL.w, YARD_RAIL.h, railY, s * yardGaugeHalf(ballast), YARD_RAIL_RGB),
     );
   }
 }
@@ -9684,7 +9884,7 @@ const YARD_STAND_RGB: RGB = [0.24, 0.25, 0.27];
 const YARD_STAND_TARGET_RGB: RGB = [0.78, 0.2, 0.16];
 const YARD_GROOVE_RGB: RGB = [0.16, 0.16, 0.17];
 /** The apron a tram lead crosses the footway and kerb on: as wide as the street's slab where it leaves the street, wider at the lot. */
-const YARD_LEAD_APRON_W = { street: 2.8, lot: 4.8 };
+const YARD_LEAD_APRON_W = { street: 2.7, lot: 4.8 };
 /** A tram street's carriageway half-width: its two lanes. */
 const YARD_CARRIAGEWAY_HALF_M = 3.75;
 
@@ -9710,14 +9910,13 @@ function joinParts(
   lot: Rect,
   y0: number,
   rise: number,
+  lineRise: readonly number[] = [],
 ): void {
   const path = layout.joinPath;
   if (path.length < 2 || !layout.turnout) return;
   const { at, along, across, radius, lane } = layout.turnout;
-  // The line's surface where the lead leaves it: the ground it stands on, not the lot's.
-  const lineY = YARD_LINE_SURFACE_M + rise;
   // Where the lead's outer rail crosses the line's near rail: the frog.
-  const gauge = YARD_GAUGE_HALF_M;
+  const gauge = yardGaugeHalf(spec.ballast);
   const frogAngle = Math.acos((radius - gauge) / (radius + gauge));
   const frogU = (radius + gauge) * Math.sin(frogAngle);
   const turnoutLength = frogU + 3;
@@ -9726,6 +9925,17 @@ function joinParts(
     cum.push(cum[i - 1]! + Math.hypot(path[i]!.x - path[i - 1]!.x, path[i]!.z - path[i - 1]!.z));
   }
   const total = cum[cum.length - 1]!;
+  // The line's surface where the lead leaves it: the ground the line's road stands on
+  // at that point of the lead, not the lot's, so the rails never sink under the line's bed.
+  const chordAt = (s: number): number => {
+    let i = 1;
+    while (i < path.length - 1 && cum[i]! < s) i++;
+    return i - 1;
+  };
+  // Never below the ground at the points: the lead stands over its line's bed, and a bed
+  // that falls away leaves the lead a little proud of it rather than burying it.
+  const riseAt = (s: number): number => Math.max(rise, lineRise[chordAt(s)] ?? rise);
+  const lineYAt = (s: number): number => YARD_LINE_SURFACE_M + riseAt(s);
   const entered = path.findIndex(
     (p) => p.x >= lot.x0 && p.x <= lot.x1 && p.z >= lot.z0 && p.z <= lot.z1,
   );
@@ -9748,14 +9958,22 @@ function joinParts(
   // Past the carriageway the apron crosses the footway and kerb, so it stands as high as the kerb there.
   const lateralAt = (s: number): number => awayAt(s) + lane;
   const apronTop = (s: number): number => {
+    const lineY = lineYAt(s);
     const base = lineY + 0.008 + (y0 - lineY - 0.008) * level(s);
     return entered > 0 && s < rampTo && lateralAt(s) > YARD_CARRIAGEWAY_HALF_M
-      ? Math.max(base, rise + CURB_Y_OFFSET + 0.004)
+      ? Math.max(base, riseAt(s) + CURB_Y_OFFSET + 0.004)
       : base;
   };
   const lotRailBottom = y0 + YARD_BALLAST.h + YARD_SLEEPER.h;
-  const railBottom = (s: number): number =>
-    spec.ballast ? lineY + 0.01 + (lotRailBottom - lineY - 0.01) * level(s) : apronTop(s) + 0.01;
+  // The lead's rails stand this much over the line's bed where they leave it, so the
+  // few centimetres the bed's own lattice differs from the ground never bury them.
+  const railClear = (s: number): number => 0.015 * (1 - level(s));
+  const railBottom = (s: number): number => {
+    const lineY = lineYAt(s);
+    return spec.ballast
+      ? lineY + 0.01 + railClear(s) + (lotRailBottom - lineY - 0.01 - railClear(s)) * level(s)
+      : apronTop(s) + 0.01 + railClear(s);
+  };
   const railH = (s: number): number => 0.012 + (YARD_RAIL.h - 0.012) * level(s);
   const railW = (s: number): number =>
     s >= YARD_BLADE.length
@@ -9771,8 +9989,11 @@ function joinParts(
     const bottom = railBottom(mid);
     if (spec.ballast) {
       // The bed runs down below the terrain; at the points it is flush with the line's own surface.
-      const bed = Math.min(-0.3, rise - 0.3);
-      const bedTop = Math.min(bottom - YARD_SLEEPER.h, mid < turnoutLength ? lineY : Infinity);
+      const bed = Math.min(-0.3, riseAt(mid) - 0.3);
+      const bedTop = Math.min(
+        bottom - YARD_SLEEPER.h,
+        mid < turnoutLength ? lineYAt(mid) : Infinity,
+      );
       parts.push(
         alongSegment(chord, 2 * YARD_BALLAST.halfW, bedTop - bed, bed, 0, YARD_BALLAST_RGB),
       );
@@ -9780,8 +10001,11 @@ function joinParts(
       const top = apronTop(mid);
       const width =
         YARD_LEAD_APRON_W.street + (YARD_LEAD_APRON_W.lot - YARD_LEAD_APRON_W.street) * level(mid);
-      const base = Math.min(-0.2, rise - 0.2);
-      parts.push(alongSegment(chord, width, top - base, base, 0, YARD_APRON_RGB));
+      const base = Math.min(-0.2, riseAt(mid) - 0.2);
+      // On the street the lead is paved as the street's own track slab, so its start
+      // is the slab the lane already lays; past the carriageway it is the apron.
+      const paving = lateralAt(mid) <= YARD_CARRIAGEWAY_HALF_M ? TRAM_SLAB_COLOR : YARD_APRON_RGB;
+      parts.push(alongSegment(chord, width, top - base, base, 0, paving));
       parts.push(alongSegment(chord, 2 * YARD_TRACKBED_HALF_M, 0.004, top, 0, YARD_TRACKBED_RGB));
     }
     const bladeRail = mid < YARD_BLADE.length;
@@ -9792,7 +10016,7 @@ function joinParts(
           railW(mid),
           railH(mid),
           bottom,
-          side * YARD_GAUGE_HALF_M,
+          side * gauge,
           bladeRail ? YARD_BLADE_RGB : YARD_RAIL_RGB,
         ),
       );
@@ -9804,7 +10028,7 @@ function joinParts(
             0.05,
             0.002,
             bottom + railH(mid),
-            side * (YARD_GAUGE_HALF_M - YARD_RAIL.w / 2 - 0.03),
+            side * (gauge - YARD_RAIL.w / 2 - 0.03),
             YARD_GROOVE_RGB,
           ),
         );
@@ -9842,8 +10066,8 @@ function joinParts(
     // Longer sleepers carry both routes from the points to just past the frog.
     // Their tops lie a hair over the line's surface and under its sleepers and rails,
     // so the line's own track reads over them and only their ends show.
-    const top = lineY + 0.002;
     for (let s = YARD_SLEEPER.pitch; s < turnoutLength; s += YARD_SLEEPER.pitch) {
+      const top = lineYAt(s) + 0.002;
       const off = offsetAt(s);
       const sleeper = new THREE.BoxGeometry(YARD_SLEEPER.w, 0.15, YARD_SLEEPER.l + off);
       sleeper.rotateY(yawOf(across));
@@ -9878,8 +10102,9 @@ function joinParts(
   // The switch stand beside the points, on the side away from the lead, its target a red lamp head.
   if (spec.ballast) {
     const stand = place(2.2, -2.1);
-    parts.push(standingBox(0.3, 0.5, 0.3, stand.x, lineY - 0.02, stand.z, YARD_STAND_RGB));
-    parts.push(standingBox(0.5, 0.08, 0.5, stand.x, lineY + 0.48, stand.z, YARD_STAND_TARGET_RGB));
+    const standY = lineYAt(0);
+    parts.push(standingBox(0.3, 0.5, 0.3, stand.x, standY - 0.02, stand.z, YARD_STAND_RGB));
+    parts.push(standingBox(0.5, 0.08, 0.5, stand.x, standY + 0.48, stand.z, YARD_STAND_TARGET_RGB));
   }
 }
 
@@ -9917,6 +10142,7 @@ function buildYardTrackGeometry(
   layout: YardLayout,
   spec: YardSpec,
   rise = 0,
+  lineRise: readonly number[] = [],
 ): THREE.BufferGeometry {
   const parts: THREE.BufferGeometry[] = [];
   const y0 = RECYCLING_YARD_HEIGHT + (spec.ballast ? 0 : EDU_ASPHALT_M);
@@ -9927,7 +10153,7 @@ function buildYardTrackGeometry(
     z0: layout.fence.z0 - GEN_FENCE_INSET_M,
     z1: layout.fence.z1 + GEN_FENCE_INSET_M,
   };
-  joinParts(parts, layout, spec, lot, y0, rise);
+  joinParts(parts, layout, spec, lot, y0, rise, lineRise);
   if (layout.stop) bufferStopParts(parts, layout.stop, y0, spec.ballast);
   return mergeParts(parts);
 }
@@ -11411,21 +11637,42 @@ export class UtilityKitRenderer {
     groundY: number,
     centerZ: number,
   ): void {
-    const { frame, spec, join, layout } = this.yardPlan(building, entry, mode, centerX, centerZ);
+    const { frame, spec, join, layout, lane } = this.yardPlan(
+      building,
+      entry,
+      mode,
+      centerX,
+      centerZ,
+    );
     // The line's own ground, where the lead leaves it, against the lot's levelled ground: the
     // lead, its bed and the turnout stand on it, to the nearest 2 cm.
     let rise = 0;
+    // The ground under each chord of the lead, where the line's own road lies: the lead's
+    // rails follow it so they stand over the road's bed rather than under it.
+    let lineRise: number[] = [];
     if (layout.turnout) {
       const t = rotateLocalXZ(layout.turnout.at.x, layout.turnout.at.z, frame.turn);
       rise = Math.round((this.heightAt(centerX + t.x, centerZ + t.z) - groundY) * 50) / 50;
+      const path = layout.joinPath;
+      lineRise = path.slice(1).map((p, i) => {
+        const q = path[i]!;
+        const m = rotateLocalXZ((p.x + q.x) / 2, (p.z + q.z) / 2, frame.turn);
+        return Math.round((this.heightAt(centerX + m.x, centerZ + m.z) - groundY) * 50) / 50;
+      });
     }
+    const followsGround = lineRise.some((r) => r > rise);
     const prefix = mode === 'tram' ? 'tramDepot' : 'railYard';
     const reachName = join.reach === 'short' ? 'Short' : join.reach === 'stop' ? 'Stop' : '';
     const suffix = join.mirror ? `Mirror${reachName}` : `${frame.fromEnd ? 'End' : ''}${reachName}`;
-    const riseName = rise === 0 ? '' : `R${Math.round(rise * 100)}`;
+    const riseName =
+      (rise === 0 ? '' : `R${Math.round(rise * 100)}`) +
+      (followsGround ? `G${lineRise.map((r) => Math.round(r * 50)).join('_')}` : '');
     const side = join.mirror ? 'Mirror' : '';
-    const yardKind = `${prefix}Yard${suffix}` as UtilityKitPartKind;
-    const trackKind = `${prefix}Track${suffix}${riseName}` as UtilityKitPartKind;
+    // The kit's own pools are laid for the preset street's lane; a lead to any other lane
+    // is a different geometry and takes a name of its own.
+    const laneName = lane === spec.trackOffset ? '' : `L${Math.round(lane * 1000)}`;
+    const yardKind = `${prefix}Yard${suffix}${laneName}` as UtilityKitPartKind;
+    const trackKind = `${prefix}Track${suffix}${laneName}${riseName}` as UtilityKitPartKind;
     const shopKind = `${prefix}Shop${side}` as UtilityKitPartKind;
     const litKind = `${prefix}Lit${side}` as UtilityKitPartKind;
     const polesKind = `tramDepotPoles${side}` as UtilityKitPartKind;
@@ -11438,7 +11685,7 @@ export class UtilityKitRenderer {
         INITIAL_KIT_CAPACITY,
       ));
     const yard = fresh(yardKind, () => buildYardYardGeometry(frame.footprint, layout, spec));
-    const track = fresh(trackKind, () => buildYardTrackGeometry(layout, spec, rise));
+    const track = fresh(trackKind, () => buildYardTrackGeometry(layout, spec, rise, lineRise));
     const shop = fresh(shopKind, () => buildYardShopGeometry(layout, entry.height));
     const lit = fresh(litKind, () => buildYardLitGeometry(layout), true);
     const poles =

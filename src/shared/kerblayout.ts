@@ -21,8 +21,10 @@ import {
 import type { ApproachAhead, ApproachSurroundings } from './approachzone';
 import { corridorPartners } from './corridor';
 import {
+  arrivesOn,
   junctionArmLayout,
   junctionArmPaint,
+  laneBareSpan,
   noParkingReach,
   paintReachBeyondEdge,
   type ArmSide,
@@ -57,6 +59,7 @@ import {
 } from './roadprofile';
 import {
   approachingLanes,
+  approachingSpan,
   carriagewaySpans,
   travelLaneSpans,
   type CarriagewaySpan,
@@ -332,6 +335,13 @@ export interface JunctionEnd {
   crossed: boolean;
   /** How far the junction's paint reaches back into this tile past its edge, in metres. */
   reach: number;
+  /**
+   * How far back into this tile a reserved lane's colour stops, for the lane on
+   * the negative and on the positive side of the road. Where the junction has
+   * no arm on a lane's side the lane runs on past it, and its colour stops only
+   * at the stop line or the crossing.
+   */
+  laneReach: { neg: number; pos: number };
 }
 
 /** The junctions directly at the two ends of a straight tile, null at an end that meets none. */
@@ -408,17 +418,16 @@ export function junctionEndsAt(x: number, z: number, s: KerbSurroundings): Junct
             ['n', jx, jz - 1, NORTH],
             ['s', jx, jz + 1, SOUTH],
           ];
-    const crossHalves = across
-      .filter(([a, ax, az, abit]) => {
-        const road = s.roadAt(ax, az);
-        return (
-          (junction.mask & abit) !== 0 &&
-          a !== partner &&
-          road !== undefined &&
-          !isServiceClass(presetProfileForTier(road.tier).class)
-        );
-      })
-      .map(([, ax, az]) => halfAt(ax, az, s));
+    const crossArms = across.filter(([a, ax, az, abit]) => {
+      const road = s.roadAt(ax, az);
+      return (
+        (junction.mask & abit) !== 0 &&
+        a !== partner &&
+        road !== undefined &&
+        !isServiceClass(presetProfileForTier(road.tier).class)
+      );
+    });
+    const crossHalves = crossArms.map(([, ax, az]) => halfAt(ax, az, s));
     // The street meeting the partner half from its far side crosses this arm
     // too, and both halves take the wider of the two streets.
     const beyond = across.find(([a]) => a === partner);
@@ -447,10 +456,27 @@ export function junctionEndsAt(x: number, z: number, s: KerbSurroundings): Junct
         crossed: paint.crossed,
         stopLine: paint.stops && kerbLaneArrives(k),
       });
+    const layout = junctionArmLayout(crossHalf, footwayWidth);
+    const approaching = approachingSpan(
+      drawn,
+      own,
+      flow === RoadFlow.None || flow === toward,
+      approachAxis(toward).leftSign,
+    );
+    // A lane on a side the junction has no arm on runs on past it: its colour
+    // stops at what is painted over it, never at the arm's reach.
+    const laneReach = (sign: 1 | -1): number => {
+      if (crossArms.some(([a]) => (a === 'e' || a === 's' ? 1 : -1) === sign)) {
+        return paintReachBeyondEdge(layout, paint);
+      }
+      const bare = laneBareSpan(layout, paint, arrivesOn(approaching, sign));
+      return bare ? Math.max(0, bare.far - TILE_HALF) : 0;
+    };
     return {
       zone: [reach(0), reach(1)] as const,
       crossed: paint.crossed,
-      reach: paintReachBeyondEdge(junctionArmLayout(crossHalf, footwayWidth), paint),
+      reach: paintReachBeyondEdge(layout, paint),
+      laneReach: { neg: laneReach(-1), pos: laneReach(1) },
     };
   };
   return alongX

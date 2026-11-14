@@ -240,9 +240,14 @@ Back to [the index](../GROUND-TRUTHS.md).
   end by the stop line. Never over an alley mouth. —
   [road-model.md](../world-sim/road-model/README.md); `junctionArmLayout` in
   `src/shared/junctionpaint.ts`
-- [R-roads-074] An alley is an access, not a leg: no turn bay, no swept footway, no crossing
-  at its mouth. A dirt track is a leg. —
-  [road-model.md](../world-sim/road-model/README.md)
+- [R-roads-074] An alley is an access, not a leg: no turn bay, no swept footway, no crossing,
+  no control and no paint at its mouth, and the street's lines, median and
+  footway run unbroken past it (MUTCD 1C.02: an alley's junction is no
+  intersection). A gravel road or a dirt track is a leg, but unpaved: no stop
+  line, crossing or turn bay, its own width and one colour. A crossing lies
+  only over an arm with a footway of its own. —
+  [road-model.md](../world-sim/road-model/README.md); `warrantedControl` in
+  `src/shared/junction.ts`, `junctionArmPaint` in `src/shared/junctionpaint.ts`
 - [R-roads-075] A turn bay exists only where the junction's control holds that road. A
   short block's shared centre turn lane stands in for two bays, so it appears
   only where BOTH junctions would give the road one: never on a two-lane
@@ -283,3 +288,28 @@ Back to [the index](../GROUND-TRUTHS.md).
   closing line crosses another. One function draws it for grid and free
   roads. — [median, dividers and kerbs](../art/streets/median-dividers-and-kerbs.md);
   `emitIsland` in `src/render/medianisland.ts`
+- [R-roads-085] A plain dead end is frontage along its two sides only: the ground it faces
+  is never zoned from it, and no drive or walk meets its rounded cap. Its
+  kerbs run straight to the end tile's far edge and the cap stands beyond, on
+  the run-out ground; where that ground is taken the road ends square. Homes
+  form round a road's end only where a cul-de-sac was built (the player's
+  rule). — [cul-de-sacs.md](../specs/cul-de-sacs.md); `frontageDirs` in
+  `src/world/zonable.ts`, `emitEndCap` in `src/render/roadsmesh.ts`
+- [R-roads-086] A cul-de-sac is the cul-de-sac code on all four tiles of an intact 2×2
+  block of street tiles beyond a dead end, and nothing else is stored; the
+  code shares the junction-control byte and is never a control. One predicate
+  decides it for the worker, the graph and the mirror, and coded tiles no
+  longer such a block read as plain road. The bulb is one thing: no control,
+  turn rule, crossing or paint on its tiles, bulldozing one removes all four,
+  and undo puts them back. Every outer side is frontage, and a lot reaches
+  the ring's footway along a line through its centre. —
+  [cul-de-sacs.md](../specs/cul-de-sacs.md); `culDeSacBlockOf` in
+  `src/shared/culdesac.ts`
+- [R-roads-087] A reserved lane's colour follows its lane: round a bend and a dead end's cap
+  on the road's arc, and past a junction side with no arm, never inside a
+  crosswalk (MUTCD 3H.06 ¶03). A bike lane crosses an arm's mouth between
+  two dotted lines, green only between each pair of marks (9E.03 ¶07, ¶10;
+  3H.06 ¶04). A bus lane's red lies only where general traffic may not go:
+  none in a kerb return's wedge or across a mouth (3H.07 ¶03). A stop line
+  crosses every arriving lane, reserved ones too. — [markings.md](../world-sim/road-model/markings.md);
+  `src/render/roadsmesh.ts`

@@ -2,8 +2,11 @@ import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
 import {
   CEMETERY_LAWN_HEIGHT,
+  CREMATORIUM_ENTRANCE,
   CREMATORIUM_FLUE_HEIGHT_M,
+  CREMATORIUM_FOYER_HEIGHT_M,
   CREMATORIUM_HALL_HEIGHT_M,
+  CREMATORIUM_PORCH,
   CREMATORIUM_RIDGE_M,
   CREMATORIUM_ROOF_CAP_M,
   CREMATORIUM_ROOMS,
@@ -14,12 +17,14 @@ import {
   type Rect,
   type UtilityKitPartKind,
 } from './utilitykits';
+import { sizeForKind } from './vehicles';
 import catalogData from '../data/catalog.json';
 import {
   BuildingCatalogEntry,
   BuildingDelta,
   BuildingInstance,
   BuildingState,
+  VehicleKind,
 } from '../shared/types';
 import { TILE_METERS } from '../shared/constants';
 
@@ -99,6 +104,84 @@ describe('the crematorium layout', () => {
 
   it('is deterministic', () => {
     expect(computeCrematoriumLayout(CREMATORIUM.footprint)).toEqual(layout);
+  });
+});
+
+describe('the crematorium as a crematorium', () => {
+  const layout = computeCrematoriumLayout(CREMATORIUM.footprint);
+  const renderer = new UtilityKitRenderer(new THREE.Scene(), flat, [CREMATORIUM]);
+  const position = renderer
+    .partGeometry('crematorium', 'crematoriumBuilding')!
+    .getAttribute('position');
+  const vertices = Array.from({ length: position.count }, (_, i) =>
+    new THREE.Vector3().fromBufferAttribute(position, i),
+  ).map((v) => new THREE.Vector3(v.x, v.y - CEMETERY_LAWN_HEIGHT, v.z));
+  const [hearseW, hearseH, hearseL] = sizeForKind(VehicleKind.Hearse);
+
+  it('covers the door with a porch a hearse stands under: 6.2 m deep at least, 3 m wide and 2.7 m clear', () => {
+    const { porch, foyer, forecourt } = layout;
+    expect(porch.z1 - porch.z0).toBeGreaterThanOrEqual(hearseL);
+    expect(porch.x1 - porch.x0).toBeGreaterThanOrEqual(3);
+    expect(CREMATORIUM_PORCH.clear).toBeGreaterThanOrEqual(2.7);
+    expect(CREMATORIUM_PORCH.clear).toBeGreaterThan(hearseH);
+    expect(porch.x1 - porch.x0).toBeGreaterThan(hearseW);
+    // It stands on the entrance wall, over the forecourt, in the middle of the doors.
+    expect(porch.z0).toBeCloseTo(foyer.z1, 9);
+    expect(porch.x0).toBeGreaterThanOrEqual(forecourt.x0);
+    expect(porch.x1).toBeLessThanOrEqual(forecourt.x1);
+    expect(porch.z1).toBeLessThanOrEqual(forecourt.z1);
+    expect((porch.x0 + porch.x1) / 2).toBeCloseTo((foyer.x0 + foyer.x1) / 2, 9);
+  });
+
+  it('roofs the porch with a slab 2.7 m clear above the ground and leaves its middle 3 m open to the hearse', () => {
+    const { porch, foyer } = layout;
+    const { clear, slab } = CREMATORIUM_PORCH;
+    const roof = vertices.filter((v) => Math.abs(v.y - (clear + slab)) < 1e-6);
+    for (const [x, z] of [
+      [porch.x0, porch.z0],
+      [porch.x1, porch.z0],
+      [porch.x0, porch.z1],
+      [porch.x1, porch.z1],
+    ] as const) {
+      expect(
+        roof.some((v) => Math.abs(v.x - x) < 1e-6 && Math.abs(v.z - z) < 1e-6),
+        `slab corner ${x},${z}`,
+      ).toBe(true);
+    }
+    const mid = (porch.x0 + porch.x1) / 2;
+    const inLane = vertices.filter(
+      (v) =>
+        Math.abs(v.x - mid) < 1.5 - 1e-6 &&
+        v.z > foyer.z1 + 0.2 &&
+        v.z <= porch.z1 + 1e-6 &&
+        v.y > 0.05 &&
+        v.y < clear - 1e-6,
+    );
+    expect(inLane).toEqual([]);
+  });
+
+  it('raises a tall entrance under the porch: double doors 3 m high, glass beside them, a gable above', () => {
+    const { foyer, porch } = layout;
+    const mid = (foyer.x0 + foyer.x1) / 2;
+    const face = vertices.filter((v) => Math.abs(v.z - (foyer.z1 + 0.12)) < 1e-6);
+    const door = face.filter((v) => Math.abs(v.x - mid) <= CREMATORIUM_ENTRANCE.doorW / 2 + 1e-6);
+    expect(Math.max(...door.map((v) => v.y))).toBeCloseTo(CREMATORIUM_ENTRANCE.doorH, 5);
+    expect(CREMATORIUM_ENTRANCE.doorW).toBeGreaterThanOrEqual(1.8);
+    expect(CREMATORIUM_ENTRANCE.doorH).toBeLessThan(CREMATORIUM_PORCH.clear);
+    expect(CREMATORIUM_FOYER_HEIGHT_M).toBeGreaterThan(
+      CREMATORIUM_PORCH.clear + CREMATORIUM_PORCH.slab,
+    );
+    expect(porch.z0).toBe(foyer.z1);
+  });
+
+  it('keeps the cremator hall low and behind, the chapel tall, and the flue over both roofs', () => {
+    const { hall, chapel, foyer, flue } = layout;
+    expect(CREMATORIUM_HALL_HEIGHT_M).toBeLessThan(CREMATORIUM_RIDGE_M - 1.5);
+    expect(hall.z1).toBeLessThanOrEqual(foyer.z0 + 1e-9);
+    expect(hall.z0).toBeLessThanOrEqual(chapel.z0 + 1e-9);
+    expect(CREMATORIUM_FLUE_HEIGHT_M).toBeGreaterThan(CREMATORIUM_RIDGE_M);
+    expect(flue.x).toBeGreaterThan(hall.x0);
+    expect(flue.x).toBeLessThan(hall.x1);
   });
 });
 

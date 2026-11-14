@@ -34,7 +34,7 @@ region, so you can find whatever you're looking at by where it sits.
 | [Transit lines panel](transit-lines-panel.md) | 1,680 B |
 | [Services panel](services-panel.md) | 2,614 B |
 | [Advisor panel](advisor-panel.md) | 1,234 B |
-| [Asset drawer and tool options](asset-drawer-and-tool-options.md) | 4,908 B |
+| [Asset drawer and tool options](asset-drawer-and-tool-options.md) | 5,187 B |
 | [Main dock (bottom bar #1)](main-dock-bottom-bar-1.md) | 1,607 B |
 | [Milestone popover](milestone-popover.md) | 438 B |
 | [Status strip (bottom bar #2)](status-strip-bottom-bar-2.md) | 1,200 B |

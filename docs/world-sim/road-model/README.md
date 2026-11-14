@@ -16,10 +16,10 @@ bridges.
 | [Stored direction and one-way roads](stored-direction-and-one-way-roads.md) | 3349 |
 | [Junctions: control, defaults and warrants](junctions-control-defaults-and-warrants.md) | 6121 |
 | [Approach lanes, turn pockets and tapers](approach-lanes-turn-pockets-and-tapers.md) | 10415 |
-| [How roads meet: rank, replacement and transitions](how-roads-meet-rank-replacement-and-transitions.md) | 13884 |
+| [How roads meet: rank, replacement and transitions](how-roads-meet-rank-replacement-and-transitions.md) | 14631 |
 | [Ramps and interchanges](ramps-and-interchanges.md) | 9269 |
 | [Furniture and what gates it](furniture-and-what-gates-it.md) | 6158 |
-| [Markings](markings.md) | 15235 |
+| [Markings](markings.md) | 15847 |
 | [Capacity, control delay and warrants — the formulas](capacity-control-delay-and-warrants--the-formulas.md) | 6714 |
 | [Sound walls](sound-walls.md) | 2459 |
 | [The road tool](the-road-tool.md) | 1307 |

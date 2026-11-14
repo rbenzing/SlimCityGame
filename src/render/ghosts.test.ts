@@ -8,6 +8,7 @@ import {
   bandCentre,
   baseColorFor,
   buildBandPositions,
+  buildDiscPositions,
   buildConformingRoadBandPositions,
   buildConformingEdgePositions,
   buildConformingTilePositions,
@@ -1182,6 +1183,41 @@ describe('the ghost of a road off the grid', () => {
     expect(inner.geometry.getAttribute('position').count).toBe(6);
     expect(stripe.count).toBe(0);
     expect(ghosts.volumeBox().visible).toBe(false);
+  });
+});
+
+describe('the ghost of a turning circle', () => {
+  const disc = { x: 220, z: 220, radiusM: 14.6 };
+  const tiles = [
+    { x: 10, z: 10 },
+    { x: 11, z: 10 },
+    { x: 10, z: 11 },
+    { x: 11, z: 11 },
+  ];
+
+  it('covers the circle and no more, on the ground, facing up', () => {
+    const positions = buildDiscPositions(disc.x, disc.z, disc.radiusM, () => 3, 0.21);
+    expect(positions.length).toBeGreaterThan(0);
+    let far = 0;
+    for (let i = 0; i < positions.length; i += 3) {
+      const r = Math.hypot(positions[i]! - disc.x, positions[i + 2]! - disc.z);
+      far = Math.max(far, r);
+      expect(r).toBeLessThan(disc.radiusM + 1e-3);
+      expect(positions[i + 1]).toBeCloseTo(3.21, 3);
+    }
+    expect(far).toBeGreaterThan(disc.radiusM - 0.1);
+  });
+
+  it('is drawn on the block with its rim, and gone on the next preview', () => {
+    const scene = new THREE.Scene();
+    const ghosts = new GhostRenderer(scene, () => 0);
+    ghosts.setPreview(tiles, true, 'road', { disc });
+    const { fill, inner } = ghosts.layers();
+    expect(fill.geometry.getAttribute('position').count).toBeGreaterThan(100);
+    // The block's inner grid is still there, with the rim added to it.
+    expect(inner.geometry.getAttribute('position').count).toBeGreaterThan(6 * 4);
+    ghosts.setPreview(tiles, true, 'road');
+    expect(ghosts.layers().fill.geometry.getAttribute('position').count).toBe(0);
   });
 });
 

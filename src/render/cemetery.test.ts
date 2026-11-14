@@ -4,6 +4,7 @@ import {
   CEMETERY_DRIVE_M,
   CEMETERY_FENCE_HEIGHT_M,
   CEMETERY_GATEHOUSE,
+  CEMETERY_GATE_PIER,
   CEMETERY_LAWN_HEIGHT,
   GRAVES_PER_SECTION,
   GRAVE_SPACE,
@@ -136,8 +137,95 @@ describe('the cemetery layout', () => {
     }
   });
 
+  it('keeps every tree’s canopy, every grave and every headstone a metre clear of the lodge and its eaves', () => {
+    const { eave } = CEMETERY_GATEHOUSE;
+    const g = layout.gatehouse;
+    const zone: Rect = {
+      x0: g.x0 - eave - 1,
+      x1: g.x1 + eave + 1,
+      z0: g.z0 - eave - 1,
+      z1: g.z1 + eave + 1,
+    };
+    for (const t of layout.trees) {
+      const canopy: Rect = { x0: t.x - 1.1, x1: t.x + 1.1, z0: t.z - 1.1, z1: t.z + 1.1 };
+      expect(overlaps(canopy, zone), `tree at ${t.x},${t.z}`).toBe(false);
+    }
+    for (const grave of layout.graves) {
+      expect(overlaps(spaceRect(grave), zone), `grave at ${grave.x},${grave.z}`).toBe(false);
+    }
+  });
+
+  it('turns the lodge’s door to the entrance drive, with a step to it and a window either side', () => {
+    expect(layout.lodgeDoor.x).toBeCloseTo(layout.gatehouse.x0, 9);
+    expect(layout.lodgeDoor.x).toBeGreaterThan(layout.drive.x1);
+    expect(layout.lodgeDoor.z).toBeGreaterThan(layout.gatehouse.z0);
+    expect(layout.lodgeDoor.z).toBeLessThan(layout.gatehouse.z1);
+    expect(layout.lodgeStep.x0).toBeCloseTo(layout.drive.x1, 9);
+    expect(layout.lodgeStep.x1).toBeCloseTo(layout.gatehouse.x0, 9);
+    expect(layout.lodgeStep.z0).toBeLessThan(layout.lodgeDoor.z);
+    expect(layout.lodgeStep.z1).toBeGreaterThan(layout.lodgeDoor.z);
+  });
+
   it('is deterministic', () => {
     expect(computeCemeteryLayout(CEMETERY.footprint, PLOTS)).toEqual(layout);
+  });
+});
+
+describe('the cemetery lodge and gate', () => {
+  const layout = computeCemeteryLayout(CEMETERY.footprint, PLOTS);
+  const renderer = new UtilityKitRenderer(new THREE.Scene(), flat, [CEMETERY]);
+  const vertices = (kind: UtilityKitPartKind): THREE.Vector3[] => {
+    const position = renderer.partGeometry('cemetery', kind)!.getAttribute('position');
+    return Array.from({ length: position.count }, (_, i) =>
+      new THREE.Vector3().fromBufferAttribute(position, i),
+    );
+  };
+
+  it('puts a pitched roof over the walls: the eaves at the storey and a ridge above them', () => {
+    const { h, rise, eave } = CEMETERY_GATEHOUSE;
+    const ys = vertices('cemeteryGatehouse').map((v) => v.y - CEMETERY_LAWN_HEIGHT);
+    expect(Math.max(...ys)).toBeCloseTo(h + rise, 5);
+    expect(rise).toBeGreaterThanOrEqual(1.5);
+    // The roof's own slope over its half span, with the eaves: a pitch of at least 15 degrees.
+    const half = (CEMETERY_GATEHOUSE.d + 2 * eave) / 2;
+    expect(Math.atan(rise / half)).toBeGreaterThan((15 * Math.PI) / 180);
+    expect(Math.atan(rise / half)).toBeLessThan((45 * Math.PI) / 180);
+  });
+
+  it('cuts a door and two windows in the wall that faces the drive', () => {
+    const wall = vertices('cemeteryGatehouse').filter(
+      (v) => v.x < layout.gatehouse.x0 && v.x > layout.gatehouse.x0 - 0.15,
+    );
+    // The door: its full height to the ground, and its width about the lodge door's centre.
+    const doorSpan = wall.filter((v) => Math.abs(v.z - layout.lodgeDoor.z) <= 0.61);
+    expect(Math.min(...doorSpan.map((v) => v.y)) - CEMETERY_LAWN_HEIGHT).toBeCloseTo(0, 5);
+    expect(Math.max(...doorSpan.map((v) => v.y)) - CEMETERY_LAWN_HEIGHT).toBeCloseTo(2.1, 5);
+    // A window either side, up off the ground and clear of the door.
+    for (const side of [-1, 1]) {
+      const pane = wall.filter((v) => Math.abs(v.z - (layout.lodgeDoor.z + side * 3.2)) <= 0.76);
+      expect(pane.length).toBeGreaterThan(0);
+      expect(Math.min(...pane.map((v) => v.y)) - CEMETERY_LAWN_HEIGHT).toBeCloseTo(0.9, 5);
+    }
+  });
+
+  it('stands a stone pier either side of the drive at the street, taller than the fence', () => {
+    const fence = vertices('cemeteryFence');
+    const high = fence.filter((v) => v.y - CEMETERY_LAWN_HEIGHT > CEMETERY_FENCE_HEIGHT_M + 1e-6);
+    for (const edge of [layout.gate.x0, layout.gate.x1]) {
+      const near = high.filter((v) => Math.abs(v.x - edge) < 0.9);
+      expect(near.length, `pier by ${edge}`).toBeGreaterThan(0);
+      expect(Math.max(...near.map((v) => v.y)) - CEMETERY_LAWN_HEIGHT).toBeCloseTo(
+        CEMETERY_GATE_PIER.h + CEMETERY_GATE_PIER.cap,
+        5,
+      );
+      // Beside the drive, not across it.
+      expect(near.every((v) => v.x <= layout.gate.x0 + 1e-6 || v.x >= layout.gate.x1 - 1e-6)).toBe(
+        true,
+      );
+    }
+    // The two piers lie on opposite sides of the drive.
+    expect(high.some((v) => v.x < layout.gate.x0)).toBe(true);
+    expect(high.some((v) => v.x > layout.gate.x1)).toBe(true);
   });
 });
 
@@ -177,16 +265,20 @@ describe('the cemetery kit', () => {
     }
   });
 
-  it('draws the fence 1.5 m high and the gatehouse to the catalog height, on the lawn plate', () => {
+  it('draws the fence 1.5 m high and the gatehouse’s walls to the catalog height, on the lawn plate', () => {
     const renderer = new UtilityKitRenderer(new THREE.Scene(), flat, [CEMETERY]);
-    const top = (kind: UtilityKitPartKind): number => {
-      const g = renderer.partGeometry('cemetery', kind)!;
-      g.computeBoundingBox();
-      return g.boundingBox!.max.y;
-    };
     expect(CEMETERY_FENCE_HEIGHT_M).toBe(1.5);
-    expect(top('cemeteryFence')).toBeCloseTo(CEMETERY_LAWN_HEIGHT + 1.5, 5);
-    expect(top('cemeteryGatehouse')).toBeCloseTo(CEMETERY_LAWN_HEIGHT + CEMETERY.height, 5);
+    // The gate piers stand over the fence: its own top is the highest fence part clear of the gate.
+    const fence = renderer.partGeometry('cemetery', 'cemeteryFence')!.getAttribute('position');
+    const gate = computeCemeteryLayout(CEMETERY.footprint, PLOTS).gate;
+    let fenceTop = -Infinity;
+    for (let i = 0; i < fence.count; i++) {
+      if (Math.abs(fence.getX(i) - (gate.x0 + gate.x1) / 2) > 5) {
+        fenceTop = Math.max(fenceTop, fence.getY(i));
+      }
+    }
+    expect(fenceTop).toBeCloseTo(CEMETERY_LAWN_HEIGHT + 1.5, 5);
+    expect(CEMETERY_GATEHOUSE.h).toBe(CEMETERY.height);
   });
 
   it('stands each cemetery on the highest ground under its lot, so a slope never shows through', () => {

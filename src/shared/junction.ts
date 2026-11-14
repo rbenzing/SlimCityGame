@@ -10,7 +10,7 @@
  *
  * Pure: offsets, seconds and classes, no grid and no graph.
  */
-import { classRank } from './roadprofile';
+import { classRank, isServiceClass } from './roadprofile';
 import type { JunctionControl, RoadClassId } from './types';
 
 /**
@@ -65,9 +65,11 @@ const UNCONTROLLED_CLASSES: ReadonlySet<RoadClassId> = new Set(['highway', 'rail
  * Whether a junction where these classes meet can ever take a control. The
  * warrant and a player's override both ask, so a junction the warrant leaves
  * bare because it touches a motorway cannot be signalled by hand instead.
+ * An alley is an access, not a leg, so a junction needs three legs besides it.
  */
 export function takesControl(classes: readonly RoadClassId[]): boolean {
-  return !classes.some((c) => UNCONTROLLED_CLASSES.has(c));
+  const legs = classes.filter((c) => !isServiceClass(c));
+  return legs.length >= 3 && !classes.some((c) => UNCONTROLLED_CLASSES.has(c));
 }
 
 /**
@@ -190,7 +192,10 @@ function volumeWarrant(approaches: readonly JunctionApproach[]): JunctionControl
  * road — and nothing that touches a motorway, a slip road or a railway takes
  * a control at all.
  */
-export function warrantedControl(approaches: readonly JunctionApproach[]): JunctionControl {
+export function warrantedControl(all: readonly JunctionApproach[]): JunctionControl {
+  // An alley is an access: the junction of one with a street is not an
+  // intersection, so the street's control reads the legs without it.
+  const approaches = all.filter((a) => !isServiceClass(a.classId));
   if (approaches.length < 3) return 'none';
   if (!takesControl(approaches.map((a) => a.classId))) return 'none';
   return stricterOf(classWarrant(approaches), volumeWarrant(approaches));
@@ -403,6 +408,13 @@ const CONTROL_BY_CODE: readonly JunctionControl[] = [
   'signal',
   'roundabout',
 ];
+
+/**
+ * The byte the four tiles of a cul-de-sac hold: the number after the last
+ * control, appended and never reused. It is not a control, so
+ * `controlFromCode` reads it as no override at all.
+ */
+export const CUL_DE_SAC_CODE = 7;
 
 /** The byte a stored override holds; 0 for no override. */
 export function codeForControl(control: JunctionControl | null): number {

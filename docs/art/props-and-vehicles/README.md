@@ -12,6 +12,6 @@ in [lighting.md](../../visual-render/lighting.md); this file covers the models t
 | [Vehicle kit](vehicle-kit.md) | 6,601 B |
 | [Parked cars and lot life](parked-cars-and-lot-life.md) | 3,560 B |
 | [Landmark ploppables](landmark-ploppables.md) | 531 B |
-| [Utility and service silhouettes](utility-and-service-silhouettes.md) | 10,398 B |
+| [Utility and service silhouettes](utility-and-service-silhouettes.md) | 10,525 B |
 | [Street furniture and lamp kit](street-furniture-and-lamp-kit.md) | 3,156 B |
 | [Deferred](deferred.md) | 431 B |

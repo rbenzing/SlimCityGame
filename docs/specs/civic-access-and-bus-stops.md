@@ -11,7 +11,7 @@
 - A bus line names only tiles that hold a stop; removing the last stop on a tile takes the tile off every line. `[R-roads-037]`
 - A shelter with 25 boardings a day is warranted and earns its ad income; a sign costs and earns nothing. `[R-roads-037]`
 - Show none of the zoning grid, tint or plat for a stop tool, which takes no land. `[R-world-041]`
-- Give every civic catalog id a declared access, and lay its crossing from the footprint's front edge over verge and footway; a kit with no street along its front draws nothing. `[R-render-022]`
+- Give every civic catalog id a declared access, and lay its crossing from the footprint's front edge over the verge to the back of the footway, which runs through unbroken; a kit with no street along its front draws nothing. `[R-render-022]`
 - Keep the civic crossing's cut tiles clear of lamps and kerb furniture. `[R-render-022]`
 
 **Numbers:**
@@ -139,7 +139,7 @@ Codes put a civic car park beside or behind the building, never across its front
 
 ### How the crossing is laid
 
-The lot renderer lays each span from the footprint's front edge to the carriageway as the house drive's cut is laid: verge, then footway, then concrete. A drive is `CIVIC_DRIVE_WIDTH_M` (7.3 m), an apron the span's width, a walk 1.8 m. It lies on the frontage the building faces, square to the street, with the curb cut the commercial lot draws.
+The lot renderer lays each span from the footprint's front edge across the verge to the back of the footway. The footway runs through in its own paving, as a sidewalk crosses a driveway, and nothing of the crossing lies over it or the carriageway; a front with no verge lays nothing. A drive is `CIVIC_DRIVE_WIDTH_M` (7.3 m), an apron the span's width, a walk 1.8 m. It lies on the frontage the building faces, square to the street, with the curb cut the commercial lot draws.
 
 `curbCutTileFor` covers the civic cuts so lamps and kerb furniture keep off them. The civic drive keeps the 20 ft corner clearance a house's drive keeps. A kit whose apron stops short of its front edge is extended to it. The kit's own apron or yard is unchanged; the drive meets it.
 

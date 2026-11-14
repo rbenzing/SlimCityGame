@@ -31,7 +31,9 @@ import {
   worldOrderedProfile,
 } from '../shared/roadprofile';
 import { controlFromCode, warrantedControl } from '../shared/junction';
-import { effectiveControlCode, type RoundaboutBlock } from '../shared/roundabout';
+import type { CulDeSac } from '../shared/culdesac';
+import { blockTiles, effectiveControlCode, type RoundaboutBlock } from '../shared/roundabout';
+import { culDeSacsIn, routeRoundCulDeSacs, shapeCulDeSacs } from './culdesacs';
 import { ARMS_PER_TILE } from './grid';
 import { cellRoute, cellTile, cellWeight, neighbours, roadCellsOf } from './roadnet';
 import { compactRoundaboutsIn, gridRingReader, shapeRoundabouts } from './roundabouts';
@@ -430,6 +432,7 @@ export class RoadNetwork implements RoadNetworkApi {
   private nodes: GraphNode[] = [];
   private edges: GraphEdge[] = [];
   private roundabouts: RoundaboutBlock[] = [];
+  private culDeSacs: CulDeSac[] = [];
   private grid: GridState | null = null;
   private dirty = false;
   /**
@@ -508,6 +511,8 @@ export class RoadNetwork implements RoadNetworkApi {
     this.edges = built.edges;
     this.roundabouts = compactRoundaboutsIn(grid);
     shapeRoundabouts(this.nodes, this.edges, this.roundabouts);
+    this.culDeSacs = culDeSacsIn(grid);
+    shapeCulDeSacs(this.nodes, this.edges, this.culDeSacs);
     this.tileEdge = null;
     this.dirty = false;
     this.refreshControls();
@@ -529,11 +534,20 @@ export class RoadNetwork implements RoadNetworkApi {
     const lookup = (id: number): GraphEdge | undefined => byId.get(id);
     const grid = this.grid;
     const rings = grid ? gridRingReader(grid) : null;
+    const bulbs = new Set(this.culDeSacs.flatMap((c) => blockTiles(c).map((t) => `${t.x},${t.z}`)));
     for (const node of this.nodes) {
-      const override = rings ? controlFromCode(effectiveControlCode(node.x, node.z, rings)) : null;
+      // The tiles of a cul-de-sac are one turning circle, whose street has nobody to give way to.
+      const inBulb = bulbs.has(`${node.x},${node.z}`);
+      const override = inBulb
+        ? 'none'
+        : rings
+          ? controlFromCode(effectiveControlCode(node.x, node.z, rings))
+          : null;
       // The warrant is worked out either way, so the inspector can say what
       // handing the junction back to it would mean.
-      node.warranted = warrantedControl(armsAt(node, lookup).map((arm) => arm.approach));
+      node.warranted = inBulb
+        ? 'none'
+        : warrantedControl(armsAt(node, lookup).map((arm) => arm.approach));
       node.control = override ?? node.warranted;
       node.turns = grid ? (grid.junctionTurns[indexOf(grid.size, node.x, node.z)] ?? 0) : 0;
       // The four arms' per-lane sets, so the router divides a movement's delay
@@ -646,9 +660,20 @@ export class RoadNetwork implements RoadNetworkApi {
         : (edge: GraphEdge): number => (hook ? hook(edge) : 1) * edgeCostMultiplier(edge);
     // Snapping goes through this network's own rule, not the plain proximity
     // search, so a route between two points standing mid-run still finds them.
-    return runAstar(this.nodes, this.edges, from, to, composed, this.inNetwork, (x, z) =>
+    const path = runAstar(this.nodes, this.edges, from, to, composed, this.inNetwork, (x, z) =>
       this.nearestNode(x, z),
     );
+    if (path?.route) {
+      path.route = routeRoundCulDeSacs(
+        path.route,
+        path.nodes,
+        from,
+        to,
+        this.edges,
+        this.culDeSacs,
+      );
+    }
+    return path;
   }
 
   addVolume(edgeIds: number[], amount: number): void {
@@ -681,5 +706,11 @@ export class RoadNetwork implements RoadNetworkApi {
   getRoundabouts(): readonly RoundaboutBlock[] {
     this.ensureFresh();
     return this.roundabouts;
+  }
+
+  /** Every cul-de-sac the graph was shaped round, by row and then column. */
+  getCulDeSacs(): readonly CulDeSac[] {
+    this.ensureFresh();
+    return this.culDeSacs;
   }
 }

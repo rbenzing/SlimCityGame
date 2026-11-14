@@ -71,18 +71,24 @@
   onto any road — lays, per tram lane, a concrete track slab 2.7 m wide
   centred on the lane, a shade lighter than the asphalt (the outer rails plus
   0.56 m each side), and in it two grooved girder rails flush with the
-  surface: heads 0.056 m wide (59R2) at ±0.7175 m, half the 1,435 mm standard
-  gauge, 0.004 m proud of the slab in dark steel, each with its 0.042 m
+  surface: heads 0.056 m wide (59R2), their inner faces the 1,435 mm standard
+  gauge apart (centres at ±0.7455 m), 0.004 m proud of the slab in dark steel, each with its 0.042 m
   groove drawn as a darker strip on the gauge side. No sleepers show:
   sleepers across paving read as a railway. A track belongs to the LANE that
   carries it, not to the road: mixed running lays one down each running lane
   it shares with the traffic. A reservation lays no track at grade; it goes up
   onto the guideway below. A dedicated Rail Track is not a street at all — a dark
   ballast bed with no kerbs, markings or crosswalks, carrying two bright steel
-  rails at a 1.5 m gauge on periodic cross-tie sleepers, sleeper phase
+  rails at the same 1,435 mm gauge between their inner faces (heads 0.14 m
+  wide, the game's own) on cross-tie sleepers every 1.6 m, sleeper phase
   anchored at global world-metre zero so ties line up across every seam, on a
   narrower, gravel-class corridor; it has no lane pieces to read, so its
-  single track runs down the middle. It never crosses a street at grade: laid
+  single track runs down the middle. Track never breaks `[R-roads-088]`: on
+  a bend rails and sleepers follow a quarter circle about the shared tile
+  corner, 10 m to the centre line, and a rail or tram junction lays every
+  movement it allows, each turn on that arc, with ballast only under the
+  rails. The 10 m radius is the tile's limit, far tighter than a real
+  turnout. It never crosses a street at grade: laid
   through one in replace mode it runs straight through and the street ends
   either side of it. There are no level crossings yet. A tramway is
   different: where it crosses another street, its slab and rails run straight

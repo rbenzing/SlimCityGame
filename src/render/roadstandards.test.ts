@@ -238,8 +238,13 @@ describe('the Bike Lane street, footways and all, into a T', () => {
       rowAlongX(r, z, 4 * TILE_METERS, 5 * TILE_METERS).filter((s) => s.colour === GREEN).length;
     // Half a metre into the junction tile the lane is still there, both sides.
     expect(greenAt(3 * TILE_METERS - 0.5)).toBeGreaterThan(40);
-    // Past the corner's tangent the kerb has turned away and the lane has ended.
-    expect(greenAt(3 * TILE_METERS - 4)).toBe(0);
+    // Past the corner's tangent the kerb has turned away and the lane follows it
+    // round the return: it stays against the kerb and never crosses the box.
+    const round = rowAlongX(r, 3 * TILE_METERS - 4, 4 * TILE_METERS, 5 * TILE_METERS).filter(
+      (s) => s.colour === GREEN,
+    );
+    expect(round.length).toBeGreaterThan(0);
+    for (const s of round) expect(Math.abs(s.at - centre)).toBeGreaterThan(HALF - 1.7);
   });
 });
 

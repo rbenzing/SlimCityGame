@@ -131,6 +131,37 @@ describe.each(STATION_IDS)('the %s layout', (id) => {
     }
   });
 
+  it('stands one vehicle to a stall or a spot: none through another, the building or the entrance walk', () => {
+    const [aw, , al] = sizeForKind(
+      layout.service === 'fire' ? VehicleKind.Fire : VehicleKind.Police,
+    );
+    const [cw, , cl] = sizeForKind(VehicleKind.Car);
+    const body = (c: { x: number; z: number }, w: number, l: number): Rect => ({
+      x0: c.x - w / 2,
+      x1: c.x + w / 2,
+      z0: c.z - l / 2,
+      z1: c.z + l / 2,
+    });
+    const vehicles = [
+      ...layout.apparatus.map((a) => ({ name: 'apparatus', r: body(a, aw, al) })),
+      ...layout.stalls.map((s) => ({ name: 'stall car', r: body(s, cw, cl) })),
+    ];
+    const walk = layout.paving[0]!;
+    vehicles.forEach((v, i) => {
+      expect(overlaps(v.r, layout.plate), `${id} ${v.name} ${i} in the building`).toBe(false);
+      expect(
+        v.name === 'stall car' && overlaps(v.r, walk),
+        `${id} ${v.name} ${i} on the entrance walk`,
+      ).toBe(false);
+      for (let j = i + 1; j < vehicles.length; j++) {
+        expect(
+          overlaps(v.r, vehicles[j]!.r),
+          `${id} ${v.name} ${i} through ${vehicles[j]!.name} ${j}`,
+        ).toBe(false);
+      }
+    });
+  });
+
   it('is deterministic', () => {
     expect(computeStationLayout(entry)).toEqual(layout);
   });

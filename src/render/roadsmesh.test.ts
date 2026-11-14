@@ -11,7 +11,6 @@ import {
   crosswalkBarCentres,
   isAvenueMedianEligible,
   hasMedianTree,
-  gravelColorAt,
   isArrowTile,
   ARROW_PERIOD_TILES,
   DASH_PAINT_LENGTH_M,
@@ -70,7 +69,7 @@ import {
   worldOrderedProfile,
 } from '../shared/roadprofile';
 import { BIKE_PAINT_MAX_WIDTH_M, EDGE_LINE_MARGIN_M, markingPlan } from './roadmarkings';
-import { CHUNK_TILES, CHUNKS_PER_SIDE, TILE_METERS } from '../shared/constants';
+import { CHUNK_TILES, CHUNKS_PER_SIDE, MAP_SIZE, TILE_METERS } from '../shared/constants';
 import { DEFAULT_ALLOWED, Movement } from '../shared/approach';
 import { SECTION_REACH_TILES } from '../shared/approachzone';
 
@@ -194,9 +193,25 @@ describe('roadTileVertices — transit lane variants (Bus Lane / Bike Lane)', ()
 
   it('breaks the colored band at junctions (paint stops at crossings)', () => {
     const straight = roadTileVertices(0, 0, RoadTier.BusLane, N | S, flatHeightAt);
-    const junction = roadTileVertices(0, 0, RoadTier.BusLane, N | E | S | W, flatHeightAt);
+    const bus = RoadTier.BusLane;
+    const junction = roadTileVertices(0, 0, bus, N | E | S | W, flatHeightAt, {
+      n: bus,
+      e: bus,
+      s: bus,
+      w: bus,
+    });
     expect(countWhere(straight.colors, isBusPaint)).toBeGreaterThan(0);
-    expect(countWhere(junction.colors, isBusPaint)).toBe(0);
+    // Red follows the kerb round the corners but is never carried through the
+    // box: nothing lies between the two lanes' widths, in the middle of it.
+    const half = carriagewayHalfWidthMeters(RoadTier.BusLane) - 3.75;
+    let inBox = 0;
+    for (let i = 0; i < junction.colors.length; i += 3) {
+      if (!isBusPaint(junction.colors.slice(i, i + 3))) continue;
+      const dx = Math.abs(junction.positions[i]! - TILE_METERS / 2);
+      const dz = Math.abs(junction.positions[i + 2]! - TILE_METERS / 2);
+      if (dx < half - 0.01 && dz < half - 0.01) inBox++;
+    }
+    expect(inBox).toBe(0);
   });
 
   it('places lane glyphs periodically + deterministically', () => {
@@ -397,7 +412,7 @@ describe('roadTileVertices — tram track (RoadTier.Tram)', () => {
     expect(rails.map((r) => r.hi - r.lo)).toEqual(rails.map(() => expect.closeTo(0.056, 6)));
     const centres = rails.map((r) => (r.lo + r.hi) / 2).sort((a, b) => a - b);
     expect(centres).toEqual(
-      [-1.875 - 0.7175, -1.875 + 0.7175, 1.875 - 0.7175, 1.875 + 0.7175].map((c) =>
+      [-1.875 - 0.7455, -1.875 + 0.7455, 1.875 - 0.7455, 1.875 + 0.7455].map((c) =>
         expect.closeTo(c, 6),
       ),
     );
@@ -514,7 +529,7 @@ describe('roadTileVertices — tram track (RoadTier.Tram)', () => {
         { kind: 'travel', width: 3.5, flow: 'fwd', tram: true },
       ],
     };
-    expect(railCentres(mixed)).toEqual([-2.4675, -1.0325, 1.0325, 2.4675]);
+    expect(railCentres(mixed)).toEqual([-2.4955, -1.0045, 1.0045, 2.4955]);
   });
 
   it('breaks the track at junctions (rails stop at crossings)', () => {
@@ -650,11 +665,11 @@ describe('roadTileVertices — dedicated rail line (RoadTier.RailTrack)', () => 
     expect(countWhere(colors, isSidewalk)).toBe(0);
   });
 
-  it('breaks the track at junctions (rails stop at crossings)', () => {
+  it('carries the track on through a junction (the rails never stop)', () => {
     const straight = roadTileVertices(0, 0, RoadTier.RailTrack, N | S, flatHeightAt);
     const junction = roadTileVertices(0, 0, RoadTier.RailTrack, N | E | S | W, flatHeightAt);
     expect(countWhere(straight.colors, isRail)).toBeGreaterThan(0);
-    expect(countWhere(junction.colors, isRail)).toBe(0);
+    expect(countWhere(junction.colors, isRail)).toBeGreaterThan(0);
   });
 
   it('rides a narrow dedicated corridor (gravel-class width) and is deterministic', () => {
@@ -1817,6 +1832,40 @@ describe('RoadMeshRenderer — night dimming', () => {
   });
 });
 
+describe('RoadMeshRenderer — a dead end follows the ground it faces', () => {
+  it('draws its cap beyond the tile edge until a building stands on the tile it faces, and again once it is gone', () => {
+    const scene = new THREE.Scene();
+    const renderer = new RoadMeshRenderer(scene, () => 0);
+    const taken = new Set<number>();
+    const at = (x: number, z: number): number => z * MAP_SIZE + x;
+    renderer.setGroundOpen((x, z) => !taken.has(at(x, z)));
+    renderer.apply([
+      makeDelta(3, 3, RoadTier.TwoLane, E),
+      makeDelta(4, 3, RoadTier.TwoLane, E | W),
+      makeDelta(5, 3, RoadTier.TwoLane, W),
+    ]);
+    const farthestEast = (): number => {
+      let far = -Infinity;
+      for (const c of scene.children) {
+        if (!(c instanceof THREE.Mesh)) continue;
+        const p = c.geometry.getAttribute('position');
+        for (let i = 0; i < p.count; i++) far = Math.max(far, p.getX(i));
+      }
+      return far;
+    };
+    const edge = 6 * TILE_METERS;
+    expect(farthestEast()).toBeGreaterThan(edge);
+
+    taken.add(at(6, 3));
+    renderer.groundChanged([at(6, 3)]);
+    expect(farthestEast()).toBeLessThanOrEqual(edge + 1e-6);
+
+    taken.delete(at(6, 3));
+    renderer.groundChanged([at(6, 3)]);
+    expect(farthestEast()).toBeGreaterThan(edge);
+  });
+});
+
 describe('roadTileVertices — cosmetic corner rounding (UI-SPEC §6.18 #5 "Rounded roads")', () => {
   /** World Y an end-cap vertex sits at under flatHeightAt (hAt=0): exactly CAP_Y_OFFSET. */
   const isAtFilletHeight = (y: number): boolean => Math.abs(y - CAP_Y_OFFSET) < 1e-6;
@@ -2259,8 +2308,8 @@ describe('roadTileVertices — curved turn (quarter-annulus)', () => {
     }
   });
 
-  it('the carriageway is one quad per arc segment (TURN_ARC_SEGMENTS = 12 quads of plate color)', () => {
-    expect(TURN_ARC_SEGMENTS).toBe(12);
+  it('the carriageway is one quad per arc segment (TURN_ARC_SEGMENTS = 24 quads of plate color)', () => {
+    expect(TURN_ARC_SEGMENTS).toBe(24);
     const pts = carriagewayPoints(RoadTier.TwoLane, 0, 0, N | E);
     expect(pts.length).toBe(TURN_ARC_SEGMENTS * 6); // one 2-triangle quad per segment
   });
@@ -2441,20 +2490,13 @@ describe('roadTileVertices — Gravel (tier 4, UI-SPEC §6.7 Roads v3)', () => {
     for (const c of core) expect(isGravelTan(c)).toBe(true);
   });
 
-  it('applies slight deterministic per-tile color variation, not a single flat shade', () => {
+  it('is one surface: every tile lays the same colour, so no seam shows between neighbours', () => {
     const colorsAt = (x: number, z: number): number[] =>
       roadTileVertices(x, z, RoadTier.Gravel, 0, flatHeightAt).colors.slice(0, 3);
     const samples = new Set<string>();
-    for (let x = 0; x < 10; x++) samples.add(JSON.stringify(colorsAt(x, 0)));
-    expect(samples.size).toBeGreaterThan(1); // not every tile is identical
-  });
-
-  it('gravelColorAt is pure and deterministic, and stays within a small jitter of the base color', () => {
-    expect(gravelColorAt(4, 9)).toEqual(gravelColorAt(4, 9));
-    const [r, g, b] = gravelColorAt(4, 9);
-    expect(Math.abs(r - 0.62)).toBeLessThanOrEqual(0.05 + 1e-9);
-    expect(Math.abs(g - 0.55)).toBeLessThanOrEqual(0.05 + 1e-9);
-    expect(Math.abs(b - 0.42)).toBeLessThanOrEqual(0.05 + 1e-9);
+    for (let x = 0; x < 10; x++)
+      for (let z = 0; z < 3; z++) samples.add(JSON.stringify(colorsAt(x, z)));
+    expect(samples.size).toBe(1);
   });
 
   it('has NO curbs — a lone tile is bare plate and rounded ends, with no sidewalk quads at all', () => {
@@ -3280,10 +3322,10 @@ describe('roadTileVertices — width transitions on a straight run', () => {
     expect(linking.length).toBeGreaterThan(0);
   });
 
-  it('lays none of it where the arm has no footway to carry on from', () => {
+  it('lays no footway across the mouth of an arm that has none to carry on from', () => {
     // A crossing is for the people on a pavement. An unpaved track has none,
-    // so nothing is carried round to meet it — even though the track is
-    // narrower than the junction and the room is there.
+    // so no footway is laid across its mouth, which keeps its own width to the
+    // junction; the street's kerb return only rounds into it.
     const junction = roadTileVertices(0, 0, RoadTier.FourLane, E | W | N | S, flatHeightAt, {
       n: RoadTier.Gravel,
       e: RoadTier.Gravel,
@@ -3295,12 +3337,7 @@ describe('roadTileVertices — width transitions on a straight run', () => {
     const linking = toTriples(junction.colors).filter((c, i) => {
       const x = junction.positions[i * 3]!;
       const z = junction.positions[i * 3 + 2]!;
-      return (
-        isSidewalk(c) &&
-        cz - z > four + 1e-6 &&
-        Math.abs(x - cz) > armHalf + 1e-6 &&
-        Math.abs(x - cz) < four - 1e-6
-      );
+      return isSidewalk(c) && cz - z > four + 1e-6 && Math.abs(x - cz) < armHalf - 1e-6;
     });
     expect(linking.length).toBe(0);
   });
@@ -5548,5 +5585,136 @@ describe('roadTileVertices — the far side of a T is the kerb of the road runni
     expect(same.colors).toEqual(plain.colors);
     for (const dx of [-centre, centre])
       expect(Math.min(...southAt(same, isSidewalk, dx))).toBeCloseTo(coreHalf, 6);
+  });
+});
+
+describe('roadTileVertices — a plain dead end keeps its kerbs straight to the tile edge', () => {
+  const centre = TILE_METERS / 2;
+  const coreHalf = carriagewayHalfWidthMeters(RoadTier.TwoLane);
+  /** A dead end whose open end faces north, with the ground beyond it free or not. */
+  function deadEnd(open: boolean | undefined, mask = S): { positions: number[]; colors: number[] } {
+    const halves: NeighborHalves = {
+      n: 0,
+      e: 0,
+      s: coreHalf,
+      w: 0,
+      ...(open === undefined ? {} : { open: { n: open, e: open, s: open, w: open } }),
+    };
+    return roadTileVertices(
+      0,
+      0,
+      RoadTier.TwoLane,
+      mask,
+      flatHeightAt,
+      { n: RoadTier.None, e: RoadTier.None, s: RoadTier.TwoLane, w: RoadTier.None },
+      undefined,
+      halves,
+    );
+  }
+  const zsOf = (geo: { positions: number[] }): number[] =>
+    toTriples(geo.positions).map((p) => p[2] as number);
+  const sidewalkAt = (
+    geo: { positions: number[]; colors: number[] },
+    pred: (p: number[]) => boolean,
+  ) =>
+    toTriples(geo.positions).filter(
+      (p, i) => isSidewalk(toTriples(geo.colors)[i] as number[]) && pred(p),
+    );
+
+  it('on free ground the flank kerbs reach the tile edge and the cap stands beyond it', () => {
+    const geo = deadEnd(true);
+    expect(Math.min(...zsOf(geo))).toBeLessThan(-coreHalf + 1);
+    const flank = sidewalkAt(
+      geo,
+      (p) =>
+        Math.abs((p[0] as number) - centre - coreHalf) < 1e-6 && Math.abs(p[2] as number) < 1e-6,
+    );
+    expect(flank.length).toBeGreaterThan(0);
+  });
+
+  it('keeps the whole last tile straight: no asphalt arc starts inside the tile', () => {
+    const geo = deadEnd(true);
+    const arcs = toTriples(geo.positions).filter(
+      (p) => (p[2] as number) > 1e-6 && Math.abs((p[0] as number) - centre) > coreHalf + 1e-6 + 2,
+    );
+    expect(arcs).toEqual([]);
+    // Inside the tile every sidewalk vertex stands on the flank line or beyond it.
+    const inside = sidewalkAt(
+      geo,
+      (p) => (p[2] as number) > 1e-6 && (p[2] as number) < centre - coreHalf - 1e-6,
+    );
+    for (const p of inside)
+      expect(Math.abs((p[0] as number) - centre)).toBeGreaterThanOrEqual(coreHalf - 1e-6);
+  });
+
+  it('where the ground beyond is taken the road ends square at the tile edge, kerbed across', () => {
+    const geo = deadEnd(false);
+    expect(Math.min(...zsOf(geo))).toBeGreaterThanOrEqual(-1e-6);
+    const xs = sidewalkAt(geo, (p) => Math.abs(p[2] as number) < 1e-6).map((p) => p[0] as number);
+    expect(xs.length).toBeGreaterThan(0);
+    expect(Math.min(...xs)).toBeLessThan(centre - coreHalf);
+    expect(Math.max(...xs)).toBeGreaterThan(centre + coreHalf);
+  });
+
+  it('with no ground known it keeps today’s cap inside the tile', () => {
+    const geo = deadEnd(undefined);
+    expect(Math.min(...zsOf(geo))).toBeGreaterThan(-1e-6);
+  });
+
+  it('a lone tile keeps its caps inside the tile whatever lies beyond', () => {
+    const open = deadEnd(true, 0);
+    const none = deadEnd(undefined, 0);
+    expect(open.positions).toEqual(none.positions);
+  });
+});
+
+describe('roadTileVertices — an avenue dead end ends its median in a nose inside the straight road', () => {
+  const coreHalf = carriagewayHalfWidthMeters(RoadTier.Avenue);
+  const kerbBand = curbWidthMeters(RoadTier.Avenue);
+  /** The z of the median's grass vertices on an avenue dead end facing north (tile edge at z = 0). */
+  function medianZs(open: boolean | undefined): number[] {
+    const halves: NeighborHalves = {
+      n: 0,
+      e: 0,
+      s: coreHalf,
+      w: 0,
+      ...(open === undefined ? {} : { open: { n: open, e: open, s: open, w: open } }),
+    };
+    const geo = roadTileVertices(
+      0,
+      0,
+      RoadTier.Avenue,
+      S,
+      flatHeightAt,
+      { n: RoadTier.None, e: RoadTier.None, s: RoadTier.Avenue, w: RoadTier.None },
+      undefined,
+      halves,
+    );
+    const colors = toTriples(geo.colors);
+    return toTriples(geo.positions)
+      .filter((_, i) => {
+        const c = colors[i] as number[];
+        return c.every((v, k) => Math.abs(v - (MEDIAN_GRASS_COLOR[k] as number)) < 1e-6);
+      })
+      .map((p) => p[2] as number);
+  }
+
+  it('on open ground the median runs to the tile edge and its nose ends there, inside the cap', () => {
+    const zs = medianZs(true);
+    expect(zs.length).toBeGreaterThan(0);
+    expect(Math.min(...zs)).toBeGreaterThanOrEqual(-1e-6);
+    expect(Math.min(...zs)).toBeLessThan(1);
+    expect(Math.max(...zs)).toBeGreaterThan(TILE_METERS / 2);
+  });
+
+  it('where the ground beyond is taken the nose ends before the square end of the road', () => {
+    const zs = medianZs(false);
+    expect(zs.length).toBeGreaterThan(0);
+    expect(Math.min(...zs)).toBeGreaterThanOrEqual(-1e-6);
+    expect(Math.min(...zs)).toBeLessThan(kerbBand + 1);
+  });
+
+  it('the open-ground median reaches the edge and the blocked one stops short of it', () => {
+    expect(Math.min(...medianZs(true))).toBeLessThan(Math.min(...medianZs(false)) - 1e-6);
   });
 });

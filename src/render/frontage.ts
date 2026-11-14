@@ -16,6 +16,7 @@ import { TILE_METERS } from '../shared/constants';
 import { carriagewayHalfWidthOf, carriagewayShiftOf, kerbWidthOf } from '../shared/roadprofile';
 import { carriagewayHalfWidthMeters, curbWidthMeters } from './roadsmesh';
 import { findRoadFacingEdge, type RoadFacingEdge, type Side } from '../shared/roadedge';
+import type { BulbFront } from './bulbfront';
 
 /**
  * Grass verge between a building's footprint edge and the near edge of the
@@ -52,6 +53,8 @@ export interface StreetTile {
   vergeM: number;
   /** The paved strip beside the carriageway — a footway, or a bare kerb — in metres. */
   sidewalkM: number;
+  /** The turning circle this tile is a quarter of, where it is one: a lot across it reaches the ring, not a straight kerb. */
+  bulb?: BulbFront;
 }
 
 /** The street on a tile, or null where the tile holds none: no road, or a railway. */
@@ -68,14 +71,17 @@ export const NO_STREETS: StreetLookup = () => null;
 export function streetLookupOf(
   tierAt: (tileX: number, tileZ: number) => RoadTier,
   profileAt: (tileX: number, tileZ: number) => RoadProfile | null,
+  bulbAt: (tileX: number, tileZ: number) => BulbFront | null = () => null,
 ): StreetLookup {
   return (x, z) => {
     const tier = tierAt(x, z);
     if (!isStreetTier(tier)) return null;
     const profile = profileAt(x, z) ?? undefined;
+    const bulb = bulbAt(x, z);
     return {
       vergeM: vergeDepthMeters(tier, profile),
       sidewalkM: sidewalkDepthMeters(tier, profile),
+      ...(bulb ? { bulb } : {}),
     };
   };
 }

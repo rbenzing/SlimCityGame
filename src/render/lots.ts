@@ -24,7 +24,7 @@
 import * as THREE from 'three';
 import { uniform } from 'three/tsl';
 import { nightBodyMaterial } from './nightlook';
-import { BuildingState, RoadTier } from '../shared/types';
+import { BuildingState } from '../shared/types';
 import type { BuildingCatalogEntry, BuildingDelta, BuildingInstance } from '../shared/types';
 import { CHUNK_TILES, CHUNKS_PER_SIDE, TILE_METERS } from '../shared/constants';
 import { footprintForRotation } from '../shared/footprint';
@@ -38,7 +38,7 @@ import { LOT_Y_OFFSET } from './plotground';
 import { massingLifecycleTint } from './massing';
 import { isFarmEntry, isHouseEntry, isWalkUpEntry } from './archetypes';
 import { cropBands, planFarm, type FarmPlan, type FarmRect } from './farmlot';
-import { edgeFrameOfParcel, NO_STREETS, sidewalkDepthMeters, type StreetLookup } from './frontage';
+import { edgeFrameOfParcel, NO_STREETS, type EdgeFrame, type StreetLookup } from './frontage';
 import {
   civicCrossingRects,
   civicSiteFor,
@@ -46,13 +46,15 @@ import {
   type CivicSite,
   type KitSensors,
 } from './civiccrossing';
-import { lotToWorld, planHouseLot, type HouseLotPlan, type LotRect } from './houselot';
 import {
-  CURB_CUT_Y_OFFSET,
-  NEAR_WHITE_STRIPE_COLOR,
-  STRIPE_LINE_HALF_WIDTH_M,
-  STRIPE_LINE_Y_OFFSET,
-} from './parked';
+  lotToWorld,
+  planHouseLot,
+  type BulbRun,
+  type HouseLotPlan,
+  type LotRect,
+} from './houselot';
+import { bulbClearRuns, bulbFanToWorld, bulbReachM } from './bulbfront';
+import { NEAR_WHITE_STRIPE_COLOR, STRIPE_LINE_HALF_WIDTH_M, STRIPE_LINE_Y_OFFSET } from './parked';
 import type { KerbSurroundings } from '../shared/kerblayout';
 import { lotPaving } from '../shared/lotlayout';
 import { ENTRANCE_WALK_M, isDenseLotEntry } from '../shared/parkingcode';
@@ -406,7 +408,9 @@ export class LotRenderer {
       this.layCarPark(carPark, entry, surface, lay, (r) =>
         layColor(r, STRIPE_LINE_Y_OFFSET, NEAR_WHITE_STRIPE_COLOR),
       );
-      this.layVergeCrossing(carPark, surface, lay);
+      this.layVergeCrossing(carPark, surface, lay, (run, y, name) =>
+        pushBulbFan(positions, colors, carPark.frame, run, y, tinted(name), this.heightAt),
+      );
       this.store(building, positions, colors);
       return;
     }
@@ -427,7 +431,9 @@ export class LotRenderer {
           this.heightAt,
         );
       };
-      this.layHouseLot(plan, surface, lay);
+      const layFan = (run: BulbRun, y: number, name: MaterialName): void =>
+        pushBulbFan(positions, colors, plan.frame, run, y, tinted(name), this.heightAt);
+      this.layHouseLot(plan, surface, lay, layFan);
     }
     this.store(building, positions, colors);
   }
@@ -471,10 +477,11 @@ export class LotRenderer {
   }
 
   /**
-   * A civic building's crossings: each span's verge strip and its footway cut,
-   * paved the way a shop's drive is (asphalt, a drive's and an apron's) or a
-   * home's walk is (concrete). A framed parcel's front line is the back of its
-   * free road's footway, so it has no verge and a street's footway is assumed.
+   * A civic building's crossings: each span's verge strip, paved the way a
+   * shop's drive is (asphalt, a drive's and an apron's) or a home's walk is
+   * (concrete). The strip stops at the back of the footway, which runs through
+   * unbroken. A framed parcel's front line is the back of its free road's
+   * footway, so it has no verge and lays nothing.
    */
   private layCivicCrossing(
     site: CivicSite,
@@ -485,11 +492,9 @@ export class LotRenderer {
     const road = this.street(site.edge.roadTileX, site.edge.roadTileZ);
     if (!road && !site.framed) return;
     const vergeM = site.framed ? 0 : (road?.vergeM ?? 0);
-    const sidewalkM = road?.sidewalkM ?? sidewalkDepthMeters(RoadTier.TwoLane);
-    for (const { rect, kind, layer } of civicCrossingRects(site.crossings, vergeM, sidewalkM)) {
+    for (const { rect, kind } of civicCrossingRects(site.crossings, vergeM)) {
       const color = tinted(kind === 'walk' ? 'cleanConcrete' : 'brightAsphalt');
-      const y =
-        layer === 'footway' ? CURB_CUT_Y_OFFSET : kind === 'walk' ? WALK_Y_OFFSET : DRIVE_Y_OFFSET;
+      const y = kind === 'walk' ? WALK_Y_OFFSET : DRIVE_Y_OFFSET;
       if (site.framed) {
         pushConformingTurnedQuad(
           positions,
@@ -589,12 +594,21 @@ export class LotRenderer {
     plan: HouseLotPlan,
     surface: MaterialName,
     lay: (rect: LotRect, y: number, name: MaterialName) => void,
+    layFan: (run: BulbRun, y: number, name: MaterialName) => void = () => undefined,
   ): void {
     for (const strip of plan.vergeLawn) lay(strip, LOT_Y_OFFSET, surface);
+    for (const run of plan.bulbLawn) layFan(run, LOT_Y_OFFSET, surface);
     for (const path of plan.paths) lay(path, DRIVE_Y_OFFSET, 'cleanConcrete');
+    for (const run of plan.bulbWalks) layFan(run, DRIVE_Y_OFFSET, 'cleanConcrete');
     for (const patio of plan.yard.patios)
       lay(patio, DRIVE_Y_OFFSET, PATIO_SURFACE[plan.yard.patioStone]);
-    for (const drive of plan.drives) lay(drive.rect, DRIVE_Y_OFFSET, DRIVE_SURFACE[plan.surface]);
+    for (const drive of plan.drives) {
+      lay(drive.rect, DRIVE_Y_OFFSET, DRIVE_SURFACE[plan.surface]);
+      if (drive.bulb) {
+        const run = { bulb: drive.bulb, u0: drive.rect.u0, u1: drive.rect.u1 };
+        layFan(run, DRIVE_Y_OFFSET, DRIVE_SURFACE[plan.surface]);
+      }
+    }
   }
 
   /**
@@ -631,9 +645,28 @@ export class LotRenderer {
     plan: LotPlan,
     surface: MaterialName,
     lay: (rect: LotRect, y: number, name: MaterialName) => void,
+    layFan: (run: BulbRun, y: number, name: MaterialName) => void,
   ): void {
     const { layout, edge } = plan;
-    const verge = this.street(edge.roadTileX, edge.roadTileZ)?.vergeM ?? 0;
+    const street = this.street(edge.roadTileX, edge.roadTileZ);
+    if (street?.bulb) {
+      // Across a turning circle the drive and the walk run on to the ring along
+      // lines through its centre, short of the street's mouth.
+      const bulb = street.bulb;
+      const at = (u: number): { x: number; z: number } => lotToWorld(plan.frame, u, 0);
+      const across = (u0: number, u1: number, y: number, name: MaterialName): void => {
+        for (const [a, b] of bulbClearRuns(bulb, at, u0, u1, 0))
+          layFan({ bulb, u0: a, u1: b }, y, name);
+      };
+      if (layout.aisles.length > 0) {
+        across(layout.curbCut.u0, layout.curbCut.u1, DRIVE_Y_OFFSET, surface);
+      }
+      if (layout.entranceWalk) {
+        across(layout.entranceWalk.u0, layout.entranceWalk.u1, WALK_Y_OFFSET, 'cleanConcrete');
+      }
+      return;
+    }
+    const verge = street?.vergeM ?? 0;
     if (verge <= 0) return;
     if (layout.aisles.length > 0) {
       const cut = layout.curbCut;
@@ -700,6 +733,37 @@ export class LotRenderer {
     }
     this.dirty.clear();
   }
+}
+
+/**
+ * Ground laid from a lot's front edge to the back of a turning circle's
+ * footway, between `run.u0` and `run.u1` along the edge: slanted toward the
+ * circle's centre, and following the terrain.
+ */
+function pushBulbFan(
+  positions: number[],
+  colors: number[],
+  frame: EdgeFrame,
+  run: BulbRun,
+  y: number,
+  color: readonly [number, number, number],
+  heightAt: (x: number, z: number) => number,
+): void {
+  const at = (u: number): { x: number; z: number } => lotToWorld(frame, u, 0);
+  const reach = bulbReachM(run.bulb, at, run.u0, run.u1);
+  if (reach <= 0) return;
+  pushConformingTurnedQuad(
+    positions,
+    colors,
+    bulbFanToWorld(run.bulb, at, reach),
+    run.u0,
+    0,
+    run.u1,
+    reach,
+    y,
+    color,
+    heightAt,
+  );
 }
 
 interface LotGround {

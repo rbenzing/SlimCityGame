@@ -32,11 +32,13 @@ const CIVIC: {
     part: 'clinicCar',
     stalls: (e) => computeClinicLayout(e.footprint).stalls.length,
   },
-  ...['fire-station', 'fire-station-district', 'police-station'].map((id) => ({
-    id,
-    part: 'stationCar' as const,
-    stalls: (e: BuildingCatalogEntry) => computeStationLayout(e).stalls.length,
-  })),
+  ...['fire-station', 'fire-station-district', 'police-station', 'police-station-district'].map(
+    (id) => ({
+      id,
+      part: 'stationCar' as const,
+      stalls: (e: BuildingCatalogEntry) => computeStationLayout(e).stalls.length,
+    }),
+  ),
   ...['school', 'middle-school', 'high-school', 'college', 'library'].map((id) => ({
     id,
     part: 'schoolCar' as const,

@@ -289,6 +289,21 @@ try {
   // The pylon and shopfronts from the other side, lower, so these are not the street-level frames again.
   await frame('close-strip', boxOf([find('strip', 'com-strip-2')]), -0.7, 0.45, 0.8);
   await frame('close-restaurant', boxOf([find('restaurant', 'com-restaurant-2')]), 0.3, 1.0);
+  // The restaurant's sign and its lane from low, and from behind: nothing stands alone off the lot's paving.
+  await frame(
+    'close-restaurant-low',
+    boxOf([find('restaurant', 'com-restaurant-2')]),
+    0.3,
+    0.35,
+    0.8,
+  );
+  await frame(
+    'close-restaurant-back',
+    boxOf([find('restaurant', 'com-restaurant-2')]),
+    3.4,
+    0.5,
+    0.8,
+  );
   await frame('close-fuel', boxOf([find('fuel', 'com-fuel-2')]), 0.9, 0.4, 0.8);
   await restore();
 

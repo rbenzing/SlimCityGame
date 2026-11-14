@@ -1239,6 +1239,44 @@ describe('a restaurant’s drive-through', () => {
     }
   });
 
+  it('stands the enclosure on the lot’s paving, never alone in the grass, and clear of the pylon', () => {
+    const grow = (r: { x0: number; x1: number; z0: number; z1: number }, m: number) => ({
+      x0: r.x0 - m,
+      x1: r.x1 + m,
+      z0: r.z0 - m,
+      z1: r.z1 + m,
+    });
+    for (const { e, rotation, side, plan } of laned) {
+      const walls = only(plan, 'dumpsterEnclosure');
+      if (walls.length === 0) continue;
+      const b = boundsOf(walls);
+      const paving = [...plan.lot!.hard, ...plan.lot!.lane!.rects];
+      expect(
+        paving.some((r) => overlap(r, grow(b, 0.3))),
+        `${e.id} ${rotation}${side} on paving`,
+      ).toBe(true);
+      for (const part of ['pylon', 'signPole'] as const) {
+        for (const p of only(plan, part)) {
+          expect(overlap(b, placementBounds(p)), `${e.id} ${rotation}${side} ${part}`).toBe(false);
+        }
+      }
+    }
+  });
+
+  it('hangs a pylon’s cabinet square on its pole: one axis, touching', () => {
+    for (const { e, rotation, side, plan } of plans) {
+      const [cabinet] = only(plan, 'pylon');
+      if (!cabinet) continue;
+      const pole = only(plan, 'signPole').find(
+        (p) => Math.abs(bottomOf(p)) < 1e-9 && Math.abs(topOf(p) - bottomOf(cabinet)) < 1e-9,
+      );
+      expect(pole, `${e.id} ${rotation}${side}`).toBeDefined();
+      expect(pole!.offset[0]).toBeCloseTo(cabinet.offset[0], 9);
+      expect(pole!.offset[2]).toBeCloseTo(cabinet.offset[2], 9);
+      expect(cabinet.yaw ?? 0).toBe(pole!.yaw ?? 0);
+    }
+  });
+
   it('darkens the drive-through end of the body as a feature wall its full height, on the pickup wall where there is a lane', () => {
     for (const { e, plan } of laned) {
       const [wall] = only(plan, 'featureWall');

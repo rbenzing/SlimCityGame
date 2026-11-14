@@ -68,6 +68,7 @@ import {
   turbineRotorPhase,
   ACCESSIBLE_SPACE_M,
   AMBULANCE_CANOPY,
+  EMERGENCY_DOORS,
   DECK_LEVELS,
   DECK_RAMP_MIN_M,
   DECK_SLAB_M,
@@ -2552,6 +2553,70 @@ describe('hospital kit', () => {
       ),
     ).toBe(true);
     expect(sizeForKind(VehicleKind.Ambulance)[1]).toBeLessThan(AMBULANCE_CANOPY.clear);
+  });
+
+  const positionsOf = (
+    kind: UtilityKitPartKind,
+  ): THREE.BufferAttribute | THREE.InterleavedBufferAttribute =>
+    new UtilityKitRenderer(new THREE.Scene(), flatHeightAt, [HOSPITAL])
+      .partGeometry('hospital', kind)!
+      .getAttribute('position');
+
+  it('stands the ambulance canopy over a pair of emergency doors a stretcher passes, the bay clear for an ambulance', () => {
+    const { ambulanceCanopy: bay, emergencyDoors: doors, ambulance } = layout;
+    const [, ambH, ambL] = sizeForKind(VehicleKind.Ambulance);
+    expect(doors).toHaveLength(2);
+    // In the wall behind the bay, inside the canopy's width and centred under it.
+    for (const door of doors) {
+      expect(door.z0).toBeCloseTo(bay.z0, 9);
+      expect(door.x0).toBeGreaterThanOrEqual(bay.x0);
+      expect(door.x1).toBeLessThanOrEqual(bay.x1);
+    }
+    expect((doors[0]!.x0 + doors[1]!.x1) / 2).toBeCloseTo((bay.x0 + bay.x1) / 2, 9);
+    // 1.8 m clear for a stretcher with its crew, the doors under the slab with the ambulance beneath it.
+    const clearWidth = doors.reduce((sum, d) => sum + (d.x1 - d.x0), 0);
+    expect(clearWidth).toBeGreaterThanOrEqual(1.8);
+    expect(EMERGENCY_DOORS.h).toBeLessThan(AMBULANCE_CANOPY.clear);
+    expect(AMBULANCE_CANOPY.clear).toBeGreaterThanOrEqual(3);
+    expect(AMBULANCE_CANOPY.clear).toBeGreaterThan(ambH);
+    expect(ambulance.z - ambL / 2).toBeGreaterThan(bay.z0);
+  });
+
+  it('draws the emergency doors in the block’s front wall, as high as they are', () => {
+    const position = positionsOf('hospitalBlock');
+    const { emergencyDoors: doors } = layout;
+    const front = doors[0]!.z1;
+    const onDoorFace = Array.from({ length: position.count }, (_, i) => i).filter(
+      (i) =>
+        Math.abs(position.getZ(i) - front) < 1e-6 &&
+        position.getX(i) >= doors[0]!.x0 - 1e-6 &&
+        position.getX(i) <= doors[1]!.x1 + 1e-6,
+    );
+    expect(onDoorFace.length).toBeGreaterThan(0);
+    const top = Math.max(...onDoorFace.map((i) => position.getY(i))) - RECYCLING_YARD_HEIGHT;
+    expect(top).toBeCloseTo(EMERGENCY_DOORS.h, 5);
+  });
+
+  it('runs a vehicle ramp up from the street side to the roof, no steeper than 1 in 8', () => {
+    const { deck, ramp } = layout;
+    const rise = DECK_STOREY_M * (DECK_LEVELS - 1);
+    // It starts at the street edge of the deck and rises the whole way to the top level.
+    expect(ramp.z1).toBeCloseTo(deck.z1, 9);
+    expect(rise / (ramp.z1 - ramp.z0)).toBeLessThanOrEqual(0.125 + 1e-9);
+    expect(rise / (ramp.z1 - ramp.z0)).toBeGreaterThan(0.05);
+    expect(ramp.x1 - ramp.x0).toBeGreaterThanOrEqual(DECK_RAMP_MIN_M);
+    // The slab in the geometry climbs from the ground to the roof level along the ramp.
+    const position = positionsOf('hospitalDeck');
+    // On the slab's east edge its top is at ground level at the street end and at roof level at the far end.
+    const topAt = (z: number, y: number): boolean =>
+      Array.from({ length: position.count }, (_, i) => i).some(
+        (i) =>
+          Math.abs(position.getX(i) - (ramp.x1 - DECK_SPANDREL.t)) < 1e-6 &&
+          Math.abs(position.getZ(i) - z) < 1e-6 &&
+          Math.abs(position.getY(i) - y) < 1e-5,
+      );
+    expect(topAt(ramp.z1, RECYCLING_YARD_HEIGHT)).toBe(true);
+    expect(topAt(ramp.z0, RECYCLING_YARD_HEIGHT + rise)).toBe(true);
   });
 
   it('parks its cars and its ambulance inside the turned lot at every rotation, the cars on their level', () => {

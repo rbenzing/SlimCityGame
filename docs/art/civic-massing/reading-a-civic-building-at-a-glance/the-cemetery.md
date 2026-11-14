@@ -3,9 +3,11 @@
 The 3×3 lot at 3.2 m is one lawn plate on the highest ground under the lot (as
 the paved kits stand), with:
 
-- **One gatehouse tile**, on the street side beside the drive: one storey, 12 ×
-  10.67 m (128 m², the design figure), gabled to 3.2 m, with a small paved
-  forecourt before its door.
+- **One gatehouse tile**, on the street side beside the drive: a one-storey
+  lodge, 12 × 10.67 m (128 m², the design figure), 3.2 m to the eaves under a
+  pitched roof that rises 2.2 m (the game's own pitch). Its door (1.2 × 2.1 m)
+  and windows (1.5 × 1.2 m) are on the wall facing the drive, with a paved
+  step between door and drive; more windows face the forecourt.
 - **Eight burial sections** of 14 × 7 = 98 graves each, 784 spaces; the first 780
   are used. Each space is 1.07 × 2.44 m, the 42 × 96 in minimum of Florida
   Statutes 497.274, with 0.08 m between neighbours and a 0.3 m aisle between rows,
@@ -16,9 +18,10 @@ the paved kits stand), with:
   their margin; each still holds 98 graves.
 - **A perimeter fence** 1.5 m high (cemetery fences run 4-6 ft; Roslyn WA caps
   them at 6 ft; 1.5 m is the game's choice), posts, rails and pickets, with a
-  gap as wide as the drive and a stone pier either side.
+  gap as wide as the drive and a stone gate pier either side, 0.6 m square
+  and 2.1 m high under a cap, taller than the fence (the game's own sizes).
 - **Trees**, the park's tree, in the lane between sections and beside the
-  gatehouse.
+  gatehouse. Trees, graves and headstones keep 1 m clear of its eaves.
 - **Headstones**, one instanced mesh for every cemetery: an upright 0.61 × 0.20 ×
   0.76 m (24 × 8 × 30 in, inside the common US single-upright range of 24-36 in
   tall, 20-30 in wide and 6-8 in thick) on a 0.1 m wider, 0.1 m high base, grey

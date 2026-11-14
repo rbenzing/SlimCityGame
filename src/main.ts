@@ -87,6 +87,7 @@ import { roundaboutGroundOf } from './world/roundabouts';
 import { platOf, platSourceOf, type Parcel } from './world/plat';
 import { buildRoadCells, type RoadCells } from './world/roadnet';
 import { ROUNDABOUT_CODE } from './shared/roundabout';
+import { CUL_DE_SAC_CODE } from './shared/culdesac';
 import { isUnderground } from './shared/view';
 import { createRenderer, createWorldScene, timeOfDayColors } from './render/scene';
 import { createBloomPipeline, type BloomPipeline } from './render/bloom';
@@ -112,6 +113,7 @@ import {
   type KerbSide,
 } from './render/parked';
 import { findRoadFacingEdge, streetLookupOf } from './render/frontage';
+import { bulbFrontOf, bulbStreetOf } from './render/culdesacmesh';
 import { DrivewayTiles } from './render/drivewaytiles';
 import { faceStreets } from './render/frontfacing';
 import { civicAccessFor } from './shared/civicaccess';
@@ -306,6 +308,19 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
         ? ((clientGrid.roadTier[z * clientGrid.size + x] ?? 0) as RoadTier)
         : RoadTier.None,
     (x, z) => clientGrid.drawnProfileAt(x, z),
+    // A lot across a cul-de-sac's tile reaches the turning circle's ring.
+    (x, z) => {
+      const block = clientGrid.culDeSacAt(x, z);
+      if (!block) return null;
+      const ring = bulbStreetOf(
+        block,
+        (tx, tz) => (inBounds(tx, tz) ? (clientGrid.roadMask[tz * clientGrid.size + tx] ?? 0) : 0),
+        (tx, tz) => clientGrid.profileAt(tx, tz),
+      );
+      return ring
+        ? bulbFrontOf((block.x + 1) * TILE_METERS, (block.z + 1) * TILE_METERS, ring)
+        : null;
+    },
   );
 
   /**
@@ -361,6 +376,16 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
     (id) => clientGrid.profileById(id),
     overSurfaceAt,
   );
+  // A dead end's cap stands beyond its tile only on ground nothing holds.
+  roadsMesh.setGroundOpen((x, z) => {
+    if (!inBounds(x, z)) return false;
+    const i = z * clientGrid.size + x;
+    return (
+      clientGrid.buildingId[i] === 0 &&
+      clientGrid.water[i] === 0 &&
+      (clientGrid.roadTier[i] ?? 0) === RoadTier.None
+    );
+  });
   // The stalls the streets paint, as the road mesh lays them: a suburban car
   // park counts those along its frontage toward its code, so every renderer
   // that stands a body on its lot lays the lot out with the same credit.
@@ -1296,6 +1321,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
         catalogId: string;
         x: number;
         z: number;
+        rotation: number;
         state: number;
         problems: number;
         frame?: ParcelFrame;
@@ -1305,6 +1331,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
           catalogId: b.catalogId,
           x: b.x,
           z: b.z,
+          rotation: b.rotation,
           state: b.state,
           problems: b.problems,
           frame: b.frame,
@@ -1955,7 +1982,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
     if (tool === 'bulldoze') return 'bulldoze';
     if (tool.startsWith('road.') || tool === 'interchange') return 'road';
     // A roundabout's block reads as the square of ground it takes.
-    if (tool === 'roundabout') return 'zone';
+    if (tool === 'roundabout' || tool === 'culdesac') return 'zone';
     if (tool.startsWith('zone.')) return 'zone';
     // District paint reads as a zone-style tint; transit stops read as a road path.
     if (tool === 'district.paint') return 'zone';
@@ -2027,7 +2054,12 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
     roundaboutGround: () =>
       roundaboutGroundOf(
         clientGrid,
-        (x, z) => (clientGrid.roundaboutAt(x, z) ? ROUNDABOUT_CODE : 0),
+        (x, z) =>
+          clientGrid.roundaboutAt(x, z)
+            ? ROUNDABOUT_CODE
+            : clientGrid.culDeSacAt(x, z)
+              ? CUL_DE_SAC_CODE
+              : 0,
         (id) => clientGrid.profileById(id),
       ),
     // The worker's own deck solver, run against the mirror, so the ghost
@@ -2139,6 +2171,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
           opts = { ...opts, roadWidthMeters: preview.widthMeters };
         }
         if (preview.deckLifts) opts = { ...opts, deckLifts: preview.deckLifts };
+        if (preview.disc) opts = { ...opts, disc: preview.disc };
         if (preview.bandShifts) opts = { ...opts, roadBandShifts: preview.bandShifts };
         if (tool.startsWith('plop.') && preview.tiles.length > 0) {
           const entry = catalogById.get(tool.slice('plop.'.length));
@@ -2469,7 +2502,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
     // What a lot's drive and a walker's path are laid against: the roads, their
     // sections, and the controls that reshape them. Each is derived per building,
     // so a change to any of them lays every one again.
-    if (snap.roads || snap.roadProfiles || snap.roadNet || snap.roundabouts) {
+    if (snap.roads || snap.roadProfiles || snap.roadNet || snap.roundabouts || snap.culDeSacs) {
       drivewayCache.invalidate();
       pedestrianRenderer.invalidatePaths();
     }
@@ -2502,10 +2535,17 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       clientGrid.applyRoundabouts(snap.roundabouts);
       roadsMesh.setRoundabouts(snap.roundabouts);
     }
-    const redrawnChunks = new Set<number>(
-      snap.junctions ? roadsMesh.setJunctionControls(snap.junctions) : [],
-    );
-    if (snap.junctions || snap.roundabouts) {
+    const culDeSacChunks: number[] = [];
+    if (snap.culDeSacs) {
+      clientGrid.applyCulDeSacs(snap.culDeSacs);
+      culDeSacChunks.push(...roadsMesh.setCulDeSacs(snap.culDeSacs));
+    }
+    // A cul-de-sac laid or removed lays again the lots beside its ring.
+    const redrawnChunks = new Set<number>([
+      ...(snap.junctions ? roadsMesh.setJunctionControls(snap.junctions) : []),
+      ...culDeSacChunks,
+    ]);
+    if (snap.junctions || snap.roundabouts || snap.culDeSacs) {
       // An open inspector shows the junction as it IS: the worker may have
       // refused the change, or the warrant may have moved it while the panel
       // was open. A junction that has gone — bulldozed — closes the panel.
@@ -2542,7 +2582,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       // Ground cover follows the road only where the road touches the ground —
       // a mown band under a bridge would be a stripe of lawn across a river.
       terrain.applyRoadTiles(roadTiles.filter((t) => !t.elevated));
-    } else if (controlsMoved || snap.roundabouts) {
+    } else if (controlsMoved || snap.roundabouts || snap.culDeSacs) {
       // A junction can change control with no tile changing at all — the
       // traffic through it grew. Only the signs care, and, where a
       // roundabout came or went, the lamps.
@@ -2550,6 +2590,9 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       rebuildLamps();
       if (snap.roundabouts) {
         for (const block of snap.roundabouts) markPolesAt(block.x, block.z);
+      }
+      if (snap.culDeSacs) {
+        for (const block of snap.culDeSacs) markPolesAt(block.x, block.z);
       }
     }
     if (snap.buildings) {
@@ -2571,7 +2614,9 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       // Walker scatter tracks the Active-building set incrementally; feed it
       // the same delta (idlers ride the last-known stop list).
       pedestrianRenderer.apply({ stops: latestStopPoints, buildings: snap.buildings });
-      clientGrid.applyBuildingDelta(snap.buildings, (catalogId) => catalogById.get(catalogId));
+      roadsMesh.groundChanged(
+        clientGrid.applyBuildingDelta(snap.buildings, (catalogId) => catalogById.get(catalogId)),
+      );
       for (const inst of snap.buildings.added) knownBuildings.set(inst.id, inst);
       for (const inst of snap.buildings.updated) knownBuildings.set(inst.id, inst);
       // A strung line ends on a pole at the edge of the source it meets, so a
@@ -2799,7 +2844,14 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
     state.setResponders(snap.responders ?? null);
     state.setOpenSpace(snap.openSpace ?? null);
     flushPoles(
-      Boolean(snap.roads || snap.roadNet || snap.buildings || snap.transit || snap.roundabouts),
+      Boolean(
+        snap.roads ||
+        snap.roadNet ||
+        snap.buildings ||
+        snap.transit ||
+        snap.roundabouts ||
+        snap.culDeSacs,
+      ),
     );
   };
 

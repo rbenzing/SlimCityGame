@@ -21,7 +21,7 @@
 | -------- | ----- | ---- | ------ |
 | rail gauge | 1,435 | mm | standard gauge |
 | rail head width (59R2) | 0.056 | m | dial |
-| rail offset from lane centre | ±0.7175 | m | half the gauge |
+| rail offset from lane centre | ±0.7455 | m | half the gauge plus half a head: gauge is measured between the heads' inner faces |
 | rail top above slab | 0.004 | m | dial |
 | groove strip beside each head | 0.042 | m | dial |
 | track slab width | 2.7 | m | [Toronto TS 3.75](https://www.toronto.ca/wp-content/uploads/2025/09/90dc-ecs-specs-roadspecs-TS-3.75-Sep2025.pdf): outer rails plus 560 mm each side; [Portland Streetcar standards](https://www.portland.gov/transportation/development/documents/portland-streetcar-development-standards-2025-edition/download) |

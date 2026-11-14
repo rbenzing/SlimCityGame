@@ -56,6 +56,10 @@ category or tool is active.
   soon as another choice makes room for it. The choice already made is never
   disabled.
 
+- The **Cul-de-sac** card beside it lays a turning circle beyond a street's
+  dead end ([cul-de-sacs](../../specs/cul-de-sacs.md)): hovering a dead end
+  previews the 2×2 block and the circle on the side the pointer is, and a
+  refusal says why in the preview and on the click.
 - The **Roundabout** card in the Small tab lays a compact roundabout on a
   street junction ([roundabouts](../../specs/roundabouts.md)).
   Like the interchange it is placed, not drawn, and has no panel of its own:

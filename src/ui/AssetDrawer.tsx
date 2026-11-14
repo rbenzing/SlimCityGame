@@ -138,6 +138,20 @@ function CardPictogram({ card }: { card: AssetCard }): JSX.Element {
       </div>
     );
   }
+  if (card.id === 'culdesac') {
+    // A street running into a turning circle.
+    return (
+      <div
+        className="flex h-11 items-center justify-center rounded-[6px] bg-[#2a2f36]"
+        aria-hidden="true"
+      >
+        <svg viewBox="0 0 40 40" className="h-10 w-10">
+          <rect x="18" y="0" width="4" height="22" fill="#fff" />
+          <circle cx="20" cy="28" r="10" fill="#fff" />
+        </svg>
+      </div>
+    );
+  }
   if (card.id === 'transit.line' || card.id === 'transit.rail') {
     return (
       <div
