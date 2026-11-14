@@ -283,3 +283,20 @@ Back to [the index](../GROUND-TRUTHS.md).
   closing line crosses another. One function draws it for grid and free
   roads. — [median, dividers and kerbs](../art/streets/median-dividers-and-kerbs.md);
   `emitIsland` in `src/render/medianisland.ts`
+- [R-roads-085] A plain dead end is frontage along its two sides only: the ground it faces
+  is never zoned from it, and no drive or walk meets its rounded cap. Its
+  kerbs run straight to the end tile's far edge and the cap stands beyond, on
+  the run-out ground; where that ground is taken the road ends square. Homes
+  form round a road's end only where a cul-de-sac was built (the player's
+  rule). — [cul-de-sacs.md](../specs/cul-de-sacs.md); `frontageDirs` in
+  `src/world/zonable.ts`, `emitEndCap` in `src/render/roadsmesh.ts`
+- [R-roads-086] A cul-de-sac is the cul-de-sac code on all four tiles of an intact 2×2
+  block of street tiles beyond a dead end, and nothing else is stored; the
+  code shares the junction-control byte and is never a control. One predicate
+  decides it for the worker, the graph and the mirror, and coded tiles no
+  longer such a block read as plain road. The bulb is one thing: no control,
+  turn rule, crossing or paint on its tiles, bulldozing one removes all four,
+  and undo puts them back. Every outer side is frontage, and a lot reaches
+  the ring's footway along a line through its centre. —
+  [cul-de-sacs.md](../specs/cul-de-sacs.md); `culDeSacBlockOf` in
+  `src/shared/culdesac.ts`

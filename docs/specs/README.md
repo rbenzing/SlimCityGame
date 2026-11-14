@@ -13,6 +13,7 @@ One spec a built feature, card first; the template is [_template.md](_template.m
 | [parking-to-code.md](parking-to-code.md) | Suburban commercial and industrial lots drawn with the parking their code asks of their floor |
 | [interchanges.md](interchanges.md)     | A motorway interchange laid in one click: diamond, partial cloverleaf or cloverleaf                                                                   |
 | [roundabouts.md](roundabouts.md)       | A compact roundabout 36 m across, laid on a street junction in one click                                                                              |
+| [cul-de-sacs.md](cul-de-sacs.md)       | How a street ends: the plain dead end's cap, and a 96 ft turning circle on a 2×2 block that homes form round                                          |
 | [sound-barriers.md](sound-barriers.md) | A noise wall along a motorway or a slip road, 3 to 6 m tall, that cuts the noise behind it                                                            |
 | [tramways.md](tramways.md)             | A street tramway drawn as a street cars share, and a tram reservation lifted onto an elevated guideway with raised stations; every tram lane routable |
 | [healthcare-and-death-care.md](healthcare-and-death-care.md) | The clinic and hospital ladder, deaths and vacancies, and death care from the hearse to the cemetery and crematorium |

@@ -104,6 +104,12 @@ import {
   type InterchangeLayout,
 } from '../shared/interchange';
 import {
+  CUL_DE_SAC_RADIUS_M,
+  culDeSacAtEnd,
+  culDeSacCommands,
+  type CulDeSacPlan,
+} from '../shared/culdesac';
+import {
   blockTiles,
   roundaboutAtJunction,
   roundaboutCommands,
@@ -147,6 +153,8 @@ export interface ToolPreview extends CursorChip {
    * tile is drawn centred.
    */
   bandShifts?: number[];
+  /** The turning circle a cul-de-sac preview would lay on `tiles`: its centre and radius, world metres. */
+  disc?: { x: number; z: number; radiusM: number };
   /**
    * A road off the grid being drawn: its centre line and the points clicked so
    * far, world metres. Present only in the `Curve` mode, whose ghost is this
@@ -500,6 +508,9 @@ export interface InterchangeOptions {
 
 /** The name a compact roundabout is laid, and undone, under. */
 export const ROUNDABOUT_LABEL = 'Compact roundabout';
+
+/** The name a cul-de-sac is laid, and undone, under. */
+export const CUL_DE_SAC_LABEL = 'Cul-de-sac';
 
 /** The name an interchange of each form is laid, and undone, under. */
 export const INTERCHANGE_LABEL: Readonly<Record<InterchangeForm, string>> = {
@@ -1836,6 +1847,7 @@ export class ToolManager {
   private wantsGroundPoint(): boolean {
     return (
       this._tool === 'roundabout' ||
+      this._tool === 'culdesac' ||
       isStopTool(this._tool) ||
       (isTransitTool(this._tool) && transitModeOf(this._tool) === 'bus')
     );
@@ -2287,6 +2299,10 @@ export class ToolManager {
       this.env.onPreview(this.judgeRoundabout(current)?.preview ?? null);
       return;
     }
+    if (tool === 'culdesac') {
+      this.env.onPreview(this.judgeCulDeSac(current)?.preview ?? null);
+      return;
+    }
     if (isTerraformTool(tool)) {
       this.emitTerraformPreview(current);
       return;
@@ -2639,8 +2655,61 @@ export class ToolManager {
     return { preview, plan, tier, ...(id !== 0 && id !== tier ? { profile: id } : {}) };
   }
 
+  /**
+   * The cul-de-sac the Cul-de-sac tool would lay beyond the dead end `at`, on
+   * the side of the street the pointer is on, and whether it may be laid: the
+   * site's refusal first, then the milestone and the funds the four tiles of
+   * street it lays are judged by. The tiles are the street's own kind.
+   */
+  private judgeCulDeSac(at: TilePoint): {
+    preview: ToolPreview;
+    plan: CulDeSacPlan;
+    tier: RoadTier;
+    profile?: number;
+  } | null {
+    const ground = this.env.roundaboutGround?.();
+    if (!ground) return null;
+    const p = this.hoverPoint;
+    const east = p ? p.x / 100 >= (at.x + 0.5) * TILE_METERS : true;
+    const south = p ? p.z / 100 >= (at.z + 0.5) * TILE_METERS : true;
+    const plan = culDeSacAtEnd(at, east, south, ground);
+    const tier = ground.roadAt(at.x, at.z)?.tier ?? RoadTierValue.TwoLane;
+    const spec = this.env.roadSpec(tier);
+    const cost = plan.toLay.length * spec.costPerTile;
+    const tiles = blockTiles(plan.block);
+    const judged = this.evaluate(
+      tiles,
+      cost,
+      plan.toLay.length > 0 ? spec.unlockMilestone : 0,
+      true,
+    );
+    const reason = plan.refusal ?? judged.invalidReason;
+    const id = this.env.roadProfileIdAt?.(at) ?? 0;
+    const preview: ToolPreview = {
+      tiles,
+      valid: plan.refusal === null && judged.valid,
+      cost,
+      label: CUL_DE_SAC_LABEL,
+      disc: {
+        x: (plan.block.x + 1) * TILE_METERS,
+        z: (plan.block.z + 1) * TILE_METERS,
+        radiusM: CUL_DE_SAC_RADIUS_M,
+      },
+      ...(reason !== undefined ? { invalidReason: reason } : {}),
+    };
+    return { preview, plan, tier, ...(id !== 0 && id !== tier ? { profile: id } : {}) };
+  }
+
   private commit(start: TilePoint, end: TilePoint): void {
     const tool = this._tool;
+    if (tool === 'culdesac') {
+      // Asked again as it is laid, and nothing sent unless all of it can be.
+      const judged = this.judgeCulDeSac(end);
+      if (judged?.preview.valid) {
+        this.env.send(CUL_DE_SAC_LABEL, culDeSacCommands(judged.plan, judged.tier, judged.profile));
+      }
+      return;
+    }
     if (tool === 'roundabout') {
       // Asked again as it is laid, and nothing sent unless all of it can be.
       const judged = this.judgeRoundabout(end);

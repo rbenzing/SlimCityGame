@@ -148,9 +148,11 @@ import {
   RING_APRON_WIDTH_M,
   RING_OUTER_RADIUS_M,
   RING_ROADWAY_WIDTH_M,
+  roundaboutLegs,
   SPLITTER_WIDTH_M,
   type RoundaboutBlock,
 } from '../shared/roundabout';
+import { bulbLineRun, bulbStreetOf, culDeSacVertices, type BulbStreet } from './culdesacmesh';
 import { axisOfFlow } from '../shared/overpass';
 import type { TaperStep } from '../shared/taper';
 import type { ApproachAhead, AuxiliaryLane, RampMouth } from '../shared/approachzone';
@@ -821,6 +823,49 @@ function driftBetween(
 ): (along: number) => number {
   if (hi <= lo) return () => atLo;
   return (along) => atLo + ((atHi - atLo) * (along - lo)) / (hi - lo);
+}
+
+/**
+ * Paints a cul-de-sac's street inside its block: each of the plan's lines runs
+ * on from the block's edge, where the street's own tile ends it, to the turning
+ * circle's edge, where it ends. Nothing is painted on the circle.
+ */
+export function paintBulbStreet(
+  into: { positions: number[]; colors: number[] },
+  plan: MarkingPlan,
+  street: BulbStreet,
+  centre: { x: number; z: number },
+  hAt: (x: number, z: number) => number,
+): void {
+  const vertical = street.side === RoadFlow.North || street.side === RoadFlow.South;
+  // Out along the street from the circle's centre: +1 where it runs to larger x or z.
+  const sign = street.side === RoadFlow.South || street.side === RoadFlow.East ? 1 : -1;
+  const centerX = vertical ? centre.x + street.lateral : centre.x;
+  const centerZ = vertical ? centre.z : centre.z + street.lateral;
+  const origin = vertical ? centre.z : centre.x;
+  /** The stretch of a run, along the street's axis from the centre, as `lo..hi`. */
+  const span = (s0: number, s1: number): [number, number] => (sign > 0 ? [s0, s1] : [-s1, -s0]);
+  const push = (at: number, lo: number, hi: number, line: MarkingLine): void => {
+    const pos: number[] = [];
+    const col: number[] = [];
+    pushMarkingRun(pos, col, vertical, centerX, centerZ, at, at, lo, hi, hAt, paintOf(line));
+    for (const n of pos) into.positions.push(n);
+    for (const n of col) into.colors.push(n);
+  };
+  for (const line of plan.solid) {
+    if (line.parallelParkingEdge) continue;
+    const run = bulbLineRun(street, line.at);
+    if (run) push(line.at, ...span(run.s0, run.s1), line);
+  }
+  for (const line of plan.dashed) {
+    const run = bulbLineRun(street, line.at);
+    if (!run) continue;
+    const [lo, hi] = span(run.s0, run.s1);
+    // Dashes keep the street's own phase, measured from the world's origin.
+    for (const [a, b] of dashSegments(origin + lo, origin + hi)) {
+      push(line.at, a - origin, b - origin, line);
+    }
+  }
 }
 
 /** A single marking line segment running along Z (vertical travel), offset `offset` in X. */
@@ -2970,9 +3015,11 @@ function emitEndCap(
   outwardSign: 1 | -1,
   color: readonly [number, number, number],
   hAt: (x: number, z: number) => number,
+  /** How far from the centre the bulb's flat edge stands: the core's edge, or the tile's. */
+  pivot: number = coreHalf,
 ): void {
   if (coreHalf <= 0) return;
-  const edgeAlong = outwardSign * coreHalf;
+  const edgeAlong = outwardSign * pivot;
   const apex: [number, number] = vertical ? [0, edgeAlong] : [edgeAlong, 0];
   // Half-circle: cross radius and outward bulge both `coreHalf`, so the rounded
   // end is a true semicircle spanning the full carriageway width.
@@ -3027,6 +3074,7 @@ function emitEndCapCurb(
   outwardSign: 1 | -1,
   color: readonly [number, number, number],
   hAt: (x: number, z: number) => number,
+  pivot: number = coreHalf,
 ): void {
   // A curb/sidewalk half-annulus wrapping the round cap, concentric with the
   // bulb (center = the core's dead-end edge midpoint, radius = the cap's own
@@ -3039,7 +3087,7 @@ function emitEndCapCurb(
   if (capRadius <= 0) return;
   const curbBand = Math.min(SIDEWALK_WIDTH_M, armDepth);
   if (curbBand <= 0) return;
-  const pivotAlong = outwardSign * coreHalf; // bulb center along the road axis
+  const pivotAlong = outwardSign * pivot; // bulb center along the road axis
   // Local [x, z] of a point `r` out from the bulb center at sweep angle `a`.
   // The band keeps its width along the road as well as across it, so it tracks
   // the bulb whether that is a half-circle or the shallower arc a lone tile's
@@ -3098,9 +3146,10 @@ function emitEndCapMarkings(
   vertical: boolean,
   outwardSign: 1 | -1,
   hAt: (x: number, z: number) => number,
+  pivot: number = coreHalf,
 ): void {
   if (coreHalf <= 0) return;
-  const pivotAlong = outwardSign * coreHalf;
+  const pivotAlong = outwardSign * pivot;
   // Paint follows the asphalt: every arc is squashed along the road by the
   // same ratio the cap itself is.
   const squash = alongDepth / coreHalf;
@@ -4741,6 +4790,13 @@ export interface NeighborHalves {
    */
   medians?: { n: number; e: number; s: number; w: number };
   /**
+   * Whether the tile beyond each side is free ground: not a building, water,
+   * another road or off the map. A dead end's rounded cap stands beyond the
+   * tile's edge where it is, and the road ends square at the edge where it is
+   * not. Omitted, the ground is not known and the cap stays inside the tile.
+   */
+  open?: { n: boolean; e: boolean; s: boolean; w: boolean };
+  /**
    * The side this tile's corridor partner lies on where the median is open:
    * the street crossing joins the two halves, and what lies between them is a
    * gap in the median rather than an arm. Omitted, no side is.
@@ -5217,6 +5273,25 @@ export function roadTileVertices(
   const capS = turns && (alone ? aloneVertical : legs === 1 && (legMask & NORTH) !== 0);
   const capE = turns && (alone ? !aloneVertical : legs === 1 && (legMask & WEST) !== 0);
   const capW = turns && (alone ? !aloneVertical : legs === 1 && (legMask & EAST) !== 0);
+  // The last tile of a dead end runs straight to its far edge: the carriageway
+  // and its kerbs are as long as the tile, and the rounded cap stands past it on
+  // the ground the road levels beyond its end. Where that ground is taken the
+  // road ends square at the edge instead, kerbed across, so nothing is laid on
+  // someone else's tile. A lone tile, and a tile whose ground is not known, keep
+  // the cap inside.
+  const endGround = alone ? undefined : neighborHalves.open;
+  /** How far from the centre the carriageway runs on the side of a dead end, and where its kerbs stop. */
+  const endReach = (cap: boolean, side: 'n' | 'e' | 's' | 'w'): number => {
+    if (!cap || !endGround) return coreHalf;
+    return endGround[side] ? TILE_HALF : TILE_HALF - kerbBand;
+  };
+  const reachN = endReach(capN, 'n');
+  const reachS = endReach(capS, 's');
+  const reachE = endReach(capE, 'e');
+  const reachW = endReach(capW, 'w');
+  /** Whether the dead end on a side is closed square, its ground being taken. */
+  const squareOn = (cap: boolean, side: 'n' | 'e' | 's' | 'w'): boolean =>
+    cap && endGround !== undefined && !endGround[side];
 
   // Wide -> narrow transition: on a straight through-run, a tile whose
   // neighbour is narrower bends its edge in to meet it over the whole tile
@@ -5509,6 +5584,30 @@ export function roadTileVertices(
         -armFrom,
         extW.from,
         extW.to,
+        ROAD_Y_OFFSET,
+        plateColor,
+        hAt,
+      );
+    }
+
+    // A dead end's carriageway runs on from the core plate to where the road ends.
+    for (const [cap, reach, vertical, sign] of [
+      [capN, reachN, true, -1],
+      [capS, reachS, true, 1],
+      [capE, reachE, false, 1],
+      [capW, reachW, false, -1],
+    ] as const) {
+      if (!cap || reach <= coreHalf + 1e-6) continue;
+      const [from, to] = sign > 0 ? [coreHalf, reach] : [-reach, -coreHalf];
+      pushLocalRect(
+        positions,
+        colors,
+        centerX,
+        centerZ,
+        vertical ? -coreHalf : from,
+        vertical ? coreHalf : to,
+        vertical ? from : -coreHalf,
+        vertical ? to : coreHalf,
         ROAD_Y_OFFSET,
         plateColor,
         hAt,
@@ -5818,10 +5917,10 @@ export function roadTileVertices(
       // middle of the road, on a corridor half — and where the road stops
       // square, to the corner of the kerb laid across its end.
       const squareEnd = coreHalf + curbWidth;
-      const flankZLo = capN ? -coreHalf : hasN || seamAt.z === -1 ? -edgeZ(-1) : -squareEnd;
-      const flankZHi = capS ? coreHalf : hasS || seamAt.z === 1 ? edgeZ(1) : squareEnd;
-      const flankXLo = capW ? -coreHalf : hasW || seamAt.x === -1 ? -edgeX(-1) : -squareEnd;
-      const flankXHi = capE ? coreHalf : hasE || seamAt.x === 1 ? edgeX(1) : squareEnd;
+      const flankZLo = capN ? -reachN : hasN || seamAt.z === -1 ? -edgeZ(-1) : -squareEnd;
+      const flankZHi = capS ? reachS : hasS || seamAt.z === 1 ? edgeZ(1) : squareEnd;
+      const flankXLo = capW ? -reachW : hasW || seamAt.x === -1 ? -edgeX(-1) : -squareEnd;
+      const flankXHi = capE ? reachE : hasE || seamAt.x === 1 ? edgeX(1) : squareEnd;
       // On the far side of a T the strip stands at the through arms' kerb,
       // which is the junction's own everywhere else.
       const flank = (vertical: boolean, side: 1 | -1, farLo: number, farHi: number): void => {
@@ -5888,10 +5987,9 @@ export function roadTileVertices(
       else emitStreetTrack(positions, colors, centerX, centerZ, vertical, lo, hi, hAt, across);
     };
     for (const across of tramAt) {
-      if (hasVertical)
-        emit(true, hasN ? -TILE_HALF : -coreHalf, hasS ? TILE_HALF : coreHalf, across);
+      if (hasVertical) emit(true, hasN ? -TILE_HALF : -reachN, hasS ? TILE_HALF : reachS, across);
       if (hasHorizontal)
-        emit(false, hasW ? -TILE_HALF : -coreHalf, hasE ? TILE_HALF : coreHalf, across);
+        emit(false, hasW ? -TILE_HALF : -reachW, hasE ? TILE_HALF : reachE, across);
     }
   }
   // A tramway crossing this street goes straight over the junction box, so its
@@ -5989,8 +6087,8 @@ export function roadTileVertices(
       const kerbAlong = (alongX: boolean): TileKerbFaces | undefined =>
         kerbFaces && kerbFaces.alongX === alongX ? kerbFaces : undefined;
       if (hasVertical && (!rampNode || rampNodeVertical)) {
-        const zLo = hasN ? -TILE_HALF : -coreHalf;
-        const zHi = hasS ? TILE_HALF : coreHalf;
+        const zLo = hasN ? -TILE_HALF : -reachN;
+        const zHi = hasS ? TILE_HALF : reachS;
         const seam = {
           lo: seamWith(
             plan,
@@ -6048,8 +6146,8 @@ export function roadTileVertices(
           );
       }
       if (hasHorizontal && (!rampNode || !rampNodeVertical)) {
-        const xLo = hasW ? -TILE_HALF : -coreHalf;
-        const xHi = hasE ? TILE_HALF : coreHalf;
+        const xLo = hasW ? -TILE_HALF : -reachW;
+        const xHi = hasE ? TILE_HALF : reachE;
         const seam = {
           lo: seamWith(
             plan,
@@ -6515,8 +6613,8 @@ export function roadTileVertices(
   // never overruns into a sidewalk/shoulder curb quad.
   if (medianEligible || dividerEligible) {
     const vertical = hasVertical;
-    const lo = vertical ? (hasN ? -TILE_HALF : -coreHalf) : hasW ? -TILE_HALF : -coreHalf;
-    const hi = vertical ? (hasS ? TILE_HALF : coreHalf) : hasE ? TILE_HALF : coreHalf;
+    const lo = vertical ? (hasN ? -TILE_HALF : -reachN) : hasW ? -TILE_HALF : -reachW;
+    const hi = vertical ? (hasS ? TILE_HALF : reachS) : hasE ? TILE_HALF : reachE;
     if (medianEligible) {
       const atLo = medianEnd(vertical ? 'n' : 'w', vertical ? hasN : hasW);
       const atHi = medianEnd(vertical ? 's' : 'e', vertical ? hasS : hasE);
@@ -6538,8 +6636,8 @@ export function roadTileVertices(
   // own span and broken where the median would be: at corners and junctions.
   if (reservation && (alone || isStraightRunMask(mask))) {
     const vertical = hasVertical;
-    const lo = vertical ? (hasN ? -TILE_HALF : -coreHalf) : hasW ? -TILE_HALF : -coreHalf;
-    const hi = vertical ? (hasS ? TILE_HALF : coreHalf) : hasE ? TILE_HALF : coreHalf;
+    const lo = vertical ? (hasN ? -TILE_HALF : -reachN) : hasW ? -TILE_HALF : -reachW;
+    const hi = vertical ? (hasS ? TILE_HALF : reachS) : hasE ? TILE_HALF : reachE;
     emitAvenueMedian(
       positions,
       colors,
@@ -6566,6 +6664,31 @@ export function roadTileVertices(
   if (capE) endCaps.push([false, 1]);
   const capReach = capDepthFor(coreHalf, alone);
   for (const [vertical, outwardSign] of endCaps) {
+    const side = vertical ? (outwardSign < 0 ? 'n' : 's') : outwardSign < 0 ? 'w' : 'e';
+    if (squareOn(true, side)) {
+      // Closed square: the kerb runs straight across the end, the width of the
+      // road and its two flank kerbs.
+      if (spec.hasCurbs && kerbBand > 0) {
+        const span = coreHalf + kerbBand;
+        const [from, to] =
+          outwardSign > 0 ? [TILE_HALF - kerbBand, TILE_HALF] : [-TILE_HALF, kerbBand - TILE_HALF];
+        pushLocalRect(
+          positions,
+          colors,
+          centerX,
+          centerZ,
+          vertical ? -span : from,
+          vertical ? span : to,
+          vertical ? from : -span,
+          vertical ? to : span,
+          CURB_Y_OFFSET,
+          SIDEWALK_COLOR,
+          hAt,
+        );
+      }
+      continue;
+    }
+    const pivot = endGround ? TILE_HALF : coreHalf;
     // Half-circle asphalt cap, then the curb ring last (tests rely on the curb
     // ring being the final quads emitted).
     emitEndCap(
@@ -6579,6 +6702,7 @@ export function roadTileVertices(
       outwardSign,
       plateColor,
       hAt,
+      pivot,
     );
     // Curb/sidewalk ring hugging the cap's
     // rounded perimeter (see emitEndCapCurb) — additive over the plain
@@ -6597,6 +6721,7 @@ export function roadTileVertices(
         outwardSign,
         SIDEWALK_COLOR,
         hAt,
+        pivot,
       );
     }
     // Lane markings wrap the rounded end too (e.g. highway edge lines follow the
@@ -6613,6 +6738,7 @@ export function roadTileVertices(
         vertical,
         outwardSign,
         hAt,
+        pivot,
       );
     }
   }
@@ -7108,6 +7234,40 @@ export class RoadMeshRenderer {
     for (const key of dirty) this.rebuildChunk(key);
   }
 
+  /**
+   * Whether a tile is free ground: not a building, water, another road or off
+   * the map. A dead end's cap stands beyond its tile only on ground that is.
+   * Null where the caller cannot say, which keeps every cap inside its tile.
+   */
+  private groundOpen: ((x: number, z: number) => boolean) | null = null;
+
+  setGroundOpen(open: (x: number, z: number) => boolean): void {
+    this.groundOpen = open;
+  }
+
+  /**
+   * Redraws the dead ends beside tiles whose ground changed, by tile index: a
+   * building raised or cleared on the tile a dead end faces moves its cap.
+   */
+  groundChanged(indices: Iterable<number>): void {
+    const dirty = new Set<number>();
+    for (const i of indices) {
+      const x = i % MAP_SIZE;
+      const z = Math.floor(i / MAP_SIZE);
+      for (const [dx, dz] of [
+        [0, -1],
+        [1, 0],
+        [0, 1],
+        [-1, 0],
+      ] as const) {
+        const tile = this.groundAt(x + dx, z + dz);
+        if (!tile || (tile.mask & (tile.mask - 1)) !== 0) continue;
+        dirty.add(chunkKeyOf(tile.x, tile.z));
+      }
+    }
+    for (const key of dirty) this.rebuildChunk(key);
+  }
+
   /** Each compact roundabout, by the tile index of each of its four tiles. */
   private roundabouts: ReadonlyMap<number, RoundaboutBlock> = new Map();
 
@@ -7139,6 +7299,71 @@ export class RoadMeshRenderer {
     if (dirty.size > 0) this.kerbFaces.clear();
     for (const key of dirty) this.rebuildChunk(key);
     if (dirty.size > 0) this.rebuildMedianTrees();
+  }
+
+  /** Each cul-de-sac, by the tile index of each of its four tiles. */
+  private culDeSacs: ReadonlyMap<number, RoundaboutBlock> = new Map();
+
+  /**
+   * Takes the sim's cul-de-sacs and redraws what their change reaches: their
+   * four tiles, and the street into them, which reads the block ahead.
+   */
+  setCulDeSacs(blocks: readonly TilePoint[]): number[] {
+    const next = new Map<number, RoundaboutBlock>();
+    for (const b of blocks) {
+      const block = { x: b.x, z: b.z };
+      for (const [dx, dz] of [
+        [0, 0],
+        [1, 0],
+        [0, 1],
+        [1, 1],
+      ] as const) {
+        next.set(tileIndex(block.x + dx, block.z + dz), block);
+      }
+    }
+    const dirty = new Set<number>();
+    const moved = (i: number): void =>
+      this.dirtyReaders(i % MAP_SIZE, Math.floor(i / MAP_SIZE), dirty);
+    for (const [i, block] of next) {
+      const was = this.culDeSacs.get(i);
+      if (was?.x !== block.x || was?.z !== block.z) moved(i);
+    }
+    for (const i of this.culDeSacs.keys()) if (!next.has(i)) moved(i);
+    this.culDeSacs = next;
+    if (dirty.size > 0) this.kerbFaces.clear();
+    for (const key of dirty) this.rebuildChunk(key);
+    if (dirty.size > 0) this.rebuildMedianTrees();
+    return [...dirty];
+  }
+
+  /**
+   * What a cul-de-sac's north-west tile draws for the whole block: the circle,
+   * its street and the ground round them. Null for any other tile, and for a
+   * block whose street is not read yet.
+   */
+  private culDeSacGround(tile: RoadTileDelta): ReturnType<typeof culDeSacVertices> | null {
+    const block = this.culDeSacs.get(tileIndex(tile.x, tile.z));
+    if (!block || block.x !== tile.x || block.z !== tile.z) return null;
+    const street = bulbStreetOf(
+      block,
+      (x, z) => this.groundAt(x, z)?.mask ?? 0,
+      (x, z) => this.profileAt(x, z),
+    );
+    if (!street) return null;
+    const own = this.ownProfileFor(tile) ?? presetProfileForTier(tile.tier);
+    const hAt = this.heightFor(tile);
+    const centre = { x: (block.x + 1) * TILE_METERS, z: (block.z + 1) * TILE_METERS };
+    const ground = culDeSacVertices(centre.x, centre.z, street, hAt, {
+      plate: surfaceColor(own),
+      footway: SIDEWALK_COLOR,
+      roadY: ROAD_Y_OFFSET,
+      curbY: CURB_Y_OFFSET,
+    });
+    // The street's lines run on in the block to the circle's edge, where they end.
+    const leg = roundaboutLegs(block, (x, z) => this.groundAt(x, z)?.mask ?? 0)[0];
+    const plan = leg ? this.planAt(leg.tile.x, leg.tile.z) : null;
+    if (plan) paintBulbStreet(ground, plan, street, centre, hAt);
+    return ground;
   }
 
   /** What a corner tile of a compact roundabout draws, or null for any other tile. */
@@ -7299,7 +7524,7 @@ export class RoadMeshRenderer {
    * than bending to whatever road the corner's tile happens to be.
    */
   private halfAlong(x: number, z: number, axis: 'x' | 'z'): number {
-    if (this.roundabouts.has(tileIndex(x, z))) return 0;
+    if (this.roundabouts.has(tileIndex(x, z)) || this.culDeSacs.has(tileIndex(x, z))) return 0;
     const over = overAlong(x, z, axis, this.surroundings);
     if (!over) return this.halfAt(x, z);
     return carriagewayHalfWidthOf(this.overProfileOf(over));
@@ -7359,6 +7584,21 @@ export class RoadMeshRenderer {
       const tz = worldToTile(wz);
       const crossing = crossings.find((c) => c.x === tx && c.z === tz);
       return crossing ? this.overHeightAt(wx, wz, crossing.x, crossing.z) : this.heightAt(wx, wz);
+    };
+  }
+
+  /**
+   * Whether the tile beyond each side of a road on the ground is free. A raised
+   * deck keeps its cap on the deck, so it is told nothing.
+   */
+  private openBeyond(tile: RoadTileDelta): NeighborHalves['open'] {
+    const free = this.groundOpen;
+    if (!free || tile.elevation > 0) return undefined;
+    return {
+      n: free(tile.x, tile.z - 1),
+      e: free(tile.x + 1, tile.z),
+      s: free(tile.x, tile.z + 1),
+      w: free(tile.x - 1, tile.z),
     };
   }
 
@@ -7831,6 +8071,22 @@ export class RoadMeshRenderer {
         }
         continue;
       }
+      // A tile of a cul-de-sac draws nothing of its own road: the block's
+      // north-west tile draws the whole turning circle.
+      if (this.culDeSacs.has(tileIndex(tile.x, tile.z))) {
+        const bulb = this.culDeSacGround(tile);
+        if (bulb) {
+          for (const n of bulb.positions) positions.push(n);
+          for (const n of bulb.colors) colors.push(n);
+        }
+        const over = overTileOf(tile);
+        if (over) {
+          const lifted = this.overpassVertices(over);
+          for (const n of lifted.positions) positions.push(n);
+          for (const n of lifted.colors) colors.push(n);
+        }
+        continue;
+      }
       // A corner of a compact roundabout draws its quarter of the ring instead
       // of its own road.
       const ring = this.ringQuarterAt(tile);
@@ -7934,6 +8190,7 @@ export class RoadMeshRenderer {
               )
             : 0,
           reach,
+          open: this.openBeyond(tile),
           n: this.halfAlong(tile.x, tile.z - 1, 'z'),
           e: this.halfAlong(tile.x + 1, tile.z, 'x'),
           s: this.halfAlong(tile.x, tile.z + 1, 'z'),

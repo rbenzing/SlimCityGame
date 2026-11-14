@@ -36,6 +36,8 @@ import { garageFor } from '../shared/garage';
 import { lotDriveCuts, type TileDriveCut } from '../shared/kerblayout';
 import { housePaneMargins, MULLION_MARGIN_PUNCHED, windowGrid } from './facade';
 import { homesAcrossFrontage } from '../shared/buildingkind';
+import { DRIVE_END_CLEARANCE_M } from '../shared/culdesac';
+import { bulbClearRuns, bulbClears, type BulbFront } from './bulbfront';
 
 // Same avalanche hash every render/*.ts keeps a local copy of.
 function hash1(n: number): number {
@@ -282,6 +284,8 @@ export interface HomeDrive {
   rect: LotRect;
   /** The curb cut across the sidewalk. */
   cut: LotRect;
+  /** The turning circle the drive runs out to from the lot's edge, on slanted ground; null on a straight street. */
+  bulb: BulbFront | null;
   cover: DriveCover;
   /** The carport's or garage's footprint; null for a spot or a pad. */
   coverRect: LotRect | null;
@@ -328,8 +332,19 @@ export interface HouseGroundPlan {
   paths: LotRect[];
   /** The lawn carried out across the verge, one strip per frontage tile with a street beyond it. */
   vergeLawn: LotRect[];
+  /** The lawn carried out across a turning circle's verge to the back of its footway, clear of the street's mouth. */
+  bulbLawn: BulbRun[];
+  /** The front walks carried out to the back of a turning circle's footway. */
+  bulbWalks: BulbRun[];
   drives: HomeDrive[];
   surface: DriveSurface;
+}
+
+/** A stretch of a lot's front edge, `u0..u1`, whose ground runs on along lines through the centre to the ring of the circle `bulb`. */
+export interface BulbRun {
+  bulb: BulbFront;
+  u0: number;
+  u1: number;
 }
 
 /** A box in the frame: its footprint and the heights it spans above the body's ground. */
@@ -546,8 +561,14 @@ function roadTileAcross(
 }
 
 interface Streets {
-  /** The verge and sidewalk beyond each frontage tile, or null where no street is. */
-  across: ({ vergeM: number; sidewalkM: number; straight: boolean } | null)[];
+  /**
+   * The verge and sidewalk beyond each frontage tile, or null where no street
+   * is. Across a turning circle there is neither: the lot's ground runs on to
+   * the ring, which `bulb` names.
+   */
+  across: ({ vergeM: number; sidewalkM: number; straight: boolean; bulb?: BulbFront } | null)[];
+  /** The lot's front edge, `u` metres along it, in the world. */
+  edgeAt: (u: number) => { x: number; z: number };
 }
 
 function streetsAcross(
@@ -556,6 +577,7 @@ function streetsAcross(
   edge: RoadFacingEdge,
   roadAt: (x: number, z: number) => boolean,
   street: StreetLookup,
+  frame: EdgeFrame,
 ): Streets {
   const { w, d } = entry.footprint;
   const across = [];
@@ -566,12 +588,16 @@ function streetsAcross(
       across.push(null);
       continue;
     }
+    if (s.bulb) {
+      across.push({ vergeM: 0, sidewalkM: 0, straight: true, bulb: s.bulb });
+      continue;
+    }
     // A drive crosses a kerb, and a tile the road leaves on both axes has none.
     const alongX = roadAt(t.x - 1, t.z) || roadAt(t.x + 1, t.z);
     const alongZ = roadAt(t.x, t.z - 1) || roadAt(t.x, t.z + 1);
     across.push({ ...s, straight: !(alongX && alongZ) });
   }
-  return { across };
+  return { across, edgeAt: (u) => lotToWorld(frame, u, 0) };
 }
 
 /** The lot a home is laid out on: its frame, the street edge it fronts, its size in the frame, its body and the streets across its frontage. */
@@ -598,7 +624,7 @@ function gridGround(
   const edgeLenM = alongTiles * TILE_METERS;
   const lotDepthM = (edge && (edge.side === 'E' || edge.side === 'W') ? w : d) * TILE_METERS;
   const body = bodyRect(building, entry, frame, street);
-  const streets = edge ? streetsAcross(building, entry, edge, roadAt, street) : null;
+  const streets = edge ? streetsAcross(building, entry, edge, roadAt, street, frame) : null;
   return { frame, edge, edgeLenM, lotDepthM, body, streets };
 }
 
@@ -636,7 +662,14 @@ function framedGround(
   const v0 = Math.min(lotDepthM - bodyM.d, HOUSE_FRONT_YARD_M);
   const body = { u0, u1: u0 + bodyM.w, v0, v1: v0 + bodyM.d };
   const across = Array.from({ length: w }, () => ({ vergeM: 0, sidewalkM, straight: true }));
-  return { frame, edge: null, edgeLenM, lotDepthM, body, streets: { across } };
+  return {
+    frame,
+    edge: null,
+    edgeLenM,
+    lotDepthM,
+    body,
+    streets: { across, edgeAt: (u) => lotToWorld(frame, u, 0) },
+  };
 }
 
 /**
@@ -644,22 +677,33 @@ function framedGround(
  * straight street. Its verge and sidewalk are the deepest of the tiles it
  * crosses, so it reaches the carriageway everywhere along its width.
  */
-function driveReach(
-  streets: Streets,
-  u0: number,
-  u1: number,
-): { vergeM: number; sidewalkM: number } | null {
+function driveReach(streets: Streets, u0: number, u1: number): Reach | null {
   const first = Math.floor(u0 / TILE_METERS);
   const last = Math.floor((u1 - 1e-6) / TILE_METERS);
   let vergeM = 0;
   let sidewalkM = 0;
+  let bulb: BulbFront | undefined;
+  let plain = false;
   for (let i = first; i <= last; i++) {
     const s = streets.across[i];
     if (!s || !s.straight) return null;
+    // A drive runs to a turning circle or to a straight kerb, never across both.
+    if (s.bulb && (plain || (bulb && (bulb.cx !== s.bulb.cx || bulb.cz !== s.bulb.cz))))
+      return null;
+    if (s.bulb) bulb = s.bulb;
+    else plain = true;
     vergeM = Math.max(vergeM, s.vergeM);
     sidewalkM = Math.max(sidewalkM, s.sidewalkM);
   }
-  return { vergeM, sidewalkM };
+  if (bulb) {
+    if (plain) return null;
+    // A drive keeps its distance from the street's mouth at both its edges.
+    for (const u of [u0, u1]) {
+      const p = streets.edgeAt(u);
+      if (!bulbClears(bulb, p.x, p.z, DRIVE_END_CLEARANCE_M)) return null;
+    }
+  }
+  return { vergeM, sidewalkM, ...(bulb ? { bulb } : {}) };
 }
 
 function cutFor(u0: number, u1: number, reach: { vergeM: number; sidewalkM: number }): LotRect {
@@ -684,6 +728,8 @@ interface DrivePlan {
 interface Reach {
   vergeM: number;
   sidewalkM: number;
+  /** The turning circle the drive runs out to, where it fronts one. */
+  bulb?: BulbFront;
 }
 
 /** A lane `widthM` wide beside the body on `side`, a gap of lawn kept, or null where the lot or the street has no room. */
@@ -739,7 +785,7 @@ function planDrive(
     if (lane) return { drive: openDrive(cover, body, edgeLenM, lane), doorU: centreU };
   }
   return {
-    drive: frontPad(centreU + 1, centreU + 1 + DRIVE_WIDTH_M, body, streets, []),
+    drive: slidingPad(centreU + 1, centreU + 1 + DRIVE_WIDTH_M, body, edgeLenM, streets, centreU),
     doorU: centreU,
   };
 }
@@ -817,6 +863,7 @@ function attachedGarage(
   return {
     rect: { u0: lane.u0, u1: lane.u1, v0: -reach.vergeM, v1: coverRect.v0 },
     cut: cutFor(lane.u0, lane.u1, reach),
+    bulb: reach.bulb ?? null,
     cover: 'garage',
     coverRect,
     garageDoors,
@@ -857,6 +904,7 @@ function detachedGarage(
   return {
     rect: { u0: lane.u0, u1: lane.u1, v0: -lane.reach.vergeM, v1: coverRect.v0 },
     cut: cutFor(lane.u0, lane.u1, lane.reach),
+    bulb: lane.reach.bulb ?? null,
     cover: 'detachedGarage',
     coverRect,
     garageDoors: garageDoorsAcross(coverRect, coverRect.v0, bays, side),
@@ -909,6 +957,7 @@ function openDrive(
       return {
         rect: { u0, u1, v0: start, v1: coverRect.v1 },
         cut,
+        bulb: reach.bulb ?? null,
         cover,
         coverRect,
         garageDoors: [],
@@ -921,6 +970,7 @@ function openDrive(
       return {
         rect: { u0, u1, v0: start, v1: carV + CAR_HALF_LENGTH_M + CAR_NOSE_GAP_M },
         cut,
+        bulb: reach.bulb ?? null,
         cover: 'spot',
         coverRect: null,
         garageDoors: [],
@@ -968,11 +1018,44 @@ function frontPad(
   return {
     rect: { u0, u1, v0: -reach.vergeM, v1: body.v0 },
     cut: cutFor(u0, u1, reach),
+    bulb: reach.bulb ?? null,
     cover: garageDoors.length > 0 ? 'integralGarage' : 'pad',
     coverRect: null,
     garageDoors,
     car: { u: uc, v: body.v0 - CAR_NOSE_GAP_M - CAR_HALF_LENGTH_M },
   };
+}
+
+/** How far a pad is tried along the frontage from where it was meant to stand, per step, in metres. */
+const PAD_SLIDE_STEP_M = 0.5;
+
+/**
+ * A plain pad before the house, where it is meant to stand or else the nearest
+ * place along the frontage that has a street to meet (a turning circle's mouth
+ * rules some out) and keeps clear of the front walk to the door at `doorU`.
+ * Null only where no place along the whole frontage will do.
+ */
+function slidingPad(
+  u0: number,
+  u1: number,
+  body: LotRect,
+  edgeLenM: number,
+  streets: Streets,
+  doorU: number,
+): HomeDrive | null {
+  const width = u1 - u0;
+  const steps = Math.ceil(edgeLenM / PAD_SLIDE_STEP_M);
+  for (let i = 0; i <= steps; i++) {
+    for (const sign of i === 0 ? [1] : [1, -1]) {
+      const a = u0 + sign * i * PAD_SLIDE_STEP_M;
+      const b = a + width;
+      if (a < FRONT_PAD_INSET_M || b > edgeLenM - FRONT_PAD_INSET_M) continue;
+      if (a < doorU + PATH_WIDTH_M / 2 && b > doorU - PATH_WIDTH_M / 2) continue;
+      const pad = frontPad(a, b, body, streets, []);
+      if (pad) return pad;
+    }
+  }
+  return null;
 }
 
 /**
@@ -1618,15 +1701,42 @@ export function planHouseGround(
     });
   }
 
+  // Across a turning circle the lawn runs on to the ring, short of the street's mouth.
+  const bulbLawn: BulbRun[] = [];
+  streets?.across.forEach((s, i) => {
+    if (!s?.bulb) return;
+    for (const [u0, u1] of bulbClearRuns(
+      s.bulb,
+      streets.edgeAt,
+      i * TILE_METERS,
+      (i + 1) * TILE_METERS,
+      0,
+    )) {
+      bulbLawn.push({ bulb: s.bulb, u0, u1 });
+    }
+  });
+
   const drives: HomeDrive[] = [];
   const doors: LotPoint[] = [];
   const paths: LotRect[] = [];
+  const bulbWalks: BulbRun[] = [];
   // A path only meets the back of the sidewalk, so any street across will do,
-  // straight or not.
+  // straight or not. Across a turning circle it runs on to the ring, unless
+  // the street's mouth is there.
   const pathTo = (u: number): void => {
     const s = streets?.across[Math.floor(u / TILE_METERS)];
     if (!s) return;
-    paths.push({ u0: u - PATH_WIDTH_M / 2, u1: u + PATH_WIDTH_M / 2, v0: -s.vergeM, v1: body.v0 });
+    const u0 = u - PATH_WIDTH_M / 2;
+    const u1 = u + PATH_WIDTH_M / 2;
+    paths.push({ u0, u1, v0: -s.vergeM, v1: body.v0 });
+    const bulb = s.bulb;
+    if (
+      bulb &&
+      streets &&
+      [u0, u1].every((e) => bulbClears(bulb, streets.edgeAt(e).x, streets.edgeAt(e).z, 0))
+    ) {
+      bulbWalks.push({ bulb, u0, u1 });
+    }
   };
 
   const homes = homesAlongFrontage(entry, streets !== null);
@@ -1668,6 +1778,8 @@ export function planHouseGround(
       doors,
       paths,
       vergeLawn,
+      bulbLawn,
+      bulbWalks,
       drives,
       surface,
     };
@@ -1679,7 +1791,7 @@ export function planHouseGround(
   if (streets) {
     const planned =
       style === 'splitLevel'
-        ? splitLevelDrive(building, body, streets)
+        ? splitLevelDrive(building, body, edgeLenM, streets)
         : planDrive(building, body, edgeLenM, lotDepthM, streets);
     if (planned.drive) drives.push(planned.drive);
     doorU = planned.doorU;
@@ -1702,6 +1814,8 @@ export function planHouseGround(
     doors,
     paths,
     vergeLawn,
+    bulbLawn,
+    bulbWalks,
     drives,
     surface,
   };
@@ -1728,6 +1842,7 @@ function blockCentre(body: LotRect, wing: LotRect): number {
 function splitLevelDrive(
   building: BuildingInstance,
   body: LotRect,
+  edgeLenM: number,
   streets: Streets,
 ): DrivePlan & { wing: LotRect } {
   const bays = Math.min(2, garageBaysOf(building.id));
@@ -1735,14 +1850,17 @@ function splitLevelDrive(
   const wing = splitWing(building, body, doorW);
   const wc = (wing.u0 + wing.u1) / 2;
   const padW = Math.max(DRIVE_WIDTH_M, doorW);
-  const drive = frontPad(
-    wc - padW / 2,
-    wc + padW / 2,
-    body,
-    streets,
-    doorW > 0 ? [{ u0: wc - doorW / 2, u1: wc + doorW / 2, v: body.v0 }] : [],
-  );
-  return { drive, doorU: blockCentre(body, wing), wing };
+  const doorU = blockCentre(body, wing);
+  // Where the wing's own pad has no street to meet, the home keeps a plain pad elsewhere along its frontage.
+  const drive =
+    frontPad(
+      wc - padW / 2,
+      wc + padW / 2,
+      body,
+      streets,
+      doorW > 0 ? [{ u0: wc - doorW / 2, u1: wc + doorW / 2, v: body.v0 }] : [],
+    ) ?? slidingPad(wc - DRIVE_WIDTH_M / 2, wc + DRIVE_WIDTH_M / 2, body, edgeLenM, streets, doorU);
+  return { drive, doorU, wing };
 }
 
 /**
@@ -1757,7 +1875,10 @@ export function homeDriveCuts(
 ): TileDriveCut[] {
   if (building.frame || !plan.edge) return [];
   const lot = { x: building.x, z: building.z, w: entry.footprint.w, d: entry.footprint.d };
-  return plan.drives.flatMap(({ cut }) => lotDriveCuts(lot, plan.edge!.side, cut.u0, cut.u1));
+  // A drive that meets a turning circle crosses no parking lane, so it cuts none.
+  return plan.drives.flatMap(({ cut, bulb }) =>
+    bulb ? [] : lotDriveCuts(lot, plan.edge!.side, cut.u0, cut.u1),
+  );
 }
 
 /** The road tiles a home's drives cross — where a lamp must not stand. */

@@ -131,6 +131,39 @@ describe('computeZonableTiles — dangling end', () => {
   });
 });
 
+describe('computeZonableTiles — a cul-de-sac block fronts every outer side', () => {
+  const size = 16;
+  // A street down x=5, z=2..6, then a 2x2 block of road beyond its end: (5..6, 7..8).
+  function withBlock(block: boolean): ZonableGridSource {
+    const g = makeGrid(size);
+    for (let z = 2; z <= 6; z++) g.roadTier[idx(size, 5, z)] = RoadTier.TwoLane;
+    if (block) {
+      for (const [x, z] of [
+        [5, 7],
+        [5, 8],
+        [6, 7],
+        [6, 8],
+      ] as const) {
+        g.roadTier[idx(size, x, z)] = RoadTier.TwoLane;
+      }
+    }
+    return g;
+  }
+
+  it('zones the ground beyond the block on every side but the street', () => {
+    const set = coordSet(computeZonableTiles(withBlock(true)));
+    for (const key of ['4,7', '4,8', '5,9', '6,9', '7,7', '7,8', '6,6']) {
+      expect(set.has(key), key).toBe(true);
+    }
+  });
+
+  it('never zones the ground a plain end faces', () => {
+    const set = coordSet(computeZonableTiles(withBlock(false)));
+    expect(set.has('5,7')).toBe(false);
+    expect(set.has('5,8')).toBe(false);
+  });
+});
+
 describe('computeZonableTiles — direct access (blocking obstacles)', () => {
   const size = 12;
 

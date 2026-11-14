@@ -47,6 +47,7 @@ import { frontingTurns, frontTouchesStreet, touchesStreet, type FrontingTurn } f
 import { deriveRoadFootprint } from '../world/freeroads';
 import { decodeRoadNetwork } from '../world/roadnet';
 import { axisOfFlow } from '../shared/overpass';
+import { blockTiles } from '../shared/roundabout';
 import type {
   BuildingCatalogEntry,
   BuildingDelta,
@@ -131,6 +132,8 @@ export class ClientGridMirror {
   private junctionControls = new Map<number, JunctionSnapshot>();
   /** Tile index -> the compact roundabout it is a corner of, as the world last said. */
   private roundabouts = new Map<number, TilePoint>();
+  /** Tile index -> the cul-de-sac it is a corner of, as the world last said. */
+  private culDeSacs = new Map<number, TilePoint>();
 
   constructor(map: MapData, seed = 0) {
     this.size = map.size;
@@ -322,6 +325,24 @@ export class ClientGridMirror {
       }
     }
     this.roundabouts = next;
+  }
+
+  /** Replaces the mirror's cul-de-sacs with the worker's full list, each by its north-west tile. */
+  applyCulDeSacs(blocks: readonly TilePoint[]): void {
+    const next = new Map<number, TilePoint>();
+    for (const b of blocks) {
+      const block = { x: b.x, z: b.z };
+      for (const t of blockTiles(block)) {
+        if (this.inBounds(t.x, t.z)) next.set(this.idx(t.x, t.z), block);
+      }
+    }
+    this.culDeSacs = next;
+  }
+
+  /** The cul-de-sac (x, z) is a corner of, by its north-west tile, or null. */
+  culDeSacAt(x: number, z: number): TilePoint | null {
+    if (!this.inBounds(x, z)) return null;
+    return this.culDeSacs.get(this.idx(x, z)) ?? null;
   }
 
   /** The compact roundabout (x, z) is a corner of, by its north-west tile, or null. */
@@ -732,13 +753,16 @@ export class ClientGridMirror {
   applyBuildingDelta(
     delta: BuildingDelta,
     entryFor: (catalogId: string) => BuildingCatalogEntry | undefined,
-  ): void {
-    for (const id of delta.removed) this.clearFootprint(id);
+  ): number[] {
+    const touched: number[] = [];
+    for (const id of delta.removed) touched.push(...this.clearFootprint(id));
     for (const inst of delta.updated) {
-      this.clearFootprint(inst.id);
-      this.stampFootprint(inst, entryFor(inst.catalogId));
+      touched.push(...this.clearFootprint(inst.id));
+      touched.push(...this.stampFootprint(inst, entryFor(inst.catalogId)));
     }
-    for (const inst of delta.added) this.stampFootprint(inst, entryFor(inst.catalogId));
+    for (const inst of delta.added)
+      touched.push(...this.stampFootprint(inst, entryFor(inst.catalogId)));
+    return touched;
   }
 
   /**
@@ -796,8 +820,9 @@ export class ClientGridMirror {
           ...(apart === 0 ? {} : { apart }),
           // The id that says two corridor halves are one road.
           ...(profileId === 0 ? {} : { profileId }),
-          // A corner of a compact roundabout is its ring, which nothing stands in.
-          ...(this.roundabouts.has(i) ? { ring: true as const } : {}),
+          // A corner of a compact roundabout is its ring, and of a cul-de-sac its
+          // turning circle, which nothing stands in.
+          ...(this.roundabouts.has(i) || this.culDeSacs.has(i) ? { ring: true as const } : {}),
         };
         const junction = this.junctionControls.get(i);
         tiles.push(junction ? { ...tile, control: junction.control } : tile);
@@ -963,8 +988,11 @@ export class ClientGridMirror {
     );
   }
 
-  private stampFootprint(inst: BuildingInstance, entry: BuildingCatalogEntry | undefined): void {
-    if (!entry) return;
+  private stampFootprint(
+    inst: BuildingInstance,
+    entry: BuildingCatalogEntry | undefined,
+  ): number[] {
+    if (!entry) return [];
     const { w, d } = footprintForRotation(entry, inst.rotation);
     const indices: number[] = [];
     // A building on a curved parcel stands on the tiles its frame claims,
@@ -982,14 +1010,16 @@ export class ClientGridMirror {
       indices.push(i);
     }
     this.footprints.set(inst.id, indices);
+    return indices;
   }
 
-  private clearFootprint(id: number): void {
+  private clearFootprint(id: number): number[] {
     const indices = this.footprints.get(id);
-    if (!indices) return;
+    if (!indices) return [];
     for (const i of indices) {
       if (this.buildingId[i] === id) this.buildingId[i] = 0;
     }
     this.footprints.delete(id);
+    return indices;
   }
 }

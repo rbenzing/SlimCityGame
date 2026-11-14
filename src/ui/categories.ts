@@ -161,6 +161,18 @@ function roundaboutCard(): AssetCard[] {
     : [];
 }
 
+/**
+ * The Cul-de-sac tool: a turning circle laid beyond a dead end, which homes
+ * form round. It unlocks with the streets it ends and costs only the four
+ * tiles of street it lays, which the cursor quotes before the click.
+ */
+function culDeSacCard(): AssetCard[] {
+  const street = roadSpecs.find((s) => s.tier === RoadTierValue.TwoLane);
+  return street
+    ? [{ id: 'culdesac', name: 'Cul-de-sac', cost: 0, unlockMilestone: street.unlockMilestone }]
+    : [];
+}
+
 function catalogCards(predicate: (entry: BuildingCatalogEntry) => boolean): AssetCard[] {
   return catalog.filter(predicate).map((entry) => ({
     id: `plop.${entry.id}` as ToolId,
@@ -335,6 +347,8 @@ const RAW_GROUPS: Record<DockCategory, AssetSubTab[]> = {
         ...roadCard(RoadTierValue.OneWay),
         // A compact roundabout takes streets of one lane each way, which are these.
         ...roundaboutCard(),
+        // A cul-de-sac ends a street of one lane each way.
+        ...culDeSacCard(),
       ],
     },
     {

@@ -113,6 +113,13 @@
   before the ring, so it comes in to the left of the centre as drivers see it,
   and you have the pinwheel the guides prefer. Click any of its tiles to take
   it out again.
+  A street that simply stops is fronted along its two sides only: nothing
+  grows on the ground past its end. To put homes round the end, take the
+  **Cul-de-sac** card beside the Roundabout and point at the dead end: it
+  previews a turning circle 96 ft across on the two-by-two block beyond,
+  on the side the pointer is, and one click lays it. Zone round it and homes
+  grow facing the circle, their drives running in to it. It takes a street
+  of one lane each way on open ground; bulldoze any part to take it out.
   On a road wide enough to have more than one lane in each direction, the last
   stretch before a junction is painted with **lane arrows** — which lane may
   turn and which runs straight on. A two-lane approach shares the turns; a

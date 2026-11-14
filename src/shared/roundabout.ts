@@ -47,10 +47,11 @@ export interface RoundaboutBlock {
   z: number;
 }
 
-const NORTH = 1;
-const EAST = 2;
-const SOUTH = 4;
-const WEST = 8;
+/** The neighbour-mask bits, one per side of a tile. */
+export const NORTH = 1;
+export const EAST = 2;
+export const SOUTH = 4;
+export const WEST = 8;
 
 /** The block's corners from its north-west tile, in the order kept everywhere here. */
 const CORNERS: ReadonlyArray<readonly [number, number]> = [
@@ -63,10 +64,11 @@ const CORNERS: ReadonlyArray<readonly [number, number]> = [
 /** The stored code of the roundabout control, which each of a roundabout's four tiles carries. */
 export const ROUNDABOUT_CODE = codeForControl('roundabout');
 
-const inMap = (x: number, z: number): boolean => x >= 0 && z >= 0 && x < MAP_SIZE && z < MAP_SIZE;
+export const inMap = (x: number, z: number): boolean =>
+  x >= 0 && z >= 0 && x < MAP_SIZE && z < MAP_SIZE;
 
 /** The mask bit for the neighbour one step (dx, dz) away. */
-function bitToward(dx: number, dz: number): number {
+export function bitToward(dx: number, dz: number): number {
   if (dz < 0) return NORTH;
   if (dx > 0) return EAST;
   if (dz > 0) return SOUTH;
@@ -103,10 +105,20 @@ export function roundaboutBlockOf(
   z: number,
   codeAt: (x: number, z: number) => number,
 ): RoundaboutBlock | null {
+  return codedBlockOf(x, z, ROUNDABOUT_CODE, codeAt);
+}
+
+/** The 2×2 block of tiles all storing `code` that (x, z) belongs to, or null; first by row and then column. */
+export function codedBlockOf(
+  x: number,
+  z: number,
+  code: number,
+  codeAt: (x: number, z: number) => number,
+): RoundaboutBlock | null {
   for (const oz of [z - 1, z]) {
     for (const ox of [x - 1, x]) {
       const coded = CORNERS.every(
-        ([dx, dz]) => inMap(ox + dx, oz + dz) && codeAt(ox + dx, oz + dz) === ROUNDABOUT_CODE,
+        ([dx, dz]) => inMap(ox + dx, oz + dz) && codeAt(ox + dx, oz + dz) === code,
       );
       if (coded) return { x: ox, z: oz };
     }
@@ -180,10 +192,14 @@ function cornerAngle(block: RoundaboutBlock, t: TilePoint): number {
  * onto the ring here rather than driving on to the tile's centre, which is
  * inside the island.
  */
-export function ringPoint(block: RoundaboutBlock, t: TilePoint): { x: number; z: number } {
+export function ringPoint(
+  block: RoundaboutBlock,
+  t: TilePoint,
+  radius: number = RING_ROUTE_RADIUS_M,
+): { x: number; z: number } {
   const c = ringCentre(block);
   const a = cornerAngle(block, t);
-  return { x: c.x + RING_ROUTE_RADIUS_M * Math.cos(a), z: c.z + RING_ROUTE_RADIUS_M * Math.sin(a) };
+  return { x: c.x + radius * Math.cos(a), z: c.z + radius * Math.sin(a) };
 }
 
 /**
@@ -215,11 +231,12 @@ const ARC_STEPS_PER_QUARTER = 9;
 export function ringArc(
   block: RoundaboutBlock,
   tiles: readonly TilePoint[],
+  radius: number = RING_ROUTE_RADIUS_M,
 ): { x: number; z: number }[] {
   const c = ringCentre(block);
   const first = tiles[0];
   if (!first) return [];
-  const out = [ringPoint(block, first)];
+  const out = [ringPoint(block, first, radius)];
   let angle = cornerAngle(block, first);
   for (let i = 1; i < tiles.length; i++) {
     const next = tiles[i]!;
@@ -227,11 +244,11 @@ export function ringArc(
     for (let k = 1; k < ARC_STEPS_PER_QUARTER; k++) {
       const a = angle + (turn * k) / ARC_STEPS_PER_QUARTER;
       out.push({
-        x: c.x + RING_ROUTE_RADIUS_M * Math.cos(a),
-        z: c.z + RING_ROUTE_RADIUS_M * Math.sin(a),
+        x: c.x + radius * Math.cos(a),
+        z: c.z + radius * Math.sin(a),
       });
     }
-    out.push(ringPoint(block, next));
+    out.push(ringPoint(block, next, radius));
     angle += turn;
   }
   return out;
@@ -254,7 +271,7 @@ export interface RoundaboutLeg {
 }
 
 /** Each corner's two outward neighbours, and the side of the block each is on. */
-function outerNeighbours(block: RoundaboutBlock): RoundaboutLeg[] {
+export function outerNeighbours(block: RoundaboutBlock): RoundaboutLeg[] {
   const out: RoundaboutLeg[] = [];
   for (const from of blockTiles(block)) {
     const north = from.z === block.z;

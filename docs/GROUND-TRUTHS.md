@@ -14,7 +14,7 @@ How to use it:
 | Area                                   | File                                          | Rules | Ids                                  |
 | -------------------------------------- | --------------------------------------------- | ----: | ------------------------------------ |
 | Roads: network and profiles            | [roads-network.md](truths/roads-network.md)   | 39    | `R-roads-001–006, 009, 010, 015–028, 040–043, 051–055, 057–060, 076, 077, 080, 081` |
-| Roads: junctions, markings, ramps      | [roads-junctions.md](truths/roads-junctions.md) | 35  | `R-roads-029–036, 044–050, 056, 061–075, 078, 079, 083, 084` |
+| Roads: junctions, markings, ramps      | [roads-junctions.md](truths/roads-junctions.md) | 37  | `R-roads-029–036, 044–050, 056, 061–075, 078, 079, 083–086` |
 | Roads: rail, tram and transit          | [roads-transit.md](truths/roads-transit.md)   | 10    | `R-roads-007, 008, 011–014, 037–039, 082` |
 | World: grid and simulation core        | [world-grid.md](truths/world-grid.md)         | 22    | `R-world-001–006, 019–024, 027, 030–035, 049–051` |
 | World: growth, lots and population     | [world-growth.md](truths/world-growth.md)     | 29    | `R-world-007–018, 025, 026, 028, 029, 036–048` |

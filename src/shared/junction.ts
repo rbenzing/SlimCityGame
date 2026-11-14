@@ -404,6 +404,13 @@ const CONTROL_BY_CODE: readonly JunctionControl[] = [
   'roundabout',
 ];
 
+/**
+ * The byte the four tiles of a cul-de-sac hold: the number after the last
+ * control, appended and never reused. It is not a control, so
+ * `controlFromCode` reads it as no override at all.
+ */
+export const CUL_DE_SAC_CODE = 7;
+
 /** The byte a stored override holds; 0 for no override. */
 export function codeForControl(control: JunctionControl | null): number {
   if (control === null) return 0;

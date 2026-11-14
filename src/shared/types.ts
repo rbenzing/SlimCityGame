@@ -634,6 +634,22 @@ export type Command =
    */
   | { kind: 'removeRoundabout'; x: number; z: number; junctions?: RoundaboutJunction[] }
   /**
+   * Makes the 2×2 block whose north-west tile is (x, z) a cul-de-sac: the
+   * cul-de-sac code on its four tiles, and no turn or lane restriction on
+   * any of them. Rejected, with the reason, unless the four tiles are laid
+   * street of one lane each way, joined round the square, with exactly one
+   * street leaving them. Inverse: `removeCulDeSac` carrying what the four
+   * tiles held before.
+   */
+  | { kind: 'buildCulDeSac'; x: number; z: number }
+  /**
+   * Takes out the cul-de-sac whose north-west tile is (x, z), writing
+   * `junctions` to its four tiles (north-west, north-east, south-west,
+   * south-east), or clearing all four when it is absent. The street stays.
+   * Rejected unless a cul-de-sac stands there. Inverse: `buildCulDeSac`.
+   */
+  | { kind: 'removeCulDeSac'; x: number; z: number; junctions?: RoundaboutJunction[] }
+  /**
    * Clears road/building/zone/trees. On a crossing tile it takes only the road
    * passing over, the one on top; `layer: 'over'` asks for exactly that and
    * nothing else on any tile.
@@ -1155,6 +1171,11 @@ export interface SimSnapshot {
    * list travels whenever any of it changes; absent means nothing has.
    */
   roundabouts?: TilePoint[];
+  /**
+   * Every cul-de-sac, by the north-west tile of its block. The whole list
+   * travels whenever any of it changes; absent means nothing has.
+   */
+  culDeSacs?: TilePoint[];
   /**
    * How hard each service kind is being leaned on (see ServiceLoad): ten
    * numbers, cheap at the snapshot rate, and the only thing that makes a
@@ -1848,6 +1869,8 @@ export type ToolId =
   | 'interchange'
   // A compact roundabout, stamped onto a street junction already laid.
   | 'roundabout'
+  // A turning circle beyond a dead end, which homes form round.
+  | 'culdesac'
   // Power: string a run of line, to reach what a road cannot.
   | 'power.line'
   | 'power.cable'

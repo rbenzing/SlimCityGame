@@ -616,6 +616,51 @@ export function buildBandPositions(
   return Float32Array.from(out);
 }
 
+/** A turning circle's disc is fainter than a zone's fill: the block's own tint shows through it. */
+const DISC_OPACITY = 0.45;
+/** Segments round a disc ghost. */
+const DISC_SEGMENTS = 48;
+/** The longest a disc ghost's triangle runs, so it follows the terrain. */
+const DISC_CELL_M = 2;
+
+/**
+ * A disc of `radius` about `(cx, cz)`, in rings and sectors small enough to
+ * lie on the terrain: triangles as flat positions. Pure and exported for tests.
+ */
+export function buildDiscPositions(
+  cx: number,
+  cz: number,
+  radius: number,
+  heightAt: HeightSampler,
+  lift: number,
+): Float32Array {
+  const rings = Math.max(1, Math.ceil(radius / DISC_CELL_M));
+  const out: number[] = [];
+  const v = (r: number, k: number): number[] => {
+    const a = (2 * Math.PI * k) / DISC_SEGMENTS;
+    const x = cx + r * Math.cos(a);
+    const z = cz + r * Math.sin(a);
+    return [x, heightAt(x, z) + lift, z];
+  };
+  for (let i = 0; i < rings; i++) {
+    const r0 = (radius * i) / rings;
+    const r1 = (radius * (i + 1)) / rings;
+    for (let k = 0; k < DISC_SEGMENTS; k++) {
+      out.push(...v(r0, k), ...v(r1, k), ...v(r1, k + 1));
+      if (i > 0) out.push(...v(r0, k), ...v(r1, k + 1), ...v(r0, k + 1));
+    }
+  }
+  return new Float32Array(out);
+}
+
+/** The points round a circle of `radius` about `(cx, cz)`, closed, for a band to run along. */
+function circleLine(cx: number, cz: number, radius: number): { x: number; z: number }[] {
+  return Array.from({ length: DISC_SEGMENTS + 1 }, (_, k) => {
+    const a = (2 * Math.PI * (k % DISC_SEGMENTS)) / DISC_SEGMENTS;
+    return { x: cx + radius * Math.cos(a), z: cz + radius * Math.sin(a) };
+  });
+}
+
 function concat(...parts: Float32Array[]): Float32Array {
   const out = new Float32Array(parts.reduce((n, p) => n + p.length, 0));
   let o = 0;
@@ -663,6 +708,12 @@ export interface SetPreviewOptions {
    * dashes and its arrows all move with it.
    */
   roadBandShifts?: readonly number[];
+  /**
+   * A turning circle laid on the previewed tiles: its centre and radius, world
+   * metres. Drawn as a disc with its rim over the tiles' own frame, so the
+   * player sees the circle the block will hold and not only the block.
+   */
+  disc?: { x: number; z: number; radiusM: number };
 }
 
 /**
@@ -927,6 +978,8 @@ export class GhostRenderer {
       return;
     }
 
+    this.fillMaterial.opacity = ZONE_FILL_OPACITY;
+    this.innerMaterial.opacity = INNER_GRID_OPACITY;
     this.heightAt =
       kind === 'road' && opts?.deckLifts
         ? deckHeightSampler(tiles, opts.deckLifts, this.ground)
@@ -958,6 +1011,28 @@ export class GhostRenderer {
     this.writeBorder(edges.outer, valid);
     this.writeInnerGrid(edges.inner, valid);
     this.writeVolume(valid, opts?.volume);
+    if (opts?.disc) this.writeDisc(opts.disc, valid);
+  }
+
+  /** The turning circle of a cul-de-sac preview: a disc in the fill layer and its rim in the inner layer. */
+  private writeDisc(disc: { x: number; z: number; radiusM: number }, valid: boolean): void {
+    this.fillMaterial.color.setRGB(...baseColorFor('road', valid));
+    this.fillMaterial.opacity = DISC_OPACITY;
+    this.setGeometry(
+      this.fillMesh,
+      buildDiscPositions(disc.x, disc.z, disc.radiusM, this.heightAt, ZONE_FILL_Y_OFFSET),
+    );
+    const w = BORDER_WIDTH_METERS;
+    this.innerMaterial.color.setRGB(...frameColorFor(valid));
+    this.innerMaterial.opacity = BORDER_OPACITY;
+    const rim = circleLine(disc.x, disc.z, disc.radiusM);
+    this.setGeometry(
+      this.innerMesh,
+      concat(
+        this.innerMesh.geometry.getAttribute('position').array as Float32Array,
+        buildBandPositions(rim, -w / 2, w / 2, this.heightAt, INNER_GRID_Y_OFFSET),
+      ),
+    );
   }
 
   /**

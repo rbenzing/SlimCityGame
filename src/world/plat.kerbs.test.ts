@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { TILE_METERS, tileIndex } from '../shared/constants';
 import { toLocal, toWorld } from '../shared/lotframe';
 import { kerbLine, tightestRadiusM } from '../shared/roadgeom';
-import { presetProfileForTier } from '../shared/roadprofile';
+import { kerbWidthOf, presetProfileForTier } from '../shared/roadprofile';
 import { FieldId, RoadTier, ZoneType, type FramedParcel, type GridState } from '../shared/types';
 import { deriveRoadFootprint, halfWidthOf } from './freeroads';
 import { createGrid, setZones } from './grid';
@@ -31,6 +31,8 @@ import type { MapData, RoadNet, TilePoint } from '../shared/types';
 const cm = (metres: number): number => Math.round(metres * 100);
 const HALF = halfWidthOf(presetProfileForTier(RoadTier.TwoLane));
 const CLEARANCE = HALF + 6;
+/** A drive keeps 10 ft from the end of a kerb return. */
+const DRIVE_END_CLEARANCE_M = 3.0;
 
 interface Pt {
   x: number;
@@ -186,6 +188,36 @@ describe('the plat along the kerbs of a straight road at 30 degrees', () => {
         expect(g.zone[i]).toBe(ZoneType.ResLow);
         expect(g.roadTier[i]).toBe(RoadTier.None);
         expect(plat.reached[i]).toBe(1);
+      }
+    }
+  });
+});
+
+describe('the plat at the end of a road off the grid', () => {
+  it('stops its last lot at least 3 m short of where the rounded cap begins', () => {
+    const profile = presetProfileForTier(RoadTier.TwoLane);
+    // The cap stands inside the road's length: its arc begins one carriageway
+    // half and one kerb back from the node the road ends at.
+    const arcStart = HALF + kerbWidthOf(profile);
+    const a = { x: 60, z: 160 };
+    const b = { x: 260, z: 160 };
+    const { g, seg } = world(a, b, null, { x0: 0, z0: 0, w: 20, d: 20 });
+    const plat = platFor(g);
+    const geom = segmentGeom(g.roads!, seg);
+    const length = Math.hypot(geom.b.x - geom.a.x, geom.b.z - geom.a.z) / 100;
+    const sides = bySide(g, plat, seg);
+    expect(sides[1].length + sides[-1].length).toBeGreaterThan(0);
+    for (const p of plat.framed) {
+      for (const [u, v] of [
+        [0, 0],
+        [p.w, 0],
+        [p.w, p.d],
+        [0, p.d],
+      ] as const) {
+        const w = toWorld(p.frame, u, v);
+        const along = w.x - geom.a.x / 100;
+        expect(along).toBeLessThanOrEqual(length - arcStart - DRIVE_END_CLEARANCE_M + 1e-6);
+        expect(along).toBeGreaterThanOrEqual(arcStart + DRIVE_END_CLEARANCE_M - 1e-6);
       }
     }
   });
