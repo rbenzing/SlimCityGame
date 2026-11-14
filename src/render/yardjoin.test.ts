@@ -474,7 +474,9 @@ describe('a lead follows the ground it stands on', () => {
       const kind = renderer
         .poolKinds('rail-yard')
         .find((k) => k.startsWith('railYardTrack') && renderer.partSlotsFor(1, k).length > 0)!;
-      expect(kind).toBe(`railYardTrackR${Math.round(h * 100)}`);
+      // A lead whose line's bed rises away from the points is laid to that ground, so its kind says so.
+      expect(kind.startsWith(`railYardTrackR${Math.round(h * 100)}`)).toBe(true);
+      expect(kind.includes('G')).toBe(h < 0);
       const geometry = renderer.partGeometry('rail-yard', kind)!;
       const pos = geometry.getAttribute('position');
       const col = geometry.getAttribute('color').array;
@@ -609,4 +611,149 @@ describe('a tram depot’s lead meets the street’s lane track', () => {
     expect(tiles.every((t) => !(t.z >= 10 && t.z < 12 && t.x >= 10 && t.x < 13))).toBe(true);
     expect(renderer.leadTiles({ ...depot, catalogId: 'rail-yard' })).toEqual([]);
   });
+});
+
+describe('a lead’s rails meet its line’s rails', () => {
+  const LINE_Z = 9.5 * TILE_METERS;
+  const rail = [painted([0.7, 0.71, 0.74]), painted([0.84, 0.85, 0.88])];
+  const cases = [
+    { mode: 'rail', id: 'rail-yard', entry: RAIL, gauge: 0.7875, lane: 0 },
+    { mode: 'tram', id: 'tram-depot', entry: TRAM, gauge: 0.7455, lane: 1.2 },
+  ] as const;
+
+  it.each(cases.flatMap((c) => ([0, 1, 2, 3] as const).map((rotation) => ({ ...c, rotation }))))(
+    'at the points of a $mode lead, rotation $rotation, on flat ground',
+    (c) => {
+      const lot = footprintForRotation(c.entry, c.rotation);
+      const trackAt = (x: number, z: number): boolean => z === 9 && x >= 4 && x < 10 + lot.w + 4;
+      const renderer = new UtilityKitRenderer(
+        new THREE.Scene(),
+        flat,
+        [c.entry],
+        undefined,
+        c.mode === 'rail' ? trackAt : undefined,
+        c.mode === 'tram' ? trackAt : undefined,
+        c.mode === 'tram' ? () => c.lane : undefined,
+      );
+      renderer.apply({
+        added: [
+          {
+            id: 1,
+            catalogId: c.id,
+            x: 10,
+            z: 10,
+            rotation: c.rotation,
+            level: 1,
+            state: BuildingState.Active,
+            problems: 0,
+          },
+        ],
+        removed: [],
+        updated: [],
+      });
+      const kind = renderer
+        .poolKinds(c.id)
+        .find(
+          (k) =>
+            k.includes('Track') && !k.includes('Stop') && renderer.partSlotsFor(1, k).length > 0,
+        ) as UtilityKitPartKind;
+      expect(kind).toBeDefined();
+      const m = new THREE.Matrix4();
+      renderer.getPartMatrix(c.id, kind, renderer.partSlotsFor(1, kind)[0]!, m);
+      const geometry = renderer.partGeometry(c.id, kind)!;
+      const pos = geometry.getAttribute('position');
+      const col = geometry.getAttribute('color').array;
+      // Where the lead leaves the line, in the world: the line runs along x here.
+      const facing = railSideOf(10, 10, lot, trackAt)!;
+      const frame = yardFrame(c.entry, c.rotation, facing);
+      const layout = computeYardLayout(
+        frame.footprint,
+        c.mode === 'rail' ? RAIL_YARD_SPEC : TRAM_DEPOT_SPEC,
+        frame.fromEnd,
+        YARD_CARS[c.mode],
+        { reach: kind.includes('Short') ? 'short' : 'full', mirror: kind.includes('Mirror') },
+        c.lane,
+      );
+      const t = rotateLocalXZ(layout.turnout!.at.x, layout.turnout!.at.z, frame.turn);
+      const atX = (10 + lot.w / 2) * TILE_METERS + t.x;
+      const laneZ = LINE_Z + c.lane;
+      const start: THREE.Vector3[] = [];
+      const all: THREE.Vector3[] = [];
+      for (let i = 0; i < pos.count; i++) {
+        if (!rail.some((r) => sameColour(col, i, r))) continue;
+        const v = new THREE.Vector3().fromBufferAttribute(pos, i).applyMatrix4(m);
+        all.push(v);
+        if (Math.abs(v.x - atX) < 0.1) start.push(v);
+      }
+      expect(all.length, 'rail vertices').toBeGreaterThan(0);
+      // Two rails, each ending on the line's own rail, within 2 cm, and at its height.
+      for (const side of [1, -1]) {
+        const near = start.filter((v) => Math.sign(v.z - laneZ) === side);
+        expect(near.length, `rail ${side} of ${kind}`).toBeGreaterThan(0);
+        const meanZ = near.reduce((s, v) => s + v.z, 0) / near.length;
+        expect(Math.abs(meanZ - (laneZ + side * c.gauge))).toBeLessThan(0.02);
+        for (const v of near) expect(v.y).toBeGreaterThan(0.15);
+        for (const v of near) expect(v.y).toBeLessThan(0.2);
+      }
+    },
+  );
+
+  it.each([-0.03, 0.03])(
+    'stands over the line’s bed along its turnout where the ground falls %f m a metre across the line',
+    (grade) => {
+      const lot = footprintForRotation(RAIL, 1);
+      const trackAt = (x: number, z: number): boolean => z === 9 && x >= 4 && x < 10 + lot.w + 4;
+      const ground = (_x: number, z: number): number => grade * (z - LINE_Z);
+      const renderer = new UtilityKitRenderer(
+        new THREE.Scene(),
+        ground,
+        [RAIL],
+        undefined,
+        trackAt,
+      );
+      renderer.apply({
+        added: [
+          {
+            id: 1,
+            catalogId: 'rail-yard',
+            x: 10,
+            z: 10,
+            rotation: 1,
+            level: 1,
+            state: BuildingState.Active,
+            problems: 0,
+          },
+        ],
+        removed: [],
+        updated: [],
+      });
+      const kind = renderer
+        .poolKinds('rail-yard')
+        .find(
+          (k) =>
+            k.includes('Track') && !k.includes('Stop') && renderer.partSlotsFor(1, k).length > 0,
+        )!;
+      const m = new THREE.Matrix4();
+      renderer.getPartMatrix(
+        'rail-yard',
+        kind as UtilityKitPartKind,
+        renderer.partSlotsFor(1, kind)[0]!,
+        m,
+      );
+      const geometry = renderer.partGeometry('rail-yard', kind as UtilityKitPartKind)!;
+      const pos = geometry.getAttribute('position');
+      const col = geometry.getAttribute('color').array;
+      let seen = 0;
+      for (let i = 0; i < pos.count; i++) {
+        if (!rail.some((r) => sameColour(col, i, r))) continue;
+        const v = new THREE.Vector3().fromBufferAttribute(pos, i).applyMatrix4(m);
+        // Within the line's ballast and its first 8 m: the road's bed there lies 0.15 m over the ground.
+        if (Math.abs(v.z - LINE_Z) > 2.8 || Math.abs(v.x - 8 * TILE_METERS) > 40) continue;
+        if (v.z > LINE_Z + 1.5) continue;
+        seen++;
+        expect(v.y).toBeGreaterThanOrEqual(ground(v.x, v.z) + 0.15 - 0.005);
+      }
+      expect(seen).toBeGreaterThan(0);
+    },
+  );
 });

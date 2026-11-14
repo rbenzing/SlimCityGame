@@ -190,6 +190,9 @@ const views = [
   ['b4-tram-lead-close', X + 10.9, Z + 10.5, 40, Math.PI + 0.5, 0.9],
   ['c3-rail-lead-above', X + 18, Z + 16.6, 130, Math.PI, 1.5],
   ['c4-rail-lead-close', X + 18.2, Z + 16.4, 50, Math.PI + 0.5, 0.9],
+  ['b5-tram-turnout', X + 10.9, Z + 10.5, 16, Math.PI + 0.5, 1.2],
+  ['c5-rail-turnout', X + 18.2, Z + 16.4, 16, Math.PI + 0.5, 1.2],
+  ['c6-rail-turnout-low', X + 18.2, Z + 16.4, 12, Math.PI + 0.5, 0.3],
   ['c-rail-yard-track', yard.x, yard.z, 130, Math.PI, PITCH],
   ['c2-rail-yard-street', yard.x, yard.z, 120, 0.3, 0.5],
 ];

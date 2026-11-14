@@ -197,7 +197,10 @@ import {
   accessibilitySymbolPaint,
   CURB_Y_OFFSET,
   MARKING_COLOR,
+  RAILWAY_GAUGE_HALF_M,
   ROAD_Y_OFFSET,
+  TRAM_GAUGE_HALF_M,
+  TRAM_SLAB_COLOR,
   YELLOW_MARKING_COLOR,
 } from './roadsmesh';
 import { UNIT_HEIGHT_M, UNIT_LENGTH_M, UNIT_WIDTH_M } from './buildingkit';
@@ -9239,7 +9242,8 @@ export const RAIL_YARD_SPEC: YardSpec = {
 /** Catenary poles 6 m tall every 10 m along a pair of roads, each with a crossarm over both. */
 export const CATENARY_POLE = { h: 6, pitch: 10, size: 0.2, arm: 5.5, armT: 0.12 };
 /** The track as the road mesh lays it: rails at the gauge on sleepers, over ballast on the railway. */
-const YARD_GAUGE_HALF_M = 0.75;
+const yardGaugeHalf = (ballast: boolean): number =>
+  ballast ? RAILWAY_GAUGE_HALF_M : TRAM_GAUGE_HALF_M;
 const YARD_RAIL = { w: 0.14, h: 0.12 };
 const YARD_SLEEPER = { l: 2.3, w: 0.32, h: 0.1, pitch: 1.6 };
 const YARD_BALLAST = { halfW: 1.7, h: 0.08 };
@@ -9765,7 +9769,7 @@ function trackParts(
   }
   for (const s of [-1, 1]) {
     parts.push(
-      alongSegment(seg, YARD_RAIL.w, YARD_RAIL.h, railY, s * YARD_GAUGE_HALF_M, YARD_RAIL_RGB),
+      alongSegment(seg, YARD_RAIL.w, YARD_RAIL.h, railY, s * yardGaugeHalf(ballast), YARD_RAIL_RGB),
     );
   }
 }
@@ -9880,7 +9884,7 @@ const YARD_STAND_RGB: RGB = [0.24, 0.25, 0.27];
 const YARD_STAND_TARGET_RGB: RGB = [0.78, 0.2, 0.16];
 const YARD_GROOVE_RGB: RGB = [0.16, 0.16, 0.17];
 /** The apron a tram lead crosses the footway and kerb on: as wide as the street's slab where it leaves the street, wider at the lot. */
-const YARD_LEAD_APRON_W = { street: 2.8, lot: 4.8 };
+const YARD_LEAD_APRON_W = { street: 2.7, lot: 4.8 };
 /** A tram street's carriageway half-width: its two lanes. */
 const YARD_CARRIAGEWAY_HALF_M = 3.75;
 
@@ -9906,14 +9910,13 @@ function joinParts(
   lot: Rect,
   y0: number,
   rise: number,
+  lineRise: readonly number[] = [],
 ): void {
   const path = layout.joinPath;
   if (path.length < 2 || !layout.turnout) return;
   const { at, along, across, radius, lane } = layout.turnout;
-  // The line's surface where the lead leaves it: the ground it stands on, not the lot's.
-  const lineY = YARD_LINE_SURFACE_M + rise;
   // Where the lead's outer rail crosses the line's near rail: the frog.
-  const gauge = YARD_GAUGE_HALF_M;
+  const gauge = yardGaugeHalf(spec.ballast);
   const frogAngle = Math.acos((radius - gauge) / (radius + gauge));
   const frogU = (radius + gauge) * Math.sin(frogAngle);
   const turnoutLength = frogU + 3;
@@ -9922,6 +9925,17 @@ function joinParts(
     cum.push(cum[i - 1]! + Math.hypot(path[i]!.x - path[i - 1]!.x, path[i]!.z - path[i - 1]!.z));
   }
   const total = cum[cum.length - 1]!;
+  // The line's surface where the lead leaves it: the ground the line's road stands on
+  // at that point of the lead, not the lot's, so the rails never sink under the line's bed.
+  const chordAt = (s: number): number => {
+    let i = 1;
+    while (i < path.length - 1 && cum[i]! < s) i++;
+    return i - 1;
+  };
+  // Never below the ground at the points: the lead stands over its line's bed, and a bed
+  // that falls away leaves the lead a little proud of it rather than burying it.
+  const riseAt = (s: number): number => Math.max(rise, lineRise[chordAt(s)] ?? rise);
+  const lineYAt = (s: number): number => YARD_LINE_SURFACE_M + riseAt(s);
   const entered = path.findIndex(
     (p) => p.x >= lot.x0 && p.x <= lot.x1 && p.z >= lot.z0 && p.z <= lot.z1,
   );
@@ -9944,14 +9958,22 @@ function joinParts(
   // Past the carriageway the apron crosses the footway and kerb, so it stands as high as the kerb there.
   const lateralAt = (s: number): number => awayAt(s) + lane;
   const apronTop = (s: number): number => {
+    const lineY = lineYAt(s);
     const base = lineY + 0.008 + (y0 - lineY - 0.008) * level(s);
     return entered > 0 && s < rampTo && lateralAt(s) > YARD_CARRIAGEWAY_HALF_M
-      ? Math.max(base, rise + CURB_Y_OFFSET + 0.004)
+      ? Math.max(base, riseAt(s) + CURB_Y_OFFSET + 0.004)
       : base;
   };
   const lotRailBottom = y0 + YARD_BALLAST.h + YARD_SLEEPER.h;
-  const railBottom = (s: number): number =>
-    spec.ballast ? lineY + 0.01 + (lotRailBottom - lineY - 0.01) * level(s) : apronTop(s) + 0.01;
+  // The lead's rails stand this much over the line's bed where they leave it, so the
+  // few centimetres the bed's own lattice differs from the ground never bury them.
+  const railClear = (s: number): number => 0.015 * (1 - level(s));
+  const railBottom = (s: number): number => {
+    const lineY = lineYAt(s);
+    return spec.ballast
+      ? lineY + 0.01 + railClear(s) + (lotRailBottom - lineY - 0.01 - railClear(s)) * level(s)
+      : apronTop(s) + 0.01 + railClear(s);
+  };
   const railH = (s: number): number => 0.012 + (YARD_RAIL.h - 0.012) * level(s);
   const railW = (s: number): number =>
     s >= YARD_BLADE.length
@@ -9967,8 +9989,11 @@ function joinParts(
     const bottom = railBottom(mid);
     if (spec.ballast) {
       // The bed runs down below the terrain; at the points it is flush with the line's own surface.
-      const bed = Math.min(-0.3, rise - 0.3);
-      const bedTop = Math.min(bottom - YARD_SLEEPER.h, mid < turnoutLength ? lineY : Infinity);
+      const bed = Math.min(-0.3, riseAt(mid) - 0.3);
+      const bedTop = Math.min(
+        bottom - YARD_SLEEPER.h,
+        mid < turnoutLength ? lineYAt(mid) : Infinity,
+      );
       parts.push(
         alongSegment(chord, 2 * YARD_BALLAST.halfW, bedTop - bed, bed, 0, YARD_BALLAST_RGB),
       );
@@ -9976,8 +10001,11 @@ function joinParts(
       const top = apronTop(mid);
       const width =
         YARD_LEAD_APRON_W.street + (YARD_LEAD_APRON_W.lot - YARD_LEAD_APRON_W.street) * level(mid);
-      const base = Math.min(-0.2, rise - 0.2);
-      parts.push(alongSegment(chord, width, top - base, base, 0, YARD_APRON_RGB));
+      const base = Math.min(-0.2, riseAt(mid) - 0.2);
+      // On the street the lead is paved as the street's own track slab, so its start
+      // is the slab the lane already lays; past the carriageway it is the apron.
+      const paving = lateralAt(mid) <= YARD_CARRIAGEWAY_HALF_M ? TRAM_SLAB_COLOR : YARD_APRON_RGB;
+      parts.push(alongSegment(chord, width, top - base, base, 0, paving));
       parts.push(alongSegment(chord, 2 * YARD_TRACKBED_HALF_M, 0.004, top, 0, YARD_TRACKBED_RGB));
     }
     const bladeRail = mid < YARD_BLADE.length;
@@ -9988,7 +10016,7 @@ function joinParts(
           railW(mid),
           railH(mid),
           bottom,
-          side * YARD_GAUGE_HALF_M,
+          side * gauge,
           bladeRail ? YARD_BLADE_RGB : YARD_RAIL_RGB,
         ),
       );
@@ -10000,7 +10028,7 @@ function joinParts(
             0.05,
             0.002,
             bottom + railH(mid),
-            side * (YARD_GAUGE_HALF_M - YARD_RAIL.w / 2 - 0.03),
+            side * (gauge - YARD_RAIL.w / 2 - 0.03),
             YARD_GROOVE_RGB,
           ),
         );
@@ -10038,8 +10066,8 @@ function joinParts(
     // Longer sleepers carry both routes from the points to just past the frog.
     // Their tops lie a hair over the line's surface and under its sleepers and rails,
     // so the line's own track reads over them and only their ends show.
-    const top = lineY + 0.002;
     for (let s = YARD_SLEEPER.pitch; s < turnoutLength; s += YARD_SLEEPER.pitch) {
+      const top = lineYAt(s) + 0.002;
       const off = offsetAt(s);
       const sleeper = new THREE.BoxGeometry(YARD_SLEEPER.w, 0.15, YARD_SLEEPER.l + off);
       sleeper.rotateY(yawOf(across));
@@ -10074,8 +10102,9 @@ function joinParts(
   // The switch stand beside the points, on the side away from the lead, its target a red lamp head.
   if (spec.ballast) {
     const stand = place(2.2, -2.1);
-    parts.push(standingBox(0.3, 0.5, 0.3, stand.x, lineY - 0.02, stand.z, YARD_STAND_RGB));
-    parts.push(standingBox(0.5, 0.08, 0.5, stand.x, lineY + 0.48, stand.z, YARD_STAND_TARGET_RGB));
+    const standY = lineYAt(0);
+    parts.push(standingBox(0.3, 0.5, 0.3, stand.x, standY - 0.02, stand.z, YARD_STAND_RGB));
+    parts.push(standingBox(0.5, 0.08, 0.5, stand.x, standY + 0.48, stand.z, YARD_STAND_TARGET_RGB));
   }
 }
 
@@ -10113,6 +10142,7 @@ function buildYardTrackGeometry(
   layout: YardLayout,
   spec: YardSpec,
   rise = 0,
+  lineRise: readonly number[] = [],
 ): THREE.BufferGeometry {
   const parts: THREE.BufferGeometry[] = [];
   const y0 = RECYCLING_YARD_HEIGHT + (spec.ballast ? 0 : EDU_ASPHALT_M);
@@ -10123,7 +10153,7 @@ function buildYardTrackGeometry(
     z0: layout.fence.z0 - GEN_FENCE_INSET_M,
     z1: layout.fence.z1 + GEN_FENCE_INSET_M,
   };
-  joinParts(parts, layout, spec, lot, y0, rise);
+  joinParts(parts, layout, spec, lot, y0, rise, lineRise);
   if (layout.stop) bufferStopParts(parts, layout.stop, y0, spec.ballast);
   return mergeParts(parts);
 }
@@ -11607,21 +11637,42 @@ export class UtilityKitRenderer {
     groundY: number,
     centerZ: number,
   ): void {
-    const { frame, spec, join, layout } = this.yardPlan(building, entry, mode, centerX, centerZ);
+    const { frame, spec, join, layout, lane } = this.yardPlan(
+      building,
+      entry,
+      mode,
+      centerX,
+      centerZ,
+    );
     // The line's own ground, where the lead leaves it, against the lot's levelled ground: the
     // lead, its bed and the turnout stand on it, to the nearest 2 cm.
     let rise = 0;
+    // The ground under each chord of the lead, where the line's own road lies: the lead's
+    // rails follow it so they stand over the road's bed rather than under it.
+    let lineRise: number[] = [];
     if (layout.turnout) {
       const t = rotateLocalXZ(layout.turnout.at.x, layout.turnout.at.z, frame.turn);
       rise = Math.round((this.heightAt(centerX + t.x, centerZ + t.z) - groundY) * 50) / 50;
+      const path = layout.joinPath;
+      lineRise = path.slice(1).map((p, i) => {
+        const q = path[i]!;
+        const m = rotateLocalXZ((p.x + q.x) / 2, (p.z + q.z) / 2, frame.turn);
+        return Math.round((this.heightAt(centerX + m.x, centerZ + m.z) - groundY) * 50) / 50;
+      });
     }
+    const followsGround = lineRise.some((r) => r > rise);
     const prefix = mode === 'tram' ? 'tramDepot' : 'railYard';
     const reachName = join.reach === 'short' ? 'Short' : join.reach === 'stop' ? 'Stop' : '';
     const suffix = join.mirror ? `Mirror${reachName}` : `${frame.fromEnd ? 'End' : ''}${reachName}`;
-    const riseName = rise === 0 ? '' : `R${Math.round(rise * 100)}`;
+    const riseName =
+      (rise === 0 ? '' : `R${Math.round(rise * 100)}`) +
+      (followsGround ? `G${lineRise.map((r) => Math.round(r * 50)).join('_')}` : '');
     const side = join.mirror ? 'Mirror' : '';
-    const yardKind = `${prefix}Yard${suffix}` as UtilityKitPartKind;
-    const trackKind = `${prefix}Track${suffix}${riseName}` as UtilityKitPartKind;
+    // The kit's own pools are laid for the preset street's lane; a lead to any other lane
+    // is a different geometry and takes a name of its own.
+    const laneName = lane === spec.trackOffset ? '' : `L${Math.round(lane * 1000)}`;
+    const yardKind = `${prefix}Yard${suffix}${laneName}` as UtilityKitPartKind;
+    const trackKind = `${prefix}Track${suffix}${laneName}${riseName}` as UtilityKitPartKind;
     const shopKind = `${prefix}Shop${side}` as UtilityKitPartKind;
     const litKind = `${prefix}Lit${side}` as UtilityKitPartKind;
     const polesKind = `tramDepotPoles${side}` as UtilityKitPartKind;
@@ -11634,7 +11685,7 @@ export class UtilityKitRenderer {
         INITIAL_KIT_CAPACITY,
       ));
     const yard = fresh(yardKind, () => buildYardYardGeometry(frame.footprint, layout, spec));
-    const track = fresh(trackKind, () => buildYardTrackGeometry(layout, spec, rise));
+    const track = fresh(trackKind, () => buildYardTrackGeometry(layout, spec, rise, lineRise));
     const shop = fresh(shopKind, () => buildYardShopGeometry(layout, entry.height));
     const lit = fresh(litKind, () => buildYardLitGeometry(layout), true);
     const poles =

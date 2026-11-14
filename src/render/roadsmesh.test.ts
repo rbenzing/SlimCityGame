@@ -413,7 +413,7 @@ describe('roadTileVertices — tram track (RoadTier.Tram)', () => {
     expect(rails.map((r) => r.hi - r.lo)).toEqual(rails.map(() => expect.closeTo(0.056, 6)));
     const centres = rails.map((r) => (r.lo + r.hi) / 2).sort((a, b) => a - b);
     expect(centres).toEqual(
-      [-1.875 - 0.7175, -1.875 + 0.7175, 1.875 - 0.7175, 1.875 + 0.7175].map((c) =>
+      [-1.875 - 0.7455, -1.875 + 0.7455, 1.875 - 0.7455, 1.875 + 0.7455].map((c) =>
         expect.closeTo(c, 6),
       ),
     );
@@ -530,7 +530,7 @@ describe('roadTileVertices — tram track (RoadTier.Tram)', () => {
         { kind: 'travel', width: 3.5, flow: 'fwd', tram: true },
       ],
     };
-    expect(railCentres(mixed)).toEqual([-2.4675, -1.0325, 1.0325, 2.4675]);
+    expect(railCentres(mixed)).toEqual([-2.4955, -1.0045, 1.0045, 2.4955]);
   });
 
   it('breaks the track at junctions (rails stop at crossings)', () => {
@@ -666,11 +666,11 @@ describe('roadTileVertices — dedicated rail line (RoadTier.RailTrack)', () => 
     expect(countWhere(colors, isSidewalk)).toBe(0);
   });
 
-  it('breaks the track at junctions (rails stop at crossings)', () => {
+  it('carries the track on through a junction (the rails never stop)', () => {
     const straight = roadTileVertices(0, 0, RoadTier.RailTrack, N | S, flatHeightAt);
     const junction = roadTileVertices(0, 0, RoadTier.RailTrack, N | E | S | W, flatHeightAt);
     expect(countWhere(straight.colors, isRail)).toBeGreaterThan(0);
-    expect(countWhere(junction.colors, isRail)).toBe(0);
+    expect(countWhere(junction.colors, isRail)).toBeGreaterThan(0);
   });
 
   it('rides a narrow dedicated corridor (gravel-class width) and is deterministic', () => {

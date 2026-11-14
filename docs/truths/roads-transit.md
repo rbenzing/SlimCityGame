@@ -108,3 +108,10 @@ Back to [the index](../GROUND-TRUTHS.md).
   [transport-depots.md](../specs/transport-depots.md);
   `chooseYardJoin`, `computeYardLayout`, `computeDepotTrackside`, `relayBeside`
   in `src/render/utilitykits.ts`
+- [R-roads-088] Track never breaks: rails run edge to edge on a bend and through every
+  movement a rail or tram junction allows, each turn on a quarter circle
+  about the shared tile corner, and a rail junction lays ballast only under
+  its rails. Gauge is 1,435 mm between the heads' inner faces, on railway
+  and tramway alike. —
+  [asphalt-and-paint.md](../art/streets/asphalt-and-paint.md);
+  `trackPaths` in `src/render/trackpaths.ts`

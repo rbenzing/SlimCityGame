@@ -91,6 +91,8 @@ import {
   tramCrossingRoad,
 } from '../shared/types';
 import { materialUnit } from './palette';
+import { allMovements, pathAt, trackPaths } from './trackpaths';
+import type { TrackPath, TrackSide } from './trackpaths';
 import { MIN_INSTANCE_CAPACITY, setInstanceCount } from './groundquad';
 import type { JunctionControl, TilePoint } from '../shared/types';
 import type { RoadProfile } from '../shared/types';
@@ -391,10 +393,12 @@ const ASPHALT_COLOR: readonly [number, number, number] = [0.42, 0.42, 0.43];
 const RAILWAY_RAIL_COLOR: readonly [number, number, number] = [0.7, 0.71, 0.74];
 /** Railway sleeper (cross-tie): dark creosote timber. */
 const RAILWAY_SLEEPER_COLOR: readonly [number, number, number] = [0.26, 0.22, 0.19];
-/** Track gauge (rail-to-rail); rails sit at ±half this from the centreline. */
-const RAILWAY_GAUGE_HALF_M = 0.75;
+/** Standard gauge: 1,435 mm between the inner faces of the two running rails. */
+export const STANDARD_GAUGE_M = 1.435;
 /** Rail ribbon half-width + sleeper metrics. */
-const RAILWAY_RAIL_HALF_W_M = 0.07;
+export const RAILWAY_RAIL_HALF_W_M = 0.07;
+/** Each railway rail's centre sits half a head beyond half the gauge from the track's centre. */
+export const RAILWAY_GAUGE_HALF_M = STANDARD_GAUGE_M / 2 + RAILWAY_RAIL_HALF_W_M;
 const RAILWAY_SLEEPER_HALF_LEN_M = 1.15;
 const RAILWAY_SLEEPER_HALF_W_M = 0.16;
 const RAILWAY_SLEEPER_PERIOD_M = 1.6;
@@ -413,10 +417,10 @@ const TRAM_SLAB_HALF_W_M = 1.35;
 export const TRAM_RAIL_COLOR = materialUnit('metalPlates');
 /** The rail's groove, dark with the dirt that fills it. */
 export const TRAM_GROOVE_COLOR = materialUnit('darkBitumen');
-/** Standard gauge, 1,435 mm: each rail's centre sits at half of it from the track's. */
-const TRAM_GAUGE_HALF_M = 0.7175;
 /** A 59R2 girder rail's head, 56 mm across, and the 42 mm groove on its gauge side. */
 const TRAM_RAIL_HALF_W_M = 0.028;
+/** Standard gauge is 1,435 mm between the heads' inner faces: each head's centre sits half a head beyond half of it. */
+export const TRAM_GAUGE_HALF_M = STANDARD_GAUGE_M / 2 + TRAM_RAIL_HALF_W_M;
 const TRAM_GROOVE_W_M = 0.042;
 /** Slab on the road, groove on the slab, rail head 4 mm proud of it; all under the paint. */
 const TRAM_SLAB_Y_OFFSET = ROAD_Y_OFFSET + 0.004;
@@ -2324,6 +2328,177 @@ function emitRailwayTrack(
       RAILWAY_RAIL_Y_OFFSET,
       RAILWAY_RAIL_COLOR,
     );
+  }
+}
+
+/**
+ * A strip along a track path between lateral offsets `d0` and `d1` from its
+ * centre line, laid up-facing and tessellated across so it follows a slope.
+ * Offsets run along each sample's normal, so on a turn the strip is an arc
+ * concentric with the path's.
+ */
+function emitPathStrip(
+  positions: number[],
+  colors: number[],
+  centerX: number,
+  centerZ: number,
+  path: TrackPath,
+  d0: number,
+  d1: number,
+  yOff: number,
+  color: readonly [number, number, number],
+  hAt: (x: number, z: number) => number,
+): void {
+  const across = Math.max(1, Math.ceil(Math.abs(d1 - d0) / ROAD_QUAD_MAX_CELL_M));
+  const point = (i: number, d: number): [number, number] => {
+    const p = path.samples[i]!;
+    return [centerX + p.x + p.nx * d, centerZ + p.z + p.nz * d];
+  };
+  for (let i = 0; i + 1 < path.samples.length; i++) {
+    for (let j = 0; j < across; j++) {
+      const a = d0 + ((d1 - d0) * j) / across;
+      const b = d0 + ((d1 - d0) * (j + 1)) / across;
+      pushUpQuad(
+        positions,
+        colors,
+        [point(i, a), point(i, b), point(i + 1, b), point(i + 1, a)],
+        yOff,
+        color,
+        hAt,
+      );
+    }
+  }
+}
+
+/** A quad given in world x/z, split into two up-facing triangles with each vertex on the terrain. */
+function pushUpQuad(
+  positions: number[],
+  colors: number[],
+  q: readonly [number, number][],
+  yOff: number,
+  color: readonly [number, number, number],
+  hAt: (x: number, z: number) => number,
+): void {
+  for (const tri of [
+    [q[0]!, q[1]!, q[2]!],
+    [q[0]!, q[2]!, q[3]!],
+  ] as const) {
+    const [p0, p1, p2] = tri;
+    const cross = (p1[0] - p0[0]) * (p2[1] - p0[1]) - (p1[1] - p0[1]) * (p2[0] - p0[0]);
+    for (const p of cross > 0 ? [p0, p2, p1] : [p0, p1, p2]) {
+      pushVertex(positions, colors, p[0], hAt(p[0], p[1]) + yOff, p[1], color);
+    }
+  }
+}
+
+/**
+ * A railway's track down each path: ballast under every path where `ballast`
+ * says the tile has no road plate of its own, a sleeper across both rails at
+ * every sleeper period of world distance along the path's entry axis, and the
+ * two rails. A sleeper stands square to the path, so on a turn it fans with
+ * the radius.
+ */
+function emitRailwayPaths(
+  positions: number[],
+  colors: number[],
+  centerX: number,
+  centerZ: number,
+  paths: readonly TrackPath[],
+  ballastHalf: number | null,
+  hAt: (x: number, z: number) => number,
+): void {
+  for (const path of paths) {
+    if (ballastHalf !== null) {
+      emitPathStrip(
+        positions,
+        colors,
+        centerX,
+        centerZ,
+        path,
+        -ballastHalf,
+        ballastHalf,
+        ROAD_Y_OFFSET,
+        RAIL_BALLAST_COLOR,
+        hAt,
+      );
+    }
+    const first = path.samples[0]!;
+    const alongX = path.startDir.x !== 0;
+    const dir = alongX ? path.startDir.x : path.startDir.z;
+    const origin = (alongX ? centerX + first.x : centerZ + first.z) / RAILWAY_SLEEPER_PERIOD_M;
+    const firstK = dir > 0 ? Math.ceil(origin - 1e-9) : Math.floor(origin + 1e-9);
+    const firstS = Math.abs(firstK - origin) * RAILWAY_SLEEPER_PERIOD_M;
+    for (let s = firstS; s < path.length - 1e-9; s += RAILWAY_SLEEPER_PERIOD_M) {
+      const p = pathAt(path, s);
+      const corner = (along: number, across: number): [number, number] => [
+        centerX + p.x + p.tx * along + p.nx * across,
+        centerZ + p.z + p.tz * along + p.nz * across,
+      ];
+      const w = RAILWAY_SLEEPER_HALF_W_M;
+      const l = RAILWAY_SLEEPER_HALF_LEN_M;
+      pushUpQuad(
+        positions,
+        colors,
+        [corner(-w, -l), corner(-w, l), corner(w, l), corner(w, -l)],
+        RAILWAY_SLEEPER_Y_OFFSET,
+        RAILWAY_SLEEPER_COLOR,
+        hAt,
+      );
+    }
+    for (const side of [1, -1]) {
+      emitPathStrip(
+        positions,
+        colors,
+        centerX,
+        centerZ,
+        path,
+        side * RAILWAY_GAUGE_HALF_M - RAILWAY_RAIL_HALF_W_M,
+        side * RAILWAY_GAUGE_HALF_M + RAILWAY_RAIL_HALF_W_M,
+        RAILWAY_RAIL_Y_OFFSET,
+        RAILWAY_RAIL_COLOR,
+        hAt,
+      );
+    }
+  }
+}
+
+/** A street tramway's slab, grooved rails and grooves down each path, as `emitStreetTrack` lays a straight lane. */
+function emitStreetPaths(
+  positions: number[],
+  colors: number[],
+  centerX: number,
+  centerZ: number,
+  paths: readonly TrackPath[],
+  hAt: (x: number, z: number) => number,
+): void {
+  const strip = (
+    path: TrackPath,
+    d0: number,
+    d1: number,
+    yOff: number,
+    color: readonly [number, number, number],
+  ): void => emitPathStrip(positions, colors, centerX, centerZ, path, d0, d1, yOff, color, hAt);
+  for (const path of paths) {
+    strip(path, -TRAM_SLAB_HALF_W_M, TRAM_SLAB_HALF_W_M, TRAM_SLAB_Y_OFFSET, TRAM_SLAB_COLOR);
+    for (const side of [1, -1]) {
+      const rail = side * TRAM_GAUGE_HALF_M;
+      strip(
+        path,
+        rail - TRAM_RAIL_HALF_W_M,
+        rail + TRAM_RAIL_HALF_W_M,
+        TRAM_RAIL_Y_OFFSET,
+        TRAM_RAIL_COLOR,
+      );
+      const gauge = rail - side * TRAM_RAIL_HALF_W_M;
+      const groove = gauge - side * TRAM_GROOVE_W_M;
+      strip(
+        path,
+        Math.min(gauge, groove),
+        Math.max(gauge, groove),
+        TRAM_GROOVE_Y_OFFSET,
+        TRAM_GROOVE_COLOR,
+      );
+    }
   }
 }
 
@@ -5251,6 +5426,9 @@ export function roadTileVertices(
     (legMask & SOUTH ? 1 : 0) +
     (legMask & WEST ? 1 : 0);
   const isTurn = legs === 2 && !isCollinearMask(legMask);
+  // A junction of railway has no road plate: its ballast lies under the rails
+  // of each movement, laid with the track below.
+  const railJunction = tier === RoadTier.RailTrack && isJunction;
 
   // How wide each arm is drawn where it meets this tile: its own road's width,
   // footways or not, so a road arriving at a junction keeps its width to the
@@ -5569,7 +5747,7 @@ export function roadTileVertices(
       crossSection.seam && { side: crossSection.seam.side, at: crossSection.seam.side * coreHalf },
     );
   }
-  if (!isTurn && (narrowsInto.length === 0 || taperedRampNode)) {
+  if (!isTurn && !railJunction && (narrowsInto.length === 0 || taperedRampNode)) {
     // Core plate: always present, tier-colored, unless the run above laid it.
     if (!taperedRampNode) {
       pushLocalRect(
@@ -6292,6 +6470,61 @@ export function roadTileVertices(
         hAt,
         across,
       );
+    }
+  }
+
+  // Track runs on round a bend and through a junction along every movement the
+  // network allows between the arms it links: a railway's arms are the joined
+  // sides, a street tramway's the joined sides that are track or that a tram
+  // crossing carries on from. A lone linked arm is a dead end.
+  if (tramAt.length > 0 && (isTurn || isJunction)) {
+    const present = (
+      [
+        ['n', isTurn ? (legMask & NORTH) !== 0 : hasN],
+        ['e', isTurn ? (legMask & EAST) !== 0 : hasE],
+        ['s', isTurn ? (legMask & SOUTH) !== 0 : hasS],
+        ['w', isTurn ? (legMask & WEST) !== 0 : hasW],
+      ] as [TrackSide, boolean][]
+    )
+      .filter(([, has]) => has)
+      .map(([side]) => side);
+    const linked =
+      railway || isTurn
+        ? present
+        : present.filter(
+            (side) =>
+              trackOf(side, 1) ||
+              (trackOf(side, 2) && tramCrossingRoad(neighbors[side], false) === 'street'),
+          );
+    if (linked.length >= 2) {
+      const paths = trackPaths(allMovements(linked), tramAt);
+      if (railway) {
+        emitRailwayPaths(
+          positions,
+          colors,
+          centerX,
+          centerZ,
+          paths,
+          railJunction ? coreHalf : null,
+          hAt,
+        );
+      } else emitStreetPaths(positions, colors, centerX, centerZ, paths, hAt);
+    } else if (linked.length === 1 && !railway) {
+      const arm = linked[0]!;
+      const toward = arm === 'n' || arm === 'w' ? -1 : 1;
+      for (const across of tramAt) {
+        emitStreetTrack(
+          positions,
+          colors,
+          centerX,
+          centerZ,
+          arm === 'n' || arm === 's',
+          toward < 0 ? -TILE_HALF : 0,
+          toward < 0 ? 0 : TILE_HALF,
+          hAt,
+          across,
+        );
+      }
     }
   }
 
