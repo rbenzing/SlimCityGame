@@ -1827,13 +1827,16 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
         minY: number;
         maxY: number;
       } | null => {
-        const base = ghosts.layers().base;
-        const geometry = base.geometry;
-        const position = geometry.getAttribute('position');
-        if (!position || position.count === 0) return null;
-        geometry.computeBoundingBox();
-        const box = geometry.boundingBox;
-        if (!box) return null;
+        // A road ghost's footways and median are in the fill layer, so the
+        // extent of the preview is both layers together.
+        const box = new THREE.Box3();
+        for (const mesh of [ghosts.layers().base, ghosts.layers().fill]) {
+          const position = mesh.geometry.getAttribute('position');
+          if (!position || position.count === 0) continue;
+          mesh.geometry.computeBoundingBox();
+          if (mesh.geometry.boundingBox) box.union(mesh.geometry.boundingBox);
+        }
+        if (box.isEmpty()) return null;
         return {
           minX: box.min.x,
           maxX: box.max.x,
@@ -2171,6 +2174,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
         if (preview.widthMeters !== undefined) {
           opts = { ...opts, roadWidthMeters: preview.widthMeters };
         }
+        if (preview.bands) opts = { ...opts, roadBands: preview.bands };
         if (preview.deckLifts) opts = { ...opts, deckLifts: preview.deckLifts };
         if (preview.disc) opts = { ...opts, disc: preview.disc };
         if (preview.bandShifts) opts = { ...opts, roadBandShifts: preview.bandShifts };
