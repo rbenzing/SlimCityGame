@@ -21,6 +21,13 @@ a figure the sources did not settle is marked as the game's own.
 | Steelworks     | a **furnace** at one end of the hall: a cylinder 8 m across to 1.8 × the body (a blast furnace is 85–100 ft, two to three times a 40 ft hall) with three **stoves** 5 m across to 1.4 × the body in a row beside it and a **skip bridge**, a 1.5 m square box inclined from the yard to the furnace's top; a **duct** 1.5 m across from the furnace to the stack; the monitor roof as it is                                                                                                                                                                                                                                                                                                                                                                                      |
 | Paper mill     | a **chip pile**, a cone 25 m across and 8 m tall in the rear yard where the lot has room, brown, with a **stacker**, a 1.2 m square box inclined from the yard to its crown; the monitor roof and tanks as they are                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 
+- **Yard parts stand on free ground.** Every yard part of every industrial
+  kind stands on ground the lot's layout leaves free of stalls, aisles,
+  drives, berths and walks; only the tank farm's own parts stand on the
+  farm, and a rack crosses ground only overhead, 4.3 m or more clear. The
+  chemical plant's 30 m flare stands on the farm's paving at its far corner
+  from the drive, piped to the end tank by a run over its top; that place
+  is the game's own.
 - **The dock moves to the loading side.** The lot layout already berths
   trucks at the side or rear; the warehouse's and food plant's dock bank
   stands on that side, and the street face carries the office corner, which

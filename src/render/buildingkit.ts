@@ -849,6 +849,8 @@ export interface KitLot {
   lane: KitLane | null;
   /** Ground a stall, aisle, berth, walk, yard or the lane is laid on, which a part on the ground must not stand on; planted islands are left to them. */
   taken: LocalRect[];
+  /** A plant's tank-farm ground behind the body, also in `taken`: the one taken ground the farm's own parts stand on. */
+  farm: LocalRect | null;
 }
 
 /** The side across the footprint from `side`: the back of a building that fronts `side`. */
@@ -1680,8 +1682,95 @@ function chemicalYard(r: Rear): PartPlacement[] {
     }
   }
 
+  // The flare stands on the farm's paving at its far corner from the drive, piped to the nearest tank by a
+  // run on a rack over the tank's top. A lot with no farm, or none at all, keeps it at the lot's rear corner,
+  // or past the bund's corner where the lot is unbounded.
+  const span = facadeSpan(r.baseBox, r.back);
+  const sides = room.high >= room.low ? [1, -1] : [-1, 1];
+  const flareIn = PLANT_GAP_M + FLARE_DIAMETER_M / 2;
+  const flareAt = (a: number, o: number): PartPlacement[] => [
+    atRear(
+      r,
+      'flare',
+      a,
+      o,
+      FLARE_DIAMETER_M,
+      FLARE_DIAMETER_M,
+      FLARE_HEIGHT_M,
+      FLARE_HEIGHT_M / 2,
+    ),
+    atRear(
+      r,
+      'flareTip',
+      a,
+      o,
+      FLARE_DIAMETER_M,
+      FLARE_DIAMETER_M,
+      FLARE_TIP_M,
+      FLARE_HEIGHT_M + FLARE_TIP_M / 2,
+    ),
+  ];
+  const onFarm = r.lot?.farm != null;
+  const farmOut = Math.min(farmDepth, room.out);
+  const flareSites: (readonly [number, number])[] = onFarm
+    ? sides.map((k) => [k * (span / 2 - flareIn), farmOut - flareIn])
+    : Number.isFinite(room.out)
+      ? sides.map((k) => [k * ((k > 0 ? room.high : room.low) - flareIn), room.out - flareIn])
+      : [[half + flareIn, farmDepth + margin + BUND_THICKNESS_M + flareIn]];
+  const awayFromDrive = (site: readonly [number, number]): number => {
+    if (!r.lot) return 0;
+    const at = atRear(r, 'flare', site[0], site[1], 0, 0, 0, 0).offset;
+    const cut = r.lot.curbCut;
+    return -Math.hypot(at[0] - (cut.x0 + cut.x1) / 2, at[2] - (cut.z0 + cut.z1) / 2);
+  };
+  const flareOrder = onFarm
+    ? [...flareSites].sort((a, b) => awayFromDrive(a) - awayFromDrive(b))
+    : flareSites;
+  firstClear(
+    out,
+    r.lot,
+    flareOrder.map(([a, o]) => flareAt(a, o)),
+  );
+  const flare = out.find((p) => p.part === 'flare');
+  const flareSite = flare
+    ? flareOrder.find(([a, o]) => {
+        const at = flareAt(a, o)[0]!.offset;
+        return at[0] === flare.offset[0] && at[2] === flare.offset[2];
+      })
+    : undefined;
+  if (onFarm && flareSite) {
+    // The run leaves the flare's foot along the wall and ends over the middle of the end tank.
+    const k = Math.sign(flareSite[0]);
+    const tankAt = k * TANK_SPACING_M * ((TANK_COUNT - 1) / 2);
+    out.push(
+      atRear(
+        r,
+        'pipeRack',
+        (flareSite[0] + tankAt) / 2,
+        flareSite[1],
+        Math.abs(flareSite[0] - tankAt),
+        RACK_BEAM_M,
+        RACK_BEAM_M,
+        RACK_CLEAR_M + RACK_BEAM_M / 2,
+      ),
+    );
+  }
+  const flareClear = (p: PartPlacement | readonly PartPlacement[]): boolean => {
+    const list = 'part' in p ? [p] : p;
+    return !flare || !list.some((q) => rectsOverlap(placementBounds(q), placementBounds(flare)));
+  };
+  /** The distances along the wall a piece may stand at on side `k`: its own, or past the flare where the flare stands on that side. */
+  const alongsOf = (k: number, own: number, size: number): number[] => {
+    const at = flareSite ? Math.abs(flareSite[0]) : 0;
+    const past = at + FLARE_DIAMETER_M / 2 + PLANT_GAP_M + size / 2;
+    return [own, ...(flareSite && k === Math.sign(flareSite[0]) && past > own ? [past] : [])].map(
+      (a) => k * a,
+    );
+  };
+
   // A bullet and a process column take the ground either side of the farm, on whichever side the lot leaves room.
-  const clearOf = (p: PartPlacement | readonly PartPlacement[]): boolean => standsFree(p, r.lot);
+  const clearOf = (p: PartPlacement | readonly PartPlacement[]): boolean =>
+    standsFree(p, r.lot) && flareClear(p);
   const bulletPieces = (along: number): PartPlacement[] => {
     const centre = BULLET_DIAMETER_M / 2 + BULLET_SADDLE_M + PLANT_GAP_M;
     const alongX = isAlongX(r.back);
@@ -1733,47 +1822,15 @@ function chemicalYard(r: Rear): PartPlacement[] {
     );
   const bulletAlong = half + PLANT_GAP_M + BULLET_LENGTH_M / 2;
   const columnAlong = half + PLANT_GAP_M + COLUMN_DIAMETER_M / 2;
-  const sides = room.high >= room.low ? [1, -1] : [-1, 1];
-  const bulletSide = sides.find((k) => clearOf(bulletPieces(k * bulletAlong)));
-  if (bulletSide) out.push(...bulletPieces(bulletSide * bulletAlong));
-  const columnSide = [-(bulletSide ?? -1), bulletSide ?? 1].find((k) =>
-    clearOf(columnAt(k * columnAlong)),
-  );
-  if (columnSide) out.push(columnAt(columnSide * columnAlong));
-
-  // The flare at the lot's rear corner, or past the bund's corner where the lot is unbounded.
-  const span = facadeSpan(r.baseBox, r.back);
-  const flareIn = PLANT_GAP_M + FLARE_DIAMETER_M / 2;
-  const flareAt = (a: number, o: number): PartPlacement[] => [
-    atRear(
-      r,
-      'flare',
-      a,
-      o,
-      FLARE_DIAMETER_M,
-      FLARE_DIAMETER_M,
-      FLARE_HEIGHT_M,
-      FLARE_HEIGHT_M / 2,
-    ),
-    atRear(
-      r,
-      'flareTip',
-      a,
-      o,
-      FLARE_DIAMETER_M,
-      FLARE_DIAMETER_M,
-      FLARE_TIP_M,
-      FLARE_HEIGHT_M + FLARE_TIP_M / 2,
-    ),
-  ];
-  const flareSites: (readonly [number, number])[] = Number.isFinite(room.out)
-    ? sides.map((k) => [k * ((k > 0 ? room.high : room.low) - flareIn), room.out - flareIn])
-    : [[half + flareIn, farmDepth + margin + BUND_THICKNESS_M + flareIn]];
-  firstClear(
-    out,
-    r.lot,
-    flareSites.map(([a, o]) => flareAt(a, o)),
-  );
+  const bulletAt = sides
+    .flatMap((k) => alongsOf(k, bulletAlong, BULLET_LENGTH_M))
+    .find((a) => clearOf(bulletPieces(a)));
+  if (bulletAt !== undefined) out.push(...bulletPieces(bulletAt));
+  const bulletSide = bulletAt === undefined ? undefined : Math.sign(bulletAt);
+  const columnStands = [-(bulletSide ?? -1), bulletSide ?? 1]
+    .flatMap((k) => alongsOf(k, columnAlong, COLUMN_DIAMETER_M))
+    .find((a) => clearOf(columnAt(a)));
+  if (columnStands !== undefined) out.push(columnAt(columnStands));
 
   // The cooling tower: beyond the column along the back wall, or beside either end wall astride the back wall's plane.
   const [ctw, cth, ctd] = CHEM_COOLING_TOWER_SIZE_M;
@@ -4525,6 +4582,7 @@ export function kitLotOf(
   }
 
   const frontWalk = layout.frontWalk ? rect(layout.frontWalk) : null;
+  const rearYard = layout.rearYard ? rect(layout.rearYard) : null;
   return {
     lot: rect(layout.lot),
     curbCut: rect({ u0: layout.curbCut.u0, u1: layout.curbCut.u1, v0: 0, v1: 1 }),
@@ -4552,11 +4610,12 @@ export function kitLotOf(
       ...berths,
       ...trailers,
       ...(layout.forecourt ? [rect(layout.forecourt)] : []),
-      ...(layout.rearYard && !rearYardFree ? [rect(layout.rearYard)] : []),
+      ...(rearYard && !rearYardFree ? [rearYard] : []),
       ...(frontWalk ? [frontWalk] : []),
       ...(layout.entranceWalk ? [rect(layout.entranceWalk)] : []),
       ...laneRects,
     ],
+    farm: rearYard && !rearYardFree ? rearYard : null,
   };
 }
 

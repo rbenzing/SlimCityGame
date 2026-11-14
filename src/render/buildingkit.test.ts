@@ -1750,6 +1750,7 @@ const lotOf = (half: number, over: Partial<KitLot> = {}): KitLot => ({
   hard: [],
   lane: null,
   taken: [],
+  farm: null,
   ...over,
 });
 
