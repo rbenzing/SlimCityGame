@@ -413,7 +413,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
   );
   // Roads off the grid lie on the ground, so they sit on the terrain.
   const freeRoads = new FreeRoadRenderer(world.scene, heightAt, (id) => clientGrid.profileById(id));
-  const bridges = new BridgeRenderer(world.scene, roadSurfaceAt, overSurfaceAt);
+  const bridges = new BridgeRenderer(world.scene, roadSurfaceAt, overSurfaceAt, heightAt);
   const vehicles = new VehicleRenderer(
     world.scene,
     (wx, wz, heading) =>
