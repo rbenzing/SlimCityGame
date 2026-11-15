@@ -222,6 +222,36 @@ else {
 }
 await endDrag();
 
+// 3b. Open ground, nothing built under the drag: the ghost shows the road's own
+//     parts — carriageways, footways and the median between them — not a slab.
+//     The six-lane section is still selected, so this is the corridor; the same
+//     rows then carry a six-lane motorway, one carriageway with shoulders.
+await cam(X + 6, Z + 9, 80, 0.0, 1.0);
+await page.waitForTimeout(700);
+const openCorridor = await previewAcross();
+if (!openCorridor) failures.push('could not aim the open-ground corridor preview');
+else await cleanShot(page, `${out}/ghost-corridor-open-ground.png`);
+await endDrag();
+
+await pick('Highway', 'Highway');
+await cam(X + 6, Z + 9, 80, 0.0, 1.0);
+await page.waitForTimeout(700);
+const highway = await previewAcross();
+if (!highway) failures.push('could not aim the highway preview');
+else await cleanShot(page, `${out}/ghost-highway-open-ground.png`);
+await endDrag();
+
+// 3c. A plain four-lane avenue on open ground: a median between two carriageways.
+await pick('Medium', 'Avenue');
+await page.getByRole('group', { name: 'Lanes' }).getByText('4', { exact: true }).click();
+await page.waitForTimeout(300);
+await cam(X + 6, Z + 9, 80, 0.0, 1.0);
+await page.waitForTimeout(700);
+const openAvenue = await previewAcross();
+if (!openAvenue) failures.push('could not aim the open-ground avenue preview');
+else await cleanShot(page, `${out}/ghost-avenue-open-ground.png`);
+await endDrag();
+
 // 4. The other state: a road dragged through a building, which the game
 //    refuses. The building is placed on a clear row and only the preview of the
 //    road over it is shown; the drag is cancelled, never committed.

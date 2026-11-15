@@ -46,7 +46,12 @@ one-and-a-half-storey **Cape**, 6.5 m a two-storey **colonial**.
   and only about 1.1 m inside the lot line, so a stoop or a porch runs out
   over the verge lawn the home already mows, never onto the sidewalk; a
   shutter on the ground row is left off where a door, a stoop or a garage
-  leaf stands before its window.
+  leaf stands before its window. A pad, a drive and the car on it keep
+  0.3 m from every stoop, porch roof, post and step (the game's own), and a
+  row or duplex door stands past its own pad by that and half the stoop. A
+  stoop's foot keeps a clear 36 in (0.915 m) landing (2010 ADA Standards
+  403.5.1). A walker reaches the door by the footway and the front walk,
+  never across a pad.
 - **Porch.** Six feet is the least depth a porch is usable at (Franklin TN,
   Knoxville; Memphis asks 8). Posts are 8–12 in; the kit's are 0.25 m.
 - **Dormers.** A gable dormer's width follows the window and its trim below

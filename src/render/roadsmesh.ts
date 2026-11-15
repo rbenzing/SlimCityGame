@@ -161,6 +161,7 @@ import {
   centrePair,
   isMedianSideLine,
   markingPlan,
+  MEDIAN_EDGE_LINE_INSET_M,
   PAINT_HALF_WIDTH_M,
   seamBetween,
   type MarkingLine,
@@ -4399,6 +4400,12 @@ function emitYieldLine(
 const RING_QUARTER_SEGMENTS = 16;
 /** How far outside the ring's edge its yield line's triangles begin. */
 const RING_YIELD_SETBACK_M = 0.2;
+/** How far back from the ring's outer edge a crosswalk begins: 20 ft. */
+const RING_CROSSWALK_SETBACK_M = 6.1;
+/** How far back from the ring a splitter island reaches: 50 ft. */
+const RING_SPLITTER_LENGTH_M = 15;
+/** How far inside the ring's outer edge its white edge line is centred. */
+const RING_EDGE_LINE_INSET_M = 0.3;
 /** The truck apron's coloured concrete, which tells a driver it is not the carriageway. */
 const RING_APRON_COLOR: readonly [number, number, number] = [0.66, 0.6, 0.52];
 /**
@@ -4426,6 +4433,8 @@ export interface RingLeg {
   half: number;
   /** The width of its kerb strip, 0 where it has none. */
   kerb: number;
+  /** Whether it carries footways, which a crosswalk is marked for. */
+  footway: boolean;
   /**
    * Where across it, in world order from its centre line, the lanes coming
    * INTO the ring run, or null where none do.
@@ -4449,8 +4458,10 @@ export interface RingQuarter {
  * splitter island each side over that stretch, the island between its two
  * directions, and gives way at the ring's edge across its entry.
  *
- * Nothing is painted on the ring: a single-lane roundabout carries no lane
- * lines, and, as on the mini roundabout, no crossing or stop bar.
+ * The ring carries no lane lines and no stop bar. It is edged in white,
+ * broken across an entry and absent across an exit, and in yellow round the
+ * apron. A road with footways has a crosswalk back along it, and the splitter
+ * island, cut level there, runs on past it, so both reach beyond the tile.
  */
 export function roundaboutQuarterVertices(
   x: number,
@@ -4834,25 +4845,81 @@ export function roundaboutQuarterVertices(
     }
   }
 
+  /** The arcs of the ring's edge a lane enters across, and those a splitter island meets. */
+  const entryArcs: Array<[number, number]> = [];
+  const splitterBases: Array<[number, number]> = [];
   for (const f of frames) {
-    const { leg, point, meets, twoWay, flare } = f;
+    const { leg, point, meets, twoWay, flare, flareFrom } = f;
+    const crossNear = flareFrom + RING_CROSSWALK_SETBACK_M;
+    const layout = junctionArmLayout(0, leg.kerb);
+    const crossFar = crossNear + (layout.crosswalkFar - layout.crosswalkNear);
     if (twoWay) {
-      // The splitter island: a point at the tile's edge, as wide as a refuge
-      // where it meets the ring.
-      const base = (sign: 1 | -1): [number, number] =>
-        point(meets(sign * flare, outer), sign * flare);
-      pushGroundTri(
-        positions,
-        colors,
-        centerX,
-        centerZ,
-        point(edge, 0),
-        base(1),
-        base(-1),
-        MEDIAN_Y_OFFSET,
-        MEDIAN_CONCRETE_COLOR,
-        hAt,
+      // The splitter island between the entry and exit lanes: kerbed and raised
+      // like a median, from the ring back to the crosswalk, cut through level
+      // for people crossing, and on past it to a yellow nose.
+      const island = (from: number, to: number, nosed: boolean, atRing: boolean): void => {
+        const first = from;
+        const last = to - (nosed ? flare : 0);
+        if (last - first < 1e-6) return;
+        const stations = stationsAlong(first, last);
+        const path: IslandPath = {
+          count: stations.length,
+          at: (k, across): Pt =>
+            point(atRing && k === 0 ? meets(across, outer) : stations[k]!, across),
+          half: () => flare,
+        };
+        emitIsland(
+          path,
+          { noseStart: false, noseEnd: nosed, noseColor: YELLOW_MARKING_COLOR },
+          (a, b, c, color) =>
+            pushGroundTri(
+              positions,
+              colors,
+              centerX,
+              centerZ,
+              a,
+              b,
+              c,
+              MEDIAN_Y_OFFSET,
+              color,
+              hAt,
+            ),
+        );
+      };
+      const end = flareFrom + RING_SPLITTER_LENGTH_M;
+      if (leg.footway) {
+        island(flareFrom, crossNear, false, true);
+        island(crossFar, end, true, false);
+      } else {
+        island(flareFrom, end, true, true);
+      }
+      const bases = ([1, -1] as const).map((s) =>
+        angleOf(point(meets(s * flare, outer), s * flare)),
       );
+      splitterBases.push([Math.min(...bases), Math.max(...bases)]);
+    }
+
+    if (leg.footway) {
+      // The crosswalk: bars across the whole carriageway, entry and exit lanes
+      // together, back from the ring so a walker crosses where a driver has
+      // room to stop for them.
+      for (const across of crosswalkBarCentres(-leg.half, leg.half)) {
+        const a = point(crossNear, across - CROSSWALK_BAR_WIDTH_M / 2);
+        const b = point(crossFar, across + CROSSWALK_BAR_WIDTH_M / 2);
+        pushLocalRect(
+          positions,
+          colors,
+          centerX,
+          centerZ,
+          Math.min(a[0], b[0]),
+          Math.max(a[0], b[0]),
+          Math.min(a[1], b[1]),
+          Math.max(a[1], b[1]),
+          MARK_Y_OFFSET,
+          MARKING_COLOR,
+          hAt,
+        );
+      }
     }
 
     if (leg.entering) {
@@ -4865,6 +4932,7 @@ export function roundaboutQuarterVertices(
       const ends = [lo, hi].map((t) => angleOf(point(meets(t, outer), t)));
       const start = Math.min(...ends);
       const stop = Math.max(...ends);
+      entryArcs.push([start, stop]);
       const inner = outer + RING_YIELD_SETBACK_M;
       const pitch = YIELD_TRIANGLE_BASE_M + YIELD_TRIANGLE_GAP_M;
       const count = Math.max(1, Math.floor(((stop - start) * inner) / pitch));
@@ -4888,6 +4956,44 @@ export function roundaboutQuarterVertices(
       }
     }
   }
+
+  // The ring's edge lines. White on the outer edge: solid wherever no road
+  // opens onto the ring and beside each splitter island, a wide dotted line
+  // across each lane entering, and none across an exit. Yellow round the inner
+  // edge of the roadway, where the apron begins.
+  const edgeCentre = outer - RING_EDGE_LINE_INSET_M;
+  const solidEdge = (from: number, to: number, half: number): void =>
+    band(edgeCentre - half, edgeCentre + half, from, to, MARK_Y_OFFSET, MARKING_COLOR);
+  const open = [...gaps].sort((a, b) => a[0] - b[0]);
+  let covered = a0;
+  for (const [lo, hi] of open) {
+    solidEdge(covered, Math.max(covered, lo), PAINT_HALF_WIDTH_M);
+    covered = Math.max(covered, hi);
+  }
+  solidEdge(covered, a1, PAINT_HALF_WIDTH_M);
+  for (const [lo, hi] of splitterBases) {
+    solidEdge(Math.max(a0, lo), Math.min(a1, hi), PAINT_HALF_WIDTH_M);
+  }
+  const dashPitch = DOTTED_SEGMENT_M + DOTTED_GAP_M;
+  for (const [lo, hi] of entryArcs) {
+    const length = (hi - lo) * edgeCentre;
+    const dashes = Math.max(1, Math.floor((length + DOTTED_GAP_M) / dashPitch));
+    const used = dashes * DOTTED_SEGMENT_M + (dashes - 1) * DOTTED_GAP_M;
+    const first = (lo + hi) / 2 - used / (2 * edgeCentre);
+    for (let k = 0; k < dashes; k++) {
+      const from = first + (k * dashPitch) / edgeCentre;
+      solidEdge(from, from + DOTTED_SEGMENT_M / edgeCentre, 2 * PAINT_HALF_WIDTH_M);
+    }
+  }
+  const innerCentre = roadway + MEDIAN_EDGE_LINE_INSET_M;
+  band(
+    innerCentre - PAINT_HALF_WIDTH_M,
+    innerCentre + PAINT_HALF_WIDTH_M,
+    a0,
+    a1,
+    MARK_Y_OFFSET,
+    YELLOW_MARKING_COLOR,
+  );
 
   if (kerbed) {
     // The footway round the ring, between the roads that cross it.
@@ -8055,6 +8161,7 @@ export class RoadMeshRenderer {
         side,
         half,
         kerb: hasKerbs(profile) ? Math.min(kerbWidthOf(profile), TILE_HALF - half) : 0,
+        footway: hasFootway(profile),
         entering: this.approachSpanAt(nx, nz, toward) ?? null,
         leaving: (this.approachSpanAt(nx, nz, side) ?? null) !== null,
       });

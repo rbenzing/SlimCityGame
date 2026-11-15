@@ -28,7 +28,9 @@
  *    whenever `valid` is false (overrides every other kind's color).
  *  - fill: zone only, valid only — a shrunk, brighter-green conforming quad on
  *    top of the base layer so the base peeks out as a darker cell border
- *    ("bright green cell fill with darker cell borders").
+ *    ("bright green cell fill with darker cell borders"). A road given its
+ *    cross-section (`roadBands`) uses it for the footways, median and
+ *    reservation, paler than the carriageway the base layer draws.
  *  - stripe: road only, valid only — a thin white dash on every other tile
  *    along the path (deterministic index-parity dashing, oriented along
  *    whichever local axis the path actually runs on). Still instanced.
@@ -55,6 +57,7 @@
 import * as THREE from 'three';
 import type { TilePoint, ZoneType } from '../shared/types';
 import { TILE_METERS } from '../shared/constants';
+import type { SectionBand } from '../shared/roadprofile';
 import { zoneTintColor } from './zonegrid';
 
 export type GhostKind = 'road' | 'zone' | 'plop' | 'bulldoze';
@@ -91,6 +94,8 @@ const STRIPE_WIDTH_FRACTION = 0.08;
 
 const BASE_OPACITY = 0.55; // "valid = blue 55%"
 const ZONE_FILL_OPACITY = 0.65;
+/** Footways, medians and reservations of a road ghost: paler than its carriageway. */
+const ROAD_PART_OPACITY = 0.28;
 const STRIPE_OPACITY = 0.9;
 /** "A bright 2-px-feel border quad strip ... ~0.18m wide". */
 const BORDER_WIDTH_METERS = 0.18;
@@ -419,21 +424,71 @@ export function buildConformingRoadBandPositions(
   shifts?: readonly number[],
 ): Float32Array {
   const positions: number[] = [];
-  const half = TILE_METERS / 2;
   const w2 = Math.max(widthMeters, 0) / 2;
   for (let i = 0; i < tiles.length; i++) {
-    const corner = isPathCorner(tiles, i);
-    const alongX = corner || stripeAxisIsX(tiles, i);
-    const { x: cx, z: cz } = bandCentre(tiles, i, shifts);
-    if (alongX) {
-      pushConformingRect(positions, heightAt, cx - half, cz - w2, cx + half, cz + w2, yOffset);
-    } else {
-      pushConformingRect(positions, heightAt, cx - w2, cz - half, cx + w2, cz + half, yOffset);
+    pushRoadStrip(positions, heightAt, tiles, i, -w2, w2, yOffset, shifts);
+  }
+  return new Float32Array(positions);
+}
+
+/**
+ * The strip of tile `i` between `from` and `to` metres across the run, from the
+ * band's centre, full tile length. A turn tile also gets the other leg's strip,
+ * minus what the first already covers, so the translucent quads never overlap.
+ */
+function pushRoadStrip(
+  positions: number[],
+  heightAt: HeightSampler,
+  tiles: readonly TilePoint[],
+  i: number,
+  from: number,
+  to: number,
+  yOffset: number,
+  shifts?: readonly number[],
+): void {
+  const half = TILE_METERS / 2;
+  const corner = isPathCorner(tiles, i);
+  const alongX = corner || stripeAxisIsX(tiles, i);
+  const { x: cx, z: cz } = bandCentre(tiles, i, shifts);
+  if (alongX) {
+    pushConformingRect(positions, heightAt, cx - half, cz + from, cx + half, cz + to, yOffset);
+  } else {
+    pushConformingRect(positions, heightAt, cx + from, cz - half, cx + to, cz + half, yOffset);
+  }
+  if (corner) {
+    pushConformingRect(positions, heightAt, cx + from, cz - half, cx + to, cz + from, yOffset);
+    pushConformingRect(positions, heightAt, cx + from, cz + to, cx + to, cz + half, yOffset);
+  }
+}
+
+/**
+ * Merged, TERRAIN-CONFORMING positions for the parts of a road preview: for
+ * each tile, the strips of `bands[i]` (the road's cross-section, see
+ * sectionBands) whose kind passes `keep`. A turn tile is one solid strip across
+ * the whole section, drawn with the carriageway, so legs never stack.
+ */
+export function buildConformingSectionPositions(
+  tiles: readonly TilePoint[],
+  heightAt: HeightSampler,
+  bands: readonly (readonly SectionBand[])[],
+  carriageway: boolean,
+  yOffset: number,
+  shifts?: readonly number[],
+): Float32Array {
+  const positions: number[] = [];
+  for (let i = 0; i < tiles.length; i++) {
+    const strips = bands[i] ?? [];
+    if (isPathCorner(tiles, i)) {
+      if (!carriageway || strips.length === 0) continue;
+      const from = Math.min(...strips.map((b) => b.from));
+      const to = Math.max(...strips.map((b) => b.to));
+      pushRoadStrip(positions, heightAt, tiles, i, from, to, yOffset, shifts);
+      continue;
     }
-    // The other leg of a turn, minus what the first band already covers.
-    if (corner && w2 < half) {
-      pushConformingRect(positions, heightAt, cx - w2, cz - half, cx + w2, cz - w2, yOffset);
-      pushConformingRect(positions, heightAt, cx - w2, cz + w2, cx + w2, cz + half, yOffset);
+    for (const band of strips) {
+      if ((band.kind === 'carriageway') === carriageway) {
+        pushRoadStrip(positions, heightAt, tiles, i, band.from, band.to, yOffset, shifts);
+      }
     }
   }
   return new Float32Array(positions);
@@ -696,6 +751,13 @@ export interface SetPreviewOptions {
    * occupy.
    */
   roadWidthMeters?: number;
+  /**
+   * The road's cross-section for each of the previewed tiles (road kind only),
+   * as sectionBands gives it. Given, the ghost draws those strips — carriageway
+   * solid, footways and any median or reservation paler — and `roadWidthMeters`
+   * is not used.
+   */
+  roadBands?: readonly (readonly SectionBand[])[];
   /**
    * How high above its ground each tile is laid, metres (road kind only), for
    * a road that stands off the ground somewhere along it. Given, every layer
@@ -985,16 +1047,20 @@ export class GhostRenderer {
         ? deckHeightSampler(tiles, opts.deckLifts, this.ground)
         : this.ground;
     this.bandShifts = kind === 'road' ? opts?.roadBandShifts : undefined;
+    const bands = kind === 'road' ? opts?.roadBands : undefined;
     this.writeBase(
       tiles,
       valid,
       kind,
       opts?.zone,
       kind === 'road' ? opts?.roadWidthMeters : undefined,
+      bands,
     );
     if (valid && kind === 'zone') {
       this.fillMaterial.color.setRGB(...fillColorFor(opts?.zone));
       this.writeFill(tiles);
+    } else if (kind === 'road' && opts?.roadBands) {
+      this.writeRoadParts(tiles, valid, opts.roadBands);
     } else {
       this.setGeometry(this.fillMesh, new Float32Array(0));
     }
@@ -1146,10 +1212,19 @@ export class GhostRenderer {
     kind: GhostKind,
     zone?: ZoneType,
     roadWidthMeters?: number,
+    roadBands?: readonly (readonly SectionBand[])[],
   ): void {
     this.baseMaterial.color.setRGB(...baseColorFor(kind, valid, zone));
-    const positions =
-      roadWidthMeters !== undefined && roadWidthMeters > 0
+    const positions = roadBands
+      ? buildConformingSectionPositions(
+          tiles,
+          this.heightAt,
+          roadBands,
+          true,
+          GHOST_Y_OFFSET,
+          this.bandShifts,
+        )
+      : roadWidthMeters !== undefined && roadWidthMeters > 0
         ? buildConformingRoadBandPositions(
             tiles,
             this.heightAt,
@@ -1165,6 +1240,31 @@ export class GhostRenderer {
     const size = TILE_METERS * ZONE_FILL_SHRINK;
     const positions = buildConformingTilePositions(tiles, this.heightAt, size, ZONE_FILL_Y_OFFSET);
     this.setGeometry(this.fillMesh, positions);
+  }
+
+  /**
+   * The parts of a road the carriageway layer leaves out — footways, and a
+   * median or reservation — in the same tint, paler, so the road reads as the
+   * cross-section it will be.
+   */
+  private writeRoadParts(
+    tiles: TilePoint[],
+    valid: boolean,
+    bands: readonly (readonly SectionBand[])[],
+  ): void {
+    this.fillMaterial.color.setRGB(...baseColorFor('road', valid));
+    this.fillMaterial.opacity = ROAD_PART_OPACITY;
+    this.setGeometry(
+      this.fillMesh,
+      buildConformingSectionPositions(
+        tiles,
+        this.heightAt,
+        bands,
+        false,
+        ZONE_FILL_Y_OFFSET,
+        this.bandShifts,
+      ),
+    );
   }
 
   /** Outer border: one conforming strip per remaining (non-shared) tile edge. */

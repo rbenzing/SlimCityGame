@@ -26,8 +26,11 @@ Back to [the index](../GROUND-TRUTHS.md).
   platforms at the trams' floor outside the beams, a canopy each, a stair and
   a lift each side down to the footway, derived from the stop and the road
   every rebuild and never saved. The stair lands at the platform's low end
-  unless that tile is a crossing street or junction box, when it swaps ends;
-  a stair never lands in a junction. No kerb shelter stands under it, and no
+  unless its run would cross a junction box, a crossing street or a kerb
+  standing out under it, when it swaps ends; a stair never lands in a
+  junction. Stair and lift stand on the lowest ground under them, the lift
+  at the kerb of its own tile, and where a street has no footway a paved
+  apron reaches the carriageway's edge. No kerb shelter stands under it, and no
   lamp or pole on its tiles; its idlers stand on the platforms, never at the
   kerb where the shelter would be. A stop on a ramp tile, a junction box or
   a turn draws no station; the line serves it all the same. —

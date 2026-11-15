@@ -22,7 +22,13 @@ import {
   readInterchangeSite,
   type InterchangeGround,
 } from '../shared/interchange';
-import { composeProfile, NO_EDITS, presetProfileForTier } from '../shared/roadprofile';
+import {
+  carriagewayHalfWidthOf,
+  composeProfile,
+  kerbWidthOf,
+  NO_EDITS,
+  presetProfileForTier,
+} from '../shared/roadprofile';
 import { GUIDEWAY_UNDER_OVERPASS, OVERPASS_OVER_GUIDEWAY } from '../shared/overpass';
 import { corridorRunsFor } from '../shared/corridor';
 import {
@@ -1326,6 +1332,38 @@ describe('CursorChip payload (UI-SPEC §6)', () => {
     tm.pointerMove(3, 0, 0);
     const avenue = previews.at(-1)?.widthMeters ?? 0;
     expect(avenue).toBeGreaterThan(11.25);
+  });
+
+  it('road previews carry the road’s cross-section for every tile, read from its profile', () => {
+    const { env, previews } = makeEnv();
+    const tm = new ToolManager(env);
+    tm.setTool('road.avenue');
+    tm.pointerDown(0, 0, 0);
+    tm.pointerMove(3, 0, 0);
+    const preview = previews.at(-1)!;
+    expect(preview.bands).toHaveLength(preview.tiles.length);
+    const avenue = presetProfileForTier(RoadTier.Avenue);
+    const bands = preview.bands![0]!;
+    expect(bands.some((b) => b.kind === 'reserve')).toBe(true);
+    expect(bands.at(-1)!.to).toBeCloseTo(carriagewayHalfWidthOf(avenue) + kerbWidthOf(avenue), 6);
+    expect(bands[0]!.from).toBeCloseTo(-(carriagewayHalfWidthOf(avenue) + kerbWidthOf(avenue)), 6);
+  });
+
+  it('gives each half of a corridor its own half of the section, median share included', () => {
+    const { env, previews } = makeEnv();
+    env.profileIdFor = () => 12;
+    const tm = new ToolManager(env);
+    tm.setTool('road.avenue');
+    tm.setProfileEdits({ ...NO_EDITS, lanes: 3 });
+    tm.pointerDown(0, 0, 0);
+    tm.pointerMove(0, 4, 0);
+    const preview = previews.at(-1)!;
+    expect(preview.bands).toHaveLength(10);
+    // Every tile of both halves carries a footway on its outer side and a share of the median on its inner.
+    for (const bands of [preview.bands![0]!, preview.bands![9]!]) {
+      expect(bands.filter((b) => b.kind === 'footway')).toHaveLength(2);
+      expect(bands.filter((b) => b.kind === 'reserve')).toHaveLength(1);
+    }
   });
 
   it('halves the width across a corridor, since each row carries one carriageway', () => {

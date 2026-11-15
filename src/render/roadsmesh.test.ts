@@ -50,6 +50,7 @@ import {
   RING_APRON_WIDTH_M,
   RING_OUTER_RADIUS_M,
   RING_ROADWAY_WIDTH_M,
+  SPLITTER_WIDTH_M,
 } from '../shared/roundabout';
 import type { NeighborHalves, NeighborTiers } from './roadsmesh';
 import { junctionArmLayout } from '../shared/junctionpaint';
@@ -5657,10 +5658,16 @@ describe('a compact roundabout', () => {
   const centre = { x: 21 * TILE_METERS, z: 21 * TILE_METERS };
   const asphalt: readonly [number, number, number] = [0.3, 0.3, 0.32];
   /** A two-lane street into the ring on `side`, its arriving half the driver's right. */
-  const street = (side: RoadFlow, entering: RingLeg['entering'], leaving = true): RingLeg => ({
+  const street = (
+    side: RoadFlow,
+    entering: RingLeg['entering'],
+    leaving = true,
+    footway = true,
+  ): RingLeg => ({
     side,
     half: 3.75,
     kerb: 1.875,
+    footway,
     entering,
     leaving,
   });
@@ -5679,45 +5686,184 @@ describe('a compact roundabout', () => {
   };
   const radius = (p: readonly number[]): number => Math.hypot(p[0]! - centre.x, p[2]! - centre.z);
 
+  // The west leg's centre line is the row z = 410; the ring's edge meets it at x = 405.03.
+  const armZ = 20.5 * TILE_METERS;
+  const ringEdgeX = centre.x - Math.sqrt(RING_OUTER_RADIUS_M ** 2 - (TILE_METERS / 2) ** 2);
+  /** Where the crosswalk's near edge stands, 20 ft (6.1 m) back from the ring's outer edge. */
+  const crosswalkNearX = ringEdgeX - 6.1;
+  const crosswalkFarX = crosswalkNearX - SIDEWALK_WIDTH_M;
+  const isYellowPaint = (c: readonly number[]): boolean => isMarkingYellow(c);
+  /** The paint on the road beyond the ring's footway: crosswalk bars and nothing else white. */
+  const crossingPaint = (d: { positions: number[]; colors: number[] }) =>
+    points(d, isMarkingWhite).filter((p) => radius(p) > RING_OUTER_RADIUS_M + 1.5);
+
   it('draws its quarter of the ring inside its own tile, island, apron and roadway', () => {
     const d = drawn(20, 20, [west, north]);
-    for (const p of toTriples(d.positions)) {
-      expect(p[0]!).toBeGreaterThanOrEqual(20 * TILE_METERS - 1e-6);
-      expect(p[0]!).toBeLessThanOrEqual(21 * TILE_METERS + 1e-6);
-      expect(p[2]!).toBeGreaterThanOrEqual(20 * TILE_METERS - 1e-6);
-      expect(p[2]!).toBeLessThanOrEqual(21 * TILE_METERS + 1e-6);
+    // Only the roads' crossings and splitters run on past the tile's edge.
+    for (const [i, p] of toTriples(d.positions).entries()) {
+      const colour = toTriples(d.colors)[i]!;
+      const inside =
+        p[0]! >= 20 * TILE_METERS - 1e-6 &&
+        p[0]! <= 21 * TILE_METERS + 1e-6 &&
+        p[2]! >= 20 * TILE_METERS - 1e-6 &&
+        p[2]! <= 21 * TILE_METERS + 1e-6;
+      if (!inside) {
+        expect(
+          isMarkingWhite(colour) ||
+            isMarkingYellow(colour) ||
+            isConcreteBand(colour) ||
+            isMedianGrass(colour),
+        ).toBe(true);
+      }
     }
     const island = RING_OUTER_RADIUS_M - RING_ROADWAY_WIDTH_M - RING_APRON_WIDTH_M;
-    const grass = points(d, isMedianGrass);
+    const grass = points(d, isMedianGrass).filter((p) => radius(p) < RING_OUTER_RADIUS_M);
     expect(grass.length).toBeGreaterThan(0);
     for (const p of grass) expect(radius(p)).toBeLessThanOrEqual(island + 1e-6);
-    // Nothing on the ring is painted but the yield lines, outside its edge.
-    const paint = points(d, isMarkingWhite);
-    expect(paint.length).toBeGreaterThan(0);
-    for (const p of paint) {
-      expect(radius(p)).toBeGreaterThanOrEqual(RING_OUTER_RADIUS_M);
-      expect(radius(p)).toBeLessThan(RING_OUTER_RADIUS_M + 1.5);
+    // On the ring the paint is the white edge line just inside its outer edge, the
+    // yield lines outside it, and the crossings out along the roads.
+    for (const p of points(d, isMarkingWhite)) {
+      expect(radius(p)).toBeGreaterThanOrEqual(RING_OUTER_RADIUS_M - 0.5);
     }
   });
 
   it('gives way across every road into it, and only those', () => {
-    const both = points(drawn(20, 20, [west, north]), isMarkingWhite).length;
-    const one = points(drawn(20, 20, [west]), isMarkingWhite).length;
+    const yields = (d: { positions: number[]; colors: number[] }): number =>
+      points(d, isMarkingWhite).filter(
+        (p) => radius(p) >= RING_OUTER_RADIUS_M && radius(p) < RING_OUTER_RADIUS_M + 1.5,
+      ).length;
+    const both = yields(drawn(20, 20, [west, north]));
+    const one = yields(drawn(20, 20, [west]));
     expect(one).toBeGreaterThan(0);
     expect(both).toBeGreaterThan(one);
-    // A corner no road comes into paints nothing, and a road only leaving the
-    // ring gives way to nothing.
-    expect(points(drawn(21, 21, []), isMarkingWhite)).toHaveLength(0);
-    expect(points(drawn(20, 20, [street(RoadFlow.West, null)]), isMarkingWhite)).toHaveLength(0);
+    // A corner no road comes into gives way to nothing, and a road only leaving
+    // the ring gives way to nothing.
+    expect(yields(drawn(21, 21, []))).toBe(0);
+    expect(yields(drawn(20, 20, [street(RoadFlow.West, null)]))).toBe(0);
   });
 
-  it('puts a splitter island between a two-way road’s directions, and none on a one-way road', () => {
-    const outside = (d: { positions: number[]; colors: number[] }): number =>
-      points(d, isConcreteBand).filter((p) => radius(p) > RING_OUTER_RADIUS_M).length;
-    expect(outside(drawn(20, 20, [west]))).toBeGreaterThan(0);
-    expect(outside(drawn(20, 20, [street(RoadFlow.West, { from: -3.75, to: 3.75 }, false)]))).toBe(
-      0,
+  it('marks one crosswalk across an arm with footways, 20 ft back from the ring, and none across one without', () => {
+    const bars = crossingPaint(drawn(20, 20, [west]));
+    expect(bars.length).toBeGreaterThan(0);
+    for (const p of bars) {
+      expect(p[0]!).toBeLessThanOrEqual(crosswalkNearX + 1e-6);
+      expect(p[0]!).toBeGreaterThanOrEqual(crosswalkFarX - 1e-6);
+      // Across the whole carriageway, entry and exit lanes together.
+      expect(Math.abs(p[2]! - armZ)).toBeLessThanOrEqual(3.75 + 1e-6);
+    }
+    expect(Math.max(...bars.map((p) => p[0]!))).toBeCloseTo(crosswalkNearX, 6);
+    expect(Math.min(...bars.map((p) => p[2]!))).toBeLessThan(armZ - 3);
+    expect(Math.max(...bars.map((p) => p[2]!))).toBeGreaterThan(armZ + 3);
+    // Beyond the island and to it nothing is crossed.
+    for (const p of points(drawn(20, 20, [west, north]), isMarkingWhite)) {
+      expect(radius(p)).toBeGreaterThan(RING_OUTER_RADIUS_M - 0.5);
+    }
+    expect(
+      crossingPaint(drawn(20, 20, [street(RoadFlow.West, { from: 0, to: 3.75 }, true, false)])),
+    ).toHaveLength(0);
+  });
+
+  it('puts a raised splitter island between a two-way road’s directions, cut level at the crosswalk, and none on a one-way road', () => {
+    const island = (d: { positions: number[]; colors: number[] }) =>
+      points(d, isConcreteBand).filter((p) => radius(p) > RING_OUTER_RADIUS_M);
+    const raised = island(drawn(20, 20, [west]));
+    expect(raised.length).toBeGreaterThan(0);
+    for (const p of raised) {
+      // A kerbed island lifted above the road's own surface and the markings.
+      expect(p[1]!).toBeGreaterThan(0.25);
+      expect(Math.abs(p[2]! - armZ)).toBeLessThanOrEqual(SPLITTER_WIDTH_M / 2 + 1e-6);
+      // Nothing of it between the crosswalk's two edges.
+      expect(p[0]! > crosswalkNearX - 1e-6 || p[0]! < crosswalkFarX + 1e-6).toBe(true);
+    }
+    // It runs from the ring to the crosswalk and again from the crosswalk on.
+    expect(Math.max(...raised.map((p) => p[0]!))).toBeGreaterThan(ringEdgeX - 1);
+    expect(Math.min(...raised.map((p) => p[0]!))).toBeLessThan(crosswalkFarX - 1);
+    expect(raised.some((p) => p[0]! > crosswalkNearX - 1e-6)).toBe(true);
+    // Its nose is yellow, as a median's approach end is.
+    expect(points(drawn(20, 20, [west]), isYellowPaint).some((p) => radius(p) > 14)).toBe(true);
+    const oneWay = drawn(20, 20, [street(RoadFlow.West, { from: -3.75, to: 3.75 }, false)]);
+    expect(island(oneWay)).toHaveLength(0);
+  });
+
+  it('paints the ring’s edge: solid, dotted across an entry, absent across an exit, yellow inside', () => {
+    const edge = (d: { positions: number[]; colors: number[] }) =>
+      points(d, isMarkingWhite).filter((p) => radius(p) < RING_OUTER_RADIUS_M);
+    const onWest = (p: readonly number[]) => p[0]! < centre.x - 12 && Math.abs(p[2]! - armZ) < 3.75;
+    // A corner with no road is edged all the way round.
+    expect(edge(drawn(21, 21, [])).length).toBeGreaterThan(0);
+    for (const p of edge(drawn(21, 21, []))) {
+      expect(radius(p)).toBeGreaterThan(RING_OUTER_RADIUS_M - 0.5);
+    }
+    // None crosses an exit.
+    expect(edge(drawn(20, 20, [street(RoadFlow.West, null)])).filter(onWest)).toHaveLength(0);
+    // Across an entry it is broken: dashes with gaps between.
+    const dots = edge(drawn(20, 20, [street(RoadFlow.West, { from: 0, to: 3.75 }, false)]))
+      .filter(onWest)
+      .sort((a, b) => a[2]! - b[2]!);
+    expect(dots.length).toBeGreaterThan(0);
+    let widest = 0;
+    for (let i = 1; i < dots.length; i++)
+      widest = Math.max(widest, dots[i]![2]! - dots[i - 1]![2]!);
+    expect(widest).toBeGreaterThan(0.9);
+    // Yellow round the inner edge of the roadway, where the apron begins.
+    const inner = RING_OUTER_RADIUS_M - RING_ROADWAY_WIDTH_M;
+    const yellow = points(drawn(20, 20, [west]), isMarkingYellow).filter((p) => radius(p) < 15);
+    expect(yellow.length).toBeGreaterThan(0);
+    for (const p of yellow) {
+      expect(radius(p)).toBeGreaterThanOrEqual(inner);
+      expect(radius(p)).toBeLessThan(inner + 0.6);
+    }
+  });
+
+  /** A whole compact roundabout through the renderer, its west arm one-way and flowing east. */
+  const oneWayWest = (): THREE.Scene => {
+    const scene = new THREE.Scene();
+    const oneLane: RoadProfile = {
+      class: 'oneWay',
+      pieces: [
+        { kind: 'sidewalk', width: 1.875 },
+        { kind: 'travel', width: 3.05, flow: 'fwd' },
+        { kind: 'sidewalk', width: 1.875 },
+      ],
+    };
+    const renderer = new RoadMeshRenderer(scene, flatHeightAt, (id) =>
+      id === 99 ? oneLane : presetProfileForTier(id as RoadTier),
     );
+    renderer.apply([
+      makeDelta(20, 20, RoadTier.TwoLane, N | E | S | W),
+      makeDelta(21, 20, RoadTier.TwoLane, E | S | W),
+      makeDelta(20, 21, RoadTier.TwoLane, N | E | S),
+      makeDelta(21, 21, RoadTier.TwoLane, N | W),
+      { ...makeDelta(19, 20, RoadTier.OneWay, E | W), profile: 99, flow: RoadFlow.East },
+      makeDelta(18, 20, RoadTier.TwoLane, E | W),
+      makeDelta(22, 20, RoadTier.TwoLane, E | W),
+      makeDelta(20, 19, RoadTier.TwoLane, N | S),
+      makeDelta(20, 22, RoadTier.TwoLane, N | S),
+    ]);
+    renderer.setRoundabouts([block]);
+    return scene;
+  };
+  const meshPoints = (scene: THREE.Scene, pred: (c: readonly number[]) => boolean) =>
+    scene.children
+      .filter((c): c is THREE.Mesh => c instanceof THREE.Mesh)
+      .flatMap((m) =>
+        points(
+          {
+            positions: Array.from(m.geometry.getAttribute('position').array),
+            colors: Array.from(m.geometry.getAttribute('color').array),
+          },
+          pred,
+        ),
+      );
+
+  it('gives way across a one-way road flowing into it, like any other entry', () => {
+    const yieldWest = meshPoints(oneWayWest(), isMarkingWhite).filter(
+      (p) =>
+        radius(p) >= RING_OUTER_RADIUS_M &&
+        radius(p) < RING_OUTER_RADIUS_M + 1.5 &&
+        p[0]! < centre.x,
+    );
+    expect(yieldWest.length).toBeGreaterThan(0);
   });
 
   it('is drawn in place of the four junctions once the world says the block is a roundabout', () => {

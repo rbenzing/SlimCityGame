@@ -21,7 +21,8 @@
  * Cheap instanced geometry, not per-pixel lighting.
  */
 import * as THREE from 'three';
-import { RoadTier } from '../shared/types';
+import { RoadFlow, RoadTier } from '../shared/types';
+import { RING_OUTER_RADIUS_M, ringCentre, type RoundaboutBlock } from '../shared/roundabout';
 import {
   LAMP_SPACING_TILES,
   LAMP_SPACING_WIDE_TILES,
@@ -34,11 +35,12 @@ import {
   carriagewayShiftOf,
   carriagewayWidth,
   centralReserveOffsetOf,
+  FOOTWAY_WIDTH_M,
   hasKerbs,
   postedKmhOf,
   presetProfileForTier,
 } from '../shared/roadprofile';
-import type { RoadProfile } from '../shared/types';
+import type { RoadProfile, TilePoint } from '../shared/types';
 import { MIN_INSTANCE_CAPACITY, setInstanceCount } from './groundquad';
 import {
   buildTileSet,
@@ -597,6 +599,77 @@ export function standsOf(placement: LampPlacement): LampStand[] {
   if (!placement.twin) return [first];
   // `0 -` rather than a negation, which would turn a zero component into -0.
   return [first, { ...first, reachX: 0 - first.reachX, reachZ: 0 - first.reachZ }];
+}
+
+/** A compact roundabout as its lamps are placed: where its roads come in, and whether it has power. */
+export interface RingLampSite {
+  block: RoundaboutBlock;
+  /** Each road into the ring: the corner it joins and the side of the block it meets. */
+  arms: readonly { from: TilePoint; side: RoadFlow }[];
+  /** The cross-section of the roads, which sets the pole's height, spacing and distance behind the kerb. */
+  profile: RoadProfile;
+  powered: boolean;
+}
+
+/** The roads' own width beside the pole's place, kept clear either side of a road's kerb line. */
+const RING_POLE_ARM_CLEAR_M = 1;
+
+/**
+ * The lamps of one compact roundabout: on the outside of the ring, behind its
+ * footway the way a street's poles stand behind its kerb, in the arcs between
+ * the roads and never on the island. Each arc takes as many poles as the
+ * street's spacing asks for, at least one, spread evenly along it, each
+ * reaching in over the ring. An unpowered ring has none.
+ */
+export function ringLampStands(site: RingLampSite): LampStand[] {
+  if (!site.powered || site.arms.length === 0) return [];
+  const rule = lampRuleOf(site.profile);
+  const half = carriagewayHalfWidthOf(site.profile);
+  const poleRadius = RING_OUTER_RADIUS_M + lampLateralOffset(undefined, site.profile) - half;
+  const centre = ringCentre(site.block);
+  const lineOffset = TILE_METERS / 2;
+  const along = Math.sqrt(RING_OUTER_RADIUS_M ** 2 - lineOffset ** 2);
+  // Where each road's centre line meets the ring, as an angle about its centre.
+  const angles = site.arms
+    .map(({ from, side }) => {
+      const across = (from.x === site.block.x ? -1 : 1) * lineOffset;
+      const acrossZ = (from.z === site.block.z ? -1 : 1) * lineOffset;
+      switch (side) {
+        case RoadFlow.North:
+          return Math.atan2(-along, across);
+        case RoadFlow.South:
+          return Math.atan2(along, across);
+        case RoadFlow.West:
+          return Math.atan2(acrossZ, -along);
+        default:
+          return Math.atan2(acrossZ, along);
+      }
+    })
+    .sort((a, b) => a - b);
+  const clear = (half + FOOTWAY_WIDTH_M + RING_POLE_ARM_CLEAR_M) / poleRadius;
+  const spacing = rule.spacingTiles * TILE_METERS;
+  const stands: LampStand[] = [];
+  angles.forEach((from, i) => {
+    const to =
+      (angles[(i + 1) % angles.length] ?? from) + (i + 1 === angles.length ? 2 * Math.PI : 0);
+    const lo = from + clear;
+    const hi = to - clear;
+    if (hi <= lo) return;
+    const count = Math.max(1, Math.round(((hi - lo) * poleRadius) / spacing));
+    for (let k = 0; k < count; k++) {
+      const a = lo + ((hi - lo) * (k + 0.5)) / count;
+      const ux = Math.cos(a);
+      const uz = Math.sin(a);
+      stands.push({
+        x: centre.x + poleRadius * ux,
+        z: centre.z + poleRadius * uz,
+        reachX: -ux,
+        reachZ: -uz,
+        height: rule.height,
+      });
+    }
+  });
+  return stands;
 }
 
 /** World XZ of the luminaire — the arm end, out over the outer lane. */

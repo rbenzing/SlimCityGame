@@ -6,10 +6,13 @@ import {
   kerbWidthOf,
   presetProfileForTier,
 } from '../shared/roadprofile';
-import { RoadTier } from '../shared/types';
-import type { TilePoint } from '../shared/types';
-import { buildTileSet } from './roadfurniture';
+import { RoadFlow, RoadTier } from '../shared/types';
+import type { BusStop, TilePoint } from '../shared/types';
+import { stopPostSpots, stopRoadAt } from './busstops';
+import { STOP_CLEAR_HALF_M } from './lamps';
+import { buildTileSet, lateralAxis, tileKey } from './roadfurniture';
 import type { FurnitureRoadTile } from './roadfurniture';
+import { keepClearOf, OBJECT_GAP_M, Standing } from './roadsidespace';
 import {
   COUNTRY_POLE_HEIGHT_M,
   POLE_BEHIND_KERB_M,
@@ -518,5 +521,68 @@ describe('a buried cable on the surface', () => {
       [...run(4, 11, 4), ...run(22, 28, 4)],
     );
     expect(layStreetChunk(far, 0)).toEqual(layStreetChunk(near, 0));
+  });
+});
+
+describe('a street pole gives way to what stands beside the street', () => {
+  const east = (): FurnitureRoadTile[] => row(1, 14, 5, { flow: RoadFlow.East });
+  const stop: BusStop = { x: 5, z: 5, side: 0, kind: 'sign' };
+  const roadsideOf = (tiles: FurnitureRoadTile[], taken: readonly { x: number; z: number }[]) => {
+    const tileSet = buildTileSet(tiles);
+    return {
+      tileSet,
+      roadside: {
+        clear: keepClearOf(
+          undefined,
+          [stop],
+          STOP_CLEAR_HALF_M,
+          (tx, tz) => lateralAxis(tileSet, tx, tz),
+          tileKey,
+        ),
+        taken: new Standing().addAll(taken),
+      },
+    };
+  };
+  const laidWith = (tiles: FurnitureRoadTile[], taken: readonly { x: number; z: number }[]) => {
+    const { tileSet, roadside } = roadsideOf(tiles, taken);
+    return {
+      tileSet,
+      poles: layStreetChunk({ tileSet, keepOff: new Set(), closed: new Set(), roadside }, 0).poles,
+    };
+  };
+
+  it('keeps 1.5 m from the sign post of a bus stop, as it does from every other object', () => {
+    const tiles = east();
+    const { tileSet } = roadsideOf(tiles, []);
+    const posts = stopPostSpots([stop], (x, z) => stopRoadAt(tileSet, x, z));
+    expect(posts).toHaveLength(1);
+    const { poles } = laidWith(tiles, posts);
+    expect(poles.length).toBeGreaterThan(3);
+    for (const p of poles) {
+      expect(Math.hypot(p.x - posts[0]!.x, p.z - posts[0]!.z)).toBeGreaterThanOrEqual(OBJECT_GAP_M);
+    }
+  });
+
+  it('stands one pole where a lamp or a tram pole stands, moved along to 1.5 m clear', () => {
+    const tiles = row(1, 14, 5);
+    const base = laidWith(tiles, []).poles.find((p) => tileOf(p).x === 5)!;
+    for (const at of [0, 0.3, -1.2]) {
+      const held = { x: base.x + at, z: base.z };
+      const { poles } = laidWith(tiles, [held]);
+      const here = poles.filter((p) => tileOf(p).x === 5);
+      expect(here).toHaveLength(1);
+      expect(Math.hypot(here[0]!.x - held.x, here[0]!.z - held.z)).toBeGreaterThanOrEqual(
+        OBJECT_GAP_M,
+      );
+    }
+  });
+
+  it('keeps its pole on a tile whose strip is crowded, so no span grows past its tiles', () => {
+    const tiles = row(1, 14, 5);
+    const base = laidWith(tiles, []).poles.find((p) => tileOf(p).x === 5)!;
+    const crowd = [-6, -3, 0, 3, 6].map((d) => ({ x: base.x + d, z: base.z }));
+    const { poles } = laidWith(tiles, crowd);
+    const xs = poles.map((p) => tileOf(p).x).sort((a, b) => a - b);
+    for (let i = 1; i < xs.length; i++) expect(xs[i]! - xs[i - 1]!).toBeLessThanOrEqual(2);
   });
 });

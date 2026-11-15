@@ -1,7 +1,14 @@
 import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
 import type { TilePoint } from '../shared/types';
+import { RoadTier } from '../shared/types';
 import { TILE_METERS } from '../shared/constants';
+import {
+  carriagewayHalfWidthOf,
+  kerbWidthOf,
+  presetProfileForTier,
+  sectionBands,
+} from '../shared/roadprofile';
 import {
   GhostRenderer,
   arrowYaw,
@@ -280,6 +287,99 @@ describe('a road ghost is drawn at the road’s real width', () => {
     const renderer = new GhostRenderer(scene, flatHeightAt);
     renderer.setPreview([{ x: 2, z: 3 }], true, 'zone', { roadWidthMeters: 6 });
     expect(widthAcross(renderer, true)).toBeCloseTo(TILE_METERS, 5);
+  });
+});
+
+describe('a road ghost shows the parts of the road it previews', () => {
+  const bandsOf = (tier: RoadTier, tiles: TilePoint[]) =>
+    tiles.map(() => sectionBands(presetProfileForTier(tier)));
+  const acrossZ = (mesh: THREE.Mesh): { min: number; max: number } => {
+    const box = boundingBoxOf(mesh);
+    return { min: box.min.z, max: box.max.z };
+  };
+
+  it.each(Object.entries(RoadTier).filter(([, tier]) => tier !== RoadTier.None))(
+    'a %s ghost reaches the outer edges the built road does',
+    (_name, tier) => {
+      const profile = presetProfileForTier(tier);
+      const builtHalf = carriagewayHalfWidthOf(profile) + kerbWidthOf(profile);
+      const tiles = straightLine(3).map((t) => ({ x: t.x + 2, z: 5 }));
+      const renderer = new GhostRenderer(new THREE.Scene(), flatHeightAt);
+      renderer.setPreview(tiles, true, 'road', { roadBands: bandsOf(tier, tiles) });
+      const centreZ = 5.5 * TILE_METERS;
+      const layers = renderer.layers();
+      const lo = Math.min(acrossZ(layers.base).min, acrossZ(layers.fill).min);
+      const hi = Math.max(acrossZ(layers.base).max, acrossZ(layers.fill).max);
+      expect(hi - centreZ).toBeCloseTo(builtHalf, 5);
+      expect(centreZ - lo).toBeCloseTo(builtHalf, 5);
+    },
+  );
+
+  it('leaves the median of an avenue as a gap in the carriageway, filled by a paler band', () => {
+    const profile = presetProfileForTier(RoadTier.Avenue);
+    const median = sectionBands(profile).find((b) => b.kind === 'reserve')!;
+    expect(median).toBeDefined();
+    const tiles = straightLine(2);
+    const renderer = new GhostRenderer(new THREE.Scene(), flatHeightAt);
+    renderer.setPreview(tiles, true, 'road', { roadBands: bandsOf(RoadTier.Avenue, tiles) });
+    const centreZ = 0.5 * TILE_METERS;
+    const zs = (mesh: THREE.Mesh): number[] => {
+      const p = mesh.geometry.getAttribute('position');
+      return Array.from({ length: p.count }, (_, i) => p.getZ(i));
+    };
+    // No carriageway vertex lies inside the median, and the fill layer holds exactly its edges.
+    for (const z of zs(renderer.layers().base))
+      expect(z - centreZ <= median.from + 1e-6 || z - centreZ >= median.to - 1e-6).toBe(true);
+    const fill = zs(renderer.layers().fill).map((z) => z - centreZ);
+    expect(fill.some((z) => Math.abs(z - median.from) < 1e-6)).toBe(true);
+    expect(fill.some((z) => Math.abs(z - median.to) < 1e-6)).toBe(true);
+  });
+
+  it('draws footways in the fill layer, so a street is a carriageway with a paler edge each side', () => {
+    const tiles = straightLine(2);
+    const renderer = new GhostRenderer(new THREE.Scene(), flatHeightAt);
+    renderer.setPreview(tiles, true, 'road', { roadBands: bandsOf(RoadTier.TwoLane, tiles) });
+    const half = carriagewayHalfWidthOf(presetProfileForTier(RoadTier.TwoLane));
+    const base = boundingBoxOf(renderer.layers().base);
+    expect(base.max.z - 0.5 * TILE_METERS).toBeCloseTo(half, 5);
+    expect(vertCount(renderer.layers().fill)).toBe(2 * 2 * VERTS_PER_GHOST_CELL);
+  });
+
+  it('tints the bands red when refused', () => {
+    const tiles = straightLine(2);
+    const renderer = new GhostRenderer(new THREE.Scene(), flatHeightAt);
+    renderer.setPreview(tiles, false, 'road', { roadBands: bandsOf(RoadTier.Avenue, tiles) });
+    expect(colorAt(renderer.layers().fill).r).toBeGreaterThan(colorAt(renderer.layers().fill).b);
+    expect(colorAt(renderer.layers().base).r).toBeGreaterThan(colorAt(renderer.layers().base).b);
+  });
+
+  it('keeps the tile count of draw calls: bands are merged into the base and fill meshes', () => {
+    const scene = new THREE.Scene();
+    const renderer = new GhostRenderer(scene, flatHeightAt);
+    const before = scene.children.length;
+    const tiles = straightLine(30);
+    renderer.setPreview(tiles, true, 'road', { roadBands: bandsOf(RoadTier.Avenue, tiles) });
+    expect(scene.children.length).toBe(before);
+  });
+
+  it('covers a turn with one solid quad set, never stacked bands', () => {
+    const lPath: TilePoint[] = [
+      { x: 0, z: 0 },
+      { x: 1, z: 0 },
+      { x: 1, z: 1 },
+    ];
+    const renderer = new GhostRenderer(new THREE.Scene(), flatHeightAt);
+    renderer.setPreview(lPath, true, 'road', { roadBands: bandsOf(RoadTier.Avenue, lPath) });
+    const box = boundingBoxOf(renderer.layers().base);
+    expect(box.max.x).toBeCloseTo(2 * TILE_METERS, 5);
+    expect(box.max.z).toBeCloseTo(2 * TILE_METERS, 5);
+    expect(vertCount(renderer.layers().fill)).toBeGreaterThan(0);
+  });
+
+  it('leaves the fill layer empty for a road drawn by width alone', () => {
+    const renderer = new GhostRenderer(new THREE.Scene(), flatHeightAt);
+    renderer.setPreview(straightLine(2), true, 'road', { roadWidthMeters: 11.25 });
+    expect(vertCount(renderer.layers().fill)).toBe(0);
   });
 });
 

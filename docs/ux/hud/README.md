@@ -39,5 +39,5 @@ region, so you can find whatever you're looking at by where it sits.
 | [Milestone popover](milestone-popover.md) | 438 B |
 | [Status strip (bottom bar #2)](status-strip-bottom-bar-2.md) | 1,200 B |
 | [Start menu and game lifecycle](start-menu-and-game-lifecycle.md) | 3,157 B |
-| [In-world tool feedback (render-side, not DOM)](in-world-tool-feedback-render-side-not-dom.md) | 3,418 B |
+| [In-world tool feedback (render-side, not DOM)](in-world-tool-feedback-render-side-not-dom.md) | 3,785 B |
 | [Not built yet](not-built-yet.md) | 659 B |

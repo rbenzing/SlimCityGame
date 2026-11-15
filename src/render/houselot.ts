@@ -156,15 +156,19 @@ export const PORCH_FLOOR_M = 0.6;
 export const CRAFTSMAN_COLUMN_M = 0.4;
 export const CRAFTSMAN_PIER_M = 0.6;
 export const CRAFTSMAN_PIER_HEIGHT_M = 0.9;
-/** A porch stops this short of a drive that runs past its end. */
-const PORCH_DRIVE_GAP_M = 0.3;
+/** A pad, a drive and the car on it stand at least this clear of a stoop, a porch, its posts and its steps. */
+export const ENTRY_CLEAR_M = 0.3;
+/** A stoop's foot keeps a clear landing this deep (36 in) toward the footway; no pad or car stands on it. */
+export const STOOP_FOOT_LANDING_M = 0.915;
+const PORCH_ROOF_OVERHANG_M = 0.1;
+/** A porch's floor stops this short of a drive that runs past its end, so its roof edge keeps the clearance. */
+const PORCH_DRIVE_GAP_M = ENTRY_CLEAR_M + PORCH_ROOF_OVERHANG_M;
 /** Posts stand 2.4 m off the porch floor; its shed roof leaves the wall 2.9 m off it. */
 export const PORCH_POST_HEIGHT_M = 2.4;
 export const PORCH_ROOF_WALL_RISE_M = 2.9;
 /** A porch stops a metre short of each end of the frontage. */
 const PORCH_INSET_M = 1;
 const PORCH_POST_SPACING_M = 3;
-const PORCH_ROOF_OVERHANG_M = 0.1;
 export const DORMER_WIDTH_M = 1.4;
 export const DORMER_WALL_M = 1.2;
 /** How deep a dormer's cheeks run back into the roof: far enough that the slope has swallowed them. */
@@ -1050,7 +1054,8 @@ function slidingPad(
       const a = u0 + sign * i * PAD_SLIDE_STEP_M;
       const b = a + width;
       if (a < FRONT_PAD_INSET_M || b > edgeLenM - FRONT_PAD_INSET_M) continue;
-      if (a < doorU + PATH_WIDTH_M / 2 && b > doorU - PATH_WIDTH_M / 2) continue;
+      const keepOff = PORTICO_WIDTH_M / 2 + ENTRY_CLEAR_M;
+      if (a < doorU + keepOff && b > doorU - keepOff) continue;
       const pad = frontPad(a, b, body, streets, []);
       if (pad) return pad;
     }
@@ -1664,20 +1669,23 @@ function planKit(
 
 /** A home's lot without its yard — the cheap half, for callers that only need the drives. */
 /**
- * Where a home's first front door stands, in world metres, or null for a
- * building that is not a house or has no street to open onto. What a walker
- * from that home heads for when they go in.
+ * Where a home's first front door stands, in world metres, and `gate`, where
+ * the front walk to it meets the street, or null for a building that is not a
+ * house or has no street to open onto. What a walker from that home heads for
+ * when they go in: by the walk, which the lot's plan keeps clear of its drives.
  */
 export function frontDoorOf(
   building: BuildingInstance,
   entry: BuildingCatalogEntry,
   roadAt: (x: number, z: number) => boolean,
   street: StreetLookup,
-): { x: number; z: number } | null {
+): { x: number; z: number; gate?: { x: number; z: number } } | null {
   const plan = planHouseGround(building, entry, roadAt, street);
   const door = plan?.doors[0];
   if (!plan || !door) return null;
-  return lotToWorld(plan.frame, door.u, door.v);
+  const walk = plan.paths[0];
+  const at = lotToWorld(plan.frame, door.u, door.v);
+  return walk ? { ...at, gate: lotToWorld(plan.frame, door.u, walk.v0) } : at;
 }
 
 export function planHouseGround(
@@ -1747,7 +1755,14 @@ export function planHouseGround(
       // Each home's pad sits at its near edge and its door at the far one.
       const unitU0 = body.u0 + k * unitW;
       const padU0 = unitU0 + FRONT_PAD_INSET_M;
-      const door = { u: unitU0 + unitW - FRONT_DOOR_INSET_M, v: body.v0 };
+      // The door keeps its stoop clear of the pad beside it.
+      const door = {
+        u: Math.max(
+          unitU0 + unitW - FRONT_DOOR_INSET_M,
+          padU0 + DRIVE_WIDTH_M + ENTRY_CLEAR_M + STOOP_WIDTH_M / 2,
+        ),
+        v: body.v0,
+      };
       doors.push(door);
       // A row home's garage door is the 8 ft single, in the facade behind its pad.
       const padC = padU0 + DRIVE_WIDTH_M / 2;

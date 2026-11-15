@@ -347,6 +347,22 @@ describe('computeWalkPath / walkSample (pure)', () => {
     expect(b.z).toBeCloseTo(a.z, 6);
   });
 
+  it('with a door off to one side, goes along the pavement to the walk’s foot and up the walk, not across the lot', () => {
+    const gate = { x: 10 * TILE_METERS + 3, z: 10 * TILE_METERS - 4 };
+    const door = { x: gate.x, z: 10 * TILE_METERS + 5.5, gate };
+    const plan = computeWalkPath(building(11, 10, 10), (_x, z) => z === 9, twoLane, door);
+    let onWalk = 0;
+    for (let t = 0; t < WALK_CYCLE_WITH_DOOR_MS; t += 50) {
+      const s = walkSample(plan, 11, t);
+      // Past the pavement's own edge the figure is in line with the walk.
+      if (s.z > gate.z + 1e-6) {
+        expect(Math.abs(s.x - gate.x)).toBeLessThan(1e-6);
+        onWalk++;
+      }
+    }
+    expect(onWalk).toBeGreaterThan(0);
+  });
+
   it('walkAnchorOffset is deterministic and nonzero', () => {
     const a = walkAnchorOffset(3);
     expect(walkAnchorOffset(3)).toEqual(a);

@@ -216,8 +216,10 @@ Back to [the index](../GROUND-TRUTHS.md).
 - [R-roads-070] A roundabout carries a yield line of white triangles pointing at approaching
   traffic on every entry (MUTCD 3B.19 ¶10) and a YIELD sign on every approach
   (MUTCD 2B.10 ¶06); it is the only junction where a yield faces every approach.
-  No stop bar, crosswalk or centre line runs through it, and the edge line never
-  crosses an exit (MUTCD 3D.03). — [road-model.md](../world-sim/road-model/README.md)
+  No stop bar or centre line runs through it and no crosswalk reaches the
+  island; an arm with footways carries one crosswalk 6.1 m back from the ring
+  (3C.09). The ring's edge line is dotted across an entry and never crosses
+  an exit (3D.03). — [roundabouts.md](../specs/roundabouts.md)
 - [R-roads-071] A compact roundabout is the roundabout control stored on all four tiles of a
   2×2 block of street tiles on the ground, joined round the square, and
   nothing else is stored. One predicate decides it for the worker, the graph

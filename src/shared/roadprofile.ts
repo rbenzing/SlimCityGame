@@ -466,6 +466,52 @@ export function kerbWidthOf(profile: RoadProfile): number {
 }
 
 /**
+ * What a strip across a road is, for a preview that shows its parts: running
+ * carriageway, a reservation or median nothing drives on, or a footway/kerb.
+ */
+export type SectionBandKind = 'carriageway' | 'reserve' | 'footway';
+
+/** One strip across a cross-section, metres from the carriageway's centre (low offset first). */
+export interface SectionBand {
+  from: number;
+  to: number;
+  kind: SectionBandKind;
+}
+
+/**
+ * The parts of a cross-section as the road mesh lays them, in world order and
+ * measured from the carriageway's centre: the carriageway pieces (neighbours
+ * of one kind merged into a strip), with a median, barrier or tram
+ * reservation as its own strip, then the kerb strip each unconnected side
+ * draws outside the carriageway. The outer edges are `carriagewayHalfWidthOf`
+ * plus `kerbWidthOf`, exactly what the mesh reaches. A half of a corridor
+ * carries no kerb on the edge that runs on onto the other half.
+ */
+export function sectionBands(profile: RoadProfile): SectionBand[] {
+  const half = carriagewayHalfWidthOf(profile);
+  const hasTravel = profile.pieces.some((p) => p.kind === 'travel');
+  const bands: SectionBand[] = [];
+  let at = -half;
+  for (const piece of profile.pieces) {
+    if (!CARRIAGEWAY_KINDS.has(piece.kind)) continue;
+    const reserved =
+      piece.kind === 'median' || piece.kind === 'barrier' || (piece.kind === 'tram' && hasTravel);
+    const kind: SectionBandKind = reserved ? 'reserve' : 'carriageway';
+    const last = bands[bands.length - 1];
+    if (last && last.kind === kind) last.to = at + piece.width;
+    else bands.push({ from: at, to: at + piece.width, kind });
+    at += piece.width;
+  }
+  const kerb = kerbWidthOf(profile);
+  if (kerb > 0) {
+    if (profile.seam?.side !== -1)
+      bands.unshift({ from: -half - kerb, to: -half, kind: 'footway' });
+    if (profile.seam?.side !== 1) bands.push({ from: half, to: half + kerb, kind: 'footway' });
+  }
+  return bands;
+}
+
+/**
  * The strip a kerbed road keeps outside its carriageway however it spends the
  * rest of the tile: somewhere for the kerb itself, and for the lamp column and
  * the signal mast that stand behind it. It is the motorway's own half a metre,

@@ -2,10 +2,12 @@
  * The raised tram stations: a line's stop on a guideway tile at full height
  * is a pair of side platforms at the trams' floor outside the beams, each
  * under a canopy, with a stair and a lift tower down to the footway at the
- * platforms' low-coordinate end, or the high end where the tile past the low
- * end is a junction. Seven instanced parts, all unit boxes:
- *   PLATFORMS — the two slabs along the run, and each one's landing out to
- *               its lift tower over the kerb lane.
+ * platforms' low-coordinate end, or the high end where the stair's run at the
+ * low end would cross a junction or a kerb standing out under it. Seven
+ * instanced parts, all unit boxes:
+ *   PLATFORMS — the two slabs along the run, each one's landing out to its
+ *               lift tower over the kerb lane, and the paved aprons at the
+ *               stair foot and the lift door where the street has no footway.
  *   CANOPIES  — the roof slab over each platform.
  *   POSTS     — the canopy's posts down the platform's outer edge.
  *   STAIRS    — one sloped box each side, the stringer closed.
@@ -63,6 +65,11 @@ export const STATION_PANE_DEPTH_M = 0.04;
 export const STATION_PANE_SILL_M = 1.0;
 export const STATION_PANE_HEAD_M = 0.4;
 
+/** A paved landing: its depth, how far its top stands over the ground, and its length along the road at the stair foot. */
+export const STATION_APRON_DEPTH_M = 0.3;
+export const STATION_APRON_RISE_M = 0.02;
+export const STATION_APRON_LENGTH_M = 2;
+
 /** An axis-aligned box: its centre and its size along the world axes. */
 export interface StationBox {
   x: number;
@@ -105,6 +112,8 @@ export interface TramStation {
   platforms: StationPlatform[];
   /** Each platform's end run out to its tower, drawn with the platforms. */
   landings: StationBox[];
+  /** The paved landings at the stair foot and the lift door where the street has no footway. */
+  aprons: StationBox[];
   canopies: StationBox[];
   posts: StationBox[];
   stairs: StationStair[];
@@ -150,6 +159,13 @@ function kerbLine(road: FurnitureRoadTile, alongX: boolean, side: 1 | -1): numbe
   const { shiftX, shiftZ } = seamShift(profile, road.flow ?? 0);
   const centre = alongX ? tileToWorld(road.z) + shiftZ : tileToWorld(road.x) + shiftX;
   return centre + side * carriagewayHalfWidthOf(profile);
+}
+
+/** The width of the footway beside the carriageway on `side` of the tile; zero where the street has none there. */
+function footwayWidth(road: FurnitureRoadTile, side: 1 | -1): number {
+  const pieces = (road.profile ?? presetProfileForTier(road.tier ?? RoadTier.TwoLane)).pieces;
+  const piece = side < 0 ? pieces[0] : pieces[pieces.length - 1];
+  return piece?.kind === 'sidewalk' ? piece.width : 0;
 }
 
 /**
@@ -229,18 +245,6 @@ function buildStation(
   const mid = (lo + hi) / 2;
   const canopyBottom = top + STATION_CANOPY_CLEAR_M;
   const canopyTop = canopyBottom + STATION_CANOPY_DEPTH_M;
-  // The stair and lift land on the tile past the platform's low end, unless
-  // that tile is a crossing street or a junction box, when they swap to the
-  // high end so nobody steps off the stair into a junction; where both ends
-  // meet one they stay at the low end.
-  const junctionPast = (step: 1 | -1): boolean => {
-    const nx = road.x + (alongX ? step : 0);
-    const nz = road.z + (alongX ? 0 : step);
-    return tileSet.get(tileKey(nx, nz))?.ring === true || hasCrossingRoad(tileSet, nx, nz);
-  };
-  const end: 1 | -1 = junctionPast(-1) && !junctionPast(1) ? 1 : -1;
-  const endAlong = end < 0 ? lo : hi;
-
   const point = (along: number, across: number, y: number): GuidewayPoint =>
     alongX ? { x: along, y, z: across } : { x: across, y, z: along };
   const box = (
@@ -256,6 +260,105 @@ function buildStation(
     sy: sizeY,
     sz: alongX ? sizeAcross : sizeAlong,
   });
+  /**
+   * A paved landing on the ground from the carriageway edge `reach` out past
+   * the centre of the stair and lift on `side`, its top just over `ground`.
+   */
+  const apron = (
+    along: number,
+    sizeAlong: number,
+    reach: number,
+    centre: number,
+    side: 1 | -1,
+    ground: number,
+  ): StationBox => {
+    const far = centre + side * (STATION_TOWER_M / 2);
+    return box(
+      along,
+      (reach + far) / 2,
+      ground + STATION_APRON_RISE_M - STATION_APRON_DEPTH_M / 2,
+      sizeAlong,
+      STATION_APRON_DEPTH_M,
+      Math.abs(far - reach),
+    );
+  };
+  const tan = Math.tan(STATION_STAIR_ANGLE);
+  /** The road tile under a point along the run, or the stop tile's own where none is drawn. */
+  const tileAtAlong = (along: number): FurnitureRoadTile | undefined => {
+    const t = worldToTile(along);
+    return tileSet.get(alongX ? tileKey(t, road.z) : tileKey(road.x, t));
+  };
+  /** The lowest ground under a footprint centred on (along, across), so what stands there never hangs. */
+  const lowestGround = (along: number, across: number, sizeAlong: number, sizeAcross: number) => {
+    let low = Infinity;
+    for (const da of [-1, 1]) {
+      for (const dc of [-1, 1]) {
+        const p = point(along + (da * sizeAlong) / 2, across + (dc * sizeAcross) / 2, 0);
+        low = Math.min(low, surfaceAt(p.x, p.z));
+      }
+    }
+    return low;
+  };
+  /**
+   * Where the stair and lift on `side` stand when they land past `end`: the
+   * tower's road face lies at the kerb of the tile under it, or at the
+   * platform's outer edge where the road is too narrow to clear it; the stair
+   * runs down along the road from the platform's end to the ground it meets.
+   */
+  const landingAt = (e: 1 | -1, side: 1 | -1) => {
+    const endAlong = e < 0 ? lo : hi;
+    const towerAlong = endAlong - e * (STATION_TOWER_M / 2);
+    const towerTile = tileAtAlong(towerAlong) ?? road;
+    const outer = line + side * (STATION_PLATFORM_CLEARANCE_M + STATION_PLATFORM_WIDTH_M);
+    const kerb = kerbLine(towerTile, alongX, side);
+    const towerFace = side > 0 ? Math.max(kerb, outer) : Math.min(kerb, outer);
+    const towerCentre = towerFace + side * (STATION_TOWER_M / 2);
+    const head = point(endAlong, towerCentre, top);
+    const ground = (along: number): number =>
+      lowestGround(along, towerCentre, 0, STATION_STAIR_WIDTH_M);
+    // The foot stands where the run, which depends on the ground, ends on it.
+    let footAlong = endAlong;
+    let footY = ground(footAlong);
+    for (let i = 0; i < 24; i++) {
+      footAlong = endAlong + e * ((top - footY) / tan);
+      footY = ground(footAlong);
+    }
+    footAlong = endAlong + e * ((top - footY) / tan);
+    return {
+      endAlong,
+      towerAlong,
+      towerTile,
+      outer,
+      kerb,
+      towerFace,
+      towerCentre,
+      head,
+      footAlong,
+      footY,
+    };
+  };
+  // The stair and lift land on the tile past the platform's low end, unless
+  // its run would cross a junction box, a crossing street, or a kerb standing
+  // further out than the stair's inner edge (a bay), when they swap to the
+  // high end so nobody steps off the stair into traffic; where both ends are
+  // so blocked they stay at the low end.
+  const blocked = (e: 1 | -1): boolean =>
+    ([-1, 1] as const).some((side) => {
+      const l = landingAt(e, side);
+      const inner = l.towerCentre - side * (STATION_STAIR_WIDTH_M / 2);
+      const from = Math.min(l.endAlong, l.footAlong);
+      const to = Math.max(l.endAlong, l.footAlong);
+      for (let t = worldToTile(from); t <= worldToTile(to - 1e-6); t++) {
+        const tx = alongX ? t : road.x;
+        const tz = alongX ? road.z : t;
+        const tile = tileSet.get(tileKey(tx, tz));
+        if (!tile) continue;
+        if (tile.ring === true || hasCrossingRoad(tileSet, tx, tz)) return true;
+        if ((kerbLine(tile, alongX, side) - inner) * side > 1e-6) return true;
+      }
+      return false;
+    });
+  const end: 1 | -1 = blocked(-1) && !blocked(1) ? 1 : -1;
 
   const station: TramStation = {
     x: road.x,
@@ -263,6 +366,7 @@ function buildStation(
     alongX,
     platforms: [],
     landings: [],
+    aprons: [],
     canopies: [],
     posts: [],
     stairs: [],
@@ -320,14 +424,24 @@ function buildStation(
       );
     }
 
-    // The tower's road face stands at the kerb line, or at the platform's
-    // outer edge where the road is too narrow for the platform to clear it.
-    const kerb = kerbLine(road, alongX, side);
-    const towerFace = side > 0 ? Math.max(kerb, outer) : Math.min(kerb, outer);
-    const towerCentre = towerFace + side * (STATION_TOWER_M / 2);
-    const towerAlong = endAlong - end * (STATION_TOWER_M / 2);
-    const towerAt = point(towerAlong, towerCentre, 0);
-    const footway = surfaceAt(towerAt.x, towerAt.z);
+    // The tower stands on the lowest ground under it; the stair and the lift
+    // door meet the footway, or a paved landing out to the carriageway's edge
+    // where the tile has none.
+    const {
+      endAlong,
+      towerAlong,
+      towerTile,
+      kerb,
+      towerFace,
+      towerCentre,
+      head,
+      footAlong,
+      footY,
+    } = landingAt(end, side);
+    const footway = lowestGround(towerAlong, towerCentre, STATION_TOWER_M, STATION_TOWER_M);
+    if (footwayWidth(towerTile, side) === 0) {
+      station.aprons.push(apron(towerAlong, STATION_TOWER_M, kerb, towerCentre, side, footway));
+    }
     station.towers.push(
       box(
         towerAlong,
@@ -367,15 +481,23 @@ function buildStation(
     // The stair heads at the platform's landing end beside the tower and runs
     // down along the road, away from the platform, to the footway; its run
     // follows the ground it lands on.
-    const head = point(endAlong, towerCentre, top);
-    const tan = Math.tan(STATION_STAIR_ANGLE);
-    let footAlong = endAlong + end * ((top - surfaceAt(head.x, head.z)) / tan);
-    const footAt = point(footAlong, towerCentre, 0);
-    const footY = surfaceAt(footAt.x, footAt.z);
     const height = top - footY;
     const run = height / tan;
-    footAlong = endAlong + end * run;
     const foot = point(footAlong, towerCentre, footY);
+    const footTile = tileAtAlong(footAlong);
+    if (!footTile || footwayWidth(footTile, side) === 0) {
+      const reach = footTile ? kerbLine(footTile, alongX, side) : kerb;
+      station.aprons.push(
+        apron(
+          footAlong + (end * STATION_APRON_LENGTH_M) / 4,
+          STATION_APRON_LENGTH_M,
+          reach,
+          towerCentre,
+          side,
+          footY,
+        ),
+      );
+    }
     const slope = Math.hypot(run, height);
     station.stairs.push({
       ...box(
@@ -462,7 +584,11 @@ export class TramStationRenderer {
     const all = this.current.stations;
     const flat = <T>(pick: (s: TramStation) => T[]): T[] => all.flatMap(pick);
 
-    const platforms = [...flat((s) => s.platforms), ...flat((s) => s.landings)];
+    const platforms = [
+      ...flat((s) => s.platforms),
+      ...flat((s) => s.landings),
+      ...flat((s) => s.aprons),
+    ];
     this.addBoxes(this.concrete, platforms);
     this.addBoxes(
       this.roof,

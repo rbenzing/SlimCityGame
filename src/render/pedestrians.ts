@@ -260,6 +260,11 @@ export interface WalkSample {
   readonly heading: number;
 }
 
+/** A home's front door, and where the walk to it meets the street, which the lot keeps clear of its drives. */
+export interface DoorPoint extends WorldPoint {
+  readonly gate?: WorldPoint;
+}
+
 /** Where a walker walks: the footway in front of their home, and the door they go in by. */
 export interface WalkPlan {
   /** The point on the footway the stroll is centred on, world metres. */
@@ -267,7 +272,7 @@ export interface WalkPlan {
   /** Which world axis the pavement runs along. */
   readonly alongX: boolean;
   /** The home's front door, world metres, or null for a building whose door nobody has drawn. */
-  readonly door: WorldPoint | null;
+  readonly door: DoorPoint | null;
 }
 
 const smooth = (k: number): number => k * k * (3 - 2 * k);
@@ -302,9 +307,37 @@ function walkPosition(plan: WalkPlan, buildingId: number, s: number): WorldPoint
   const legShare = (1 - strollShare) / 2;
   const outward = s < strollShare + legShare;
   const k = smooth(((s - strollShare) % legShare) / legShare);
-  const from = outward ? plan.anchor : plan.door;
-  const to = outward ? plan.door : plan.anchor;
-  return { x: from.x + (to.x - from.x) * k, z: from.z + (to.z - from.z) * k };
+  const route = doorRoute(plan, plan.door);
+  return alongRoute(outward ? route : route.slice().reverse(), k);
+}
+
+/**
+ * The way from the pavement to the door: along the pavement to the front
+ * walk's foot, then up the walk. Without a walk's foot, the straight line.
+ */
+function doorRoute(plan: WalkPlan, door: DoorPoint): WorldPoint[] {
+  const { anchor, alongX } = plan;
+  const { gate } = door;
+  if (!gate) return [anchor, door];
+  const foot = alongX ? { x: gate.x, z: anchor.z } : { x: anchor.x, z: gate.z };
+  return [anchor, foot, gate, door];
+}
+
+/** The point a share `k` of the way along the polyline's length. */
+function alongRoute(route: readonly WorldPoint[], k: number): WorldPoint {
+  const lengths = route.slice(1).map((p, i) => Math.hypot(p.x - route[i]!.x, p.z - route[i]!.z));
+  let left = k * lengths.reduce((sum, l) => sum + l, 0);
+  for (let i = 0; i < lengths.length; i++) {
+    const len = lengths[i]!;
+    if (left <= len || i === lengths.length - 1) {
+      const a = route[i]!;
+      const b = route[i + 1]!;
+      const f = len > 0 ? Math.min(1, left / len) : 1;
+      return { x: a.x + (b.x - a.x) * f, z: a.z + (b.z - a.z) * f };
+    }
+    left -= len;
+  }
+  return route[route.length - 1]!;
 }
 
 /** The cycle fraction a walker is at, from the frame clock: per-id phase and direction keep a street unsynchronised. */
@@ -375,7 +408,7 @@ export function computeWalkPath(
   building: BuildingInstance,
   roadAt: (x: number, z: number) => boolean,
   street: StreetLookup = NO_STREETS,
-  door: WorldPoint | null = null,
+  door: DoorPoint | null = null,
 ): WalkPlan {
   const bx = building.x;
   const bz = building.z;
@@ -512,7 +545,7 @@ export class PedestrianRenderer {
   private readonly heightAt: (x: number, z: number) => number;
   private readonly roadAt: (x: number, z: number) => boolean;
   private readonly street: StreetLookup;
-  private readonly doorAt: (building: BuildingInstance) => WorldPoint | null;
+  private readonly doorAt: (building: BuildingInstance) => DoorPoint | null;
 
   private readonly bodyGeometry = new THREE.CapsuleGeometry(
     PEDESTRIAN_BODY_RADIUS,
@@ -556,7 +589,7 @@ export class PedestrianRenderer {
     heightAt: (x: number, z: number) => number,
     roadAt: (x: number, z: number) => boolean = () => false,
     street: StreetLookup = NO_STREETS,
-    doorAt: (building: BuildingInstance) => WorldPoint | null = () => null,
+    doorAt: (building: BuildingInstance) => DoorPoint | null = () => null,
   ) {
     this.scene = scene;
     this.heightAt = heightAt;

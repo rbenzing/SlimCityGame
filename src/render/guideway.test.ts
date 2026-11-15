@@ -11,6 +11,7 @@ import {
   GUIDEWAY_COLUMN_SPACING_M,
   GUIDEWAY_CROSSHEAD_DEPTH_M,
   GUIDEWAY_MIN_CROSSHEAD_CLEARANCE_M,
+  GUIDEWAY_STEM_M,
   TRAM_FLOOR_ABOVE_BEAM_M,
   type GuidewayBeam,
 } from './guideway';
@@ -52,6 +53,9 @@ const beamsOn = (beams: readonly GuidewayBeam[], x: number, z: number): Guideway
   beams.filter((b) => b.tileX === x && b.tileZ === z);
 const inTile = (x: number) => (c: { x: number }) =>
   c.x >= x * TILE_METERS && c.x < (x + 1) * TILE_METERS;
+/** The road tile a column stands on, on the test row. */
+const inTile2 = (c: { x: number }) => (t: FurnitureRoadTile) =>
+  t.z === ROW && c.x >= t.x * TILE_METERS && c.x < (t.x + 1) * TILE_METERS;
 
 describe('computeGuideway — a straight reserved run', () => {
   const run = row(0, 14, reserved);
@@ -172,6 +176,52 @@ describe('computeGuideway — passing over a street it crosses', () => {
   it('lays nothing over a street crossed by street track at grade', () => {
     const atGrade = [...row(0, 4, mixed), ...row(6, 10, mixed), ...crossStreet];
     expect(computeGuideway(atGrade, flat).beams).toHaveLength(0);
+  });
+});
+
+describe('computeGuideway — where a column may stand', () => {
+  // Reserved tiles whose road carries a bay either side of the reservation.
+  const [first, ...rest] = reservedProfile.pieces;
+  const last = rest.pop()!;
+  const bay = { kind: 'travel' as const, width: 3.3, flow: 'back' as const, bay: true as const };
+  const baying = {
+    ...reservedProfile,
+    pieces: [first!, bay, ...rest, { ...bay, flow: 'fwd' as const }, last],
+  };
+  const withBay = (x: number, z: number): FurnitureRoadTile => ({
+    x,
+    z,
+    tier: RoadTier.Avenue,
+    profile: baying,
+  });
+  const crossStreet = Array.from({ length: 11 }, (_, z) => street(10, z));
+  const tiles = [
+    ...row(0, 9, (x, z) => (x >= 6 ? withBay(x, z) : reserved(x, z))),
+    ...row(11, 20, reserved),
+    ...crossStreet,
+  ];
+  const { columns } = computeGuideway(tiles, flat);
+
+  it('stands every column wholly inside the tram bands of the road, never in a lane or a bay', () => {
+    expect(columns.length).toBeGreaterThan(0);
+    for (const c of columns) {
+      const tile = tiles.find(inTile2(c))!;
+      const profile = tile.profile ?? reservedProfile;
+      const bands = markingPlan(profile).bands.filter((b) => b.kind === 'tram');
+      const from = Math.min(...bands.map((b) => b.from));
+      const to = Math.max(...bands.map((b) => b.to));
+      const across = c.z - tileToWorld(ROW);
+      expect(across - GUIDEWAY_STEM_M / 2).toBeGreaterThanOrEqual(from - 1e-9);
+      expect(across + GUIDEWAY_STEM_M / 2).toBeLessThanOrEqual(to + 1e-9);
+    }
+  });
+
+  it('leaves the junction box bare and spans it between the columns either side, no longer than two column spacings', () => {
+    const xs = columns.map((c) => c.x).sort((a, b) => a - b);
+    expect(columns.filter(inTile(10))).toHaveLength(0);
+    let longest = 0;
+    for (let i = 1; i < xs.length; i++) longest = Math.max(longest, xs[i]! - xs[i - 1]!);
+    expect(longest).toBeLessThanOrEqual(2 * GUIDEWAY_COLUMN_SPACING_M + 1e-9);
   });
 });
 
