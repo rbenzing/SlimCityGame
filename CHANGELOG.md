@@ -1,5 +1,26 @@
 # Changelog
 
+## [1.88.1](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.88.0...slimcity-v1.88.1) (2026-11-15)
+
+
+### Bug Fixes
+
+* **lots:** a shop keeps a 36 in walk between its stall heads and its wall ([1fc5702](https://github.com/rbenzing/SlimCityGame/commit/1fc570240e5a9c5033ca404b88fb9095b5b96f70))
+* **render:** a bridge's structure hangs from the deck's own edges and follows the ground ([0223002](https://github.com/rbenzing/SlimCityGame/commit/02230028ef6985b6ee706b751099d0078b2ed52c))
+* **render:** a chemical plant's flare stands on its tank farm, piped to a tank ([03cbcbb](https://github.com/rbenzing/SlimCityGame/commit/03cbcbb36df434c40b6399e95551bbd5b1335d2a))
+* **render:** a home's parking keeps clear of its entry, and a walker reaches the door by the front walk ([9e4d07a](https://github.com/rbenzing/SlimCityGame/commit/9e4d07a7c139960ece5c1f4ac94dca7dc5e8e972))
+* **render:** a one-storey lobby with doors and a walk, a mixed-use shopfront, and a deck clear of its building ([b149a76](https://github.com/rbenzing/SlimCityGame/commit/b149a7698047b8fe0555e6704731c3cf4a249fe1))
+* **render:** a power pole keeps 1.5 m from a bus stop's sign post ([ea7066a](https://github.com/rbenzing/SlimCityGame/commit/ea7066a10d7f0d9e57e70c743e1bea49f646195b))
+* **render:** a power wire keeps 1.83 m from every lamp and signal, and a lamp too near hangs on the pole ([f4cc2ca](https://github.com/rbenzing/SlimCityGame/commit/f4cc2cada0f1f67fb6e058810c7ee7eed8f3df4f))
+* **render:** a raised station's stair and lift stand on the ground and land on the footway ([a6cf87c](https://github.com/rbenzing/SlimCityGame/commit/a6cf87cac78c7412341aa2e846b94f4f80b8e166))
+* **render:** a road's ghost shows the parts of the road it previews ([fd7fdb2](https://github.com/rbenzing/SlimCityGame/commit/fd7fdb2e2dffaf3a79af6e023c2a549c594c6792))
+* **render:** a tramway carries its wire, and depot poles stand clear of the trams ([34f1212](https://github.com/rbenzing/SlimCityGame/commit/34f1212687cc7b224dbb08e975efc5e75739fb80))
+* **roads:** a corridor's island, its yellow and its far kerb bend across seams, and shoulder hatching takes its edge line's colour ([ab3c96e](https://github.com/rbenzing/SlimCityGame/commit/ab3c96e279391ede069764ed22d6e21a9af4cda9))
+* **roads:** a corridor's turn bay, median island and crossing follow its lanes ([11bb88f](https://github.com/rbenzing/SlimCityGame/commit/11bb88feb9de3e16bce6b69c97e108ae4c03c2a7))
+* **roads:** a roundabout gets crosswalks, raised splitters, edge lines and lamps ([de612bf](https://github.com/rbenzing/SlimCityGame/commit/de612bfee5ba9720b81ef6647712d3ff665343ee))
+* **roads:** lines that run on: flow arrows in their lanes, dashes through a bend, no stubs or slivers ([527b008](https://github.com/rbenzing/SlimCityGame/commit/527b00824c9d1455a755495310c959220134897b))
+* **ui:** a lens is coloured by what its value means ([afcc416](https://github.com/rbenzing/SlimCityGame/commit/afcc416b0a4b4ae0e7007ba8880ca5188f9b8953))
+
 ## [1.88.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.87.0...slimcity-v1.88.0) (2026-11-14)
 
 
