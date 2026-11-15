@@ -9,6 +9,7 @@
 - Keep every sealed street carrying power from a generator that touches it; a first town needs nothing more. `[R-services-001]`
 - Draw what a powered street carries: a roadside pole line by default, a buried cable with its boxes where the player pays to bury it. `[R-services-039]`
 - Stand a pole behind the kerb and outside the footway; never in a carriageway, a median, a junction tile or a drive. `[R-services-039]`
+- Keep every wire 1.83 m, in any direction, from a lamp or a signal support it is not hung on; a lamp that would stand nearer hangs on the nearest power pole. `[R-services-042]`
 - Carry power along a motorway, a ramp, a bridge deck and a tram guideway with nothing drawn; cross them, and rail, at right angles.
 - Start a strung line or a laid cable at a power station, a substation or a line already live; it serves everything beside it. `[R-services-039]`
 - Charge a cable about eight times a pole line to build and less each month to keep; an overhead line pays for its poles and its trees.
@@ -21,6 +22,9 @@
 | -------- | ----- | ---- | ------ |
 | Street pole, above ground | 10.4 | m | 40 ft pole set 6 ft, [PRE CNS 002](../sources/power-distribution.md#the-pole) |
 | Street pole span | 40 | m | urban 100 to 150 ft, [same](../sources/power-distribution.md#the-pole) |
+| Longest street span | 45.72 (150 ft) | m | the top of that range; an extra pole stands where a slide or a junction would pass it |
+| Wire clear of a lamp or signal support | 1.83 (6 ft), radial | m | [California GO 95, Rule 37, Table 1, Case 10](https://ia.cpuc.ca.gov/GOs/Resmajor/SU10/SU10_GO95_rule_37-Table-1.html), 750 to 22,500 V |
+| Pole-mounted light under the lowest wire | 0.76 (30 in) | m, least | National Grid's street-light standard, citing NESC Table 239 |
 | Open-ground and gravel-road span | 80 | m | rural 250 to 300 ft, [same](../sources/power-distribution.md#the-pole) |
 | Pole behind the kerb face | 0.6 | m, least | [Hawaii DOT rule](../sources/power-distribution.md#where-a-pole-stands) |
 | Wire over a road | 4.7 | m, least | NESC 15.5 ft, [clearances](../sources/power-distribution.md#clearances) |

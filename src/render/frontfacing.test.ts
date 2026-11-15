@@ -14,8 +14,9 @@ import type { StreetLookup } from './frontage';
 
 const catalog = (catalogData as { buildings: BuildingCatalogEntry[] }).buildings;
 const byId = (id: string): BuildingCatalogEntry => catalog.find((e) => e.id === id)!;
-const MIXED = byId('mixed-2');
-const CATALOG_BY_ID = new Map(catalog.map((e) => [e.id, e]));
+/** A residential block of no known kind: the bare windowed box, which no kit dresses. */
+const MIXED: BuildingCatalogEntry = { ...byId('mixed-2'), id: 'plain-block', kind: undefined };
+const CATALOG_BY_ID = new Map([...catalog, MIXED].map((e) => [e.id, e]));
 const STREET_TILE = { vergeM: 2.5, sidewalkM: 3 };
 
 /** A 2x2 at (10, 10): its neighbours on each side are the tiles on rows/columns 9 and 12. */
@@ -37,7 +38,7 @@ const TOWARD: Record<Side, [number, number]> = { N: [0, -1], E: [1, 0], S: [0, 1
 const building = (over: Partial<BuildingInstance> = {}): BuildingInstance =>
   ({
     id: 1,
-    catalogId: 'mixed-2',
+    catalogId: 'plain-block',
     x: X0,
     z: Z0,
     rotation: 0,
@@ -66,9 +67,9 @@ function doorOf(delta: BuildingDelta, entry: BuildingCatalogEntry): THREE.Vector
 }
 
 describe('which bodies are plain', () => {
-  it('names mixed-use alone among the grown kinds, and no placed or kit-owned building', () => {
-    const plain = catalog.filter(isPlainGrownBody).map((e) => e.id);
-    expect(plain.sort()).toEqual(['mixed-1', 'mixed-1-lot2x2', 'mixed-2', 'mixed-3']);
+  it('names no shipped kind, since the kit dresses every one, and no placed building', () => {
+    expect(catalog.filter(isPlainGrownBody)).toEqual([]);
+    expect(isPlainGrownBody(MIXED)).toBe(true);
     expect(isPlainGrownBody({ ...MIXED, zone: undefined })).toBe(false);
   });
 });

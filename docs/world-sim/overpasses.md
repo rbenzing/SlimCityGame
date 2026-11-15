@@ -199,6 +199,15 @@ link the two roads the same way.
   follows its own line, and the approach tiles see it as their neighbour. Its
   girder and parapets come from its own deck, and no pier stands on a crossing
   tile: the span rests on the piers either side.
+- **Structure.** A deck's structure is as wide as the deck the road mesh
+  draws, bays and tapers included. A girder, its parapets and its piers
+  are drawn only where the deck stands its girder's depth plus 0.3 m over
+  the ground (the game's own margin); a lower deck stands on a plain wall
+  from each edge down to the ground under it, with no parapet. Walls and
+  footings follow the ground under them. A parapet runs on round a dead
+  end's cap and down onto the tile a deck lands on. The railway's truss
+  is a Warren truss: two chords, a vertical at each panel point and
+  diagonals between, every member ending at a panel point.
 - **The approach walk** is told which way a road passes over a tile, so the
   road beneath gets no junction arrows, stop lines or bays at a crossing.
 - **Vehicles.** A car on a crossing tile rides the overpass when it is driving

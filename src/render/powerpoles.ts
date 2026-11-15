@@ -103,6 +103,8 @@ export const WIRE_CLEARANCE_M = 4.7;
 export const GUY_REACH_M = 4;
 /** A pole pulled harder than this by its wires, as a share of one wire's pull, is guyed. */
 const GUY_PULL = 0.35;
+/** The longest span between two poles of a street's line, metres: 150 ft, the top of the 100 to 150 ft a town keeps. */
+export const MAX_STREET_SPAN_M = 45.72;
 /** The most tiles a wire spans between two poles. */
 const MAX_SPAN_TILES = 5;
 
@@ -412,12 +414,45 @@ function roadsideSite(
 }
 
 /**
+ * Whether the poles the run would stand either side of an odd tile (the nearest
+ * along it, across a junction if one lies between, each slid along its strip to
+ * clear what stands there) lie further apart than a street's longest span: a
+ * pole then stands on this tile too, rather than the span stretching.
+ */
+function stretchesSpan(w: PowerWorld, x: number, z: number, axis: 'x' | 'z'): boolean {
+  const dx = axis === 'z' ? 1 : 0;
+  const dz = axis === 'x' ? 1 : 0;
+  const reach = (sign: 1 | -1): TileSite | null => {
+    let cx = x;
+    let cz = z;
+    for (let step = 0; step < MAX_SPAN_TILES; step++) {
+      const nx = cx + sign * dx;
+      const nz = cz + sign * dz;
+      if (!joins(w.tileSet, cx, cz, nx, nz)) return null;
+      cx = nx;
+      cz = nz;
+      const key = tileKey(cx, cz);
+      const tile = w.tileSet.get(key);
+      if (!tile || !carriesStreetLine(tile) || w.closed.has(key)) return null;
+      const site = streetSiteAt(w, cx, cz, false);
+      if (site) return site;
+    }
+    return null;
+  };
+  const before = reach(-1);
+  const after = reach(1);
+  if (!before || !after) return false;
+  return Math.hypot(after.x - before.x, after.z - before.z) > MAX_STREET_SPAN_M;
+}
+
+/**
  * The pole the street's line stands on this tile, or null. Every second tile
  * carries one; none stands on a junction or a turn, on a drive, or where the
  * supply runs inside a structure. A drive on a pole's tile moves the pole one
- * tile along.
+ * tile along. An odd tile takes one where the poles either side would otherwise
+ * lie further apart than a street's longest span, unless `fillSpans` is off.
  */
-function streetSiteAt(w: PowerWorld, x: number, z: number): TileSite | null {
+function streetSiteAt(w: PowerWorld, x: number, z: number, fillSpans = true): TileSite | null {
   const key = tileKey(x, z);
   const tile = w.tileSet.get(key);
   if (!tile || !carriesStreetLine(tile) || w.closed.has(key)) return null;
@@ -441,7 +476,7 @@ function streetSiteAt(w: PowerWorld, x: number, z: number): TileSite | null {
       carriesStreetLine(next) &&
       !hasCrossingRoad(w.tileSet, nx, nz) &&
       joins(w.tileSet, x, z, nx, nz);
-    if (!taken) return null;
+    if (!taken && !(fillSpans && stretchesSpan(w, x, z, axis))) return null;
   }
   const side = sideOf(w.tileSet, x, z, axis);
   if (side === null) return null;
@@ -514,8 +549,46 @@ function reachFrom(
   return null;
 }
 
-/** Every pole the street's own line stands in one terrain chunk, with the spans that start there. */
+/** Every pole the street's own line stands in one terrain chunk, with the spans that start there, and the boxes of the cables under it. */
 export function layStreetChunk(w: PowerWorld, chunk: number): PowerLay {
+  const lay = layStreetPoles(w, chunk);
+  const x0 = (chunk % CHUNKS_PER_SIDE) * CHUNK_TILES;
+  const z0 = Math.floor(chunk / CHUNKS_PER_SIDE) * CHUNK_TILES;
+  const boxes = layCableBoxes(w, x0, z0);
+  return boxes.length > 0 ? { ...lay, boxes } : lay;
+}
+
+/** The terrain chunks that hold a road tile. */
+export function roadChunksOf(w: PowerWorld): Set<number> {
+  const chunks = new Set<number>();
+  for (const tile of w.tileSet.values()) {
+    chunks.add(
+      Math.floor(tile.z / CHUNK_TILES) * CHUNKS_PER_SIDE + Math.floor(tile.x / CHUNK_TILES),
+    );
+  }
+  return chunks;
+}
+
+/** The poles and spans the street's own line has in each of `chunks`, without the cables' boxes: what a lamp or a signal keeps its distance from. */
+export function layStreetChunks(w: PowerWorld, chunks: Iterable<number>): Map<number, PowerLay> {
+  const out = new Map<number, PowerLay>();
+  for (const chunk of [...chunks].sort((a, b) => a - b)) out.set(chunk, layStreetPoles(w, chunk));
+  return out;
+}
+
+/** Every pole the street's own line stands over the whole map, with every span. */
+export function layStreetAll(w: PowerWorld): PowerLay {
+  const poles: PoleStand[] = [];
+  const spans: WireSpan[] = [];
+  for (const lay of layStreetChunks(w, roadChunksOf(w)).values()) {
+    poles.push(...lay.poles);
+    spans.push(...lay.spans);
+  }
+  return { poles, spans };
+}
+
+/** The poles and spans of one terrain chunk. */
+function layStreetPoles(w: PowerWorld, chunk: number): PowerLay {
   const x0 = (chunk % CHUNKS_PER_SIDE) * CHUNK_TILES;
   const z0 = Math.floor(chunk / CHUNKS_PER_SIDE) * CHUNK_TILES;
   const sites = new Map<number, TileSite | null>();
@@ -566,8 +639,7 @@ export function layStreetChunk(w: PowerWorld, chunk: number): PowerLay {
       }
     }
   }
-  const boxes = layCableBoxes(w, x0, z0);
-  return boxes.length > 0 ? { poles, spans, boxes } : { poles, spans };
+  return { poles, spans };
 }
 
 /** A junction box's body: along its door face, deep, and high, metres. */

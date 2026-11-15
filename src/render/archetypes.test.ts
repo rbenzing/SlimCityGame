@@ -125,7 +125,15 @@ describe('archetypeFor', () => {
       'rooftopUnit',
       'roofHatch',
     ]);
-    const office = ['lobbyPortal', 'ribbonBand', 'rooftopUnit', 'roofHatch'];
+    const office = [
+      'lobbyPortal',
+      'lobbyDoor',
+      'lobbyCanopy',
+      'lobbyFrame',
+      'ribbonBand',
+      'rooftopUnit',
+      'roofHatch',
+    ];
     expect(partsFor(com('office', 1))).toEqual(office);
     expect(partsFor(com('office', 2))).toEqual(office);
     expect(partsFor(com('hotel'))).toEqual([
@@ -141,6 +149,9 @@ describe('archetypeFor', () => {
     const tower = entry({ category: 'com', kind: 'office', level: 3 });
     expect(partsFor(tower)).toEqual([
       'lobbyPortal',
+      'lobbyDoor',
+      'lobbyCanopy',
+      'lobbyFrame',
       'ribbonBand',
       'roofScreen',
       'coolingTower',
@@ -476,6 +487,10 @@ describe('the apartment kit', () => {
       'boxBay',
     ]);
     expect(partsFor(res('midrise', ZoneType.ResHigh))).toEqual([
+      'lobbyPortal',
+      'lobbyDoor',
+      'lobbyCanopy',
+      'lobbyFrame',
       'bulkhead',
       'storefrontBand',
       'brickPier',
@@ -489,6 +504,9 @@ describe('the apartment kit', () => {
     ]);
     expect(partsFor(res('tower', ZoneType.ResHigh))).toEqual([
       'lobbyPortal',
+      'lobbyDoor',
+      'lobbyCanopy',
+      'lobbyFrame',
       'bulkhead',
       'storefrontBand',
       'brickPier',
@@ -496,6 +514,16 @@ describe('the apartment kit', () => {
       'balconyGuard',
       'parapetBand',
       'penthouse',
+    ]);
+  });
+
+  it('dresses a mixed-use block as a shop front over its ground floor, with a glazed door under a canopy', () => {
+    expect(partsFor(res('mixed', ZoneType.ResHigh))).toEqual([
+      'awning',
+      'signageBand',
+      'cornice',
+      'lobbyDoor',
+      'lobbyCanopy',
     ]);
   });
 

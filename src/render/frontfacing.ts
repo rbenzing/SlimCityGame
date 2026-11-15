@@ -17,7 +17,7 @@ const BEHIND: Readonly<Record<Side, Side>> = { N: 'S', E: 'W', S: 'N', W: 'E' };
 
 /**
  * A zone-grown body drawn as the bare windowed box: no house lot, no farm and
- * no kit parts (mixed-use, and a home or a block of no known kind). A placed
+ * no kit parts (a home or a block of no known kind). A placed
  * building has no zone, and a kit keeps the street side its own kit declares.
  */
 export function isPlainGrownBody(entry: BuildingCatalogEntry): boolean {

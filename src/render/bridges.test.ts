@@ -19,8 +19,8 @@ import {
   structureHalfWidth,
   type BridgeDeckTile,
 } from './bridges';
-import { bridgeStyleFor } from '../shared/bridgestyle';
-import { carriagewayHalfWidthMeters, curbWidthMeters } from './roadsmesh';
+import { bridgeStyleFor, GIRDER_DEPTH_M } from '../shared/bridgestyle';
+import { carriagewayHalfWidthMeters, curbWidthMeters, ROAD_Y_OFFSET } from './roadsmesh';
 
 function deckTile(
   x: number,
@@ -259,12 +259,11 @@ describe('BridgeRenderer', () => {
 
   it('leaves a deck lying on the ground without piers', () => {
     const scene = new THREE.Scene();
-    const renderer = new BridgeRenderer(scene, flatDeckAt);
+    const renderer = new BridgeRenderer(scene, () => 0);
     renderer.rebuild([{ ...deckTile(0, 0), deckY: 0, groundY: 0 }]);
-    // Merged girder + parapets only; nothing instanced, since piers and
-    // footings are the only instanced parts a beam span has.
+    // A deck on the ground has no structure to draw: no piers, girder or parapet.
     expect(instancedIn(scene)).toHaveLength(0);
-    expect(mergedIn(scene)).toHaveLength(2);
+    expect(mergedIn(scene)).toHaveLength(0);
     renderer.dispose();
   });
 
@@ -372,5 +371,216 @@ describe('BridgeRenderer — an approach meeting its overpass', () => {
       expect(Math.min(...vertexYs(mesh))).toBeGreaterThan(5);
     }
     renderer.dispose();
+  });
+});
+
+function verticesOf(mesh: THREE.Mesh): THREE.Vector3[] {
+  const position = mesh.geometry.getAttribute('position');
+  return Array.from({ length: position.count }, (_, i) =>
+    new THREE.Vector3().fromBufferAttribute(position, i),
+  );
+}
+
+function allVertices(scene: THREE.Scene): THREE.Vector3[] {
+  return mergedIn(scene).flatMap(verticesOf);
+}
+
+describe('BridgeRenderer — a deck low over the ground stands on fill', () => {
+  const beamDepth = GIRDER_DEPTH_M.beam;
+  const flatGround = (): number => 0;
+  const build = (
+    tiles: BridgeDeckTile[],
+    groundAt: (wx: number, wz: number) => number = flatGround,
+  ): THREE.Scene => {
+    const scene = new THREE.Scene();
+    new BridgeRenderer(scene, () => tiles[0]!.deckY, undefined, groundAt).rebuild(tiles);
+    return scene;
+  };
+  const low = (deckY: number): BridgeDeckTile => ({ ...deckTile(1, 1), deckY, groundY: 0 });
+
+  it('draws no girder and no parapet for a deck lifted 0.56 m', () => {
+    const scene = build([low(0.56), { ...low(0.56), z: 2 }]);
+    const ys = allVertices(scene).map((v) => v.y);
+    expect(ys.length).toBeGreaterThan(0);
+    // Nothing stands above the deck's own surface, and nothing is sunk a girder deep.
+    expect(Math.max(...ys)).toBeLessThanOrEqual(0.56 + ROAD_Y_OFFSET + 1e-6);
+    expect(Math.min(...ys)).toBeGreaterThan(-0.3);
+    expect(Math.min(...ys)).toBeLessThanOrEqual(1e-6);
+  });
+
+  it('hangs a wall from each edge of the deck, no wider than the deck', () => {
+    const scene = build([low(0.56), { ...low(0.56), z: 2 }]);
+    const tile = low(0.56);
+    const edge = carriagewayHalfWidthMeters(tile.tier) + curbWidthMeters(tile.tier);
+    const cx = (tile.x + 0.5) * TILE_METERS;
+    for (const v of allVertices(scene)) {
+      expect(Math.abs(v.x - cx)).toBeLessThanOrEqual(edge + 1e-6);
+    }
+  });
+
+  it('draws a girder once the deck stands its depth plus 0.3 m above the ground', () => {
+    const need = beamDepth + 0.3;
+    const under = allVertices(build([low(need - 0.01)])).map((v) => v.y);
+    expect(Math.max(...under)).toBeLessThanOrEqual(need - 0.01 + ROAD_Y_OFFSET + 1e-6);
+    const over = allVertices(build([low(need + 0.01)])).map((v) => v.y);
+    // A girder hangs its full depth and a parapet stands above the deck.
+    expect(Math.min(...over)).toBeLessThan(need + 0.01 + ROAD_Y_OFFSET - beamDepth + 1e-6);
+    expect(Math.max(...over)).toBeGreaterThan(need + 0.01 + ROAD_Y_OFFSET + 0.5);
+  });
+
+  it('follows the ground under each end of every wall on a slope', () => {
+    const ground = (wx: number, wz: number): number => 4 + 0.02 * wx + 0.01 * wz;
+    // Stands between 0.4 m and 0.7 m over the ground the length of the run.
+    const deckY = 5.3;
+    const tiles: BridgeDeckTile[] = [1, 2, 3].map((z) => ({
+      ...deckTile(1, z),
+      deckY,
+      groundY: ground(30, 50),
+    }));
+    const scene = build(tiles, ground);
+    const wall = allVertices(scene);
+    expect(wall.length).toBeGreaterThan(0);
+    for (const v of wall) {
+      expect(v.y).toBeLessThanOrEqual(deckY + ROAD_Y_OFFSET + 1e-6);
+      // Every vertex is on the deck or reaches down to the terrain under it.
+      if (v.y < deckY + ROAD_Y_OFFSET - 1e-6) {
+        expect(v.y).toBeLessThanOrEqual(ground(v.x, v.z) + 1e-6);
+        expect(v.y).toBeGreaterThan(ground(v.x, v.z) - 0.4);
+      }
+    }
+  });
+
+  it('seats a pier footing on a slope so no edge of it floats', () => {
+    const ground = (wx: number, wz: number): number => 0.06 * wx + 0.04 * wz;
+    // (3, 0) stands on the pier cadence.
+    const pier = { ...deckTile(3, 0), deckY: 12, groundY: ground(70, 10) };
+    expect(isPierTile(3, 0)).toBe(true);
+    const scene = new THREE.Scene();
+    new BridgeRenderer(scene, () => 12, undefined, ground).rebuild([pier]);
+    const [columns, footings] = instancedIn(scene);
+    const read = (mesh: THREE.InstancedMesh): { bottom: number; top: number; half: number } => {
+      const m = new THREE.Matrix4();
+      const p = new THREE.Vector3();
+      const q = new THREE.Quaternion();
+      const s = new THREE.Vector3();
+      mesh.getMatrixAt(0, m);
+      m.decompose(p, q, s);
+      return { bottom: p.y - s.y / 2, top: p.y + s.y / 2, half: s.x / 2 };
+    };
+    const foot = read(footings!);
+    const corners = [-1, 1].flatMap((dx) =>
+      [-1, 1].map((dz) => ground(70 + dx * foot.half, 10 + dz * foot.half)),
+    );
+    expect(foot.bottom).toBeLessThanOrEqual(Math.min(...corners) + 1e-4);
+    expect(foot.top).toBeGreaterThanOrEqual(Math.max(...corners) - 1e-4);
+    // The column stands on the footing and stops at the girder's underside.
+    const col = read(columns!);
+    expect(col.bottom).toBeLessThanOrEqual(foot.top + 1e-4);
+    expect(col.top).toBeLessThanOrEqual(12 + ROAD_Y_OFFSET - beamDepth + 1e-6);
+  });
+});
+
+describe('BridgeRenderer — the parapet runs the deck’s whole length', () => {
+  const zs = (mesh: THREE.Mesh): number[] => verticesOf(mesh).map((v) => v.z);
+
+  it('carries on down the slope into the ground tile the deck lands on', () => {
+    const scene = new THREE.Scene();
+    // One deck tile whose road runs on at grade at both ends.
+    new BridgeRenderer(scene, flatDeckAt).rebuild([deckTile(1, 1)]);
+    const parapet = zs(mergedIn(scene)[1]!);
+    const centre = 1.5 * TILE_METERS;
+    expect(Math.min(...parapet)).toBeLessThanOrEqual(centre - TILE_METERS + 1e-6);
+    expect(Math.max(...parapet)).toBeGreaterThanOrEqual(centre + TILE_METERS - 1e-6);
+  });
+
+  it('runs round the cap of a dead end', () => {
+    const scene = new THREE.Scene();
+    // The road joins only to the south, so it ends at the tile's north edge.
+    const end = { ...deckTile(1, 1), mask: 4 };
+    new BridgeRenderer(scene, flatDeckAt).rebuild([end, { ...deckTile(1, 2), mask: 1 | 4 }]);
+    const half = structureHalfWidth(end.tier, bridgeStyleFor(end.tier));
+    const parapet = verticesOf(mergedIn(scene)[1]!);
+    const edge = 1 * TILE_METERS;
+    const north = parapet.filter((v) => v.z < edge - 1);
+    expect(north.length).toBeGreaterThan(0);
+    // It reaches as far past the tile's edge as the cap does, and closes across the end.
+    expect(Math.min(...north.map((v) => v.z))).toBeLessThanOrEqual(edge - half + 0.01);
+    const cx = 1.5 * TILE_METERS;
+    expect(north.some((v) => Math.abs(v.x - cx) < 1 && v.z < edge - half + 0.5)).toBe(true);
+  });
+});
+
+describe('BridgeRenderer — a road at grade has no structure', () => {
+  it('draws nothing for a tile that is not a deck', () => {
+    const scene = new THREE.Scene();
+    new BridgeRenderer(scene, flatDeckAt).rebuild([]);
+    expect(scene.children).toHaveLength(0);
+  });
+});
+
+describe('BridgeRenderer — the rail truss is a real truss', () => {
+  const rail = [0, 1, 2].map((z) => deckTile(0, z, RoadTier.RailTrack));
+  const members = (): { a: THREE.Vector3; b: THREE.Vector3 }[] => {
+    const scene = new THREE.Scene();
+    new BridgeRenderer(scene, flatDeckAt).rebuild(rail);
+    const out: { a: THREE.Vector3; b: THREE.Vector3 }[] = [];
+    for (const mesh of instancedIn(scene)) {
+      if (mesh.count === 0) continue;
+      for (let i = 0; i < mesh.count; i++) {
+        const m = new THREE.Matrix4();
+        const p = new THREE.Vector3();
+        const q = new THREE.Quaternion();
+        const s = new THREE.Vector3();
+        mesh.getMatrixAt(i, m);
+        m.decompose(p, q, s);
+        const axis = s.x >= s.y && s.x >= s.z ? 0 : s.y >= s.z ? 1 : 2;
+        const dir = new THREE.Vector3(axis === 0 ? 1 : 0, axis === 1 ? 1 : 0, axis === 2 ? 1 : 0)
+          .applyQuaternion(q)
+          .multiplyScalar(s.getComponent(axis) / 2);
+        out.push({ a: p.clone().sub(dir), b: p.clone().add(dir) });
+      }
+    }
+    // Piers and footings are boxes under the deck; the truss stands above it.
+    return out.filter((m) => Math.min(m.a.y, m.b.y) >= 8 + ROAD_Y_OFFSET - 1e-6);
+  };
+
+  it('ends every web member and the brace on a chord at a panel point', () => {
+    const all = members();
+    const run = (m: { a: THREE.Vector3; b: THREE.Vector3 }): number => Math.abs(m.b.z - m.a.z);
+    const chords = all.filter((m) => Math.abs(m.a.y - m.b.y) < 1e-6 && run(m) > 1);
+    expect(chords.length).toBeGreaterThanOrEqual(4);
+    const levels = [...new Set(chords.map((c) => c.a.y.toFixed(4)))].map(Number);
+    expect(levels).toHaveLength(2);
+    const sides = [...new Set(chords.map((c) => c.a.x.toFixed(4)))].map(Number);
+    expect(sides).toHaveLength(2);
+    const zMin = Math.min(...chords.map((c) => Math.min(c.a.z, c.b.z)));
+    const zMax = Math.max(...chords.map((c) => Math.max(c.a.z, c.b.z)));
+    expect(zMax - zMin).toBeGreaterThanOrEqual(3 * TILE_METERS - 1e-6);
+
+    const web = all.filter((m) => !chords.includes(m));
+    const diagonals = web.filter((m) => run(m) > 1e-6 && Math.abs(m.b.y - m.a.y) > 1e-6);
+    expect(diagonals.length).toBeGreaterThan(0);
+    const bay = run(diagonals[0]!);
+    for (const m of web) {
+      for (const end of [m.a, m.b]) {
+        expect(levels.some((y) => Math.abs(y - end.y) < 1e-4)).toBe(true);
+        expect(sides.some((x) => Math.abs(x - end.x) < 1e-4) || Math.abs(m.a.x - m.b.x) > 1).toBe(
+          true,
+        );
+        expect(end.z).toBeGreaterThanOrEqual(zMin - 1e-4);
+        expect(end.z).toBeLessThanOrEqual(zMax + 1e-4);
+        const panels = (end.z - zMin) / bay;
+        expect(Math.abs(panels - Math.round(panels))).toBeLessThan(1e-4);
+      }
+    }
+    // A vertical stands at every panel point, so each diagonal's ends are met.
+    const verticals = web.filter((m) => run(m) < 1e-6 && Math.abs(m.b.y - m.a.y) > 1);
+    for (const d of diagonals) {
+      for (const end of [d.a, d.b]) {
+        expect(
+          verticals.some((v) => Math.abs(v.a.z - end.z) < 1e-4 && Math.abs(v.a.x - end.x) < 1e-4),
+        ).toBe(true);
+      }
+    }
   });
 });

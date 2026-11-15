@@ -225,6 +225,13 @@ for (const [name, tz] of [
   await page.waitForTimeout(800);
   await cleanShot(page, `${out}/${name}-junction.png`);
 }
+// The avenue's lights hang on its power poles, so they are shot lit.
+await call(() => window.__slimcity.setDayT(0.96));
+await page.waitForTimeout(2500);
+await cam(X + 8, Z + 6, 60, 0.6, 0.55);
+await page.waitForTimeout(800);
+await cleanShot(page, `${out}/avenue-night.png`);
+await call(() => window.__slimcity.setDayT(0.5));
 await cam(X + 14, Z + 14, 400, 0.55, 0.85);
 await page.waitForTimeout(800);
 await cleanShot(page, `${out}/wide-400m.png`);

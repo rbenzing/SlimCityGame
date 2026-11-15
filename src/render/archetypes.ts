@@ -81,6 +81,9 @@ export type BuildingPart =
   | 'priceSign'
   | 'signPole'
   | 'lobbyPortal'
+  | 'lobbyDoor'
+  | 'lobbyCanopy'
+  | 'lobbyFrame'
   | 'roofScreen'
   | 'coolingTower'
   | 'porteCochere'
@@ -245,6 +248,14 @@ export function archetypeFor(entry: BuildingCatalogEntry): BuildingArchetype {
   return 'plain';
 }
 
+/** A lobby: the lit glazed bay, the pair of door leaves, the canopy over them and the frame round the glass. */
+const LOBBY_PARTS: readonly BuildingPart[] = [
+  'lobbyPortal',
+  'lobbyDoor',
+  'lobbyCanopy',
+  'lobbyFrame',
+];
+
 const PARTS: Readonly<Record<BuildingArchetype, readonly BuildingPart[]>> = {
   workshop: ['rollUpDoors'],
   warehouse: ['loadingDock', 'rollUpDoors'],
@@ -268,7 +279,7 @@ const PARTS: Readonly<Record<BuildingArchetype, readonly BuildingPart[]>> = {
     'rooftopUnit',
     'roofHatch',
   ],
-  office: ['lobbyPortal', 'ribbonBand', 'rooftopUnit', 'roofHatch'],
+  office: [...LOBBY_PARTS, 'ribbonBand', 'rooftopUnit', 'roofHatch'],
   hotel: ['porteCochere', 'baseBand', 'signageBand', 'rooftopUnit', 'roofHatch'],
   house: [],
   apartment: [],
@@ -432,7 +443,10 @@ const APARTMENT_PARTS: Readonly<Record<string, readonly BuildingPart[]>> = {
     'patio',
     'boxBay',
   ],
+  /** A mixed-use block: a shop's awnings, sign band and cornice over its ground floor, a glazed door under a canopy. */
+  mixed: ['awning', 'signageBand', 'cornice', 'lobbyDoor', 'lobbyCanopy'],
   midrise: [
+    ...LOBBY_PARTS,
     ...PODIUM_BAND_PARTS,
     'boxBay',
     'balconySlab',
@@ -443,7 +457,7 @@ const APARTMENT_PARTS: Readonly<Record<string, readonly BuildingPart[]>> = {
     'roofHatch',
   ],
   tower: [
-    'lobbyPortal',
+    ...LOBBY_PARTS,
     ...PODIUM_BAND_PARTS,
     'balconySlab',
     'balconyGuard',
@@ -454,7 +468,7 @@ const APARTMENT_PARTS: Readonly<Record<string, readonly BuildingPart[]>> = {
 
 /** An office tower, the third level, stands a screened cooling tower on its roof in place of rooftop units. */
 const OFFICE_TOWER_PARTS: readonly BuildingPart[] = [
-  'lobbyPortal',
+  ...LOBBY_PARTS,
   'ribbonBand',
   'roofScreen',
   'coolingTower',

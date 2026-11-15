@@ -161,7 +161,9 @@ Back to [the index](../GROUND-TRUTHS.md).
   wide run shorter than its class's taper closes over the length it has, so
   its kerb never steps where it leaves a junction. A ramp node carries its
   auxiliary lane in full only over the half of the tile the ramp joins over,
-  and bends to the plain motorway over the other half. —
+  and bends to the plain motorway over the other half. A corridor's island
+  and the lines beside it bend with it across a seam. A lane drop's shoulder
+  hatching takes its edge line's colour (MUTCD 3B.25 ¶07–08). —
   [road-model.md](../world-sim/road-model/README.md); `narrowingAhead` in
   `src/shared/approachzone.ts`, `roadTileVertices` in `src/render/roadsmesh.ts`
 - [R-roads-065] A road tapers only into more of itself. A lane reduction happens away from a

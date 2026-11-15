@@ -874,8 +874,10 @@ export class ClientGridMirror {
           x,
           z,
           tier,
-          // The tile's own share of the road: on a corridor, the half it carries.
-          profile: this.ownProfileAt(x, z) ?? presetProfileForTier(tier),
+          // The section the road mesh lays on this tile (a turn pocket or taper
+          // included), so the structure is as wide as the deck it carries; on a
+          // corridor, the half the tile carries.
+          profile: this.drawnProfileAt(x, z) ?? presetProfileForTier(tier),
           mask: this.roadMask[i] ?? 0,
           deckY: this.deckHeightAt(x, z),
           groundY: this.height[i] ?? 0,

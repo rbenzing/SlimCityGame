@@ -40,6 +40,7 @@ import {
   NO_STREETS,
   type Side,
 } from './frontage';
+import { garageFor, garageTopM } from '../shared/garage';
 import { framedBodyPlacement } from './houselot';
 import type { ParcelFrame } from '../shared/types';
 import {
@@ -128,6 +129,9 @@ const PART_COLOR: Readonly<Record<BuildingPart, number>> = {
   priceSign: litHex('whiteBrick'),
   signPole: materialHex('metalPlates'),
   lobbyPortal: litHex('whiteBrick'),
+  lobbyDoor: materialHex('metalPlates'),
+  lobbyCanopy: materialHex('metalPlates'),
+  lobbyFrame: materialHex('metalPlates'),
   roofScreen: materialHex('metalPlates'),
   coolingTower: materialHex('metalPlates'),
   porteCochere: materialHex('whiteBrick'),
@@ -524,14 +528,32 @@ export const PRICE_SIGN_HEIGHT_M = 1.5;
 export const PRICE_SIGN_POLE_M = 0.3;
 const KIOSK_AWNING_WIDTH_M = 4;
 
-/** An office's lobby portal, two storeys tall, its ribbon bands, a hotel's porte-cochere, and what stands on a roof. */
+/**
+ * The lobby: a lit glazed bay 4 m wide and 4.5 m tall projecting 1.5 m, one tall
+ * storey. Its glass stands 1.4 m out and the trim (a frame round the glass, a
+ * pair of 0.9 m by 2.1 m door leaves at its foot, a canopy over them) reaches
+ * the full 1.5 m. The canopy is the game's own: 0.3 m thick, 4.4 m wide, 0.5 m
+ * deep, its underside 2.6 m up, with glass above it to the bay's head.
+ */
 export const LOBBY_WIDTH_M = 4;
-export const LOBBY_HEIGHT_M = 2 * FLOOR_HEIGHT_METERS;
+export const LOBBY_HEIGHT_M = 4.5;
 export const LOBBY_PROJECT_M = 1.5;
+export const LOBBY_TRIM_M = 0.1;
+export const LOBBY_GLASS_DEPTH_M = LOBBY_PROJECT_M - LOBBY_TRIM_M;
+export const LOBBY_FRAME_M = 0.15;
+export const LOBBY_LEAF_WIDTH_M = 0.9;
+export const LOBBY_LEAF_HEIGHT_M = 2.1;
+/** Without a lobby bay (a shopfront) a leaf stands this far off the wall. */
+export const LOBBY_LEAF_PROUD_M = 0.3;
+export const LOBBY_CANOPY_WIDTH_M = 4.4;
+export const LOBBY_CANOPY_DEPTH_M = 0.5;
+export const LOBBY_CANOPY_THICKNESS_M = 0.3;
+export const LOBBY_CANOPY_UNDERSIDE_M = 2.6;
+/** An office's ribbon bands, a hotel's porte-cochere, and what stands on a roof. */
 /** A precast band at every floor line round an office; the tower's are dark spandrel, 1.0 m. */
 export const RIBBON_BAND_M = 1.2;
 export const SPANDREL_BAND_M = 1;
-const RIBBON_BAND_PROUD_M = 0.1;
+export const RIBBON_BAND_PROUD_M = 0.1;
 export const PORTE_COCHERE_WIDTH_M = 6.1;
 export const PORTE_COCHERE_DEPTH_M = 6;
 export const PORTE_COCHERE_THICKNESS_M = 0.6;
@@ -849,6 +871,8 @@ export interface KitLot {
   lane: KitLane | null;
   /** Ground a stall, aisle, berth, walk, yard or the lane is laid on, which a part on the ground must not stand on; planted islands are left to them. */
   taken: LocalRect[];
+  /** A plant's tank-farm ground behind the body, also in `taken`: the one taken ground the farm's own parts stand on. */
+  farm: LocalRect | null;
 }
 
 /** The side across the footprint from `side`: the back of a building that fronts `side`. */
@@ -1680,8 +1704,95 @@ function chemicalYard(r: Rear): PartPlacement[] {
     }
   }
 
+  // The flare stands on the farm's paving at its far corner from the drive, piped to the nearest tank by a
+  // run on a rack over the tank's top. A lot with no farm, or none at all, keeps it at the lot's rear corner,
+  // or past the bund's corner where the lot is unbounded.
+  const span = facadeSpan(r.baseBox, r.back);
+  const sides = room.high >= room.low ? [1, -1] : [-1, 1];
+  const flareIn = PLANT_GAP_M + FLARE_DIAMETER_M / 2;
+  const flareAt = (a: number, o: number): PartPlacement[] => [
+    atRear(
+      r,
+      'flare',
+      a,
+      o,
+      FLARE_DIAMETER_M,
+      FLARE_DIAMETER_M,
+      FLARE_HEIGHT_M,
+      FLARE_HEIGHT_M / 2,
+    ),
+    atRear(
+      r,
+      'flareTip',
+      a,
+      o,
+      FLARE_DIAMETER_M,
+      FLARE_DIAMETER_M,
+      FLARE_TIP_M,
+      FLARE_HEIGHT_M + FLARE_TIP_M / 2,
+    ),
+  ];
+  const onFarm = r.lot?.farm != null;
+  const farmOut = Math.min(farmDepth, room.out);
+  const flareSites: (readonly [number, number])[] = onFarm
+    ? sides.map((k) => [k * (span / 2 - flareIn), farmOut - flareIn])
+    : Number.isFinite(room.out)
+      ? sides.map((k) => [k * ((k > 0 ? room.high : room.low) - flareIn), room.out - flareIn])
+      : [[half + flareIn, farmDepth + margin + BUND_THICKNESS_M + flareIn]];
+  const awayFromDrive = (site: readonly [number, number]): number => {
+    if (!r.lot) return 0;
+    const at = atRear(r, 'flare', site[0], site[1], 0, 0, 0, 0).offset;
+    const cut = r.lot.curbCut;
+    return -Math.hypot(at[0] - (cut.x0 + cut.x1) / 2, at[2] - (cut.z0 + cut.z1) / 2);
+  };
+  const flareOrder = onFarm
+    ? [...flareSites].sort((a, b) => awayFromDrive(a) - awayFromDrive(b))
+    : flareSites;
+  firstClear(
+    out,
+    r.lot,
+    flareOrder.map(([a, o]) => flareAt(a, o)),
+  );
+  const flare = out.find((p) => p.part === 'flare');
+  const flareSite = flare
+    ? flareOrder.find(([a, o]) => {
+        const at = flareAt(a, o)[0]!.offset;
+        return at[0] === flare.offset[0] && at[2] === flare.offset[2];
+      })
+    : undefined;
+  if (onFarm && flareSite) {
+    // The run leaves the flare's foot along the wall and ends over the middle of the end tank.
+    const k = Math.sign(flareSite[0]);
+    const tankAt = k * TANK_SPACING_M * ((TANK_COUNT - 1) / 2);
+    out.push(
+      atRear(
+        r,
+        'pipeRack',
+        (flareSite[0] + tankAt) / 2,
+        flareSite[1],
+        Math.abs(flareSite[0] - tankAt),
+        RACK_BEAM_M,
+        RACK_BEAM_M,
+        RACK_CLEAR_M + RACK_BEAM_M / 2,
+      ),
+    );
+  }
+  const flareClear = (p: PartPlacement | readonly PartPlacement[]): boolean => {
+    const list = 'part' in p ? [p] : p;
+    return !flare || !list.some((q) => rectsOverlap(placementBounds(q), placementBounds(flare)));
+  };
+  /** The distances along the wall a piece may stand at on side `k`: its own, or past the flare where the flare stands on that side. */
+  const alongsOf = (k: number, own: number, size: number): number[] => {
+    const at = flareSite ? Math.abs(flareSite[0]) : 0;
+    const past = at + FLARE_DIAMETER_M / 2 + PLANT_GAP_M + size / 2;
+    return [own, ...(flareSite && k === Math.sign(flareSite[0]) && past > own ? [past] : [])].map(
+      (a) => k * a,
+    );
+  };
+
   // A bullet and a process column take the ground either side of the farm, on whichever side the lot leaves room.
-  const clearOf = (p: PartPlacement | readonly PartPlacement[]): boolean => standsFree(p, r.lot);
+  const clearOf = (p: PartPlacement | readonly PartPlacement[]): boolean =>
+    standsFree(p, r.lot) && flareClear(p);
   const bulletPieces = (along: number): PartPlacement[] => {
     const centre = BULLET_DIAMETER_M / 2 + BULLET_SADDLE_M + PLANT_GAP_M;
     const alongX = isAlongX(r.back);
@@ -1733,47 +1844,15 @@ function chemicalYard(r: Rear): PartPlacement[] {
     );
   const bulletAlong = half + PLANT_GAP_M + BULLET_LENGTH_M / 2;
   const columnAlong = half + PLANT_GAP_M + COLUMN_DIAMETER_M / 2;
-  const sides = room.high >= room.low ? [1, -1] : [-1, 1];
-  const bulletSide = sides.find((k) => clearOf(bulletPieces(k * bulletAlong)));
-  if (bulletSide) out.push(...bulletPieces(bulletSide * bulletAlong));
-  const columnSide = [-(bulletSide ?? -1), bulletSide ?? 1].find((k) =>
-    clearOf(columnAt(k * columnAlong)),
-  );
-  if (columnSide) out.push(columnAt(columnSide * columnAlong));
-
-  // The flare at the lot's rear corner, or past the bund's corner where the lot is unbounded.
-  const span = facadeSpan(r.baseBox, r.back);
-  const flareIn = PLANT_GAP_M + FLARE_DIAMETER_M / 2;
-  const flareAt = (a: number, o: number): PartPlacement[] => [
-    atRear(
-      r,
-      'flare',
-      a,
-      o,
-      FLARE_DIAMETER_M,
-      FLARE_DIAMETER_M,
-      FLARE_HEIGHT_M,
-      FLARE_HEIGHT_M / 2,
-    ),
-    atRear(
-      r,
-      'flareTip',
-      a,
-      o,
-      FLARE_DIAMETER_M,
-      FLARE_DIAMETER_M,
-      FLARE_TIP_M,
-      FLARE_HEIGHT_M + FLARE_TIP_M / 2,
-    ),
-  ];
-  const flareSites: (readonly [number, number])[] = Number.isFinite(room.out)
-    ? sides.map((k) => [k * ((k > 0 ? room.high : room.low) - flareIn), room.out - flareIn])
-    : [[half + flareIn, farmDepth + margin + BUND_THICKNESS_M + flareIn]];
-  firstClear(
-    out,
-    r.lot,
-    flareSites.map(([a, o]) => flareAt(a, o)),
-  );
+  const bulletAt = sides
+    .flatMap((k) => alongsOf(k, bulletAlong, BULLET_LENGTH_M))
+    .find((a) => clearOf(bulletPieces(a)));
+  if (bulletAt !== undefined) out.push(...bulletPieces(bulletAt));
+  const bulletSide = bulletAt === undefined ? undefined : Math.sign(bulletAt);
+  const columnStands = [-(bulletSide ?? -1), bulletSide ?? 1]
+    .flatMap((k) => alongsOf(k, columnAlong, COLUMN_DIAMETER_M))
+    .find((a) => clearOf(columnAt(a)));
+  if (columnStands !== undefined) out.push(columnAt(columnStands));
 
   // The cooling tower: beyond the column along the back wall, or beside either end wall astride the back wall's plane.
   const [ctw, cth, ctd] = CHEM_COOLING_TOWER_SIZE_M;
@@ -2603,6 +2682,123 @@ function mailKiosk(b: Block, doorHalf: number, prefer: 1 | -1): PartPlacement[] 
   return free ? [free] : [];
 }
 
+/** The lit glazed bay of a lobby: 4 m wide, 4.5 m tall, its glass LOBBY_GLASS_DEPTH_M out from the wall. */
+function lobbyGlazing(box: SetbackBox, side: Side): PartPlacement {
+  return againstFacade(
+    'lobbyPortal',
+    box,
+    side,
+    LOBBY_WIDTH_M,
+    LOBBY_GLASS_DEPTH_M,
+    LOBBY_HEIGHT_M,
+    LOBBY_HEIGHT_M / 2,
+  );
+}
+
+/** A part of the lobby's front trim: LOBBY_TRIM_M thick, its face at the lobby's full projection. */
+function lobbyTrim(
+  part: BuildingPart,
+  box: SetbackBox,
+  side: Side,
+  along: number,
+  span: number,
+  height: number,
+  centreY: number,
+  depth = LOBBY_TRIM_M,
+): PartPlacement {
+  return onSide(
+    part,
+    side,
+    along,
+    halfDepthTo(box, side) + LOBBY_PROJECT_M - depth / 2,
+    span,
+    depth,
+    height,
+    centreY,
+  );
+}
+
+/**
+ * The pair of door leaves, side by side about the face's middle: at the lobby's
+ * front, or against the wall where there is no lobby bay (a mixed-use shopfront).
+ */
+function lobbyLeaves(box: SetbackBox, side: Side, bay: boolean): PartPlacement[] {
+  return [-1, 1].map((k) =>
+    bay
+      ? lobbyTrim(
+          'lobbyDoor',
+          box,
+          side,
+          (k * LOBBY_LEAF_WIDTH_M) / 2,
+          LOBBY_LEAF_WIDTH_M,
+          LOBBY_LEAF_HEIGHT_M,
+          LOBBY_LEAF_HEIGHT_M / 2,
+        )
+      : againstFacade(
+          'lobbyDoor',
+          box,
+          side,
+          LOBBY_LEAF_WIDTH_M,
+          LOBBY_LEAF_PROUD_M,
+          LOBBY_LEAF_HEIGHT_M,
+          LOBBY_LEAF_HEIGHT_M / 2,
+          (k * LOBBY_LEAF_WIDTH_M) / 2,
+        ),
+  );
+}
+
+/** The canopy over the doors: a slab across the lobby's front, or one reaching the full projection from the wall. */
+function lobbyCanopy(box: SetbackBox, side: Side, bay: boolean): PartPlacement {
+  const centreY = LOBBY_CANOPY_UNDERSIDE_M + LOBBY_CANOPY_THICKNESS_M / 2;
+  return bay
+    ? lobbyTrim(
+        'lobbyCanopy',
+        box,
+        side,
+        0,
+        LOBBY_CANOPY_WIDTH_M,
+        LOBBY_CANOPY_THICKNESS_M,
+        centreY,
+        LOBBY_CANOPY_DEPTH_M,
+      )
+    : againstFacade(
+        'lobbyCanopy',
+        box,
+        side,
+        LOBBY_CANOPY_WIDTH_M,
+        LOBBY_PROJECT_M,
+        LOBBY_CANOPY_THICKNESS_M,
+        centreY,
+      );
+}
+
+/** The frame round the lobby's glazing: a jamb each side and a head. */
+function lobbyFrame(box: SetbackBox, side: Side): PartPlacement[] {
+  const jamb = (k: number): PartPlacement =>
+    lobbyTrim(
+      'lobbyFrame',
+      box,
+      side,
+      (k * (LOBBY_WIDTH_M - LOBBY_FRAME_M)) / 2,
+      LOBBY_FRAME_M,
+      LOBBY_HEIGHT_M,
+      LOBBY_HEIGHT_M / 2,
+    );
+  return [
+    jamb(-1),
+    jamb(1),
+    lobbyTrim(
+      'lobbyFrame',
+      box,
+      side,
+      0,
+      LOBBY_WIDTH_M - 2 * LOBBY_FRAME_M,
+      LOBBY_FRAME_M,
+      LOBBY_HEIGHT_M - LOBBY_FRAME_M / 2,
+    ),
+  ];
+}
+
 /**
  * The storefront band across a podium's street face: a brick pier at each end
  * and every bay, the shop's bulkhead and lit glazing between them, and the
@@ -2938,7 +3134,16 @@ function apartmentParts(b: Block): PartPlacement[] {
   if (entry.kind !== 'midrise' && entry.kind !== 'tower') return out;
   const podiumBox = b.podium ?? baseBox;
   const podiumTop = b.podium ? b.podium.yOffset + b.podium.h : 0;
-  out.push(...podiumBand(entry, podiumBox, side, entry.kind === 'tower' ? LOBBY_WIDTH_M : 0));
+  // The garage stands against the rear face: nothing of the body's rear face stands in it below its top.
+  const garage = garageFor(entry);
+  const deckTop = garage ? garageTopM(garage) : 0;
+  out.push(...podiumBand(entry, podiumBox, side, LOBBY_WIDTH_M));
+  out.push(
+    lobbyGlazing(podiumBox, side),
+    ...lobbyLeaves(podiumBox, side, true),
+    lobbyCanopy(podiumBox, side, true),
+    ...lobbyFrame(podiumBox, side),
+  );
   out.push(...wrapFaces('parapetBand', baseBox, PARAPET_BAND_PROUD_M, BLOCK_PARAPET_M, baseTop));
   /** The floors above the podium: the row whose floor is the podium's top is the first. */
   const upperFloors = (): number[] => {
@@ -2952,6 +3157,7 @@ function apartmentParts(b: Block): PartPlacement[] {
     const fields = midrisePanelFields(buildingId).map((m): RGB => materialUnit(m));
     const bayTop = baseTop - BLOCK_PARAPET_M;
     for (const face of [side, oppositeSide(side)]) {
+      const bayBottom = face === side ? podiumTop : Math.max(podiumTop, deckTop);
       const span = facadeSpan(baseBox, face);
       const { count, width } = windowBays(entry, span);
       const bay = width - BALCONY_BAY_INSET_M;
@@ -2966,8 +3172,8 @@ function apartmentParts(b: Block): PartPlacement[] {
               face,
               bay,
               BOX_BAY_PROUD_M,
-              bayTop - podiumTop,
-              (podiumTop + bayTop) / 2,
+              bayTop - bayBottom,
+              (bayBottom + bayTop) / 2,
               c,
             ),
             color: fields[field % fields.length]!,
@@ -2975,6 +3181,7 @@ function apartmentParts(b: Block): PartPlacement[] {
           field += 1;
         } else {
           for (const y of upperFloors()) {
+            if (face !== side && y < deckTop) continue;
             out.push(...balcony(baseBox, face, c, bay, y, BLOCK_BALCONY_SLAB_M, true, railRgb));
           }
         }
@@ -3001,20 +3208,10 @@ function apartmentParts(b: Block): PartPlacement[] {
   }
 
   if (entry.kind === 'tower') {
-    out.push(
-      againstFacade(
-        'lobbyPortal',
-        podiumBox,
-        side,
-        LOBBY_WIDTH_M,
-        LOBBY_PROJECT_M,
-        LOBBY_HEIGHT_M,
-        LOBBY_HEIGHT_M / 2,
-      ),
-    );
     for (const face of longFaces(baseBox, side)) {
       const span = facadeSpan(baseBox, face) - 2 * TOWER_BALCONY_END_M;
       for (const y of upperFloors()) {
+        if (face !== side && y < deckTop) continue;
         out.push(...balcony(baseBox, face, 0, span, y, BLOCK_BALCONY_SLAB_M, false, GLAZING_BLUE));
       }
     }
@@ -3327,9 +3524,18 @@ export function computePartPlacements(
         const fuel = entry.kind === 'fuel';
         const bays = fuel
           ? { count: 1, width: KIOSK_AWNING_WIDTH_M + AWNING_GAP_M }
-          : baysOf(span, entry.kind === 'shop' ? SHOP_BAY_M : RESTAURANT_BAY_M);
+          : baysOf(
+              span,
+              entry.kind === 'shop' || entry.kind === 'mixed' ? SHOP_BAY_M : RESTAURANT_BAY_M,
+            );
         const livery = fuel ? undefined : materialUnit(pick(AWNING_LIVERIES, id));
         for (let i = 0; i < bays.count; i += 1) {
+          // A mixed-use block's door bay is the canopy's: no awning crosses it.
+          if (
+            entry.kind === 'mixed' &&
+            Math.abs(bayCentre(span, bays.count, i)) < (LOBBY_CANOPY_WIDTH_M + bays.width) / 2
+          )
+            continue;
           out.push({
             ...onSide(
               part,
@@ -3781,18 +3987,19 @@ export function computePartPlacements(
         break;
       }
       case 'lobbyPortal': {
-        if (!side) break;
-        out.push(
-          againstFacade(
-            part,
-            baseBox,
-            side,
-            LOBBY_WIDTH_M,
-            LOBBY_PROJECT_M,
-            LOBBY_HEIGHT_M,
-            LOBBY_HEIGHT_M / 2,
-          ),
-        );
+        if (side) out.push(lobbyGlazing(baseBox, side));
+        break;
+      }
+      case 'lobbyDoor': {
+        if (side) out.push(...lobbyLeaves(baseBox, side, entry.kind !== 'mixed'));
+        break;
+      }
+      case 'lobbyCanopy': {
+        if (side) out.push(lobbyCanopy(baseBox, side, entry.kind !== 'mixed'));
+        break;
+      }
+      case 'lobbyFrame': {
+        if (side) out.push(...lobbyFrame(baseBox, side));
         break;
       }
       case 'porteCochere': {
@@ -4525,6 +4732,7 @@ export function kitLotOf(
   }
 
   const frontWalk = layout.frontWalk ? rect(layout.frontWalk) : null;
+  const rearYard = layout.rearYard ? rect(layout.rearYard) : null;
   return {
     lot: rect(layout.lot),
     curbCut: rect({ u0: layout.curbCut.u0, u1: layout.curbCut.u1, v0: 0, v1: 1 }),
@@ -4552,11 +4760,12 @@ export function kitLotOf(
       ...berths,
       ...trailers,
       ...(layout.forecourt ? [rect(layout.forecourt)] : []),
-      ...(layout.rearYard && !rearYardFree ? [rect(layout.rearYard)] : []),
+      ...(rearYard && !rearYardFree ? [rearYard] : []),
       ...(frontWalk ? [frontWalk] : []),
       ...(layout.entranceWalk ? [rect(layout.entranceWalk)] : []),
       ...laneRects,
     ],
+    farm: rearYard && !rearYardFree ? rearYard : null,
   };
 }
 

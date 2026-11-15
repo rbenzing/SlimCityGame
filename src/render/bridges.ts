@@ -139,15 +139,24 @@ const PIER_RADIAL_SEGMENTS = 8;
 const FOOTING_HEIGHT = 0.5;
 /** Sink the footing a little so it reads as bedded into the ground, not set on it. */
 const FOOTING_EMBED = 0.25;
-/** Slightly over a tile, so neighbouring spans meet without a seam. */
-const TILE_SPAN = TILE_METERS * 1.02;
+/** Longest stretch of structure sampled against the deck and the ground as one piece. */
+const SEGMENT_M = 5;
+/** A girder is drawn only where the deck stands this far above the ground, over its own depth. */
+const GIRDER_CLEARANCE_M = 0.3;
+/** How far a retaining wall is sunk below the ground at each end, so it never floats. */
+const FILL_EMBED = 0.15;
+/** Straight pieces a dead end's rounded cap is drawn in. */
+const CAP_ARC_STEPS = 8;
 
 // --- Through-truss ------------------------------------------------------------
 const TRUSS_HEIGHT = 4.2; // top chord well above a train's roof
 const TRUSS_MEMBER = 0.16;
 const TRUSS_COLOR = 0x4f5f57;
-/** Diagonals per tile — the lattice pitch. */
+/** Panels per tile — the lattice pitch; a vertical stands at every panel point. */
 const TRUSS_BAYS_PER_TILE = 2;
+/** Members one tile of truss draws: chords, verticals and diagonals each side, and the braces between. */
+const TRUSS_MEMBERS_PER_TILE =
+  2 * (2 + (TRUSS_BAYS_PER_TILE + 1) + TRUSS_BAYS_PER_TILE) + (TRUSS_BAYS_PER_TILE - 1);
 
 /** True on the tiles a pier drops from — deterministic, so it never flickers. */
 export function isPierTile(x: number, z: number): boolean {
@@ -231,34 +240,48 @@ export function emitPrism(
 }
 
 /**
- * The four corners of a tile's structure footprint, in world XZ, listed
- * counter-clockwise. `half` is the structure's half-width; the run direction
- * decides which axis it spreads along.
+ * Emits one wall face from edge a-b: its top at the given heights, its foot at
+ * the given heights. Wound outward-facing for a counter-clockwise footprint.
  */
-export function footprintCorners(
+export function emitWall(
+  positions: number[],
+  a: Corner,
+  b: Corner,
+  topA: number,
+  topB: number,
+  botA: number,
+  botB: number,
+): void {
+  positions.push(a[0], topA, a[1], b[0], topB, b[1], b[0], botB, b[1]);
+  positions.push(a[0], topA, a[1], b[0], botB, b[1], a[0], botA, a[1]);
+}
+
+/**
+ * The four corners of a stretch of structure, in world XZ, listed
+ * counter-clockwise: lateral offsets `l0`..`l1` across the run, `a0`..`a1`
+ * along it, from the point (wx, wz). Edges 1 and 3 are the lateral ones.
+ */
+export function segmentCorners(
   wx: number,
   wz: number,
-  half: number,
   alongZ: boolean,
-  span: number,
-  lateralFrom = -1,
-  lateralTo = 1,
+  a0: number,
+  a1: number,
+  l0: number,
+  l1: number,
 ): [Corner, Corner, Corner, Corner] {
-  const a = span / 2;
-  const l0 = half * lateralFrom;
-  const l1 = half * lateralTo;
   return alongZ
     ? [
-        [wx + l0, wz - a],
-        [wx + l1, wz - a],
-        [wx + l1, wz + a],
-        [wx + l0, wz + a],
+        [wx + l0, wz + a0],
+        [wx + l1, wz + a0],
+        [wx + l1, wz + a1],
+        [wx + l0, wz + a1],
       ]
     : [
-        [wx - a, wz + l0],
-        [wx - a, wz + l1],
-        [wx + a, wz + l1],
-        [wx + a, wz + l0],
+        [wx + a0, wz + l0],
+        [wx + a0, wz + l1],
+        [wx + a1, wz + l1],
+        [wx + a1, wz + l0],
       ];
 }
 
@@ -283,6 +306,7 @@ export class BridgeRenderer {
   private meshes: (THREE.InstancedMesh | THREE.Mesh)[] = [];
   private readonly deckHeightAt: (wx: number, wz: number) => number;
   private readonly crossingDeckAt: (wx: number, wz: number, cx: number, cz: number) => number;
+  private readonly groundAt: ((wx: number, wz: number) => number) | undefined;
 
   /**
    * `deckHeightAt` must be the SAME sampler the road mesh uses, or the
@@ -298,10 +322,16 @@ export class BridgeRenderer {
      */
     crossingDeckAt: (wx: number, wz: number, cx: number, cz: number) => number = (wx, wz) =>
       deckHeightAt(wx, wz),
+    /**
+     * The terrain under a world point. Walls and footings follow it; omitted,
+     * the ground is level at each tile's own `groundY`.
+     */
+    groundAt?: (wx: number, wz: number) => number,
   ) {
     this.scene = scene;
     this.deckHeightAt = deckHeightAt;
     this.crossingDeckAt = crossingDeckAt;
+    this.groundAt = groundAt;
   }
 
   /** Replaces the whole structure from the current set of deck tiles. */
@@ -318,11 +348,19 @@ export class BridgeRenderer {
     const crossings = new Set(tiles.filter((t) => t.crossing).map((t) => `${t.x},${t.z}`));
     const crossingAt = (x: number, z: number): { x: number; z: number } | null =>
       crossings.has(`${x},${z}`) ? { x, z } : null;
+    const decks = new Set(tiles.map((t) => `${t.x},${t.z}`));
+    const ground = (tile: BridgeDeckTile, wx: number, wz: number): number =>
+      this.groundAt ? this.groundAt(wx, wz) : tile.groundY;
 
     for (const { style, tiles: group } of groupByStyle(tiles)) {
       const spec = STYLES[style];
+      // A pier drops only where the deck is high enough to carry a girder.
       const piers = group.filter(
-        (t) => !t.crossing && isPierTile(t.x, t.z) && t.deckY - t.groundY > FOOTING_HEIGHT,
+        (t) =>
+          !t.crossing &&
+          isPierTile(t.x, t.z) &&
+          t.deckY - ground(t, tileToWorld(t.x), tileToWorld(t.z)) >=
+            spec.girderDepth + GIRDER_CLEARANCE_M,
       );
 
       // Girder and parapets are MERGED, deck-conforming geometry rather than
@@ -344,7 +382,7 @@ export class BridgeRenderer {
       // A through-truss carries two lattice sides plus overhead bracing; each
       // tile contributes both chords, its diagonals, and one cross brace.
       const trussParts = spec.truss
-        ? this.addMesh(this.boxGeometry, TRUSS_COLOR, group.length * (5 + 2 * TRUSS_BAYS_PER_TILE))
+        ? this.addMesh(this.boxGeometry, TRUSS_COLOR, group.length * TRUSS_MEMBERS_PER_TILE)
         : null;
       let trussSlot = 0;
 
@@ -358,10 +396,11 @@ export class BridgeRenderer {
         const wz = tileToWorld(tile.z) + (alongZ ? 0 : shift);
         const seamSide = tile.profile?.seam?.side;
         const deckTop = tile.deckY + ROAD_Y_OFFSET;
-        const span = TILE_SPAN;
+        const span = TILE_METERS;
 
         /** Deck top at a world point, from the shared smooth profile. */
-        // A span reaches a little past its tile. Where it runs onto a crossing,
+        // A span reaches past its tile where the deck runs on, down to the
+        // ground. Where it runs onto a crossing,
         // the corners that land in the crossing tile are on the overpass deck:
         // the ordinary sampler would answer for the road beneath and hang the
         // end of the girder down to it.
@@ -383,41 +422,166 @@ export class BridgeRenderer {
           topAt(corners[3]),
         ];
 
-        // Girder: the slab under the whole road width, following the deck. Along
-        // the edge where the deck carries on onto the other half it stops at the
-        // road's edge, since the other half's girder carries on from there: run
-        // on past it, the girder's top showed through that half's road.
-        const seamEdge = seamSide && tile.profile ? carriagewayHalfWidthOf(tile.profile) / half : 1;
-        const girderCorners = footprintCorners(
-          wx,
-          wz,
-          half,
-          alongZ,
-          span,
-          seamSide === -1 ? -seamEdge : -1,
-          seamSide === 1 ? seamEdge : 1,
-        );
-        emitPrism(girderPositions, girderCorners, topsOf(girderCorners), spec.girderDepth);
+        const groundOf = (c: Corner): number => ground(tile, c[0], c[1]);
 
-        if (spec.parapetHeight > 0) {
-          // A parapet is the same conforming prism, inverted: it stands ON the
-          // deck, so its "depth" runs upward from a top placed a parapet-height
-          // above the surface.
-          const t = spec.parapetThickness / half;
-          for (const [from, to, side] of [
-            [-1, -1 + t, -1],
-            [1 - t, 1, 1],
-          ] as const) {
+        // The structure is the road's own width, edge to edge. Along the edge
+        // where the deck carries on onto the other half it stops at the road's
+        // edge, since the other half's structure carries on from there.
+        const roadHalf = tile.profile ? carriagewayHalfWidthOf(tile.profile) : half;
+        const deckEdge = half - spec.overhang;
+        const lateral = (side: -1 | 1, reach: number): number =>
+          side * (side === seamSide ? roadHalf : reach);
+
+        // Where the deck runs on past the tile's edge. A deck meeting the
+        // ground without a deck beyond it slopes down over the next half tile,
+        // so the structure follows it down; a dead end rounds off in a cap.
+        const alongBits = alongZ ? ([1, 4] as const) : ([8, 2] as const);
+        const alongStep = alongZ ? ([0, -1, 0, 1] as const) : ([-1, 0, 1, 0] as const);
+        const connections = [1, 2, 4, 8].filter((bit) => (tile.mask & bit) !== 0).length;
+        const endKind = (end: 0 | 1): 'deck' | 'ground' | 'cap' => {
+          if (decks.has(`${tile.x + alongStep[end * 2]!},${tile.z + alongStep[end * 2 + 1]!}`)) {
+            return 'deck';
+          }
+          if ((tile.mask & alongBits[end]) !== 0) return 'ground';
+          return connections === 1 ? 'cap' : 'deck';
+        };
+        const lowEnd = endKind(0);
+        const highEnd = endKind(1);
+        const a0 = -span / 2 - (lowEnd === 'ground' ? span / 2 : 0);
+        const a1 = span / 2 + (highEnd === 'ground' ? span / 2 : 0);
+
+        const parapetOn = spec.parapetHeight > 0;
+        const needs = spec.girderDepth + GIRDER_CLEARANCE_M;
+        /**
+         * One stretch of structure over `corners` (counter-clockwise; edges 1
+         * and 3 the outer ones): a girder with a parapet along each outer edge
+         * where the deck stands clear of the ground, else a wall dropped from
+         * each outer edge to the ground under it.
+         */
+        const emitStretch = (
+          girderCorners: readonly [Corner, Corner, Corner, Corner],
+          wallCorners: readonly [Corner, Corner, Corner, Corner],
+          parapets: readonly (readonly [Corner, Corner, Corner, Corner])[],
+          outer: readonly number[],
+        ): void => {
+          const tops = topsOf(girderCorners);
+          const clear = Math.min(
+            ...girderCorners.map((c, i) => tops[i]! - ROAD_Y_OFFSET - groundOf(c)),
+          );
+          if (clear >= needs) {
+            emitPrism(girderPositions, girderCorners, tops, spec.girderDepth);
+            if (!parapetOn) return;
+            // A parapet is the same conforming prism, inverted: it stands ON the
+            // deck, so its "depth" runs upward from a top placed a parapet-height
+            // above the surface.
+            for (const corners of parapets) {
+              const up = topsOf(corners).map((y) => y + spec.parapetHeight) as [
+                number,
+                number,
+                number,
+                number,
+              ];
+              emitPrism(parapetPositions, corners, up, spec.parapetHeight);
+            }
+            return;
+          }
+          const wallTops = topsOf(wallCorners);
+          for (const e of outer) {
+            const f = (e + 1) % 4;
+            const p = wallCorners[e]!;
+            const r = wallCorners[f]!;
+            const foot = (i: number, c: Corner): number =>
+              Math.min(groundOf(c), wallTops[i]!) - FILL_EMBED;
+            const dropP = wallTops[e]! - groundOf(p);
+            const dropR = wallTops[f]! - groundOf(r);
+            // The road's own thickness is no wall: a deck on the ground has none.
+            if (Math.max(dropP, dropR) <= ROAD_Y_OFFSET + 1e-3) continue;
+            emitWall(girderPositions, p, r, wallTops[e]!, wallTops[f]!, foot(e, p), foot(f, r));
+          }
+        };
+
+        const sideOf = (e: number): -1 | 1 => (e === 1 ? 1 : -1);
+        const stretches = Math.max(1, Math.ceil((a1 - a0) / SEGMENT_M));
+        for (let k = 0; k < stretches; k++) {
+          const s0 = a0 + ((a1 - a0) * k) / stretches;
+          const s1 = a0 + ((a1 - a0) * (k + 1)) / stretches;
+          const girder = segmentCorners(
+            wx,
+            wz,
+            alongZ,
+            s0,
+            s1,
+            lateral(-1, half),
+            lateral(1, half),
+          );
+          const wall = segmentCorners(
+            wx,
+            wz,
+            alongZ,
+            s0,
+            s1,
+            lateral(-1, deckEdge),
+            lateral(1, deckEdge),
+          );
+          const parapets = ([-1, 1] as const)
             // No parapet along the edge where the deck carries on onto the other half.
-            if (side === seamSide) continue;
-            const corners = footprintCorners(wx, wz, half, alongZ, span, from, to);
-            const tops = topsOf(corners).map((y) => y + spec.parapetHeight) as [
-              number,
-              number,
-              number,
-              number,
-            ];
-            emitPrism(parapetPositions, corners, tops, spec.parapetHeight);
+            .filter((side) => side !== seamSide)
+            .map((side) =>
+              segmentCorners(
+                wx,
+                wz,
+                alongZ,
+                s0,
+                s1,
+                side === -1 ? -half : half - spec.parapetThickness,
+                side === -1 ? -half + spec.parapetThickness : half,
+              ),
+            );
+          const outer = [1, 3].filter((e) => sideOf(e) !== seamSide);
+          emitStretch(girder, wall, parapets, outer);
+        }
+
+        // A dead end's rounded cap: the structure and its parapet run round it.
+        for (const end of [0, 1] as const) {
+          if ((end === 0 ? lowEnd : highEnd) !== 'cap') continue;
+          const outward = end === 0 ? -1 : 1;
+          const edge = outward * (span / 2);
+          const cx = alongZ ? wx : wx + edge;
+          const cz = alongZ ? wz + edge : wz;
+          const arc = (radius: number): Corner[] => {
+            const pts: Corner[] = [];
+            for (let i = 0; i <= CAP_ARC_STEPS; i++) {
+              const t = (Math.PI * i) / CAP_ARC_STEPS;
+              const across = radius * Math.cos(t);
+              const beyond = outward * radius * Math.sin(t);
+              pts.push(alongZ ? [cx + across, cz + beyond] : [cx + beyond, cz + across]);
+            }
+            return pts;
+          };
+          const centre: Corner = [cx, cz];
+          const girderArc = arc(half);
+          const wallArc = arc(deckEdge);
+          const ringIn = arc(half - spec.parapetThickness);
+          // Wind the fan counter-clockwise seen from above, whichever way this end faces.
+          const wedge = (a: Corner, b: Corner): [Corner, Corner, Corner, Corner] => [
+            centre,
+            a,
+            b,
+            centre,
+          ];
+          const area = (c: readonly Corner[]): number =>
+            c.reduce((sum, p, i) => {
+              const n = c[(i + 1) % c.length]!;
+              return sum + p[0] * n[1] - n[0] * p[1];
+            }, 0);
+          const flip = area(wedge(girderArc[0]!, girderArc[1]!)) < 0;
+          const order = <T>(list: T[]): T[] => (flip ? [...list].reverse() : list);
+          const g = order(girderArc);
+          const w = order(wallArc);
+          const rin = order(ringIn);
+          for (let i = 0; i < CAP_ARC_STEPS; i++) {
+            const ring: [Corner, Corner, Corner, Corner] = [rin[i]!, g[i]!, g[i + 1]!, rin[i + 1]!];
+            emitStretch(wedge(g[i]!, g[i + 1]!), wedge(w[i]!, w[i + 1]!), [ring], [1]);
           }
         }
 
@@ -442,7 +606,14 @@ export class BridgeRenderer {
         if (!columns || !footings) return;
         const wx = tileToWorld(tile.x);
         const wz = tileToWorld(tile.z);
-        const footingTop = tile.groundY + FOOTING_HEIGHT - FOOTING_EMBED;
+        // The footing is seated on the ground under all four of its corners: its
+        // foot is sunk to the lowest and its top stands clear of the highest.
+        const reach = spec.footingRadius;
+        const under = [-reach, reach].flatMap((dx) =>
+          [-reach, reach].map((dz) => ground(tile, wx + dx, wz + dz)),
+        );
+        const footingBottom = Math.min(...under) - FOOTING_EMBED;
+        const footingTop = Math.max(...under) + FOOTING_HEIGHT - FOOTING_EMBED;
         const columnTop = tile.deckY + ROAD_Y_OFFSET - spec.girderDepth;
         const height = Math.max(0.1, columnTop - footingTop);
 
@@ -454,8 +625,8 @@ export class BridgeRenderer {
         m.compose(pos, q, scale);
         columns.setMatrixAt(i, m);
 
-        pos.set(wx, tile.groundY + FOOTING_HEIGHT / 2 - FOOTING_EMBED, wz);
-        scale.set(spec.footingRadius * 2, FOOTING_HEIGHT, spec.footingRadius * 2);
+        pos.set(wx, (footingBottom + footingTop) / 2, wz);
+        scale.set(spec.footingRadius * 2, footingTop - footingBottom, spec.footingRadius * 2);
         m.compose(pos, q, scale);
         footings.setMatrixAt(i, m);
       });
@@ -504,56 +675,72 @@ export class BridgeRenderer {
       sx: number,
       sy: number,
       sz: number,
-      yaw = 0,
+      direction?: THREE.Vector3,
     ): void => {
       pos.set(px, py, pz);
       scale.set(sx, sy, sz);
-      q.setFromAxisAngle(yAxis, yaw);
+      if (direction) q.setFromUnitVectors(yAxis, direction);
       m.compose(pos, q, scale);
       mesh.setMatrixAt(slot++, m);
       q.identity();
     };
 
-    for (const side of [-1, 1]) {
-      const ox = alongZ ? side * sideOffset : 0;
-      const oz = alongZ ? 0 : side * sideOffset;
-      // Top chord, and the diagonals webbing down to the deck.
-      put(
-        wx + ox,
-        topY,
-        wz + oz,
-        alongZ ? TRUSS_MEMBER : span,
-        TRUSS_MEMBER,
-        alongZ ? span : TRUSS_MEMBER,
+    // Chords run the tile's whole length, so neighbouring tiles' chords abut.
+    // Every web member runs between two panel points, one on each chord.
+    const bottomY = deckTop + TRUSS_MEMBER / 2;
+    const panel = TILE_METERS / TRUSS_BAYS_PER_TILE;
+    const at = (side: number, t: number, y: number): THREE.Vector3 =>
+      new THREE.Vector3(
+        wx + (alongZ ? side * sideOffset : t),
+        y,
+        wz + (alongZ ? t : side * sideOffset),
       );
+    /** One member from `from` to `to`, a box scaled to the distance between them. */
+    const member = (from: THREE.Vector3, to: THREE.Vector3): void => {
+      const mid = from.clone().add(to).multiplyScalar(0.5);
+      const along = to.clone().sub(from);
+      put(
+        mid.x,
+        mid.y,
+        mid.z,
+        TRUSS_MEMBER,
+        along.length(),
+        TRUSS_MEMBER,
+        along.clone().normalize(),
+      );
+    };
 
-      const bay = span / TRUSS_BAYS_PER_TILE;
-      const diagonal = Math.hypot(bay, TRUSS_HEIGHT);
-      for (let b = 0; b < TRUSS_BAYS_PER_TILE; b++) {
-        const t = -span / 2 + bay * (b + 0.5);
-        // Diagonals lean along the run; approximating them as uprights of the
-        // full diagonal length keeps this to one instanced box per member
-        // without a per-member rotation axis that changes with the road's run.
+    for (const side of [-1, 1]) {
+      for (const y of [bottomY, topY]) {
         put(
-          wx + ox + (alongZ ? 0 : t),
-          deckTop + TRUSS_HEIGHT / 2,
-          wz + oz + (alongZ ? t : 0),
+          wx + (alongZ ? side * sideOffset : 0),
+          y,
+          wz + (alongZ ? 0 : side * sideOffset),
+          alongZ ? TRUSS_MEMBER : span,
           TRUSS_MEMBER,
-          diagonal,
-          TRUSS_MEMBER,
+          alongZ ? span : TRUSS_MEMBER,
+        );
+      }
+      for (let b = 0; b <= TRUSS_BAYS_PER_TILE; b++) {
+        const t = -span / 2 + panel * b;
+        member(at(side, t, bottomY), at(side, t, topY));
+      }
+      // Diagonals alternate their lean, so each panel point meets one of each.
+      for (let b = 0; b < TRUSS_BAYS_PER_TILE; b++) {
+        const t0 = -span / 2 + panel * b;
+        const rising = b % 2 === 0;
+        member(
+          at(side, t0, rising ? bottomY : topY),
+          at(side, t0 + panel, rising ? topY : bottomY),
         );
       }
     }
 
-    // Overhead cross brace tying the two top chords together.
-    put(
-      wx,
-      topY,
-      wz,
-      alongZ ? sideOffset * 2 : TRUSS_MEMBER,
-      TRUSS_MEMBER,
-      alongZ ? TRUSS_MEMBER : sideOffset * 2,
-    );
+    // Overhead braces tying the two top chords together at the inner panel points.
+    for (let b = 1; b < TRUSS_BAYS_PER_TILE; b++) {
+      const t = -span / 2 + panel * b;
+      member(at(-1, t, topY), at(1, t, topY));
+    }
     return slot;
   }
 
