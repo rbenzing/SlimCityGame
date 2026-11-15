@@ -15,6 +15,7 @@ import {
 } from './approachzone';
 import {
   composeProfile,
+  corridorHalfProfile,
   NO_EDITS,
   presetProfileForTier,
   profileWidth,
@@ -730,6 +731,34 @@ describe('a corridor half is a road in its own right', () => {
       expect(ahead!.toward).toBe(RoadFlow.South);
       expect(ahead!.distance).toBe(1);
     }
+  });
+
+  it('gives each half its bay where its own lanes arrive, whichever way the tile was drawn', () => {
+    const whole = corridor({ '2,6': { control: 'signal' }, '3,6': { control: 'signal' } });
+    const six = whole.profileAt(2, 0)!;
+    // Each tile carries its own half of the road in world order, as the mesh
+    // lays it: heading south the left half's lanes run south and the right
+    // half's run north, against the way the tile was drawn.
+    const halves: ApproachSurroundings = {
+      ...whole,
+      profileAt: (x, z) =>
+        x === 2 || x === 3
+          ? corridorHalfProfile(
+              worldOrderedProfile(six, RoadFlow.South),
+              x === 2 ? 'left' : 'right',
+            )
+          : whole.profileAt(x, z),
+    };
+    const bayAt = (x: number, z: number): boolean => {
+      const own = halves.profileAt(x, z)!;
+      const drawn = pocketedCrossSection(own, approachAhead(x, z, 3, halves)!, RoadFlow.South);
+      return drawn.pieces.some((p) => p.bay);
+    };
+    // The left half arrives from the north, the right half from the south.
+    expect(bayAt(2, 4)).toBe(true);
+    expect(bayAt(2, 8)).toBe(false);
+    expect(bayAt(3, 8)).toBe(true);
+    expect(bayAt(3, 4)).toBe(false);
   });
 
   it('does not mistake the length of the road for a junction to approach', () => {

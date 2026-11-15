@@ -194,7 +194,8 @@
 - **Direction arrows**: a placed one-way road shows pavement direction arrows
   roughly every third tile, each the standard 2.90 m through arrow (see
   [road-model.md](../../world-sim/road-model/markings.md) for every arrow's
-  size). While a one-way road or a highway is being
+  size), one in each lane and centred on it, never on a lane line. While a
+  one-way road or a highway is being
   dragged into place, translucent arrows along the ghost path also show the
   direction traffic will run, following the drag path around a corner; they
   belong to the placement preview and disappear with the rest of the ghost

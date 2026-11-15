@@ -7,6 +7,7 @@ import {
   COVERAGE_COVERED_HEX,
   COVERAGE_UNCOVERED_DIM_FACTOR,
   COVERAGE_UNCOVERED_HEX,
+  LENS_MEANING,
   LENS_RAMP_STOPS,
   SOIL_LENS_COLORS,
   UNDERGROUND_CABLE_FOOT_HEX,
@@ -15,6 +16,7 @@ import {
   UNDERGROUND_SEWER_HEX,
   UNDERGROUND_WATER_HEX,
   dimHex,
+  type LensMeaning,
 } from '../shared/lenses';
 import { FieldId } from '../shared/types';
 import type { District, LensId, TransitLine, TransitMode } from '../shared/types';
@@ -53,10 +55,16 @@ export type LensLegend =
 const rgbCss = (r: number, g: number, b: number): string =>
   `rgb(${Math.round(r * 255)} ${Math.round(g * 255)} ${Math.round(b * 255)})`;
 
-const RAMP_CSS = LENS_RAMP_STOPS.map(([value, [r, g, b]]) => ({
-  at: (value / 255) * 100,
-  color: rgbCss(r, g, b),
-}));
+const rampCss = (meaning: LensMeaning): ReadonlyArray<{ at: number; color: string }> =>
+  LENS_RAMP_STOPS[meaning].map(([value, [r, g, b]]) => ({
+    at: (value / 255) * 100,
+    color: rgbCss(r, g, b),
+  }));
+
+const RAMP_CSS: Readonly<Record<LensMeaning, ReadonlyArray<{ at: number; color: string }>>> = {
+  worse: rampCss('worse'),
+  better: rampCss('better'),
+};
 
 interface RampWords {
   unit: string;
@@ -164,13 +172,14 @@ export function lensLegend(lens: LensId, context: LensContext): LensLegend | nul
   const name = lensLabel(lens);
   const ramp = RAMPS[lens];
   if (ramp) {
+    const meaning = LENS_MEANING[lens] ?? 'better';
     return {
       kind: 'ramp',
       name,
       unit: ramp.unit,
       low: ramp.low,
       high: ramp.high,
-      stops: RAMP_CSS,
+      stops: RAMP_CSS[meaning],
       thing: ramp.thing,
     };
   }

@@ -155,13 +155,15 @@ describe('the rail and tram car geometry', () => {
     }
   });
 
-  it('stands one pantograph on a tram set, 1.6 m over the roof, and none on a train', () => {
+  it('stands one pantograph on a tram set, its head at the contact wire, and none on a train', () => {
     const roof = TRAM_CAR_SIZE[1] - 0.3;
     const above = (g: THREE.BufferGeometry) =>
       vertices(g, inRegion(g, VEHICLE_REGION.FIXED)).filter(([, y]) => y > TRAM_CAR_SIZE[1] + 0.01);
     expect(above(buildTramTailSectionGeometry())).toHaveLength(0);
     const lead = buildTramLeadSectionGeometry();
     expect(box(above(lead)).max.y).toBeCloseTo(roof + TRAM_PANTOGRAPH_HEAD_M, 2);
+    // The wheels stand on the rail head, and the wire hangs 5.8 m over it.
+    expect(box(above(lead)).max.y).toBeCloseTo(5.8, 2);
     const train = buildTrainEndCarGeometry();
     expect(box(vertices(train)).max.y).toBeCloseTo(TRAIN_CAR_SIZE[1], 2);
   });

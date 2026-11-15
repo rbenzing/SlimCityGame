@@ -34,7 +34,7 @@
  *   `emitAxisMarkings` case), but still `paved: true` so junction arm
  *   markings apply like every other paved tier.
  * - **One-Way** (tier 6): two-lane width/color/markings, plus a periodic
- *   pavement direction arrow (`emitDirectionArrow`) on straight axes every
+ *   pavement direction arrow (`emitLaneUseArrow`, through) on straight axes every
  *   `ARROW_PERIOD_TILES` global tiles, always pointing toward the
  *   low->high coordinate along that axis (the render-side half of the
  *   sim's directed-edge convention — RoadTileDelta carries no explicit
@@ -218,6 +218,7 @@ import {
   type KerbSurroundings,
   type TileDriveCut,
 } from '../shared/kerblayout';
+import { corridorPartnerTile } from '../shared/corridor';
 
 /**
  * Where a tile's planned lines sit at ONE end of its run, parallel to the
@@ -313,6 +314,10 @@ export { PAINT_HALF_WIDTH_M };
 export const DASH_PAINT_LENGTH_M = 3.05;
 export const DASH_GAP_LENGTH_M = 9.15;
 export const DASH_PERIOD_M = DASH_PAINT_LENGTH_M + DASH_GAP_LENGTH_M;
+/** The shortest line segment the MUTCD uses, 2 ft; a broken line is never cut shorter. */
+export const MIN_DASH_LENGTH_M = 0.6;
+/** A lane line closer than this to the edge line beside it bounds no lane: the strip between is narrower than any vehicle. */
+const LANE_LINE_MERGE_M = 1;
 
 /**
  * Painted sub-segments of a metric dash pattern (period DASH_PERIOD_M,
@@ -322,8 +327,16 @@ export const DASH_PERIOD_M = DASH_PAINT_LENGTH_M + DASH_GAP_LENGTH_M;
  * segments (one per query) that together reconstruct the same coverage as
  * one wider query — see the seam-continuity tests. Returns [] for an empty
  * or inverted range.
+ *
+ * An end the line is CUT at (it stops there, rather than running on into the
+ * next tile) paints no remainder shorter than MIN_DASH_LENGTH_M: a broken line
+ * never ends in a sliver.
  */
-export function dashSegments(lo: number, hi: number): Array<[number, number]> {
+export function dashSegments(
+  lo: number,
+  hi: number,
+  cut: { lo?: boolean; hi?: boolean } = {},
+): Array<[number, number]> {
   if (hi <= lo) return [];
   const segments: Array<[number, number]> = [];
   const firstK = Math.floor(lo / DASH_PERIOD_M) - 1;
@@ -333,7 +346,11 @@ export function dashSegments(lo: number, hi: number): Array<[number, number]> {
     const segEnd = segStart + DASH_PAINT_LENGTH_M;
     const clippedStart = Math.max(segStart, lo);
     const clippedEnd = Math.min(segEnd, hi);
-    if (clippedEnd > clippedStart) segments.push([clippedStart, clippedEnd]);
+    if (clippedEnd <= clippedStart) continue;
+    const sliver =
+      clippedEnd - clippedStart < MIN_DASH_LENGTH_M - 1e-9 &&
+      ((cut.lo === true && clippedStart === lo) || (cut.hi === true && clippedEnd === hi));
+    if (!sliver) segments.push([clippedStart, clippedEnd]);
   }
   return segments;
 }
@@ -846,7 +863,9 @@ export function paintBulbStreet(
     if (!run) continue;
     const [lo, hi] = span(run.s0, run.s1);
     // Dashes keep the street's own phase, measured from the world's origin.
-    for (const [a, b] of dashSegments(origin + lo, origin + hi)) {
+    // The street's end at the circle is cut; its other end meets the block edge.
+    const atCircle = sign > 0 ? { lo: true } : { hi: true };
+    for (const [a, b] of dashSegments(origin + lo, origin + hi, atCircle)) {
       push(line.at, a - origin, b - origin, line);
     }
   }
@@ -954,6 +973,8 @@ function emitAxisMarkings(
    * follow does not drift either.
    */
   median?: { is: (line: MarkingLine) => boolean; lo: number; hi: number },
+  /** Which ends of the run are dead ends, where the broken lines stop rather than run on into a tile. */
+  deadEnd: { lo: boolean; hi: boolean } = { lo: false, hi: false },
 ): void {
   const pair = suppressCenterPair ? centrePair(plan) : null;
   const edges = [outermostLine(plan, 1), outermostLine(plan, -1)];
@@ -1009,9 +1030,33 @@ function emitAxisMarkings(
     // so the phase carries over seams exactly as it did; only where the paint
     // sits ACROSS the road has become a function of how far along it is.
     const origin = vertical ? centerZ : centerX;
-    for (const [segLo, segHi] of dashSegments(origin + lo + laneEnd.lo, origin + hi - laneEnd.hi)) {
+    // A tile's own edge is a seam the line runs on across; a dead end or a stop
+    // line is where it is cut.
+    const cut = {
+      lo: deadEnd.lo || lo > -TILE_HALF || laneEnd.lo > 0,
+      hi: deadEnd.hi || hi < TILE_HALF || laneEnd.hi > 0,
+    };
+    // The edge line of the same colour on this line's side of the road, where a
+    // lane line that has nowhere left to go closes into it.
+    const edge = edges.find((e) => e && e.color === line.color && e.at * line.at > 0);
+    const edgeAt = edge
+      ? driftBetween(...ends(edge, plan.solid.indexOf(edge), 'solid'), lo, hi)
+      : undefined;
+    for (const [segLo, segHi] of dashSegments(
+      origin + lo + laneEnd.lo,
+      origin + hi - laneEnd.hi,
+      cut,
+    )) {
       const a0 = segLo - origin;
       const a1 = segHi - origin;
+      // A dash that reaches the edge line is not a lane's boundary, only a stub
+      // beside the line it has run into.
+      if (
+        edgeAt &&
+        (Math.abs(offsetAt(a0) - edgeAt(a0)) < LANE_LINE_MERGE_M ||
+          Math.abs(offsetAt(a1) - edgeAt(a1)) < LANE_LINE_MERGE_M)
+      )
+        continue;
       pushMarkingRun(
         positions,
         colors,
@@ -1303,68 +1348,6 @@ export function emitLaneUseArrow(
       at(hookAlong + ARROW_HEAD_HALF_WIDTH_M, neck),
       at(hookAlong, outer),
     );
-  }
-}
-
-/**
- * Emits one direction arrow (stem + two head-wing quads) centered on the
- * tile, oriented along `vertical`'s travel axis and always pointing toward
- * the low->high coordinate on that axis (+Z for vertical, +X for
- * horizontal) — see the direction-convention note above.
- */
-function emitDirectionArrow(
-  positions: number[],
-  colors: number[],
-  vertical: boolean,
-  centerX: number,
-  centerZ: number,
-  /** Point the other way: toward the low coordinate on the travel axis. */
-  reversed: boolean,
-  hAt: (x: number, z: number) => number,
-): void {
-  const tip = THROUGH_ARROW_LENGTH_M / 2;
-  const headBase = tip - ARROW_HEAD_LENGTH_M;
-  const tail = -tip;
-  const rects: Array<[number, number, number, number]> = [
-    // [alongLo, alongHi, acrossLo, acrossHi]
-    [tail, headBase, -ARROW_STEM_HALF_WIDTH_M, ARROW_STEM_HALF_WIDTH_M], // stem
-    [headBase, tip, ARROW_STEM_HALF_WIDTH_M, ARROW_HEAD_HALF_WIDTH_M], // head wing, + side
-    [headBase, tip, -ARROW_HEAD_HALF_WIDTH_M, -ARROW_STEM_HALF_WIDTH_M], // head wing, - side
-  ];
-  for (const [rawLo, rawHi, acrossLo, acrossHi] of rects) {
-    // Reversing mirrors the arrow along its travel axis, so the same three
-    // rectangles point the other way.
-    const alongLo = reversed ? -rawHi : rawLo;
-    const alongHi = reversed ? -rawLo : rawHi;
-    if (vertical) {
-      pushLocalRect(
-        positions,
-        colors,
-        centerX,
-        centerZ,
-        acrossLo,
-        acrossHi,
-        alongLo,
-        alongHi,
-        MARK_Y_OFFSET,
-        MARKING_COLOR,
-        hAt,
-      );
-    } else {
-      pushLocalRect(
-        positions,
-        colors,
-        centerX,
-        centerZ,
-        alongLo,
-        alongHi,
-        acrossLo,
-        acrossHi,
-        MARK_Y_OFFSET,
-        MARKING_COLOR,
-        hAt,
-      );
-    }
   }
 }
 
@@ -3637,6 +3620,8 @@ function emitTaperedRun(
    * change in width is then taken on the other edge.
    */
   anchored?: { side: -1 | 1; at: number },
+  /** The side that carries no kerb because a median island lies beside it, or 0. */
+  bare: -1 | 0 | 1 = 0,
 ): void {
   const pt = (along: number, cross: number): [number, number] =>
     vertical ? [cross, along] : [along, cross];
@@ -3672,7 +3657,7 @@ function emitTaperedRun(
     );
     if (!hasCurbs) continue;
     for (const side of [-1, 1] as const) {
-      if (anchored?.side === side) continue;
+      if (anchored?.side === side || bare === side) continue;
       const edge0 = side > 0 ? e0.hi : e0.lo;
       const edge1 = side > 0 ? e1.hi : e1.lo;
       pushRunSlice(
@@ -5044,6 +5029,13 @@ export interface NeighborHalves {
    * gap in the median rather than an arm. Omitted, no side is.
    */
   partner?: ArmSide | null;
+  /**
+   * How far the other half of a divided corridor holds its running lanes back
+   * from the edge the two halves meet at, as this tile's `corridorIslandHalf`
+   * does for its own half. The two differ along a turn bay, which widens only
+   * the half it serves; omitted, the other half is as this one.
+   */
+  partnerIslandHalf?: number;
   /** Half the carriageway of the street meeting the partner half from its far side, 0 where none does. */
   partnerAcross?: number;
   /**
@@ -5086,6 +5078,14 @@ export interface NeighborHalves {
     w: ApproachSpan;
   };
 }
+
+/** The direction an arm on each side of a tile leads. */
+const ARM_FLOW = {
+  n: RoadFlow.North,
+  e: RoadFlow.East,
+  s: RoadFlow.South,
+  w: RoadFlow.West,
+} as const;
 
 /** Which way traffic runs on the neighbour in direction `d` to reach this tile. */
 const ARM_TOWARD = {
@@ -5170,6 +5170,29 @@ function seamSide(section: RoadProfile, flow: number): { x: -1 | 0 | 1; z: -1 | 
   const direction = flowDirection(flow);
   const northSouth = direction === RoadFlow.North || direction === RoadFlow.South;
   return northSouth ? { x: seam.side, z: 0 } : { x: 0, z: seam.side };
+}
+
+/**
+ * Which side of a tile, as a world sign on each axis, the median of a divided
+ * corridor lies on: the half's inner edge, toward the other half. Zero on both
+ * axes for every tile that is not half of a divided corridor.
+ */
+function medianSide(section: RoadProfile, flow: number): { x: -1 | 0 | 1; z: -1 | 0 | 1 } {
+  const offset = medianOffsetOf(section);
+  if (section.seam || Math.abs(offset) < 1e-6) return { x: 0, z: 0 };
+  const sign = offset > 0 ? 1 : -1;
+  const direction = flowDirection(flow);
+  const northSouth = direction === RoadFlow.North || direction === RoadFlow.South;
+  return northSouth ? { x: sign, z: 0 } : { x: 0, z: sign };
+}
+
+/**
+ * Half the width of the island a divided corridor's two halves share: from
+ * the inner edge of each half's running lanes to the tile edge they meet at.
+ */
+function corridorIslandHalf(section: RoadProfile): number {
+  const piece = section.pieces.find((p) => p.kind === 'median');
+  return TILE_HALF - (Math.abs(medianOffsetOf(section)) - (piece?.width ?? 0) / 2);
 }
 
 export function roadTileVertices(
@@ -5263,6 +5286,15 @@ export function roadTileVertices(
   // it, no corner turns at it, and on the far side the tile's own edge lies
   // further from the moved centre than half a tile.
   const seamAt = seamSide(crossSection, flow);
+  // A divided corridor's median is one island both halves share, drawn whole
+  // by the half beside its low edge; neither half kerbs its own edge of it or
+  // turns a corner round it.
+  const medianAt = plan.hasMedian ? medianSide(crossSection, flow) : { x: 0, z: 0 };
+  const islandLow = TILE_HALF - corridorIslandHalf(crossSection);
+  const islandHigh =
+    TILE_HALF + (neighborHalves.partnerIslandHalf ?? corridorIslandHalf(crossSection));
+  const islandHalf = (islandHigh - islandLow) / 2;
+  const islandCentre = (islandHigh + islandLow) / 2;
   const edgeX = (sign: 1 | -1): number => TILE_HALF - sign * shiftX;
   const edgeZ = (sign: 1 | -1): number => TILE_HALF - sign * shiftZ;
   const armDepth = TILE_HALF - coreHalf;
@@ -5619,22 +5651,30 @@ export function roadTileVertices(
    * median, tapering to meet a narrower one, or in a nose — at a dead end, at
    * a road with no median, or behind the crossing of a junction. `tip` is how
    * far in from the run's end the nose's tip stands; `lineEnd` how far in the
-   * lines beside the island stop, where the nose begins. Half of a corridor
-   * keeps its own ends, which its footways round.
+   * lines beside the island stop, where the nose begins. A divided corridor's
+   * island is the width of the gap between its halves, so its nose is that
+   * wide, and it meets a neighbour's island at the same width: only an end
+   * that ends the road, meets a junction or has no median beside it is nosed.
+   * `island` asks for that island rather than the half's own median piece.
    */
   const medianEnd = (
     side: ArmSide,
     connected: boolean,
+    island = false,
   ): { end: MedianEnd; tip: number; lineEnd: number } => {
     const open = { end: { nose: false }, tip: 0, lineEnd: 0 };
-    if (crossSection.seam || Math.abs(medianOffsetOf(crossSection)) > 1e-6) return open;
-    if (!connected) return { end: { nose: true }, tip: 0, lineEnd: medianHalf };
+    if (crossSection.seam) return open;
+    const shared = medianAt.x !== 0 || medianAt.z !== 0;
+    if (!island && Math.abs(medianOffsetOf(crossSection)) > 1e-6) return open;
+    const noseHalf = island && shared ? islandHalf : medianHalf;
+    if (!connected) return { end: { nose: true }, tip: 0, lineEnd: noseHalf };
     const beside = neighborHalves.medians?.[side];
     const toJunction = neighborHalves.junctions?.[side] === true;
     if (toJunction || beside === 0) {
-      const tip = toJunction ? (neighborHalves.reach?.[side] ?? 0) : 0;
-      return { end: { nose: true }, tip, lineEnd: tip + medianHalf };
+      const tip = toJunction && !shared ? (neighborHalves.reach?.[side] ?? 0) : 0;
+      return { end: { nose: true }, tip, lineEnd: tip + noseHalf };
     }
+    if (shared) return open;
     if (beside !== undefined && Math.abs(beside - medianHalf) > 1e-6) {
       return { end: { nose: false, seamHalf: beside }, tip: 0, lineEnd: 0 };
     }
@@ -5721,6 +5761,7 @@ export function roadTileVertices(
       hAt,
       kerbBand,
       crossSection.seam && { side: crossSection.seam.side, at: crossSection.seam.side * coreHalf },
+      (medianAt.x + medianAt.z) as -1 | 0 | 1,
     );
   }
   if (!isTurn && !railJunction && (narrowsInto.length === 0 || taperedRampNode)) {
@@ -5756,6 +5797,9 @@ export function roadTileVertices(
       unkerbedArm: boolean,
     ): { from: number; to: number } => {
       if (rampNode && rampMouth?.arm === arm) return mouthSpan(half);
+      // The opening in a divided corridor's median is paved across the whole
+      // tile, so the island's nose ends at the tile's edge, behind the crossing.
+      if (partner && arm === ARM_FLOW[partner]) return { from: -TILE_HALF, to: TILE_HALF };
       // An arm with no kerb keeps its own width; it has no return to round it
       // into the street, so the street's width would show as a flare.
       const h =
@@ -5892,7 +5936,7 @@ export function roadTileVertices(
     //
     // No corner turns on the middle of the road.
     const cornerOnSeam = (signX: 1 | -1, signZ: 1 | -1): boolean =>
-      signX === seamAt.x || signZ === seamAt.z;
+      signX === seamAt.x || signZ === seamAt.z || signX === medianAt.x || signZ === medianAt.z;
     /**
      * The insets the return's edge line runs at: each arm's own, on the side
      * facing the corner, so the line leaves each arm exactly where that arm's
@@ -6236,6 +6280,7 @@ export function roadTileVertices(
         if (coreHalf - from <= 1e-6) return;
         for (const side of [-1, 1] as const) {
           if (side === (vertical ? seamAt.x : seamAt.z)) continue;
+          if (side === (vertical ? medianAt.x : medianAt.z)) continue;
           const lo = outer;
           const hi = inner(side);
           if (Math.abs(hi - lo) <= 1e-6) continue;
@@ -6341,10 +6386,10 @@ export function roadTileVertices(
           hAt,
         );
       };
-      if (flankN && !capN) flank(false, -1, farHalfW, farHalfE);
-      if (flankS && !capS) flank(false, 1, farHalfW, farHalfE);
-      if (flankE && !capE) flank(true, 1, farHalfN, farHalfS);
-      if (flankW && !capW) flank(true, -1, farHalfN, farHalfS);
+      if (flankN && !capN && medianAt.z !== -1) flank(false, -1, farHalfW, farHalfE);
+      if (flankS && !capS && medianAt.z !== 1) flank(false, 1, farHalfW, farHalfE);
+      if (flankE && !capE && medianAt.x !== 1) flank(true, 1, farHalfN, farHalfS);
+      if (flankW && !capW && medianAt.x !== -1) flank(true, -1, farHalfN, farHalfS);
     }
   } // end !isTurn (straight/junction rectangular geometry)
 
@@ -6578,10 +6623,11 @@ export function roadTileVertices(
           medianEligible
             ? {
                 is: besideMedian,
-                lo: medianEnd('n', legN).lineEnd,
-                hi: medianEnd('s', legS).lineEnd,
+                lo: medianEnd('n', legN, true).lineEnd,
+                hi: medianEnd('s', legS, true).lineEnd,
               }
             : undefined,
+          { lo: !legN, hi: !legS },
         );
         if (plan.bands.length > 0)
           emitColoredLaneBands(
@@ -6645,10 +6691,11 @@ export function roadTileVertices(
           medianEligible
             ? {
                 is: besideMedian,
-                lo: medianEnd('w', legW).lineEnd,
-                hi: medianEnd('e', legE).lineEnd,
+                lo: medianEnd('w', legW, true).lineEnd,
+                hi: medianEnd('e', legE, true).lineEnd,
               }
             : undefined,
+          { lo: !legW, hi: !legE },
         );
         if (plan.bands.length > 0)
           emitColoredLaneBands(
@@ -6826,27 +6873,34 @@ export function roadTileVertices(
       // coordinate along the flow axis, pointing the way the road was drawn.
       // A road laid before its direction was stored points low->high, which is
       // the way it has always been drawn and the way it is still routed.
+      // One arrow lies in each lane, centred on it.
       if (tier === RoadTier.OneWay) {
-        if (hasVertical && isArrowTile(z))
-          emitDirectionArrow(
-            positions,
-            colors,
-            true,
-            centerX,
-            centerZ,
-            flow === RoadFlow.North,
-            hAt,
-          );
-        if (hasHorizontal && isArrowTile(x))
-          emitDirectionArrow(
-            positions,
-            colors,
-            false,
-            centerX,
-            centerZ,
-            flow === RoadFlow.West,
-            hAt,
-          );
+        for (const lane of travelLanes(crossSection)) {
+          if (hasVertical && isArrowTile(z))
+            emitLaneUseArrow(
+              positions,
+              colors,
+              true,
+              centerX,
+              centerZ,
+              lane.centre,
+              flow === RoadFlow.North ? -1 : 1,
+              Movement.Through,
+              hAt,
+            );
+          if (hasHorizontal && isArrowTile(x))
+            emitLaneUseArrow(
+              positions,
+              colors,
+              false,
+              centerX,
+              centerZ,
+              lane.centre,
+              flow === RoadFlow.West ? -1 : 1,
+              Movement.Through,
+              hAt,
+            );
+        }
       }
     }
 
@@ -6915,8 +6969,36 @@ export function roadTileVertices(
         const layout = crossingOf(side);
         const armSign: 1 | -1 = edge < 0 ? -1 : 1;
         const toward = partnerToward(vertical);
+        // Half of an undivided corridor shares its middle edge with the other
+        // half, so a crossing over its arm is one run from this half's outer
+        // kerb to the other's, anchored on that edge so both halves lay the same
+        // bars and the one stop line never crosses it.
+        const seamAcross = vertical ? seamAt.x : seamAt.z;
         let span: CrossingSpan;
-        if (toward === 0) {
+        if (toward === 0 && seamAcross !== 0) {
+          const seamLocal = seamAcross * (vertical ? edgeX(seamAcross) : edgeZ(seamAcross));
+          const outer = reachAt(
+            side,
+            vertical,
+            armSign,
+            (seamAcross > 0 ? -1 : 1) as 1 | -1,
+            layout.crosswalkFar,
+          );
+          span =
+            seamAcross > 0
+              ? {
+                  lo: -outer,
+                  hi: seamLocal + outer,
+                  own: { lo: -Infinity, hi: seamLocal + 1e-6 },
+                  mid: seamLocal,
+                }
+              : {
+                  lo: seamLocal - outer,
+                  hi: outer,
+                  own: { lo: seamLocal - 1e-6, hi: Infinity },
+                  mid: seamLocal,
+                };
+        } else if (toward === 0) {
           span = {
             lo: -reachAt(side, vertical, armSign, -1, layout.crosswalkFar),
             hi: reachAt(side, vertical, armSign, 1, layout.crosswalkFar),
@@ -7174,20 +7256,47 @@ export function roadTileVertices(
     const lo = vertical ? (legN ? -TILE_HALF : -reachN) : legW ? -TILE_HALF : -reachW;
     const hi = vertical ? (legS ? TILE_HALF : reachS) : legE ? TILE_HALF : reachE;
     if (medianEligible) {
-      const atLo = medianEnd(vertical ? 'n' : 'w', vertical ? legN : legW);
-      const atHi = medianEnd(vertical ? 's' : 'e', vertical ? legS : legE);
-      emitAvenueMedian(
-        positions,
-        colors,
-        centerX,
-        centerZ,
-        vertical,
-        { lo: lo + atLo.tip, hi: hi - atHi.tip },
-        hAt,
-        medianHalf,
-        medianOffsetOf(crossSection),
-        { lo: atLo.end, hi: atHi.end },
-      );
+      const atLo = medianEnd(vertical ? 'n' : 'w', vertical ? legN : legW, true);
+      const atHi = medianEnd(vertical ? 's' : 'e', vertical ? legS : legE, true);
+      const shared = medianAt.x + medianAt.z;
+      // The island is drawn once, by the half whose inner edge is its low side.
+      if (shared >= 0) {
+        emitAvenueMedian(
+          positions,
+          colors,
+          centerX,
+          centerZ,
+          vertical,
+          { lo: lo + atLo.tip, hi: hi - atHi.tip },
+          hAt,
+          shared === 0 ? medianHalf : islandHalf,
+          shared === 0 ? medianOffsetOf(crossSection) : islandCentre,
+          { lo: atLo.end, hi: atHi.end },
+        );
+        // Tarmac lies under the corners the island's rounded nose leaves
+        // square, which is where the road runs on round it.
+        if (shared > 0) {
+          const across = [islandLow, islandHigh];
+          const nosed: Array<[number, number]> = [];
+          if (atLo.end.nose) nosed.push([lo + atLo.tip, lo + atLo.tip + islandHalf]);
+          if (atHi.end.nose) nosed.push([hi - atHi.tip - islandHalf, hi - atHi.tip]);
+          for (const [from, to] of nosed) {
+            pushLocalRect(
+              positions,
+              colors,
+              centerX,
+              centerZ,
+              vertical ? across[0]! : from,
+              vertical ? across[1]! : to,
+              vertical ? from : across[0]!,
+              vertical ? to : across[1]!,
+              ROAD_Y_OFFSET,
+              plateColor,
+              hAt,
+            );
+          }
+        }
+      }
     } else emitHighwayDivider(positions, colors, centerX, centerZ, vertical, { lo, hi }, hAt);
   }
   // A reservation is the guideway's column line, kerbed as a median over its
@@ -8675,6 +8784,27 @@ export class RoadMeshRenderer {
       const ownShift = this.shiftAt(tile.x, tile.z);
       const inFrame = (plan: MarkingPlan | null, nx: number, nz: number): MarkingPlan | null =>
         plan && movedAcross(plan, this.shiftAt(nx, nz) - ownShift);
+      // The lanes arriving from a neighbour are measured from its road's
+      // centre too, along the axis the arm is crossed on, so the stop line over
+      // them is moved to be measured from this tile's road the same way. A
+      // turn bay widens the approach and moves its half of an undivided
+      // corridor's centre, and the stop line must not run on past it.
+      const shiftOnAxis = (x: number, z: number, axis: 'x' | 'z'): number => {
+        const direction = this.flowAt(x, z);
+        const northSouth = direction === RoadFlow.North || direction === RoadFlow.South;
+        return northSouth === (axis === 'x') ? this.shiftAt(x, z) : 0;
+      };
+      const spanInFrame = (
+        nx: number,
+        nz: number,
+        toward: RoadFlow,
+        axis: 'x' | 'z',
+      ): ApproachSpan => {
+        const span = this.approachSpanAt(nx, nz, toward);
+        if (!span) return span;
+        const moved = shiftOnAxis(nx, nz, axis) - shiftOnAxis(tile.x, tile.z, axis);
+        return { from: span.from + moved, to: span.to + moved };
+      };
       // The road beyond each neighbour, where the neighbour joins on to it.
       const beyond = (dx: number, dz: number, bit: number, axis: 'x' | 'z'): RoadTier => {
         const next = this.roadAlong(tile.x + dx, tile.z + dz, axis);
@@ -8724,6 +8854,13 @@ export class RoadMeshRenderer {
       };
       // How far the junctions at the ends of a straight tile paint back onto it.
       const partner = openPartnerSide(tile.x, tile.z, this.surroundings);
+      const otherHalf = corridorPartnerTile(
+        tile.x,
+        tile.z,
+        (px, pz) => this.surroundings.roadAt(px, pz)?.flow ?? 0,
+        (px, pz) => this.surroundings.profileIdAt(px, pz),
+      );
+      const otherSection = otherHalf ? this.drawnSectionAt(otherHalf.x, otherHalf.z) : null;
       const ends = junctionEndsAt(tile.x, tile.z, this.surroundings);
       const reach = ends
         ? ends.alongX
@@ -8756,6 +8893,7 @@ export class RoadMeshRenderer {
         this.ownProfileFor(tile),
         {
           partner,
+          partnerIslandHalf: otherSection ? corridorIslandHalf(otherSection) : undefined,
           partnerAcross: partner
             ? this.halfAlong(
                 tile.x + (partner === 'e' ? 2 : partner === 'w' ? -2 : 0),
@@ -8795,10 +8933,10 @@ export class RoadMeshRenderer {
             w: inFrame(this.planAlong(tile.x - 1, tile.z, 'x'), tile.x - 1, tile.z),
           },
           approaches: {
-            n: this.approachSpanAt(tile.x, tile.z - 1, ARM_TOWARD.n),
-            e: this.approachSpanAt(tile.x + 1, tile.z, ARM_TOWARD.e),
-            s: this.approachSpanAt(tile.x, tile.z + 1, ARM_TOWARD.s),
-            w: this.approachSpanAt(tile.x - 1, tile.z, ARM_TOWARD.w),
+            n: spanInFrame(tile.x, tile.z - 1, ARM_TOWARD.n, 'x'),
+            e: spanInFrame(tile.x + 1, tile.z, ARM_TOWARD.e, 'z'),
+            s: spanInFrame(tile.x, tile.z + 1, ARM_TOWARD.s, 'x'),
+            w: spanInFrame(tile.x - 1, tile.z, ARM_TOWARD.w, 'z'),
           },
         },
         flowDirection(tile.flow),
@@ -8900,10 +9038,12 @@ export class RoadMeshRenderer {
     for (let i = 0; i < treeTiles.length; i++) {
       const tile = treeTiles[i]!;
       // A tree stands IN the median, so it goes wherever the median went. On a
-      // corridor half that is the half's inner edge, not the tile's centre —
-      // planting it at the centre puts a tree in a running lane.
+      // divided corridor that is the island its halves share, on the tile edge
+      // between them — planting it at the tile's centre puts a tree in a
+      // running lane.
       const profile = this.profileAt(tile.x, tile.z);
-      const across = profile ? medianOffsetOf(profile) : 0;
+      const offset = profile ? medianOffsetOf(profile) : 0;
+      const across = offset === 0 ? 0 : Math.sign(offset) * TILE_HALF;
       // A road running north-south is measured across X, and vice versa.
       const vertical = (tile.mask & (NORTH | SOUTH)) !== 0;
       const centerX = (tile.x + 0.5) * TILE_METERS + (vertical ? across : 0);

@@ -12,7 +12,7 @@ for the surface, the paint, the furniture and the zoning overlay.
 
 | Section | Size |
 | --- | --- |
-| [Asphalt and paint](asphalt-and-paint.md) | 14,546 B |
+| [Asphalt and paint](asphalt-and-paint.md) | 14,606 B |
 | [Median, dividers and kerbs](median-dividers-and-kerbs.md) | 4,040 B |
 | [Junction and motorway signage](junction-and-motorway-signage.md) | 3,955 B |
 | [Ground-cover transitions](ground-cover-transitions.md) | 473 B |

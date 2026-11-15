@@ -469,8 +469,11 @@ function armWarrant(
     if (isOwnPartner(jx, jz, dx, dz, world) && !leadsOnward(jx + dx, jz + dz, dx, dz, world)) {
       continue;
     }
-    const against =
-      isOneWayProfile(leg) && world.flowAt(jx + dx, jz + dz) === oppositeFlow(heading);
+    const drawn = world.flowAt(jx + dx, jz + dz);
+    // A one-way leg's lanes run the way it was drawn, or against it where it
+    // is the far half of a corridor.
+    const lanesRun = runsAgainstDrawing(leg) ? oppositeFlow(drawn) : drawn;
+    const against = isOneWayProfile(leg) && lanesRun === oppositeFlow(heading);
     if (!against) legs.push(heading);
   }
   // What the player has restricted, narrowed to what the junction has to

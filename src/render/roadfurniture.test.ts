@@ -1592,15 +1592,19 @@ describe('a street tramway is hung from contact poles at the kerb', () => {
     tram: 'mixed',
   });
 
-  it('stands one every 22 m of road, phase anchored at world-metre zero, on alternate kerbs', () => {
+  it('stands one pair of kerb poles every 22 m of road, phase anchored at world-metre zero', () => {
     const poles = computeTramPolePlacements(run(RoadTier.Tram));
-    // 20 tiles are 400 m of road: a pole at every multiple of 22 m below it.
-    expect(poles.map((p) => p.x)).toEqual(Array.from({ length: 19 }, (_, k) => k * 22));
+    // 20 tiles are 400 m of road: a pair at every multiple of 22 m below it.
+    expect(poles.map((p) => p.x)).toEqual(
+      Array.from({ length: 19 }, (_, k) => [k * 22, k * 22]).flat(),
+    );
     const centre = tileToWorld(Z);
     // In the furnishing strip, 0.46 m behind the kerb face of the 3.75 m carriageway.
     for (const p of poles) expect(Math.abs(p.z - centre)).toBeCloseTo(3.75 + 0.46, 6);
-    const sides = poles.map((p) => Math.sign(p.z - centre));
-    for (let k = 1; k < sides.length; k++) expect(sides[k]).toBe(-sides[k - 1]!);
+    // One pole of each pair on either kerb.
+    for (let k = 0; k < poles.length; k += 2) {
+      expect(Math.sign(poles[k]!.z - centre)).toBe(-Math.sign(poles[k + 1]!.z - centre));
+    }
     // Every arm reaches back over the road it stands beside.
     for (const p of poles) {
       expect(p.reachX).toBe(0);
@@ -1610,7 +1614,7 @@ describe('a street tramway is hung from contact poles at the kerb', () => {
 
   it('stands along a street composed with mixed running, and along no other street', () => {
     expect(computeTramPolePlacements(run(RoadTier.TwoLane, 20, { profile: mixed }))).toHaveLength(
-      19,
+      38,
     );
     expect(computeTramPolePlacements(run(RoadTier.TwoLane))).toEqual([]);
     // A reservation is the trams' own: it is not hung from the street's kerbs.
@@ -1639,7 +1643,7 @@ describe('a street tramway is hung from contact poles at the kerb', () => {
     ).toEqual([]);
   });
 
-  it('stands on the drivers’ right of a one-way tramway', () => {
+  it('hangs a one-way tramway from a span between both kerbs, the arm being too short for either lane', () => {
     const preset = presetProfileForTier(RoadTier.OneWay);
     const oneWay: RoadProfile = {
       ...preset,
@@ -1649,14 +1653,25 @@ describe('a street tramway is hung from contact poles at the kerb', () => {
       run(RoadTier.OneWay, 20, { profile: oneWay, flow: RoadFlow.East }),
     );
     expect(poles.length).toBeGreaterThan(0);
-    // Heading east, the right-hand kerb is the south one: greater z.
-    for (const p of poles) expect(p.z).toBeGreaterThan(tileToWorld(Z));
+    const kerbs = new Set(poles.map((p) => Math.sign(p.z - tileToWorld(Z))));
+    expect([...kerbs].sort()).toEqual([-1, 1]);
+    for (const p of poles) expect(p.bracket).toBe(false);
   });
 
-  it('draws one instanced pole and one instanced arm per pole, the arm 6 m up', () => {
+  it('draws one instanced pole per pole and one instanced arm per bracket pole, the arm 6 m up', () => {
     const scene = new THREE.Scene();
     const renderer = new RoadFurnitureRenderer(scene, flatHeightAt);
-    const poles = computeTramPolePlacements(run(RoadTier.Tram));
+    // A bracket pole stands among the span poles: no preset's arm reaches its track.
+    const bracket = {
+      x: 3,
+      z: tileToWorld(Z),
+      reachX: 0,
+      reachZ: -1,
+      bracket: true,
+      spanTo: null,
+      hangs: [],
+    };
+    const poles = [...computeTramPolePlacements(run(RoadTier.Tram)), bracket];
     renderer.setTramPoles(poles);
     const meshes = scene.children.filter(
       (o): o is THREE.InstancedMesh =>
@@ -1664,7 +1679,9 @@ describe('a street tramway is hung from contact poles at the kerb', () => {
         (o.userData.furnitureKind === 'tramPole' || o.userData.furnitureKind === 'tramArm'),
     );
     expect(meshes).toHaveLength(2);
-    for (const mesh of meshes) expect(mesh.count).toBe(poles.length);
+    for (const mesh of meshes) {
+      expect(mesh.count).toBe(mesh.userData.furnitureKind === 'tramArm' ? 1 : poles.length);
+    }
     const arm = meshes.find((m) => m.userData.furnitureKind === 'tramArm')!;
     arm.geometry.computeBoundingBox();
     const box = arm.geometry.boundingBox!;
@@ -1685,6 +1702,6 @@ describe('a street tramway is hung from contact poles at the kerb', () => {
     expect(scene.children.filter((o) => o.userData.furnitureKind === 'tramPole')).toEqual([
       meshes.find((m) => m.userData.furnitureKind === 'tramPole'),
     ]);
-    expect(meshes.every((m) => m.visible && m.count === poles.length)).toBe(true);
+    expect(meshes.every((m) => m.visible && m.count > 0)).toBe(true);
   });
 });

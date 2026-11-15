@@ -22,6 +22,7 @@ import {
   ENTRANCE_WALK_M,
   FOOT_M,
   ISLAND_WIDTH_M,
+  MIN_FRONT_WALK_M,
   SPACES_BETWEEN_ISLANDS,
   STALL_LENGTH_M,
   STALL_WIDTH_M,
@@ -73,6 +74,8 @@ export interface LotLayoutInput {
   driveThrough?: boolean;
   /** Stripe trailer stalls in the truck court before the wall the berths lie beside, on the ground left over. */
   trailerCourt?: boolean;
+  /** Keep a walk between the body's street face and the stall heads, the stalls giving way for it. */
+  shopfrontWalk?: boolean;
 }
 
 /** A drive-through lane is 12 ft (3.66 m) wide. */
@@ -385,6 +388,13 @@ function build(input: LotLayoutInput, c: Candidate): Built {
 
   const fixed: LotRect[] = [c.body];
   if (forecourt) fixed.push(forecourt);
+  // No stall runs to the shopfront: the clear route lies between the body's street face and the
+  // stall heads, to the engine's centimetre. An aisle may still run along the face; only stalls
+  // keep off the route.
+  const shopfrontRoute: LotRect[] =
+    !forecourt && input.shopfrontWalk && c.body.v0 > EPS
+      ? [{ ...c.body, v0: Math.max(0, c.body.v0 - MIN_FRONT_WALK_M), v1: c.body.v0 }]
+      : [];
   const rearYard = input.rearYard
     ? { ...c.body, v0: c.body.v1, v1: Math.min(input.depth, c.body.v1 + input.rearYard) }
     : null;
@@ -393,7 +403,7 @@ function build(input: LotLayoutInput, c: Candidate): Built {
   // lot behind that row, and its throat comes in from the curb cut to meet it.
   const throat = o === 'v' && c.outerRow ? { u0: curbCut.u0, u1: curbCut.u1, v0: 0, v1: L } : null;
   if (throat) fixed.push(throat);
-  const obstacles = [...fixed, ...berths].map((r) => toPQ(o, r));
+  const obstacles = [...fixed, ...shopfrontRoute, ...berths].map((r) => toPQ(o, r));
   const fixedPQ = fixed.map((r) => toPQ(o, r));
 
   // The drive runs across the rows from the street, until the body stops it.
@@ -468,7 +478,44 @@ function build(input: LotLayoutInput, c: Candidate): Built {
     return reach.some((a) => touchesAlong(a, pq));
   });
 
-  return { runs, berths, berthsOk, forecourt, rearYard, curbCut, throat, connector, reach };
+  // No stall heads onto the door: the ground before it, from the aisle to the walk, stays clear.
+  const [route] = shopfrontRoute;
+  const door = route
+    ? toPQ(o, {
+        u0: doorWalkU0(c.body, input.along),
+        u1: doorWalkU0(c.body, input.along) + ENTRANCE_WALK_M,
+        v0: Math.max(0, route.v0 - L),
+        v1: route.v0,
+      })
+    : null;
+  return {
+    runs: door ? runs.flatMap((r) => clearOf(r, door)) : runs,
+    berths,
+    berthsOk,
+    forecourt,
+    rearYard,
+    curbCut,
+    throat,
+    connector,
+    reach,
+  };
+}
+
+/** Where the walk in to a body's door starts along the street, kept inside the lot. */
+function doorWalkU0(body: LotRect, along: number): number {
+  const mid = (body.u0 + body.u1) / 2;
+  return Math.max(0, Math.min(mid - ENTRANCE_WALK_M / 2, along - ENTRANCE_WALK_M));
+}
+
+/** A run with the stretch that crosses `clear` taken out: one or two runs, or none. */
+function clearOf(run: Run, clear: PQ): Run[] {
+  const band = runBand(run, run.a0, run.a1);
+  if (!overlaps(clear, band)) return [run];
+  const [from, to] = run.axis === 'p' ? [clear.p0, clear.p1] : [clear.q0, clear.q1];
+  const pieces: Run[] = [];
+  if (from - run.a0 > EPS) pieces.push({ ...run, a1: from });
+  if (run.a1 - to > EPS) pieces.push({ ...run, a0: to });
+  return pieces;
 }
 
 /** Whether a berth lies side by side with an aisle along the whole of the berth's length. */
@@ -654,6 +701,9 @@ const ORDER: readonly { rowsAlong: RowsAlong; outerRow: boolean }[] = [
   { rowsAlong: 'v', outerRow: false },
 ];
 
+/** Ground narrower than this between an aisle and the front walk holds no stall; the walk takes it. */
+const WALK_SLIVER_M = 1;
+
 const cache = new Map<string, LotLayout>();
 const CACHE_LIMIT = 512;
 
@@ -730,7 +780,7 @@ export function computeLotLayout(input: LotLayoutInput): LotLayout {
   const { c, built, filled, fits } = best!;
   const berths = built.berthsOk ? built.berths : [];
   const entrance = { u: (c.body.u0 + c.body.u1) / 2, v: c.body.v0 };
-  const walks = walksFor(c.body, entrance, along, built.forecourt, [
+  const walks = walksFor(c.body, along, built.forecourt, filled.aisles, [
     ...filled.stalls.map((s) => s.rect),
     ...filled.accessAisles,
     ...filled.islands,
@@ -963,24 +1013,42 @@ const inside = (r: LotRect, lot: LotRect): boolean =>
  */
 function walksFor(
   body: LotRect,
-  entrance: LotPoint,
   along: number,
   forecourt: LotRect | null,
+  aisles: readonly LotRect[],
   parked: readonly LotRect[],
 ): { frontWalk: LotRect | null; entranceWalk: LotRect | null } {
   let front = Math.max(0, body.v0 - ENTRANCE_WALK_M);
+  const faces = (r: LotRect): boolean => r.u0 < body.u1 - EPS && body.u0 < r.u1 - EPS;
   for (const r of parked) {
-    if (r.u0 < body.u1 - EPS && body.u0 < r.u1 - EPS && r.v1 <= body.v0 + EPS) {
-      front = Math.max(front, r.v1);
-    }
+    if (faces(r) && r.v1 <= body.v0 + EPS) front = Math.max(front, r.v1);
+  }
+  // A sliver of ground between an aisle and the walk is paved as walk, so the walk meets the aisle.
+  for (const a of aisles) {
+    if (faces(a) && a.v1 <= front + EPS && front - a.v1 < WALK_SLIVER_M) front = a.v1;
   }
   const frontWalk = body.v0 - front > EPS ? { ...body, v0: front, v1: body.v0 } : null;
   const reachTo = frontWalk ? frontWalk.v0 : body.v0;
-  const half = ENTRANCE_WALK_M / 2;
-  const u0 = Math.max(0, Math.min(entrance.u - half, along - ENTRANCE_WALK_M));
-  const walk = { u0, u1: u0 + ENTRANCE_WALK_M, v0: 0, v1: reachTo };
-  const entranceWalk =
-    !forecourt && reachTo > EPS && !parked.some((r) => rectsOverlap(r, walk)) ? walk : null;
+  const u0 = doorWalkU0(body, along);
+  // From the street where nothing parked stands across the line; else from the nearest aisle that line crosses.
+  const across = { u0, u1: u0 + ENTRANCE_WALK_M };
+  const starts = [
+    0,
+    ...aisles
+      .filter((a) => a.u0 < across.u1 - EPS && across.u0 < a.u1 - EPS && a.v1 < reachTo - EPS)
+      .map((a) => a.v1)
+      .sort((a, b) => b - a),
+  ];
+  let entranceWalk: LotRect | null = null;
+  if (!forecourt && reachTo > EPS) {
+    for (const v0 of starts) {
+      const walk = { ...across, v0, v1: reachTo };
+      if (!parked.some((r) => rectsOverlap(r, walk))) {
+        entranceWalk = walk;
+        break;
+      }
+    }
+  }
   return { frontWalk, entranceWalk };
 }
 

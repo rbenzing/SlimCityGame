@@ -607,20 +607,18 @@ describe('the tram depot', () => {
     });
   });
 
-  it('stands 6 m catenary poles every 10 m along the roads with a crossarm over each pair, and no wire', () => {
-    expect(CATENARY_POLE.h).toBe(6);
-    expect(CATENARY_POLE.pitch).toBe(10);
-    expect(side.poles).toHaveLength(8);
-    for (let k = 0; k < 8; k += 2) {
-      const between = (side.roads[k]!.z0 + side.roads[k + 1]!.z0) / 2;
-      const row = side.poles.filter((p) => Math.abs(p.z - between) < 1e-9);
-      expect(row).toHaveLength(2);
-      expect(row[1]!.x - row[0]!.x).toBeCloseTo(10, 9);
-    }
+  it('stands 0.25 m poles at the yard’s two sides, two spans crossing every road, none between roads', () => {
+    expect(CATENARY_POLE.h).toBeCloseTo(6.4, 9);
+    expect(CATENARY_POLE.size).toBe(0.25);
+    expect(side.poles).toHaveLength(4);
+    expect(side.spans).toHaveLength(2);
+    const first = side.roads[0]!.z0;
+    const last = side.roads[7]!.z0;
+    for (const p of side.poles) expect(p.z < first || p.z > last).toBe(true);
     const renderer = new UtilityKitRenderer(new THREE.Scene(), flat, [TRAM]);
     const poles = renderer.partGeometry('tram-depot', 'tramDepotPoles')!;
     poles.computeBoundingBox();
-    expect(poles.boundingBox!.max.y).toBeCloseTo(6, 6);
+    expect(poles.boundingBox!.max.y).toBeCloseTo(6.4, 6);
   });
 
   it('covers a maintenance road and a wash road 4.9 m wide and 28.4 m long with 4.6 m clear doors under a 6 m roof, the office at its far end', () => {

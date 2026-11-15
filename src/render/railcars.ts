@@ -17,6 +17,7 @@
  */
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { TRAM_WIRE_HEIGHT_M } from './tramwire';
 import { VEHICLE_REGION, tagGeometry } from './vehicles';
 
 /** A train car is longer and taller than a bus; several of them make a train. */
@@ -34,8 +35,8 @@ export const TRAM_BOGIE = { wheelbase: 1.9, wheelDiameter: 0.66 } as const;
 export const TRAIN_FLOOR_M = 1.3;
 /** A tram section's floor over the rail head (low floor, the wheels under it). */
 export const TRAM_FLOOR_M = 0.95;
-/** How far the raised pantograph's head stands over the tram's roof. */
-export const TRAM_PANTOGRAPH_HEAD_M = 1.6;
+/** How far the raised pantograph's head stands over the tram's roof: its head is at the contact wire's height (the roof stands 0.3 m under the size's top). */
+export const TRAM_PANTOGRAPH_HEAD_M = TRAM_WIRE_HEIGHT_M - (TRAM_CAR_SIZE[1] - 0.3);
 /** Rail gauge half either side of a train's centreline, and a street tram's. */
 const TRAIN_GAUGE_HALF_M = 0.75;
 const TRAM_GAUGE_HALF_M = 0.7175;
@@ -276,9 +277,10 @@ function pantograph(roof: number, z: number, parts: THREE.BufferGeometry[]): voi
     parts.push(tagGeometry(geo, ROOF_GEAR, VEHICLE_REGION.FIXED));
   };
   const head = roof + TRAM_PANTOGRAPH_HEAD_M;
+  const knee = roof + TRAM_PANTOGRAPH_HEAD_M / 2;
   for (const x of [-0.3, 0.3]) {
-    arm(x, roof + 0.1, z - 0.4, roof + 0.85, z + 0.3);
-    arm(x, roof + 0.85, z + 0.3, head - 0.03, z - 0.4);
+    arm(x, roof + 0.1, z - 0.4, knee, z + 0.3);
+    arm(x, knee, z + 0.3, head - 0.03, z - 0.4);
   }
   parts.push(gear(1.5, 0.06, 0.5, 0, head - 0.03, z - 0.4));
 }

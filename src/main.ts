@@ -192,6 +192,7 @@ import {
   buildTileSet,
   computeSignPlacements,
   computeTramPolePlacements,
+  computeTramWireRuns,
   controlSignSpots,
   hasCrossingRoad,
   lateralAxis,
@@ -1607,7 +1608,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       clear,
       taken: new Standing().addAll(control),
     });
-    roadFurniture.setTramPoles(poles);
+    roadFurniture.setTramPoles(poles, computeTramWireRuns(latestRoadTiles));
     const ahead = new Standing().addAll(control).addAll(poles);
     const free = clientGrid.roads
       ? freeRoadLampStands(

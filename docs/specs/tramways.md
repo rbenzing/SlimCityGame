@@ -9,7 +9,7 @@
 - Treat a tram lane composed onto any road, mixed or reserved, as tram track read from the tile's profile, never the tier alone. [R-roads-007]
 - Keep mixed running at grade; lift a reservation onto two beams over a 2.4 m median, passing over every street it crosses and never meeting one at grade. [R-roads-008]
 - Charge a reservation a median, not a lane; price a guideway track at 2.25 times a street track. [R-roads-043]
-- Draw a street tramway's track as grooved rails flush in a 2.7 m concrete slab with no sleepers, and stand contact poles every 22 m at the kerb. [R-roads-013]
+- Draw a street tramway's track as grooved rails flush in a 2.7 m concrete slab with no sleepers, and stand contact poles in pairs at both kerbs every 22 m, a span wire between each pair and a contact wire over each track. [R-roads-013]
 - Cross a street straight over the junction at grade; a guideway's beams span it overhead. [R-roads-014]
 - Draw a stop on a full-height guideway tile as a raised station, derived every rebuild and never saved; no shelter, lamp or pole under it. [R-roads-011]
 - Refuse an overpass across a guideway and a guideway under an overpass. [R-roads-012]
@@ -31,6 +31,10 @@
 | bracket height | 6.0 | m | 19 ft contact wire (DC and Portland standards) rounded up |
 | pole thickness | 0.25 | m | dial |
 | pole spacing | 22 | m | El Paso 420 poles over 29,500 ft, [RailWorks](https://www.railworks.com/projects/el-paso-streetcar); Oklahoma City 243 over 18,000 ft, [C3M](https://www.c3mpowersystems.com/oklahoma-city-streetcar) |
+| contact wire height | 5.8 | m | 19 ft, the bracket's source; [Yarra Trams CE-021-ST-0036](https://yarratrams.com.au/media/1949/infrastructure-overhead-network-design-and-construction.pdf) clause 4.11.2.1 allows 5.00 to 5.64 m at supports, so this is slightly high |
+| span wire height | 6.0 | m | the bracket height |
+| longest gap between supports | 36.6 | m | 120 ft, the old Board of Trade limit ([eeeguide](https://eeeguide.com/?p=58191), [tramwayinfo](https://tramwayinfo.com/Models/Howto/Dimens.htm)) |
+| depot pole clear of a tram's side | 0.38 | m | 15 in, old UK practice (tramwayinfo), the only figure found |
 | pole replaces a lamp within | 2 | m | dial |
 | beam width | 0.66 | m | [Monorail Society, beams](https://monorails.org/tMspages/TPBeams.html) |
 | beam depth | 1.22 | m | Monorail Society, beams |
@@ -113,11 +117,11 @@
 - **Slab width.** Toronto's allowance is the outer rails plus 560 mm each side; Portland's track sits in a visible concrete slab.
 - **No sleepers show.** Only the railway has them.
 - **Crossings.** A tramway crosses another street at grade, straight over the junction; slab and rails run on across the junction box.
-- **Poles.** Along each kerb of a mixed tram road stands a pole with a bracket arm out over the carriageway.
+- **Poles.** At both kerbs of a mixed tram road stands a pole, the pair joined by a span wire 6.0 m up (the "span network" of Yarra Trams' overhead standard, clause 4.19.14). The 1.9 m bracket arm reaches no preset's track: its tip falls 0.44 m short of a lane 1.875 m from the centre. It carries the wire only on a composed road whose tram lane lies under it.
 - **Pole phase.** Phase is anchored at world-metre zero so poles line up across tiles.
-- **Pole placement.** Never in a junction box or across a driveway; alternate sides on a two-way road so one stands every 22 m on one side or the other.
+- **Pole placement.** Never in a junction box or across a driveway. Where one of those takes a pair's place, the tile either side stands a pair 2 m inside its edge, so no gap between supports passes 36.6 m.
 - **Pole instancing.** One instanced pole and one instanced arm.
-- **Wire.** The wire is not drawn, as the game draws no wires.
+- **Wire.** A contact wire runs 5.8 m over each track's centre line from support to support, through bends and junctions on the track's own path, as one merged mesh. A guideway has none. A tram's pantograph reaches the wire. Pole rake, spacing on curves and depot track centres were not found in any source read.
 - **Lamps.** A pole replaces the street lamp only where it would stand within 2 m of one; the lamp rule stands otherwise.
 - **Bracket height.** The 19 ft contact wire of the DC and Portland standards, rounded up to clear the arm.
 

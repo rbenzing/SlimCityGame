@@ -23,12 +23,15 @@ import {
   syncRoadLayers,
 } from '../world/roadnet';
 import { TILE_METERS } from '../shared/constants';
-import { freeJunctionTiles, freeRoadLampStands, freeRoadSoup } from './freeroadmesh';
+import { bendDashes, freeJunctionTiles, freeRoadLampStands, freeRoadSoup } from './freeroadmesh';
 import { LAMP_HEIGHTS_M, lampLateralOffset } from './lamps';
 import { markingPlan } from './roadmarkings';
 import { MEDIAN_CONCRETE_COLOR, MEDIAN_GRASS_COLOR, MEDIAN_RAISE } from './medianisland';
 import {
   CURB_Y_OFFSET,
+  DASH_GAP_LENGTH_M,
+  DASH_PAINT_LENGTH_M,
+  DASH_PERIOD_M,
   MARKING_COLOR,
   MARK_Y_OFFSET,
   PAINT_HALF_WIDTH_M,
@@ -689,6 +692,115 @@ describe('a bend where two runs of one road meet', () => {
     const inArc = (p: MPoint): boolean => Math.abs(polar(p).angle) <= reach;
     return { g, bend, vertices, polar, inArc };
   }
+
+  it('runs one unbroken broken line through the bend and across both of its seams', () => {
+    const arm = 120;
+    const period = DASH_PERIOD_M;
+    const minGap = DASH_GAP_LENGTH_M / 2;
+    let insideBend = 0;
+    for (const deg of [60, 90, 120]) {
+      for (const shift of [0, 2.7, 5.1, 7.9]) {
+        const node = { x: NODE.x + shift, z: NODE.z };
+        const g = world();
+        const d = { x: Math.cos((deg * Math.PI) / 180), z: Math.sin((deg * Math.PI) / 180) };
+        lay(g, { a: at(node.x - arm, node.z), b: at(node.x, node.z) });
+        lay(g, { a: at(node.x, node.z), b: at(node.x + d.x * arm, node.z + d.z * arm) });
+        const bend = [...bendsOf(g.roads!, radiusOf(RoadTier.TwoLane)).values()][0]!.bend;
+        const path = bend.path;
+        const length = path[path.length - 1]!.s;
+        const first = path[0]!;
+        const last = path[path.length - 1]!;
+        // Where a point of the centre line lies along the whole line: negative
+        // before the bend, past `length` after it, by whichever of the run
+        // before, the bend and the run after it the point is nearest.
+        const along = (x: number, z: number): number => {
+          let best = { lateral: Infinity, t: 0 };
+          const consider = (lateral: number, t: number): void => {
+            if (lateral < best.lateral) best = { lateral, t };
+          };
+          const before = (x - first.x) * first.hx + (z - first.z) * first.hz;
+          if (before < 0)
+            consider(Math.abs((x - first.x) * first.hz - (z - first.z) * first.hx), before);
+          const after = (x - last.x) * last.hx + (z - last.z) * last.hz;
+          if (after > 0)
+            consider(Math.abs((x - last.x) * last.hz - (z - last.z) * last.hx), length + after);
+          for (let i = 0; i + 1 < path.length; i++) {
+            const p = path[i]!;
+            const q = path[i + 1]!;
+            const sx = q.x - p.x;
+            const sz = q.z - p.z;
+            const u = Math.max(
+              0,
+              Math.min(1, ((x - p.x) * sx + (z - p.z) * sz) / (sx * sx + sz * sz || 1)),
+            );
+            consider(Math.hypot(x - p.x - sx * u, z - p.z - sz * u), p.s + (q.s - p.s) * u);
+          }
+          return best.t;
+        };
+        const soup = freeRoadSoup(g.roads!, noCustom, flat);
+        const ts: number[] = [];
+        for (let i = 0; i < soup.positions.length; i += 9) {
+          if (!sameColor(soup.colors.slice(i, i + 3), YELLOW_MARKING_COLOR)) continue;
+          for (let k = 0; k < 9; k += 3) {
+            ts.push(along(soup.positions[i + k]!, soup.positions[i + k + 2]!));
+          }
+        }
+        ts.sort((a, b) => a - b);
+        const dashes: [number, number][] = [];
+        for (const t of ts) {
+          const open = dashes[dashes.length - 1];
+          if (open && t - open[1] < 2.5) open[1] = t;
+          else dashes.push([t, t]);
+        }
+        const label = `${deg} degrees, node shifted ${shift} m`;
+        const bendDashes = dashes.filter(([a, b]) => a > 0.05 && b < length - 0.05);
+        insideBend += bendDashes.length;
+        // The bend's dashes are evenly spaced.
+        for (let k = 1; k < bendDashes.length; k++) {
+          const spacing = bendDashes[k]![0] - bendDashes[k - 1]![0];
+          if (k > 1) {
+            expect(spacing, label).toBeCloseTo(bendDashes[k - 1]![0] - bendDashes[k - 2]![0], 1);
+          }
+        }
+        // No gap along the line, bend and seams included, is shorter than a half gap.
+        for (const [k, run] of dashes.entries()) {
+          const next = dashes[k + 1];
+          if (!next || run[1] < -60 || next[0] > length + 60) continue;
+          expect(next[0] - run[1], `${label}, gap after ${run[1].toFixed(1)}`).toBeGreaterThan(
+            minGap - 0.15,
+          );
+        }
+        // Either side of the bend each run keeps its own phase.
+        const phaseOf = (start: number, seam: number, seamAlong: number): number =>
+          (((start - seamAlong + seam) % period) + period) % period;
+        const beforeBend = dashes.filter(([, b]) => b < -0.05 && b > -60).at(-1)!;
+        const afterBend = dashes.find(([a]) => a > length + 0.05 && a < length + 60)!;
+        const nearPhase = phaseOf(beforeBend[0], arm - bend.setback[0], 0);
+        const farPhase = phaseOf(afterBend[0], bend.setback[1], length);
+        for (const p of [nearPhase, farPhase]) {
+          expect(Math.min(p, period - p), label).toBeLessThan(0.15);
+        }
+      }
+    }
+    expect(insideBend).toBeGreaterThan(0);
+  });
+
+  it('paints no dash in a bend too short for half a standard gap, and keeps every dash 3.05 m', () => {
+    const near = { origin: 0, sign: 1 } as const;
+    const far = { origin: 5, sign: 1 } as const;
+    expect(bendDashes(near, far, 6)).toEqual([]);
+    for (const length of [20, 33, 47]) {
+      const dashes = bendDashes(near, far, length);
+      expect(dashes.length, `${length} m`).toBeGreaterThan(1);
+      for (const [lo, hi] of dashes.slice(1, -1))
+        expect(hi - lo).toBeCloseTo(DASH_PAINT_LENGTH_M, 6);
+      for (let k = 1; k < dashes.length; k++) {
+        expect(dashes[k]![0] - dashes[k - 1]![1]).toBeGreaterThanOrEqual(
+          DASH_GAP_LENGTH_M / 2 - 1e-9,
+        );
+      }
+    }
+  });
 
   const TIERS: [string, Tier][] = [
     ['two-lane', RoadTier.TwoLane],

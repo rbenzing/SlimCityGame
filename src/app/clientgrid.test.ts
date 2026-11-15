@@ -8,7 +8,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { TILE_METERS } from '../shared/constants';
 import { claimedTiles } from '../shared/lotframe';
 import { RoadFlow, RoadTier, storedFlow, ZoneType } from '../shared/types';
-import type { BuildingCatalogEntry, BuildingInstance, MapData } from '../shared/types';
+import type { BuildingCatalogEntry, BuildingInstance, MapData, RoadProfile } from '../shared/types';
 import { ClientGridMirror } from './clientgrid';
 import { soilGrades } from '../shared/soil';
 import {
@@ -828,6 +828,108 @@ describe('ClientGridMirror — junction control', () => {
     expect(kerbFromLot()).toBeGreaterThan(TILE_METERS / 2 - carriagewayHalfWidthOf(bayed) + 1e-6);
     for (const reach of cutReach()) expect(reach).toBeCloseTo(kerbFromLot(), 6);
   });
+});
+
+describe('ClientGridMirror — the turn bay of a corridor half', () => {
+  const lane = (flow: 'fwd' | 'back') => ({ kind: 'travel' as const, width: 3.6, flow });
+  const walk = { kind: 'sidewalk' as const, width: 1.9 };
+  const divided: RoadProfile = {
+    class: 'divided',
+    pieces: [
+      walk,
+      lane('back'),
+      lane('back'),
+      lane('back'),
+      { kind: 'median', width: 2 },
+      lane('fwd'),
+      lane('fwd'),
+      lane('fwd'),
+      walk,
+    ],
+  };
+  const undivided: RoadProfile = {
+    class: 'arterial',
+    pieces: [
+      walk,
+      lane('back'),
+      lane('back'),
+      lane('back'),
+      lane('fwd'),
+      lane('fwd'),
+      lane('fwd'),
+      walk,
+    ],
+  };
+  const ID = 40;
+  const JZ = 10;
+  const LEFT = 8;
+  const RIGHT = 9;
+
+  /** A corridor running south in columns 8 and 9, a street joining the east half at row 10, both halves signalled. */
+  const build = (profile: RoadProfile, bothSides = true): ClientGridMirror => {
+    const mirror = new ClientGridMirror(makeMap());
+    mirror.applyRoadProfiles([{ id: ID, profile }]);
+    const deltas = [];
+    for (const [x, half] of [
+      [LEFT, 'left'],
+      [RIGHT, 'right'],
+    ] as const) {
+      for (let z = 2; z <= 18; z++) {
+        const joins = z === JZ ? (x === LEFT && !bothSides ? 2 : 2 | 8) : 0;
+        deltas.push({
+          x,
+          z,
+          tier: RoadTier.Avenue,
+          profile: ID,
+          flow: storedFlow(RoadFlow.South, half),
+          mask: (z === 2 ? 0 : 1) | (z === 18 ? 0 : 4) | joins,
+          elevation: 0,
+        });
+      }
+    }
+    // A divided corridor opens its median only where a street meets both halves.
+    for (let x = bothSides ? 3 : RIGHT + 1; x <= 14; x++) {
+      if (x >= LEFT && x <= RIGHT) continue;
+      deltas.push({
+        x,
+        z: JZ,
+        tier: RoadTier.TwoLane,
+        profile: RoadTier.TwoLane,
+        flow: 0,
+        mask: (x === 3 ? 0 : 8) | (x === 14 ? 0 : 2),
+        elevation: 0,
+      });
+    }
+    mirror.applyRoadDeltas(deltas);
+    mirror.applyJunctions(
+      [LEFT, RIGHT].map((x) => ({
+        x,
+        z: JZ,
+        control: 'signal' as const,
+        warranted: 'signal' as const,
+        auto: true,
+        turns: 0,
+      })),
+    );
+    return mirror;
+  };
+  const bayed = (m: ClientGridMirror, x: number, z: number): boolean =>
+    m.drawnProfileAt(x, z)!.pieces.some((p) => p.bay);
+
+  for (const [name, profile] of [
+    ['a divided corridor', divided],
+    ['an undivided corridor', undivided],
+  ] as const) {
+    it(`gives each half of ${name} its bay on the end its lanes arrive at`, () => {
+      const m = build(profile);
+      // Drawn south, the west half's lanes run south and arrive from the north;
+      // the east half's run north and arrive from the south.
+      expect(bayed(m, LEFT, JZ - 1)).toBe(true);
+      expect(bayed(m, LEFT, JZ + 1)).toBe(false);
+      expect(bayed(m, RIGHT, JZ + 1)).toBe(true);
+      expect(bayed(m, RIGHT, JZ - 1)).toBe(false);
+    });
+  }
 });
 
 describe('ClientGridMirror — a road passing over another', () => {

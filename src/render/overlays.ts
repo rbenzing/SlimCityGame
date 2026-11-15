@@ -24,37 +24,22 @@ import {
   COVERAGE_COVERED_HEX,
   COVERAGE_UNCOVERED_DIM_FACTOR,
   COVERAGE_UNCOVERED_HEX,
-  LENS_RAMP_STOPS,
+  LENS_MEANING,
   SOIL_LENS_COLORS,
+  lensRampColor,
+  type LensMeaning,
 } from '../shared/lenses';
 
 const OVERLAY_Y = 45;
-const OVERLAY_OPACITY = 0.55;
+const OVERLAY_OPACITY = 0.45;
 
-const clamp01 = (v: number): number => Math.min(1, Math.max(0, v));
-const lerp = (a: number, b: number, t: number): number => a + (b - a) * t;
+/** The ramp a lens paints with; a lens with no declared meaning paints the calm ramp. */
+const meaningOf = (lens: LensId | null): LensMeaning =>
+  (lens === null ? null : LENS_MEANING[lens]) ?? 'better';
 
-const RAMP_STOPS = LENS_RAMP_STOPS;
-
-/** Deterministic 0..255 -> RGB (0..1) heatmap ramp. Pure and exported for tests. */
-export function rampColor(v: number): [number, number, number] {
-  const value = Math.min(255, Math.max(0, v));
-  const lastIndex = RAMP_STOPS.length - 1;
-  for (let i = 0; i < lastIndex; i++) {
-    const lo = RAMP_STOPS[i]!;
-    const hi = RAMP_STOPS[i + 1]!;
-    if (value <= hi[0] || i === lastIndex - 1) {
-      const span = hi[0] - lo[0];
-      const t = span === 0 ? 0 : clamp01((value - lo[0]) / span);
-      return [
-        lerp(lo[1][0], hi[1][0], t),
-        lerp(lo[1][1], hi[1][1], t),
-        lerp(lo[1][2], hi[1][2], t),
-      ];
-    }
-  }
-  const last = RAMP_STOPS[lastIndex]!;
-  return [last[1][0], last[1][1], last[1][2]];
+/** Deterministic 0..255 -> RGB (0..1) heat colour for `lens`. Pure and exported for tests. */
+export function rampColor(lens: LensId | null, v: number): [number, number, number] {
+  return lensRampColor(meaningOf(lens), v);
 }
 
 // ---------------------------------------------------------------------------
@@ -119,7 +104,7 @@ export class OverlayRenderer {
     const mapMeters = MAP_SIZE * TILE_METERS;
 
     this.textureData = new Uint8Array(MAP_SIZE * MAP_SIZE * 4);
-    const [r0, g0, b0] = rampColor(0);
+    const [r0, g0, b0] = rampColor(null, 0);
     for (let i = 0; i < MAP_SIZE * MAP_SIZE; i++) {
       this.textureData[i * 4] = Math.round(r0 * 255);
       this.textureData[i * 4 + 1] = Math.round(g0 * 255);
@@ -158,7 +143,7 @@ export class OverlayRenderer {
       transparent: true,
       opacity: OVERLAY_OPACITY,
       depthWrite: false,
-      blending: THREE.AdditiveBlending,
+      blending: THREE.NormalBlending,
       side: THREE.DoubleSide,
     });
 
@@ -233,7 +218,7 @@ export class OverlayRenderer {
     for (let i = 0; i < count; i++) {
       const value = data[i] ?? 0;
       if (value !== 0) any = true;
-      const [r, g, b] = rampColor(value);
+      const [r, g, b] = rampColor(field, value);
       const base = i * 4;
       this.textureData[base] = Math.round(r * 255);
       this.textureData[base + 1] = Math.round(g * 255);
@@ -284,7 +269,7 @@ export class OverlayRenderer {
     for (let i = 0; i < count; i++) {
       const value = cache[i] ?? 0;
       if (value !== 0) any = true;
-      const [r, g, b] = graded ? rampColor(value) : coverageColor(value);
+      const [r, g, b] = graded ? rampColor(kind, value) : coverageColor(value);
       const base = i * 4;
       this.textureData[base] = Math.round(r * 255);
       this.textureData[base + 1] = Math.round(g * 255);

@@ -479,12 +479,18 @@ describe('one object to a place', () => {
   it('moves a tram pole off a signal mast or stop sign, and leaves the mast where it stands', () => {
     const tiles = row(10, 0, 20, { tier: RoadTier.Tram });
     const base = computeTramPolePlacements(tiles);
+    // Both kerb poles of a span stand together, so the pair slides as one.
     const victim = base[2]!;
+    const partner = base[3]!;
     const sign = { x: victim.x + 0.6, z: victim.z };
     const moved = computeTramPolePlacements(tiles, undefined, side(tiles, [sign]));
     expect(moved.length).toBe(base.length);
     expect(Math.hypot(moved[2]!.x - sign.x, moved[2]!.z - sign.z)).toBeGreaterThanOrEqual(1.5);
-    expect(moved.filter((_, i) => i !== 2)).toEqual(base.filter((_, i) => i !== 2));
+    expect(moved[3]!.x).toBeCloseTo(moved[2]!.x, 9);
+    expect(moved[3]!.z).toBe(partner.z);
+    expect(moved.filter((_, i) => i !== 2 && i !== 3).map((p) => p.x)).toEqual(
+      base.filter((_, i) => i !== 2 && i !== 3).map((p) => p.x),
+    );
   });
 
   it('moves a lamp off a mast, and a mast is never moved for a lamp', () => {

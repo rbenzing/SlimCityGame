@@ -214,6 +214,14 @@ import {
   TRAM_CARS_PER_SET,
   TRAM_SET,
 } from './transit';
+import {
+  buildWireGeometry,
+  contactWireSegments,
+  dropperSegment,
+  spanWireSegment,
+  TRAM_SUPPORT_HEIGHT_M,
+  type WireSegment,
+} from './tramwire';
 
 // ---------------------------------------------------------------------------
 // Registry: acts ONLY on catalog ids in its registry —
@@ -9239,8 +9247,19 @@ export const RAIL_YARD_SPEC: YardSpec = {
   fuelStand: true,
   drive: true,
 };
-/** Catenary poles 6 m tall every 10 m along a pair of roads, each with a crossarm over both. */
-export const CATENARY_POLE = { h: 6, pitch: 10, size: 0.2, arm: 5.5, armT: 0.12 };
+/**
+ * The yard's overhead: poles 0.25 m thick at the yard's two sides, a span wire
+ * between each pair at the support height (0.4 m under the pole's top) and the
+ * contact wire hung under every road; no pole stands between roads, where a
+ * tram's side clears it by less than the 0.38 m (15 in) the old UK standard
+ * leaves. Each span crosses every road `along` metres from the road's start.
+ */
+export const CATENARY_POLE = {
+  h: TRAM_SUPPORT_HEIGHT_M + 0.4,
+  size: 0.25,
+  clear: 0.38,
+  along: [3, 18],
+} as const;
 /** The track as the road mesh lays it: rails at the gauge on sleepers, over ballast on the railway. */
 const yardGaugeHalf = (ballast: boolean): number =>
   ballast ? RAILWAY_GAUGE_HALF_M : TRAM_GAUGE_HALF_M;
@@ -9320,6 +9339,10 @@ export interface YardLayout {
   officeDoor: YardDoor;
   panes: DepotPane[];
   poles: Vec2[];
+  /** The span wires between pairs of poles, each crossing every stabling road. */
+  spans: { a: Vec2; b: Vec2 }[];
+  /** The roads the contact wire hangs over, end to end; the stabling roads when the yard has poles. */
+  wires: TrackSeg[];
   /** The concrete apron the tram's rails lie in; the whole yard but the strip beyond the last road. */
   apron: Rect;
   fence: Rect;
@@ -9573,21 +9596,23 @@ function layoutYard(
     });
   }
 
+  // The wire hangs from spans that run along the ladder, so each crosses every
+  // road the same distance from its start; the poles stand beyond the first and
+  // last road, a tram's side plus the clearance and half a pole away.
   const poles: Vec2[] = [];
+  const spans: { a: Vec2; b: Vec2 }[] = [];
   if (spec.poles) {
-    for (let k = 0; k + 1 < n; k += 2) {
-      const a = roads[k]!;
-      const b = roads[k + 1]!;
-      const z = (a.z0 + b.z0) / 2;
-      for (
-        let x = Math.max(a.x0, b.x0) + 1.5;
-        x <= Math.min(a.x1, b.x1) - 1;
-        x += CATENARY_POLE.pitch
-      ) {
-        poles.push({ x, z });
-      }
+    const off = TRAM_CAR_SIZE[0] / 2 + CATENARY_POLE.clear + CATENARY_POLE.size / 2 + 0.02;
+    const first = roads[0]!;
+    const last = roads[n - 1]!;
+    for (const along of CATENARY_POLE.along) {
+      const a = { x: first.x0 + along - off, z: first.z0 - off };
+      const b = { x: last.x0 + along + off, z: last.z0 + off };
+      poles.push(a, b);
+      spans.push({ a, b });
     }
   }
+  const wires: TrackSeg[] = spec.poles ? roads.map((r) => ({ ...r })) : [];
 
   const fence = lotRect(footprint, YARD_FENCE_INSET_M);
   // The lead's own gaps are cut where its path crosses; only the gate is here.
@@ -9622,6 +9647,8 @@ function layoutYard(
     officeDoor,
     panes,
     poles,
+    spans,
+    wires,
     apron: {
       x0: -halfW + 0.05,
       x1: halfW - 0.05,
@@ -9678,6 +9705,8 @@ function mirrorYard(layout: YardLayout, spec: YardSpec): YardLayout {
     officeDoor: withOffice ? door(layout.officeDoor) : layout.officeDoor,
     panes: layout.panes.map((p, i) => (i < hallPanes || withOffice ? pane(p) : p)),
     poles: layout.poles.map(vec),
+    spans: layout.spans.map((s) => ({ a: vec(s.a), b: vec(s.b) })),
+    wires: layout.wires.map(seg),
     fuel: layout.fuel && vec(layout.fuel),
     sets: layout.sets.map((set) => set.map((car) => ({ x: -car.x, z: car.z, turn: 3 as const }))),
   };
@@ -10158,14 +10187,35 @@ function buildYardTrackGeometry(
   return mergeParts(parts);
 }
 
-/** The catenary poles and their crossarms as one geometry; local Y=0 is the yard slab's top. */
+/** The catenary poles, their span wires and the contact wire over each road as one geometry; local Y=0 is the yard slab's top. */
 function buildYardPolesGeometry(layout: YardLayout): THREE.BufferGeometry {
-  const { h, size, arm, armT } = CATENARY_POLE;
-  const parts: THREE.BufferGeometry[] = [];
-  for (const p of layout.poles) {
-    parts.push(standingBox(size, h, size, p.x, 0, p.z, GEN_STEEL_RGB));
-    parts.push(standingBox(armT, armT, arm, p.x, h - 0.4, p.z, GEN_STEEL_RGB));
+  const { h, size } = CATENARY_POLE;
+  const ground = (): number => 0;
+  const parts: THREE.BufferGeometry[] = layout.poles.map((p) =>
+    standingBox(size, h, size, p.x, 0, p.z, GEN_STEEL_RGB),
+  );
+  const segments: WireSegment[] = [];
+  for (const wire of layout.wires) {
+    segments.push(
+      ...contactWireSegments(
+        [
+          { x: wire.x0, z: wire.z0 },
+          { x: wire.x1, z: wire.z1 },
+        ],
+        ground,
+      ),
+    );
   }
+  for (const { a, b } of layout.spans) {
+    segments.push(spanWireSegment(a, b, ground));
+    // A dropper where the span crosses each road carries the contact wire.
+    for (const wire of layout.wires) {
+      const t = (wire.z0 - a.z) / (b.z - a.z);
+      segments.push(dropperSegment({ x: a.x + (b.x - a.x) * t, z: wire.z0 }, 0));
+    }
+  }
+  if (segments.length > 0)
+    parts.push(paintVertexColor(buildWireGeometry(segments), hexFromRgb(GEN_STEEL_RGB)));
   return mergeParts(parts);
 }
 

@@ -33,4 +33,4 @@ it that does the work, and that part is the one modelled:
 | [The generators: solar, gas, combined cycle and the reactor](the-generators-solar-gas-combined-cycle-and-the-reactor.md) | 3,461 B |
 | [The clinic, the depot and the bus stop](the-clinic-the-depot-and-the-bus-stop.md) | 7,597 B |
 | [The earliest kits, redone](the-earliest-kits-redone.md) | 10,609 B |
-| [The depots](the-depots.md) | 4,200 B |
+| [The depots](the-depots.md) | 4,275 B |
