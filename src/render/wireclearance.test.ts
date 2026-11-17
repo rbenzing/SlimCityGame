@@ -11,7 +11,12 @@ import {
 } from './lamps';
 import { layStreetAll, layStreetChunks, roadChunksOf, shapePole, wirePoints } from './powerpoles';
 import type { PowerLay, PowerWorld } from './powerpoles';
-import { buildTileSet, computeSignPlacements, signalPolylines } from './roadfurniture';
+import {
+  buildTileSet,
+  computeSignPlacements,
+  controlSignSpots,
+  signalPolylines,
+} from './roadfurniture';
 import type { FurnitureRoadTile } from './roadfurniture';
 import { KEEP_CLEAR_NONE, Standing } from './roadsidespace';
 import {
@@ -206,6 +211,50 @@ describe('a junction keeps its lamps and signals clear of the wires', () => {
     expect(signals.length).toBeGreaterThan(0);
     expect(leastWireDistance(final.spans, signals, flat)).toBeGreaterThanOrEqual(2);
   });
+});
+
+describe('a signalled crossroads with a pole line on each street, masts held as the game holds them', () => {
+  const tiers = [RoadTier.TwoLane, RoadTier.Avenue, RoadTier.FourLane, RoadTier.OneWay] as const;
+  const crossing = (a: RoadTier, b: RoadTier, north: boolean): FurnitureRoadTile[] => [
+    ...row(1, 14, 8, { tier: a }).map((t) =>
+      t.x === 8 ? { ...t, control: 'signal' as const } : t,
+    ),
+    ...col(8, north ? 1 : 9, 14, { tier: b }).filter((t) => t.z !== 8),
+  ];
+  const cases = tiers.flatMap((a) =>
+    tiers.flatMap((b) => [true, false].map((north) => [a, b, north] as const)),
+  );
+
+  it.each(cases)(
+    'streets %i and %i, north arm %s: every wire keeps 1.83 m from mast, arm, head and lamp',
+    (a, b, north) => {
+      const tiles = crossing(a, b, north);
+      const masts = controlSignSpots(tiles);
+      const held = (posts: readonly LampStand[]): PowerWorld => ({
+        ...worldOf(tiles, posts),
+        roadside: { clear: KEEP_CLEAR_NONE, taken: new Standing().addAll(masts).addAll(posts) },
+      });
+      const lamps = lampsOf(tiles);
+      const settled = carryLampsOnPoles(
+        lamps,
+        (posts, chunks) => {
+          const world = held(posts);
+          return layStreetChunks(world, chunks ?? roadChunksOf(world));
+        },
+        flat,
+      );
+      const final = layStreetAll(held(settled.posts));
+      const signals = computeSignPlacements(tiles)
+        .filter((s) => s.type === 'signal')
+        .map((s) => fixtureOf(signalPolylines(s, 0)));
+      expect(signals.length).toBeGreaterThan(0);
+      expect(final.spans.length).toBeGreaterThan(0);
+      expect(leastWireDistance(final.spans, signals, flat)).toBeGreaterThanOrEqual(
+        WIRE_FROM_POST_M,
+      );
+      expect(nearestWire(settled.posts, final)).toBeGreaterThanOrEqual(WIRE_FROM_POST_M);
+    },
+  );
 });
 
 describe('a power pole that slides off a taken place', () => {
