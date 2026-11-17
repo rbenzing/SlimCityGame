@@ -584,3 +584,56 @@ describe('BridgeRenderer — the rail truss is a real truss', () => {
     }
   });
 });
+
+describe('BridgeRenderer — an approach climbing out of the ground', () => {
+  // A deck rising 0.1 m a metre from the ground at x = 20, over level ground:
+  // fill under the first stretches, then a girder once the deck stands its depth
+  // plus 0.3 m clear.
+  const rise = 0.1;
+  const deckAt = (wx: number): number => Math.min(8, Math.max(0, (wx - TILE_METERS) * rise));
+  const tiles: BridgeDeckTile[] = [1, 2, 3, 4, 5].map((x) => ({
+    ...deckTile(x, 0),
+    mask: 2 | 8,
+    deckY: deckAt((x + 0.5) * TILE_METERS),
+    groundY: 0,
+  }));
+  const scene = new THREE.Scene();
+  new BridgeRenderer(scene, deckAt, undefined, () => 0).rebuild(tiles);
+  const need = GIRDER_DEPTH_M.beam + 0.3;
+  /** The longest stretch of structure the renderer samples as one piece. */
+  const SEGMENT_METRES = 5;
+  const girderStart = TILE_METERS + (need + ROAD_Y_OFFSET) / rise;
+
+  /** The faces of a mesh standing square across the run (constant x, wider than 5 m), with their heights. */
+  function crossFaces(mesh: THREE.Mesh): { x: number; height: number }[] {
+    const v = verticesOf(mesh);
+    const out: { x: number; height: number }[] = [];
+    for (let i = 0; i + 2 < v.length; i += 3) {
+      const tri = [v[i]!, v[i + 1]!, v[i + 2]!];
+      if (tri.some((p) => Math.abs(p.x - tri[0]!.x) > 1e-6)) continue;
+      const zs = tri.map((p) => p.z);
+      if (Math.max(...zs) - Math.min(...zs) < 5) continue;
+      const ys = tri.map((p) => p.y);
+      out.push({ x: tri[0]!.x, height: Math.max(...ys) - Math.min(...ys) });
+    }
+    return out;
+  }
+
+  it('thins the girder to the slab where the fill ends, so no blind face stands there', () => {
+    const faces = crossFaces(mergedIn(scene)[0]!);
+    const first = Math.min(...faces.map((f) => f.x));
+    expect(first).toBeGreaterThan(TILE_METERS);
+    expect(first).toBeLessThan(girderStart + SEGMENT_METRES);
+    for (const f of faces.filter((f) => Math.abs(f.x - first) < 1e-6)) {
+      expect(f.height).toBeLessThan(0.05);
+    }
+  });
+
+  it('stands a parapet on both edges wherever the deck is clear enough for a girder', () => {
+    const parapet = verticesOf(mergedIn(scene)[1]!);
+    const sides = new Set(parapet.map((p) => Math.sign(p.z - TILE_METERS / 2)));
+    expect(sides.has(-1) && sides.has(1)).toBe(true);
+    expect(Math.min(...parapet.map((p) => p.x))).toBeLessThanOrEqual(girderStart + SEGMENT_METRES);
+    expect(Math.max(...parapet.map((p) => p.x))).toBeGreaterThan(5 * TILE_METERS);
+  });
+});

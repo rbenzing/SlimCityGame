@@ -1100,3 +1100,64 @@ describe('ClientGridMirror — a building on a framed parcel', () => {
     expect(mirror.buildingId.every((v) => v === 0)).toBe(true);
   });
 });
+
+describe('ClientGridMirror — where a street leaves a junction on the ground and climbs', () => {
+  // A crossroads on the ground at x = 5, its street climbing east from the next
+  // tile: 2 m at x = 6 and 4 m at x = 7, over ground 3 m up.
+  function climb(): ClientGridMirror {
+    const mirror = new ClientGridMirror(makeMap());
+    const street = (x: number, mask: number, elevation: number) => ({
+      x,
+      z: 9,
+      tier: RoadTier.TwoLane,
+      mask,
+      elevation,
+      profile: 1,
+      flow: RoadFlow.East,
+    });
+    const arm = (z: number, mask: number) => ({
+      x: 5,
+      z,
+      tier: RoadTier.TwoLane,
+      mask,
+      elevation: 0,
+      profile: 1,
+      flow: RoadFlow.South,
+    });
+    mirror.applyRoadDeltas([
+      street(4, 2, 0),
+      street(5, 1 | 2 | 4 | 8, 0),
+      street(6, 2 | 8, 2),
+      street(7, 2 | 8, 4),
+      street(8, 2 | 8, 4),
+      arm(8, 1 | 4),
+      arm(10, 1 | 4),
+    ]);
+    return mirror;
+  }
+  const edge = 6 * TILE_METERS;
+  const at = (mirror: ClientGridMirror, dx: number): number =>
+    mirror.deckSurfaceAt(edge + dx, 9.5 * TILE_METERS) ?? NaN;
+
+  it('has no step where the junction ends and the climb begins', () => {
+    const mirror = climb();
+    expect(Math.abs(at(mirror, 0.01) - at(mirror, -0.01))).toBeLessThan(0.05);
+  });
+
+  it('keeps the junction level where its arms meet it, and rises over the rest of it toward the deck', () => {
+    const mirror = climb();
+    const centre = 5.5 * TILE_METERS;
+    expect(mirror.deckSurfaceAt(centre, 9.5 * TILE_METERS)).toBeCloseTo(3, 6);
+    expect(mirror.deckSurfaceAt(centre + 2, 9.5 * TILE_METERS)).toBeCloseTo(3, 6);
+    expect(at(mirror, -0.01)).toBeGreaterThan(3.5);
+    expect(at(mirror, -0.01)).toBeLessThan(at(mirror, 5));
+  });
+
+  it('is the same for the road a car drives on', () => {
+    const mirror = climb();
+    expect(mirror.vehicleSurfaceAt(edge - 0.01, 9.5 * TILE_METERS, true)).toBeCloseTo(
+      at(mirror, -0.01),
+      6,
+    );
+  });
+});

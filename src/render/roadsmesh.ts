@@ -277,6 +277,21 @@ export const CURB_Y_OFFSET = ROAD_Y_OFFSET + CURB_RAISE;
 
 const TILE_HALF = TILE_METERS / 2;
 
+/** A wide white channelizing line is 12 in: twice the normal 6 in line (MUTCD 3B.08). */
+const GORE_LINE_HALF_M = 0.15;
+/** Chevrons are at least 12 in wide on a road posted 45 mph or more (MUTCD 3B.25). */
+const GORE_CHEVRON_HALF_M = 0.15;
+/** Chevron arms make 30 to 45 degrees with the lines they meet (MUTCD 3B.25). */
+const GORE_CHEVRON_ANGLE_RAD = (40 * Math.PI) / 180;
+/** How wide an exit's neutral area is at its nose, metres. A dial: wide enough to hold chevrons. */
+const GORE_NOSE_WIDTH_M = 3;
+/** The centre of the channelizing line beside the through lane, in from the tile's edge. */
+const GORE_LINE_INSET_M = 0.3;
+/** The first chevron's point, back from the nose; and the pitch and least width that keep them apart and legible. */
+const GORE_CHEVRON_FIRST_M = 2;
+const GORE_CHEVRON_PITCH_M = 3;
+const GORE_CHEVRON_MIN_WIDTH_M = 0.7;
+
 /**
  * Neighbor bitmask directions — matches GridState.roadMask / RoadTileDelta.mask
  * (shared/types.ts) and src/world/roads.ts computeMask: N = neighbor at
@@ -3574,10 +3589,12 @@ function emitRampTaper(
     margin: number,
     u0: number,
     u1: number,
+    /** Where the line stands across the tile at `u0`, when that is not its usual place. */
+    startAt?: number,
   ): void => {
     const w0 = u0 * alongSign;
     const w1 = u1 * alongSign;
-    const at0 = (edge(u0) - margin) * acrossSign;
+    const at0 = (startAt ?? edge(u0) - margin) * acrossSign;
     const at1 = (edge(u1) - margin) * acrossSign;
     const [lo, hi, atLo, atHi] = w0 <= w1 ? [w0, w1, at0, at1] : [w1, w0, at1, at0];
     pushMarkingRun(
@@ -3598,8 +3615,84 @@ function emitRampTaper(
   const farMargin = -half - inward(farLine);
   // The near line meets the motorway where its edge line opens: halfway along.
   if (merging) line(nearLine, near, nearMargin, -TILE_HALF, 0);
-  else line(nearLine, near, nearMargin, 0, TILE_HALF);
+  else {
+    // A diverge opens a neutral area between the through lane and the slip
+    // road's lane, bounded by two wide white lines and filled with chevrons.
+    // It ends where the slip road's own left edge line begins, and the lane's
+    // right edge line begins where it meets the area's slip-road side.
+    const slipSide = emitGore(positions, colors, centerX, centerZ, pt, hAt);
+    line(nearLine, near, nearMargin, 0, TILE_HALF, slipSide(0));
+    const gap = (u: number): number => far(u) - farMargin - slipSide(u);
+    const reaches = gap(-TILE_HALF) / (gap(-TILE_HALF) - gap(TILE_HALF));
+    line(farLine, far, farMargin, -TILE_HALF + 2 * TILE_HALF * Math.min(1, reaches), TILE_HALF);
+    return;
+  }
   line(farLine, far, farMargin, -TILE_HALF, TILE_HALF);
+}
+
+/**
+ * The paint of an exit's neutral area, on the slip road's tile where it leaves
+ * the motorway: a V that opens from nothing at the tile's upstream edge to
+ * `GORE_NOSE_WIDTH_M` at the nose, halfway along. Both sides are wide white
+ * channelizing lines and the area between them carries chevrons whose points
+ * face approaching traffic. Returns where the area's slip-road line stands
+ * across the tile, at a distance along it: the slip road's own left edge line
+ * carries on from its end.
+ */
+function emitGore(
+  positions: number[],
+  colors: number[],
+  centerX: number,
+  centerZ: number,
+  pt: (u: number, c: number) => [number, number],
+  hAt: (x: number, z: number) => number,
+): (u: number) => number {
+  const motorwaySide = TILE_HALF - GORE_LINE_INSET_M;
+  const noseWidth = GORE_NOSE_WIDTH_M;
+  const widthAt = (u: number): number => (noseWidth * (u + TILE_HALF)) / TILE_HALF;
+  const slipSide = (u: number): number => motorwaySide - widthAt(u);
+  const strip = (a: [number, number], b: [number, number], half: number): void => {
+    const length = Math.hypot(b[0] - a[0], b[1] - a[1]);
+    if (length < 1e-9) return;
+    const nx = (-(b[1] - a[1]) / length) * half;
+    const nz = ((b[0] - a[0]) / length) * half;
+    pushRunSlice(
+      positions,
+      colors,
+      centerX,
+      centerZ,
+      [a[0] - nx, a[1] - nz],
+      [a[0] + nx, a[1] + nz],
+      [b[0] - nx, b[1] - nz],
+      [b[0] + nx, b[1] + nz],
+      MARK_Y_OFFSET,
+      MARKING_COLOR,
+      hAt,
+    );
+  };
+  strip(pt(-TILE_HALF, motorwaySide), pt(0, motorwaySide), GORE_LINE_HALF_M);
+  strip(pt(-TILE_HALF, motorwaySide), pt(0, slipSide(0)), GORE_LINE_HALF_M);
+
+  // Each chevron's arms leave its point at the chevron angle to the lines and
+  // end on them, so they close the area from side to side.
+  const sin = Math.sin(GORE_CHEVRON_ANGLE_RAD);
+  const cos = Math.cos(GORE_CHEVRON_ANGLE_RAD);
+  const closing = sin - (noseWidth * cos) / TILE_HALF;
+  for (
+    let u = -GORE_CHEVRON_FIRST_M;
+    widthAt(u) >= GORE_CHEVRON_MIN_WIDTH_M;
+    u -= GORE_CHEVRON_PITCH_M
+  ) {
+    const open = widthAt(u) / 2;
+    const apex = pt(u, motorwaySide - open);
+    const toLine = open / sin;
+    const toSlip = open / closing;
+    const tip = (reach: number, side: 1 | -1): [number, number] =>
+      pt(u + reach * cos, motorwaySide - open + side * reach * sin);
+    strip(apex, tip(toLine, 1), GORE_CHEVRON_HALF_M);
+    strip(apex, tip(toSlip, -1), GORE_CHEVRON_HALF_M);
+  }
+  return slipSide;
 }
 
 /**

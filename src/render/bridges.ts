@@ -214,7 +214,8 @@ export function emitPrism(
   positions: number[],
   corners: readonly [Corner, Corner, Corner, Corner],
   topY: readonly [number, number, number, number],
-  depth: number,
+  /** How deep it hangs: one depth for every corner, or one for each. */
+  depth: number | readonly [number, number, number, number],
 ): void {
   const push = (i: number, y: number): void => {
     positions.push(corners[i]![0], y, corners[i]![1]);
@@ -228,7 +229,7 @@ export function emitPrism(
     push(d, ys[3]!);
   };
 
-  const bot = topY.map((y) => y - depth);
+  const bot = topY.map((y, i) => y - (typeof depth === 'number' ? depth : depth[i]!));
   // Sides, wound outward-facing for a corner list running counter-clockwise.
   for (let i = 0; i < 4; i++) {
     const j = (i + 1) % 4;
@@ -452,6 +453,11 @@ export class BridgeRenderer {
 
         const parapetOn = spec.parapetHeight > 0;
         const needs = spec.girderDepth + GIRDER_CLEARANCE_M;
+        /** The least the deck stands over the ground across a stretch. */
+        const clearanceOf = (corners: readonly [Corner, Corner, Corner, Corner]): number => {
+          const tops = topsOf(corners);
+          return Math.min(...corners.map((c, i) => tops[i]! - ROAD_Y_OFFSET - groundOf(c)));
+        };
         /**
          * One stretch of structure over `corners` (counter-clockwise; edges 1
          * and 3 the outer ones): a girder with a parapet along each outer edge
@@ -463,13 +469,20 @@ export class BridgeRenderer {
           wallCorners: readonly [Corner, Corner, Corner, Corner],
           parapets: readonly (readonly [Corner, Corner, Corner, Corner])[],
           outer: readonly number[],
+          /** Whether the stretch beyond the low and the high end is fill, not girder. */
+          fillBeyond: readonly [boolean, boolean],
         ): void => {
-          const tops = topsOf(girderCorners);
-          const clear = Math.min(
-            ...girderCorners.map((c, i) => tops[i]! - ROAD_Y_OFFSET - groundOf(c)),
-          );
+          const clear = clearanceOf(girderCorners);
           if (clear >= needs) {
-            emitPrism(girderPositions, girderCorners, tops, spec.girderDepth);
+            // A girder that starts where fill ends thins to the deck's own
+            // slab there, so no blind end face stands between road and ground.
+            const [lowDepth, highDepth] = fillBeyond.map((fill) => (fill ? 0 : spec.girderDepth));
+            emitPrism(girderPositions, girderCorners, topsOf(girderCorners), [
+              lowDepth!,
+              lowDepth!,
+              highDepth!,
+              highDepth!,
+            ]);
             if (!parapetOn) return;
             // A parapet is the same conforming prism, inverted: it stands ON the
             // deck, so its "depth" runs upward from a top placed a parapet-height
@@ -538,7 +551,17 @@ export class BridgeRenderer {
               ),
             );
           const outer = [1, 3].filter((e) => sideOf(e) !== seamSide);
-          emitStretch(girder, wall, parapets, outer);
+          // Fill lies beyond an end where the next stretch along is too low for
+          // a girder, but only over a deck: past the structure there is nothing.
+          const length = s1 - s0;
+          const isFill = (from: number, to: number): boolean =>
+            clearanceOf(
+              segmentCorners(wx, wz, alongZ, from, to, lateral(-1, half), lateral(1, half)),
+            ) < needs;
+          emitStretch(girder, wall, parapets, outer, [
+            (k > 0 || lowEnd === 'deck') && isFill(s0 - length, s0),
+            (k < stretches - 1 || highEnd === 'deck') && isFill(s1, s1 + length),
+          ]);
         }
 
         // A dead end's rounded cap: the structure and its parapet run round it.
@@ -581,7 +604,13 @@ export class BridgeRenderer {
           const rin = order(ringIn);
           for (let i = 0; i < CAP_ARC_STEPS; i++) {
             const ring: [Corner, Corner, Corner, Corner] = [rin[i]!, g[i]!, g[i + 1]!, rin[i + 1]!];
-            emitStretch(wedge(g[i]!, g[i + 1]!), wedge(w[i]!, w[i + 1]!), [ring], [1]);
+            emitStretch(
+              wedge(g[i]!, g[i + 1]!),
+              wedge(w[i]!, w[i + 1]!),
+              [ring],
+              [1],
+              [false, false],
+            );
           }
         }
 

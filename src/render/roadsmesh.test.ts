@@ -5227,6 +5227,102 @@ describe('a ramp alongside tapers into the motorway rather than turning into it'
       ).toBe(false);
       expect(p.filter((v) => v.dx < -half + 0.1 && v.dz > -half + 0.5)).toEqual([]);
     });
+
+    describe('where it leaves, the exit’s neutral area', () => {
+      // Heading east with the motorway to the north: the area opens over the
+      // upstream half of the tile, from a point on the motorway's side.
+      const geo = join(E);
+      const whiteTriangles = triangles(geo).filter((tri) =>
+        tri.every((v) => isMarkingWhite(v.c as number[])),
+      );
+      /** The centres of the white paint crossing the tile at `dx`, across it. */
+      const whiteAt = (dx: number): number[] => {
+        const spans: [number, number][] = [];
+        for (const tri of whiteTriangles) {
+          const zs: number[] = [];
+          for (const [a, b] of [
+            [tri[0]!, tri[1]!],
+            [tri[1]!, tri[2]!],
+            [tri[2]!, tri[0]!],
+          ] as const) {
+            if ((a.dx - dx) * (b.dx - dx) > 0 || a.dx === b.dx) continue;
+            zs.push(a.dz + ((b.dz - a.dz) * (dx - a.dx)) / (b.dx - a.dx));
+          }
+          if (zs.length > 0) spans.push([Math.min(...zs), Math.max(...zs)]);
+        }
+        spans.sort((p, q) => p[0] - q[0]);
+        const merged: [number, number][] = [];
+        for (const s of spans) {
+          const last = merged[merged.length - 1];
+          if (last && s[0] <= last[1] + 1e-6) last[1] = Math.max(last[1], s[1]);
+          else merged.push([s[0], s[1]]);
+        }
+        return merged.map(([lo, hi]) => (lo + hi) / 2);
+      };
+      const motorwaySide = -(half - 0.3);
+
+      // Where the slip road's left edge line begins, across the tile.
+      const yellow = triangles(geo)
+        .flat()
+        .filter((v) => isMarkingYellow(v.c as number[]));
+      const start = yellow.reduce((p, q) => (q.dx < p.dx ? q : p));
+      const noseWidth = start.dz - motorwaySide;
+      const widthAt = (dx: number): number => (noseWidth * (dx + half)) / half;
+
+      it('is bounded by a wide white line on the motorway’s side and one that opens from it', () => {
+        expect(noseWidth).toBeCloseTo(3, 0);
+        // Clear of any chevron, 6.5 m from the upstream edge.
+        const [near, slip] = whiteAt(-3.5).filter((z) => z < -6);
+        expect(near).toBeCloseTo(motorwaySide, 1);
+        expect(slip! - near!).toBeCloseTo(widthAt(-3.5), 1);
+        // Nothing separates them at the upstream edge; they part to the nose.
+        expect(whiteAt(-half + 0.2).filter((z) => z < -6)).toHaveLength(1);
+        const [a, b] = whiteAt(-0.2).filter((z) => z < -6);
+        expect(Math.abs(b! - a! - widthAt(-0.2))).toBeLessThan(0.15);
+      });
+
+      it('lets the lane’s right edge line begin only where it meets the area’s slip-road line', () => {
+        // Upstream of that, the line would run through the neutral area.
+        for (const z of whiteAt(-7).filter((z) => z < -6)) {
+          expect(z).toBeGreaterThan(motorwaySide - 0.05);
+          expect(z).toBeLessThan(motorwaySide + widthAt(-7) + 0.05);
+        }
+      });
+
+      it('lines both lines wide, as wide as a chevron stroke', () => {
+        const wide = whiteTriangles.filter((tri) =>
+          tri.every((v) => Math.abs(v.dz - motorwaySide) < 0.2),
+        );
+        expect(wide.length).toBeGreaterThan(0);
+        const zs = wide.flat().map((v) => v.dz);
+        expect(Math.max(...zs) - Math.min(...zs)).toBeCloseTo(0.3, 1);
+      });
+
+      it('carries chevrons whose points face the approaching traffic', () => {
+        const inside = whiteTriangles
+          .flat()
+          .filter(
+            (v) =>
+              v.dx > -6.5 &&
+              v.dx < -0.5 &&
+              v.dz > motorwaySide + 0.25 &&
+              v.dz < motorwaySide + widthAt(v.dx) - 0.2,
+          );
+        expect(inside.length).toBeGreaterThan(0);
+        const middle = (dx: number): number => motorwaySide + widthAt(dx) / 2;
+        const point = inside.reduce((p, q) => (q.dx < p.dx ? q : p));
+        const tip = inside.reduce((p, q) => (q.dx > p.dx ? q : p));
+        expect(Math.abs(point.dz - middle(point.dx))).toBeLessThan(
+          Math.abs(tip.dz - middle(tip.dx)),
+        );
+      });
+
+      it('hands over to the slip road’s own left edge line where its line ends', () => {
+        expect(start.dx).toBeCloseTo(0, 1);
+        const [, slip] = whiteAt(-0.2).filter((z) => z < -6);
+        expect(slip).toBeCloseTo(start.dz, 0);
+      });
+    });
   });
 });
 
@@ -6447,5 +6543,140 @@ describe('the far kerb of a corridor half at a junction meets the approach it fo
     const moved = tee({ n: -1.8, e: 0, s: 0, w: 0 });
     expect(westKerb(moved, northEdge)).toBeCloseTo(westKerb(flush, northEdge) + 1.8, 3);
     expect(westKerb(moved, southEdge)).toBeCloseTo(westKerb(flush, southEdge), 3);
+  });
+});
+
+describe('where a slip road meets the motorway its pavement edge is one line', () => {
+  type Geo = { positions: number[]; colors: number[] };
+  /** How far the unpainted pavement reaches south (sign 1) or north (-1) at world x. */
+  const reachAt = (geo: Geo, x: number, sign: 1 | -1): number => {
+    let reach = -Infinity;
+    for (let t = 0; t + 2 < geo.positions.length / 3; t += 3) {
+      const tri = [0, 1, 2].map((k) => ({
+        x: geo.positions[(t + k) * 3]!,
+        z: geo.positions[(t + k) * 3 + 2]!,
+        c: geo.colors.slice((t + k) * 3, (t + k) * 3 + 3),
+      }));
+      if (tri.some((v) => isPaint(v.c))) continue;
+      for (const [a, b] of [
+        [tri[0]!, tri[1]!],
+        [tri[1]!, tri[2]!],
+        [tri[2]!, tri[0]!],
+      ] as const) {
+        if ((a.x - x) * (b.x - x) > 0 || a.x === b.x) continue;
+        reach = Math.max(reach, (a.z + ((b.z - a.z) * (x - a.x)) / (b.x - a.x)) * sign);
+      }
+    }
+    return reach * sign;
+  };
+  const plain = carriagewayHalfWidthMeters(RoadTier.Highway);
+  const rampHalf = carriagewayHalfWidthMeters(RoadTier.Ramp);
+  // An eastbound motorway tile at (0,0) with its auxiliary lane, and the ramp
+  // tile south of it (0,1) that joins it, merging or diverging.
+  const pair = (merging: boolean): { motorway: Geo; ramp: Geo } => ({
+    motorway: roadTileVertices(
+      0,
+      0,
+      RoadTier.Highway,
+      E | S | W,
+      flatHeightAt,
+      { n: RoadTier.None, e: RoadTier.Highway, s: RoadTier.Ramp, w: RoadTier.Highway },
+      undefined,
+      {
+        n: 0,
+        e: merging ? TILE_METERS : plain,
+        s: rampHalf,
+        w: merging ? plain : TILE_METERS,
+      },
+      RoadFlow.East,
+      undefined,
+      undefined,
+      undefined,
+      { side: 1, openness: 1, merging },
+      undefined,
+      { arm: RoadFlow.South, opens: merging ? RoadFlow.East : RoadFlow.West },
+    ),
+    ramp: roadTileVertices(
+      0,
+      1,
+      RoadTier.Ramp,
+      N | (merging ? W : E),
+      flatHeightAt,
+      {
+        n: RoadTier.Highway,
+        e: merging ? RoadTier.None : RoadTier.Ramp,
+        s: RoadTier.None,
+        w: merging ? RoadTier.Ramp : RoadTier.None,
+      },
+      undefined,
+      undefined,
+      RoadFlow.East,
+    ),
+  });
+
+  it('leaves no step at the merge: the lane closes on the edge the motorway has there', () => {
+    const { motorway, ramp } = pair(true);
+    const x = TILE_METERS - 0.05;
+    expect(reachAt(ramp, x, -1)).toBeCloseTo(reachAt(motorway, x, 1), 1);
+  });
+
+  it('leaves no step at the diverge: the lane opens from the edge the motorway has there', () => {
+    const { motorway, ramp } = pair(false);
+    const x = 0.05;
+    expect(reachAt(ramp, x, -1)).toBeCloseTo(reachAt(motorway, x, 1), 1);
+  });
+
+  it('keeps the slip road’s own far edge where the tile before it leaves it', () => {
+    // At the upstream edge of a merge, and the downstream edge of a diverge, the
+    // slip road is its own road: its far kerb is where a plain ramp tile's is.
+    const plainRamp = roadTileVertices(
+      0,
+      1,
+      RoadTier.Ramp,
+      W | E,
+      flatHeightAt,
+      undefined,
+      undefined,
+      undefined,
+      RoadFlow.East,
+    );
+    const merge = pair(true).ramp;
+    const diverge = pair(false).ramp;
+    expect(reachAt(merge, 0.05, 1)).toBeCloseTo(reachAt(plainRamp, 0.05, 1), 1);
+    expect(reachAt(diverge, TILE_METERS - 0.05, 1)).toBeCloseTo(
+      reachAt(plainRamp, TILE_METERS - 0.05, 1),
+      1,
+    );
+  });
+});
+
+describe('a ramp’s T carries no edge line through the junction box on the side an arm leaves by', () => {
+  // The spine runs south, one way, with a stem leaving east: the stem's side
+  // is the spine's left. The far side, west, has no approach.
+  const geo = roadTileVertices(
+    0,
+    0,
+    RoadTier.Ramp,
+    N | S | E,
+    flatHeightAt,
+    { n: RoadTier.Ramp, e: RoadTier.Ramp, s: RoadTier.Ramp, w: RoadTier.None },
+    undefined,
+    undefined,
+    RoadFlow.South,
+  );
+  const centre = TILE_METERS / 2;
+  const paintAcross = (from: number, to: number): number[][] =>
+    (toTriples(geo.positions) as number[][]).filter(
+      (p, i) =>
+        isPaint(geo.colors.slice(i * 3, i * 3 + 3)) &&
+        Math.abs(p[2]! - centre) < 3 &&
+        p[0]! - centre > from &&
+        p[0]! - centre < to,
+    );
+
+  // The stem's own lines begin at its mouth, beyond the box; nothing is
+  // painted between the spine's middle and there.
+  it('paints nothing through the box on the stem’s side', () => {
+    expect(paintAcross(0.5, 5.5)).toEqual([]);
   });
 });
