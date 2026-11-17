@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.88.2](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.88.1...slimcity-v1.88.2) (2026-11-17)
+
+
+### Bug Fixes
+
+* **render:** a farm's drive meets its road, a reactor's intake reaches the water, a drain's pad fits its structure ([2e457fb](https://github.com/rbenzing/SlimCityGame/commit/2e457fba5f12b0f237f3461a4e5242d3f271fb0f))
+* **render:** a walk-up's stair reaches its top floor, a walk reaches its door, and a lit pane is one window ([f201453](https://github.com/rbenzing/SlimCityGame/commit/f2014537eb3bd985e953c977d7917b7411b0cb96))
+* **roads:** an exit's neutral area is painted, and a climbing deck leaves its junction without a step ([1175e16](https://github.com/rbenzing/SlimCityGame/commit/1175e168366a60826ed1fd40e7c12db68c2e34b7))
+
 ## [1.88.1](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.88.0...slimcity-v1.88.1) (2026-11-15)
 
 
