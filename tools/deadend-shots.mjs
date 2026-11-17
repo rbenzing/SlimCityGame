@@ -10,7 +10,15 @@
  *   (a dev server must be running) */
 import { chromium } from 'playwright';
 import { mkdirSync } from 'node:fs';
-import { cleanShot, closeUp, dismissToasts, hooksReady, tileCamera } from './shotcam.mjs';
+import {
+  cleanShot,
+  closeUp,
+  dismissToasts,
+  hooksReady,
+  readToasts,
+  requireInFrame,
+  tileCamera,
+} from './shotcam.mjs';
 
 const base = process.argv[2] ?? 'http://localhost:5173';
 const out = process.argv[3] ?? 'tools/shots-deadend';
@@ -19,6 +27,7 @@ mkdirSync(out, { recursive: true });
 
 const SEED = 7;
 const TWO_LANE = 1;
+const AVENUE = 2;
 const FOUR_LANE = 7;
 const TILE_CM = 2000;
 const TOP_DOWN = 1.45;
@@ -84,19 +93,36 @@ try {
     throw new Error(`no flat dry ${w}x${d} patch`);
   };
 
-  const place = (catalogId, x, z, rotation) =>
-    send('Home', [{ kind: 'placeBuilding', catalogId, x, z, rotation }]);
-  const shoot = async (name, tx, tz, distance, yaw, pitch, scale = 2) => {
+  /** Every placement the game refused, so the run can name them and fail. */
+  const refused = [];
+  /**
+   * Place a building and check the game took it: a refusal shows only as a
+   * toast, so it is read back after the command and recorded with its arguments.
+   */
+  const place = async (catalogId, x, z, rotation) => {
+    await dismissToasts(page);
+    await send('Home', [{ kind: 'placeBuilding', catalogId, x, z, rotation }]);
+    await page.waitForTimeout(60);
+    for (const t of await readToasts(page)) {
+      if (!/ failed$/.test(t.title)) continue;
+      const call = `place(${catalogId}, ${x}, ${z}, rot ${rotation})`;
+      refused.push(`${call}: ${t.body}`);
+      console.log(`[FAIL] ${call} refused: ${t.body}`);
+    }
+  };
+  /** Shoot a frame; `subject` is a tile point [x, z, metres up] that must be on screen. */
+  const shoot = async (name, tx, tz, distance, yaw, pitch, scale = 2, subject = null) => {
     const restore = scale > 1 ? await closeUp(page, scale) : null;
     await cam(tx, tz, distance, yaw, pitch);
     await page.waitForTimeout(1500);
+    if (subject) await requireInFrame(page, name, subject[0], subject[1], subject[2]);
     await cleanShot(page, `${out}/${name}.png`);
     if (restore) await restore();
   };
   /** Top-down and oblique frames of the end at tile (ex, ez), from the side the street leaves by. */
   const frames = async (name, ex, ez, yaw = 0) => {
-    await shoot(`${name}-top`, ex - 0.3, ez, 40, yaw, TOP_DOWN);
-    await shoot(`${name}-oblique`, ex - 2, ez + 0.5, 50, yaw - 0.9, OBLIQUE);
+    await shoot(`${name}-top`, ex - 0.3, ez, 40, yaw, TOP_DOWN, 2, [ex, ez, 0]);
+    await shoot(`${name}-oblique`, ex - 2, ez + 0.5, 50, yaw - 0.9, OBLIQUE, 2, [ex, ez, 0]);
   };
 
   /** A street running east along row `r` from x0 to x1 (the end), homes both sides. */
@@ -153,36 +179,30 @@ try {
     await frames('blocked', x + 8, r);
   }
 
-  if (wanted('free')) {
-    const { x, z } = claim(18, 12);
-    const px = (t) => (t + 0.5) * TILE_CM;
-    await send('Free street', [
+  /** An avenue ending going east at the returned tile, homes both sides; the end meets a turbine when `blocked`. */
+  const avenueEnd = async (name, blocked) => {
+    const { x, z } = claim(16, 11);
+    const r = z + 5;
+    const x1 = x + 12;
+    await send('Avenue', [
       {
-        kind: 'buildSegment',
-        tier: TWO_LANE,
-        a: { x: px(x + 1), z: px(z + 8) },
-        b: { x: px(x + 14), z: px(z + 5) },
-        control: { x: px(x + 8), z: px(z + 8) },
+        kind: 'buildRoad',
+        tier: AVENUE,
+        tiles: Array.from({ length: x1 - x + 1 }, (_, i) => ({ x: x + i, z: r })),
       },
     ]);
-    // Homes beside the curve: one each side per tile it passes through. A tile
-    // the road only grazes may refuse one, so refusals here are dismissed.
-    const seen = new Set();
-    for (let s = 0; s <= 40; s++) {
-      const t = s / 40;
-      const ax = x + (1 - t) * (1 - t) + 16 * t * (1 - t) + 14 * t * t;
-      const az = z + 8 - 3 * t * t;
-      const tx = Math.floor(ax);
-      const tz = Math.floor(az);
-      if (seen.has(tx) || tx < x + 3 || tx > x + 13) continue;
-      seen.add(tx);
-      await place('res-normal-1', tx, tz - 2, 0);
-      await place('res-normal-1', tx, tz + 1, 2);
+    if (blocked) await place('wind-turbine', x1 + 1, r, 0);
+    for (let i = 0; i <= 12; i += 2) {
+      await place('res-normal-1', x + i, r - 2, 0);
+      await place('res-normal-1', x + i, r + 1, 2);
     }
     await page.waitForTimeout(1000);
-    await dismissToasts(page);
-    await frames('free', x + 14, z + 5);
-  }
+    // From above, as the street ends are shot: the top frame is the subject.
+    await shoot(`${name}-top`, x1 - 0.3, r, 40, 0, TOP_DOWN, 2, [x1, r, 0]);
+  };
+
+  if (wanted('avenue')) await avenueEnd('avenue', false);
+  if (wanted('avenue-blocked')) await avenueEnd('avenue-blocked', true);
 
   /**
    * The pixel at fraction (fx, fz) across tile (tx, tz) as the camera sees it,
@@ -325,6 +345,71 @@ try {
     return free;
   };
 
+  if (wanted('free')) {
+    // A building cannot be placed by command beside an off-grid street, which has no grid tile
+    // to front: its homes are the ones the game grows on the parcels cut along its kerb. So the
+    // curve leaves a grid street that carries power and water, the ground beside it is zoned,
+    // and time runs until the homes stand.
+    const { x, z } = claim(26, 16);
+    const r = z + 4;
+    const cm = (tx, tz) => ({ x: (tx + 0.5) * TILE_CM, z: (tz + 0.5) * TILE_CM });
+    await send('Grid street', [
+      {
+        kind: 'buildRoad',
+        tier: TWO_LANE,
+        tiles: Array.from({ length: 7 }, (_, i) => ({ x: x + i, z: r })),
+      },
+    ]);
+    await send('Power', [
+      { kind: 'placeBuilding', catalogId: 'wind-turbine', x, z: r - 1, rotation: 0 },
+    ]);
+    await send('Water', [
+      { kind: 'placeBuilding', catalogId: 'water-tower', x: x + 1, z: r - 1, rotation: 0 },
+    ]);
+    // Leaves the grid street's last tile going east, bends south, and ends going east.
+    const arc = { a: cm(x + 6, r), control: cm(x + 14, r + 3), b: cm(x + 21, r + 3) };
+    await send('Free street', [{ kind: 'buildSegment', tier: TWO_LANE, ...arc }]);
+    await page.waitForTimeout(800);
+    const centre = Array.from({ length: 81 }, (_, i) => {
+      const t = i / 80;
+      const u = 1 - t;
+      return {
+        x: (u * u * arc.a.x + 2 * u * t * arc.control.x + t * t * arc.b.x) / TILE_CM,
+        z: (u * u * arc.a.z + 2 * u * t * arc.control.z + t * t * arc.b.z) / TILE_CM,
+      };
+    });
+    const FREE_ROAD_HALF = 0.28;
+    const FREE_REACH = 3.5;
+    const zone = [];
+    for (let tz = r - 5; tz <= r + 9; tz++) {
+      for (let tx = x + 3; tx <= x + 24; tx++) {
+        if (g.water[idx(tx, tz)] || (tz === r && tx <= x + 6) || (tz === r - 1 && tx <= x + 1))
+          continue;
+        const d = Math.min(...centre.map((p) => Math.hypot(tx + 0.5 - p.x, tz + 0.5 - p.z)));
+        if (d > FREE_ROAD_HALF && d <= FREE_REACH) zone.push({ x: tx, z: tz });
+      }
+    }
+    await send('Zone', [{ kind: 'paintZone', zone: 1, tiles: zone }]);
+    const nearCurve = (b) => b.x >= x + 3 && b.x <= x + 24 && b.z >= r - 5 && b.z <= r + 9;
+    await run(4);
+    let standing = 0;
+    for (let i = 0; i < 90; i++) {
+      await page.waitForTimeout(2000);
+      const here = (await readBuildings()).filter(nearCurve);
+      standing = here.filter((b) => b.catalogId.startsWith('res')).length;
+      const building = here.filter((b) => b.state === 0 || b.state === 1).length;
+      if (standing >= 10 && building === 0) break;
+    }
+    await run(0);
+    await page.waitForTimeout(1500);
+    console.log(`free street: ${standing} homes grown beside the curve`);
+    if (standing < 6) {
+      refused.push(`free street: only ${standing} homes grew beside the curve (wanted at least 6)`);
+    }
+    await dismissToasts(page);
+    await frames('free', x + 21, r + 3);
+  }
+
   for (const [name, south] of [
     ['culdesac-grown-south', true],
     ['culdesac-grown-north', false],
@@ -354,7 +439,7 @@ try {
       },
     ]);
     for (const zz of [r - 5, r - 3]) {
-      await place('com-low-1', xc - 2, zz, 1);
+      await place('com-low-1', xc - 1, zz, 1);
       await place('com-low-1', xc + 1, zz, 3);
     }
     await growAround(x, r, x1, bx, bz, true);
@@ -396,6 +481,11 @@ try {
     const { block } = await bulb('empty', true);
     await shoot('culdesac-empty-top', block.x + 0.5, block.z + 0.5, 60, 0, TOP_DOWN);
     await shoot('culdesac-empty-oblique', block.x + 0.5, block.z + 0.5, 70, -0.9, OBLIQUE);
+  }
+  if (refused.length > 0) {
+    console.log(`FAIL: ${refused.length} placement(s) refused`);
+    for (const r of refused) console.log(' -', r);
+    process.exitCode = 1;
   }
 } finally {
   await browser.close();

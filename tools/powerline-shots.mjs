@@ -9,7 +9,7 @@
  */
 import { chromium } from 'playwright';
 import { mkdirSync } from 'node:fs';
-import { cleanShot, tileCamera, unlimitedMoneyOption } from './shotcam.mjs';
+import { cleanShot, requireInFrame, tileCamera, unlimitedMoneyOption } from './shotcam.mjs';
 
 const base = process.argv[2] ?? 'http://localhost:5173';
 const url = base + (base.includes('?') ? '&' : '?') + 'nobloom';
@@ -346,9 +346,38 @@ for (const bx of cables.boxes) {
 await cam(X + 19, Z + 15, 60, 0.6, 0.55);
 await page.waitForTimeout(800);
 await cleanShot(page, `${out}/buried-street-oblique.png`);
-await cam(X + 19, Z + 15, 60, 0, 1.45);
-await page.waitForTimeout(800);
-await cleanShot(page, `${out}/buried-street-above.png`);
+// From above, a junction box and the pole its cable rises from, both in frame: the
+// box on the buried street nearest a pole standing at either end of the stretch.
+const tileOf = (p) => ({ x: p.x / 20 - 0.5, z: p.z / 20 - 0.5 });
+const pairs = [];
+for (const bx of cables.boxes) {
+  if (Math.abs(tileOf(bx).z - (Z + 15)) > 1.5) continue;
+  for (const p of nowPoles) {
+    const d = Math.hypot(bx.x - p.x, bx.z - p.z);
+    if (d <= 40) pairs.push({ bx, p, d });
+  }
+}
+pairs.sort((a, b) => a.d - b.d);
+if (pairs.length === 0) {
+  failures.push('no junction box on the buried street has a pole within 40 m to frame with it');
+} else {
+  const { bx, p } = pairs[0];
+  const mid = tileOf({ x: (bx.x + p.x) / 2, z: (bx.z + p.z) / 2 });
+  await cam(mid.x, mid.z, 60, 0, 1.45);
+  await page.waitForTimeout(800);
+  for (const [what, pt, up] of [
+    ['junction box', bx, 0.6],
+    ['riser pole', p, 8],
+  ]) {
+    const t = tileOf(pt);
+    try {
+      await requireInFrame(page, 'buried-street-above', t.x, t.z, up);
+    } catch (e) {
+      failures.push(`${what}: ${e.message}`);
+    }
+  }
+  await cleanShot(page, `${out}/buried-street-above.png`);
+}
 await cam(X + 14, Z + 15, 40, 0.9, 0.5);
 await page.waitForTimeout(800);
 await cleanShot(page, `${out}/buried-street-riser.png`);

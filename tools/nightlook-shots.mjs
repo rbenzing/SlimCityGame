@@ -20,7 +20,15 @@
 import { chromium } from 'playwright';
 import { mkdirSync, readFileSync } from 'node:fs';
 import { inflateSync } from 'node:zlib';
-import { cleanShot, closeUp, hooksReady, logAlerts, tileCamera } from './shotcam.mjs';
+import {
+  cleanShot,
+  closeUp,
+  hooksReady,
+  logAlerts,
+  readClockMinutes,
+  setClock,
+  tileCamera,
+} from './shotcam.mjs';
 
 const base = process.argv[2] ?? 'http://localhost:5173';
 const out = process.argv[3] ?? 'tools/shots-nightlook';
@@ -162,7 +170,12 @@ const STREETS = [
   { name: 'shops', ids: ['com-low-1'], depth: 1 },
 ];
 
-async function openTown(bloom) {
+/**
+ * A town on a page whose clock stands at `hour`. The game's own clock is run to the
+ * hour first, on the empty map: a sim that runs clears buildings nothing feeds, so
+ * the town is put up afterwards, with the sim paused. One page per hour.
+ */
+async function openTown(bloom, hour) {
   const browser = await chromium.launch({ headless: true, args: ['--use-angle=default'] });
   const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
   page.on('pageerror', (e) => console.log('[pageerror]', e.message));
@@ -187,10 +200,7 @@ async function openTown(bloom) {
     page.evaluate(([l, c]) => window.__slimcity.cmd(l, c), [label, commands]);
   await send('Sandbox', [{ kind: 'setSandbox', on: true }]);
   await send('Money', [{ kind: 'setUnlimitedMoney', on: true }]);
-  await page.evaluate(() => {
-    window.__slimcity.setSpeed(0);
-    window.__slimcity.setDayT(0.5);
-  });
+  await setClock(page, hour);
 
   const g = await page.evaluate(() => window.__slimcity.readGrid());
   const N = g.size;
@@ -258,19 +268,20 @@ async function openTown(bloom) {
   );
   console.log(`standing (bloom ${bloom ? 'on' : 'off'})`, JSON.stringify(counts));
 
-  // A paused sim posts a snapshot, which carries the pinned phase to the lighting, only when a command lands.
-  const setPhase = async (dayT) => {
-    await page.evaluate((t) => {
-      window.__slimcity.setDayT(t);
-      window.__slimcity.cmd('Phase', [{ kind: 'setUnlimitedMoney', on: true }]);
-      for (let i = 0; i < 100; i++) {
-        const buttons = document.querySelectorAll('[aria-label="Dismiss notification"]');
-        if (buttons.length === 0) return;
-        buttons.forEach((b) => b.click());
-      }
-    }, dayT);
-    await page.waitForTimeout(2000);
-  };
+  // A paused sim posts a snapshot, which carries the clock's tick to the lighting, only when a command lands.
+  await page.evaluate(() => {
+    window.__slimcity.cmd('Phase', [{ kind: 'setUnlimitedMoney', on: true }]);
+    for (let i = 0; i < 100; i++) {
+      const buttons = document.querySelectorAll('[aria-label="Dismiss notification"]');
+      if (buttons.length === 0) return;
+      buttons.forEach((b) => b.click());
+    }
+  });
+  await page.waitForTimeout(2000);
+  const shown = await readClockMinutes(page);
+  if (Math.abs(shown - hour * 60) > 10 && Math.abs(shown - hour * 60) < 1430) {
+    throw new Error(`the clock reads ${shown} min, not ${hour} h`);
+  }
   const cam = tileCamera(page);
   let alertsLogged = false;
   const shoot = async (name, tx, tz, distance, yaw, pitch) => {
@@ -285,7 +296,7 @@ async function openTown(bloom) {
     return path;
   };
   const lamps = () => page.evaluate(() => window.__slimcity.readLampPoles().length);
-  return { browser, page, X, roadRow, setPhase, shoot, lamps };
+  return { browser, page, X, roadRow, shoot, lamps };
 }
 
 // ---------------------------------------------------------------------------
@@ -326,7 +337,7 @@ const report = (line) => console.log(line);
 
 // --- bloom off: the material and the night light alone ----------------------
 {
-  const town = await openTown(false);
+  const town = await openTown(false, NOON * 24);
   try {
     report(`lamp poles standing: ${await town.lamps()}`);
     const views = [
@@ -342,20 +353,25 @@ const report = (line) => console.log(line);
     const shots = {};
     for (const [phase, tag] of [
       [NOON, 'noon'],
-      [THREE_AM, '0300'],
       [MIDNIGHT, '0000'],
+      [THREE_AM, '0300'],
     ]) {
-      await town.setPhase(phase);
-      for (const v of views) {
-        const { distance, yaw, pitch } = v.view;
-        shots[`${v.name}-${tag}`] = await town.shoot(
-          `${v.name}-${tag}`,
-          v.tx,
-          v.tz,
-          distance,
-          yaw,
-          pitch,
-        );
+      // Each hour is its own page (see openTown); the same seed puts the same town in the same place.
+      const at = phase === NOON ? town : await openTown(false, phase * 24);
+      try {
+        for (const v of views) {
+          const { distance, yaw, pitch } = v.view;
+          shots[`${v.name}-${tag}`] = await at.shoot(
+            `${v.name}-${tag}`,
+            v.tx,
+            v.tz,
+            distance,
+            yaw,
+            pitch,
+          );
+        }
+      } finally {
+        if (at !== town) await at.browser.close();
       }
     }
     for (const v of views) {
@@ -392,9 +408,8 @@ const report = (line) => console.log(line);
 
 // --- bloom on: the panes as the player sees them -----------------------------
 {
-  const town = await openTown(true);
+  const town = await openTown(true, THREE_AM * 24);
   try {
-    await town.setPhase(THREE_AM);
     const path = await town.shoot(
       'house-0300-bloom',
       town.X + 1,

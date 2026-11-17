@@ -9,7 +9,14 @@
  */
 import { chromium } from 'playwright';
 import { mkdirSync } from 'node:fs';
-import { cleanShot, tileCamera, unlimitedMoneyOption } from './shotcam.mjs';
+import {
+  cleanShot,
+  closeUp,
+  requireInFrame,
+  tileCamera,
+  tileMeters,
+  unlimitedMoneyOption,
+} from './shotcam.mjs';
 
 const base = process.argv[2] ?? 'http://localhost:5173';
 const url = base + (base.includes('?') ? '&' : '?') + 'nobloom';
@@ -187,7 +194,49 @@ console.log(
 );
 if (near.length === 0) failures.push('the controlled crossroads warranted no boards at all');
 
+// A cover stands on a tile whose x + z is a whole number of manhole periods, in
+// the first plain lane from the low side of the cross-section, 1.875 m off the
+// tile's middle. The period is read from the tile, as the renderer does.
+const T = await tileMeters(page);
+const MANHOLE_PERIOD = Math.max(1, Math.floor(121.92 / T));
+const LANE_OFFSET = -1.875 / T;
+const coverTile = (rowZ) => {
+  for (let x = X + 8; x <= X + 17; x++) if ((x + rowZ) % MANHOLE_PERIOD === 0) return x;
+  return X + 10;
+};
+const BARE_COVER = { x: coverTile(Z + 31), z: Z + 31 + LANE_OFFSET };
+const PARKED_COVER = { x: coverTile(Z + 28), z: Z + 28 + LANE_OFFSET };
+
+// The rectangular cabinet nearest the middle of the paved street run, so the
+// frame has a box and the pedestal's own frame a pedestal.
+const CABINET = cabinets.find((c) => c.kind === 'cabinet');
 const PED = pedestals[0];
+if (!CABINET) failures.push('not one rectangular cabinet among the cabinets');
+
+// The signal mast on the crossroads' south-east corner, with the corner it holds.
+const allSignals = await call(() => window.__slimcity.readSignals());
+// A signal's tile is the approach tile it holds, one off the junction's own.
+const masts = allSignals.filter(
+  (s) => Math.abs(s.tile.x - (X + 13)) <= 1 && Math.abs(s.tile.z - (Z + 16)) <= 1,
+);
+const mast = masts.sort((a, b) => b.mast.x + b.mast.z - (a.mast.x + a.mast.z))[0];
+if (!mast) failures.push('no signal mast stands at the signalised crossroads');
+// Midway between the mast and the junction's middle, in tile units (a mast is in metres).
+const CORNER = mast
+  ? { x: (mast.mast.x / T - 0.5 + X + 13) / 2, z: (mast.mast.z / T - 0.5 + Z + 16) / 2 }
+  : { x: X + 14, z: Z + 17 };
+
+// Frames that must hold their subject: [point to keep in frame as x, z, metres up].
+const keep = {
+  'manholes-close': [BARE_COVER.x, BARE_COVER.z, 0],
+  'close-cover-lane': [PARKED_COVER.x, PARKED_COVER.z, 0],
+  cabinets: CABINET ? [CABINET.x, CABINET.z, 0.6] : null,
+  pedestal: PED ? [PED.x, PED.z, 0.5] : null,
+  'close-signal-corner': mast ? [mast.mast.x / T - 0.5, mast.mast.z / T - 0.5, 4] : null,
+};
+// Detail frames are taken at twice the pixels: the camera cannot come nearer than 40 m.
+const detail = new Set(['manholes-close', 'close-cover-lane', 'cabinets', 'pedestal']);
+
 const shots = [
   ['stub', X + 3, Z + 4, 26, 0.0, 0.35],
   ['stub-oblique', X + 4, Z + 4, 34, 0.9, 0.5],
@@ -198,10 +247,10 @@ const shots = [
   // Straight down on a long paved run: if a sewer cover is not legible here,
   // it is not legible anywhere.
   ['manholes-top', X + 12, Z + 16, 60, 0, 1.5],
-  ['manholes-close', X + 6, Z + 16, 26, 0, 1.45],
+  ['manholes-close', BARE_COVER.x, BARE_COVER.z, 40, 0.3, 1.2],
   // Along a long street's verge, where the cabinets and telco pedestals stand.
-  ['cabinets', X + 12, Z + 31, 46, 0.35, 0.35],
-  ['pedestal', PED ? PED.x : X + 12, PED ? PED.z : Z + 31, 14, 0.5, 0.3],
+  ['cabinets', CABINET ? CABINET.x : X + 12, CABINET ? CABINET.z : Z + 31, 40, 0.5, 0.45],
+  ['pedestal', PED ? PED.x : X + 12, PED ? PED.z : Z + 31, 40, 0.5, 0.45],
   ['cabinets-far', X + 20, Z + 28, 40, 0.35, 0.35],
   // A lamp beside a bus stop, from the street and from the kerb's own side:
   // nothing stands between the pad and the bus door.
@@ -215,19 +264,29 @@ const shots = [
   // line, crosswalk, lamp), the stop-controlled crossing (the stop sign), the
   // street with kerb parking (meters), the bus stop with its pole line and
   // lamps, and a cover in its lane.
-  ['close-signal-corner', X + 14, Z + 17, 40, 0.0, 0.9],
+  ['close-signal-corner', CORNER.x, CORNER.z, 40, 0.0, 0.9],
   ['close-signal-corner-b', X + 12, Z + 15, 40, Math.PI, 0.9],
   ['close-stop-junction', X + 20, Z + 22, 40, 0.0, 0.9],
   ['close-stop-junction-b', X + 20, Z + 22, 40, 2.4, 0.7],
   ['close-meters', X + 10, Z + 28, 40, 0.3, 0.8],
   ['close-busstop-poles', STREET_X, stopZ, 40, lampSide === 1 ? -Math.PI / 2 : Math.PI / 2, 0.8],
   ['close-busstop-poles-top', STREET_X, stopZ, 40, 0.0, 1.45],
-  ['close-cover-lane', X + 12, Z + 28, 40, 0.0, 1.5],
+  ['close-cover-lane', PARKED_COVER.x, PARKED_COVER.z, 40, 0.3, 1.1],
 ];
 for (const [name, tx, tz, d, yaw, pitch] of shots) {
+  const restore = detail.has(name) ? await closeUp(page, 2) : null;
   await cam(tx, tz, d, yaw, pitch);
   await page.waitForTimeout(700);
+  const subject = keep[name];
+  if (subject) {
+    try {
+      await requireInFrame(page, name, subject[0], subject[1], subject[2]);
+    } catch (e) {
+      failures.push(e.message);
+    }
+  }
   await cleanShot(page, `${out}/${name}.png`);
+  if (restore) await restore();
   console.log('shot', name);
 }
 
