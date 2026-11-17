@@ -105,6 +105,7 @@ import {
   worldToTile,
 } from '../shared/constants';
 import {
+  bendIsNoPassing,
   carriagewayHalfWidthOf,
   carriagewayShiftOf,
   kerbReturnRadiusOf,
@@ -161,6 +162,7 @@ import {
   centrePair,
   isMedianSideLine,
   markingPlan,
+  noPassingPlan,
   MEDIAN_EDGE_LINE_INSET_M,
   PAINT_HALF_WIDTH_M,
   seamBetween,
@@ -3318,14 +3320,13 @@ function emitEndCapCurb(
 }
 
 /**
- * Lane markings swept around a dead-end cap's half-circle — the cap analog of
- * emitCurvedMarkings. Each symmetric marking-line pair at cross-offset ±o on the
- * straight run becomes one arc of radius o about the cap's pivot (the core
- * dead-end edge midpoint), joining the two straight lines around the rounded
- * end. Highway's solid edge lines wrap the curb; avenue/four-lane wrap their
- * double-center + dashed lane lines; a single centerline (offset 0, two-lane /
- * one-way) has nothing to wrap; gravel/alley paint nothing. Forces up-facing
- * tris for the single-sided road material; dashes by arc length.
+ * The paint swept around a dead-end cap's half-circle — the cap analog of
+ * emitCurvedMarkings. Each edge line at cross-offset ±o on the straight run
+ * becomes one solid arc of radius o about the cap's pivot (the core dead-end
+ * edge midpoint), joining the two straight edge lines around the rounded end.
+ * Nothing else is painted on a cap: no centre line, lane line or dash. Gravel
+ * and alley paint nothing. Forces up-facing tris for the single-sided road
+ * material.
  */
 function emitEndCapMarkings(
   positions: number[],
@@ -3430,8 +3431,9 @@ function emitEndCapMarkings(
       arc(r, dashed, paintOf(line));
     }
   };
-  wrap(plan.solid, false);
-  wrap(plan.dashed, true);
+  // Only an edge line follows the kerb round the end; no centre or lane line
+  // is painted on a cap.
+  wrap(plan.edges ?? [], false);
 }
 
 /**
@@ -3535,11 +3537,30 @@ function emitRampTaper(
   const vertical = along.z !== 0;
   const alongSign = vertical ? along.z : along.x;
   const acrossSign = vertical ? toward.x : toward.z;
+  // The edge lines, nearest the motorway and on the other side, each kept its
+  // own distance inside the edge it follows.
+  const inward = (line: MarkingLine): number => line.at * acrossSign;
+  const nearLine =
+    plan.solid.length > 0 ? plan.solid.reduce((a, b) => (inward(b) > inward(a) ? b : a)) : null;
+  const farLine =
+    plan.solid.length > 0 ? plan.solid.reduce((a, b) => (inward(b) < inward(a) ? b : a)) : null;
+  const motorwaySide = TILE_HALF - GORE_LINE_INSET_M;
+  // Where the far edge stands at the nose: the neutral area leaves the lane its
+  // full width between its two lines, and the pavement holds the lane's shoulder.
+  const noseFar =
+    nearLine && farLine
+      ? motorwaySide -
+        GORE_NOSE_WIDTH_M -
+        (inward(nearLine) - inward(farLine)) +
+        (-half - inward(farLine))
+      : (TILE_HALF - half) / 2;
   // A merge's shape; a diverge reads it mirrored along the run.
   const mergeNear = (u: number): number =>
     u >= 0 ? TILE_HALF : half + ((TILE_HALF - half) * (u + TILE_HALF)) / TILE_HALF;
   const mergeFar = (u: number): number =>
-    -half + ((TILE_HALF + half) * (u + TILE_HALF)) / (2 * TILE_HALF);
+    u <= 0
+      ? -half + ((noseFar + half) * (u + TILE_HALF)) / TILE_HALF
+      : noseFar + ((TILE_HALF - noseFar) * u) / TILE_HALF;
   const near = (u: number): number => mergeNear(merging ? u : -u);
   const far = (u: number): number => mergeFar(merging ? u : -u);
   const pt = (u: number, c: number): [number, number] => [
@@ -3578,11 +3599,8 @@ function emitRampTaper(
   }
 
   // The two edge lines: the solid line nearest the motorway, and the one on
-  // the other side, each kept its own distance inside the edge it follows.
-  if (plan.solid.length === 0) return;
-  const inward = (line: MarkingLine): number => line.at * acrossSign;
-  const nearLine = plan.solid.reduce((a, b) => (inward(b) > inward(a) ? b : a));
-  const farLine = plan.solid.reduce((a, b) => (inward(b) < inward(a) ? b : a));
+  // the other side.
+  if (!nearLine || !farLine) return;
   const line = (
     which: MarkingLine,
     edge: (u: number) => number,
@@ -3591,11 +3609,13 @@ function emitRampTaper(
     u1: number,
     /** Where the line stands across the tile at `u0`, when that is not its usual place. */
     startAt?: number,
+    /** Where it stands at `u1`, likewise. */
+    endAt?: number,
   ): void => {
     const w0 = u0 * alongSign;
     const w1 = u1 * alongSign;
     const at0 = (startAt ?? edge(u0) - margin) * acrossSign;
-    const at1 = (edge(u1) - margin) * acrossSign;
+    const at1 = (endAt ?? edge(u1) - margin) * acrossSign;
     const [lo, hi, atLo, atHi] = w0 <= w1 ? [w0, w1, at0, at1] : [w1, w0, at1, at0];
     pushMarkingRun(
       positions,
@@ -3613,28 +3633,35 @@ function emitRampTaper(
   };
   const nearMargin = half - inward(nearLine);
   const farMargin = -half - inward(farLine);
-  // The near line meets the motorway where its edge line opens: halfway along.
-  if (merging) line(nearLine, near, nearMargin, -TILE_HALF, 0);
-  else {
-    // A diverge opens a neutral area between the through lane and the slip
-    // road's lane, bounded by two wide white lines and filled with chevrons.
-    // It ends where the slip road's own left edge line begins, and the lane's
-    // right edge line begins where it meets the area's slip-road side.
-    const slipSide = emitGore(positions, colors, centerX, centerZ, pt, hAt);
-    line(nearLine, near, nearMargin, 0, TILE_HALF, slipSide(0));
-    const gap = (u: number): number => far(u) - farMargin - slipSide(u);
-    const reaches = gap(-TILE_HALF) / (gap(-TILE_HALF) - gap(TILE_HALF));
-    line(farLine, far, farMargin, -TILE_HALF + 2 * TILE_HALF * Math.min(1, reaches), TILE_HALF);
+  // Both a diverge and a merge carry a neutral area between the through lane
+  // and the slip road's lane, bounded by two wide white lines: a diverge opens
+  // it from the upstream edge to the nose, a merge closes it from the nose to
+  // the downstream edge. The lane keeps its full width up to the nose (merge)
+  // or from it (diverge); the lane's far edge line meets the area's slip-road
+  // side where the lane opens or closes, and the lane's own left edge line
+  // takes over from, or hands over to, that side at the nose.
+  const slipSide = emitGore(positions, colors, centerX, centerZ, pt, hAt, merging);
+  const gap = (u: number): number => far(u) - farMargin - slipSide(u);
+  const [lo, hi] = merging ? [0, TILE_HALF] : [-TILE_HALF, 0];
+  const reaches = Math.min(1, Math.max(0, gap(lo) / (gap(lo) - gap(hi))));
+  const meets = lo + (hi - lo) * reaches;
+  if (merging) {
+    line(nearLine, near, nearMargin, -TILE_HALF, 0, undefined, slipSide(0));
+    line(farLine, far, farMargin, -TILE_HALF, 0);
+    line(farLine, far, farMargin, 0, meets);
     return;
   }
-  line(farLine, far, farMargin, -TILE_HALF, TILE_HALF);
+  line(nearLine, near, nearMargin, 0, TILE_HALF, slipSide(0));
+  line(farLine, far, farMargin, meets, 0);
+  line(farLine, far, farMargin, 0, TILE_HALF);
 }
 
 /**
- * The paint of an exit's neutral area, on the slip road's tile where it leaves
+ * The paint of a neutral area, on the slip road's tile where it leaves or joins
  * the motorway: a V that opens from nothing at the tile's upstream edge to
- * `GORE_NOSE_WIDTH_M` at the nose, halfway along. Both sides are wide white
- * channelizing lines and the area between them carries chevrons whose points
+ * `GORE_NOSE_WIDTH_M` at the nose, halfway along, and for a merge closes again
+ * to the downstream edge. Both sides are wide white channelizing lines and an
+ * exit's area between them carries chevrons whose points
  * face approaching traffic. Returns where the area's slip-road line stands
  * across the tile, at a distance along it: the slip road's own left edge line
  * carries on from its end.
@@ -3644,11 +3671,15 @@ function emitGore(
   colors: number[],
   centerX: number,
   centerZ: number,
-  pt: (u: number, c: number) => [number, number],
+  runPt: (u: number, c: number) => [number, number],
   hAt: (x: number, z: number) => number,
+  /** A merge reads the exit's area mirrored along the run, closing to the downstream edge, and carries no chevrons. */
+  merging: boolean,
 ): (u: number) => number {
   const motorwaySide = TILE_HALF - GORE_LINE_INSET_M;
   const noseWidth = GORE_NOSE_WIDTH_M;
+  const mirror = merging ? -1 : 1;
+  const pt = (u: number, c: number): [number, number] => runPt(mirror * u, c);
   const widthAt = (u: number): number => (noseWidth * (u + TILE_HALF)) / TILE_HALF;
   const slipSide = (u: number): number => motorwaySide - widthAt(u);
   const strip = (a: [number, number], b: [number, number], half: number): void => {
@@ -3672,6 +3703,7 @@ function emitGore(
   };
   strip(pt(-TILE_HALF, motorwaySide), pt(0, motorwaySide), GORE_LINE_HALF_M);
   strip(pt(-TILE_HALF, motorwaySide), pt(0, slipSide(0)), GORE_LINE_HALF_M);
+  if (merging) return (u) => slipSide(mirror * u);
 
   // Each chevron's arms leave its point at the chevron angle to the lines and
   // end on them, so they close the area from side to side.
@@ -5961,10 +5993,13 @@ export function roadTileVertices(
     // Curved lane markings around the turn, matching each tier's straight-run
     // set (two-lane dashed centerline, avenue/four-lane double-solid + dashed
     // lane lines, highway solid edge lines; gravel/alley none).
+    // A turn is a sharp bend: the same no-passing zone a free road's bend is.
+    // Its inner kerb takes the class's kerb return, as a free road's bend does.
+    const turnRadius = coreHalf + kerbReturnFor(crossSection, armDepth);
     emitCurvedMarkings(
       positions,
       colors,
-      plan,
+      bendIsNoPassing(crossSection, turnRadius) ? noPassingPlan(plan) : plan,
       centerX,
       centerZ,
       coreHalf,
@@ -7429,22 +7464,45 @@ export function roadTileVertices(
         // through between dotted lines of the same width, with its colour only
         // across the lane between each pair of dashes; the gaps stay bare and
         // nothing solid crosses the box.
+        const carried = (first: 'n' | 'w', second: 's' | 'e', across: -1 | 1) => {
+          const a = bikeEnds.get(`${first}${across}`);
+          const b = bikeEnds.get(`${second}${across}`);
+          // Dotted lines cross an arm's mouth only; past a side with no arm
+          // the lane is the plain one, drawn whole by the through road.
+          if (!a || !b || !a.mouth) return null;
+          const travelEdge = across > 0 ? a.band.from : a.band.to;
+          const kerbEdge = across > 0 ? a.band.to : a.band.from;
+          const travelLine =
+            a.plan.solid.find((l) => Math.abs(l.at - travelEdge) <= 2 * PAINT_HALF_WIDTH_M)?.at ??
+            travelEdge;
+          const kerbLine = kerbEdge - across * PAINT_HALF_WIDTH_M;
+          return { a, b, travelLine, kerbLine };
+        };
+        // Where each carried lane lies across the box, so the lane crossing it
+        // can stop short of it: no mark of one lies inside the other.
+        const footprints = { vertical: [] as [number, number][], across: [] as [number, number][] };
+        for (const [first, second, key] of [
+          ['n', 's', 'vertical'],
+          ['w', 'e', 'across'],
+        ] as const) {
+          for (const across of [-1, 1] as const) {
+            const lane = carried(first, second, across);
+            if (!lane) continue;
+            footprints[key].push([
+              Math.min(lane.travelLine, lane.kerbLine) - PAINT_HALF_WIDTH_M,
+              Math.max(lane.travelLine, lane.kerbLine) + PAINT_HALF_WIDTH_M,
+            ]);
+          }
+        }
         for (const [first, second, vertical] of [
           ['n', 's', true],
           ['w', 'e', false],
         ] as const) {
+          const crossing = vertical ? footprints.across : footprints.vertical;
           for (const across of [-1, 1] as const) {
-            const a = bikeEnds.get(`${first}${across}`);
-            const b = bikeEnds.get(`${second}${across}`);
-            // Dotted lines cross an arm's mouth only; past a side with no arm
-            // the lane is the plain one, drawn whole by the through road.
-            if (!a || !b || !a.mouth) continue;
-            const travelEdge = across > 0 ? a.band.from : a.band.to;
-            const kerbEdge = across > 0 ? a.band.to : a.band.from;
-            const travelLine =
-              a.plan.solid.find((l) => Math.abs(l.at - travelEdge) <= 2 * PAINT_HALF_WIDTH_M)?.at ??
-              travelEdge;
-            const kerbLine = kerbEdge - across * PAINT_HALF_WIDTH_M;
+            const lane = carried(first, second, across);
+            if (!lane) continue;
+            const { a, b, travelLine, kerbLine } = lane;
             const span = a.start + b.start;
             const count = Math.floor((span + DOTTED_GAP_M) / (DOTTED_SEGMENT_M + DOTTED_GAP_M));
             if (count < 1) continue;
@@ -7452,6 +7510,7 @@ export function roadTileVertices(
             const first0 = -a.start + (span - used) / 2;
             for (let k = 0; k < count; k++) {
               const s0 = first0 + k * (DOTTED_SEGMENT_M + DOTTED_GAP_M);
+              if (crossing.some(([lo, hi]) => s0 < hi && s0 + DOTTED_SEGMENT_M > lo)) continue;
               for (const at of [travelLine, kerbLine]) {
                 pushMarkingRun(
                   positions,

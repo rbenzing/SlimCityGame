@@ -11,6 +11,8 @@ import {
   centrePair,
   MEDIAN_EDGE_LINE_INSET_M,
   markingPlan,
+  noPassingCentres,
+  noPassingPlan,
   seamBetween,
   seamOffsets,
   type MarkingPlan as MarkingProfile,
@@ -927,5 +929,40 @@ describe('seamBetween where an avenue meets a one-way road', () => {
     const whites = edges.filter((l) => l.color === 'white');
     expect(whites).toHaveLength(2);
     for (const w of whites) expect(Math.sign(w.to)).toBe(Math.sign(w.from));
+  });
+});
+
+describe('noPassingPlan: a no-passing zone turns the broken yellow centre into two solid lines', () => {
+  it('replaces a two-lane road’s broken yellow centre with a solid yellow pair (MUTCD 3B.03)', () => {
+    const plan = markingPlan(presetProfileForTier(RoadTier.TwoLane));
+    const zone = noPassingPlan(plan);
+    expect(zone.dashed).toEqual([]);
+    expect(zone.solid.filter((l) => l.color === 'yellow').map((l) => l.at)).toEqual([
+      -CENTRE_PAIR_OFFSET_M,
+      CENTRE_PAIR_OFFSET_M,
+    ]);
+    expect(zone.solid.filter((l) => l.color === 'white')).toHaveLength(2);
+  });
+
+  it('leaves white lane lines broken, a double centre as it is, and a turn lane’s broken line alone', () => {
+    const oneWay = markingPlan(presetProfileForTier(RoadTier.OneWay));
+    expect(noPassingPlan(oneWay)).toEqual(oneWay);
+    const four = markingPlan(presetProfileForTier(RoadTier.FourLane));
+    expect(noPassingPlan(four)).toEqual(four);
+    const turn = markingPlan({
+      class: 'local',
+      pieces: [
+        { kind: 'travel', width: 3.5, flow: 'back' },
+        { kind: 'centreTurn', width: 3.5 },
+        { kind: 'travel', width: 3.5, flow: 'fwd' },
+      ],
+    });
+    expect(noPassingPlan(turn)).toEqual(turn);
+  });
+
+  it('names the broken centre lines a no-passing zone joins to', () => {
+    const plan = markingPlan(presetProfileForTier(RoadTier.TwoLane));
+    expect(noPassingCentres(plan).map((l) => l.at)).toEqual([0]);
+    expect(noPassingCentres(markingPlan(presetProfileForTier(RoadTier.OneWay)))).toEqual([]);
   });
 });

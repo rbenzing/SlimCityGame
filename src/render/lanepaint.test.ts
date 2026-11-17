@@ -192,6 +192,38 @@ describe('through a junction box nothing solid continues', () => {
     }
   });
 
+  it('stops each carried bike lane’s dotted lines where the lane crossing it begins', () => {
+    const v = crossroads(RoadTier.BikeLane);
+    const h = box(RoadTier.BikeLane);
+    const dashes = rectsOf(v, WHITE).filter((b) => inBox(b, h + 0.3));
+    const alongZ = dashes.filter((b) => b.z1 - b.z0 > b.x1 - b.x0);
+    const alongX = dashes.filter((b) => b.x1 - b.x0 > b.z1 - b.z0);
+    expect(alongZ.length).toBeGreaterThan(0);
+    expect(alongX.length).toBeGreaterThan(0);
+    /** The span a carried lane's dotted lines occupy across the box, on each side of it. */
+    const bands = (list: Box[], lo: (b: Box) => number, hi: (b: Box) => number) =>
+      [-1, 1].map((side) => {
+        const own = list.filter((b) => Math.sign(lo(b) + hi(b)) === side);
+        return [Math.min(...own.map(lo)), Math.max(...own.map(hi))] as const;
+      });
+    const zBands = bands(
+      alongX,
+      (b) => b.z0,
+      (b) => b.z1,
+    );
+    const xBands = bands(
+      alongZ,
+      (b) => b.x0,
+      (b) => b.x1,
+    );
+    for (const d of alongZ) {
+      for (const [lo, hi] of zBands) expect(d.z0 < hi - 1e-6 && d.z1 > lo + 1e-6).toBe(false);
+    }
+    for (const d of alongX) {
+      for (const [lo, hi] of xBands) expect(d.x0 < hi - 1e-6 && d.x1 > lo + 1e-6).toBe(false);
+    }
+  });
+
   it('keeps a bike lane whole on the side of a T that has no arm, dotted only across an arm', () => {
     // The arm to the south is missing: the lane south of the box is the plain lane.
     const v = tile(RoadTier.BikeLane, N | E | W);
