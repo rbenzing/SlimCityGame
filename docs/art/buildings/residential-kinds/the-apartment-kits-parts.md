@@ -60,9 +60,13 @@ the body here 27.2 m square, so it carries two:
   and 1.2 m deep, 0.15 m thick, standing out of the slot with a **guard**
   1.07 m tall (42 in, IBC 1015.3,
   [guards](https://www.corada.com/documents/2025CBCPG/1015-3-height)) across
-  its front; and from the ground to the first landing a **stair flight**
-  1.0 m wide beside the slot, a slab pitched at 32° (the 7 in rise over 11 in
-  run of IBC 1011.5).
+  its front; and a **stair flight** for every storey, 1.0 m wide beside the
+  slot, a slab pitched at 32° (the 7 in rise over 11 in run of IBC 1011.5),
+  the flights alternating sides of the slot, each from a gallery 1.2 m deep
+  at its floor to the slot's landing at the next (the gallery is the game's
+  own). A garden walk-up has no car park but has a walk from the footway to
+  a strip along its face. A lit or a day pane is one window: the house's
+  sash, 1.0 × 1.5 m, on a walk-up and a mid-rise, a 2.4 m bay on a tower.
 - A **balcony** for every home above the ground floor and a **patio** for
   every home on it, on the street and rear faces, one per bay whose span is
   clear of the breezeway: a slab 1.8 m deep (6 ft, the private open space

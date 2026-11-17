@@ -68,6 +68,7 @@ import {
   INDUSTRIAL_ROOF_COLOR,
   INDUSTRIAL_WALL_PALETTE,
   FRAME_DARKEN,
+  blockPaneCut,
   housePaneMargins,
   storefrontCut,
   MAX_WALL_SATURATION,
@@ -640,7 +641,9 @@ export class BuildingInstancer {
     const isGroundFloor = housePane
       ? bool(false)
       : uvNode.y.lessThan(groundBandThreshold).and(isBaseTier);
-    const cellU = fract(uvNode.x.mul(cols));
+    // An apartment block's cell holds a row of windows, each its own pane.
+    const blockPane = blockPaneCut(entry, tierHeight);
+    const cellU = fract(uvNode.x.mul(cols * (blockPane?.subCols ?? 1)));
     const cellV = fract(uvNode.y.mul(rows));
     const baseMargin = isIndustrial
       ? MULLION_MARGIN_INDUSTRIAL
@@ -648,8 +651,16 @@ export class BuildingInstancer {
         ? MULLION_MARGIN_PUNCHED
         : MULLION_MARGIN_CURTAIN;
     const margin = select(isGroundFloor, float(MULLION_MARGIN_GROUND_FLOOR), float(baseMargin));
-    const marginX = housePane ? float(housePane.x) : margin;
-    const marginY = housePane ? float(housePane.y) : margin;
+    const marginX = housePane
+      ? float(housePane.x)
+      : blockPane?.x != null
+        ? float(blockPane.x)
+        : margin;
+    const marginY = housePane
+      ? float(housePane.y)
+      : blockPane?.y != null
+        ? float(blockPane.y)
+        : margin;
     const insidePaneX = cellU.greaterThan(marginX).and(cellU.lessThan(float(1).sub(marginX)));
     const insidePaneY = cellV.greaterThan(marginY).and(cellV.lessThan(float(1).sub(marginY)));
     // A windowless body (a food plant's insulated panel) shows no pane at

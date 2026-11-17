@@ -83,11 +83,15 @@ describe('a walk-up’s car park', () => {
     }
   });
 
-  it('lays a garden on its 2×2 lot no car park: its 27.2 m body and a 12.8 m module fill the lot, so a module would park the body on a side line', () => {
+  it('lays a garden on its 2×2 lot no car park but its walk to the door: its 27.2 m body and a 12.8 m module fill the lot, so a module would park the body on a side line', () => {
     for (const e of walkUps.filter((w) => w.kind === 'garden')) {
       expect(e.footprint).toEqual({ w: 2, d: 2 });
       for (const rotation of [0, 1, 2, 3] as const) {
-        expect(lotParkingAt(e, 10, 10, rotation, roadSouth, null), e.id).toBeNull();
+        const parking = lotParkingAt(e, 10, 10, rotation, roadSouth, null);
+        expect(parking, e.id).not.toBeNull();
+        expect(parking!.layout.stalls, e.id).toEqual([]);
+        expect(parking!.layout.aisles, e.id).toEqual([]);
+        expect(parking!.layout.entranceWalk, e.id).not.toBeNull();
       }
     }
   });

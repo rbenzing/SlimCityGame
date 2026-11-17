@@ -22,7 +22,7 @@ import {
 } from '../shared/types';
 import { TILE_METERS } from '../shared/constants';
 import { bodyMetresFor, FLOOR_HEIGHT_METERS } from '../shared/floorarea';
-import { isHouseKind } from '../shared/buildingkind';
+import { isApartmentKind, isHouseKind } from '../shared/buildingkind';
 import { MaterialName, materialUnit, saturatedUnit } from './palette';
 
 // ---------------------------------------------------------------------------
@@ -142,6 +142,36 @@ export function housePaneMargins(
   const inset = (cell: number, pane: number): number =>
     Math.min(HOUSE_MARGIN_MAX, Math.max(0, (cell - pane) / 2 / cell));
   return { x: inset(cellW, HOUSE_PANE_WIDTH_M), y: inset(cellH, HOUSE_PANE_HEIGHT_M) };
+}
+
+/**
+ * How an apartment block's window cell is cut into windows: `subCols` panes
+ * across it, a HOUSE_BAY_M bay each, so one lit cell is a home's row of
+ * windows, never a slab over the whole 6.8 m bay. A walk-up or mid-rise pane
+ * is the house sash (`x` and `y` the margins that leave it in its bay); a
+ * tower's is a window-wall bay, left at the family's own mullion margins
+ * (`x` and `y` null). Null for every other building. Pure.
+ */
+export interface BlockPaneCut {
+  subCols: number;
+  x: number | null;
+  y: number | null;
+}
+
+export function blockPaneCut(entry: BuildingCatalogEntry, tierHeight: number): BlockPaneCut | null {
+  if (!isApartmentKind(entry.kind)) return null;
+  const { cols, rows } = windowGrid(entry, tierHeight);
+  const body = bodyMetresFor(entry);
+  const cellW = (body.w + body.d) / 2 / cols;
+  const subCols = Math.max(1, Math.round(cellW / HOUSE_BAY_M));
+  if (entry.kind === 'tower') return { subCols, x: null, y: null };
+  const inset = (cell: number, pane: number): number =>
+    Math.min(HOUSE_MARGIN_MAX, Math.max(0, (cell - pane) / 2 / cell));
+  return {
+    subCols,
+    x: inset(cellW / subCols, HOUSE_PANE_WIDTH_M),
+    y: inset(tierHeight / rows, HOUSE_PANE_HEIGHT_M),
+  };
 }
 
 /** A storefront's glazing is cut into bays this wide by dark mullions. */

@@ -69,6 +69,7 @@ export function lotLayoutFor(
   rotation: 0 | 1 | 2 | 3,
   alongX: boolean,
   kerbCredit = 0,
+  carPark = true,
 ): LotLayout | null {
   const requirement = lotSpacesFor(entry);
   if (!requirement) return null;
@@ -80,7 +81,7 @@ export function lotLayoutFor(
     depth: (alongX ? lot.d : lot.w) * TILE_METERS,
     bodyAlong: alongX ? world.w : world.d,
     bodyDepth: alongX ? world.d : world.w,
-    spaces: onSiteSpaces(requirement.spaces, kerbCredit),
+    spaces: carPark ? onSiteSpaces(requirement.spaces, kerbCredit) : 0,
     berths: requirement.berths,
     ...lotYardsFor(entry),
     ...(entry.category === 'com' && !isDenseLotEntry(entry) ? { shopfrontWalk: true } : {}),
@@ -130,7 +131,10 @@ export function lotParkingAt(
       layout = lotLayoutFor(entry, rotation, alongX, kerbCredit)!;
     }
   }
-  if (isWalkUpKind(entry.kind) && !clearOfSideLines(layout, WALK_UP_SIDE_YARD_M)) return null;
+  if (isWalkUpKind(entry.kind) && !clearOfSideLines(layout, WALK_UP_SIDE_YARD_M)) {
+    // No room for a car park beside the body: the lot keeps its lawn and its walk to the door, and parks at the kerb.
+    layout = lotLayoutFor(entry, rotation, alongX, kerbCredit, false)!;
+  }
   return { edge, kerbCredit, layout };
 }
 

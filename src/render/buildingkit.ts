@@ -775,6 +775,8 @@ export const STAIR_WIDTH_M = 1;
 export const STAIR_SLAB_M = 0.3;
 /** The 7 in rise over 11 in run of a stair: about 32°. */
 export const STAIR_PITCH = Math.atan2(7, 11);
+/** How far an upper flight reaches in over its gallery, so its foot and its head both land on one. */
+const STAIR_GALLERY_OVERLAP_M = 0.2;
 /** A balcony is 6 ft deep and the bay less 1 m wide; a walk-up's slab is 0.15 m, a block's 0.2 m. */
 export const BALCONY_DEPTH_M = 1.8;
 export const BALCONY_BAY_INSET_M = 1;
@@ -3064,28 +3066,50 @@ function apartmentParts(b: Block): PartPlacement[] {
           },
         );
       }
-      // The flight from the ground to the first landing runs along the wall beside the slot, its top at the slot's edge.
-      let stair: PartPlacement | null = null;
-      if (rows > 1) {
-        const run = pitch / Math.tan(STAIR_PITCH);
-        const length = pitch / Math.sin(STAIR_PITCH);
-        const along = flight * (BREEZEWAY_WIDTH_M / 2 + run / 2);
-        const outFromWall = h + BREEZEWAY_PROUD_M + STAIR_WIDTH_M / 2;
-        const toward = alongX ? { x: -flight, z: 0 } : { x: 0, z: -flight };
-        stair = {
+      // The ground flight runs along the wall beside the slot, its top at the slot's edge on the first landing.
+      // Each flight above it starts on a gallery along the wall at its own floor, on the other side of the slot
+      // from the flight below, and climbs back toward the slot beside the gallery to the next landing.
+      const stairs: PartPlacement[] = [];
+      const run = pitch / Math.tan(STAIR_PITCH);
+      const length = pitch / Math.sin(STAIR_PITCH);
+      for (let f = 0; f < rows - 1; f += 1) {
+        const side: 1 | -1 = f % 2 === 0 ? flight : flight === 1 ? -1 : 1;
+        const along = side * (BREEZEWAY_WIDTH_M / 2 + run / 2);
+        const outFromWall =
+          h +
+          BREEZEWAY_PROUD_M +
+          (f === 0
+            ? STAIR_WIDTH_M / 2
+            : LANDING_DEPTH_M - STAIR_GALLERY_OVERLAP_M + STAIR_WIDTH_M / 2);
+        const toward = alongX ? { x: -side, z: 0 } : { x: 0, z: -side };
+        stairs.push({
           part: 'stairFlight',
           size: [STAIR_WIDTH_M, STAIR_SLAB_M, length],
           offset: alongX
-            ? [along, pitch / 2, nz * outFromWall]
-            : [nx * outFromWall, pitch / 2, along],
+            ? [along, f * pitch + pitch / 2, nz * outFromWall]
+            : [nx * outFromWall, f * pitch + pitch / 2, along],
           yaw: Math.atan2(toward.x, toward.z),
           pitch: STAIR_PITCH,
-        };
-        out.push(stair);
+        });
+        if (f > 0) {
+          stairs.push(
+            onSide(
+              'landing',
+              face,
+              along,
+              h + BREEZEWAY_PROUD_M + LANDING_DEPTH_M / 2,
+              run,
+              LANDING_DEPTH_M,
+              LANDING_THICKNESS_M,
+              f * pitch + LANDING_THICKNESS_M / 2,
+            ),
+          );
+        }
       }
-      // A patio and a balcony per upper floor in every bay clear of the slot and the flight.
+      out.push(...stairs);
+      // A patio and a balcony per upper floor in every bay clear of the slot and the flights.
       const { count, width } = windowBays(entry, span);
-      const stairBounds = stair ? placementBounds(stair) : null;
+      const stairBounds = stairs.map(placementBounds);
       let stack = 0;
       for (let i = 0; i < count; i += 1) {
         const c = bayCentre(span, count, i);
@@ -3118,9 +3142,11 @@ function apartmentParts(b: Block): PartPlacement[] {
           WALK_UP_BALCONY_SLAB_M,
           WALK_UP_BALCONY_SLAB_M / 2,
         );
-        if (stairBounds && rectsOverlap(placementBounds(patio), stairBounds)) continue;
-        if (!(lot?.taken ?? []).some((t) => rectsOverlap(t, placementBounds(patio))))
-          out.push(patio);
+        const patioBounds = placementBounds(patio);
+        if (stairBounds.some((s) => rectsOverlap(patioBounds, s))) continue;
+        // A patio opens onto the walk along the face, so it may stand on it, and on nothing else that is laid.
+        const laid = (lot?.taken ?? []).filter((t) => t !== lot?.frontWalk);
+        if (!laid.some((t) => rectsOverlap(t, patioBounds))) out.push(patio);
         for (let f = 1; f < rows; f += 1) {
           out.push(
             ...balcony(baseBox, face, c, bay, f * pitch, WALK_UP_BALCONY_SLAB_M, true, railRgb),

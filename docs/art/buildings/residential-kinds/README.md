@@ -79,4 +79,4 @@ do now.
 | Section | Size |
 | --- | --- |
 | [The house kit's parts](the-house-kits-parts.md) | 8,455 B |
-| [The apartment kit's parts](the-apartment-kits-parts.md) | 9,267 B |
+| [The apartment kit's parts](the-apartment-kits-parts.md) | 9,630 B |
