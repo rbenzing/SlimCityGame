@@ -18,9 +18,21 @@
  * Pure: no three.js, no scene.
  */
 import { TILE_METERS } from '../shared/constants';
-import type { BuildingCatalogEntry, BuildingInstance, FarmKind } from '../shared/types';
+import {
+  RoadTier,
+  type BuildingCatalogEntry,
+  type BuildingInstance,
+  type FarmKind,
+} from '../shared/types';
 import { farmKindOf } from '../shared/buildingkind';
-import { edgeFrameFor, frameAlongX, frameToWorld, type EdgeFrame, type Side } from './frontage';
+import {
+  edgeFrameFor,
+  frameAlongX,
+  frameToWorld,
+  vergeDepthMeters,
+  type EdgeFrame,
+  type Side,
+} from './frontage';
 
 /** An axis-aligned world rectangle, low corner first. */
 export interface FarmRect {
@@ -140,8 +152,8 @@ export const SILO_HEIGHT_M = 16;
 /** A grain bin, 5.5 m across with its eave at 4 m under a shallow cone. */
 export const BIN_DIAMETER_M = 5.5;
 export const BIN_EAVE_M = 4;
-/** A farm drive is one vehicle wide. */
-const DRIVE_WIDTH_M = 4;
+/** A farm drive is as wide as its gate: a 16 ft farm gate. */
+export const DRIVE_WIDTH_M = 16 * 0.3048;
 /** A 36 × 60 inch double-hung window, the commonest size. */
 export const WINDOW_W_M = 0.91;
 export const WINDOW_H_M = 1.52;
@@ -431,6 +443,10 @@ export function planFarm(
   const level = entry.level ?? 1;
   const { w, d } = entry.footprint;
   const side = farmGateSide(building.x, building.z, w, d, dirtAt);
+  // The drive crosses the road tile's verge to the carriageway edge, where a road is next to the lot.
+  const verge = stripTiles(side, building.x, building.z, w, d, 1).some(([tx, tz]) => dirtAt(tx, tz))
+    ? vergeDepthMeters(RoadTier.Gravel)
+    : 0;
   const frame = edgeFrameFor(side, building.x, building.z, w, d);
   const along = (side === 'N' || side === 'S' ? w : d) * TILE_METERS;
   const deep = (side === 'N' || side === 'S' ? d : w) * TILE_METERS;
@@ -515,7 +531,7 @@ export function planFarm(
     lot: localRect(frame, 0, 0, along, deep),
     yard: localRect(frame, 0, 0, along, YARD_DEPTH_M),
     apron: localRect(frame, barnU0 - 3, barnV0 - 3, workEnd, YARD_DEPTH_M - 2),
-    drive: localRect(frame, driveU, 0, driveU + DRIVE_WIDTH_M, barnV0 + barnWidth),
+    drive: localRect(frame, driveU, -verge, driveU + DRIVE_WIDTH_M, barnV0 + barnWidth),
     field: localRect(frame, 0, YARD_DEPTH_M, along, deep),
     // Rows run away from the road, into the field: across the gate edge.
     rowsAlongX: !alongX,

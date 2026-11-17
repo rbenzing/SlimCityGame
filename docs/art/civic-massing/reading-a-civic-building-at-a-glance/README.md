@@ -30,7 +30,7 @@ it that does the work, and that part is the one modelled:
 | [The crematorium](the-crematorium.md) | 1,781 B |
 | [The fire and police stations](the-fire-and-police-stations.md) | 4,128 B |
 | [The schools, the college and the library](the-schools-the-college-and-the-library.md) | 5,250 B |
-| [The generators: solar, gas, combined cycle and the reactor](the-generators-solar-gas-combined-cycle-and-the-reactor.md) | 3,461 B |
+| [The generators: solar, gas, combined cycle and the reactor](the-generators-solar-gas-combined-cycle-and-the-reactor.md) | 3,727 B |
 | [The clinic, the depot and the bus stop](the-clinic-the-depot-and-the-bus-stop.md) | 7,597 B |
-| [The earliest kits, redone](the-earliest-kits-redone.md) | 10,609 B |
+| [The earliest kits, redone](the-earliest-kits-redone.md) | 10,727 B |
 | [The depots](the-depots.md) | 4,275 B |

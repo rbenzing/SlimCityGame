@@ -44,5 +44,8 @@ and stated as assumptions where not; the figures behind them are in
   NuScale publishes the module, not the building. On the edge that touches the
   water, the way the sewage works finds its outfall's, a low concrete
   cooling-water intake house with its screens at the water line, since the
-  station stands on the shore for its condenser.
+  station stands on the shore for its condenser. The house stays on the
+  lot's edge and a forebay 7 × 1.4 m reaches 6 m past it, the pumping
+  station's overhang, to a timber crib that carries the screens: the
+  shoreline lies inside the water tile, some metres past the lot.
 
