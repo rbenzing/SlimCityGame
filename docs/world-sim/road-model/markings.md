@@ -154,7 +154,9 @@ per-tier:
   each way — the standard no-passing rule for a wider undivided road.
   Arterial and divided roads always paint double solid (a divided road's
   median is the real separator; the double solid is what shows on the
-  paved side of it).
+  paved side of it). Through a bend the dashed centre becomes a solid pair
+  0.22 m each side of the centre, a no-passing zone (§3B.03 ¶03)
+  `[R-roads-090]`. A cap carries its edge line only `[R-roads-091]`.
 - **A broken line is painted at the size one is painted**: a 10 ft segment
   with a 30 ft gap — 3.05 m of paint every 12.2 m — and a line 6 in (0.15 m)
   wide. One part paint to three parts gap is the whole of what a driver reads

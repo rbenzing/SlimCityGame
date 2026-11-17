@@ -40,6 +40,7 @@
 | `ENTRANCE_WALK_M`                | 8 ft (2.44 m) deep, and wide from street to door                       | ft              | Fort Collins LUC 3.5.4                                                                  |
 | `MIN_FRONT_WALK_M` | 36 in (0.914 m), stall head to shopfront, held to the layout's 1 cm | in | ADA 2010 §403.5.1, §502.7 |
 | Fuel forecourt / tank farm       | 12 in front of the kiosk / 8 behind the body                           | m               | dial                                                                                    |
+| `HARDSTANDING_M` | paved behind the body: chemical 10.15, food plant 6, steelworks 14 | m | dial |
 | `WALK_Y_OFFSET`                  | 0.11                                                                   | m               | dial                                                                                    |
 | `layoutLot` cache                | 512, oldest dropped                                                    | entries         | dial                                                                                    |
 | Larger lots                      | 22 catalog entries `<kind id>-lot<w>x<d>`, no `share`                  | lots            | the audit in the sources                                                                |
@@ -120,7 +121,7 @@ From the street the modules stack row, aisle, row, then a last row and aisle whe
 
 The body keeps its size and may stand anywhere. On each axis it is centred, held an island's 5 ft off the lot line, or on the line. The layout takes the least slide from the centre that meets the code, the body to the far side from the drive; for a lot that cannot, the slide that holds the most spaces. A body on its lot line can meet its neighbour's: the price of keeping the floor whole.
 
-A filling station keeps a forecourt clear before its kiosk, where canopy and pumps stand. A chemical plant and a paper mill keep a tank farm behind their body.
+A filling station keeps a forecourt clear before its kiosk, where canopy and pumps stand. A chemical plant and a paper mill keep a tank farm behind their body. A heavy plant's yard parts stand on paving.
 
 Spaces fill nearest the entrance first, the middle of the body's street face. Each row's spaces are one block centred on the door's place along it. Accessible spaces go in the nearest row that holds them, nearest the door.
 

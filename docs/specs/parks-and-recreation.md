@@ -70,7 +70,7 @@
 **Open:**
 
 - The pocket park's 0.2 kL water draw is a dial.
-- The sports ground's stand and a park's shelter are plain blocks, and the district park has no furniture beyond its pond and paths.
+- The sports ground's stand (`sportsStand`: four rows of 0.9 m tread and 0.4 m rise under a roof on posts) and a park's shelter (`parkShelter`: a gable on six posts over two tables) take the game's own row count and heights. The district park keeps `pavilionBlock` and has no furniture beyond its pond and paths.
 - The sports ground's rear run-off reaches its back lot line: 3 m all round and a 1 m street setback do not both fit four tiles.
 - A pond follows a slope's ground, so its water tilts with it.
 
@@ -140,7 +140,7 @@ The grass wears: past a catchment load of 1.0 the lawn reads scuffed and then ba
 These are the largest ground-level assets in the game and [the performance budget](../engineering/performance-budget.md) caps the frame at roughly 300 draw calls. The kits extend the pocket-park kit ([props and vehicles](../art/props-and-vehicles/README.md)).
 
 - **One plate a park.** A flat rung merges its plate, paths and markings into one `BufferGeometry` sized from the footprint and instances it, one slot a park. A draped rung's heights are the terrain's under it, so it is one merged mesh of its own: a lattice at a vertex every 4 m (10 m on the district park, keeping its plate near 4k triangles) with each height read from the terrain, so lawn and paths lie on the hillside. A 400-tile district park is one draw call. The instancer's pick pad under a draped entry sinks below the lowest ground (`minHeightOverRect`), so the lawn hides it and a click still finds the park.
-- **Shared pools.** `parkTree` and `parkBench` do not depend on the footprint, so five kits share one pool each: 3 ground pools plus tree, bench, `pitchGoal`, `pavilionBlock`, `playFrame` is 8 draw calls plus one per draped park. Planters and the pitch fence merge into their plate.
+- **Shared pools.** `parkTree` and `parkBench` do not depend on the footprint, so five kits share one pool each: 3 ground pools plus tree, bench, `playFrame`, swing set, lamp, `pitchGoal`, `pavilionBlock`, `parkShelter`, `sportsStand` is 12 draw calls plus one per draped park. Planters and the pitch fence merge into their plate.
 - **Props by perimeter.** Trees ring the edge and paths and the middle stays open: perimeter ÷ 24 m trees, path ÷ 50 m benches (floored at 2), roughly 900 trees and 240 benches in a 10,000-resident city. An area rule would put 75 trees on every district park. Per-rung counts are in [the sources](../sources/parks-and-recreation.md#prop-counts). Trees stand on the terrain at their own vertex height; kit trees stay self-contained and do not import [vegetation](../visual-render/vegetation.md).
 - **Markings and wear cost nothing.** Pitch lines are vertex-colour strips merged into the plate, as the path cross is. Only `pitchGoal` (two a ground) and `pavilionBlock` (one) are new part kinds.
 

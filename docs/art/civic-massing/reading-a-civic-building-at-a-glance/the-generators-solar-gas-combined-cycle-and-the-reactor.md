@@ -20,7 +20,8 @@ and stated as assumptions where not; the figures behind them are in
   2,000. A 4 m gravel track runs in from the
   street to the inverter skid, an SMA medium-voltage station on a 20 ft skid
   (6.06 × 2.44 × 2.9 m), and a 7 ft (2.1 m) chain-link fence closes the lot, with a
-  gate on the track. One instance per row, so a farm is a dozen.
+  gate on the track; the skid stands a gate's width (5 m) clear of the
+  gate. One instance per row, so a farm is a dozen.
 - **Gas turbine (2×2).** The LM6000's 20 × 5 m package on a 40 × 18 m paved plate,
   enclosed to 5 m (an assumption), with the inlet filter house over its intake end
   rising to the catalog's 14 m, a generator enclosure at the other, a catalyst

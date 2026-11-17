@@ -103,7 +103,7 @@ The split carrier, blue beside brown, is the one the overlay drew before and the
 
 - `mains`: every street tile whose class carries water.
 - `pipes`: the laid pipe tiles.
-- A `lead` for every building that draws water, from the road tile its road-facing edge meets, one step into its lot.
+- A `lead` for every building that draws water, from the road tile its road-facing edge meets, one step into its lot; a home's lead runs on to its front wall.
 - A `riser` at the footprint centre of each water building (`water-*`, `sewage-works`).
 - For each riser, a `connection` to every edge tile of its footprint with a main or a pipe beyond it: across first, then along, which keeps the run inside the rectangle.
 

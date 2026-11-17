@@ -41,7 +41,8 @@ the home:
   flat roof 2.4 m up on four posts, 3.4 × 6 m; an **attached garage** filling
   the lawn strip and the drive's width, 6 m deep and 2.6 m tall, set 1 m back
   from the house front with its door to the street; or a **detached garage**
-  3 m behind the house's back wall, 4 × 6 m, its door facing down the drive.
+  3 m behind the house's back wall, 4 × 6 m, its door facing down the drive
+  in the gable end of a roof at the house's own pitch and colour.
   The car stands just in front of the garage door, under the carport, or on
   the spot. A cover the lot has no depth for is not chosen.
 - **A row facing the street along its length** is three homes to the 20 m of

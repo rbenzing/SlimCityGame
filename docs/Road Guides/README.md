@@ -9,9 +9,13 @@ folder is empty in a fresh clone. Put the documents back by downloading them.
 | MUTCD, 11th edition (FHWA) — Part 2B signs, Part 3 markings, Part 4 signals | **yes**   | Junction control warrants, stop and give-way placement, lane and edge line colour, crossing and stop-bar geometry |
 | AASHTO _A Policy on Geometric Design of Highways and Streets_               | **no**    | Lane widths, speed-change lane lengths, turn-lane storage, kerb-return radii                                      |
 | Highway Capacity Manual                                                     | **no**    | Saturation flow, control delay, roundabout entry capacity                                                         |
+| FAA AC 150/5300-13B Change 1, _Airport Design_                              | **yes**   | Runway width, safety and object-free areas, taxiway widths and separations, apron clearances                      |
+| FAA AC 150/5340-1M Change 1, _Standards for Airport Markings_               | **yes**   | Runway numerals, centreline, threshold and side stripes, taxiway lines, holding positions                         |
+| FAA AC 150/5325-4B, _Runway Length Requirements for Airport Design_         | **yes**   | Runway length by aircraft weight class                                                                            |
 
-**Only the MUTCD is actually in this folder, and the middle column is there so
-nobody has to find that out the hard way.** Every geometric figure the road
+**Of the road standards only the MUTCD is actually in this folder, and the
+middle column is there so nobody has to find that out the hard way.** The three
+FAA circulars are held for the airports. Every geometric figure the road
 model attributes to AASHTO, and every capacity figure it attributes to the HCM,
 was taken from those standards but **cannot be re-checked against anything in
 this repository**. They are not wrong; they are unverifiable here, which is a

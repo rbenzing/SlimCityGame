@@ -15,14 +15,14 @@ How to use it:
 | -------------------------------------- | --------------------------------------------- | ----: | ------------------------------------ |
 | Roads: network and profiles            | [roads-network.md](truths/roads-network.md)   | 39    | `R-roads-001–006, 009, 010, 015–028, 040–043, 051–055, 057–060, 076, 077, 080, 081` |
 | Roads: junctions, signs, ramps         | [roads-junctions.md](truths/roads-junctions.md) | 28  | `R-roads-029–036, 056, 061–067, 070–075, 078, 079, 083–086` |
-| Roads: markings and kerb parking       | [roads-markings.md](truths/roads-markings.md) | 11    | `R-roads-044–050, 068, 069, 087, 089` |
+| Roads: markings and kerb parking       | [roads-markings.md](truths/roads-markings.md) | 13    | `R-roads-044–050, 068, 069, 087, 089–091` |
 | Roads: rail, tram and transit          | [roads-transit.md](truths/roads-transit.md)   | 11    | `R-roads-007, 008, 011–014, 037–039, 082, 088` |
 | World: grid and simulation core        | [world-grid.md](truths/world-grid.md)         | 22    | `R-world-001–006, 019–024, 027, 030–035, 049–051` |
 | World: growth, lots and population     | [world-growth.md](truths/world-growth.md)     | 29    | `R-world-007–018, 025, 026, 028, 029, 036–048` |
 | Utilities and services                 | [services.md](truths/services.md)             | 42    | `R-services-001` to `R-services-042` |
 | Saves and the data model               | [saves.md](truths/saves.md)                   | 12    | `R-saves-001` to `R-saves-012`       |
 | Architecture and the thread boundary   | [architecture.md](truths/architecture.md)     | 17    | `R-architecture-001` to `R-architecture-017` |
-| Rendering and art                      | [render.md](truths/render.md)                 | 41    | `R-render-001` to `R-render-041`     |
+| Rendering and art                      | [render.md](truths/render.md)                 | 42    | `R-render-001` to `R-render-042`     |
 | Game design and interface              | [design.md](truths/design.md)                 | 22    | `R-design-001` to `R-design-022`     |
 | Process                                | [process.md](truths/process.md)               | 10    | `R-process-001` to `R-process-010`   |
 

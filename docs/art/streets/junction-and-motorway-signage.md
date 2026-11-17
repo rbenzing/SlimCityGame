@@ -27,7 +27,8 @@ a motorway, you give it an exit. It gets two sign types of its own:
   shoulder, a lattice-truss arm reaching over the carriageway, and a green
   panel hung off it carrying an exit-number tab above its top edge, a
   diagonal exit arrow, and a yellow advisory-speed plaque beneath.
-- A **gantry** periodically along a straight run: legs outside both
+- A **gantry** on a straight run with an exit within 12 tiles ahead on its
+  flow, and none where no ramp leaves: legs outside both
   shoulders, a truss carrying right across, and two panels beneath it with
   lane-assignment down-arrows. This is the one sign type that straddles the
   centreline instead of standing at a kerb, so it takes no lateral offset. It

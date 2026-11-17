@@ -2,6 +2,7 @@ node_modules/
 dist/
 *.local
 .claude/settings.local.json
+.claude/worktrees/
 .DS_Store
 
 # Player-supplied music: the folder and its README stay tracked, the audio

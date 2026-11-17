@@ -93,6 +93,17 @@ Back to [the index](../GROUND-TRUTHS.md).
   `src/render/roadsmesh.ts`
 - [R-roads-089] An exit's neutral area carries a wide white channelizing line on each side,
   from the theoretical gore to the nose, and white chevrons between them
-  pointing at approaching traffic (MUTCD 3B.08 ¶05, 3B.25 ¶05). —
-  [interchanges.md](../specs/interchanges.md); `emitGore` in
+  pointing at approaching traffic (MUTCD 3B.08 ¶05, 3B.25 ¶05). The slip
+  road keeps its lane's full width at the nose. An entrance's neutral area
+  carries the same two lines to the theoretical gore and no chevrons (3B.08
+  ¶06, ¶09). — [interchanges.md](../specs/interchanges.md); `emitGore` in
   `src/render/roadsmesh.ts`
+- [R-roads-090] A two-way road's bend at or under its class's bend radius is a no-passing
+  zone: an unpaired broken yellow centre line becomes a solid yellow pair
+  through it, on a free bend and a grid turn tile alike (MUTCD 3B.03 ¶03).
+  White lane lines stay broken. — [markings.md](../world-sim/road-model/markings.md);
+  `bendIsNoPassing` in `src/shared/roadprofile.ts`
+- [R-roads-091] A road's end cap carries its edge line only: no centre line, lane line or
+  dash wraps the cap. Two bike lanes' dotted extensions stop at each other's
+  footprint where they cross. — [markings.md](../world-sim/road-model/markings.md);
+  `emitEndCapMarkings` in `src/render/roadsmesh.ts`
