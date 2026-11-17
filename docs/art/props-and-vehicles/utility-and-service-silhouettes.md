@@ -145,8 +145,8 @@ bands, entrance and emergency doors (`hospitalLit`).
 **The landfill** renders as an operated facility rather than a tint. Its
 office tile — the area's street-adjacent entrance — carries a gatehouse kit:
 a terrain-conforming concrete yard pad, a small office box with a roof cap
-and a street-facing door, a two-bay striped nose-in parking row, and a yard
-light with a glowing head, laid out in a road-facing frame so it fits its
+and a street-facing door, a two-bay striped nose-in parking row whose paint
+dims with the night, and a yard light with a glowing head, laid out in a road-facing frame so it fits its
 tile at any orientation. Every other tile in the area is dumping ground: a
 tint under one continuous mound for the whole area (`rebuildMound`), its
 sides sloping over 10 m and its cap rising with how full it is, and a 5 m

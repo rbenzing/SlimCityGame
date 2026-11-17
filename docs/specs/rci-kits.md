@@ -121,7 +121,7 @@ Body palettes are the one place taste enters: each is a short list of named colo
 
 The test is identification at about 40 m, which is about 4 px per metre at the default pitch, so each identifying part is at least 2 px there: a sign band 1.2 m, a strip fascia 0.9 m on a 2.1 m canopy, the supermarket's entry tower a storey over the parapet, the pylon 6–11 m, a tilt-up colour band 2.4 m at the top third, a wall pack 0.4 m but lit, a dock bumper pair under every door, a stack 12 m and a baghouse 6 m on a frame, silos 4 m by 15 m, condensers 2.4 m on the roof, a dike wall 1 m around the tanks, a pipe rack 5 m up on 6 m portals, a flare 30 m, a chip pile 12 m high, a scrap yard with a 10 m gantry.
 
-Silos, a flare and a chip pile stand in the yard the lot layout already reserves (forecourt, tank farm, truck court); a part that does not fit is omitted, as the drive-through is.
+Silos, a flare and a chip pile stand in the yard the lot layout already reserves (forecourt, tank farm, truck court); a part that does not fit is omitted, as the drive-through is, and as a level-1 food plant's silos are: its 60 m lot leaves no 5 m beside the body.
 
 ## The parts map
 
