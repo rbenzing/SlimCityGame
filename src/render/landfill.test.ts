@@ -270,13 +270,31 @@ describe('LandfillRenderer office kit', () => {
     expect(vertexCount(officeMarks)).toBeGreaterThan(0); // bay stripes + light glow
   });
 
+  it('paints the bay stripes with the night-tinted body material, and keeps the lamp head glowing', () => {
+    const scene = new THREE.Scene();
+    const renderer = new LandfillRenderer(scene, flatHeightAt, roadRow0);
+    paintBlock(renderer);
+    const { officeMarks, officeLamp } = renderer.layers();
+    expect((officeMarks.material as { colorNode?: unknown }).colorNode).toBeDefined();
+    expect(officeLamp.material).toBeInstanceOf(THREE.MeshBasicMaterial);
+    expect(vertexCount(officeLamp)).toBeGreaterThan(0);
+    renderer.setNightFactor(1.5);
+    expect(renderer.nightFactor()).toBe(1);
+    renderer.setNightFactor(-1);
+    expect(renderer.nightFactor()).toBe(0);
+  });
+
   it('keeps every kit vertex inside the office tile footprint', () => {
     const scene = new THREE.Scene();
     const renderer = new LandfillRenderer(scene, flatHeightAt, roadRow0);
     paintBlock(renderer);
     const lo = 1 * TILE_METERS - 1e-6;
     const hi = 2 * TILE_METERS + 1e-6;
-    for (const mesh of [renderer.layers().office, renderer.layers().officeMarks]) {
+    for (const mesh of [
+      renderer.layers().office,
+      renderer.layers().officeMarks,
+      renderer.layers().officeLamp,
+    ]) {
       const position = mesh.geometry.getAttribute('position')!;
       for (let i = 0; i < position.count; i++) {
         expect(position.getX(i)).toBeGreaterThanOrEqual(lo);
@@ -348,9 +366,11 @@ describe('LandfillRenderer office kit', () => {
     renderer.setVisible(true);
     expect(renderer.layers().office.visible).toBe(true);
     expect(renderer.layers().officeMarks.visible).toBe(true);
+    expect(renderer.layers().officeLamp.visible).toBe(true);
     renderer.setVisible(false);
     expect(renderer.layers().office.visible).toBe(false);
     expect(renderer.layers().officeMarks.visible).toBe(false);
+    expect(renderer.layers().officeLamp.visible).toBe(false);
   });
 
   it('is deterministic — re-applying the same membership rebuilds identical kits', () => {

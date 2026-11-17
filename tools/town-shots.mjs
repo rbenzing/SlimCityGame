@@ -11,7 +11,7 @@
  * Usage: node tools/town-shots.mjs [baseUrl] [outDir]   (a dev server must be running) */
 import { chromium } from 'playwright';
 import { mkdirSync } from 'node:fs';
-import { cleanShot, hooksReady, logAlerts, tileCamera, tileMeters, unlimitedMoneyOption } from './shotcam.mjs';
+import { cleanShot, hooksReady, logAlerts, requireInFrame, tileCamera, tileMeters, unlimitedMoneyOption } from './shotcam.mjs';
 
 const base = process.argv[2] ?? 'http://localhost:5173';
 const out = process.argv[3] ?? 'tools/shots-town';
@@ -125,6 +125,24 @@ await hook(() => window.__slimcity.setOverlay(null));
 await hook(() => window.__slimcity.setDayT(0.96));
 await camera(90, 100, 1200, Math.PI / 5, 0.9);
 await shot('11-night');
+// The landfill office's parking bays and yard light, close up at night: the paint must
+// read no brighter than the ground round it and the lamp head must still glow.
+const office = await hook(async (L) => {
+  const { landfillAreas } = await import('/src/world/landfill.ts');
+  const g = window.__slimcity.readGrid();
+  const membership = new Uint8Array(g.size * g.size);
+  for (let z = L.z0; z < L.z0 + L.d; z++)
+    for (let x = L.x0; x < L.x0 + L.w; x++) membership[z * g.size + x] = 1;
+  const areas = landfillAreas(g.size, membership, (x, z) => z === L.z0 + L.d && g.roadTier[z * g.size + x] > 0);
+  return areas[0]?.office ?? null;
+}, TOWN.landfill);
+if (!office) throw new Error('[town] the landfill has no office to frame');
+console.log('landfill office', JSON.stringify(office));
+await camera(office.x + 0.5, office.z + 0.5, 50, Math.PI / 5, 1.0);
+await requireInFrame(page, 'landfill-office', office.x + 0.5, office.z + 0.5);
+await shot('12-landfill-office-night');
+await hook(() => window.__slimcity.setDayT(0.5));
+await shot('12b-landfill-office-noon');
 
 console.log('stats', JSON.stringify(await hook(() => window.__slimcity.getStats())));
 console.log('farm kit', JSON.stringify(await hook(() => window.__slimcity.farmKit())));

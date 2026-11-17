@@ -12,6 +12,7 @@ import { footprintForRotation } from '../shared/footprint';
 import { bodyMetresFor } from '../shared/floorarea';
 import {
   GARAGE_FRONT_PROJECTION_M,
+  GARAGE_SLAB_M,
   GARAGE_TIER_M,
   PODIUM_OVERHANG_M,
   garageFor,
@@ -396,6 +397,29 @@ describe('the garage as drawn', () => {
       expect(box.min.y, e.id).toBeLessThan(0);
       // A stair tower a tier taller than the deck's roof.
       expect(box.max.y, e.id).toBeGreaterThanOrEqual(tierFloorY(g.tiers - 1) + GARAGE_TIER_M);
+      geometry.dispose();
+    }
+  });
+
+  it('cuts every upper deck open over its ramp lane, so the pale slab seen in the roof deck is the ramp climbing to it', () => {
+    for (const e of garaged) {
+      const g = garageFor(e)!;
+      if (g.tiers < 2) continue;
+      const geometry = buildGarageGeometry(g, g.tiers, closedTiersFor(e.height / 2), false);
+      const mesh = new THREE.Mesh(
+        geometry,
+        new THREE.MeshBasicMaterial({ side: THREE.DoubleSide }),
+      );
+      mesh.updateMatrixWorld(true);
+      const x = (g.ramp.u0 + g.ramp.u1) / 2 - g.lotW / 2;
+      const z = (g.ramp.v0 + g.ramp.v1) / 2 - g.lotD / 2;
+      const hit = new THREE.Raycaster(
+        new THREE.Vector3(x, 200, z),
+        new THREE.Vector3(0, -1, 0),
+      ).intersectObject(mesh, false)[0]!;
+      // Half way up the last ramp: lower than the roof deck beside it, above the tier it climbs from.
+      expect(hit.point.y, e.id).toBeLessThan(tierFloorY(g.tiers - 1) - GARAGE_SLAB_M);
+      expect(hit.point.y, e.id).toBeGreaterThanOrEqual(tierFloorY(g.tiers - 2));
       geometry.dispose();
     }
   });

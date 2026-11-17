@@ -2043,6 +2043,15 @@ describe('the second pass: what tells the industrial kinds apart at 40 m', () =>
     ).toBeCloseTo(5, 9);
   });
 
+  it('omits the silos on the 3 × 3 level 1 cannery, whose lot has no 5 m of free ground beside its body, and keeps them whole on the larger plants', () => {
+    const silos = (id: string, side: StreetSide): PartPlacement[] =>
+      only(kitOf(indById(id), 0, side), 'silo');
+    for (const side of STREET_SIDES) {
+      expect(silos('heavy-food-1', side), side).toEqual([]);
+      expect(silos('heavy-food-3', side), side).toHaveLength(2);
+    }
+  });
+
   it('raises a 30 m flare with a lit 1.5 m tip and stands an 11 × 7 × 5.6 m cooling tower with two 2 m fans on a chemical plant', () => {
     expect(LIT_PARTS.has('flareTip')).toBe(true);
     const e = indById('heavy-chem-2');

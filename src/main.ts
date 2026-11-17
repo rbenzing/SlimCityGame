@@ -97,7 +97,7 @@ import { WaterRenderer } from './render/water';
 import { TreeRenderer } from './render/trees';
 import { OverlayRenderer } from './render/overlays';
 import { BuildingInstancer } from './render/buildings';
-import { MassingRenderer } from './render/massing';
+import { frontWallSetbackM, MassingRenderer } from './render/massing';
 import { SiteRenderer } from './render/sites';
 import { withoutProgressOnly } from './render/progressdelta';
 import { RoofPropRenderer } from './render/props';
@@ -1969,8 +1969,10 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       const edge = findRoadFacingEdge(b.x, b.z, w, d, carrierAt);
       if (!edge) continue;
       const step = { N: [0, 1], E: [-1, 0], S: [0, -1], W: [1, 0] }[edge.side]!;
-      // A home's lead runs on to the wall of its house, set back from the street edge of its lot.
-      const intoLotM = planHouseLot(b, entry, roadAt, street)?.body.v0;
+      // Every building's lead runs on to its front wall, set back from the street edge of its lot.
+      const intoLotM = b.frame
+        ? undefined
+        : frontWallSetbackM(entry, b.x, b.z, edge.side, roadAt, street, b.rotation, kerb);
       leads.push({ x: edge.roadTileX, z: edge.roadTileZ, dx: step[0]!, dz: step[1]!, intoLotM });
     }
     return {
@@ -2477,6 +2479,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
     trees.setNightFactor(nightFactor);
     lots.setNightFactor(nightFactor);
     parkedCars.setNightFactor(nightFactor);
+    landfillRenderer.setNightFactor(nightFactor);
     massing.setNightFactor(nightFactor);
     sites.setNightFactor(nightFactor);
     roofProps.setNightFactor(nightFactor);

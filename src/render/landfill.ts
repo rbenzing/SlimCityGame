@@ -29,6 +29,8 @@
  * of incoming snapshots — recreated meshes inherit the stored state.
  */
 import * as THREE from 'three';
+import { uniform } from 'three/tsl';
+import { nightBodyMaterial } from './nightlook';
 import type { SimSnapshot, TilePoint } from '../shared/types';
 import {
   LANDFILL_MAX_PILE_METERS,
@@ -315,12 +317,19 @@ export class LandfillRenderer {
   private readonly tintMaterial: THREE.MeshBasicMaterial;
   private readonly pileMaterial: THREE.MeshLambertMaterial;
   private readonly officeMaterial: THREE.MeshLambertMaterial;
-  private readonly markMaterial: THREE.MeshBasicMaterial;
+  private readonly nightFactorUniform = uniform(0);
+  /** The bay paint carries the same night tint as the pavement it lies on. */
+  private readonly markMaterial = nightBodyMaterial(this.nightFactorUniform, {
+    vertexColors: true,
+  });
+  private readonly lampMaterial: THREE.MeshBasicMaterial;
   private readonly tintMesh: THREE.Mesh;
   /** Lit office-kit solids: yard pad, gatehouse body/roof/door, light pole. */
   private readonly officeMesh: THREE.Mesh;
-  /** Unlit office-kit marks: parking-bay stripes + the yard light's glowing head. */
+  /** Office-kit marks: the parking-bay stripes. */
   private readonly markMesh: THREE.Mesh;
+  /** The yard light's glowing head, unlit so it stays bright at night. */
+  private readonly lampMesh: THREE.Mesh;
   /** The capped mound with its haul roads: one continuous surface over every dumping-ground tile. */
   private readonly pileMesh: THREE.Mesh;
 
@@ -349,7 +358,7 @@ export class LandfillRenderer {
 
     this.pileMaterial = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
     this.officeMaterial = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
-    this.markMaterial = new THREE.MeshBasicMaterial({ vertexColors: true });
+    this.lampMaterial = new THREE.MeshBasicMaterial({ vertexColors: true });
 
     this.pileMesh = new THREE.Mesh(new THREE.BufferGeometry(), this.pileMaterial);
     this.pileMesh.name = 'landfill-piles';
@@ -376,6 +385,12 @@ export class LandfillRenderer {
     this.markMesh.userData['underground'] = 'keep';
     this.markMesh.visible = false;
     scene.add(this.markMesh);
+
+    this.lampMesh = new THREE.Mesh(new THREE.BufferGeometry(), this.lampMaterial);
+    this.lampMesh.name = 'landfill-office-lamp';
+    this.lampMesh.userData['underground'] = 'keep';
+    this.lampMesh.visible = false;
+    scene.add(this.lampMesh);
   }
 
   /**
@@ -390,6 +405,7 @@ export class LandfillRenderer {
     this.tintMesh.visible = v && hasGeometry(this.tintMesh);
     this.officeMesh.visible = v && hasGeometry(this.officeMesh);
     this.markMesh.visible = v && hasGeometry(this.markMesh);
+    this.lampMesh.visible = v && hasGeometry(this.lampMesh);
     this.pileMesh.visible = v && hasGeometry(this.pileMesh);
   }
 
@@ -443,16 +459,30 @@ export class LandfillRenderer {
     piles: THREE.Mesh;
     office: THREE.Mesh;
     officeMarks: THREE.Mesh;
+    officeLamp: THREE.Mesh;
   } {
     return {
       tint: this.tintMesh,
       piles: this.pileMesh,
       office: this.officeMesh,
       officeMarks: this.markMesh,
+      officeLamp: this.lampMesh,
     };
   }
 
+  /** Dims the parking-bay paint with the rest of the town's lit surfaces; the lamp head keeps glowing. */
+  setNightFactor(nightFactor: number): void {
+    this.nightFactorUniform.value = clamp01(nightFactor);
+  }
+
+  nightFactor(): number {
+    return this.nightFactorUniform.value;
+  }
+
   dispose(): void {
+    this.scene.remove(this.lampMesh);
+    this.lampMesh.geometry.dispose();
+    this.lampMaterial.dispose();
     this.scene.remove(this.tintMesh);
     this.tintMesh.geometry.dispose();
     this.tintMaterial.dispose();
@@ -611,8 +641,18 @@ export class LandfillRenderer {
     const litColors: number[] = [];
     const markPositions: number[] = [];
     const markColors: number[] = [];
+    const lampPositions: number[] = [];
+    const lampColors: number[] = [];
     for (const kit of kits) {
-      this.pushOfficeKit(litPositions, litColors, markPositions, markColors, kit);
+      this.pushOfficeKit(
+        litPositions,
+        litColors,
+        markPositions,
+        markColors,
+        lampPositions,
+        lampColors,
+        kit,
+      );
     }
 
     const lit = new THREE.BufferGeometry();
@@ -625,8 +665,15 @@ export class LandfillRenderer {
     const marks = new THREE.BufferGeometry();
     marks.setAttribute('position', new THREE.BufferAttribute(new Float32Array(markPositions), 3));
     marks.setAttribute('color', new THREE.BufferAttribute(new Float32Array(markColors), 3));
+    marks.computeVertexNormals();
     this.markMesh.geometry.dispose();
     this.markMesh.geometry = marks;
+
+    const lamp = new THREE.BufferGeometry();
+    lamp.setAttribute('position', new THREE.BufferAttribute(new Float32Array(lampPositions), 3));
+    lamp.setAttribute('color', new THREE.BufferAttribute(new Float32Array(lampColors), 3));
+    this.lampMesh.geometry.dispose();
+    this.lampMesh.geometry = lamp;
   }
 
   /** Highest terrain sample under a rect (4 corners + center) — box seats, never sinks. */
@@ -654,6 +701,8 @@ export class LandfillRenderer {
     litColors: number[],
     markPositions: number[],
     markColors: number[],
+    lampPositions: number[],
+    lampColors: number[],
     kit: { tile: TilePoint; dirX: number; dirZ: number },
   ): void {
     const f = officeFrame(kit.tile, kit.dirX, kit.dirZ);
@@ -759,8 +808,8 @@ export class LandfillRenderer {
     );
     const head = frameRect(f, -0.34, 5.66, 0.34, 6.34);
     pushBox(
-      markPositions,
-      markColors,
+      lampPositions,
+      lampColors,
       head.minX,
       poleTop,
       head.minZ,
