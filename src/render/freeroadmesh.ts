@@ -70,8 +70,10 @@ import {
   DASH_PAINT_LENGTH_M,
   DASH_PERIOD_M,
   dashSegments,
+  joinedRuns,
   medianHalfWidthOf,
   roadNightTint,
+  streetTrackStrips,
   surfaceColor,
 } from './roadsmesh';
 
@@ -678,31 +680,6 @@ function drawBend(
   drawSweep(soup, swept, stations(samples, 0, length), isPaved(lay.profile) ? dashesOf : () => []);
 }
 
-/**
- * The runs of a broken line along a stretch, with the last gap at an end that
- * meets a no-passing zone filled, so the line carries on as the solid pair
- * begins.
- */
-function joinedRuns(
-  runs: ReadonlyArray<[number, number]>,
-  from: number,
-  to: number,
-  join: { from: boolean; to: boolean },
-): Array<[number, number]> {
-  const out = runs.map(([lo, hi]): [number, number] => [lo, hi]);
-  if (join.to) {
-    const last = out.at(-1);
-    if (last && last[1] < to) last[1] = to;
-    else if (!last) out.push([Math.max(from, to - DASH_GAP_LENGTH_M), to]);
-  }
-  if (join.from) {
-    const first = out[0];
-    if (first && first[0] > from) first[0] = from;
-    else if (!first) out.push([from, Math.min(to, from + DASH_GAP_LENGTH_M)]);
-  }
-  return out;
-}
-
 /** Where a broken line's pattern lies: the metre of the pattern at a point, and which way it grows along the line. */
 interface DashPhase {
   origin: number;
@@ -831,6 +808,10 @@ function drawSweep(
 
   let edge = -half;
   let median: { offset: number; half: number } | null = null;
+  // A tram reservation is the guideway's column line: kerbed as a median over
+  // the span its pieces cover together.
+  let reserveFrom = Infinity;
+  let reserveTo = -Infinity;
   for (const piece of profile.pieces) {
     if (!CARRIAGEWAY_KINDS.has(piece.kind)) continue;
     const lo = edge;
@@ -839,9 +820,18 @@ function drawSweep(
       median = { offset: (lo + edge) / 2, half: piece.width / 2 };
       soup.island(island?.stations ?? st, median, island?.noseStart, island?.noseEnd);
     }
+    if (piece.kind === 'tram') {
+      reserveFrom = Math.min(reserveFrom, lo);
+      reserveTo = edge;
+    }
     if (piece.kind === 'barrier') {
       soup.ribbon(st, lo, edge, HIGHWAY_BARRIER_RAISE + ROAD_Y_OFFSET, HIGHWAY_BARRIER_COLOR);
     }
+  }
+  const reservation = reserveTo > reserveFrom;
+  if (reservation) {
+    median = { offset: (reserveFrom + reserveTo) / 2, half: (reserveTo - reserveFrom) / 2 };
+    soup.island(island?.stations ?? st, median, island?.noseStart, island?.noseEnd);
   }
 
   if (hasKerbs(profile)) {
@@ -859,6 +849,13 @@ function drawSweep(
       soup.ribbon(st, band.from, band.to, BAND_Y_OFFSET, BUS_LANE_PAINT_COLOR);
     if (band.kind === 'bike')
       soup.ribbon(st, band.from, band.to, BAND_Y_OFFSET, BIKE_LANE_PAINT_COLOR);
+    // Trams share the lane: its track is laid down it, as on the grid. A
+    // reservation's trams run on the guideway above it, so it lays none.
+    if (band.kind === 'tram' && !reservation) {
+      for (const s of streetTrackStrips((band.from + band.to) / 2)) {
+        soup.ribbon(st, s.from, s.to, s.yOff, s.color);
+      }
+    }
   }
   const paint = (line: { at: number; color: 'white' | 'yellow' }, run: readonly Station[]): void =>
     soup.ribbon(

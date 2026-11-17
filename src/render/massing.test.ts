@@ -6,6 +6,7 @@ import {
   computeSetbacks,
   DEFAULT_BODY_M_PER_TILE,
   frontageSetbackFor,
+  frontWallSetbackM,
   InstancedSlotPool,
   massingLifecycleTint,
   MassingRenderer,
@@ -22,7 +23,8 @@ import {
 } from './massing';
 import { lotPlanFor, lotPointToWorld } from './lotplan';
 import { bodyPlateM2 } from '../shared/floorarea';
-import { PODIUM_OVERHANG_M } from '../shared/garage';
+import { footprintForRotation } from '../shared/footprint';
+import { GARAGE_FRONT_PROJECTION_M, garageFor, PODIUM_OVERHANG_M } from '../shared/garage';
 import { deriveFacadeParams, FLOOR_HEIGHT_METERS, windowGrid } from './facade';
 import { materialUnit } from './palette';
 import {
@@ -241,6 +243,52 @@ function planShift(
   const lot = rotation % 2 === 1 ? { w: e.footprint.d, d: e.footprint.w } : e.footprint;
   return { x: at.x - (5 + lot.w / 2) * TILE_METERS, z: at.z - (5 + lot.d / 2) * TILE_METERS };
 }
+
+describe('frontWallSetbackM', () => {
+  const allBuildings = (catalogData as { buildings: BuildingCatalogEntry[] }).buildings;
+  const sideRoads = {
+    N: roadAtTiles([[5, 4]]),
+    S: roadAtTiles([[5, 7]]),
+    E: roadAtTiles([[7, 5]]),
+    W: roadAtTiles([[4, 5]]),
+  } as const;
+
+  it('is the lot plan body’s distance from the street edge for a car-park lot', () => {
+    const shop = entry({ category: 'ind', zone: 5, kind: 'workshop', footprint: { w: 2, d: 2 } });
+    for (const side of ['N', 'S', 'E', 'W'] as const) {
+      const plan = lotPlanFor(shop, 5, 5, sideRoads[side])!;
+      expect(frontWallSetbackM(shop, 5, 5, side, sideRoads[side]), side).toBeCloseTo(
+        plan.layout.body.v0,
+        9,
+      );
+    }
+  });
+
+  it('reaches past the 2 m stub for every apartment and business on a road', () => {
+    for (const e of allBuildings) {
+      if (e.waterUse <= 0 || (e.category !== 'com' && !e.id.startsWith('res-high'))) continue;
+      const lot = e.footprint;
+      const road = (x: number, z: number): boolean => z === 4 && x >= 5 && x < 5 + lot.w;
+      const wall = frontWallSetbackM(e, 5, 5, 'N', road);
+      const depthM = lot.d * TILE_METERS;
+      expect(wall, e.id).toBeGreaterThanOrEqual(0);
+      expect(wall, e.id).toBeLessThan(depthM);
+    }
+  });
+
+  it('is the garage projection for a dense block, at every turn', () => {
+    for (const e of allBuildings.filter((b) => garageFor(b))) {
+      for (const rotation of [0, 1, 2, 3] as const) {
+        const lot = footprintForRotation(e, rotation);
+        const road = (x: number, z: number): boolean => z === 4 && x >= 5 && x < 5 + lot.w;
+        expect(frontWallSetbackM(e, 5, 5, 'N', road, undefined, rotation), e.id).toBeCloseTo(
+          GARAGE_FRONT_PROJECTION_M[e.kind ?? '']!,
+          9,
+        );
+      }
+    }
+  });
+});
 
 describe('frontageSetbackFor', () => {
   // A 2x2 works at (5,5). Its car park is laid to code; the body slides where

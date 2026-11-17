@@ -222,6 +222,40 @@ export function frontageSetbackFor(
   };
 }
 
+/**
+ * How far a building's front wall stands in from its lot's edge on `side`, the
+ * street edge: the body's centred inset plus the slide its frontage setback
+ * gives it away from that street. Every kind reads it from the same
+ * placement the body is drawn at. Pure.
+ */
+export function frontWallSetbackM(
+  entry: BuildingCatalogEntry,
+  x: number,
+  z: number,
+  side: 'N' | 'E' | 'S' | 'W',
+  roadAt: (tileX: number, tileZ: number) => boolean,
+  street: StreetLookup = NO_STREETS,
+  rotation: 0 | 1 | 2 | 3 = 0,
+  kerb: KerbSurroundings | null = null,
+): number {
+  const lot = footprintForRotation(entry, rotation);
+  const body = worldBodyFor(entry, rotation);
+  const alongDepth = side === 'N' || side === 'S';
+  const centredM =
+    ((alongDepth ? lot.d : lot.w) * TILE_METERS - (alongDepth ? body.d : body.w)) / 2;
+  const shift = frontageSetbackFor(entry, x, z, roadAt, street, rotation, kerb);
+  switch (side) {
+    case 'N':
+      return centredM + shift.centerZM;
+    case 'S':
+      return centredM - shift.centerZM;
+    case 'E':
+      return centredM - shift.centerXM;
+    default:
+      return centredM + shift.centerXM;
+  }
+}
+
 /** Where a dense block's body stands on its lot, in world metres: against the street line, its garage behind it. */
 export function garageBodyCentre(plan: GaragePlan): { x: number; z: number } {
   const { body } = plan.garage;

@@ -10,7 +10,13 @@
  * Usage: node tools/underground-shots.mjs [baseUrl] [outDir]   (a dev server must be running) */
 import { chromium } from 'playwright';
 import { mkdirSync } from 'node:fs';
-import { cleanShot, hooksReady, tileCamera, unlimitedMoneyOption } from './shotcam.mjs';
+import {
+  cleanShot,
+  hooksReady,
+  requireInFrame,
+  tileCamera,
+  unlimitedMoneyOption,
+} from './shotcam.mjs';
 
 const base = process.argv[2] ?? 'http://localhost:5173';
 const url = base + (base.includes('?') ? '&' : '?') + 'nobloom';
@@ -210,6 +216,26 @@ try {
   await shot('underground-view');
   await camera(view.x, view.z, 40, Math.PI, 1.0);
   await shot('underground-close');
+
+  // Leads to an apartment block and a business, south of the street: each runs on
+  // to its own front wall, not a 2 m stub and not under the building.
+  await hook(() => window.__slimcity.setTool('select'));
+  await place('res-high-1-lot2x2', X + 16, Z + 1, 2);
+  await place('com-strip-1', X + 18, Z + 1, 2);
+  await page.waitForTimeout(1200);
+  const flats = await hook(() =>
+    window.__slimcity
+      .readBuildings()
+      .filter((b) => ['res-high-1-lot2x2', 'com-strip-1'].includes(b.catalogId))
+      .map((b) => b.catalogId),
+  );
+  check(flats.length === 2, `apartment block and business not both standing (${flats})`);
+  await hook(() => window.__slimcity.setTool('water.pipe'));
+  await page.waitForTimeout(800);
+  await camera(X + 18.5, Z + 2, 90, Math.PI, 1.3);
+  await requireInFrame(page, 'lead-apartment', X + 17, Z + 2);
+  await requireInFrame(page, 'lead-business', X + 19.5, Z + 2);
+  await shot('leads-apartment-business');
 
   // The buried cable: the street's own supply buried along its middle (above the
   // pipes under it), and a cable from a wind turbine north over open ground. The
