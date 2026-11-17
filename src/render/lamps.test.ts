@@ -34,7 +34,13 @@ import {
 } from '../shared/roadprofile';
 import { BUS_STOP_PAD, busStopPlacement } from './busstops';
 import { LAMP_SPACING_TILES, LAMP_SPACING_WIDE_TILES, TILE_METERS } from '../shared/constants';
-import { carriagewayHalfWidthMeters, SIDEWALK_WIDTH_M } from './roadsmesh';
+import {
+  carriagewayHalfWidthMeters,
+  CURB_Y_OFFSET,
+  MEDIAN_RAISE,
+  ROAD_Y_OFFSET,
+  SIDEWALK_WIDTH_M,
+} from './roadsmesh';
 import { RING_OUTER_RADIUS_M } from '../shared/roundabout';
 
 const flatHeightAt = (): number => 0;
@@ -728,6 +734,15 @@ describe('LampRenderer', () => {
     expect(alongReach).toBeGreaterThan((LAMP_SPACING_TILES * TILE_METERS) / 3);
     // ...but still narrow enough not to flood the lots either side of the road.
     expect(acrossReach).toBeLessThan(TILE_METERS / 2);
+  });
+
+  it('lies above the kerb and the median top, so no raised edge of the street cuts the pool', () => {
+    const renderer = new LampRenderer(new THREE.Scene(), flatHeightAt);
+    renderer.rebuild([{ x: 3, z: 4 }]);
+    for (let v = 0; v < POOL_VERTICES_PER_LAMP; v++) {
+      expect(renderer.poolVertexY(v)).toBeGreaterThan(CURB_Y_OFFSET);
+      expect(renderer.poolVertexY(v)).toBeGreaterThan(ROAD_Y_OFFSET + MEDIAN_RAISE);
+    }
   });
 
   it('conforms the pool to the terrain: every vertex sits a fixed clearance above the ground it covers', () => {

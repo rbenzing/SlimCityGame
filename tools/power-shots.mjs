@@ -12,7 +12,7 @@
  * Usage: node tools/power-shots.mjs [baseUrl] [outDir]   (a dev server must be running) */
 import { chromium } from 'playwright';
 import { mkdirSync } from 'node:fs';
-import { cleanShot, hooksReady, tileCamera } from './shotcam.mjs';
+import { cleanShot, hooksReady, requireInFrame, tileCamera } from './shotcam.mjs';
 
 const base = process.argv[2] ?? 'http://localhost:5173';
 const out = process.argv[3] ?? 'tools/shots-power';
@@ -151,7 +151,8 @@ await place('Combined cycle on the avenue', 'combined-cycle', cycle.x, cycle.z, 
 //    along the reactor's south edge (z 80) from the avenue at x 90, and the tower stands on it.
 const reactorRoad = [];
 for (let x = 91; x <= 101; x++) reactorRoad.push({ x, z: 80 });
-let tower = freeRect(98, 78, 2, 2) && reactorRoad.every((t) => free(t.x, t.z)) ? { x: 98, z: 78 } : null;
+let tower =
+  freeRect(98, 78, 2, 2) && reactorRoad.every((t) => free(t.x, t.z)) ? { x: 98, z: 78 } : null;
 if (tower) {
   await hook(
     (tiles) =>
@@ -239,7 +240,10 @@ await camera(reactorX, 77, 200, Math.PI, 0.2);
 await shot('3a-reactor-from-across-the-water', 2000);
 await camera(reactorX, 77, 200, 0, 0.2);
 await shot('3b-reactor-from-the-street-side', 2000);
-await camera(saved.t.reactor.x + 1, 74.8, 40, Math.PI, 0.3);
+// The intake from its side, so the forebay's reach over the beach, the crib at its tip
+// and the waterline read together; the lot's water edge is the row's north line (z 75).
+await camera(saved.t.reactor.x + 1.5, 74.5, 60, -Math.PI / 2, 0.25);
+await requireInFrame(page, '3c-reactor-intake-close', saved.t.reactor.x + 1.5, 74.5, 1.5);
 await shot('3c-reactor-intake-close', 2000);
 await camera(saved.t.reactor.x + 1, 74.8, 40, Math.PI + 0.9, 0.3);
 await shot('3d-reactor-intake-close-angled', 2000);
@@ -324,7 +328,23 @@ const afterDry = await hook(
   dry,
 );
 console.log('reactor on dry land stands after the commit:', afterDry.length > 0);
-await shot('6b-nuclear-commit-over-dry-land', 500, /^Reactor on dry land failed It must stand on a shore\.$/);
+// The refusal is shot with the ghost back over the site it refused, so the frame holds both the
+// toast and the footprint that was turned down.
+await hook(() => window.__slimcity.setTool('plop.nuclear-plant'));
+await page.mouse.move(640, 400, { steps: 4 });
+await page.mouse.move(645, 402, { steps: 3 });
+const underAgain = await hook(() => window.__slimcity.screenToTile(645, 402));
+if (!underAgain || underAgain.x !== dry.x || underAgain.z !== dry.z)
+  throw new Error(
+    `the refusal frame's ghost is not over the dry land: ${JSON.stringify(underAgain)}`,
+  );
+await requireInFrame(page, '6b-nuclear-commit-over-dry-land', dry.x - 0.2, dry.z - 0.2, 0);
+await shot(
+  '6b-nuclear-commit-over-dry-land',
+  500,
+  /^Reactor on dry land failed It must stand on a shore\.$/,
+);
+await hook(() => window.__slimcity.setTool('select'));
 
 // Shot 7: night. None of the new kits lights.
 await hook(() => window.__slimcity.setSpeed(1));

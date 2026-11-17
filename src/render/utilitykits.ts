@@ -65,8 +65,9 @@
  *    tractor-and-trailer transfer rigs, one sunk in the bay and one waiting
  *    ("transferRig"), and two refuse packers on the apron ("transferPacker").
  *  - hospital: the same yard slab ("hospitalYard"), a six-storey block with
- *    a glass ribbon on every 4.5 m floor, its main entrance and ambulance
- *    canopy on the street side ("hospitalBlock"), a two-level parking deck
+ *    its canopies on the street side ("hospitalBlock"), the glass ribbon on
+ *    every 4.5 m floor, the main entrance and the emergency door leaves on the
+ *    stations' lit material ("hospitalLit"), a two-level parking deck
  *    with its ramp, spandrel band, cores and stall lines ("hospitalDeck"),
  *    the accessible spaces' paint by the entrance ("hospitalPaint"), cars
  *    in the deck's stalls ("hospitalCar") and an ambulance under its canopy
@@ -309,6 +310,7 @@ export type UtilityKitPartKind =
   | 'transferPacker'
   | 'hospitalYard'
   | 'hospitalBlock'
+  | 'hospitalLit'
   | 'hospitalDeck'
   | 'hospitalPaint'
   | 'hospitalCar'
@@ -356,6 +358,8 @@ export type UtilityKitPartKind =
   | 'parkLamp'
   | 'pitchGoal'
   | 'pavilionBlock'
+  | 'parkShelter'
+  | 'sportsStand'
   | 'clinicGrounds'
   | 'clinicBuilding'
   | 'clinicLit'
@@ -2809,7 +2813,7 @@ export const HOSPITAL_STOREY_M = 4.5;
 const HOSPITAL_EDGE_MARGIN = 1;
 const HOSPITAL_ROOF_CAP_M = 0.4;
 /** A ribbon of glass on every floor: its sill above the floor, its height, and how far it stands proud of the wall. */
-const HOSPITAL_WINDOW = { sill: 1.1, h: 2, proud: 0.06 };
+export const HOSPITAL_WINDOW = { sill: 1.1, h: 2, proud: 0.06 };
 /** The main entrance's glazed doors and the canopy over them, centred `x` from the block's centre. */
 const HOSPITAL_ENTRANCE = { x: 2, doorW: 6, doorH: 3, canopyW: 10, canopyD: 4, canopyY: 3.6 };
 /** The ambulance canopy: over an ambulance with its rear doors open, clear of its roof lights; its west edge `inset` from the block's. */
@@ -3117,36 +3121,10 @@ function buildHospitalBlockGeometry(footprint: FootprintSize): THREE.BufferGeome
       HOSPITAL_ROOF_RGB,
     ),
   ];
-  for (let k = 0; k < HOSPITAL_STOREYS; k++) {
-    const p = HOSPITAL_WINDOW.proud;
-    parts.push(
-      standingBox(
-        w + 2 * p,
-        HOSPITAL_WINDOW.h,
-        d + 2 * p,
-        block.x,
-        k * HOSPITAL_STOREY_M + HOSPITAL_WINDOW.sill,
-        block.z,
-        HOSPITAL_GLASS_RGB,
-      ),
-    );
-  }
   const bayX = (bay.x0 + bay.x1) / 2;
-  const doorT = EMERGENCY_DOORS.thick;
-  parts.push(
-    standingBox(
-      HOSPITAL_ENTRANCE.doorW,
-      HOSPITAL_ENTRANCE.doorH,
-      doorT,
-      entrance.x,
-      y0,
-      front + doorT / 2,
-      HOSPITAL_DOOR_RGB,
-    ),
-  );
 
-  // The emergency entrance behind the bay: a pale frame standing proud of the wall, a
-  // pair of lit glass leaves in it, and a red emergency band over them.
+  // The emergency entrance behind the bay: a pale frame standing proud of the wall
+  // and a red emergency band over it; its glass leaves are the lit part.
   const { leaf, leaves, h, frame, band } = EMERGENCY_DOORS;
   const doorsW = leaf * leaves;
   parts.push(
@@ -3161,19 +3139,6 @@ function buildHospitalBlockGeometry(footprint: FootprintSize): THREE.BufferGeome
       HOSPITAL_CROSS_RGB,
     ),
   );
-  for (const door of layout.emergencyDoors) {
-    parts.push(
-      standingBox(
-        door.x1 - door.x0 - 0.06,
-        h,
-        door.z1 - door.z0,
-        (door.x0 + door.x1) / 2,
-        y0,
-        (door.z0 + door.z1) / 2,
-        HOSPITAL_EMERGENCY_GLASS_RGB,
-      ),
-    );
-  }
 
   // The main entrance's canopy on two posts.
   const { canopyW, canopyD, canopyY } = HOSPITAL_ENTRANCE;
@@ -3225,6 +3190,56 @@ function buildHospitalBlockGeometry(footprint: FootprintSize): THREE.BufferGeome
   parts.push(standingBox(3, 3, 0.15, bayX, signY, front + 0.2, HOSPITAL_SIGN_RGB));
   parts.push(standingBox(2.2, 0.7, 0.1, bayX, signY + 1.15, front + 0.32, HOSPITAL_CROSS_RGB));
   parts.push(standingBox(0.7, 2.2, 0.1, bayX, signY + 0.4, front + 0.32, HOSPITAL_CROSS_RGB));
+  return mergeParts(parts);
+}
+
+/** The window ribbons, the main entrance glazing and the emergency door leaves, one geometry for the one emissive material; local Y=0 is the GROUND plane. */
+function buildHospitalLitGeometry(footprint: FootprintSize): THREE.BufferGeometry {
+  const layout = computeHospitalLayout(footprint);
+  const { block, entrance } = layout;
+  const { w, d } = HOSPITAL_BLOCK_SIZE;
+  const y0 = RECYCLING_YARD_HEIGHT;
+  const front = block.z + d / 2;
+  const p = HOSPITAL_WINDOW.proud;
+  const parts: THREE.BufferGeometry[] = [];
+  for (let k = 0; k < HOSPITAL_STOREYS; k++) {
+    parts.push(
+      standingBox(
+        w + 2 * p,
+        HOSPITAL_WINDOW.h,
+        d + 2 * p,
+        block.x,
+        k * HOSPITAL_STOREY_M + HOSPITAL_WINDOW.sill,
+        block.z,
+        HOSPITAL_GLASS_RGB,
+      ),
+    );
+  }
+  const doorT = EMERGENCY_DOORS.thick;
+  parts.push(
+    standingBox(
+      HOSPITAL_ENTRANCE.doorW,
+      HOSPITAL_ENTRANCE.doorH,
+      doorT,
+      entrance.x,
+      y0,
+      front + doorT / 2,
+      HOSPITAL_DOOR_RGB,
+    ),
+  );
+  for (const door of layout.emergencyDoors) {
+    parts.push(
+      standingBox(
+        door.x1 - door.x0 - 0.06,
+        EMERGENCY_DOORS.h,
+        door.z1 - door.z0,
+        (door.x0 + door.x1) / 2,
+        y0,
+        (door.z0 + door.z1) / 2,
+        HOSPITAL_EMERGENCY_GLASS_RGB,
+      ),
+    );
+  }
   return mergeParts(parts);
 }
 
@@ -5761,7 +5776,8 @@ const SOLAR_END_MARGIN_M = 5.5;
 const SOLAR_TRACK = { w: 4, depth: SOLAR_END_MARGIN_M - 0.5 };
 /** An SMA medium-voltage station on a 20 ft skid. */
 export const SOLAR_SKID = { w: 6.06, d: 2.44, h: 2.9 };
-const SOLAR_SKID_GAP_M = 1.2;
+/** The skid stands a gate's width clear of the gate opening, so a truck swinging in never meets it. */
+const SOLAR_SKID_GAP_M = GEN_GATE_M;
 const SOLAR_FRAME_M = 0.05;
 const SOLAR_SLAB_M = 0.04;
 const SOLAR_SEAM_PROUD_M = 0.012;
@@ -5829,7 +5845,7 @@ export function computeSolarLayout(
     rows.push(alongZ ? { x: 0, z: s } : { x: s, z: 0 });
   }
   const local = footprintHalfExtents(footprint);
-  const skidX0 = SOLAR_TRACK.w / 2 + SOLAR_SKID_GAP_M;
+  const skidX0 = GEN_GATE_M / 2 + SOLAR_SKID_GAP_M;
   const skidZ0 = local.halfD - SOLAR_END_MARGIN_M + 0.9;
   return {
     rows,
@@ -7394,6 +7410,132 @@ function buildPavilionBlockGeometry(): THREE.BufferGeometry {
     standingBox(1, wallTop + PAVILION_FOOTING_M, 1, 0, -PAVILION_FOOTING_M, 0, PAVILION_WALL_RGB),
     standingBox(1, PAVILION_ROOF_M, 1, 0, wallTop, 0, PAVILION_ROOF_RGB),
   ]);
+}
+
+/** The stand's rows: 0.9 m treads rising 0.4 m, four of them; the 255 m² block holds them behind an aisle and under the roof. */
+export const STAND_ROWS = 4;
+const STAND_TREAD_M = 0.9;
+const STAND_RISE_M = 0.4;
+const STAND_BACK_WALL_M = 0.3;
+/** Roof posts along the pitch-side edge, one per bay. */
+const STAND_BAYS = 6;
+const STAND_POST_M = 0.2;
+const STAND_PLANK_M = 0.06;
+const STAND_TIER_RGB: RGB = [0.62, 0.62, 0.6];
+/** A picnic shelter's eaves, a gable of this rise over them to the 3.2 m of the park pavilions, and its posts and slab. */
+export const SHELTER_EAVES_M = 2.6;
+const SHELTER_POST_M = 0.2;
+const SHELTER_SLAB_M = 0.08;
+/** A picnic table: a 1.8 m top 0.75 m wide at 0.76 m, a bench each side at 0.45 m (the ADA-style 6 ft table). */
+const PICNIC_TABLE = { l: 1.8, w: 0.75, topY: 0.76, benchY: 0.45, benchW: 0.3, benchOffset: 0.6 };
+const PICNIC_TABLE_X_M = 2.2;
+
+/**
+ * The sports ground's stand, at its real size: tiered rows with a plank on
+ * each under one roof on posts along the pitch edge (-Z), a wall behind them
+ * on the street side, and an aisle in front. Open to the pitch. Local Y=0 is
+ * the ground, the block's centre on the origin.
+ */
+function buildSportsStandGeometry(): THREE.BufferGeometry {
+  const { w, d } = SPORTS_PAVILION;
+  const wallTop = PAVILION_HEIGHT_M - PAVILION_ROOF_M;
+  const back = d / 2;
+  const parts: THREE.BufferGeometry[] = [
+    standingBox(
+      w,
+      wallTop + PAVILION_FOOTING_M,
+      STAND_BACK_WALL_M,
+      0,
+      -PAVILION_FOOTING_M,
+      back - STAND_BACK_WALL_M / 2,
+      PAVILION_WALL_RGB,
+    ),
+    standingBox(w, PAVILION_ROOF_M, d, 0, wallTop, 0, PAVILION_ROOF_RGB),
+  ];
+  const tiersBack = back - STAND_BACK_WALL_M;
+  for (let row = 0; row < STAND_ROWS; row++) {
+    const height = STAND_RISE_M * (row + 1);
+    const z = tiersBack - (STAND_ROWS - row - 0.5) * STAND_TREAD_M;
+    parts.push(
+      standingBox(
+        w,
+        height + PAVILION_FOOTING_M,
+        STAND_TREAD_M,
+        0,
+        -PAVILION_FOOTING_M,
+        z,
+        STAND_TIER_RGB,
+      ),
+      standingBox(w, STAND_PLANK_M, STAND_TREAD_M * 0.5, 0, height, z, BENCH_SEAT_RGB),
+    );
+  }
+  for (let i = 0; i <= STAND_BAYS; i++) {
+    const x = -w / 2 + STAND_POST_M / 2 + (i * (w - STAND_POST_M)) / STAND_BAYS;
+    parts.push(
+      standingBox(
+        STAND_POST_M,
+        wallTop + PAVILION_FOOTING_M,
+        STAND_POST_M,
+        x,
+        -PAVILION_FOOTING_M,
+        -d / 2 + STAND_POST_M / 2,
+        LAMP_POLE_RGB,
+      ),
+    );
+  }
+  return mergeParts(parts);
+}
+
+/**
+ * A picnic shelter at its real size: a gabled roof (ridge along X) on six
+ * posts over a slab, two picnic tables beneath, open on all four sides. Local
+ * Y=0 is the ground, the shelter's centre on the origin.
+ */
+function buildParkShelterGeometry(): THREE.BufferGeometry {
+  const { w, d } = NEIGHBOURHOOD_SHELTER;
+  const rise = PAVILION_HEIGHT_M - SHELTER_EAVES_M;
+  const parts: THREE.BufferGeometry[] = [
+    standingBox(
+      w,
+      SHELTER_SLAB_M + PAVILION_FOOTING_M,
+      d,
+      0,
+      -PAVILION_FOOTING_M,
+      0,
+      PLAZA_PAVING_RGB,
+    ),
+    gableRoof(w, rise, d, 0, SHELTER_EAVES_M, 0, PAVILION_ROOF_RGB),
+  ];
+  for (const x of [-w / 2 + SHELTER_POST_M / 2, 0, w / 2 - SHELTER_POST_M / 2]) {
+    for (const z of [-d / 2 + SHELTER_POST_M / 2, d / 2 - SHELTER_POST_M / 2]) {
+      parts.push(
+        standingBox(
+          SHELTER_POST_M,
+          SHELTER_EAVES_M,
+          SHELTER_POST_M,
+          x,
+          SHELTER_SLAB_M,
+          z,
+          LAMP_POLE_RGB,
+        ),
+      );
+    }
+  }
+  const t = PICNIC_TABLE;
+  for (const x of [-PICNIC_TABLE_X_M, PICNIC_TABLE_X_M]) {
+    parts.push(standingBox(t.l, 0.05, t.w, x, t.topY - 0.05, 0, BENCH_SEAT_RGB));
+    for (const side of [-1, 1]) {
+      parts.push(
+        standingBox(t.l, 0.05, t.benchW, x, t.benchY - 0.05, side * t.benchOffset, BENCH_SEAT_RGB),
+      );
+    }
+    for (const end of [-1, 1]) {
+      parts.push(
+        standingBox(0.08, t.topY - 0.05, 1.5, x + end * (t.l / 2 - 0.3), 0, 0, BENCH_LEG_RGB),
+      );
+    }
+  }
+  return mergeParts(parts);
 }
 
 export interface DrapeOptions {
@@ -11160,12 +11302,15 @@ export class UtilityKitRenderer {
     const lambert = (): THREE.Material => this.bodyMaterial();
     const pool = (geometry: THREE.BufferGeometry, capacity = INITIAL_KIT_CAPACITY) =>
       new InstancedSlotPool(this.scene, geometry, lambert(), capacity);
+    const lit = (geometry: THREE.BufferGeometry) =>
+      new InstancedSlotPool(this.scene, geometry, this.stationLightMaterial, INITIAL_KIT_CAPACITY);
     return {
       entry,
       pavesLot: true,
       pools: {
         hospitalYard: pool(buildRecyclingYardGeometry(entry.footprint)),
         hospitalBlock: pool(buildHospitalBlockGeometry(entry.footprint)),
+        hospitalLit: lit(buildHospitalLitGeometry(entry.footprint)),
         hospitalDeck: pool(buildHospitalDeckGeometry(entry.footprint)),
         hospitalPaint: pool(buildHospitalPaintGeometry(entry.footprint)),
         hospitalCar: pool(
@@ -11364,11 +11509,7 @@ export class UtilityKitRenderer {
         ...this.parkProps(),
         playFrame: this.sharedPool('playFrame', buildPlayFrameGeometry, INITIAL_KIT_CAPACITY),
         swingSet: this.sharedPool('swingSet', buildSwingSetGeometry, INITIAL_KIT_CAPACITY),
-        pavilionBlock: this.sharedPool(
-          'pavilionBlock',
-          buildPavilionBlockGeometry,
-          INITIAL_KIT_CAPACITY,
-        ),
+        parkShelter: this.sharedPool('parkShelter', buildParkShelterGeometry, INITIAL_KIT_CAPACITY),
       },
     };
   }
@@ -11400,11 +11541,7 @@ export class UtilityKitRenderer {
         ),
         ...this.parkProps(),
         pitchGoal: this.sharedPool('pitchGoal', buildPitchGoalGeometry, INITIAL_KIT_CAPACITY),
-        pavilionBlock: this.sharedPool(
-          'pavilionBlock',
-          buildPavilionBlockGeometry,
-          INITIAL_KIT_CAPACITY,
-        ),
+        sportsStand: this.sharedPool('sportsStand', buildSportsStandGeometry, INITIAL_KIT_CAPACITY),
       },
     };
   }
@@ -12249,6 +12386,7 @@ export class UtilityKitRenderer {
     const {
       hospitalYard,
       hospitalBlock,
+      hospitalLit,
       hospitalDeck,
       hospitalPaint,
       hospitalCar,
@@ -12257,6 +12395,7 @@ export class UtilityKitRenderer {
     if (
       !hospitalYard ||
       !hospitalBlock ||
+      !hospitalLit ||
       !hospitalDeck ||
       !hospitalPaint ||
       !hospitalCar ||
@@ -12303,6 +12442,7 @@ export class UtilityKitRenderer {
     const slots = {
       hospitalYard: [this.placeAt(hospitalYard, centerX, groundY, centerZ, rotation)],
       hospitalBlock: [this.placeAt(hospitalBlock, centerX, groundY, centerZ, rotation)],
+      hospitalLit: [this.placeAt(hospitalLit, centerX, groundY, centerZ, rotation)],
       hospitalDeck: [this.placeAt(hospitalDeck, centerX, groundY, centerZ, rotation)],
       hospitalPaint: [this.placeAt(hospitalPaint, centerX, groundY, centerZ, rotation)],
       hospitalCar: cars,
@@ -12675,7 +12815,7 @@ export class UtilityKitRenderer {
     });
   }
 
-  /** A pavilion block scaled to its footprint, seated on the highest ground under its corners so its footing, not a gap, meets a slope. */
+  /** A pavilion block seated on the highest ground under its corners so its footing, not a gap, meets a slope; scaled to its footprint unless it is drawn at its real size. */
   private placePavilion(
     pool: InstancedSlotPool,
     block: PlacedBlock,
@@ -12683,6 +12823,7 @@ export class UtilityKitRenderer {
     centerZ: number,
     rotation: 0 | 1 | 2 | 3,
     yAt: (x: number, z: number) => number,
+    atRealSize = false,
   ): number {
     const r = rotateLocalXZ(block.x, block.z, rotation);
     const x = centerX + r.x;
@@ -12694,7 +12835,14 @@ export class UtilityKitRenderer {
       yAt(rect.x0, rect.z1),
       yAt(rect.x1, rect.z1),
     );
-    return this.placeAt(pool, x, y, z, rotation, _scale.set(block.w, 1, block.d));
+    return this.placeAt(
+      pool,
+      x,
+      y,
+      z,
+      rotation,
+      atRealSize ? _unitScale : _scale.set(block.w, 1, block.d),
+    );
   }
 
   /** One mesh per draped park: the lawn parts first (their vertex range is what wears), then everything laid on it. */
@@ -12772,8 +12920,8 @@ export class UtilityKitRenderer {
     const benchPool = kit.pools.parkBench;
     const framePool = kit.pools.playFrame;
     const swingPool = kit.pools.swingSet;
-    const pavilionPool = kit.pools.pavilionBlock;
-    if (!treePool || !benchPool || !framePool || !swingPool || !pavilionPool) return;
+    const shelterPool = kit.pools.parkShelter;
+    if (!treePool || !benchPool || !framePool || !swingPool || !shelterPool) return;
 
     const layout = computeNeighbourhoodParkLayout(entry.footprint);
     const toWorld = (r: Rect): Rect => worldRect(r, centerX, centerZ, rotation);
@@ -12803,7 +12951,15 @@ export class UtilityKitRenderer {
     const onSurface = (x: number, z: number): number =>
       this.heightAt(x, z) + PARK_LAWN_HEIGHT + playLift;
     const shelter = (): number =>
-      this.placePavilion(pavilionPool, layout.shelter, centerX, centerZ, rotation, this.heightAt);
+      this.placePavilion(
+        shelterPool,
+        layout.shelter,
+        centerX,
+        centerZ,
+        rotation,
+        this.heightAt,
+        true,
+      );
     this.instances.set(building.id, {
       catalogId: building.catalogId,
       slots: {
@@ -12819,7 +12975,7 @@ export class UtilityKitRenderer {
             _scale.setScalar(DISTRICT_SPECIMEN.scale),
           ),
         ],
-        pavilionBlock: [shelter()],
+        parkShelter: [shelter()],
         swingSet: this.placeParkBenches(
           swingPool,
           layout.swings,
@@ -12967,8 +13123,8 @@ export class UtilityKitRenderer {
     const treePool = kit.pools.parkTree;
     const benchPool = kit.pools.parkBench;
     const goalPool = kit.pools.pitchGoal;
-    const pavilionPool = kit.pools.pavilionBlock;
-    if (!groundPool || !treePool || !benchPool || !goalPool || !pavilionPool) return;
+    const standPool = kit.pools.sportsStand;
+    if (!groundPool || !treePool || !benchPool || !goalPool || !standPool) return;
 
     const layout = computeSportsGroundLayout(entry.footprint);
     const flat = (): number => groundY;
@@ -12994,8 +13150,8 @@ export class UtilityKitRenderer {
           rotation,
           pitchTop,
         ),
-        pavilionBlock: [
-          this.placePavilion(pavilionPool, layout.pavilion, centerX, centerZ, rotation, flat),
+        sportsStand: [
+          this.placePavilion(standPool, layout.pavilion, centerX, centerZ, rotation, flat, true),
         ],
       },
     });

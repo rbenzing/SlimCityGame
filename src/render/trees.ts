@@ -660,7 +660,7 @@ export function buildPoplarGeometry(): THREE.BufferGeometry {
 }
 
 const SHRUB_HALF_HEIGHT = 0.5;
-const SHRUB_RADIUS = 0.75;
+export const SHRUB_RADIUS = 0.75;
 
 /** Shrub: a single low, near-groundcover blob — forest edges / low density. */
 export function buildShrubGeometry(): THREE.BufferGeometry {
@@ -970,10 +970,15 @@ export class TreeRenderer {
           const hueJitter = rng() * 2 - 1;
           const valueJitter = rng() * 2 - 1;
 
+          // A shrub is a ground blob, so all of it stays in its own tile: never over the footway of a road tile beside it.
+          const reach = species === 'shrub' ? TILE_METERS / 2 - SHRUB_RADIUS * scale : TILE_METERS;
+          const offsetX = Math.max(-reach, Math.min(reach, offset[0]));
+          const offsetZ = Math.max(-reach, Math.min(reach, offset[1]));
+
           bySpecies[species].push({
             tileKey: idx,
-            worldX: tileCenterX + offset[0],
-            worldZ: tileCenterZ + offset[1],
+            worldX: tileCenterX + offsetX,
+            worldZ: tileCenterZ + offsetZ,
             scale,
             yaw,
             leanAxisAngle,

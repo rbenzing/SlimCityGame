@@ -315,6 +315,15 @@ describe('what the field holds', () => {
       for (const b of bands) expect(inside(b.rect, plan.field)).toBe(true);
       for (let i = 1; i < bands.length; i++)
         expect(overlaps(bands[i - 1]!.rect, bands[i]!.rect)).toBe(false);
+      // Every band runs the field's whole length, so the furrows end on two straight lines.
+      for (const b of bands) {
+        const [from, to] = plan.rowsAlongX ? [b.rect.x0, b.rect.x1] : [b.rect.z0, b.rect.z1];
+        const [fieldFrom, fieldTo] = plan.rowsAlongX
+          ? [plan.field.x0, plan.field.x1]
+          : [plan.field.z0, plan.field.z1];
+        expect(from).toBe(fieldFrom);
+        expect(to).toBe(fieldTo);
+      }
       // Three rows of crop to every row of furrow, at 30-inch rows.
       const crop = bands.find((b) => !b.furrow)!.rect;
       const furrow = bands.find((b) => b.furrow)!.rect;

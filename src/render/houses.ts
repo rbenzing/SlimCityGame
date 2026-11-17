@@ -866,6 +866,30 @@ export class HouseRoofRenderer {
           GARAGE_WALL_COLOR,
           true,
         );
+        if (drive.cover === 'detachedGarage') {
+          // The house's pitch and roof colour, the ridge running down the drive so the door stands in the gable end.
+          const { coverRect } = drive;
+          const eaves = {
+            u0: coverRect.u0 - roof.eaveM,
+            u1: coverRect.u1 + roof.eaveM,
+            v0: coverRect.v0 - roof.rakeM,
+            v1: coverRect.v1 + roof.rakeM,
+          };
+          const g = ridgeBox(plan, eaves, false);
+          const rise = (g.span / 2) * roof.slope;
+          put(
+            'roof',
+            g.x,
+            doorGround + GARAGE_HEIGHT_M - roof.eaveM * roof.slope,
+            g.z,
+            g.yaw,
+            g.length,
+            rise,
+            g.span,
+            roofColour,
+            true,
+          );
+        }
       } else if (drive.coverRect && drive.cover === 'carport') {
         const c = worldBox(plan, drive.coverRect);
         put('carport', c.x, this.heightAt(c.x, c.z), c.z, carportYaw, 1, 1, 1, CARPORT_COLOR, true);

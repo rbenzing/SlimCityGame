@@ -4,10 +4,11 @@
  *  - a flat dull brown-grey ground TINT over every DUMPING-GROUND tile (every
  *    vertex sampled through `heightAt`, the render/districts.ts
  *    pushConformingQuad pattern) so the painted footprint reads on the ground;
- *  - a per-tile low-poly TRASH-PILE box on each dumping-ground tile whose
- *    height rises with the whole area's `landfillFill` fraction, an
- *    InstancedMesh of unit boxes scaled per tile (the render/trees.ts /
- *    render/massing.ts instanced-box idiom) so the piles cast/receive shadow;
+ *  - one continuous capped MOUND over every dumping-ground tile: a single
+ *    surface whose cap height rises with the whole area's `landfillFill`
+ *    fraction and whose sides slope to the ground at the area's edge, with a
+ *    flat gravel HAUL ROAD cut through it from the office to the deepest
+ *    tile (world/landfill.ts dumpPath); it casts/receives shadow;
  *  - an OFFICE KIT on each area's entrance tile (world/landfill.ts
  *    landfillAreas — the same deterministic office pick the sim's truck depots
  *    use): a concrete yard pad, a small gatehouse office with roof + door, a
@@ -37,7 +38,6 @@ import {
   tileToWorld,
 } from '../shared/constants';
 import { landfillAreas } from '../world/landfill';
-import { setInstanceCount } from './groundquad';
 
 /** True when a mesh's geometry actually has vertices to draw. */
 function hasGeometry(mesh: THREE.Mesh): boolean {
@@ -53,13 +53,20 @@ const TINT_COLOR = 0x6b5d4f;
 /** Trashy grey-brown — the heaped piles; each heap tints between these two tones. */
 const PILE_COLOR_A = new THREE.Color(0x6b6250);
 const PILE_COLOR_B = new THREE.Color(0x4e483d);
-/** Pile footprint as a fraction of a tile, leaving a margin so piles don't tile-to-tile merge into one slab. */
-const PILE_FOOTPRINT_FRACTION = 0.74;
-/** Heap top as a fraction of its base — a tapered mound, not a block. */
-const PILE_TOP_FRACTION = 0.34;
-/** Per-tile heap height varies over this band (× the area's fill height) so the grounds read as tipped heaps, not a slab. */
+/** The capped mound's top varies over this band (× the area's fill height), so the surface reads as worked waste, not a slab. */
 const PILE_HEIGHT_JITTER_MIN = 0.5;
 const PILE_HEIGHT_JITTER_SPAN = 0.5;
+/** The mound is one surface laid on this grid, so its side slope and the haul road both resolve. */
+const MOUND_CELL_M = 2.5;
+/** Horizontal run from the area's edge to the full-height cap (a side slope of 10 m run). */
+const MOUND_SLOPE_RUN_M = 10;
+/** The mound rides this far over the terrain, above the tint's lift so the two never z-fight. */
+const MOUND_Y_OFFSET = 0.2;
+/** The haul road is a single lane with shoulders, flat at ground level and cut through the mound. */
+const HAUL_ROAD_HALF_M = 2.5;
+/** The road's walls rise to the cap over this run on each side. */
+const HAUL_ROAD_WALL_M = 2.5;
+const HAUL_ROAD_COLOR = new THREE.Color(0x8a8576);
 
 /** Sub-quads per cell axis — matches render/districts.ts's CELL_SUBDIV so the tint hugs the in-tile terrain curve, not just its corner plane. */
 export const CELL_SUBDIV = 4;
@@ -108,44 +115,48 @@ export function pileHeightFactor(tileX: number, tileZ: number): number {
   return PILE_HEIGHT_JITTER_MIN + hash1(tileZ * MAP_SIZE + tileX) * PILE_HEIGHT_JITTER_SPAN;
 }
 
-/**
- * The unit heap: a tapered four-sided mound spanning y 0..1 on a 1x1 base,
- * narrowing to PILE_TOP_FRACTION at the top. Scaled per instance, so every
- * heap keeps the same slumped profile whatever its height.
- */
-function buildPileGeometry(): THREE.BufferGeometry {
-  const b = 0.5;
-  const t = (PILE_TOP_FRACTION * 1) / 2;
-  const positions: number[] = [];
-  const quad = (
-    ax: number,
-    ay: number,
-    az: number,
-    bx: number,
-    by: number,
-    bz: number,
-    cx: number,
-    cy: number,
-    cz: number,
-    dx: number,
-    dy: number,
-    dz: number,
-  ): void => {
-    // Wound a-c-b / a-d-c so each face's normal points OUT of the heap; the
-    // opposite order leaves the mound inside-out (culled to a black silhouette).
-    positions.push(ax, ay, az, cx, cy, cz, bx, by, bz);
-    positions.push(ax, ay, az, dx, dy, dz, cx, cy, cz);
-  };
-  // Sides, each rising from a base edge to the narrower top edge.
-  quad(-b, 0, -b, b, 0, -b, t, 1, -t, -t, 1, -t); // -Z
-  quad(b, 0, b, -b, 0, b, -t, 1, t, t, 1, t); // +Z
-  quad(-b, 0, b, -b, 0, -b, -t, 1, -t, -t, 1, t); // -X
-  quad(b, 0, -b, b, 0, b, t, 1, t, t, 1, -t); // +X
-  quad(-t, 1, -t, t, 1, -t, t, 1, t, -t, 1, t); // top
-  const geometry = new THREE.BufferGeometry();
-  geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(positions), 3));
-  geometry.computeVertexNormals();
-  return geometry;
+/** Smooth ramp 0..1 over t in 0..1, so the mound's slope eases into the cap and the ground. */
+function smooth01(t: number): number {
+  const c = clamp01(t);
+  return c * c * (3 - 2 * c);
+}
+
+/** The cap's height factor at a world point: the tile-corner factors blended bilinearly, so neighbouring tiles share one surface. */
+function capFactorAt(wx: number, wz: number): number {
+  const fx = wx / TILE_METERS;
+  const fz = wz / TILE_METERS;
+  const ix = Math.floor(fx);
+  const iz = Math.floor(fz);
+  const tx = fx - ix;
+  const tz = fz - iz;
+  const top = pileHeightFactor(ix, iz) * (1 - tx) + pileHeightFactor(ix + 1, iz) * tx;
+  const bottom = pileHeightFactor(ix, iz + 1) * (1 - tx) + pileHeightFactor(ix + 1, iz + 1) * tx;
+  return top * (1 - tz) + bottom * tz;
+}
+
+/** Distance from (px,pz) to the nearest point of an axis-aligned tile square. */
+function distanceToTile(px: number, pz: number, tileX: number, tileZ: number): number {
+  const x0 = tileX * TILE_METERS;
+  const z0 = tileZ * TILE_METERS;
+  const dx = Math.max(x0 - px, 0, px - (x0 + TILE_METERS));
+  const dz = Math.max(z0 - pz, 0, pz - (z0 + TILE_METERS));
+  return Math.hypot(dx, dz);
+}
+
+/** Distance from (px,pz) to the segment (ax,az)-(bx,bz). */
+function distanceToSegment(
+  px: number,
+  pz: number,
+  ax: number,
+  az: number,
+  bx: number,
+  bz: number,
+): number {
+  const dx = bx - ax;
+  const dz = bz - az;
+  const lengthSq = dx * dx + dz * dz;
+  const t = lengthSq === 0 ? 0 : clamp01(((px - ax) * dx + (pz - az) * dz) / lengthSq);
+  return Math.hypot(px - (ax + dx * t), pz - (az + dz * t));
 }
 
 /**
@@ -296,13 +307,6 @@ function frameRect(
   };
 }
 
-const _matrix = new THREE.Matrix4();
-const _position = new THREE.Vector3();
-const _scale = new THREE.Vector3();
-const _quaternion = new THREE.Quaternion();
-const _axisY = new THREE.Vector3(0, 1, 0);
-const _color = new THREE.Color();
-
 export class LandfillRenderer {
   private readonly scene: THREE.Scene;
   private readonly heightAt: HeightSampler;
@@ -312,14 +316,13 @@ export class LandfillRenderer {
   private readonly pileMaterial: THREE.MeshLambertMaterial;
   private readonly officeMaterial: THREE.MeshLambertMaterial;
   private readonly markMaterial: THREE.MeshBasicMaterial;
-  /** Unit heap spanning y 0..1 (base on the ground), scaled per instance — shared, built once. */
-  private readonly pileGeometry: THREE.BufferGeometry;
   private readonly tintMesh: THREE.Mesh;
   /** Lit office-kit solids: yard pad, gatehouse body/roof/door, light pole. */
   private readonly officeMesh: THREE.Mesh;
   /** Unlit office-kit marks: parking-bay stripes + the yard light's glowing head. */
   private readonly markMesh: THREE.Mesh;
-  private pileMesh: THREE.InstancedMesh | null = null;
+  /** The capped mound with its haul roads: one continuous surface over every dumping-ground tile. */
+  private readonly pileMesh: THREE.Mesh;
 
   /** Cached full-map per-tile landfill membership (0/1), folded by apply(). */
   private readonly cache = new Uint8Array(MAP_SIZE * MAP_SIZE);
@@ -344,11 +347,16 @@ export class LandfillRenderer {
     });
     this.tintMaterial.color.setHex(TINT_COLOR);
 
-    this.pileMaterial = new THREE.MeshLambertMaterial({ flatShading: true });
+    this.pileMaterial = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
     this.officeMaterial = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
     this.markMaterial = new THREE.MeshBasicMaterial({ vertexColors: true });
 
-    this.pileGeometry = buildPileGeometry();
+    this.pileMesh = new THREE.Mesh(new THREE.BufferGeometry(), this.pileMaterial);
+    this.pileMesh.name = 'landfill-piles';
+    this.pileMesh.visible = false;
+    this.pileMesh.castShadow = true;
+    this.pileMesh.receiveShadow = true;
+    scene.add(this.pileMesh);
 
     this.tintMesh = new THREE.Mesh(new THREE.BufferGeometry(), this.tintMaterial);
     this.tintMesh.name = 'landfill-tint';
@@ -368,8 +376,6 @@ export class LandfillRenderer {
     this.markMesh.userData['underground'] = 'keep';
     this.markMesh.visible = false;
     scene.add(this.markMesh);
-
-    this.rebuildPiles([]);
   }
 
   /**
@@ -384,7 +390,7 @@ export class LandfillRenderer {
     this.tintMesh.visible = v && hasGeometry(this.tintMesh);
     this.officeMesh.visible = v && hasGeometry(this.officeMesh);
     this.markMesh.visible = v && hasGeometry(this.markMesh);
-    if (this.pileMesh) this.pileMesh.visible = v && this.pileMesh.count > 0;
+    this.pileMesh.visible = v && hasGeometry(this.pileMesh);
   }
 
   /**
@@ -434,7 +440,7 @@ export class LandfillRenderer {
   /** Live layer meshes, for inspection/renderOrder tuning. */
   layers(): {
     tint: THREE.Mesh;
-    piles: THREE.InstancedMesh | null;
+    piles: THREE.Mesh;
     office: THREE.Mesh;
     officeMarks: THREE.Mesh;
   } {
@@ -456,11 +462,8 @@ export class LandfillRenderer {
     this.scene.remove(this.markMesh);
     this.markMesh.geometry.dispose();
     this.markMaterial.dispose();
-    if (this.pileMesh) {
-      this.scene.remove(this.pileMesh);
-      this.pileMesh = null;
-    }
-    this.pileGeometry.dispose();
+    this.scene.remove(this.pileMesh);
+    this.pileMesh.geometry.dispose();
     this.pileMaterial.dispose();
   }
 
@@ -474,12 +477,14 @@ export class LandfillRenderer {
     const areas = landfillAreas(MAP_SIZE, this.cache, this.roadAt);
     const officeKits: { tile: TilePoint; dirX: number; dirZ: number }[] = [];
     const officeIndex = new Set<number>();
+    const hauls: TilePoint[][] = [];
     this.offices = [];
     for (const area of areas) {
       // Unreachable or undersized grounds — nobody staffs an office there.
       if (!area.roadTile || area.tiles.length < LANDFILL_MIN_AREA_TILES) continue;
       officeIndex.add(area.office.z * MAP_SIZE + area.office.x);
       this.offices.push(area.office);
+      hauls.push(area.dumpPath);
       officeKits.push({
         tile: area.office,
         dirX: area.roadTile.x - area.office.x,
@@ -499,7 +504,7 @@ export class LandfillRenderer {
     }
     this.memberTiles = memberCount;
     this.rebuildTint(grounds);
-    this.rebuildPiles(grounds);
+    this.rebuildMound(grounds, hauls);
     this.rebuildOffices(officeKits);
     // Re-evaluate visibility: the layers just changed between empty and not,
     // and an empty one stays hidden even while the lens is on.
@@ -520,51 +525,84 @@ export class LandfillRenderer {
   }
 
   /**
-   * Recreates the pile InstancedMesh: one tapered heap per dumping-ground
-   * tile, seated on the terrain (heightAt at the tile center). Height is the
-   * area's fill height scaled by the tile's own factor, with a quarter-turn
-   * yaw and a tint pick from the same hash, so the grounds read as separately
-   * tipped heaps. At fill 0 the height would collapse, so we draw no piles
-   * rather than emit zero-scale matrices.
+   * Rebuilds the mound: one continuous surface over every dumping-ground tile,
+   * a capped heap whose top height follows the area's fill and whose sides
+   * slope down to the ground at the area's edge. Each area's haul road (office
+   * to the deepest tile) is cut through it, flat at ground level. At fill 0
+   * there is no mound to draw.
    */
-  private rebuildPiles(members: number[]): void {
+  private rebuildMound(members: number[], hauls: TilePoint[][]): void {
+    const positions: number[] = [];
+    const colors: number[] = [];
+    const indices: number[] = [];
     const height = this.pileHeight();
-    const drawCount = height > 0 ? members.length : 0;
-    const capacity = Math.max(1, drawCount);
+    if (height > 0) {
+      const ground = new Set(members);
+      const isGround = (x: number, z: number): boolean =>
+        x >= 0 && z >= 0 && x < MAP_SIZE && z < MAP_SIZE && ground.has(z * MAP_SIZE + x);
+      const roads = hauls.map((path) =>
+        path.map((t) => ({ x: tileToWorld(t.x), z: tileToWorld(t.z) })),
+      );
+      const waste = new THREE.Color();
+      const pushVertex = (wx: number, wz: number): void => {
+        const tx = Math.floor(wx / TILE_METERS);
+        const tz = Math.floor(wz / TILE_METERS);
+        let edge = Infinity;
+        for (let dz = -1; dz <= 1; dz++) {
+          for (let dx = -1; dx <= 1; dx++) {
+            if (!isGround(tx + dx, tz + dz)) {
+              edge = Math.min(edge, distanceToTile(wx, wz, tx + dx, tz + dz));
+            }
+          }
+        }
+        let roadDistance = Infinity;
+        for (const road of roads) {
+          for (let i = 0; i + 1 < road.length; i++) {
+            const a = road[i]!;
+            const b = road[i + 1]!;
+            roadDistance = Math.min(roadDistance, distanceToSegment(wx, wz, a.x, a.z, b.x, b.z));
+          }
+        }
+        const factor = capFactorAt(wx, wz);
+        const wall = smooth01((roadDistance - HAUL_ROAD_HALF_M) / HAUL_ROAD_WALL_M);
+        const rise = height * factor * smooth01(edge / MOUND_SLOPE_RUN_M) * wall;
+        positions.push(wx, this.heightAt(wx, wz) + MOUND_Y_OFFSET + rise, wz);
+        waste
+          .copy(PILE_COLOR_A)
+          .lerp(PILE_COLOR_B, (factor - PILE_HEIGHT_JITTER_MIN) / PILE_HEIGHT_JITTER_SPAN)
+          .lerp(HAUL_ROAD_COLOR, 1 - wall);
+        colors.push(waste.r, waste.g, waste.b);
+      };
 
-    const mesh = new THREE.InstancedMesh(this.pileGeometry, this.pileMaterial, capacity);
-    mesh.name = 'landfill-piles';
-    setInstanceCount(mesh, drawCount);
-    mesh.castShadow = true;
-    mesh.receiveShadow = true;
-    mesh.visible = this.visible && drawCount > 0;
-
-    const footprint = PILE_FOOTPRINT_FRACTION * TILE_METERS;
-    for (let slot = 0; slot < drawCount; slot++) {
-      const packed = members[slot]!;
-      const x = packed % MAP_SIZE;
-      const z = (packed - x) / MAP_SIZE;
-      const cx = tileToWorld(x);
-      const cz = tileToWorld(z);
-      const factor = pileHeightFactor(x, z);
-      const spin = hash1(packed * 2 + 1);
-      _quaternion.setFromAxisAngle(_axisY, spin * Math.PI * 0.5);
-      _position.set(cx, this.heightAt(cx, cz), cz);
-      _scale.set(footprint, height * factor, footprint);
-      _matrix.compose(_position, _quaternion, _scale);
-      mesh.setMatrixAt(slot, _matrix);
-      _color.copy(PILE_COLOR_A).lerp(PILE_COLOR_B, hash1(packed * 2 + 7));
-      mesh.setColorAt(slot, _color);
+      const steps = TILE_METERS / MOUND_CELL_M;
+      const stride = steps + 1;
+      for (const packed of members) {
+        const x = packed % MAP_SIZE;
+        const z = (packed - x) / MAP_SIZE;
+        const base = positions.length / 3;
+        for (let j = 0; j <= steps; j++) {
+          for (let i = 0; i <= steps; i++) {
+            pushVertex(x * TILE_METERS + i * MOUND_CELL_M, z * TILE_METERS + j * MOUND_CELL_M);
+          }
+        }
+        // Split on the (x0,z1)-(x1,z0) diagonal to match the terrain mesh, wound CCW from +Y.
+        for (let j = 0; j < steps; j++) {
+          for (let i = 0; i < steps; i++) {
+            const a = base + j * stride + i;
+            const c = a + stride;
+            indices.push(a, c, a + 1, a + 1, c, c + 1);
+          }
+        }
+      }
     }
-    mesh.instanceMatrix.needsUpdate = true;
-    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
 
-    if (this.pileMesh) {
-      this.scene.remove(this.pileMesh);
-      this.pileMesh.dispose();
-    }
-    this.pileMesh = mesh;
-    this.scene.add(mesh);
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(positions), 3));
+    geometry.setAttribute('color', new THREE.BufferAttribute(new Float32Array(colors), 3));
+    geometry.setIndex(indices);
+    geometry.computeVertexNormals();
+    this.pileMesh.geometry.dispose();
+    this.pileMesh.geometry = geometry;
   }
 
   /** Rebuilds the office-kit meshes: one gatehouse compound per entrance tile. */

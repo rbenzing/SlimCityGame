@@ -151,7 +151,10 @@ export type BuildingPart =
   | 'coolingFan'
   | 'scrapYard'
   | 'gantry'
-  | 'recoveryStack';
+  | 'recoveryStack'
+  | 'stackBand'
+  | 'stackRing'
+  | 'stackPlinth';
 
 /**
  * Whether an industrial building is the CLEAN kind, taken from whether it
@@ -412,7 +415,16 @@ const INDUSTRY_PARTS: Readonly<Record<string, readonly BuildingPart[]>> = {
     'scrapYard',
     'gantry',
   ],
-  paper: ['monitorRoof', 'tanks', 'chipPile', 'stacker', 'recoveryStack'],
+  paper: [
+    'monitorRoof',
+    'tanks',
+    'chipPile',
+    'stacker',
+    'recoveryStack',
+    'stackBand',
+    'stackRing',
+    'stackPlinth',
+  ],
 };
 
 /** The old plant's monitor roof dresses a factory at this level only; the levels above it are flat-roofed. */

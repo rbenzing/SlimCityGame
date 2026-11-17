@@ -25,7 +25,7 @@ import {
 import { TILE_METERS } from '../shared/constants';
 import { bendDashes, freeJunctionTiles, freeRoadLampStands, freeRoadSoup } from './freeroadmesh';
 import { LAMP_HEIGHTS_M, lampLateralOffset } from './lamps';
-import { markingPlan } from './roadmarkings';
+import { CENTRE_PAIR_OFFSET_M, markingPlan, noPassingPlan } from './roadmarkings';
 import { MEDIAN_CONCRETE_COLOR, MEDIAN_GRASS_COLOR, MEDIAN_RAISE } from './medianisland';
 import {
   CURB_Y_OFFSET,
@@ -690,8 +690,57 @@ describe('a bend where two runs of one road meet', () => {
     const edge = bend.path[bend.arc[0]]!;
     const reach = Math.abs(polar(edge).angle) + 1e-6;
     const inArc = (p: MPoint): boolean => Math.abs(polar(p).angle) <= reach;
-    return { g, bend, vertices, polar, inArc };
+    return { g, bend, vertices, polar, inArc, reach };
   }
+
+  it('marks a two-way two-lane bend no-passing: two solid yellow lines from its start to its end, joined to the broken line either side', () => {
+    const arm = 120;
+    for (const deg of [30, 90, 120]) {
+      for (const shift of [0, 2.7, 5.1, 7.9]) {
+        const node = { x: NODE.x + shift, z: NODE.z };
+        const g = world();
+        const d = { x: Math.cos((deg * Math.PI) / 180), z: Math.sin((deg * Math.PI) / 180) };
+        lay(g, { a: at(node.x - arm, node.z), b: at(node.x, node.z) });
+        lay(g, { a: at(node.x, node.z), b: at(node.x + d.x * arm, node.z + d.z * arm) });
+        const bend = [...bendsOf(g.roads!, radiusOf(RoadTier.TwoLane)).values()][0]!.bend;
+        const first = bend.path[0]!;
+        const last = bend.path[bend.path.length - 1]!;
+        const soup = freeRoadSoup(g.roads!, noCustom, flat);
+        const label = `${deg} degrees, node shifted ${shift} m`;
+        // Every yellow vertex: how far back of the bend's start (negative: along the
+        // bend's first run) or past its end, and how far off the centre line.
+        const backOf = { near: [] as number[], far: [] as number[] };
+        const pairs: number[] = [];
+        let centreInBend = 0;
+        for (let i = 0; i < soup.positions.length; i += 3) {
+          if (!sameColor(soup.colors.slice(i, i + 3), YELLOW_MARKING_COLOR)) continue;
+          const x = soup.positions[i]!;
+          const z = soup.positions[i + 2]!;
+          const before = (x - first.x) * first.hx + (z - first.z) * first.hz;
+          const after = (x - last.x) * last.hx + (z - last.z) * last.hz;
+          const offFirst = Math.abs((x - first.x) * first.hz - (z - first.z) * first.hx);
+          const offLast = Math.abs((x - last.x) * last.hz - (z - last.z) * last.hx);
+          if (before < 0.01 && offFirst < 0.1) backOf.near.push(-before);
+          else if (after > -0.01 && offLast < 0.1) backOf.far.push(after);
+          else if (before >= 0.01 && after <= -0.01) {
+            const r = Math.hypot(x - bend.centre.x, z - bend.centre.z);
+            const offset = Math.abs(bend.radius - r);
+            if (offset < 0.1) centreInBend++;
+            else pairs.push(offset);
+          }
+        }
+        // The bend carries no broken line, only the two solid ones either side of the centre.
+        expect(centreInBend, label).toBe(0);
+        expect(pairs.length, label).toBeGreaterThan(0);
+        for (const o of pairs) {
+          expect(Math.abs(o - CENTRE_PAIR_OFFSET_M), label).toBeLessThan(PAINT_HALF_WIDTH_M + 0.01);
+        }
+        // The broken line either side reaches the bend: no gap before a solid line begins.
+        expect(Math.min(...backOf.near), label).toBeLessThan(0.01);
+        expect(Math.min(...backOf.far), label).toBeLessThan(0.01);
+      }
+    }
+  });
 
   it('runs one unbroken broken line through the bend and across both of its seams', () => {
     const arm = 120;
@@ -703,9 +752,12 @@ describe('a bend where two runs of one road meet', () => {
         const node = { x: NODE.x + shift, z: NODE.z };
         const g = world();
         const d = { x: Math.cos((deg * Math.PI) / 180), z: Math.sin((deg * Math.PI) / 180) };
-        lay(g, { a: at(node.x - arm, node.z), b: at(node.x, node.z) });
-        lay(g, { a: at(node.x, node.z), b: at(node.x + d.x * arm, node.z + d.z * arm) });
-        const bend = [...bendsOf(g.roads!, radiusOf(RoadTier.TwoLane)).values()][0]!.bend;
+        // A one-way road has no centre line to turn solid: the white line between its
+        // two lanes is the broken line, down the middle of the carriageway.
+        const one = { tier: RoadTier.OneWay, flow: 1 };
+        lay(g, { ...one, a: at(node.x - arm, node.z), b: at(node.x, node.z) });
+        lay(g, { ...one, a: at(node.x, node.z), b: at(node.x + d.x * arm, node.z + d.z * arm) });
+        const bend = [...bendsOf(g.roads!, radiusOf(RoadTier.OneWay)).values()][0]!.bend;
         const path = bend.path;
         const length = path[path.length - 1]!.s;
         const first = path[0]!;
@@ -713,7 +765,7 @@ describe('a bend where two runs of one road meet', () => {
         // Where a point of the centre line lies along the whole line: negative
         // before the bend, past `length` after it, by whichever of the run
         // before, the bend and the run after it the point is nearest.
-        const along = (x: number, z: number): number => {
+        const along = (x: number, z: number): { t: number; lateral: number } => {
           let best = { lateral: Infinity, t: 0 };
           const consider = (lateral: number, t: number): void => {
             if (lateral < best.lateral) best = { lateral, t };
@@ -735,14 +787,15 @@ describe('a bend where two runs of one road meet', () => {
             );
             consider(Math.hypot(x - p.x - sx * u, z - p.z - sz * u), p.s + (q.s - p.s) * u);
           }
-          return best.t;
+          return best;
         };
         const soup = freeRoadSoup(g.roads!, noCustom, flat);
         const ts: number[] = [];
         for (let i = 0; i < soup.positions.length; i += 9) {
-          if (!sameColor(soup.colors.slice(i, i + 3), YELLOW_MARKING_COLOR)) continue;
+          if (!sameColor(soup.colors.slice(i, i + 3), MARKING_COLOR)) continue;
           for (let k = 0; k < 9; k += 3) {
-            ts.push(along(soup.positions[i + k]!, soup.positions[i + k + 2]!));
+            const { t, lateral } = along(soup.positions[i + k]!, soup.positions[i + k + 2]!);
+            if (lateral < 0.2) ts.push(t);
           }
         }
         ts.sort((a, b) => a - b);
@@ -829,7 +882,7 @@ describe('a bend where two runs of one road meet', () => {
     ];
     for (const [label, deg, grid] of cases) {
       it(`sweeps a ${label} bend about one centre: no corner, constant offsets, the same ground`, () => {
-        const { g, bend, vertices, polar, inArc } = scene(tier, deg, grid ? 90 : 120, grid);
+        const { g, bend, vertices, polar, inArc, reach } = scene(tier, deg, grid ? 90 : 120, grid);
         // The inner kerb holds the class's kerb return, unless the grid tile's half holds less.
         if (bend.setback[0] < TILE_METERS / 2 - 1e-6 || !grid) {
           expect(bend.radius - half).toBeCloseTo(kerbReturnRadiusOf(profile), 2);
@@ -863,12 +916,15 @@ describe('a bend where two runs of one road meet', () => {
         }
 
         // Nothing reaches further than the outer edge, and every paint line sits at a constant offset.
-        const lines = [...plan.solid, ...plan.dashed];
+        const zone = noPassingPlan(plan);
+        const lines = [...zone.solid, ...zone.dashed];
         const wrong: string[] = [];
         for (const v of vertices) {
           const p = { x: v.x, z: v.z };
           if (!inArc(p)) continue;
-          const { r } = polar(p);
+          const { r, angle } = polar(p);
+          // The broken line of the run before the bend ends exactly at the arc's start.
+          if (Math.abs(Math.abs(angle) - reach) < 1e-3) continue;
           if (r > bend.radius + outer + 5e-3) wrong.push(`past the outer edge at ${p.x},${p.z}`);
           if (Math.abs(v.y - MARK_Y_OFFSET) > 1e-9) continue;
           const offset = bend.turn * (bend.radius - r);
@@ -1014,5 +1070,32 @@ describe('a bend where two runs of one road meet', () => {
         expect(Math.min(nearest, ...alongRuns)).toBeGreaterThanOrEqual(HALF);
       }
     }
+  });
+});
+
+describe('a free road’s dead end', () => {
+  it('paints no centre line on the rounded cap, only the edge lines round it', () => {
+    const tier = RoadTier.FourLane;
+    const g = world();
+    lay(g, { tier, a: at(100, 200), b: at(220, 200) });
+    const profile = presetProfileForTier(tier);
+    const pivot =
+      Math.min(carriagewayHalfWidthOf(profile), 60 - kerbWidthOf(profile)) + kerbWidthOf(profile);
+    const soup = freeRoadSoup(g.roads!, noCustom, flat);
+    const edge = Math.abs(markingPlan(profile).edges![0].at);
+    const wrong: string[] = [];
+    let onCap = 0;
+    for (let i = 0; i < soup.positions.length; i += 3) {
+      if (Math.abs(soup.positions[i + 1]! - MARK_Y_OFFSET) > 1e-6) continue;
+      const x = soup.positions[i]!;
+      const pivotX = x > 160 ? 220 - pivot : 100 + pivot;
+      if (x > 160 ? x <= pivotX + 0.05 : x >= pivotX - 0.05) continue;
+      onCap++;
+      // Every mark on the cap lies on the edge line's arc round the pivot.
+      const r = Math.hypot(x - pivotX, soup.positions[i + 2]! - 200);
+      if (Math.abs(r - edge) > PAINT_HALF_WIDTH_M + 0.01) wrong.push(`radius ${r.toFixed(2)}`);
+    }
+    expect(onCap).toBeGreaterThan(0);
+    expect(wrong).toEqual([]);
   });
 });

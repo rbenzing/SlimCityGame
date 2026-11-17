@@ -10,7 +10,14 @@
  * Usage: node tools/bend-shots.mjs [baseUrl] [outDir]   (a dev server must be running) */
 import { chromium } from 'playwright';
 import { mkdirSync } from 'node:fs';
-import { cleanShot, hooksReady, tileCamera, unlimitedMoneyOption } from './shotcam.mjs';
+import {
+  cleanShot,
+  hooksReady,
+  readToasts,
+  requireInFrame,
+  tileCamera,
+  unlimitedMoneyOption,
+} from './shotcam.mjs';
 
 const base = process.argv[2] ?? 'http://localhost:5173';
 const url = base + (base.includes('?') ? '&' : '?') + 'nobloom';
@@ -21,12 +28,74 @@ const SEED = 12345;
 const RT = { TwoLane: 1, Avenue: 2, Gravel: 4, OneWay: 6, FourLane: 7 };
 const VEHICLE = { Car: 0, Truck: 1, Bus: 2 };
 /** One free segment is one way when its flow is 1; every other kind is two-way. */
+const RT_ALLEY = 5;
+const RT_HIGHWAY = 3;
+const RT_RAMP = 12;
+/** Custom cross-sections for the kinds that are options on a street: ids clear of the presets. */
+const BUS_PROFILE = 40;
+const BIKE_PROFILE = 41;
+const TRAM_PROFILE = 42;
+const PROFILES = [
+  {
+    id: BUS_PROFILE,
+    profile: {
+      class: 'urban',
+      kerbs: true,
+      pieces: [
+        { kind: 'sidewalk', width: 1.875 },
+        { kind: 'bus', width: 3.5, flow: 'back' },
+        { kind: 'travel', width: 3.35, flow: 'back' },
+        { kind: 'travel', width: 3.35, flow: 'fwd' },
+        { kind: 'bus', width: 3.5, flow: 'fwd' },
+        { kind: 'sidewalk', width: 1.875 },
+      ],
+    },
+  },
+  {
+    id: BIKE_PROFILE,
+    profile: {
+      class: 'local',
+      kerbs: true,
+      pieces: [
+        { kind: 'sidewalk', width: 1.875 },
+        { kind: 'bike', width: 1.6, flow: 'back' },
+        { kind: 'travel', width: 3.75, flow: 'back' },
+        { kind: 'travel', width: 3.75, flow: 'fwd' },
+        { kind: 'bike', width: 1.6, flow: 'fwd' },
+        { kind: 'sidewalk', width: 1.875 },
+      ],
+    },
+  },
+  {
+    id: TRAM_PROFILE,
+    profile: {
+      class: 'arterial',
+      kerbs: true,
+      pieces: [
+        { kind: 'sidewalk', width: 1.875 },
+        { kind: 'travel', width: 3.3, flow: 'back' },
+        { kind: 'travel', width: 3.3, flow: 'back' },
+        { kind: 'tram', width: 1.2, flow: 'back' },
+        { kind: 'tram', width: 1.2, flow: 'fwd' },
+        { kind: 'travel', width: 3.3, flow: 'fwd' },
+        { kind: 'travel', width: 3.3, flow: 'fwd' },
+        { kind: 'sidewalk', width: 1.875 },
+      ],
+    },
+  },
+];
 const KINDS = [
   { name: 'two-lane', tier: RT.TwoLane, flow: 0 },
   { name: 'avenue', tier: RT.Avenue, flow: 0 },
   { name: 'four-lane', tier: RT.FourLane, flow: 0 },
   { name: 'one-way', tier: RT.OneWay, flow: 1 },
   { name: 'gravel', tier: RT.Gravel, flow: 0 },
+  { name: 'alley', tier: RT_ALLEY, flow: 0, deflections: [30, 90] },
+  { name: 'bus-lane', tier: RT.TwoLane, flow: 0, profile: BUS_PROFILE, deflections: [30, 90] },
+  { name: 'bike-lane', tier: RT.TwoLane, flow: 0, profile: BIKE_PROFILE, deflections: [30, 90] },
+  { name: 'tram', tier: RT.Avenue, flow: 0, profile: TRAM_PROFILE, deflections: [30, 90] },
+  { name: 'motorway', tier: RT_HIGHWAY, flow: 0, deflections: [30, 60] },
+  { name: 'ramp', tier: RT_RAMP, flow: 1, deflections: [30, 90] },
 ];
 const DEFLECTIONS = [30, 60, 90, 120];
 /** Each run's length, metres: long enough that no kind's arc is held short. */
@@ -144,6 +213,7 @@ try {
         {
           kind: 'buildSegment',
           tier: kind.tier,
+          ...(kind.profile === undefined ? {} : { profile: kind.profile }),
           a: { x: cm(a.x), z: cm(a.z) },
           b: { x: cm(c.x), z: cm(c.z) },
           flow: kind.flow,
@@ -158,20 +228,30 @@ try {
   });
 
   // --- the scenes --------------------------------------------------------------
+  for (const p of PROFILES) {
+    await cmd(`Profile ${p.id}`, [{ kind: 'defineRoadProfile', id: p.id, profile: p.profile }]);
+    await page.waitForTimeout(300);
+    const refused = (await readToasts(page)).filter((t) => / failed$/.test(t.title));
+    if (refused.length > 0) {
+      throw new Error(`profile ${p.id} refused: ${refused.map((t) => t.body).join('; ')}`);
+    }
+  }
   for (const kind of KINDS) {
-    for (const deg of DEFLECTIONS) {
+    for (const deg of kind.deflections ?? DEFLECTIONS) {
       const site = claimSite(SITE_TILES, SITE_TILES);
       if (!site) {
-        console.log(`WARNING: no flat site left for ${kind.name} ${deg}`);
-        continue;
+        throw new Error(`no flat site left for ${kind.name} ${deg}`);
       }
       const n = siteNode(site);
       await layBend(kind, deg, n);
       await page.waitForTimeout(500);
       const name = `${kind.name}-${deg}`;
+      // The bend's node must be on screen: its arc is the subject of both frames.
       await look(n.x, n.z, ABOVE_M, 0, Math.PI / 2);
+      await requireInFrame(page, `${name}-above`, n.x / T - 0.5, n.z / T - 0.5, 0);
       await shot(`${name}-above`, 1000);
       await look(n.x, n.z, OBLIQUE_M, 0.6, OBLIQUE_PITCH);
+      await requireInFrame(page, `${name}-oblique`, n.x / T - 0.5, n.z / T - 0.5, 0);
       await shot(`${name}-oblique`, 1000);
     }
   }

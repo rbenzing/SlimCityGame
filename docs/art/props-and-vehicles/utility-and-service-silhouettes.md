@@ -139,7 +139,8 @@ beneath the kit instead of a full facade box, so the kit carries the
 visual identity while selection and outline still land on the right
 footprint. Kit parts stay unlit at night, except a small red beacon on the
 wind turbine's nacelle and the windows and door panes of the stations, the
-schools, the library, the clinic and the depot.
+schools, the library, the clinic and the depot, and the hospital's window
+bands, entrance and emergency doors (`hospitalLit`).
 
 **The landfill** renders as an operated facility rather than a tint. Its
 office tile — the area's street-adjacent entrance — carries a gatehouse kit:
@@ -147,6 +148,8 @@ a terrain-conforming concrete yard pad, a small office box with a roof cap
 and a street-facing door, a two-bay striped nose-in parking row, and a yard
 light with a glowing head, laid out in a road-facing frame so it fits its
 tile at any orientation. Every other tile in the area is dumping ground: a
-tint plus a pile that scales with how full it is. The renderer is always
+tint under one continuous mound for the whole area (`rebuildMound`), its
+sides sloping over 10 m and its cap rising with how full it is, and a 5 m
+gravel haul road from the office along the dumping order. The renderer is always
 visible — a facility, not a data lens the player has to switch on.
 

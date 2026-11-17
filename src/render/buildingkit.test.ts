@@ -1058,6 +1058,14 @@ describe('a filling station', () => {
   });
 });
 
+describe('the shop at night', () => {
+  it('lights its sign bands and its glass front on the kit’s emissive material', () => {
+    for (const part of ['signageBand', 'storefrontBand', 'glassFront'] as const) {
+      expect(LIT_PARTS.has(part), part).toBe(true);
+    }
+  });
+});
+
 describe('an office and a hotel', () => {
   it('has a lit lobby portal 4 m wide and 4.5 m tall, its glass 1.4 m out and its canopy trim reaching 1.5 m', () => {
     for (const id of ['com-high-1', 'com-office-2', 'com-high-2']) {
@@ -1804,7 +1812,7 @@ describe('the second pass: what tells the industrial kinds apart at 40 m', () =>
     expect(GANTRY_HEIGHT_M).toBe(10);
     expect(CHIP_PILE_DIAMETER_M).toBe(24);
     expect(CHIP_PILE_HEIGHT_M).toBe(12);
-    expect(RECOVERY_STACK_HEIGHT_M).toBe(60);
+    expect(RECOVERY_STACK_HEIGHT_M).toBe(90);
     for (const m of [
       WAINSCOT_HEIGHT_M,
       TILT_BAND_M,
@@ -2117,13 +2125,13 @@ describe('the second pass: what tells the industrial kinds apart at 40 m', () =>
     }
   });
 
-  it('raises a paper mill’s 60 × 2.4 m recovery stack behind the body beside the tanks', () => {
+  it('raises a paper mill’s 90 m recovery stack, 6 m at its foot, behind the body beside the tanks', () => {
     const e = indById('heavy-paper-2');
     const body: SetbackBox = { w: 40, d: 40, h: 13, yOffset: 0 };
     for (const lot of [null, lotOf(60)]) {
       const placed = computePartPlacements(e, body, body, 'S', lot);
       const [stack] = placed.filter((p) => p.part === 'recoveryStack');
-      expect(stack!.size).toEqual([2.4, 60, 2.4]);
+      expect(stack!.size).toEqual([6, 90, 6]);
       expect(bottomOf(stack!)).toBeCloseTo(0, 9);
       expect(stack!.offset[2]).toBeLessThan(-20);
       for (const t of placed.filter((p) => p.part === 'tanks')) {

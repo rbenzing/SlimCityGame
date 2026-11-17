@@ -61,6 +61,13 @@ describe('leadStrip', () => {
     expect(north[1]).toBe(-LEAD_INTO_LOT_M);
     expect(north[3]).toBe(TILE_METERS / 2);
   });
+
+  it('runs as far into the lot as it is told, in every direction', () => {
+    expect(leadStrip(1, 0, 6)[2]).toBe(TILE_METERS + 6);
+    expect(leadStrip(-1, 0, 6)[0]).toBe(-6);
+    expect(leadStrip(0, 1, 6)[3]).toBe(TILE_METERS + 6);
+    expect(leadStrip(0, -1, 6)[1]).toBe(-6);
+  });
 });
 
 describe('PipeOverlayRenderer', () => {
@@ -123,6 +130,23 @@ describe('PipeOverlayRenderer', () => {
     renderer.rebuild(view({ leads: [{ x: 5, z: 5, dx: 0, dz: 1 }] }));
     expect(renderer.triangleCount().water).toBe(2);
     expect(renderer.triangleCount().sewer).toBe(2);
+  });
+
+  it('runs a lead on to its building’s wall when the lead is given the wall’s setback, and a default stub otherwise', () => {
+    const farEdge = (lead: PipeLead): number => {
+      const scene = new THREE.Scene();
+      new PipeOverlayRenderer(scene, flat).rebuild(view({ leads: [lead] }));
+      let far = -Infinity;
+      scene.traverse((o) => {
+        if (!(o instanceof THREE.Mesh)) return;
+        const position = o.geometry.getAttribute('position');
+        for (let i = 0; i < (position?.count ?? 0); i++) far = Math.max(far, position!.getX(i));
+      });
+      return far;
+    };
+    const lotStart = 6 * TILE_METERS;
+    expect(farEdge({ x: 5, z: 5, dx: 1, dz: 0, intoLotM: 7.5 })).toBeCloseTo(lotStart + 7.5, 4);
+    expect(farEdge({ x: 5, z: 5, dx: 1, dz: 0 })).toBeCloseTo(lotStart + LEAD_INTO_LOT_M, 4);
   });
 
   it('colours a run blue where the water reaches it and grey where it does not', () => {

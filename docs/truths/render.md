@@ -265,4 +265,9 @@ Back to [the index](../GROUND-TRUTHS.md).
   its own lattice sank under the lawn wherever the ground curved, and read
   as a path with gaps. — [parks-and-recreation.md](../specs/parks-and-recreation.md);
   `overlayOnLawn` in `src/render/utilitykits.ts`
+- [R-render-042] A ground layer that writes no depth (the lamp's pool) lies above the
+  highest raised edge it crosses, kerb and median alike. Below a median's
+  top, the pool ended in a hard line mid-road. —
+  [lighting.md](../visual-render/lighting.md); `POOL_Y_OFFSET` in
+  `src/render/lamps.ts`
 

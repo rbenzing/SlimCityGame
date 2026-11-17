@@ -70,6 +70,12 @@ export interface LotLayoutInput {
   bodyMargin?: number;
   /** Ground the body keeps behind itself: a plant's tank farm. */
   rearYard?: number;
+  /**
+   * A heavy plant's hardstanding: paving behind the body as deep as this, laid
+   * last on ground the car park leaves free, joined to the drive beside it.
+   * It becomes the rear yard, and never takes a stall, aisle, berth or trailer stall.
+   */
+  hardstanding?: number;
   /** Lay a drive-through lane round the body, where the ground left over holds one. */
   driveThrough?: boolean;
   /** Stripe trailer stalls in the truck court before the wall the berths lie beside, on the ground left over. */
@@ -819,7 +825,83 @@ export function computeLotLayout(input: LotLayoutInput): LotLayout {
     layout.loadingWall = loadingWallFor(layout);
     if (layout.loadingWall) layout.trailerStalls = trailerStallsFor(layout, layout.loadingWall);
   }
+  if (input.hardstanding) layout.rearYard = hardstandingFor(layout, input.hardstanding);
   return layout;
+}
+
+/** The least a plant's hardstanding is worth paving, each way. */
+const HARDSTANDING_MIN_M = 4;
+/** The share of `depth` the ground behind the body must offer for the hardstanding to lie there rather than beside it. */
+const HARDSTANDING_BACK_SHARE = 0.6;
+
+/**
+ * A plant's hardstanding, laid last on ground the car park leaves free: the
+ * strip behind the body across its width and as deep as `depth`, cut short
+ * where a stall, aisle, berth, island or walk stands in it and run out
+ * sideways to meet an aisle that borders it. Where the ground behind is too
+ * shallow, and the layout keeps no rear yard of its own, the strip beside
+ * either end wall, `depth` wide, takes its place. Null where the lot has
+ * neither; a rear yard the layout already keeps is never given up.
+ */
+function hardstandingFor(layout: LotLayout, depth: number): LotRect | null {
+  const b = layout.body;
+  const lot = layout.lot;
+  const drive: LotRect[] = [
+    ...layout.aisles,
+    ...layout.accessAisles,
+    ...(layout.throat ? [layout.throat] : []),
+  ];
+  const others: LotRect[] = [
+    ...layout.stalls.map((s) => s.rect),
+    ...layout.berths,
+    ...layout.trailerStalls,
+    ...layout.islands,
+    ...(layout.forecourt ? [layout.forecourt] : []),
+    ...(layout.frontWalk ? [layout.frontWalk] : []),
+    ...(layout.entranceWalk ? [layout.entranceWalk] : []),
+  ];
+  const standing = [...drive, ...others];
+  const kept = layout.rearYard;
+
+  let v1 = Math.min(lot.v1, b.v1 + depth);
+  for (const t of standing) {
+    if (rectsOverlap({ ...b, v0: b.v1, v1 }, t)) v1 = Math.min(v1, Math.max(b.v1, t.v0));
+  }
+  if (kept) v1 = Math.max(v1, kept.v1);
+  const behind = v1 - b.v1;
+  if (kept || behind >= Math.max(HARDSTANDING_MIN_M, HARDSTANDING_BACK_SHARE * depth)) {
+    const crossing = standing.filter((t) => t.v0 < v1 - EPS && t.v1 > b.v1 + EPS);
+    const low = crossing.filter((t) => t.u1 <= b.u0 + EPS).sort((x, y) => y.u1 - x.u1)[0];
+    const high = crossing.filter((t) => t.u0 >= b.u1 - EPS).sort((x, y) => x.u0 - y.u0)[0];
+    return {
+      u0: low && drive.includes(low) ? low.u1 : b.u0,
+      u1: high && drive.includes(high) ? high.u0 : b.u1,
+      v0: b.v1,
+      v1,
+    };
+  }
+
+  // Beside an end wall: from the body's street face to the lot's rear edge, as wide as `depth`, cut back to the ground that is free.
+  const beside = (low: boolean): LotRect | null => {
+    let u0 = low ? Math.max(lot.u0, b.u0 - depth) : b.u1;
+    let u1 = low ? b.u0 : Math.min(lot.u1, b.u1 + depth);
+    for (const t of standing) {
+      if (!rectsOverlap({ u0, u1, v0: b.v0, v1: lot.v1 }, t)) continue;
+      if (low) u0 = Math.max(u0, t.u1);
+      else u1 = Math.min(u1, t.u0);
+    }
+    if (u1 - u0 < HARDSTANDING_MIN_M) return null;
+    // Toward the street, the paving runs out to the nearest aisle across the strip where nothing else lies between.
+    const across = drive
+      .filter((t) => t.u0 < u1 - EPS && t.u1 > u0 + EPS && t.v1 <= b.v0 + EPS)
+      .sort((x, y) => y.v1 - x.v1)[0];
+    const reach =
+      across && !others.some((t) => rectsOverlap({ u0, u1, v0: across.v1, v1: b.v0 }, t));
+    return { u0, u1, v0: reach ? across.v1 : b.v0, v1: lot.v1 };
+  };
+  const area = (r: LotRect): number => (r.u1 - r.u0) * (r.v1 - r.v0);
+  const sides = [beside(true), beside(false)].filter((r): r is LotRect => r !== null);
+  return sides.sort((x, y) => area(y) - area(x))[0] ?? null;
 }
 
 /**

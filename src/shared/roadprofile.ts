@@ -446,6 +446,15 @@ export function bendRadiusOf(profile: RoadProfile): number {
 }
 
 /**
+ * Whether a bend of this centre-line `radius` is a no-passing zone: one no
+ * wider than the class's own curve, whose inside kerb and footway cut the view
+ * far short of the passing sight distance a two-way road needs.
+ */
+export function bendIsNoPassing(profile: RoadProfile, radius: number): boolean {
+  return radius <= bendRadiusOf(profile) + 1e-6;
+}
+
+/**
  * Width of the kerb strip a profile draws outside its carriageway.
  *
  * A road that SAYS how wide its pavement is gets exactly that. A road that

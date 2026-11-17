@@ -1335,7 +1335,9 @@ function classifySign(tileSet: RoadTileIndex, tile: FurnitureRoadTile): SignType
   // the only way to sign a road nobody is walking beside.
   if (tierIsMotorway(tile.tier)) {
     if (exitAhead(tileSet, tile)) return 'exit';
-    if (straight && periodHits(x, z, GANTRY_PERIOD)) return 'gantry';
+    // A gantry has nothing to say on a plain run: it stands only on the way to an exit.
+    if (straight && periodHits(x, z, GANTRY_PERIOD) && exitWithin(tileSet, tile, GANTRY_PERIOD))
+      return 'gantry';
     return null;
   }
 
@@ -1401,6 +1403,23 @@ function exitAhead(tileSet: RoadTileIndex, tile: FurnitureRoadTile): boolean {
     if (join === 'diverge') return true;
     // A head-on ramp a save still holds leaves where it points away.
     if (join === 'headOn' && flowDirection(ramp.flow ?? 0) === flowForStep(lx!, lz!)) return true;
+  }
+  return false;
+}
+
+/**
+ * Whether a ramp leaves the motorway within `tiles` tiles along this tile's
+ * flow, so a sign overhead has an exit to announce.
+ */
+function exitWithin(tileSet: RoadTileIndex, tile: FurnitureRoadTile, tiles: number): boolean {
+  let here: FurnitureRoadTile | undefined = tile;
+  for (let i = 0; i < tiles && here; i++) {
+    if (exitAhead(tileSet, here)) return true;
+    const run = flowDirection(here.flow ?? 0);
+    if (run === RoadFlow.None) return false;
+    const { dx, dz } = stepForFlow(run);
+    const next: FurnitureRoadTile | undefined = tileSet.get(tileKey(here.x + dx, here.z + dz));
+    here = next && tierIsMotorway(next.tier) ? next : undefined;
   }
   return false;
 }

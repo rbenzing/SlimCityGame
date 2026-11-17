@@ -1969,7 +1969,9 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       const edge = findRoadFacingEdge(b.x, b.z, w, d, carrierAt);
       if (!edge) continue;
       const step = { N: [0, 1], E: [-1, 0], S: [0, -1], W: [1, 0] }[edge.side]!;
-      leads.push({ x: edge.roadTileX, z: edge.roadTileZ, dx: step[0]!, dz: step[1]! });
+      // A home's lead runs on to the wall of its house, set back from the street edge of its lot.
+      const intoLotM = planHouseLot(b, entry, roadAt, street)?.body.v0;
+      leads.push({ x: edge.roadTileX, z: edge.roadTileZ, dx: step[0]!, dz: step[1]!, intoLotM });
     }
     return {
       pipes: clientGrid.waterPipeTiles(),
@@ -2474,6 +2476,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
     terrain.setNightFactor(nightFactor); // the ground carries the same tint as the bodies on it
     trees.setNightFactor(nightFactor);
     lots.setNightFactor(nightFactor);
+    parkedCars.setNightFactor(nightFactor);
     massing.setNightFactor(nightFactor);
     sites.setNightFactor(nightFactor);
     roofProps.setNightFactor(nightFactor);

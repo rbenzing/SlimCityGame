@@ -24,6 +24,7 @@ import { MAX_SETBACK_SHARE, leavingDirection, sampleCentreLine } from '../shared
 import type { MPoint } from '../shared/roadgeom';
 import {
   CARRIAGEWAY_KINDS,
+  bendIsNoPassing,
   bendRadiusOf,
   carriagewayHalfWidthOf,
   hasKerbs,
@@ -48,7 +49,7 @@ import type { LampStand } from './lamps';
 import { POLE_SPECS, layFromLinks, poleLateralOffset } from './powerpoles';
 import type { PoleSite, PowerLay } from './powerpoles';
 import { firstFreeAlong, placeIsFree, type Roadside } from './roadsidespace';
-import { isMedianSideLine, markingPlan } from './roadmarkings';
+import { isMedianSideLine, markingPlan, noPassingCentres, noPassingPlan } from './roadmarkings';
 import type { MarkingLine, MarkingPlan } from './roadmarkings';
 import { emitIsland, MEDIAN_RAISE } from './medianisland';
 import type { IslandPath } from './medianisland';
@@ -590,14 +591,19 @@ function drawSegment(
   from: number,
   to: number,
   nose: { from: boolean; to: boolean },
+  /** Which ends of the stretch meet a no-passing bend, which its broken yellow centre line runs up to. */
+  join: { from: boolean; to: boolean } = { from: false, to: false },
 ): void {
   // A grid road whose junction reaches its tile's edge has nothing left to draw.
   if (to - from < 1e-6) return;
   const samples = sampleCentreLine(segmentGeom(net, seg));
   const st = stations(samples, from, to, lay.flip);
-  const runs = isPaved(lay.profile)
-    ? dashRuns(lay, from, to, nose).map(([lo, hi]) => stations(samples, lo, hi, lay.flip))
-    : [];
+  const metres = isPaved(lay.profile) ? dashRuns(lay, from, to, nose) : [];
+  const stationsOf = (list: ReadonlyArray<[number, number]>): Station[][] =>
+    list.map(([lo, hi]) => stations(samples, lo, hi, lay.flip));
+  const runs = stationsOf(metres);
+  const centres = noPassingCentres(lay.plan);
+  const joined = join.from || join.to ? stationsOf(joinedRuns(metres, from, to, join)) : runs;
   // A median that ends here ends in a nose, which spends its half-width of the run.
   const half = medianHalfWidthOf(lay.profile);
   const first = from + (nose.from ? half : 0);
@@ -610,7 +616,13 @@ function drawSegment(
           noseEnd: nose.to,
         }
       : undefined;
-  drawSweep(soup, lay, st, () => runs, island);
+  drawSweep(
+    soup,
+    lay,
+    st,
+    (line) => (centres.some((c) => c.at === line.at) ? joined : runs),
+    island,
+  );
 }
 
 /** A bend: the cross-section swept along its centre line, the arc and what is driven straight to and from it. */
@@ -659,7 +671,36 @@ function drawBend(
       stations(samples, centreAt(lo), centreAt(hi)),
     );
   };
-  drawSweep(soup, lay, stations(samples, 0, length), isPaved(lay.profile) ? dashesOf : () => []);
+  // A sharp bend is a no-passing zone: its broken yellow centre line is two solid ones.
+  const swept = bendIsNoPassing(lay.profile, radius)
+    ? { ...lay, plan: noPassingPlan(lay.plan) }
+    : lay;
+  drawSweep(soup, swept, stations(samples, 0, length), isPaved(lay.profile) ? dashesOf : () => []);
+}
+
+/**
+ * The runs of a broken line along a stretch, with the last gap at an end that
+ * meets a no-passing zone filled, so the line carries on as the solid pair
+ * begins.
+ */
+function joinedRuns(
+  runs: ReadonlyArray<[number, number]>,
+  from: number,
+  to: number,
+  join: { from: boolean; to: boolean },
+): Array<[number, number]> {
+  const out = runs.map(([lo, hi]): [number, number] => [lo, hi]);
+  if (join.to) {
+    const last = out.at(-1);
+    if (last && last[1] < to) last[1] = to;
+    else if (!last) out.push([Math.max(from, to - DASH_GAP_LENGTH_M), to]);
+  }
+  if (join.from) {
+    const first = out[0];
+    if (first && first[0] > from) first[0] = from;
+    else if (!first) out.push([from, Math.min(to, from + DASH_GAP_LENGTH_M)]);
+  }
+  return out;
 }
 
 /** Where a broken line's pattern lies: the metre of the pattern at a point, and which way it grows along the line. */
@@ -851,7 +892,7 @@ export function freeRoadSoup(net: RoadNet, lookup: ProfileFor, surfaceAt: Surfac
     });
   }
   for (const span of spans) {
-    drawSegment(soup, net, span.seg, span.lay, span.from, span.to, span.nose);
+    drawSegment(soup, net, span.seg, span.lay, span.from, span.to, span.nose, span.join);
   }
   for (const cap of caps) drawCap(soup, net, cap);
   return soup;
@@ -874,6 +915,8 @@ interface Span {
   to: number;
   /** Which ends of the stretch finish a median in a nose: those at a junction or a dead end. */
   nose: { from: boolean; to: boolean };
+  /** Which ends of the stretch meet a no-passing bend. */
+  join: { from: boolean; to: boolean };
 }
 
 /**
@@ -893,6 +936,8 @@ function layout(
   const setbackAt = new Map<string, number>();
   /** The segment ends that meet a junction or a dead end, where a median finishes in a nose. */
   const noseAt = new Set<string>();
+  /** The segment ends that meet a no-passing bend, where the broken yellow centre line runs up to the solid pair. */
+  const joinAt = new Set<string>();
   const junctions: { node: number; arms: Arm[]; color: Rgb }[] = [];
   const spans: Span[] = [];
   const gridTiles: TilePoint[] = [];
@@ -904,10 +949,13 @@ function layout(
     // Two runs of one road meeting at an angle turn on an arc, with no junction.
     const bend = bendAt.get(node);
     if (bend) {
+      const bendLay = layOf(net, bend.frame, lookup);
+      const sharp = bendIsNoPassing(bendLay.profile, bend.bend.radius);
       for (const seg of [bend.first, bend.second]) {
         setbackAt.set(`${seg}:${node}`, bend.bend.setback[0]);
+        if (sharp) joinAt.add(`${seg}:${node}`);
       }
-      bends.push({ at: bend, lay: layOf(net, bend.frame, lookup), node });
+      bends.push({ at: bend, lay: bendLay, node });
       // Off a grid road the whole tile is this renderer's, as at a junction: the
       // grid road runs from the tile's edge to where the arc begins.
       const gridSeg = [bend.first, bend.second].find((seg) => !isFreeSegment(net, seg));
@@ -925,6 +973,7 @@ function layout(
           from: atA ? take : length - GRID_ARM_REACH,
           to: atA ? GRID_ARM_REACH : length - take,
           nose: { from: false, to: false },
+          join: { from: sharp && atA, to: sharp && !atA },
         });
       }
       continue;
@@ -960,6 +1009,7 @@ function layout(
         from: atA ? setback : length - GRID_ARM_REACH,
         to: atA ? GRID_ARM_REACH : length - setback,
         nose: { from: atA, to: !atA },
+        join: { from: false, to: false },
       });
     });
   }
@@ -974,6 +1024,10 @@ function layout(
       nose: {
         from: noseAt.has(`${seg}:${net.segA[seg]}`),
         to: noseAt.has(`${seg}:${net.segB[seg]}`),
+      },
+      join: {
+        from: joinAt.has(`${seg}:${net.segA[seg]}`),
+        to: joinAt.has(`${seg}:${net.segB[seg]}`),
       },
     });
   }
@@ -1091,8 +1145,8 @@ function drawCap(soup: Soup, net: RoadNet, cap: Cap): void {
       );
     }
   };
-  for (const line of plan.solid) wrap(line, false);
-  for (const line of plan.dashed) wrap(line, true);
+  // Only an edge line follows the kerb round the end; nothing else is painted on a cap.
+  for (const line of plan.edges ?? []) wrap(line, false);
 }
 
 /**

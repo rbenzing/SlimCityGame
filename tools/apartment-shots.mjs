@@ -15,6 +15,7 @@ import {
   cleanShot,
   closeUp,
   hooksReady,
+  requireInFrame,
   tileCamera,
   tileMeters,
 } from './shotcam.mjs';
@@ -171,9 +172,10 @@ try {
     }, dayT);
     await page.waitForTimeout(2000);
   };
-  const shoot = async (name, tx, tz, distance, yaw, pitch = DEFAULT_PITCH) => {
+  const shoot = async (name, tx, tz, distance, yaw, pitch = DEFAULT_PITCH, subject = null) => {
     await cam(tx, tz, distance, yaw, pitch);
     await page.waitForTimeout(1200);
+    if (subject) await requireInFrame(page, name, subject.x, subject.z, subject.y);
     await cleanShot(page, `${out}/${name}.png`);
   };
   const T = await tileMeters(page);
@@ -199,7 +201,7 @@ try {
    * backs off until the box's projected height and width fill `fill` of the
    * 45 degree view, but never inside the camera's floor.
    */
-  const frame = async (name, box, yaw, pitch = DEFAULT_PITCH, fill = 0.6) => {
+  const frame = async (name, box, yaw, pitch = DEFAULT_PITCH, fill = 0.6, roof = false) => {
     const tall = box.h * Math.cos(pitch) + box.d * T * Math.sin(pitch);
     const wide = box.w * T * Math.abs(Math.cos(yaw)) + box.d * T * Math.abs(Math.sin(yaw));
     const aspect = 1280 / 800;
@@ -219,6 +221,8 @@ try {
       distance,
       yaw,
       pitch,
+      // A roof shot must hold the roof's middle: the point at the building's full height.
+      roof ? { x: box.x - 0.5, z: box.z - 0.5, y: box.h } : null,
     );
   };
   const find = (street, id) =>
@@ -251,8 +255,8 @@ try {
   await frame('close-multiplex', multiplex, 0.3, 0.55, 0.7);
   await frame('close-midrise', midrise, 0.25, 0.5, 0.7);
   // The walk-ups' hips from higher up, where the four pitches meeting at the apex show.
-  await frame('roof-garden', garden, 0.4, 1.1, 0.7);
-  await frame('roof-multiplex', multiplex, 0.4, 1.1, 0.7);
+  await frame('roof-garden', garden, 0.4, 1.1, 0.7, true);
+  await frame('roof-multiplex', multiplex, 0.4, 1.1, 0.7, true);
   await restore();
 
   await setPhase(0.96);

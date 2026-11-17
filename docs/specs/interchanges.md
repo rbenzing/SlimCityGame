@@ -13,7 +13,7 @@
 - Meet a ramp to the street only at the ramp's end, where the street is on the ground.
 - Refuse in the preview and again at commit, with the first reason, and send nothing if refused. [R-roads-062]
 - Read the site from the carriageways already there: one group, or two running opposite ways with each driver's right facing away from the other.
-- Paint an exit's neutral area: a channelizing line each side and chevrons between, and start the slip road's own lines in line with them. [R-roads-089]
+- Paint an exit's neutral area: a channelizing line each side and chevrons between, and start the slip road's own lines in line with them. Keep the slip road's lane full width at the nose; give an entrance the two lines and no chevrons. [R-roads-089]
 - Leave a ground junction for a climbing deck without a step: the junction's surface rises over its half facing the deck, after 4 m of level.
 
 **Numbers:**

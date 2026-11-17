@@ -801,6 +801,42 @@ export function isMedianSideLine(line: MarkingLine, offset: number, half: number
   );
 }
 
+/**
+ * The broken yellow centre lines of a plan: the lines a no-passing zone turns
+ * solid. A broken yellow line with a solid one beside it fences a turn lane
+ * and stays as it is.
+ */
+export function noPassingCentres(plan: MarkingPlan): MarkingLine[] {
+  return plan.dashed.filter(
+    (d) =>
+      d.color === 'yellow' &&
+      !plan.solid.some(
+        (s) => s.color === 'yellow' && Math.abs(s.at - d.at) < 2 * TURN_LANE_INNER_OFFSET_M,
+      ),
+  );
+}
+
+/**
+ * The plan of a two-way road through a no-passing zone: each broken yellow
+ * centre line becomes a pair of solid yellow lines, the two-direction
+ * no-passing marking.
+ */
+export function noPassingPlan(plan: MarkingPlan): MarkingPlan {
+  const centres = noPassingCentres(plan);
+  if (centres.length === 0) return plan;
+  return {
+    ...plan,
+    dashed: plan.dashed.filter((l) => !centres.includes(l)),
+    solid: [
+      ...plan.solid,
+      ...centres.flatMap((c) => [
+        { at: c.at - CENTRE_PAIR_OFFSET_M, color: c.color },
+        { at: c.at + CENTRE_PAIR_OFFSET_M, color: c.color },
+      ]),
+    ].sort((a, b) => a.at - b.at),
+  };
+}
+
 /** The pair of solid lines painted around the centre, or none. */
 export function centrePair(plan: MarkingPlan): [MarkingLine, MarkingLine] | null {
   const lo = plan.solid.find((l) => Math.abs(l.at + CENTRE_PAIR_OFFSET_M) < 1e-6);

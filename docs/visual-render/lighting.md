@@ -71,8 +71,8 @@ each on its own would dim the scene twice over. The tint is one shared
 constant that **every sunlit
 surface reads** — bodies and every kit part (walls, roof, garage, porch,
 dock, plant, prop) through `nightTintNode`/`nightBodyMaterial`, and the
-terrain, the roads, the lots' ground, the park plates and the trees alike —
-so the whole world dims on the one dial and the ground reads no brighter than
+terrain, the roads, the lots' ground, a car park's stall paint, the park
+plates and the trees alike — so the whole world dims on the one dial and the ground reads no brighter than
 the bodies: at full night the ground sits at 12 to 25% of its noon
 brightness, and the bright things are the lit panes, the lit parts and the
 lamps' pools. The sky dome stays the keyframe's navy and the fog follows it.
@@ -147,6 +147,9 @@ it reading as light on a street rather than a painted shape:
   merged mesh is rebuilt with the lamp set and disposed on each rebuild. It
   is also the lamp's single largest bright area, and so its widest bloom
   source.
+- **Above every raised edge** (`POOL_Y_OFFSET` 0.33 m): the pool writes no
+  depth, so it lies over the kerb (0.23 m) and the median (0.30 m); below
+  one, that edge's face cuts the pool off in a hard line `[R-render-042]`.
 
 **Spacing**: on a street up to 15 m wide a lamp stands every 3 tiles (60 m),
 alternating sides; on a wider one lamps stand in facing pairs every 4 tiles

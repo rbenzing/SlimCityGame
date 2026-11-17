@@ -71,7 +71,13 @@ never are.
   toasts first and **fails the run when one says a command failed**: a frame
   of a town that was never built proves nothing. It logs any other toast it
   clears, and once a run prints the advisor's alerts as `alert "…"` lines.
-  A frame that is _about_ a refusal passes `{ allowRefusal: /pattern/ }`.
+  A frame that is _about_ a refusal passes `{ allowRefusal: /pattern/ }`;
+  `{ clip }` crops it.
+- `requireInFrame` projects a subject through the rig's view (`screenOf`)
+  and fails the run when it is off screen: a frame named for a thing shows
+  that thing.
+- `setClock` runs the sim's own tick to an hour, so the HUD's clock
+  (`readClockMinutes`) agrees with the light; `setDayT` pins the light only.
 - `unlimitedMoneyOption(page)`, called before the page loads, sets the saved
   option the HUD reads. The `setUnlimitedMoney` command alone leaves the red
   debt badge in every frame.

@@ -142,6 +142,26 @@ const pickRoad = async (tab, card) => {
 };
 const hasGroup = async (name) => (await page.getByRole('group', { name }).count()) > 0;
 
+/** Shoot the drawer's road cards and options row alone, cropped to the groups that matter. */
+const optionsShot = async (name, groups) => {
+  const boxes = [await page.getByRole('tab').first().boundingBox()];
+  for (const g of groups) {
+    const group = page.getByRole('group', { name: g });
+    if ((await group.count()) === 0) throw new Error(`${name}: the "${g}" group is not on screen`);
+    boxes.push(await group.boundingBox());
+  }
+  boxes.push(await page.getByLabel('Profile width').boundingBox());
+  if (boxes.some((b) => !b)) throw new Error(`${name}: an options control has no box on screen`);
+  const pad = 16;
+  const x = Math.max(0, Math.min(...boxes.map((b) => b.x)) - pad);
+  const y = Math.max(0, Math.min(...boxes.map((b) => b.y)) - pad);
+  const right = Math.min(1400, Math.max(...boxes.map((b) => b.x + b.width)) + pad);
+  const bottom = Math.min(900, Math.max(...boxes.map((b) => b.y + b.height)) + pad);
+  await cleanShot(page, `${out}/${name}.png`, {
+    clip: { x, y, width: right - x, height: bottom - y },
+  });
+};
+
 await pickRoad('Small', 'Two-Lane Road');
 if (!(await hasGroup('Bus lanes'))) failures.push('a two-lane street is not offered a bus lane');
 if (!(await hasGroup('Tramway'))) failures.push('a two-lane street is not offered a tramway');
@@ -155,7 +175,7 @@ const oneSideText = await page.getByLabel('Profile width').textContent();
 console.log('two-lane + one bus lane:', oneSideText, '|', oneSide);
 if (oneSide !== 'Fits the tile')
   failures.push(`a two-lane street with one bus lane reads "${oneSide}"`);
-await cleanShot(page, `${out}/options-two-lane-bus.png`);
+await optionsShot('options-two-lane-bus', ['Bus lanes', 'Tramway']);
 
 // The refused choice is a disabled chip carrying the rule, not a click that lays it.
 const bothChip = page.getByRole('group', { name: 'Bus lanes' }).getByText('Both', { exact: true });
@@ -178,7 +198,7 @@ if (!(await hasGroup('Bus lanes'))) failures.push('an avenue is not offered a bu
 if (!(await hasGroup('Tramway'))) failures.push('an avenue is not offered a tramway');
 await page.getByRole('group', { name: 'Tramway' }).getByText('Reserved', { exact: true }).click();
 await page.waitForTimeout(250);
-await cleanShot(page, `${out}/options-avenue-tram.png`);
+await optionsShot('options-avenue-tram', ['Bus lanes', 'Tramway']);
 await page.keyboard.press('Escape');
 await page.waitForTimeout(300);
 

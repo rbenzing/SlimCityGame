@@ -10,6 +10,7 @@ import {
   lotVertexCount,
 } from './lots';
 import { planFarm, type FarmRect } from './farmlot';
+import { materialUnit } from './palette';
 import { TILE_METERS } from '../shared/constants';
 import { toLocal } from '../shared/lotframe';
 import { planHouseLot } from './houselot';
@@ -510,6 +511,35 @@ describe('a home’s lot on a framed parcel', () => {
       expect(p.u, `vertex ${i}`).toBeLessThanOrEqual(2 * TILE_METERS + slack);
       expect(p.v, `vertex ${i}`).toBeGreaterThanOrEqual(-walk - slack);
       expect(p.v, `vertex ${i}`).toBeLessThanOrEqual(2 * TILE_METERS + slack);
+    }
+  });
+
+  it('lays its lawn over the whole parcel: all four corners are lawn, so no sliver of bare ground shows', () => {
+    const scene = new THREE.Scene();
+    const r = new LotRenderer(scene, flat, [house]);
+    r.apply(delta({ added: [building({ x: 10, z: 17, frame })] }));
+    const mesh = scene.children[0] as THREE.Mesh;
+    const position = mesh.geometry.getAttribute('position');
+    const color = mesh.geometry.getAttribute('color');
+    const lawn = materialUnit('mownLawn');
+    const side = 2 * TILE_METERS;
+    for (const [u, v] of [
+      [0, 0],
+      [side, 0],
+      [0, side],
+      [side, side],
+    ] as const) {
+      let found = false;
+      for (let i = 0; i < position.count; i++) {
+        const p = toLocal(frame, position.getX(i), position.getZ(i));
+        if (Math.abs(p.u - u) < 1e-3 && Math.abs(p.v - v) < 1e-3) {
+          found = true;
+          expect(color.getX(i)).toBeCloseTo(lawn[0], 4);
+          expect(color.getY(i)).toBeCloseTo(lawn[1], 4);
+          expect(color.getZ(i)).toBeCloseTo(lawn[2], 4);
+        }
+      }
+      expect(found, `corner ${u},${v}`).toBe(true);
     }
   });
 

@@ -27,6 +27,7 @@ import {
   cleanShot,
   closeUp,
   hooksReady,
+  requireInFrame,
   tileCamera,
   tileMeters,
   unlimitedMoneyOption,
@@ -198,7 +199,10 @@ try {
   const spots = [];
   for (const [s, street] of STREETS.entries()) {
     const site = sites[s];
-    const road = Array.from({ length: site.cols }, (_, i) => ({ x: site.x - MARGIN + i, z: site.z }));
+    const road = Array.from({ length: site.cols }, (_, i) => ({
+      x: site.x - MARGIN + i,
+      z: site.z,
+    }));
     await send('Street', [
       {
         kind: 'buildRoad',
@@ -222,7 +226,14 @@ try {
     cursor = site.x + 1;
     for (const id of street.north ?? []) {
       const fp = entryOf(id).footprint;
-      const spot = { id, street: `${street.name}-north`, x: cursor, z: site.z - fp.d, w: fp.w, d: fp.d };
+      const spot = {
+        id,
+        street: `${street.name}-north`,
+        x: cursor,
+        z: site.z - fp.d,
+        w: fp.w,
+        d: fp.d,
+      };
       spots.push(spot);
       await send('Building', [
         { kind: 'placeBuilding', catalogId: id, x: spot.x, z: spot.z, rotation: 0 },
@@ -234,7 +245,9 @@ try {
 
   // Prove every subject stands, by id and position, before any frame.
   const standing = await readBuildings();
-  const missing = spots.filter((s) => !standing.some((b) => b.catalogId === s.id && b.x === s.x && b.z === s.z));
+  const missing = spots.filter(
+    (s) => !standing.some((b) => b.catalogId === s.id && b.x === s.x && b.z === s.z),
+  );
   if (missing.length > 0) {
     throw new Error(`not standing: ${missing.map((s) => `${s.id}@${s.x},${s.z}`).join(' ')}`);
   }
@@ -245,9 +258,10 @@ try {
     for (const s of spots) {
       const b = now.find((n) => n.catalogId === s.id && n.x === s.x && n.z === s.z);
       const p = await page.evaluate((id) => window.__slimcity.readParking(id), b.id);
-      const cars = s.street === 'kerb'
-        ? await page.evaluate((id) => window.__slimcity.readHouseCars(id).length, b.id)
-        : '';
+      const cars =
+        s.street === 'kerb'
+          ? await page.evaluate((id) => window.__slimcity.readHouseCars(id).length, b.id)
+          : '';
       rows.push({
         catalogId: s.id,
         stalls: p?.stalls ?? 'null',
@@ -274,8 +288,11 @@ try {
   console.log(ran);
   console.table(table);
   const after = await readBuildings();
-  const gone = spots.filter((s) => !after.some((b) => b.catalogId === s.id && b.x === s.x && b.z === s.z));
-  if (gone.length > 0) throw new Error(`cleared while the sim ran: ${gone.map((s) => s.id).join(' ')}`);
+  const gone = spots.filter(
+    (s) => !after.some((b) => b.catalogId === s.id && b.x === s.x && b.z === s.z),
+  );
+  if (gone.length > 0)
+    throw new Error(`cleared while the sim ran: ${gone.map((s) => s.id).join(' ')}`);
 
   // A paused sim posts a snapshot, which carries the pinned phase to the lighting, only when a command lands.
   await page.evaluate(() => {
@@ -298,12 +315,30 @@ try {
     const z0 = s.z - 1;
     const z1 = s.z + s.d + 1;
     const tan = Math.tan(Math.PI / 8);
+    // A tower's roof hides the lot, and its car park lies in the rear (south) part: frame that part.
+    const rear = s.id.startsWith('res-tower');
+    const zMid = rear ? z0 + (z1 - z0) * 0.75 : (z0 + z1) / 2;
+    const zSpan = rear ? (z1 - z0) * 0.5 : z1 - z0;
     const distance = Math.max(
       CAMERA_MIN_DISTANCE,
-      ((z1 - z0) * T) / (2 * tan * 0.6),
+      (zSpan * T) / (2 * tan * 0.6),
       ((x1 - x0) * T) / (2 * tan * aspect * 0.6),
     );
-    await shoot(`${frameName(s.id)}-above`, (x0 + x1) / 2 - 0.5, (z0 + z1) / 2 - 0.5, distance, 0, TOP_PITCH);
+    await shoot(
+      `${frameName(s.id)}-above`,
+      (x0 + x1) / 2 - 0.5,
+      zMid - 0.5,
+      distance,
+      0,
+      TOP_PITCH,
+    );
+    // The lot's rear corners, where the car park ends, must be on screen. The shot is
+    // already taken: a miss fails the run rather than hiding in a good-looking frame.
+    for (const px of [x0 + 1.5, x1 - 2.5]) {
+      await requireInFrame(page, `${frameName(s.id)}-above`, px - 0.5, z1 - 1.5, 0, 0.02).catch(
+        (e) => fail(e.message),
+      );
+    }
   };
   for (const s of spots) {
     if (s.street.startsWith('kerb')) continue;
@@ -326,7 +361,12 @@ try {
 
   // The level-1 dense kinds on their larger lots, from the street: the body behind
   // its street face, its car park beside and behind it.
-  const LEVEL_ONE_SUBJECTS = ['res-high-1-lot2x2', 'mixed-1-lot2x2', 'com-hotel-1-lot3x3', 'com-high-1-lot4x4'];
+  const LEVEL_ONE_SUBJECTS = [
+    'res-high-1-lot2x2',
+    'mixed-1-lot2x2',
+    'com-hotel-1-lot3x3',
+    'com-high-1-lot4x4',
+  ];
   for (const s of spots.filter((n) => LEVEL_ONE_SUBJECTS.includes(n.id))) {
     const cx = s.x + s.w / 2 - 0.5;
     await shoot(`${frameName(s.id)}-street`, cx + 1, s.z, 120, Math.PI - 0.55, 0.45);
@@ -343,7 +383,17 @@ try {
   const kx0 = Math.min(...kerb.map((s) => s.x));
   const kx1 = Math.max(...kerb.map((s) => s.x + s.w));
   const roadZ = kerb[0].z - 1;
-  await shoot('kerb-parking', (kx0 + kx1) / 2 - 0.5, roadZ + 0.5, Math.max(CAMERA_MIN_DISTANCE, ((kx1 - kx0 + 4) * T) / (2 * Math.tan(Math.PI / 8) * aspect * 0.8)), 0, TOP_PITCH);
+  await shoot(
+    'kerb-parking',
+    (kx0 + kx1) / 2 - 0.5,
+    roadZ + 0.5,
+    Math.max(
+      CAMERA_MIN_DISTANCE,
+      ((kx1 - kx0 + 4) * T) / (2 * Math.tan(Math.PI / 8) * aspect * 0.8),
+    ),
+    0,
+    TOP_PITCH,
+  );
   await shoot('kerb-parking-close', kx0 + 2, roadZ, CAMERA_MIN_DISTANCE, 0, TOP_PITCH);
   // Top-down closes along the street, both rows of homes with their drives in
   // frame, at twice the pixels: 70 m up, stepping four tiles along the street.
@@ -380,13 +430,25 @@ try {
   await send('Street', [{ kind: 'buildRoad', tier: 1, tiles: rowOf(GZ, GX, GX + GROW_W) }]);
   await send('Back street', [{ kind: 'buildRoad', tier: 1, tiles: rowOf(GZ + 7, GX, GX + 21) }]);
   await send('Link', [
-    { kind: 'buildRoad', tier: 1, tiles: Array.from({ length: 6 }, (_, i) => ({ x: GX, z: GZ + 1 + i })) },
+    {
+      kind: 'buildRoad',
+      tier: 1,
+      tiles: Array.from({ length: 6 }, (_, i) => ({ x: GX, z: GZ + 1 + i })),
+    },
   ]);
-  await send('Power', [{ kind: 'placeBuilding', catalogId: 'coal-plant', x: GX + 2, z: GZ - 4, rotation: 0 }]);
-  await send('Water', [{ kind: 'placeBuilding', catalogId: 'water-tower', x: GX + 8, z: GZ - 1, rotation: 0 }]);
+  await send('Power', [
+    { kind: 'placeBuilding', catalogId: 'coal-plant', x: GX + 2, z: GZ - 4, rotation: 0 },
+  ]);
+  await send('Water', [
+    { kind: 'placeBuilding', catalogId: 'water-tower', x: GX + 8, z: GZ - 1, rotation: 0 },
+  ]);
   for (let z = GZ - 3; z <= GZ - 1; z++) {
-    await send('Homes', [{ kind: 'paintZone', zone: ZONE_RES_LOW, tiles: rowOf(z, GX + 28, GX + GROW_W - 1) }]);
-    await send('Works', [{ kind: 'paintZone', zone: ZONE_INDUSTRY, tiles: rowOf(z, GX + 10, GX + 26) }]);
+    await send('Homes', [
+      { kind: 'paintZone', zone: ZONE_RES_LOW, tiles: rowOf(z, GX + 28, GX + GROW_W - 1) },
+    ]);
+    await send('Works', [
+      { kind: 'paintZone', zone: ZONE_INDUSTRY, tiles: rowOf(z, GX + 10, GX + 26) },
+    ]);
   }
   // A street of homes stands at once, so the town has the households downtown growth waits on.
   for (let i = 0; i < 24; i++) {
@@ -404,7 +466,9 @@ try {
   await send('Shallow block', [{ kind: 'paintZone', zone: ZONE_COM_HIGH, tiles: shallowBlock }]);
   await page.evaluate(() => window.__slimcity.setSpeed(4));
   const downtown = async () =>
-    (await readBuildings()).filter((b) => b.catalogId.startsWith('com-') && b.z > GZ && b.z < GZ + 8);
+    (await readBuildings()).filter(
+      (b) => b.catalogId.startsWith('com-') && b.z > GZ && b.z < GZ + 8,
+    );
   let deepGrown = [];
   let shallowGrown = [];
   let deepZoned = false;

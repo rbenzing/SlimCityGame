@@ -8,7 +8,7 @@
  * Usage: node tools/construction-shots.mjs [baseUrl] [outDir]   (a dev server must be running) */
 import { chromium } from 'playwright';
 import { mkdirSync } from 'node:fs';
-import { cleanShot, hooksReady, tileCamera, unlimitedMoneyOption } from './shotcam.mjs';
+import { cleanShot, hooksReady, setClock, tileCamera, unlimitedMoneyOption } from './shotcam.mjs';
 
 const base = process.argv[2] ?? 'http://localhost:5173';
 const out = process.argv[3] ?? 'tools/shots-construction';
@@ -136,8 +136,9 @@ try {
       standing = await goingUp();
       if (names.every((n) => (standing[n]?.length ?? 0) >= 2) && s > 15) break;
     }
-    await hook(() => window.__slimcity.setSpeed(0));
-    await hook(() => window.__slimcity.setDayT(0.5));
+    // Noon by the game's own clock (construction stays held while it runs on), so the strip
+    // and the light agree.
+    await setClock(page, 12);
     // A paused sim posts a snapshot only when a command lands: this one carries the phase to the lighting.
     await cmd('Phase', [{ kind: 'setUnlimitedMoney', on: true }]);
     for (const name of names) {

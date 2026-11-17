@@ -23,6 +23,9 @@ import {
   CAP_Y_OFFSET,
   isPlainCenterlineTier,
   CURB_Y_OFFSET,
+  MARK_Y_OFFSET,
+  ROAD_Y_OFFSET,
+  SIDEWALK_COLOR,
   TWO_LANE_HALF_WIDTH_FRACTION,
   HIGHWAY_HALF_WIDTH_FRACTION,
   AVENUE_HALF_WIDTH_FRACTION,
@@ -72,6 +75,7 @@ import {
 import {
   BIKE_PAINT_MAX_WIDTH_M,
   EDGE_LINE_MARGIN_M,
+  PAINT_HALF_WIDTH_M,
   markingPlan,
   seamBetween,
 } from './roadmarkings';
@@ -2064,6 +2068,27 @@ describe('roadTileVertices — dead-end cap full carriageway width (UI-SPEC §6.
       expect(capZs.length).toBeGreaterThan(0);
       const bulge = Math.max(...capZs) - (centerZ + coreHalf);
       expect(bulge).toBeCloseTo(coreHalf, 5); // a true semicircle, radius coreHalf
+    }
+  });
+
+  it('paints only an edge line round the cap: no centre, lane or other line wraps it', () => {
+    for (const tier of [RoadTier.TwoLane, RoadTier.Avenue, RoadTier.FourLane, RoadTier.Highway]) {
+      const coreHalf = coreHalfMeters(tier);
+      const plan = markingPlan(presetProfileForTier(tier));
+      const edgeRadii = (plan.edges ?? []).map((l) => Math.abs(l.at));
+      const centre = { x: 0.5 * TILE_METERS, z: 0.5 * TILE_METERS + coreHalf };
+      const { positions } = roadTileVertices(0, 0, tier, N, flatHeightAt);
+      const paint = toTriples(positions).filter(
+        (p) =>
+          Math.abs((p[1] as number) - MARK_Y_OFFSET) < 1e-6 && (p[2] as number) > centre.z + 0.05,
+      );
+      for (const p of paint) {
+        const r = Math.hypot((p[0] as number) - centre.x, (p[2] as number) - centre.z);
+        expect(
+          edgeRadii.some((e) => Math.abs(r - e) < PAINT_HALF_WIDTH_M + 0.01),
+          `tier ${tier}: paint at radius ${r.toFixed(2)} on the cap`,
+        ).toBe(true);
+      }
     }
   });
 
@@ -5322,6 +5347,71 @@ describe('a ramp alongside tapers into the motorway rather than turning into it'
         const [, slip] = whiteAt(-0.2).filter((z) => z < -6);
         expect(slip).toBeCloseTo(start.dz, 0);
       });
+
+      it('keeps the slip road’s lane its full width from the nose: the area opens between the lanes', () => {
+        const lane = (dx: number): number => {
+          const yellowZ = yellow
+            .filter((v) => Math.abs(v.dx - dx) < 1.2)
+            .map((v) => v.dz)
+            .sort((p, q) => p - q);
+          const edge = whiteAt(dx).filter((z) => z > start.dz);
+          return Math.abs(edge[0]! - (yellowZ[0]! + yellowZ[yellowZ.length - 1]!) / 2);
+        };
+        const full = lane(half - 1.2);
+        expect(full).toBeGreaterThan(3.5);
+        expect(lane(1)).toBeGreaterThan(full - 0.25);
+        // The pavement holds the lane and its shoulder at the nose.
+        const plate = vertices(geo).filter((v) => !isPaint(v.c));
+        const farEdge = Math.max(...plate.filter((v) => Math.abs(v.dx) < 0.01).map((v) => v.dz));
+        expect(farEdge).toBeGreaterThan(Math.max(...whiteAt(0.2)) + 0.3);
+      });
+    });
+
+    describe('where it joins, the entrance’s neutral area', () => {
+      // Heading east with the motorway to the north: a merge arriving from the west.
+      const geo = join(W);
+      const whiteTriangles = triangles(geo).filter((tri) =>
+        tri.every((v) => isMarkingWhite(v.c as number[])),
+      );
+      const wide = (tri: (typeof whiteTriangles)[number]) =>
+        Math.max(...tri.map((v) => v.dx)) - Math.min(...tri.map((v) => v.dx)) > 0.5;
+      /** The centres of the white paint crossing the tile at `dx`, across it. */
+      const whiteAt = (dx: number): number[] => {
+        const zs: number[] = [];
+        for (const tri of whiteTriangles.filter(wide)) {
+          const cuts: number[] = [];
+          for (const [a, b] of [
+            [tri[0]!, tri[1]!],
+            [tri[1]!, tri[2]!],
+            [tri[2]!, tri[0]!],
+          ] as const) {
+            if ((a.dx - dx) * (b.dx - dx) > 0 || a.dx === b.dx) continue;
+            cuts.push(a.dz + ((b.dz - a.dz) * (dx - a.dx)) / (b.dx - a.dx));
+          }
+          if (cuts.length > 0) zs.push((Math.min(...cuts) + Math.max(...cuts)) / 2);
+        }
+        // One line is several triangles: lines closer than a stroke are one.
+        return zs.sort((p, q) => p - q).filter((z, k, all) => k === 0 || z - all[k - 1]! > 0.25);
+      };
+      const motorwaySide = -(half - 0.3);
+
+      it('is bounded by a wide white line on each side, closing to the downstream edge (MUTCD 3B.08)', () => {
+        const [near, slip] = whiteAt(3).filter((z) => z < -5);
+        expect(Math.abs(near! - motorwaySide)).toBeLessThan(0.15);
+        expect(Math.abs(slip! - near! - (3 * (half - 3)) / half)).toBeLessThan(0.15);
+        const closing = whiteAt(half - 0.3).filter((z) => z < -5);
+        expect(closing.length).toBeGreaterThan(0);
+        expect(Math.max(...closing) - Math.min(...closing)).toBeLessThan(0.5);
+      });
+
+      it('paints nothing white past the motorway’s edge', () => {
+        const reach = Math.min(
+          ...vertices(geo)
+            .filter((v) => isMarkingWhite(v.c as number[]))
+            .map((v) => v.dz),
+        );
+        expect(reach).toBeGreaterThan(-half - 0.01);
+      });
     });
   });
 });
@@ -6678,5 +6768,107 @@ describe('a ramp’s T carries no edge line through the junction box on the side
   // painted between the spine's middle and there.
   it('paints nothing through the box on the stem’s side', () => {
     expect(paintAcross(0.5, 5.5)).toEqual([]);
+  });
+});
+
+describe('a turn tile is a no-passing zone', () => {
+  const S = 4;
+  /** The radii from the turn's pivot of the yellow paint on a south-east turn, and how far round it each lies. */
+  const yellowArc = (tier: RoadTier) => {
+    const { positions, colors } = roadTileVertices(0, 0, tier, S | E, flatHeightAt);
+    const pts: { r: number; a: number }[] = [];
+    for (let i = 0; i < positions.length / 3; i++) {
+      if (Math.abs(positions[i * 3 + 1]! - MARK_Y_OFFSET) > 1e-6) continue;
+      if (!(colors[i * 3]! > 0.8 && colors[i * 3 + 2]! < 0.4)) continue;
+      const dx = positions[i * 3]! - TILE_METERS;
+      const dz = positions[i * 3 + 2]! - TILE_METERS;
+      pts.push({ r: Math.hypot(dx, dz), a: Math.atan2(-dz, -dx) });
+    }
+    return pts;
+  };
+
+  it('paints two solid yellow lines round a two-lane turn, not a broken one', () => {
+    const pts = yellowArc(RoadTier.TwoLane);
+    expect(pts.length).toBeGreaterThan(0);
+    const mean = pts.reduce((s, p) => s + p.r, 0) / pts.length;
+    for (const p of pts) {
+      expect(Math.abs(Math.abs(p.r - mean) - 0.22)).toBeLessThan(PAINT_HALF_WIDTH_M + 0.02);
+    }
+    // Unbroken from one opening of the turn to the other.
+    const angles = pts.map((p) => p.a).sort((p, q) => p - q);
+    for (let k = 1; k < angles.length; k++) {
+      expect((angles[k]! - angles[k - 1]!) * mean).toBeLessThan(1);
+    }
+    expect((angles[angles.length - 1]! - angles[0]!) * mean).toBeGreaterThan(10);
+  });
+
+  it('leaves a four-lane turn’s own solid pair as it was', () => {
+    const pts = yellowArc(RoadTier.FourLane);
+    const mean = pts.reduce((s, p) => s + p.r, 0) / pts.length;
+    for (const p of pts) {
+      expect(Math.abs(Math.abs(p.r - mean) - 0.22)).toBeLessThan(PAINT_HALF_WIDTH_M + 0.02);
+    }
+  });
+});
+
+describe('where a gravel track or an alley leaves a street', () => {
+  const street = (arm: RoadTier) =>
+    roadTileVertices(0, 0, RoadTier.TwoLane, N | E | W, flatHeightAt, {
+      n: arm,
+      e: RoadTier.TwoLane,
+      s: RoadTier.None,
+      w: RoadTier.TwoLane,
+    });
+  type Pt = { x: number; z: number; y: number; c: number[] };
+  const points = (geo: { positions: number[]; colors: number[] }): Pt[] =>
+    Array.from({ length: geo.positions.length / 3 }, (_, i) => ({
+      x: geo.positions[i * 3]! - TILE_METERS / 2,
+      y: geo.positions[i * 3 + 1]!,
+      z: geo.positions[i * 3 + 2]! - TILE_METERS / 2,
+      c: geo.colors.slice(i * 3, i * 3 + 3),
+    }));
+  const isFootway = (p: Pt): boolean =>
+    Math.abs(p.y - CURB_Y_OFFSET) < 1e-6 &&
+    SIDEWALK_COLOR.every((v, k) => Math.abs(p.c[k]! - v) < 0.01);
+
+  it('meets the gravel’s edge with the kerb return, leaving no sliver of street', () => {
+    const half = TILE_METERS * GRAVEL_HALF_WIDTH_FRACTION;
+    const atEdge = points(street(RoadTier.Gravel)).filter(
+      (p) => isFootway(p) && Math.abs(p.z + TILE_METERS / 2) < 1e-6,
+    );
+    expect(atEdge.length).toBeGreaterThan(0);
+    for (const side of [-1, 1]) {
+      const inner = Math.min(...atEdge.filter((p) => p.x * side > 0).map((p) => Math.abs(p.x)));
+      expect(inner).toBeCloseTo(half, 2);
+    }
+  });
+
+  it('runs the footway unbroken past an alley’s mouth, in its own colour at its own level', () => {
+    const half = carriagewayHalfWidthMeters(RoadTier.Alley);
+    const pts = points(street(RoadTier.Alley));
+    const footway = pts.filter((p) => isFootway(p) && p.z < -4 && p.z > -9);
+    // One strip from edge to edge of the tile, with the footway's own surface
+    // standing across the mouth.
+    expect(Math.min(...footway.map((p) => p.x))).toBeCloseTo(-TILE_METERS / 2, 6);
+    expect(Math.max(...footway.map((p) => p.x))).toBeCloseTo(TILE_METERS / 2, 6);
+    const spanning = [];
+    for (let t = 0; t + 2 < pts.length; t += 3) {
+      const tri = pts.slice(t, t + 3);
+      if (!tri.every((p) => isFootway(p) && p.z < -3.5 && p.z > -9)) continue;
+      if (Math.min(...tri.map((p) => p.x)) < -half && Math.max(...tri.map((p) => p.x)) > half)
+        spanning.push(tri);
+    }
+    // A triangle of the footway reaches clear across the mouth, at the footway's level.
+    expect(spanning.length).toBeGreaterThan(0);
+    expect(
+      pts.some(
+        (p) =>
+          Math.abs(p.y - ROAD_Y_OFFSET) < 1e-6 &&
+          p.z < -4.2 &&
+          p.z > -5.5 &&
+          Math.abs(p.x) < half &&
+          p.c[0] === SIDEWALK_COLOR[0],
+      ),
+    ).toBe(false);
   });
 });

@@ -34,6 +34,7 @@ import {
   VALUE_JITTER_MAX,
   PINE_ELEVATION_METERS,
   SHRUB_DENSITY_MAX,
+  SHRUB_RADIUS,
   WATER_PROXIMITY_TILES,
   WINTER_TINT,
   SPRING_TINT,
@@ -793,6 +794,34 @@ describe('TreeRenderer', () => {
       }
     }
     expect(closePairs).toBe(0);
+  });
+
+  it('keeps every shrub’s whole blob inside its own tile, so it never lies on a footway beside a road tile', () => {
+    const size = 14;
+    const map = makeMap(size, new Array(size * size).fill(100), new Array(size * size).fill(0));
+    let shrubs = 0;
+    let nearEdge = 0;
+    for (const seed of [1, 2, 3, 4, 5, 6]) {
+      const renderer = new TreeRenderer(new THREE.Scene(), flatHeightAt);
+      renderer.build(map, seed);
+      const mesh = renderer.meshFor('shrub');
+      if (!mesh) continue;
+      for (let i = 0; i < mesh.count; i++) {
+        const { position, scale } = decomposeAt(mesh, i);
+        const radius = SHRUB_RADIUS * scale.x;
+        for (const axis of [position.x, position.z]) {
+          const inTile = axis - Math.floor(axis / TILE_METERS) * TILE_METERS;
+          // Instance matrices are 32-bit floats: a micrometre of slack.
+          expect(inTile - radius).toBeGreaterThanOrEqual(-1e-4);
+          expect(inTile + radius).toBeLessThanOrEqual(TILE_METERS + 1e-4);
+          if (Math.abs(inTile - TILE_METERS / 2) > 0.5 * TILE_METERS - radius - 0.1) nearEdge++;
+        }
+        shrubs++;
+      }
+    }
+    expect(shrubs).toBeGreaterThan(50);
+    // The clamp is exercised: some shrubs stand against a tile edge.
+    expect(nearEdge).toBeGreaterThan(0);
   });
 
   it('a mature multi-tree stand can still draw one sapling-sized outlier among mature tile-mates (seed=29, tile (0,0), density 255)', () => {

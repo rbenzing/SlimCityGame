@@ -29,10 +29,24 @@ export const FUEL_CANOPY_DEPTH_M = 10;
 /** A tank farm stands this far off the wall opposite the street, its tanks this wide. */
 export const TANK_GAP_M = 2;
 export const TANK_DIAMETER_M = 6;
+/** A chemical plant's bund wall stands this far outside its tanks, on paving that reaches its outer face. */
+export const BUND_MARGIN_M = 2;
+export const BUND_THICKNESS_M = 0.3;
 
 /** The kinds that keep a forecourt in front of the body, and those that keep a tank farm behind it. */
 const FORECOURT_KINDS: ReadonlySet<BuildingKind> = new Set(['fuel']);
 const TANK_FARM_KINDS: ReadonlySet<BuildingKind> = new Set(['chemical', 'paper']);
+/**
+ * How deep behind the body a heavy plant's hardstanding reaches, where the lot
+ * has the ground: the chemical plant's tank farm and the bund's outer face; a
+ * food plant's silo pair, a gap off the wall; a steelworks' furnace, scrap
+ * yard and gantry.
+ */
+const HARDSTANDING_M: Readonly<Partial<Record<BuildingKind, number>>> = {
+  chemical: TANK_GAP_M + TANK_DIAMETER_M + BUND_MARGIN_M + BUND_THICKNESS_M / 2,
+  foodplant: 6,
+  metals: 14,
+};
 /** The kinds that dock trailers at a bank of doors and keep a truck court before it. */
 const TRUCK_COURT_KINDS: ReadonlySet<BuildingKind> = new Set(['warehouse', 'foodplant']);
 
@@ -46,6 +60,7 @@ export function lotYardsFor(entry: BuildingCatalogEntry): {
   frontSetback?: number;
   bodyMargin?: number;
   rearYard?: number;
+  hardstanding?: number;
 } {
   const kind = entry.kind;
   const denseFront = isDenseLotEntry(entry) ? (GARAGE_FRONT_PROJECTION_M[kind ?? ''] ?? 0) : 0;
@@ -57,6 +72,7 @@ export function lotYardsFor(entry: BuildingCatalogEntry): {
     ...(isDenseLotEntry(entry) && hasPodium(entry) ? { bodyMargin: PODIUM_OVERHANG_M } : {}),
     ...(kind && TANK_FARM_KINDS.has(kind) ? { rearYard: TANK_GAP_M + TANK_DIAMETER_M } : {}),
     ...(kind === 'multiplex' || kind === 'garden' ? { rearYard: WALK_UP_REAR_YARD_M[kind] } : {}),
+    ...(kind && HARDSTANDING_M[kind] ? { hardstanding: HARDSTANDING_M[kind] } : {}),
   };
 }
 

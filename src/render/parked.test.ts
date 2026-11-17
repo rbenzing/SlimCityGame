@@ -558,6 +558,16 @@ describe('ParkedCarRenderer frontage apron', () => {
     expect(maxZ).toBeLessThanOrEqual(7 * TILE_METERS + 1e-3);
   });
 
+  it('paints the stalls with the night-tinted body material, never a plain lit white', () => {
+    const { renderer } = northFrontingLot();
+    const material = renderer.stripeMeshFor(1)!.material as { colorNode?: unknown };
+    expect(material.colorNode).toBeDefined();
+    renderer.setNightFactor(1.5);
+    expect(renderer.nightFactor()).toBe(1);
+    renderer.setNightFactor(-1);
+    expect(renderer.nightFactor()).toBe(0);
+  });
+
   it('meets the lot’s own crossing of the verge at the back of the sidewalk, edge to edge', () => {
     const { renderer } = northFrontingLot();
     const entry = makeCatalogEntry({ footprint: { w: 3, d: 2 } });

@@ -37,6 +37,14 @@ const ready = (page) =>
 export function tileCamera(page) {
   return async (tx, tz, distance, yaw, pitch) => {
     await ready(page);
+    const prev = lastCamera.get(page);
+    lastCamera.set(page, {
+      tx,
+      tz,
+      distance: Math.max(distance, CAMERA_MIN_DISTANCE),
+      yaw: yaw ?? prev?.yaw ?? 0,
+      pitch: pitch ?? prev?.pitch ?? 0.7,
+    });
     if (distance < CAMERA_MIN_DISTANCE) {
       // The rig re-clamps its own distance every frame, so a harness asking to
       // come closer than the player may simply gets the floor and a picture
@@ -55,6 +63,61 @@ export function tileCamera(page) {
       [tx, tz, distance, yaw, pitch],
     );
   };
+}
+
+const lastCamera = new WeakMap();
+const CAMERA_MAX_PITCH = 1.45;
+const CAMERA_MIN_PITCH = 0.18;
+const FOV_TAN = Math.tan(Math.PI / 8);
+
+/**
+ * Where a world point lands on screen under the camera `tileCamera` last set,
+ * as fractions of the viewport (0..1 across, 0..1 down), or null when it is
+ * behind the eye. The point is a tile coordinate (the tile's centre when `tx`
+ * and `tz` are whole) and a height `y` in metres above the target's ground; the
+ * ground is taken as level with the target, so use it on flat sites. Mirrors the
+ * rig's own placement (45 degree vertical view, eye at distance/pitch/yaw).
+ */
+export async function screenOf(page, tx, tz, y = 0) {
+  const cam = lastCamera.get(page);
+  if (!cam) throw new Error('[shotcam] screenOf called before any camera was aimed');
+  const T = await tileMeters(page);
+  const vp = page.viewportSize();
+  const pitch = Math.min(CAMERA_MAX_PITCH, Math.max(CAMERA_MIN_PITCH, cam.pitch));
+  // The point relative to the eye, then onto the camera's right, up and forward axes.
+  const sy = Math.sin(cam.yaw);
+  const cy = Math.cos(cam.yaw);
+  const sp = Math.sin(pitch);
+  const cp = Math.cos(pitch);
+  const wx = (tx - cam.tx) * T - cam.distance * cp * sy;
+  const wy = y - cam.distance * sp;
+  const wz = (tz - cam.tz) * T - cam.distance * cp * cy;
+  const depth = -(wx * cp * sy + wy * sp + wz * cp * cy);
+  if (depth <= 1) return null;
+  const right = wx * cy - wz * sy;
+  const up = -wx * sp * sy + wy * cp - wz * sp * cy;
+  const half = depth * FOV_TAN;
+  return {
+    x: 0.5 + right / (half * (vp.width / vp.height)) / 2,
+    y: 0.5 - up / half / 2,
+  };
+}
+
+/**
+ * Throw, naming the shot, unless the subject tile lands inside the frame.
+ *
+ * `margin` is the fraction of the viewport kept clear at every edge; the bottom
+ * is kept clear by `margin + 0.1` for the HUD bar. Use it on the point of the
+ * subject that must be seen (a box, a riser pole, the reactor intake).
+ */
+export async function requireInFrame(page, name, tx, tz, y = 0, margin = 0.05) {
+  const s = await screenOf(page, tx, tz, y);
+  const ok = s && s.x >= margin && s.x <= 1 - margin && s.y >= margin && s.y <= 1 - margin - 0.1;
+  if (!ok) {
+    const at = s ? `${s.x.toFixed(2)},${s.y.toFixed(2)}` : 'behind the eye';
+    throw new Error(`[shotcam] ${name}: subject at tile ${tx},${tz} is out of frame (${at})`);
+  }
+  return s;
 }
 
 /**
@@ -118,9 +181,10 @@ export async function dismissToasts(page) {
  * the shot, unless `allowRefusal` (tested against "title body") says the shot is
  * OF that refusal, in which case the toast stays in frame and is dismissed
  * afterwards so it does not leak into the next shot. Any other toast is
- * dismissed before the shutter.
+ * dismissed before the shutter. `clip` crops the picture to a page rectangle
+ * (`{ x, y, width, height }`), for a shot of a panel rather than the scene.
  */
-export async function cleanShot(page, path, { allowRefusal } = {}) {
+export async function cleanShot(page, path, { allowRefusal, clip } = {}) {
   const toasts = await readToasts(page);
   const refused = toasts.filter((t) => / failed$/.test(t.title));
   const unexpected = refused.filter((t) => !allowRefusal?.test(`${t.title} ${t.body}`));
@@ -142,7 +206,7 @@ export async function cleanShot(page, path, { allowRefusal } = {}) {
     await logAlerts(page, path.replace(/\\/g, '/').split('/').slice(-2, -1)[0] ?? path);
   }
   if (refused.length === 0) await dismissToasts(page);
-  await page.screenshot({ path });
+  await page.screenshot({ path, ...(clip ? { clip } : {}) });
   if (refused.length > 0) await dismissToasts(page);
 }
 
@@ -196,6 +260,62 @@ export const unlimitedMoneyOption = (page) =>
       void e;
     }
   });
+
+/**
+ * The status strip's clock as minutes into the day, read off the page itself.
+ *
+ * The strip shows `HH:MM` from the sim's tick, and the scene's light is mapped
+ * from the same tick, so this is the one time both agree on.
+ */
+export const readClockMinutes = (page) =>
+  page.evaluate(() => {
+    for (const el of document.querySelectorAll('span')) {
+      const m = /^(\d{2}):(\d{2})$/.exec(el.textContent ?? '');
+      if (m && el.children.length === 0) return Number(m[1]) * 60 + Number(m[2]);
+    }
+    return null;
+  });
+
+/**
+ * Run the game's own clock forward to `hour` (0..24), then pause it.
+ *
+ * `setDayT` pins the light alone, leaving the strip at whatever hour the sim is
+ * at, so a frame reads "09:00" under a night sky. This lets the sim itself carry
+ * the tick to the hour — fast while far, at the slowest speed for the last
+ * stretch — and clears any pin, so the strip and the scene are one time. The
+ * clock only runs forward: asking for an hour already passed runs round to its
+ * next turn. Buildings put up by command stand through it; the caller checks.
+ */
+export async function setClock(page, hour, { toleranceMin = 2, budgetMs = 120000 } = {}) {
+  const target = Math.round(hour * 60) % 1440;
+  await page.evaluate(() => window.__slimcity.setDayT(null));
+  const started = Date.now();
+  let speed = null;
+  for (;;) {
+    const now = await readClockMinutes(page);
+    if (now === null) throw new Error('[shotcam] setClock: no clock in the status strip');
+    const ahead = (target - now + 1440) % 1440;
+    if (ahead <= toleranceMin || ahead >= 1440 - toleranceMin) break;
+    if (Date.now() - started > budgetMs) {
+      throw new Error(
+        `[shotcam] setClock: still ${ahead} min short of ${hour} h after ${budgetMs} ms`,
+      );
+    }
+    const want = ahead > 40 ? 4 : 1;
+    if (want !== speed) {
+      speed = want;
+      await page.evaluate((s) => window.__slimcity.setSpeed(s), want);
+    }
+    await page.waitForTimeout(40);
+  }
+  await page.evaluate(() => window.__slimcity.setSpeed(0));
+  await page.waitForTimeout(300);
+  const shown = await readClockMinutes(page);
+  console.log(
+    `[shotcam] clock set to ${String(Math.floor(shown / 60)).padStart(2, '0')}:${String(shown % 60).padStart(2, '0')}`,
+  );
+  return shown;
+}
 
 /** The app's tile size in metres, for harnesses that measure as well as look. */
 export async function tileMeters(page) {

@@ -146,6 +146,27 @@ function strip(
   return tiles;
 }
 
+/**
+ * Four ramp tiles that leave a motorway: they run `flow` from `at` along the
+ * road, on the row or column `beside`, so the motorway tile before `at` has an
+ * exit ahead for a gantry to announce.
+ */
+function exitRamp(
+  flow: RoadFlow,
+  at: number,
+  beside: number,
+  extra: Partial<FurnitureRoadTile> = {},
+): FurnitureRoadTile[] {
+  const { dx, dz } = stepForFlow(flow);
+  return [0, 1, 2, 3].map((k) => ({
+    x: dx === 0 ? beside : at + dx * k,
+    z: dx === 0 ? at + dz * k : beside,
+    tier: RoadTier.Ramp,
+    flow,
+    ...extra,
+  }));
+}
+
 /** A few parallel two-lane streets — enough tiles that every prop layer fires. */
 function representativeGrid(): FurnitureRoadTile[] {
   const tiles: FurnitureRoadTile[] = [];
@@ -562,7 +583,10 @@ describe('road-furniture placement (pure)', () => {
   });
 
   it('signs a highway overhead only — no street furniture on a motorway', () => {
-    const tiles = strip(0, 0, 30, 'ew', RoadTier.Highway); // z=0
+    const tiles = [
+      ...strip(0, 0, 30, 'ew', RoadTier.Highway).map((t) => ({ ...t, flow: RoadFlow.East })),
+      ...exitRamp(RoadFlow.East, 26, -1),
+    ];
     const signs = computeSignPlacements(tiles);
     const types = new Set(signs.map((s) => s.type));
 
@@ -651,13 +675,19 @@ describe('road-furniture placement (pure)', () => {
     });
 
     it('signs an elevated motorway overhead, where its signage belongs anyway', () => {
-      const tiles: FurnitureRoadTile[] = strip(0, 0, 39, 'ew', RoadTier.Highway).map((t) => ({
-        ...t,
-        elevated: true,
-      }));
+      const tiles: FurnitureRoadTile[] = [
+        ...strip(0, 0, 39, 'ew', RoadTier.Highway).map((t) => ({
+          ...t,
+          flow: RoadFlow.East,
+          elevated: true,
+        })),
+        ...exitRamp(RoadFlow.East, 36, -1, { elevated: true }),
+      ];
       const signs = computeSignPlacements(tiles);
       expect(signs.length).toBeGreaterThan(0);
-      expect(signs.every((s) => s.type === 'gantry')).toBe(true);
+      // Overhead and exit boards only: nothing that stands on a verge.
+      expect(signs.every((s) => s.type === 'gantry' || s.type === 'exit')).toBe(true);
+      expect(signs.some((s) => s.type === 'gantry')).toBe(true);
     });
 
     it('drops the verge boards, which would stand on thin air', () => {
@@ -1214,7 +1244,10 @@ describe('a sign faces the traffic it serves', () => {
     // A motorway is one one-way carriageway, so its overhead boards are the
     // sign a driver reads most and the one the kerb rule cannot orient.
     for (const flow of [RoadFlow.East, RoadFlow.West] as const) {
-      const tiles = strip(0, 0, 60, 'ew', RoadTier.Highway).map((t) => ({ ...t, flow }));
+      const tiles = [
+        ...strip(0, 0, 60, 'ew', RoadTier.Highway).map((t) => ({ ...t, flow })),
+        ...exitRamp(flow, flow === RoadFlow.East ? 56 : 3, -1),
+      ];
       const gantries = computeSignPlacements(tiles).filter((s) => s.type === 'gantry');
       expect(gantries.length).toBeGreaterThan(0);
       for (const g of gantries) {
@@ -1322,11 +1355,16 @@ describe('a dual carriageway is signed as two motorways, not a junction', () => 
   it('gives each carriageway the gantries it would have on its own', () => {
     // The carriageway alongside is another road, not an arm: counted as one,
     // every tile read as a junction and no gantry could find a straight run.
-    const alone = computeSignPlacements(
-      strip(4, 0, 60, 'ns', RoadTier.Highway).map((t) => ({ ...t, flow: RoadFlow.South })),
-    ).filter((s) => s.type === 'gantry');
+    const southExit = exitRamp(RoadFlow.South, 56, 3);
+    const northExit = exitRamp(RoadFlow.North, 3, 6);
+    const alone = computeSignPlacements([
+      ...strip(4, 0, 60, 'ns', RoadTier.Highway).map((t) => ({ ...t, flow: RoadFlow.South })),
+      ...southExit,
+    ]).filter((s) => s.type === 'gantry');
     expect(alone.length).toBeGreaterThan(0);
-    const both = computeSignPlacements(dual()).filter((s) => s.type === 'gantry');
+    const both = computeSignPlacements([...dual(), ...southExit, ...northExit]).filter(
+      (s) => s.type === 'gantry',
+    );
     expect(both.filter((s) => s.x === 4)).toHaveLength(alone.length);
     expect(both.filter((s) => s.x === 5).length).toBeGreaterThan(0);
   });
@@ -1357,7 +1395,10 @@ describe('a motorway laid across two tiles is signed as the one road it is', () 
         profile: corridorHalfProfile(six, half),
       })),
     );
-  const gantries = () => computeSignPlacements(corridor()).filter((s) => s.type === 'gantry');
+  const gantries = () =>
+    computeSignPlacements([...corridor(), ...exitRamp(RoadFlow.East, 56, 3)]).filter(
+      (s) => s.type === 'gantry',
+    );
 
   it('puts up one gantry at a time, not one over each half', () => {
     expect(gantries().length).toBeGreaterThan(0);
@@ -1378,13 +1419,14 @@ describe('a motorway laid across two tiles is signed as the one road it is', () 
 
   it('spans a composed four-lane motorway too, which is wider than the one it is modelled on', () => {
     const four = composeProfile(presetProfileForTier(RoadTier.Highway), { ...NO_EDITS, lanes: 4 });
-    const [g] = computeSignPlacements(
-      strip(4, 0, 60, 'ew', RoadTier.Highway).map((t) => ({
+    const [g] = computeSignPlacements([
+      ...strip(4, 0, 60, 'ew', RoadTier.Highway).map((t) => ({
         ...t,
         flow: RoadFlow.East,
         profile: four,
       })),
-    ).filter((s) => s.type === 'gantry');
+      ...exitRamp(RoadFlow.East, 56, 3),
+    ]).filter((s) => s.type === 'gantry');
     expect(g!.span).toBeGreaterThan(carriagewayHalfWidthMeters(RoadTier.Highway) + 1.2);
   });
 });
@@ -1568,14 +1610,33 @@ describe('a ramp that runs alongside the motorway before it joins', () => {
   it('keeps the motorway’s gantries beside the stretch, which is a plain run', () => {
     // Counted as arms, the ramp alongside would make every motorway tile it
     // passes a junction, and no gantry could stand on any of them.
-    const alone = computeSignPlacements(motorway()).filter((s) => s.type === 'gantry');
-    const withRamp = computeSignPlacements(onRamp()).filter(
+    // An exit further along gives the gantry at x = 23 something to announce.
+    const exit = [30, 31, 32, 33].map((x) => ramp(x, 0, RoadFlow.East));
+    const alone = computeSignPlacements([...motorway(), ...exit]).filter(
+      (s) => s.type === 'gantry',
+    );
+    const withRamp = computeSignPlacements([...onRamp(), ...exit]).filter(
       (s) => s.type === 'gantry' && s.z === 1,
     );
     const nearRamp = (xs: readonly { x: number }[]): number[] =>
       xs.map((s) => s.x).filter((x) => x >= 22 && x < 26);
     expect(nearRamp(alone).length, 'there is a gantry to keep').toBeGreaterThan(0);
     expect(nearRamp(withRamp)).toEqual(nearRamp(alone));
+  });
+
+  it('stands no gantry on a motorway with no exit to announce', () => {
+    expect(computeSignPlacements(motorway()).filter((s) => s.type === 'gantry')).toEqual([]);
+    expect(computeSignPlacements(onRamp()).filter((s) => s.type === 'gantry')).toEqual([]);
+  });
+
+  it('stands a gantry only on the approach to an exit, upstream of the diverge', () => {
+    const gantries = computeSignPlacements(offRamp()).filter((s) => s.type === 'gantry');
+    expect(gantries.length).toBeGreaterThan(0);
+    // Every one lies upstream of the diverge at x = 20 and within a gantry period of it.
+    for (const g of gantries) {
+      expect(g.x).toBeLessThan(20);
+      expect(g.x).toBeGreaterThanOrEqual(20 - 12);
+    }
   });
 });
 
