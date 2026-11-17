@@ -35,7 +35,22 @@ const RT_RAMP = 12;
 const BUS_PROFILE = 40;
 const BIKE_PROFILE = 41;
 const TRAM_PROFILE = 42;
+/** Trams share the two running lanes: rails in each, no reservation. */
+const TRAM_STREET_PROFILE = 43;
 const PROFILES = [
+  {
+    id: TRAM_STREET_PROFILE,
+    profile: {
+      class: 'local',
+      kerbs: true,
+      pieces: [
+        { kind: 'sidewalk', width: 1.875 },
+        { kind: 'travel', width: 3.75, flow: 'back', tram: true },
+        { kind: 'travel', width: 3.75, flow: 'fwd', tram: true },
+        { kind: 'sidewalk', width: 1.875 },
+      ],
+    },
+  },
   {
     id: BUS_PROFILE,
     profile: {
@@ -94,6 +109,13 @@ const KINDS = [
   { name: 'bus-lane', tier: RT.TwoLane, flow: 0, profile: BUS_PROFILE, deflections: [30, 90] },
   { name: 'bike-lane', tier: RT.TwoLane, flow: 0, profile: BIKE_PROFILE, deflections: [30, 90] },
   { name: 'tram', tier: RT.Avenue, flow: 0, profile: TRAM_PROFILE, deflections: [30, 90] },
+  {
+    name: 'tram-street',
+    tier: RT.TwoLane,
+    flow: 0,
+    profile: TRAM_STREET_PROFILE,
+    deflections: [30, 90],
+  },
   { name: 'motorway', tier: RT_HIGHWAY, flow: 0, deflections: [30, 60] },
   { name: 'ramp', tier: RT_RAMP, flow: 1, deflections: [30, 90] },
 ];
@@ -286,6 +308,23 @@ try {
       await look(n.x - 20, n.z + 10, OBLIQUE_M, 0.6, OBLIQUE_PITCH);
       await shot(`${name}-oblique`, 1000);
     }
+  }
+
+  // --- a two-lane corner drawn on the grid: a turn tile between two straights ----------
+  {
+    const site = claimSite(SITE_TILES, SITE_TILES);
+    if (!site) throw new Error('no flat site for the grid corner');
+    const z = site.z + 3;
+    const x = site.x + 10;
+    const tiles = [
+      ...Array.from({ length: 11 }, (_, i) => ({ x: site.x + i, z })),
+      ...Array.from({ length: 6 }, (_, i) => ({ x, z: z + 1 + i })),
+    ];
+    await cmd('grid corner', [{ kind: 'buildRoad', tier: RT.TwoLane, tiles }]);
+    await page.waitForTimeout(500);
+    const corner = { x: (x + 0.5) * T, z: (z + 0.5) * T };
+    await look(corner.x - 25, corner.z + 10, ABOVE_M, 0, Math.PI / 2);
+    await shot('grid-corner-two-lane-above', 1000);
   }
 
   // --- vehicles on the 60 degree two-lane bend -----------------------------------

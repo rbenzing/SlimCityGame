@@ -2995,6 +2995,32 @@ describe('RoadMeshRenderer', () => {
     expect(extentOf(composed, centreX)).toBeCloseTo(14 / 2 + kerbWidthOf(wide), 3);
   });
 
+  it('runs a straight’s broken centre line up to the turn tile it meets, as drawn on the grid', () => {
+    const scene = new THREE.Scene();
+    // Tiles 0..3 along z = 2, a corner at x = 4, then the road runs south.
+    const row = [0, 1, 2, 3].map((x) => makeDelta(x, 2, RoadTier.TwoLane, E | W));
+    new RoadMeshRenderer(scene, flatHeightAt).apply([
+      ...row,
+      makeDelta(4, 2, RoadTier.TwoLane, W | S),
+      makeDelta(4, 3, RoadTier.TwoLane, N | S),
+    ]);
+    const mesh = scene.children[0] as THREE.Mesh;
+    const pos = mesh.geometry.getAttribute('position');
+    const col = mesh.geometry.getAttribute('color');
+    // The longest yellow run along the centre line reaching the straight's end: a
+    // dash that starts at the last dash's own start (73.2 m) and ends at the turn (80 m).
+    let longest = 0;
+    for (let i = 0; i + 2 < pos.count; i += 3) {
+      const rgb = [col.getX(i), col.getY(i), col.getZ(i)];
+      const xs = [0, 1, 2].map((k) => pos.getX(i + k));
+      const z = pos.getZ(i);
+      if (!isMarkingYellow(rgb) || Math.abs(z - 2.5 * TILE_METERS) > 0.3) continue;
+      if (Math.max(...xs) > 4 * TILE_METERS + 1e-6) continue;
+      longest = Math.max(longest, Math.max(...xs) - Math.min(...xs));
+    }
+    expect(longest).toBeCloseTo(4 * TILE_METERS - 6 * DASH_PERIOD_M, 3);
+  });
+
   it('builds one merged mesh for a chunk containing the changed tiles', () => {
     const scene = new THREE.Scene();
     const renderer = new RoadMeshRenderer(scene, flatHeightAt);
@@ -6870,5 +6896,102 @@ describe('where a gravel track or an alley leaves a street', () => {
           p.c[0] === SIDEWALK_COLOR[0],
       ),
     ).toBe(false);
+  });
+});
+
+describe('roadTileVertices — a broken centre line meets a turn tile’s solid pair', () => {
+  const half = carriagewayHalfWidthOf(presetProfileForTier(RoadTier.TwoLane));
+  const beside = (turns: { n?: boolean; s?: boolean }) => {
+    const halves: NeighborHalves = {
+      n: half,
+      e: 0,
+      s: half,
+      w: 0,
+      turns: { n: turns.n === true, e: false, s: turns.s === true, w: false },
+    };
+    const neighbors: NeighborTiers = {
+      n: RoadTier.TwoLane,
+      e: RoadTier.None,
+      s: RoadTier.TwoLane,
+      w: RoadTier.None,
+    };
+    return roadTileVertices(
+      0,
+      2,
+      RoadTier.TwoLane,
+      N | S,
+      flatHeightAt,
+      neighbors,
+      undefined,
+      halves,
+    );
+  };
+  /** The north-south extent of the yellow paint on tile row 2, in metres. */
+  const yellowReach = (v: { positions: number[]; colors: number[] }): [number, number] => {
+    const zs: number[] = [];
+    for (let i = 0; i < v.colors.length; i += 3) {
+      if (isMarkingYellow(v.colors.slice(i, i + 3))) zs.push(v.positions[i + 2]!);
+    }
+    return [Math.min(...zs), Math.max(...zs)];
+  };
+  const TILE_TOP = 2 * TILE_METERS;
+  const TILE_BOTTOM = 3 * TILE_METERS;
+
+  it('fills the last gap up to a turn tile, on either end, and only there', () => {
+    const plain = yellowReach(beside({}));
+    expect(plain[0]).toBeGreaterThan(TILE_TOP + 1);
+    expect(plain[1]).toBeLessThan(TILE_BOTTOM - 1);
+    expect(yellowReach(beside({ s: true }))[1]).toBeCloseTo(TILE_BOTTOM, 6);
+    expect(yellowReach(beside({ s: true }))[0]).toBeCloseTo(plain[0], 6);
+    expect(yellowReach(beside({ n: true }))[0]).toBeCloseTo(TILE_TOP, 6);
+    expect(yellowReach(beside({ n: true }))[1]).toBeCloseTo(plain[1], 6);
+  });
+
+  it('keeps every dash that is not the last, at the pattern’s own phase', () => {
+    const plain = beside({});
+    const joined = beside({ s: true });
+    const dashes = (v: { positions: number[]; colors: number[] }): number =>
+      countWhere(v.colors, isMarkingYellow) / 6;
+    expect(dashes(joined)).toBe(dashes(plain));
+  });
+
+  it('leaves a one-way road, which paints no yellow centre line, as it was', () => {
+    const halves: NeighborHalves = {
+      n: half,
+      e: 0,
+      s: half,
+      w: 0,
+      turns: { n: false, e: false, s: true, w: false },
+    };
+    const neighbors: NeighborTiers = {
+      n: RoadTier.OneWay,
+      e: RoadTier.None,
+      s: RoadTier.OneWay,
+      w: RoadTier.None,
+    };
+    const flow = RoadFlow.South;
+    const withTurn = roadTileVertices(
+      0,
+      2,
+      RoadTier.OneWay,
+      S | N,
+      flatHeightAt,
+      neighbors,
+      undefined,
+      halves,
+      flow,
+    );
+    const without = roadTileVertices(
+      0,
+      2,
+      RoadTier.OneWay,
+      S | N,
+      flatHeightAt,
+      neighbors,
+      undefined,
+      { ...halves, turns: undefined },
+      flow,
+    );
+    expect(withTurn.positions).toEqual(without.positions);
   });
 });

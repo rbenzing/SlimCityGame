@@ -162,6 +162,7 @@ import {
   centrePair,
   isMedianSideLine,
   markingPlan,
+  noPassingCentres,
   noPassingPlan,
   MEDIAN_EDGE_LINE_INSET_M,
   PAINT_HALF_WIDTH_M,
@@ -371,6 +372,31 @@ export function dashSegments(
     if (!sliver) segments.push([clippedStart, clippedEnd]);
   }
   return segments;
+}
+
+/**
+ * The runs of a broken line along a stretch `from..to`, with the last gap at an
+ * end that meets a no-passing zone filled, so the line carries on as the solid
+ * pair begins.
+ */
+export function joinedRuns(
+  runs: ReadonlyArray<[number, number]>,
+  from: number,
+  to: number,
+  join: { from: boolean; to: boolean },
+): Array<[number, number]> {
+  const out = runs.map(([lo, hi]): [number, number] => [lo, hi]);
+  if (join.to) {
+    const last = out.at(-1);
+    if (last && last[1] < to) last[1] = to;
+    else if (!last) out.push([Math.max(from, to - DASH_GAP_LENGTH_M), to]);
+  }
+  if (join.from) {
+    const first = out[0];
+    if (first && first[0] > from) first[0] = from;
+    else if (!first) out.push([from, Math.min(to, from + DASH_GAP_LENGTH_M)]);
+  }
+  return out;
 }
 
 /**
@@ -993,8 +1019,11 @@ function emitAxisMarkings(
   median?: { is: (line: MarkingLine) => boolean; lo: number; hi: number },
   /** Which ends of the run are dead ends, where the broken lines stop rather than run on into a tile. */
   deadEnd: { lo: boolean; hi: boolean } = { lo: false, hi: false },
+  /** Which ends of the run meet a turn tile, where the broken centre line carries on up to the solid pair. */
+  joinsTurn: { lo: boolean; hi: boolean } = { lo: false, hi: false },
 ): void {
   const pair = suppressCenterPair ? centrePair(plan) : null;
+  const noPassing = noPassingCentres(plan);
   const edges = [outermostLine(plan, 1), outermostLine(plan, -1)];
   /** Where a line sits at each end of the run: its seam values, or its own offset. */
   const ends = (line: MarkingLine, i: number, which: 'solid' | 'dashed'): [number, number] => [
@@ -1070,11 +1099,13 @@ function emitAxisMarkings(
     const edgeAt = edge
       ? driftBetween(...ends(edge, plan.solid.indexOf(edge), 'solid'), lo, hi)
       : undefined;
-    for (const [segLo, segHi] of dashSegments(
-      origin + lo + laneEnd.lo,
-      origin + hi - laneEnd.hi,
-      cut,
-    )) {
+    const from = origin + lo + laneEnd.lo;
+    const to = origin + hi - laneEnd.hi;
+    const runs = dashSegments(from, to, cut);
+    const joined = noPassing.some((c) => c.at === line.at)
+      ? joinedRuns(runs, from, to, { from: joinsTurn.lo, to: joinsTurn.hi })
+      : runs;
+    for (const [segLo, segHi] of joined) {
       const a0 = segLo - origin;
       const a1 = segHi - origin;
       // A dash that reaches the edge line is not a lane's boundary, only a stub
@@ -2227,12 +2258,51 @@ function tramSpan(plan: MarkingPlan): { from: number; to: number } | null {
   return { from: Math.min(...tram.map((b) => b.from)), to: Math.max(...tram.map((b) => b.to)) };
 }
 
+/** One strip of a street track: its two edges across the lane, its height and its colour. */
+export interface TrackStrip {
+  from: number;
+  to: number;
+  yOff: number;
+  color: readonly [number, number, number];
+}
+
 /**
- * Street track down one tram lane, centred `across` the road: a concrete slab
+ * What a street track is made of, centred `across` the lane: a concrete slab
  * flush with the asphalt, and in it two grooved rails at standard gauge, each
  * head with its groove on the gauge side. No sleepers: a street track's ties
- * are buried in the slab, and sleepers across paving read as a railway.
+ * are buried in the slab, and sleepers across paving read as a railway. Every
+ * road that lays track, on the grid or off it, lays these strips.
  */
+export function streetTrackStrips(across: number): TrackStrip[] {
+  const strips: TrackStrip[] = [
+    {
+      from: across - TRAM_SLAB_HALF_W_M,
+      to: across + TRAM_SLAB_HALF_W_M,
+      yOff: TRAM_SLAB_Y_OFFSET,
+      color: TRAM_SLAB_COLOR,
+    },
+  ];
+  for (const side of [1, -1] as const) {
+    const rail = across + side * TRAM_GAUGE_HALF_M;
+    strips.push({
+      from: rail - TRAM_RAIL_HALF_W_M,
+      to: rail + TRAM_RAIL_HALF_W_M,
+      yOff: TRAM_RAIL_Y_OFFSET,
+      color: TRAM_RAIL_COLOR,
+    });
+    const gauge = rail - side * TRAM_RAIL_HALF_W_M;
+    const groove = gauge - side * TRAM_GROOVE_W_M;
+    strips.push({
+      from: Math.min(gauge, groove),
+      to: Math.max(gauge, groove),
+      yOff: TRAM_GROOVE_Y_OFFSET,
+      color: TRAM_GROOVE_COLOR,
+    });
+  }
+  return strips;
+}
+
+/** Street track down one tram lane, centred `across` the road. */
 function emitStreetTrack(
   positions: number[],
   colors: number[],
@@ -2244,20 +2314,21 @@ function emitStreetTrack(
   hAt: (x: number, z: number) => number,
   across: number,
 ): void {
-  const rect = (c0: number, c1: number, yOff: number, color: readonly [number, number, number]) =>
-    trackRect(positions, colors, centerX, centerZ, vertical, hAt, lo, hi, c0, c1, yOff, color);
-  rect(
-    across - TRAM_SLAB_HALF_W_M,
-    across + TRAM_SLAB_HALF_W_M,
-    TRAM_SLAB_Y_OFFSET,
-    TRAM_SLAB_COLOR,
-  );
-  for (const side of [1, -1] as const) {
-    const rail = across + side * TRAM_GAUGE_HALF_M;
-    rect(rail - TRAM_RAIL_HALF_W_M, rail + TRAM_RAIL_HALF_W_M, TRAM_RAIL_Y_OFFSET, TRAM_RAIL_COLOR);
-    const gauge = rail - side * TRAM_RAIL_HALF_W_M;
-    const groove = gauge - side * TRAM_GROOVE_W_M;
-    rect(Math.min(gauge, groove), Math.max(gauge, groove), TRAM_GROOVE_Y_OFFSET, TRAM_GROOVE_COLOR);
+  for (const s of streetTrackStrips(across)) {
+    trackRect(
+      positions,
+      colors,
+      centerX,
+      centerZ,
+      vertical,
+      hAt,
+      lo,
+      hi,
+      s.from,
+      s.to,
+      s.yOff,
+      s.color,
+    );
   }
 }
 
@@ -2469,26 +2540,7 @@ function emitStreetPaths(
     color: readonly [number, number, number],
   ): void => emitPathStrip(positions, colors, centerX, centerZ, path, d0, d1, yOff, color, hAt);
   for (const path of paths) {
-    strip(path, -TRAM_SLAB_HALF_W_M, TRAM_SLAB_HALF_W_M, TRAM_SLAB_Y_OFFSET, TRAM_SLAB_COLOR);
-    for (const side of [1, -1]) {
-      const rail = side * TRAM_GAUGE_HALF_M;
-      strip(
-        path,
-        rail - TRAM_RAIL_HALF_W_M,
-        rail + TRAM_RAIL_HALF_W_M,
-        TRAM_RAIL_Y_OFFSET,
-        TRAM_RAIL_COLOR,
-      );
-      const gauge = rail - side * TRAM_RAIL_HALF_W_M;
-      const groove = gauge - side * TRAM_GROOVE_W_M;
-      strip(
-        path,
-        Math.min(gauge, groove),
-        Math.max(gauge, groove),
-        TRAM_GROOVE_Y_OFFSET,
-        TRAM_GROOVE_COLOR,
-      );
-    }
+    for (const s of streetTrackStrips(0)) strip(path, s.from, s.to, s.yOff, s.color);
   }
 }
 
@@ -5275,6 +5327,12 @@ export interface NeighborHalves {
    */
   junctions?: { n: boolean; e: boolean; s: boolean; w: boolean };
   /**
+   * Whether each neighbour is a TURN tile, a curved corner whose sharp bend is a
+   * no-passing zone. A broken centre line runs up to it rather than leaving its
+   * last gap open before the solid pair begins. Omitted, no neighbour is.
+   */
+  turns?: { n: boolean; e: boolean; s: boolean; w: boolean };
+  /**
    * Half the width of the raised median each neighbour's road carries, zero
    * where it carries none. It decides whether this tile's median runs on into
    * the neighbour or ends in a nose, and where one tapers to meet another.
@@ -6945,6 +7003,10 @@ export function roadTileVertices(
               }
             : undefined,
           { lo: !legN, hi: !legS },
+          {
+            lo: legN && neighborHalves.turns?.n === true,
+            hi: legS && neighborHalves.turns?.s === true,
+          },
         );
         if (plan.bands.length > 0)
           emitColoredLaneBands(
@@ -7013,6 +7075,10 @@ export function roadTileVertices(
               }
             : undefined,
           { lo: !legW, hi: !legE },
+          {
+            lo: legW && neighborHalves.turns?.w === true,
+            hi: legE && neighborHalves.turns?.e === true,
+          },
         );
         if (plan.bands.length > 0)
           emitColoredLaneBands(
@@ -8564,6 +8630,18 @@ export class RoadMeshRenderer {
     return junctionAlong(x, z, axis, this.surroundings);
   }
 
+  /** Whether the road met along `axis` at (x, z) is a turn tile: two arms at a right angle, drawn as a curved corner. */
+  private turnAlong(x: number, z: number, axis: 'x' | 'z'): boolean {
+    const road = this.roadAlong(x, z, axis);
+    if (!road || overAlong(x, z, axis, this.surroundings)) return false;
+    const arms =
+      (road.mask & NORTH ? 1 : 0) +
+      (road.mask & EAST ? 1 : 0) +
+      (road.mask & SOUTH ? 1 : 0) +
+      (road.mask & WEST ? 1 : 0);
+    return arms === 2 && !isCollinearMask(road.mask);
+  }
+
   /** Whether the road met along `axis` at (x, z) is one a pedestrian can walk beside. */
   private walkableAlong(x: number, z: number, axis: 'x' | 'z'): boolean {
     return walkableAlong(x, z, axis, this.surroundings);
@@ -9310,6 +9388,12 @@ export class RoadMeshRenderer {
             e: this.junctionAlong(tile.x + 1, tile.z, 'x'),
             s: this.junctionAlong(tile.x, tile.z + 1, 'z'),
             w: this.junctionAlong(tile.x - 1, tile.z, 'x'),
+          },
+          turns: {
+            n: this.turnAlong(tile.x, tile.z - 1, 'z'),
+            e: this.turnAlong(tile.x + 1, tile.z, 'x'),
+            s: this.turnAlong(tile.x, tile.z + 1, 'z'),
+            w: this.turnAlong(tile.x - 1, tile.z, 'x'),
           },
           plans: {
             n: inFrame(this.planAlong(tile.x, tile.z - 1, 'z'), tile.x, tile.z - 1),

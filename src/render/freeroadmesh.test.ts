@@ -10,7 +10,7 @@ import {
   presetProfileForTier,
 } from '../shared/roadprofile';
 import { RoadFlow, RoadTier } from '../shared/types';
-import type { GridState, RoadTier as Tier } from '../shared/types';
+import type { GridState, RoadProfile, RoadTier as Tier } from '../shared/types';
 import { createGrid } from '../world/grid';
 import { applyRoad } from '../world/roads';
 import { deriveRoadFootprint, laySegment, planSegment } from '../world/freeroads';
@@ -24,6 +24,7 @@ import {
 } from '../world/roadnet';
 import { TILE_METERS } from '../shared/constants';
 import { bendDashes, freeJunctionTiles, freeRoadLampStands, freeRoadSoup } from './freeroadmesh';
+import type { RoadSoup } from './freeroadmesh';
 import { LAMP_HEIGHTS_M, lampLateralOffset } from './lamps';
 import { CENTRE_PAIR_OFFSET_M, markingPlan, noPassingPlan } from './roadmarkings';
 import { MEDIAN_CONCRETE_COLOR, MEDIAN_GRASS_COLOR, MEDIAN_RAISE } from './medianisland';
@@ -37,6 +38,10 @@ import {
   PAINT_HALF_WIDTH_M,
   ROAD_Y_OFFSET,
   SIDEWALK_COLOR,
+  TRAM_GAUGE_HALF_M,
+  TRAM_RAIL_COLOR,
+  TRAM_RAIL_Y_OFFSET,
+  TRAM_SLAB_COLOR,
   YELLOW_MARKING_COLOR,
   medianHalfWidthOf,
   surfaceColor,
@@ -1097,5 +1102,143 @@ describe('a free road’s dead end', () => {
     }
     expect(onCap).toBeGreaterThan(0);
     expect(wrong).toEqual([]);
+  });
+});
+
+describe('a free road that carries trams', () => {
+  const CUSTOM = 40;
+  const base = presetProfileForTier(RoadTier.TwoLane);
+  /** Rails in the lanes the cars use. */
+  const mixed: RoadProfile = {
+    ...base,
+    pieces: base.pieces.map((p) => (p.kind === 'travel' ? { ...p, tram: true } : p)),
+  };
+  /** A reservation of its own down the middle: its trams run on the guideway above it. */
+  const reserved: RoadProfile = {
+    ...base,
+    pieces: [
+      ...base.pieces.filter((p) => p.kind !== 'travel' || p.flow === 'back'),
+      { kind: 'tram', width: 1.2, flow: 'back' },
+      { kind: 'tram', width: 1.2, flow: 'fwd' },
+      ...base.pieces.filter((p) => p.kind === 'travel' && p.flow !== 'back'),
+    ],
+  };
+  const lookupOf =
+    (profile: RoadProfile) =>
+    (id: number): RoadProfile | null =>
+      id === CUSTOM ? profile : null;
+
+  function build(profile: RoadProfile, runs: [CmPoint, CmPoint][]) {
+    const lookup = lookupOf(profile);
+    const g = world();
+    for (const [a, b] of runs) {
+      const req = { tier: RoadTier.TwoLane, profileId: CUSTOM, a, b, control: null, flow: 0 };
+      const p = planSegment(g, g.roads!, req, lookup);
+      if (!p.ok) throw new Error(`refused: ${p.reason}`);
+      laySegment(g, g.roads!, p, req);
+      reconcileRoads(g.roads!, g);
+      expect(syncRoadLayers(g, g.roads!)).toEqual([]);
+      deriveRoadFootprint(g, g.roads!, lookup);
+    }
+    const soup = freeRoadSoup(g.roads!, lookup, flat);
+    return { g, soup, lookup };
+  }
+
+  /** The centroids of every triangle in one colour at one height. */
+  function centroids(soup: RoadSoup, color: readonly number[], y: number): MPoint[] {
+    const out: MPoint[] = [];
+    for (let i = 0; i < soup.positions.length; i += 9) {
+      const p = soup.positions;
+      if (!sameColor(soup.colors.slice(i, i + 3), color)) continue;
+      if (Math.abs(p[i + 1]! - y) > 1e-6) continue;
+      out.push({
+        x: (p[i]! + p[i + 3]! + p[i + 6]!) / 3,
+        z: (p[i + 2]! + p[i + 5]! + p[i + 8]!) / 3,
+      });
+    }
+    return out;
+  }
+
+  const railOffsets = (profile: RoadProfile): number[] =>
+    markingPlan(profile)
+      .bands.filter((b) => b.kind === 'tram')
+      .flatMap((b) => {
+        const lane = (b.from + b.to) / 2;
+        return [lane - TRAM_GAUGE_HALF_M, lane + TRAM_GAUGE_HALF_M];
+      });
+
+  it('lays a slab and two rails down each lane the trams share, along the whole straight', () => {
+    const { soup } = build(mixed, [[at(100, 200), at(260, 200)]]);
+    const rails = centroids(soup, TRAM_RAIL_COLOR, TRAM_RAIL_Y_OFFSET);
+    expect(centroids(soup, TRAM_SLAB_COLOR, ROAD_Y_OFFSET + 0.004).length).toBeGreaterThan(0);
+    const offsets = railOffsets(mixed);
+    expect(offsets).toHaveLength(4);
+    for (const rail of rails) {
+      const nearest = Math.min(...offsets.map((o) => Math.abs(rail.z - 200 - o)));
+      expect(nearest).toBeLessThan(0.05);
+    }
+    for (const o of offsets) expect(rails.some((r) => Math.abs(r.z - 200 - o) < 0.05)).toBe(true);
+    expect(Math.min(...rails.map((r) => r.x))).toBeLessThan(110);
+    expect(Math.max(...rails.map((r) => r.x))).toBeGreaterThan(250);
+  });
+
+  it('carries the rails round a bend on the road’s own arc, from one run to the next', () => {
+    const node = { x: 480, z: 400 };
+    const { g, soup } = build(mixed, [
+      [at(node.x - 120, node.z), at(node.x, node.z)],
+      [at(node.x, node.z), at(node.x, node.z + 120)],
+    ]);
+    const bend = [...bendsOf(g.roads!, () => bendRadiusOf(mixed)).values()][0]!.bend;
+    const rails = centroids(soup, TRAM_RAIL_COLOR, TRAM_RAIL_Y_OFFSET);
+    const mid = bend.path[bend.middle]!;
+    const onArc = rails.filter((r) => Math.hypot(r.x - mid.x, r.z - mid.z) < 6);
+    expect(onArc.length).toBeGreaterThan(0);
+    const offsets = railOffsets(mixed).map(Math.abs);
+    // Within the arc's own angle, every rail lies at a rail's offset from the arc's centre line.
+    const bx = mid.x - bend.centre.x;
+    const bz = mid.z - bend.centre.z;
+    const edge = bend.path[bend.arc[0]]!;
+    const reach = Math.abs(
+      Math.atan2(
+        bx * (edge.z - bend.centre.z) - bz * (edge.x - bend.centre.x),
+        bx * (edge.x - bend.centre.x) + bz * (edge.z - bend.centre.z),
+      ),
+    );
+    const angleOf = (p: MPoint): number =>
+      Math.abs(
+        Math.atan2(
+          bx * (p.z - bend.centre.z) - bz * (p.x - bend.centre.x),
+          bx * (p.x - bend.centre.x) + bz * (p.z - bend.centre.z),
+        ),
+      );
+    const arcRails = rails.filter((q) => angleOf(q) < reach - 0.05);
+    expect(arcRails.length).toBeGreaterThan(0);
+    for (const r of arcRails) {
+      const d = Math.abs(Math.hypot(r.x - bend.centre.x, r.z - bend.centre.z) - bend.radius);
+      expect(Math.min(...offsets.map((o) => Math.abs(d - o)))).toBeLessThan(0.1);
+    }
+    // Both runs either side of the bend carry rails too: the track never breaks.
+    expect(rails.some((r) => r.x < node.x - 40)).toBe(true);
+    expect(rails.some((r) => r.z > node.z + 40)).toBe(true);
+  });
+
+  it('paints no centre line between two lanes that carry rails', () => {
+    const { soup } = build(mixed, [[at(100, 200), at(260, 200)]]);
+    expect(centroids(soup, YELLOW_MARKING_COLOR, MARK_Y_OFFSET)).toEqual([]);
+  });
+
+  it('draws a reservation as the raised median its guideway stands in, and no track at grade', () => {
+    const { soup } = build(reserved, [[at(100, 200), at(260, 200)]]);
+    expect(centroids(soup, TRAM_RAIL_COLOR, TRAM_RAIL_Y_OFFSET)).toEqual([]);
+    const raised = centroids(soup, MEDIAN_GRASS_COLOR, ROAD_Y_OFFSET + MEDIAN_RAISE);
+    expect(raised.length).toBeGreaterThan(0);
+    const across = raised.map((p) => p.z - 200);
+    expect(Math.max(...across) - Math.min(...across)).toBeLessThanOrEqual(2.4 + 1e-6);
+    expect(Math.max(...across) - Math.min(...across)).toBeGreaterThan(1);
+  });
+
+  it('draws no track on a road whose lanes carry no trams', () => {
+    const { soup } = build(base, [[at(100, 200), at(260, 200)]]);
+    expect(centroids(soup, TRAM_RAIL_COLOR, TRAM_RAIL_Y_OFFSET)).toEqual([]);
   });
 });
