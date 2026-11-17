@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.88.3](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.88.2...slimcity-v1.88.3) (2026-11-17)
+
+
+### Bug Fixes
+
+* **render:** a landfill mound, a stand, a shelter, a garage roof and leads to the house ([bad715f](https://github.com/rbenzing/SlimCityGame/commit/bad715f87b7be74bbc062c5b3d01ff9639430731))
+* **render:** light the hospital, tint stall paint at night, lift the lamp pool over the median ([4445fcd](https://github.com/rbenzing/SlimCityGame/commit/4445fcdd47f0386c6d67ad9b6670fa677cb06ccd))
+* **render:** pave a heavy plant's yard, and stand the recovery stack at its spec's 90 m ([3a9b326](https://github.com/rbenzing/SlimCityGame/commit/3a9b3269c87af7e900fe342622951dbffd7f9e4d))
+* **roads:** a bend is a no-passing zone, the gore keeps its lane, caps carry only an edge line ([c66f373](https://github.com/rbenzing/SlimCityGame/commit/c66f3730f6728cebb60c944b7430e928ae6a0552))
+
 ## [1.88.2](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.88.1...slimcity-v1.88.2) (2026-11-17)
 
 
