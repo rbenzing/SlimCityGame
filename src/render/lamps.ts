@@ -29,7 +29,7 @@ import {
   TILE_METERS,
   tileToWorld,
 } from '../shared/constants';
-import { ROAD_Y_OFFSET } from './roadsmesh';
+import { MEDIAN_RAISE, ROAD_Y_OFFSET } from './roadsmesh';
 import {
   carriagewayHalfWidthOf,
   carriagewayShiftOf,
@@ -171,7 +171,9 @@ const POOL_RADIUS = 4.5;
 const POOL_ALONG_SCALE = 4.5; // down the roadway — ~40 m of road per lamp, 60 m apart on alternate kerbs
 const POOL_ACROSS_SCALE = 1; // across it — the carriageway plus a little verge
 const POOL_SEGMENTS = 24;
-const POOL_Y_OFFSET = ROAD_Y_OFFSET + 0.06; // clears the raised road surface
+// Above the median top, the highest raised edge on the street (kerb 0.23 m, median 0.30 m): the
+// pool is drawn without depth write, so anything standing higher would cut it along a straight line.
+const POOL_Y_OFFSET = ROAD_Y_OFFSET + MEDIAN_RAISE + 0.03;
 const POOL_MAX_OPACITY = 0.55;
 /** Sodium-warm: road light is warmer and deeper than the fixture's own body. */
 const POOL_COLOR = 0xffc27a;

@@ -2474,6 +2474,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
     terrain.setNightFactor(nightFactor); // the ground carries the same tint as the bodies on it
     trees.setNightFactor(nightFactor);
     lots.setNightFactor(nightFactor);
+    parkedCars.setNightFactor(nightFactor);
     massing.setNightFactor(nightFactor);
     sites.setNightFactor(nightFactor);
     roofProps.setNightFactor(nightFactor);

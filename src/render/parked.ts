@@ -42,7 +42,9 @@ import {
   type LotPlan,
   type LotSite,
 } from './lotplan';
+import { uniform } from 'three/tsl';
 import { InstancedSlotPool } from './massing';
+import { nightBodyMaterial } from './nightlook';
 import { buildBroadleafGeometry } from './trees';
 import { parkingLaneOffset } from '../shared/roadprofile';
 import { isDenseLotEntry } from '../shared/parkingcode';
@@ -870,9 +872,13 @@ export class ParkedCarRenderer {
   private readonly roadAt: (x: number, z: number) => boolean;
   private readonly catalogById: Map<string, BuildingCatalogEntry>;
 
+  private readonly nightFactorUniform = uniform(0);
   // Lit so the paved apron receives the parked cars' cast shadows (flat +Y
-  // faces read nearly uniform in daylight, like the lit road).
-  private readonly stripeMaterial = new THREE.MeshLambertMaterial({ vertexColors: true });
+  // faces read nearly uniform in daylight, like the lit road); the paint
+  // carries the same night tint as the pavement it lies on.
+  private readonly stripeMaterial = nightBodyMaterial(this.nightFactorUniform, {
+    vertexColors: true,
+  });
 
   private readonly roadTierAt: (x: number, z: number) => RoadTier;
   private readonly drawnProfileAt: (x: number, z: number) => RoadProfile | null;
@@ -1060,6 +1066,15 @@ export class ParkedCarRenderer {
         width: _scale.x,
       };
     });
+  }
+
+  /** 0 (day) .. 1 (night): how far the apron and its paint shade toward the night tint. */
+  setNightFactor(nightFactor: number): void {
+    this.nightFactorUniform.value = Math.min(1, Math.max(0, nightFactor));
+  }
+
+  nightFactor(): number {
+    return this.nightFactorUniform.value;
   }
 
   /** How many of a building's stalls hold a vehicle right now. */

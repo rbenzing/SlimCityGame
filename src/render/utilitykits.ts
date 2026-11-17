@@ -65,8 +65,9 @@
  *    tractor-and-trailer transfer rigs, one sunk in the bay and one waiting
  *    ("transferRig"), and two refuse packers on the apron ("transferPacker").
  *  - hospital: the same yard slab ("hospitalYard"), a six-storey block with
- *    a glass ribbon on every 4.5 m floor, its main entrance and ambulance
- *    canopy on the street side ("hospitalBlock"), a two-level parking deck
+ *    its canopies on the street side ("hospitalBlock"), the glass ribbon on
+ *    every 4.5 m floor, the main entrance and the emergency door leaves on the
+ *    stations' lit material ("hospitalLit"), a two-level parking deck
  *    with its ramp, spandrel band, cores and stall lines ("hospitalDeck"),
  *    the accessible spaces' paint by the entrance ("hospitalPaint"), cars
  *    in the deck's stalls ("hospitalCar") and an ambulance under its canopy
@@ -309,6 +310,7 @@ export type UtilityKitPartKind =
   | 'transferPacker'
   | 'hospitalYard'
   | 'hospitalBlock'
+  | 'hospitalLit'
   | 'hospitalDeck'
   | 'hospitalPaint'
   | 'hospitalCar'
@@ -2809,7 +2811,7 @@ export const HOSPITAL_STOREY_M = 4.5;
 const HOSPITAL_EDGE_MARGIN = 1;
 const HOSPITAL_ROOF_CAP_M = 0.4;
 /** A ribbon of glass on every floor: its sill above the floor, its height, and how far it stands proud of the wall. */
-const HOSPITAL_WINDOW = { sill: 1.1, h: 2, proud: 0.06 };
+export const HOSPITAL_WINDOW = { sill: 1.1, h: 2, proud: 0.06 };
 /** The main entrance's glazed doors and the canopy over them, centred `x` from the block's centre. */
 const HOSPITAL_ENTRANCE = { x: 2, doorW: 6, doorH: 3, canopyW: 10, canopyD: 4, canopyY: 3.6 };
 /** The ambulance canopy: over an ambulance with its rear doors open, clear of its roof lights; its west edge `inset` from the block's. */
@@ -3117,36 +3119,10 @@ function buildHospitalBlockGeometry(footprint: FootprintSize): THREE.BufferGeome
       HOSPITAL_ROOF_RGB,
     ),
   ];
-  for (let k = 0; k < HOSPITAL_STOREYS; k++) {
-    const p = HOSPITAL_WINDOW.proud;
-    parts.push(
-      standingBox(
-        w + 2 * p,
-        HOSPITAL_WINDOW.h,
-        d + 2 * p,
-        block.x,
-        k * HOSPITAL_STOREY_M + HOSPITAL_WINDOW.sill,
-        block.z,
-        HOSPITAL_GLASS_RGB,
-      ),
-    );
-  }
   const bayX = (bay.x0 + bay.x1) / 2;
-  const doorT = EMERGENCY_DOORS.thick;
-  parts.push(
-    standingBox(
-      HOSPITAL_ENTRANCE.doorW,
-      HOSPITAL_ENTRANCE.doorH,
-      doorT,
-      entrance.x,
-      y0,
-      front + doorT / 2,
-      HOSPITAL_DOOR_RGB,
-    ),
-  );
 
-  // The emergency entrance behind the bay: a pale frame standing proud of the wall, a
-  // pair of lit glass leaves in it, and a red emergency band over them.
+  // The emergency entrance behind the bay: a pale frame standing proud of the wall
+  // and a red emergency band over it; its glass leaves are the lit part.
   const { leaf, leaves, h, frame, band } = EMERGENCY_DOORS;
   const doorsW = leaf * leaves;
   parts.push(
@@ -3161,19 +3137,6 @@ function buildHospitalBlockGeometry(footprint: FootprintSize): THREE.BufferGeome
       HOSPITAL_CROSS_RGB,
     ),
   );
-  for (const door of layout.emergencyDoors) {
-    parts.push(
-      standingBox(
-        door.x1 - door.x0 - 0.06,
-        h,
-        door.z1 - door.z0,
-        (door.x0 + door.x1) / 2,
-        y0,
-        (door.z0 + door.z1) / 2,
-        HOSPITAL_EMERGENCY_GLASS_RGB,
-      ),
-    );
-  }
 
   // The main entrance's canopy on two posts.
   const { canopyW, canopyD, canopyY } = HOSPITAL_ENTRANCE;
@@ -3225,6 +3188,56 @@ function buildHospitalBlockGeometry(footprint: FootprintSize): THREE.BufferGeome
   parts.push(standingBox(3, 3, 0.15, bayX, signY, front + 0.2, HOSPITAL_SIGN_RGB));
   parts.push(standingBox(2.2, 0.7, 0.1, bayX, signY + 1.15, front + 0.32, HOSPITAL_CROSS_RGB));
   parts.push(standingBox(0.7, 2.2, 0.1, bayX, signY + 0.4, front + 0.32, HOSPITAL_CROSS_RGB));
+  return mergeParts(parts);
+}
+
+/** The window ribbons, the main entrance glazing and the emergency door leaves, one geometry for the one emissive material; local Y=0 is the GROUND plane. */
+function buildHospitalLitGeometry(footprint: FootprintSize): THREE.BufferGeometry {
+  const layout = computeHospitalLayout(footprint);
+  const { block, entrance } = layout;
+  const { w, d } = HOSPITAL_BLOCK_SIZE;
+  const y0 = RECYCLING_YARD_HEIGHT;
+  const front = block.z + d / 2;
+  const p = HOSPITAL_WINDOW.proud;
+  const parts: THREE.BufferGeometry[] = [];
+  for (let k = 0; k < HOSPITAL_STOREYS; k++) {
+    parts.push(
+      standingBox(
+        w + 2 * p,
+        HOSPITAL_WINDOW.h,
+        d + 2 * p,
+        block.x,
+        k * HOSPITAL_STOREY_M + HOSPITAL_WINDOW.sill,
+        block.z,
+        HOSPITAL_GLASS_RGB,
+      ),
+    );
+  }
+  const doorT = EMERGENCY_DOORS.thick;
+  parts.push(
+    standingBox(
+      HOSPITAL_ENTRANCE.doorW,
+      HOSPITAL_ENTRANCE.doorH,
+      doorT,
+      entrance.x,
+      y0,
+      front + doorT / 2,
+      HOSPITAL_DOOR_RGB,
+    ),
+  );
+  for (const door of layout.emergencyDoors) {
+    parts.push(
+      standingBox(
+        door.x1 - door.x0 - 0.06,
+        EMERGENCY_DOORS.h,
+        door.z1 - door.z0,
+        (door.x0 + door.x1) / 2,
+        y0,
+        (door.z0 + door.z1) / 2,
+        HOSPITAL_EMERGENCY_GLASS_RGB,
+      ),
+    );
+  }
   return mergeParts(parts);
 }
 
@@ -11160,12 +11173,15 @@ export class UtilityKitRenderer {
     const lambert = (): THREE.Material => this.bodyMaterial();
     const pool = (geometry: THREE.BufferGeometry, capacity = INITIAL_KIT_CAPACITY) =>
       new InstancedSlotPool(this.scene, geometry, lambert(), capacity);
+    const lit = (geometry: THREE.BufferGeometry) =>
+      new InstancedSlotPool(this.scene, geometry, this.stationLightMaterial, INITIAL_KIT_CAPACITY);
     return {
       entry,
       pavesLot: true,
       pools: {
         hospitalYard: pool(buildRecyclingYardGeometry(entry.footprint)),
         hospitalBlock: pool(buildHospitalBlockGeometry(entry.footprint)),
+        hospitalLit: lit(buildHospitalLitGeometry(entry.footprint)),
         hospitalDeck: pool(buildHospitalDeckGeometry(entry.footprint)),
         hospitalPaint: pool(buildHospitalPaintGeometry(entry.footprint)),
         hospitalCar: pool(
@@ -12249,6 +12265,7 @@ export class UtilityKitRenderer {
     const {
       hospitalYard,
       hospitalBlock,
+      hospitalLit,
       hospitalDeck,
       hospitalPaint,
       hospitalCar,
@@ -12257,6 +12274,7 @@ export class UtilityKitRenderer {
     if (
       !hospitalYard ||
       !hospitalBlock ||
+      !hospitalLit ||
       !hospitalDeck ||
       !hospitalPaint ||
       !hospitalCar ||
@@ -12303,6 +12321,7 @@ export class UtilityKitRenderer {
     const slots = {
       hospitalYard: [this.placeAt(hospitalYard, centerX, groundY, centerZ, rotation)],
       hospitalBlock: [this.placeAt(hospitalBlock, centerX, groundY, centerZ, rotation)],
+      hospitalLit: [this.placeAt(hospitalLit, centerX, groundY, centerZ, rotation)],
       hospitalDeck: [this.placeAt(hospitalDeck, centerX, groundY, centerZ, rotation)],
       hospitalPaint: [this.placeAt(hospitalPaint, centerX, groundY, centerZ, rotation)],
       hospitalCar: cars,

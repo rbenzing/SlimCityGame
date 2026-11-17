@@ -1058,6 +1058,14 @@ describe('a filling station', () => {
   });
 });
 
+describe('the shop at night', () => {
+  it('lights its sign bands and its glass front on the kit’s emissive material', () => {
+    for (const part of ['signageBand', 'storefrontBand', 'glassFront'] as const) {
+      expect(LIT_PARTS.has(part), part).toBe(true);
+    }
+  });
+});
+
 describe('an office and a hotel', () => {
   it('has a lit lobby portal 4 m wide and 4.5 m tall, its glass 1.4 m out and its canopy trim reaching 1.5 m', () => {
     for (const id of ['com-high-1', 'com-office-2', 'com-high-2']) {

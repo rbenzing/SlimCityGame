@@ -81,6 +81,7 @@ import {
   HOSPITAL_SPACES_PER_BED,
   HOSPITAL_STOREYS,
   HOSPITAL_STOREY_M,
+  HOSPITAL_WINDOW,
   VAN_CLEARANCE_M,
   computeHospitalLayout,
   deckStallTaken,
@@ -206,6 +207,7 @@ const ALL_KINDS: readonly UtilityKitPartKind[] = [
   'transferPacker',
   'hospitalYard',
   'hospitalBlock',
+  'hospitalLit',
   'hospitalDeck',
   'hospitalPaint',
   'hospitalCar',
@@ -2582,8 +2584,24 @@ describe('hospital kit', () => {
     expect(ambulance.z - ambL / 2).toBeGreaterThan(bay.z0);
   });
 
+  it('lights the window bands, the main entrance and the emergency doors, and nothing else of the block', () => {
+    const renderer = new UtilityKitRenderer(new THREE.Scene(), flatHeightAt, [HOSPITAL]);
+    renderer.setNightFactor(1);
+    expect(renderer.partEmissiveHex('hospital', 'hospitalLit')).not.toBe(0);
+    expect(renderer.partEmissiveHex('hospital', 'hospitalBlock')).toBe(0);
+    expect(renderer.partEmissiveHex('hospital', 'hospitalDeck')).toBe(0);
+    const lit = positionsOf('hospitalLit');
+    const ys = Array.from({ length: lit.count }, (_, i) => lit.getY(i));
+    // One ribbon per storey: the top of the highest reaches the sixth storey's head.
+    const head =
+      (HOSPITAL_STOREYS - 1) * HOSPITAL_STOREY_M + HOSPITAL_WINDOW.sill + HOSPITAL_WINDOW.h;
+    expect(Math.max(...ys)).toBeCloseTo(head, 5);
+    // The doors stand from the yard: the entrance and the emergency leaves reach down to it.
+    expect(Math.min(...ys)).toBeCloseTo(RECYCLING_YARD_HEIGHT, 5);
+  });
+
   it('draws the emergency doors in the block’s front wall, as high as they are', () => {
-    const position = positionsOf('hospitalBlock');
+    const position = positionsOf('hospitalLit');
     const { emergencyDoors: doors } = layout;
     const front = doors[0]!.z1;
     const onDoorFace = Array.from({ length: position.count }, (_, i) => i).filter(
