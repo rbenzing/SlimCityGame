@@ -93,7 +93,7 @@
 
 - The Metropolis is triangle-bound on the measured laptop GPU: the next gain is triangles in the roads' and lots' merged geometry and the wild trees, not calls.
 - The frame tool reads animation-loop deltas, so fewer calls show alternating frames; a GPU timestamp query would read the frame itself.
-- The airport stays a box until it has its own design.
+- The airport stays a box until [its own design](airports.md) is built.
 
 ## Why the rules are what they are
 
