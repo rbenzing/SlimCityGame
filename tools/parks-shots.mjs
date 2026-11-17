@@ -161,6 +161,15 @@ for (const r of RUNGS) {
   await shot(r.name);
 }
 
+// 1b. The neighbourhood park's picnic shelter (the street-turned park keeps it
+// in the quadrant away from the street) and the sports ground's stand, each
+// close enough to read its parts.
+const hood = RUNGS.find((r) => r.name === 'neighbourhood');
+await camera(hood.x + (hood.w * 3) / 4 - 0.5, hood.z + (hood.d * 3) / 4 - 0.5, 50, 0, 0.7);
+await shot('shelter');
+await camera(sports.x + sports.w / 2 - 0.5, Z + 1, 60, 0.3, 0.5);
+await shot('stand');
+
 // 2. The pitch beside the street, a car in the eastbound lane for scale.
 await hook(
   ([tile, x, z]) =>

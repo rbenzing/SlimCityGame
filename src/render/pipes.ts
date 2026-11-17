@@ -70,6 +70,8 @@ export interface PipeLead {
   /** The step from the road tile into the lot: one of the four directions. */
   dx: number;
   dz: number;
+  /** How far past the road tile's edge the lead runs: to the building's wall where that is known, else `LEAD_INTO_LOT_M`. */
+  intoLotM?: number;
 }
 
 /** A riser's run out to a carrier beyond its building's edge. */
@@ -182,14 +184,18 @@ export function pipeStrips(joins: {
 
 /**
  * The strip a lead draws, in metres local to its road tile: from the tile's
- * centre out past the edge the lot lies beyond, `LEAD_INTO_LOT_M` into it.
+ * centre out past the edge the lot lies beyond, `intoLotM` into it.
  * Pure and exported for tests.
  */
-export function leadStrip(dx: number, dz: number): readonly [number, number, number, number] {
+export function leadStrip(
+  dx: number,
+  dz: number,
+  intoLotM = LEAD_INTO_LOT_M,
+): readonly [number, number, number, number] {
   const mid = TILE_METERS / 2;
   const half = PIPE_STRIP_WIDTH_M / 2;
   const off = PIPE_STRIP_OFFSET_M;
-  const reach = TILE_METERS + LEAD_INTO_LOT_M;
+  const reach = TILE_METERS + intoLotM;
   if (dx === 1) return [mid, mid - off - half, reach, mid - off + half];
   if (dx === -1) return [TILE_METERS - reach, mid - off - half, mid, mid - off + half];
   if (dz === 1) return [mid - off - half, mid, mid - off + half, reach];
@@ -373,7 +379,7 @@ export class PipeOverlayRenderer {
     this.pushFlows(
       lead.x,
       lead.z,
-      leadStrip(lead.dx, lead.dz),
+      leadStrip(lead.dx, lead.dz, lead.intoLotM),
       this.pipeWater,
       waterRgb,
       this.pipeSewer,

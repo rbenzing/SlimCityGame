@@ -2,6 +2,9 @@ import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
 import {
   COAL_SMOKESTACK_COUNT,
+  NEIGHBOURHOOD_SHELTER,
+  PAVILION_HEIGHT_M,
+  SPORTS_PAVILION,
   DRAIN_OUTFALL_OVERHANG,
   WORKS_CLARIFIER,
   WORKS_CLARIFIER_COUNT,
@@ -230,6 +233,8 @@ const ALL_KINDS: readonly UtilityKitPartKind[] = [
   'parkLamp',
   'pitchGoal',
   'pavilionBlock',
+  'parkShelter',
+  'sportsStand',
   'clinicGrounds',
   'clinicBuilding',
   'clinicLit',
@@ -1616,6 +1621,64 @@ describe('drapedQuad (pure)', () => {
   });
 });
 
+/** Where a ray from `from` along `dir` first meets the geometry, as a distance, or null for a clear path. */
+function firstHit(
+  geometry: THREE.BufferGeometry,
+  from: [number, number, number],
+  dir: [number, number, number],
+): number | null {
+  const mesh = new THREE.Mesh(geometry, new THREE.MeshBasicMaterial({ side: THREE.DoubleSide }));
+  mesh.updateMatrixWorld(true);
+  const ray = new THREE.Raycaster(new THREE.Vector3(...from), new THREE.Vector3(...dir));
+  const hit = ray.intersectObject(mesh, false)[0];
+  return hit ? hit.distance : null;
+}
+
+const boundsOf = (geometry: THREE.BufferGeometry): THREE.Box3 =>
+  new THREE.Box3().setFromBufferAttribute(
+    geometry.getAttribute('position') as THREE.BufferAttribute,
+  );
+
+describe('the park shelter and the sports stand', () => {
+  const renderer = new UtilityKitRenderer(new THREE.Scene(), flatHeightAt, PARKS);
+
+  it('draws the stand as tiered rows under a roof on posts, open to the pitch', () => {
+    const stand = renderer.partGeometry('sports-ground', 'sportsStand')!;
+    const bounds = boundsOf(stand);
+    expect(bounds.max.x - bounds.min.x).toBeCloseTo(SPORTS_PAVILION.w, 6);
+    expect(bounds.max.z - bounds.min.z).toBeCloseTo(SPORTS_PAVILION.d, 6);
+    expect(bounds.max.y).toBeCloseTo(PAVILION_HEIGHT_M, 6);
+    // Between two posts, below the roof, a sight line from the pitch (-Z) runs past the rows to the back wall.
+    const bay = (SPORTS_PAVILION.w - 0.2) / 6;
+    const mid = -SPORTS_PAVILION.w / 2 + bay / 2;
+    const reach = firstHit(stand, [mid, 2.5, -10], [0, 0, 1])!;
+    expect(reach).not.toBeNull();
+    expect(-10 + reach).toBeGreaterThan(SPORTS_PAVILION.d / 2 - 0.5);
+    // The seats climb away from the pitch, row after row, and stay under the roof.
+    const rows = [-0.95, -0.05, 0.85, 1.75].map(
+      (z) => 2.8 - firstHit(stand, [mid, 2.8, z], [0, -1, 0])!,
+    );
+    for (let i = 1; i < rows.length; i++) expect(rows[i]!).toBeGreaterThan(rows[i - 1]! + 0.3);
+    expect(rows[rows.length - 1]!).toBeLessThan(PAVILION_HEIGHT_M - 0.3);
+  });
+
+  it('draws the shelter as a roof on posts over picnic tables, open on all four sides', () => {
+    const shelter = renderer.partGeometry('neighbourhood-park', 'parkShelter')!;
+    const bounds = boundsOf(shelter);
+    expect(bounds.max.x - bounds.min.x).toBeCloseTo(NEIGHBOURHOOD_SHELTER.w, 6);
+    expect(bounds.max.z - bounds.min.z).toBeCloseTo(NEIGHBOURHOOD_SHELTER.d, 6);
+    expect(bounds.max.y).toBeCloseTo(PAVILION_HEIGHT_M, 6);
+    // At head height, between the posts, a sight line crosses it each way without meeting a wall.
+    expect(firstHit(shelter, [-20, 1.5, 1], [1, 0, 0])).toBeNull();
+    expect(firstHit(shelter, [20, 1.5, 1], [-1, 0, 0])).toBeNull();
+    expect(firstHit(shelter, [1, 1.5, -20], [0, 0, 1])).toBeNull();
+    expect(firstHit(shelter, [1, 1.5, 20], [0, 0, -1])).toBeNull();
+    // A table top stands under the roof at 0.76 m.
+    expect(1.5 - firstHit(shelter, [2.2, 1.5, 0], [0, -1, 0])!).toBeCloseTo(0.76, 2);
+    expect(firstHit(shelter, [2.2, 10, 0], [0, -1, 0])!).toBeLessThan(10 - 2.6);
+  });
+});
+
 describe('the park kits in the renderer', () => {
   it('shares one tree pool and one bench pool across every rung', () => {
     const scene = new THREE.Scene();
@@ -1626,9 +1689,6 @@ describe('the park kits in the renderer', () => {
       expect(renderer.partGeometry(entry.id, 'parkTree')).toBe(tree);
       expect(renderer.partGeometry(entry.id, 'parkBench')).toBe(bench);
     }
-    expect(renderer.partGeometry('district-park', 'pavilionBlock')).toBe(
-      renderer.partGeometry('sports-ground', 'pavilionBlock'),
-    );
     expect(renderer.poolKinds('civic-plaza')).toEqual([
       'plazaGround',
       'parkTree',
@@ -1640,7 +1700,7 @@ describe('the park kits in the renderer', () => {
       'parkBench',
       'playFrame',
       'swingSet',
-      'pavilionBlock',
+      'parkShelter',
     ]);
     expect(renderer.poolKinds('district-park')).toEqual(['parkTree', 'parkBench', 'pavilionBlock']);
     expect(renderer.poolKinds('sports-ground')).toEqual([
@@ -1648,10 +1708,10 @@ describe('the park kits in the renderer', () => {
       'parkTree',
       'parkBench',
       'pitchGoal',
-      'pavilionBlock',
+      'sportsStand',
     ]);
-    // Ten pools in all: parkGround, plazaGround, sportsGround, and the shared tree, bench, frame, swing set, lamp, goal, pavilion.
-    expect(instancedMeshes(scene)).toHaveLength(10);
+    // Twelve pools in all: parkGround, plazaGround, sportsGround, and the shared tree, bench, frame, swing set, lamp, goal, pavilion, shelter, stand.
+    expect(instancedMeshes(scene)).toHaveLength(12);
   });
 
   it('draws N district parks as N draped meshes over the three pools the kit owns', () => {
@@ -1695,13 +1755,13 @@ describe('the park kits in the renderer', () => {
     expect(renderer.partSlotsFor(2, 'parkBench')).toHaveLength(7);
     expect(renderer.partSlotsFor(2, 'playFrame')).toHaveLength(2);
     expect(renderer.partSlotsFor(2, 'swingSet')).toHaveLength(2);
-    expect(renderer.partSlotsFor(2, 'pavilionBlock')).toHaveLength(1);
+    expect(renderer.partSlotsFor(2, 'parkShelter')).toHaveLength(1);
     expect(renderer.drapedMesh(2)).not.toBeNull();
     expect(renderer.partSlotsFor(3, 'sportsGround')).toHaveLength(1);
     expect(renderer.partSlotsFor(3, 'parkTree')).toHaveLength(17);
     expect(renderer.partSlotsFor(3, 'parkBench')).toHaveLength(2);
     expect(renderer.partSlotsFor(3, 'pitchGoal')).toHaveLength(2);
-    expect(renderer.partSlotsFor(3, 'pavilionBlock')).toHaveLength(1);
+    expect(renderer.partSlotsFor(3, 'sportsStand')).toHaveLength(1);
   });
 
   it('stands every tree of a draped park on the ground under it and the plaza trees on their planters', () => {
@@ -1808,7 +1868,7 @@ describe('the park kits in the renderer', () => {
       disposed = true;
     });
     const owned = (
-      ['parkTree', 'parkBench', 'pavilionBlock', 'sportsGround', 'pitchGoal'] as const
+      ['parkTree', 'parkBench', 'parkShelter', 'sportsStand', 'sportsGround', 'pitchGoal'] as const
     ).map((kind): [UtilityKitPartKind, number[]] => [
       kind,
       [...renderer.partSlotsFor(1, kind), ...renderer.partSlotsFor(2, kind)],

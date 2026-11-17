@@ -312,6 +312,18 @@ describe('the solar farm', () => {
     expect(layout.gate.x1).toBeGreaterThan(layout.track.x1);
   });
 
+  it('stands the skid and its pad wholly inside the fence, a gate width clear of the gate', () => {
+    const layout = computeSolarLayout(entry.footprint, 0);
+    const halfD = (entry.footprint.d * TILE_METERS) / 2;
+    const halfW = (entry.footprint.w * TILE_METERS) / 2;
+    const fence = { x: halfW - 0.6, z: halfD - 0.6 };
+    // The door stands 0.1 m deep on the skid's street face; the pad runs 0.4 m past it.
+    expect(layout.skid.z1 + 0.4).toBeLessThan(fence.z);
+    expect(layout.skid.x1 + 0.4).toBeLessThan(fence.x);
+    const gateWidth = layout.gate.x1 - layout.gate.x0;
+    expect(layout.skid.x0 - layout.gate.x1).toBeGreaterThanOrEqual(gateWidth);
+  });
+
   it('draws a 7 ft chain-link fence round the lot', () => {
     const renderer = new UtilityKitRenderer(new THREE.Scene(), flat, [entry]);
     const site = boundsOf(renderer.partGeometry('solar-farm', 'solarSite')!);

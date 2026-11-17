@@ -10,6 +10,7 @@ import {
   buildPorticoGeometry,
   buildShedRoofGeometry,
   buildTrampolineGeometry,
+  GARAGE_HEIGHT_M,
   HOUSE_ROOF_SHARES,
   roofColorHex,
   trimColor,
@@ -367,11 +368,16 @@ describe('HouseRoofRenderer', () => {
       expect(active[part], `active ${part}`).toBeGreaterThan(0);
       expect(building[part], `constructing ${part}`).toBe(0);
     }
-    // One roof a home, and a second over a split-level's block.
-    const roofs = homes.reduce(
-      (n, h) => n + 1 + (planHouseLot(h, catalog[1]!, roadAt, street)!.kit.upper ? 1 : 0),
-      0,
-    );
+    // One roof a home, a second over a split-level's block, and one over each detached garage.
+    const roofs = homes.reduce((n, h) => {
+      const plan = planHouseLot(h, catalog[1]!, roadAt, street)!;
+      return (
+        n +
+        1 +
+        (plan.kit.upper ? 1 : 0) +
+        plan.drives.filter((d) => d.cover === 'detachedGarage').length
+      );
+    }, 0);
     expect(roofs).toBeGreaterThan(homes.length);
     expect(active.roof).toBe(roofs);
     // A home going up shows only its site (sites.ts): no roof, door, garage door or car.
@@ -667,6 +673,51 @@ describe('HouseRoofRenderer — the house kit', () => {
       return;
     }
     throw new Error('no row with a garage leaf in 40 seeds');
+  });
+
+  it('roofs a detached garage with its house’s gable and roof colour, the door in the gable end facing the drive', () => {
+    for (let n = 1; n <= 200; n++) {
+      const b = home('ranch', n);
+      const plan = planOf(b);
+      const drive = plan.drives.find((d) => d.cover === 'detachedGarage');
+      if (!drive) continue;
+      const g = drive.coverRect!;
+      // The door stands on the garage's face toward the drive, one leaf per bay, never wider than the garage.
+      expect(drive.garageDoors.length).toBeGreaterThan(0);
+      for (const door of drive.garageDoors) {
+        expect(door.v).toBeCloseTo(g.v0, 6);
+        expect(door.u0).toBeGreaterThanOrEqual(g.u0);
+        expect(door.u1).toBeLessThanOrEqual(g.u1);
+      }
+      expect(drive.rect.v1).toBeCloseTo(g.v0, 6);
+
+      const r = build([b]);
+      const roofs = r.slotsFor(n, 'roof');
+      expect(roofs).toHaveLength(2);
+      const { roof } = plan.kit;
+      const read = (
+        slot: number,
+      ): { scale: THREE.Vector3; position: THREE.Vector3; colour: number } => {
+        const colour = new THREE.Color();
+        r.getPartColor('roof', slot, colour);
+        return {
+          scale: scaleAt(r, 'roof', slot),
+          position: positionAt(r, 'roof', slot),
+          colour: colour.getHex(),
+        };
+      };
+      const houseRoof = read(roofs[0]!);
+      const garageRoof = read(roofs[1]!);
+      expect(garageRoof.colour).toBe(houseRoof.colour);
+      // Ridge along the drive: the gable end faces the door, the eaves overhang the sides.
+      expect(garageRoof.scale.x).toBeCloseTo(g.v1 - g.v0 + 2 * roof.rakeM, 3);
+      expect(garageRoof.scale.z).toBeCloseTo(g.u1 - g.u0 + 2 * roof.eaveM, 3);
+      // The pitch is the house's, and the eave line sits on the garage's wall top.
+      expect(garageRoof.scale.y).toBeCloseTo((garageRoof.scale.z / 2) * roof.slope, 4);
+      expect(garageRoof.position.y + roof.eaveM * roof.slope).toBeCloseTo(GARAGE_HEIGHT_M, 4);
+      return;
+    }
+    throw new Error('no ranch with a detached garage in 200 seeds');
   });
 
   it('paints the shutters, fascia, door and garage leaf the house’s one trim colour', () => {
