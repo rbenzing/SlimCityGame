@@ -72,6 +72,8 @@ import {
 import { hipRoofGeometry } from './hiproof';
 import { buildGableRoofGeometry, roofColorHex, trimColor } from './houses';
 import {
+  BUND_MARGIN_M,
+  BUND_THICKNESS_M,
   FUEL_CANOPY_DEPTH_M,
   FUEL_CANOPY_GAP_M,
   framedLotPlanFor,
@@ -179,7 +181,10 @@ const PART_COLOR: Readonly<Record<BuildingPart, number>> = {
   coolingFan: materialHex('galvanised'),
   scrapYard: materialHex('rustedMetal'),
   gantry: materialHex('rackSteel'),
-  recoveryStack: materialHex('galvanised'),
+  recoveryStack: materialHex('stainedConcrete'),
+  stackBand: materialHex('darkPanel'),
+  stackRing: materialHex('rackSteel'),
+  stackPlinth: materialHex('concreteDike'),
   // The apartment kit: the hip and the hood take the building's own roof colour, the box bay a panel field's.
   hipRoofBlock: KIT_DARK,
   mailKiosk: materialHex('metalPlates'),
@@ -348,7 +353,10 @@ const PART_GEOMETRY: Partial<Record<BuildingPart, () => THREE.BufferGeometry>> =
   flare: () => new THREE.CylinderGeometry(0.5, 0.5, 1, 10),
   flareTip: () => new THREE.CylinderGeometry(0.5, 0.5, 1, 10),
   coolingFan: () => new THREE.CylinderGeometry(0.5, 0.5, 1, 10),
-  recoveryStack: () => new THREE.CylinderGeometry(0.5, 0.5, 1, 12),
+  // The shaft narrows to its mouth: scaled by the foot's diameter, its top is that ratio of it.
+  recoveryStack: () => new THREE.CylinderGeometry(0.5 * RECOVERY_STACK_TOP_RATIO, 0.5, 1, 16),
+  stackBand: () => new THREE.CylinderGeometry(0.5, 0.5, 1, 16),
+  stackRing: () => new THREE.CylinderGeometry(0.5, 0.5, 1, 16),
   // An axle lies across the trailer: the cylinder's length runs along X, scaled by the part's width.
   trailerAxle: () => new THREE.CylinderGeometry(0.5, 0.5, 1, 8).rotateZ(Math.PI / 2),
 };
@@ -676,8 +684,6 @@ export const YARD_FENCE_POST_M = 0.1;
 export const YARD_FENCE_SPACING_M = 3;
 /** The chemical plant's bund, bullet, pipe rack, process column, flare and cooling tower. */
 export const BUND_HEIGHT_M = 1;
-export const BUND_MARGIN_M = 2;
-const BUND_THICKNESS_M = 0.3;
 export const BULLET_DIAMETER_M = 3;
 export const BULLET_LENGTH_M = 15;
 const BULLET_SADDLE_M = 0.8;
@@ -711,9 +717,23 @@ const SCRAP_TIERS: readonly (readonly [number, number])[] = [
 export const GANTRY_HEIGHT_M = 10;
 export const GANTRY_LEG_M = 0.6;
 const GANTRY_BEAM_M = 0.8;
-/** The paper mill's recovery boiler stack, the kit's tallest part. */
-export const RECOVERY_STACK_HEIGHT_M = 60;
-export const RECOVERY_STACK_DIAMETER_M = 2.4;
+/**
+ * The paper mill's recovery boiler stack, the kit's tallest part: a concrete
+ * shaft a fifteenth as wide at its foot as it is tall (the game's own
+ * proportion), narrowing to this share of that at the mouth, on a low plinth,
+ * with a dark band at the mouth and a steel platform ring partway up. The
+ * plinth stands 0.5 m proud of the foot on every side.
+ */
+export const RECOVERY_STACK_HEIGHT_M = 90;
+export const RECOVERY_STACK_DIAMETER_M = RECOVERY_STACK_HEIGHT_M / 15;
+export const RECOVERY_STACK_TOP_RATIO = 0.75;
+export const RECOVERY_PLINTH_M = RECOVERY_STACK_DIAMETER_M + 1;
+export const RECOVERY_PLINTH_HEIGHT_M = 1.2;
+export const RECOVERY_BAND_M = 4;
+const RECOVERY_BAND_PROUD_M = 0.1;
+const RECOVERY_RING_AT = 0.7;
+const RECOVERY_RING_THICKNESS_M = 0.3;
+const RECOVERY_RING_PROUD_M = 0.9;
 /** The steelworks' blast furnace, stoves, skip bridge and duct. */
 export const FURNACE_DIAMETER_M = 8;
 export const FURNACE_RISE = 1.8;
@@ -1905,21 +1925,32 @@ function chemicalYard(r: Rear): PartPlacement[] {
   return out;
 }
 
+/** Whether every part of a group stands within the lot's paved plant yard. */
+function onYard(ps: readonly PartPlacement[], lot: KitLot | null): boolean {
+  const farm = lot?.farm;
+  return !!farm && ps.every((p) => rectInside(placementBounds(p), farm));
+}
+
 /**
  * Pushes the first group of parts that stands inside the lot, clear of its
  * hard ground and of everything already in `out` on the ground; the duct and
- * the stacker, up on the slant, block nothing. True when one was placed.
+ * the stacker, up on the slant, block nothing. A plant that keeps a paved yard
+ * (`paved`) takes the first group that stands on it before any that stands
+ * on the lawn. True when one was placed.
  */
 function firstClear(
   out: PartPlacement[],
   lot: KitLot | null,
   candidates: readonly (readonly PartPlacement[])[],
+  paved = false,
 ): boolean {
   const ground = out.filter((o) => o.part !== 'duct' && o.part !== 'stacker');
   const clear = (ps: readonly PartPlacement[]): boolean =>
     standsFree(ps, lot) &&
     !ps.some((p) => ground.some((o) => rectsOverlap(placementBounds(o), placementBounds(p))));
-  const found = candidates.find(clear);
+  const found =
+    (paved ? candidates.find((ps) => clear(ps) && onYard(ps, lot)) : undefined) ??
+    candidates.find(clear);
   if (!found) return false;
   out.push(...found);
   return true;
@@ -2107,7 +2138,7 @@ function foodYard(r: Rear, bank: DockBank | null): PartPlacement[] {
       );
     }
   }
-  firstClear(out, r.lot, sites);
+  firstClear(out, r.lot, sites, true);
   return out;
 }
 
@@ -2163,9 +2194,12 @@ function steelworksYard(r: Rear, stack: { x: number; z: number } | null): PartPl
       stove: (i) => [e * (span / 2 + stoveR + PLANT_GAP_M), o - marched(i)],
     });
   }
-  const site = sites.find((s) =>
-    standsFree(round('furnace', ...s.furnace, FURNACE_DIAMETER_M, furnaceH), r.lot),
-  );
+  const furnaceStands = (s: YardSite): PartPlacement[] => [
+    round('furnace', ...s.furnace, FURNACE_DIAMETER_M, furnaceH),
+  ];
+  const site =
+    sites.find((s) => standsFree(furnaceStands(s), r.lot) && onYard(furnaceStands(s), r.lot)) ??
+    sites.find((s) => standsFree(furnaceStands(s), r.lot));
   if (!site) return out;
   const end = site.end;
   const furnace = round('furnace', ...site.furnace, FURNACE_DIAMETER_M, furnaceH);
@@ -2292,6 +2326,7 @@ function steelworksYard(r: Rear, stack: { x: number; z: number } | null): PartPl
     out,
     r.lot,
     scrapSites.map(([a, o, alongWall]) => scrapAt(a, o, alongWall)),
+    true,
   );
 
   // The baghouse stack: at the far end of the back wall from the furnace, beside either end wall, outside the furnace, or behind the middle.
@@ -2302,6 +2337,8 @@ function steelworksYard(r: Rear, stack: { x: number; z: number } | null): PartPl
     [end * (span / 2 + 2 * PLANT_GAP_M + FURNACE_DIAMETER_M + stackR), site.furnace[1]],
     [end * (span / 2 + stackR + PLANT_GAP_M), -(stackR + PLANT_GAP_M)],
     [0, stackR + PLANT_GAP_M],
+    // Beside the end wall, past the last stove toward the street.
+    [end * (span / 2 + stackR + PLANT_GAP_M), plantFront - PLANT_GAP_M - stackR],
   ];
   firstClear(
     out,
@@ -2309,6 +2346,7 @@ function steelworksYard(r: Rear, stack: { x: number; z: number } | null): PartPl
     stackSites.map(([a, o]) => [
       roundAtRear(r, 'stack', a, o, MELT_STACK_DIAMETER_M, MELT_STACK_HEIGHT_M),
     ]),
+    true,
   );
   return out;
 }
@@ -2370,20 +2408,50 @@ function chipYard(r: Rear): PartPlacement[] {
   // The recovery boiler's stack behind the body beside the tank farm, on whichever side the lot leaves room.
   const stack: PartPlacement[] = [];
   const farmHalf = ((TANK_COUNT - 1) / 2) * TANK_SPACING_M + TANK_DIAMETER_M / 2;
-  const stackR = RECOVERY_STACK_DIAMETER_M / 2;
+  const foot = RECOVERY_STACK_DIAMETER_M / 2;
+  /** The shaft's radius `y` metres up: it narrows evenly to the mouth. */
+  const shaftRadius = (y: number): number =>
+    foot * (1 - ((1 - RECOVERY_STACK_TOP_RATIO) * y) / RECOVERY_STACK_HEIGHT_M);
+  const stackAt = (a: number, o: number): PartPlacement[] => {
+    const bandBase = RECOVERY_STACK_HEIGHT_M - RECOVERY_BAND_M;
+    const bandD = 2 * (shaftRadius(bandBase) + RECOVERY_BAND_PROUD_M);
+    const ringAt = RECOVERY_STACK_HEIGHT_M * RECOVERY_RING_AT;
+    const ringD = 2 * (shaftRadius(ringAt) + RECOVERY_RING_PROUD_M);
+    return [
+      atRear(
+        r,
+        'stackPlinth',
+        a,
+        o,
+        RECOVERY_PLINTH_M,
+        RECOVERY_PLINTH_M,
+        RECOVERY_PLINTH_HEIGHT_M,
+        RECOVERY_PLINTH_HEIGHT_M / 2,
+      ),
+      roundAtRear(r, 'recoveryStack', a, o, RECOVERY_STACK_DIAMETER_M, RECOVERY_STACK_HEIGHT_M),
+      atRear(
+        r,
+        'stackBand',
+        a,
+        o,
+        bandD,
+        bandD,
+        RECOVERY_BAND_M,
+        RECOVERY_STACK_HEIGHT_M - RECOVERY_BAND_M / 2,
+      ),
+      atRear(r, 'stackRing', a, o, ringD, ringD, RECOVERY_RING_THICKNESS_M, ringAt),
+    ];
+  };
   firstClear(
     stack,
     r.lot,
-    [1, -1].map((k) => [
-      roundAtRear(
-        r,
-        'recoveryStack',
-        k * (farmHalf + PLANT_GAP_M + stackR),
-        TANK_GAP_M + stackR,
-        RECOVERY_STACK_DIAMETER_M,
-        RECOVERY_STACK_HEIGHT_M,
+    [1, -1].map((k) =>
+      stackAt(
+        k * (farmHalf + PLANT_GAP_M + RECOVERY_PLINTH_M / 2),
+        TANK_GAP_M + RECOVERY_PLINTH_M / 2,
       ),
-    ]),
+    ),
+    true,
   );
   const lot = r.lot;
   if (!lot) return [...stack, ...pieces(target.x, target.z)];
@@ -4494,6 +4562,9 @@ export function computePartPlacements(
       case 'scrapYard':
       case 'gantry':
       case 'recoveryStack':
+      case 'stackBand':
+      case 'stackRing':
+      case 'stackPlinth':
         out.push(...yardOf(part));
         break;
     }

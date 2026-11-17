@@ -24,6 +24,8 @@ import {
 } from './frontage';
 
 export {
+  BUND_MARGIN_M,
+  BUND_THICKNESS_M,
   FUEL_CANOPY_DEPTH_M,
   FUEL_CANOPY_GAP_M,
   lotLayoutFor,

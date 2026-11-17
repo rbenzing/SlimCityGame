@@ -286,6 +286,9 @@ describe('archetypeFor', () => {
       'chipPile',
       'stacker',
       'recoveryStack',
+      'stackBand',
+      'stackRing',
+      'stackPlinth',
     ]);
   });
 
