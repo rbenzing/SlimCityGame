@@ -53,4 +53,4 @@ source and are the game's own.
 | Section | Size |
 | --- | --- |
 | [The industrial kit's parts](the-industrial-kits-parts.md) | 9,994 B |
-| [The farmstead's parts](the-farmsteads-parts.md) | 2,256 B |
+| [The farmstead's parts](the-farmsteads-parts.md) | 2,476 B |

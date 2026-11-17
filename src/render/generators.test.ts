@@ -16,6 +16,7 @@ import {
   NUCLEAR_INTAKE,
   NUCLEAR_REACTOR,
   NUCLEAR_TURBINE,
+  PUMP_INTAKE_OVERHANG,
   SOLAR_LOW_EDGE_M,
   SOLAR_NOON_FACING,
   SOLAR_PITCH_M,
@@ -134,7 +135,10 @@ describe.each(IDS)('the %s kit', (id) => {
         expect(slots.length).toBeGreaterThan(0);
         for (const slot of slots) {
           renderer.getPartMatrix(id, kind, slot, m);
-          expect(lot.containsBox(bounds.clone().applyMatrix4(m).expandByScalar(-1e-6))).toBe(true);
+          // With no water beside it the intake faces south, and its forebay reaches out past that edge.
+          const room = lot.clone();
+          if (kind === 'nuclearIntake') room.max.z += NUCLEAR_INTAKE.forebay.reach;
+          expect(room.containsBox(bounds.clone().applyMatrix4(m).expandByScalar(-1e-6))).toBe(true);
         }
       }
     }
@@ -516,13 +520,21 @@ describe('the nuclear station', () => {
         const x1 = x0 + lot.w * TILE_METERS;
         const z1 = z0 + lot.d * TILE_METERS;
         const gap = [z1 - box.max.z, x1 - box.max.x, box.min.z - z0, box.min.x - x0][facing]!;
-        expect(gap).toBeGreaterThan(0);
-        expect(gap).toBeLessThan(NUCLEAR_INTAKE.house.setback);
-        // The house and its conduit lie inside the lot.
-        expect(box.min.x).toBeGreaterThanOrEqual(x0);
-        expect(box.max.x).toBeLessThanOrEqual(x1);
-        expect(box.min.z).toBeGreaterThanOrEqual(z0);
-        expect(box.max.z).toBeLessThanOrEqual(z1);
+        // The forebay reaches past the lot's water edge, as far as the pump's intake, into the water.
+        expect(-gap).toBeCloseTo(NUCLEAR_INTAKE.forebay.reach, 6);
+        expect(NUCLEAR_INTAKE.forebay.reach).toBe(PUMP_INTAKE_OVERHANG);
+        // The house and conduit lie inside the lot on every side but the water's.
+        if (facing % 2 === 0) {
+          expect(box.min.x).toBeGreaterThanOrEqual(x0);
+          expect(box.max.x).toBeLessThanOrEqual(x1);
+        } else {
+          expect(box.min.z).toBeGreaterThanOrEqual(z0);
+          expect(box.max.z).toBeLessThanOrEqual(z1);
+        }
+        if (facing !== 0) expect(box.max.z).toBeLessThanOrEqual(z1);
+        if (facing !== 1) expect(box.max.x).toBeLessThanOrEqual(x1);
+        if (facing !== 2) expect(box.min.z).toBeGreaterThanOrEqual(z0);
+        if (facing !== 3) expect(box.min.x).toBeGreaterThanOrEqual(x0);
 
         const centre = { x: (x0 + x1) / 2, z: (z0 + z1) / 2 };
         const intake: Rect = {

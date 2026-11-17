@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { TILE_METERS } from '../shared/constants';
-import { BuildingState, ZoneType } from '../shared/types';
+import { BuildingState, RoadTier, ZoneType } from '../shared/types';
+import { vergeDepthMeters } from './frontage';
 import type { BuildingCatalogEntry, BuildingInstance, FarmKind } from '../shared/types';
 import {
   BIN_DIAMETER_M,
@@ -127,12 +128,13 @@ describe('planFarm', () => {
           expect(inside(r, plan.yard)).toBe(true);
       });
 
-      it('runs the drive from the lot line at the gate', () => {
+      it('runs the drive from the road edge, across the verge and the lot line, at the gate', () => {
+        const verge = vergeDepthMeters(RoadTier.Gravel);
         const atGate = {
-          N: plan.drive.z0 === plan.lot.z0,
-          S: plan.drive.z1 === plan.lot.z1,
-          W: plan.drive.x0 === plan.lot.x0,
-          E: plan.drive.x1 === plan.lot.x1,
+          N: Math.abs(plan.drive.z0 - (plan.lot.z0 - verge)) < 1e-9,
+          S: Math.abs(plan.drive.z1 - (plan.lot.z1 + verge)) < 1e-9,
+          W: Math.abs(plan.drive.x0 - (plan.lot.x0 - verge)) < 1e-9,
+          E: Math.abs(plan.drive.x1 - (plan.lot.x1 + verge)) < 1e-9,
         }[side];
         expect(atGate).toBe(true);
         expect(overlaps(plan.drive, plan.house)).toBe(false);

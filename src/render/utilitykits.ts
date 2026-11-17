@@ -1196,7 +1196,12 @@ function buildPumpIntakeGeometry(footprint: FootprintSize): THREE.BufferGeometry
   ]);
 }
 
+/** The pad round the drain's structure: this much beyond its wingwalls, apron and the pipe's land end. */
+export const DRAIN_PAD_MARGIN_M = 1;
+
 export interface DrainLayout {
+  /** The ground the structure stands on, the water edge of the lot its far side. */
+  pad: Rect;
   headwall: Rect;
   /** Each wingwall's centre and its yaw off the headwall's line. */
   wingwalls: { x: number; z: number; yaw: number }[];
@@ -1219,7 +1224,14 @@ export function computeDrainLayout(footprint: FootprintSize): DrainLayout {
     z1: apron.z0,
   };
   const reach = (DRAIN_WINGWALL.length / 2) * Math.cos(DRAIN_WINGWALL.angle);
+  const half = Math.max(DRAIN_APRON.w / 2, DRAIN_HEADWALL.w / 2 + 2 * reach) + DRAIN_PAD_MARGIN_M;
   return {
+    pad: {
+      x0: -half,
+      x1: half,
+      z0: halfD - DRAIN_OUTFALL_BACK - DRAIN_PAD_MARGIN_M,
+      z1: halfD,
+    },
     headwall,
     wingwalls: [-1, 1].map((s) => ({
       x: s * (DRAIN_HEADWALL.w / 2 + reach),
@@ -1228,6 +1240,16 @@ export function computeDrainLayout(footprint: FootprintSize): DrainLayout {
     })),
     apron,
   };
+}
+
+/** The drain's pad: a plate under its structure only, the rest of the tile left as the ground it was. */
+function buildDrainGroundsGeometry(footprint: FootprintSize): THREE.BufferGeometry {
+  const { pad } = computeDrainLayout(footprint);
+  const depth = GEN_PLATE_M + YARD_FOOTING_DEPTH;
+  const plate = new THREE.BoxGeometry(pad.x1 - pad.x0, depth, pad.z1 - pad.z0);
+  const c = rectCentre(pad);
+  plate.translate(c.x, GEN_PLATE_M - depth / 2, c.z);
+  return paintVertexColor(plate, hexFromRgb(GEN_SCRUB_RGB));
 }
 
 /** The headwall with its wingwalls and guard rail, over the riprap apron as one rubble geometry; local Y=0 is the plate's top. */
@@ -6200,6 +6222,8 @@ export const NUCLEAR_INTAKE = {
   house: { w: 8, d: 6, h: 4.5, setback: 1 },
   screen: { w: 3, h: 3.2, depth: 0.6 },
   conduit: { w: 2.6, h: 1.4, reach: 15 },
+  /** The forebay from the house out past the lot's water edge, as far as the pump's intake: the shore lies inside the water tile, not at its edge. */
+  forebay: { w: 7, h: 1.4, reach: PUMP_INTAKE_OVERHANG },
 };
 
 const NUCLEAR_WALL_RGB: RGB = [0.5, 0.5, 0.48];
@@ -6343,10 +6367,22 @@ function buildNuclearPlantGeometry(footprint: FootprintSize): THREE.BufferGeomet
  * that touches the water, turned the way a shore building is.
  */
 function buildNuclearIntakeGeometry(): THREE.BufferGeometry {
-  const { along, house, screen, conduit } = NUCLEAR_INTAKE;
+  const { along, house, screen, conduit, forebay } = NUCLEAR_INTAKE;
   const front = -house.setback;
   const back = front - house.d;
+  const crib = new THREE.BoxGeometry(PUMP_CRIB.w, PUMP_CRIB.depth, PUMP_CRIB.d);
+  crib.translate(along, -PUMP_CRIB.depth / 2, forebay.reach - PUMP_CRIB.d / 2);
   const parts: THREE.BufferGeometry[] = [
+    paintVertexColor(crib, hexFromRgb(TIMBER_RGB)),
+    standingBox(
+      forebay.w,
+      forebay.h,
+      forebay.reach - front,
+      along,
+      0,
+      (forebay.reach + front) / 2,
+      NUCLEAR_PLINTH_RGB,
+    ),
     standingBox(house.w, house.h - 0.3, house.d, along, 0, (front + back) / 2, NUCLEAR_WALL_RGB),
     standingBox(house.w, 0.3, house.d, along, house.h - 0.3, (front + back) / 2, GEN_CAP_RGB),
     standingBox(
@@ -6366,8 +6402,8 @@ function buildNuclearIntakeGeometry(): THREE.BufferGeometry {
         screen.h,
         screen.depth,
         along + s * (screen.w / 2 + 0.3),
-        0.5,
-        front + screen.depth / 2 - 0.05,
+        forebay.h,
+        forebay.reach - screen.depth / 2,
         NUCLEAR_SCREEN_RGB,
       ),
     );
@@ -10997,7 +11033,7 @@ export class UtilityKitRenderer {
       entry,
       pavesLot: true,
       pools: {
-        drainGrounds: pool(buildGeneratorGroundsGeometry(footprint, GEN_SCRUB_RGB, [])),
+        drainGrounds: pool(buildDrainGroundsGeometry(footprint)),
         drainHeadwall: pool(buildDrainHeadwallGeometry(footprint)),
         drainOutfall: pool(buildDrainOutfallGeometry(footprint)),
       },

@@ -25,7 +25,7 @@ current behavior only and carry no dates of their own._
 
 ## Status (2026-09-29)
 
-**Test suite:** 8,567 tests passing across 263 test files, run 2026-11-13.
+**Test suite:** 8,597 tests passing across 267 test files, run 2026-11-17.
 This is the only test count in the documentation set. When the suite changes
 again, update the figure here and nowhere else.
 
@@ -41,8 +41,12 @@ again, update the figure here and nowhere else.
   radius `[R-roads-081]`: the wider sweep leaves the tiles the road holds, so
   lots, traffic and saves would have to follow it. Not yet bends: a one-way
   grid street meeting a free run, and rail, which turns as tight as its
-  corridor. A custom-profile road is driven on its preset's arc; dashes
-  restart at a bend's seams; a bend carries no lamp.
+  corridor. A custom-profile road is driven on its preset's arc; a bend
+  carries no lamp.
+- A raised road on a steep fall can log "derived differently" for the road
+  mask of tiles lifted about 0.4 to 0.5 m: the incremental and the derived
+  masks disagree at `GROUND_HUGGING_LIFT_M`. Seen with a two-lane road at
+  elevation 6 on a 1.9 m a tile slope; not yet traced.
 - A home's fence is cut back against other homes only `[R-render-035]`: a
   turned home beside a shop's or a civic plot's lot is cut to its own
   outline and no further.

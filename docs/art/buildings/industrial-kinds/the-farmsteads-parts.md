@@ -30,6 +30,9 @@ is known by from the road, at sourced sizes:
   roof, in the yard where the machinery stands.
 - **The paddock fence** is 1.22 m (48 in) to its top rail, the USDA cattle
   fence, posts every 4 m as they are (12–20 ft).
+- **The drive** is a farm gate wide, 4.9 m (16 ft; the game's own figure),
+  and crosses the dirt road's verge to its carriageway. With no road beside
+  the lot nothing is laid past the lot line.
 
 **What it costs.** A farm counts everything on its lot, orchard trees
 included: an orchard at 4.9 × 6.1 m spacing on a 6×7 lot holds about 370

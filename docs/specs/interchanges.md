@@ -13,6 +13,8 @@
 - Meet a ramp to the street only at the ramp's end, where the street is on the ground.
 - Refuse in the preview and again at commit, with the first reason, and send nothing if refused. [R-roads-062]
 - Read the site from the carriageways already there: one group, or two running opposite ways with each driver's right facing away from the other.
+- Paint an exit's neutral area: a channelizing line each side and chevrons between, and start the slip road's own lines in line with them. [R-roads-089]
+- Leave a ground junction for a climbing deck without a step: the junction's surface rises over its half facing the deck, after 4 m of level.
 
 **Numbers:**
 
@@ -32,6 +34,9 @@
 | street run-on beyond outermost junction | 2 | tiles | dial |
 | straight reach checked each side | `R + 1` | tiles | derived |
 | bridge join tolerance | 1 | mm | float rounding |
+| gore channelizing line | 0.3 wide, solid white | m | MUTCD 3B.08 ¶03 and ¶05: a wide solid line on both sides of the neutral area |
+| gore chevrons | 0.3 stroke at 40°, 3 apart, apex to traffic | m | MUTCD 3B.25 ¶05 and ¶10: white, at least 12 in, 30 to 45° |
+| gore width at the nose | 3.0 | m | dial |
 | cloverleaf weave needing a collector-distributor | about 1,000 | vehicles an hour | [WisDOT FDM 11-30](https://wisconsindot.gov/rdwy/fdm/fd-11-30.pdf) |
 | form definitions | n/a | n/a | [TxDOT, types of interchanges](https://www.txdot.gov/manuals/des/tsp/chapter-11-interchange-analysis/11-2-interchange-configuration-evaluation--ice----/11-2-1-types-of-interchanges.html) |
 

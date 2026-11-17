@@ -83,7 +83,9 @@ stated as the game's own where not; the reference rows are in
   standing 4 m back from the water so the apron takes the edge (an apron is
   what a headwall stands on, [TxDOT via Marble Falls](https://www.marblefallstx.gov/DocumentCenter/View/9421);
   wingwall sizes were not found and are the game's own), and a 1.07 m
-  guard rail along the headwall's top. Turned to the water as now.
+  guard rail along the headwall's top. Turned to the water as now. Its pad
+  covers the headwall, the wingwalls, the apron and the pipe's land end with
+  a metre round them, about 8.8 × 6 m, not the whole tile.
 - **Sewage works (2×2, 9 m).** A 1–5 MGD activated-sludge plant on a 40 m
   square, its process in the open as the type is: a **screen house**
   8 × 6 × 5 m at the inlet on the street side with a **grit chamber**

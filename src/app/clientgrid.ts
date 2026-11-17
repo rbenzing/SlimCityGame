@@ -76,6 +76,12 @@ function sameLaneTurns(
   return a.every((v, i) => v === b[i]);
 }
 
+/**
+ * How far from its centre a junction on the ground stays level toward a
+ * climbing deck, metres: past the widest arm's mouth, which meets it level.
+ */
+const JUNCTION_LEVEL_M = 4;
+
 export class ClientGridMirror {
   readonly size: number;
   readonly height: Float32Array;
@@ -687,7 +693,42 @@ export class ClientGridMirror {
       const [x, z] = alongZ ? [ribbon.x, t] : [t, ribbon.z];
       return t === own ? this.deckHeightAt(x, z) : this.deckHeightAlong(x, z, axis);
     };
-    return deck(i0) * (1 - s) + deck(i0 + 1) * s;
+    return deck(i0) * (1 - s) + deck(i0 + 1) * s + this.leadInRise(ribbon, axis, wx, wz);
+  }
+
+  /**
+   * How far a junction on the ground rises, at a world point, toward a deck
+   * that climbs away from it across the other axis than the one its own run is
+   * read along. The deck's first half-tile is already at the height half way
+   * between the two tile centres, so the junction climbs to it over the half of
+   * itself that faces it, once its arms' mouths are behind: no step stands at
+   * the seam.
+   */
+  private leadInRise(ribbon: TilePoint, axis: 'x' | 'z', wx: number, wz: number): number {
+    const here = this.deckHeightAt(ribbon.x, ribbon.z);
+    if ((this.roadElevation[this.idx(ribbon.x, ribbon.z)] ?? 0) > 0) return 0;
+    let rise = 0;
+    for (const [dx, dz, bit] of [
+      [0, -1, 1],
+      [1, 0, 2],
+      [0, 1, 4],
+      [-1, 0, 8],
+    ] as const) {
+      if (axis === (dx !== 0 ? 'x' : 'z')) continue;
+      const nx = ribbon.x + dx;
+      const nz = ribbon.z + dz;
+      if (!this.inBounds(nx, nz)) continue;
+      const i = this.idx(nx, nz);
+      if ((this.roadElevation[i] ?? 0) <= 0 || this.roadTier[i] === RoadTier.None) continue;
+      if (((this.roadMask[this.idx(ribbon.x, ribbon.z)] ?? 0) & bit) === 0) continue;
+      const toward =
+        dx !== 0
+          ? (wx - (ribbon.x + 0.5) * TILE_METERS) * dx
+          : (wz - (ribbon.z + 0.5) * TILE_METERS) * dz;
+      const t = (toward - JUNCTION_LEVEL_M) / (TILE_METERS / 2 - JUNCTION_LEVEL_M);
+      rise += Math.min(1, Math.max(0, t)) * ((here + this.deckHeightAt(nx, nz)) / 2 - here);
+    }
+    return rise;
   }
 
   /**

@@ -2277,7 +2277,8 @@ describe('the apartment kit: where every part stands', () => {
       expect(s.offset[0]).toBe(0);
       expect(Math.abs(s.offset[2])).toBeCloseTo(half + BREEZEWAY_PROUD_M / 2, 9);
     }
-    const landings = ofKind(parts, 'landing');
+    // The galleries the upper flights start from are longer than the slot; the slot's landings are its width.
+    const landings = ofKind(parts, 'landing').filter((l) => l.size[0] === BREEZEWAY_WIDTH_M);
     const guards = ofKind(parts, 'landingGuard');
     expect(landings).toHaveLength(2 * (rows - 1));
     expect(guards).toHaveLength(2 * (rows - 1));
@@ -2301,7 +2302,8 @@ describe('the apartment kit: where every part stands', () => {
 
   it('runs a 1 m flight at the 7:11 pitch from the ground to the first landing beside each slot, on opposite sides front and back', () => {
     const e = aptById('res-medium-2');
-    const flights = ofKind(placed(e), 'stairFlight');
+    // The flights above the ground one are laid by the stair test of the apartment kit's fixes.
+    const flights = ofKind(placed(e), 'stairFlight').filter((f) => f.offset[1] < 3.2);
     expect(flights).toHaveLength(2);
     expect((STAIR_PITCH * 180) / Math.PI).toBeCloseTo(32, 0);
     for (const f of flights) {
@@ -2315,7 +2317,7 @@ describe('the apartment kit: where every part stands', () => {
     }
     expect(Math.sign(flights[0]!.offset[0])).toBe(-Math.sign(flights[1]!.offset[0]));
     // Another seed puts the street flight on the other side.
-    const other = ofKind(placed(e, 'S', null, 2), 'stairFlight');
+    const other = ofKind(placed(e, 'S', null, 2), 'stairFlight').filter((f) => f.offset[1] < 3.2);
     expect(Math.sign(other[0]!.offset[0])).toBe(-Math.sign(flights[0]!.offset[0]));
   });
 
@@ -2648,12 +2650,16 @@ describe('the apartment kit on the map', () => {
     }
   });
 
-  it('lays a garden on its 2×2 lot no car park, keeping its lawn, both breezeways, its balconies and patios, the body centred', () => {
+  it('lays a garden on its 2×2 lot no car park, keeping its lawn, its walk, both breezeways, its balconies and patios, the body centred', () => {
     for (const e of apartments.filter((a) => a.kind === 'garden')) {
       const plan = kitPlanFor(e, { id: 3, x: 10, z: 10, rotation: 0 }, street(e.footprint, 'S'))!;
-      expect(plan.lot, e.id).toBeNull();
+      expect(plan.lot, e.id).not.toBeNull();
+      expect(plan.lot!.hard, e.id).toEqual([]);
+      expect(plan.lot!.walk, e.id).not.toBeNull();
       expect(plan.frontage.centerXM).toBe(0);
-      expect(plan.frontage.centerZM).toBe(0);
+      // The lot plan seats the body toward the street by at most half the rear yard, so the lawn behind it is the deeper.
+      expect(plan.frontage.centerZM).toBeGreaterThanOrEqual(0);
+      expect(plan.frontage.centerZM).toBeLessThanOrEqual(WALK_UP_REAR_YARD_M.garden / 2 + 1e-9);
       const counts = (part: BuildingPart): number =>
         plan.placements.filter((p) => p.part === part).length;
       expect(counts('breezeway')).toBe(2);

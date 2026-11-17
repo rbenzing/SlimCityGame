@@ -496,6 +496,23 @@ describe('the drain', () => {
       expectPartsInsideLot(DRAIN, 0, waterOn(side, DRAIN));
     },
   );
+
+  it('lays a pad no larger than its structure needs: headwall, wingwalls, apron and the pipe behind the headwall, with a metre round them', () => {
+    const ground = boundsOf(DRAIN, 'drainGrounds');
+    const parts = [boundsOf(DRAIN, 'drainHeadwall'), boundsOf(DRAIN, 'drainOutfall')];
+    const reach = Math.max(...parts.map((p) => Math.max(p.max.x, -p.min.x)));
+    // Every part stands on the pad, over the lot's water edge only where the pipe runs out over the water.
+    expect(ground.max.x).toBeGreaterThanOrEqual(reach);
+    expect(ground.min.x).toBeLessThanOrEqual(-reach);
+    expect(ground.min.z).toBeLessThanOrEqual(Math.min(...parts.map((p) => p.min.z)));
+    expect(ground.max.z).toBeCloseTo(lot.z1, 6);
+    // And no more than a metre of margin beyond them: far less than the 20 m tile.
+    expect(ground.max.x - reach).toBeLessThanOrEqual(1 + 1e-6);
+    const behind = Math.min(...parts.map((p) => p.min.z));
+    expect(behind - ground.min.z).toBeLessThanOrEqual(1 + 1e-6);
+    expect(ground.max.x - ground.min.x).toBeLessThan(TILE_METERS / 2);
+    expect(ground.max.z - ground.min.z).toBeLessThan(TILE_METERS / 2);
+  });
 });
 
 describe('the sewage works', () => {
