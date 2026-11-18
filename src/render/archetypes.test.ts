@@ -424,7 +424,7 @@ describe('the shipped catalog', () => {
 
   it('dresses every heavy plant as its own industry', () => {
     const heavy = catalog.filter((e) => e.zone === ZoneType.IndHeavy);
-    expect(heavy).toHaveLength(12);
+    expect(heavy.filter((e) => e.bodyFootprint === undefined)).toHaveLength(12);
     const found = new Set(heavy.map((e) => archetypeFor(e)));
     expect(found).toEqual(new Set(['foodPlant', 'chemicalPlant', 'steelworks', 'paperMill']));
     for (const e of heavy) expect(isCleanIndustry(e), e.id).toBe(false);

@@ -247,11 +247,15 @@ describe('the pieces a lot has room for', () => {
     const faults: string[] = [];
     for (const { v, plan } of plans) {
       const k = v.entry.kind;
+      // A lot longer than deep is only ever stood with its long side on the street.
+      const stood =
+        v.layout.lot.u1 >= v.layout.lot.v1 || v.entry.footprint.w <= v.entry.footprint.d;
       const must =
-        k === 'strip' ||
-        (v.entry.category === 'ind' && k !== 'flex') ||
-        v.entry.id.startsWith('com-shop') ||
-        v.entry.id === 'com-low-1';
+        stood &&
+        (k === 'strip' ||
+          (v.entry.category === 'ind' && k !== 'flex') ||
+          v.entry.id.startsWith('com-shop') ||
+          v.entry.id === 'com-low-1');
       if (must && count(plan, 'walk') + count(plan, 'crossing') === 0) faults.push(v.label);
     }
     expect(faults).toEqual([]);

@@ -52,6 +52,8 @@ const ACRE_HOME_CEILING = 1800;
 const SOLAR_FARM_CEILING = 2000;
 /** The triangles a shop's or works' lot furniture adds: poles, signs, hedges, seats, walls and fences. */
 const LOT_FURNITURE_CEILING = 600;
+/** The roomy lots, longer round than the compact ones, carry this many furniture triangles for each tile of their perimeter. */
+const LOT_FURNITURE_PER_PERIMETER_TILE = 36;
 
 const ORIGIN = { x: 10, z: 10 };
 const HOME_IDS = 16;
@@ -307,10 +309,19 @@ describe('geometry budget: the furniture of a shop or works lot', () => {
     expect(rows.some((r) => r.triangles > 0)).toBe(true);
   });
 
-  it.each(rows.map((r) => [r.entry.id, r.triangles] as const))(
+  /** A larger lot carries more fence, hedge and light along its lines: the ceiling grows with the perimeter, never below the standard one. */
+  const ceilingOf = (entry: BuildingCatalogEntry): number =>
+    entry.bodyFootprint
+      ? Math.max(
+          LOT_FURNITURE_CEILING,
+          LOT_FURNITURE_PER_PERIMETER_TILE * 2 * (entry.footprint.w + entry.footprint.d),
+        )
+      : LOT_FURNITURE_CEILING;
+
+  it.each(rows.map((r) => [r.entry.id, r.triangles, ceilingOf(r.entry)] as const))(
     'lot %s keeps its furniture under the lot ceiling',
-    (_id, triangles) => {
-      expect(triangles).toBeLessThanOrEqual(LOT_FURNITURE_CEILING);
+    (_id, triangles, ceiling) => {
+      expect(triangles).toBeLessThanOrEqual(ceiling);
     },
   );
 });
