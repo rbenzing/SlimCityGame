@@ -617,6 +617,13 @@ describe('deriveFacadeParams: a commercial body takes its kind palette by id has
     }
   });
 
+  it('keeps a mid-rise body light: its cladding chart entries are mid-grey or lighter, never a near-black', () => {
+    for (const { material } of MIDRISE_BODY_SHARES) {
+      const [r, g, b] = materialUnit(material);
+      expect(0.2126 * r + 0.7152 * g + 0.0722 * b, material).toBeGreaterThan(0.3);
+    }
+  });
+
   it('draws a residential body by the share the US builds, by id hash, from chart entries only', () => {
     const houseKinds: BuildingKind[] = ['detached', 'duplex', 'fourplex', 'townhouse', 'multiplex'];
     for (const kind of houseKinds) expect(residentialBodyShares(kind)).toBe(HOUSE_BODY_SHARES);
