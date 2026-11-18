@@ -1272,7 +1272,13 @@ class SimWorld implements WorkerSim {
       }
     }
 
-    this.traffic.tick({ origins, destinations, tickNo: t, population: this.stats.population });
+    this.traffic.tick({
+      origins,
+      destinations,
+      tickNo: t,
+      population: this.stats.population,
+      roadAt: (x, z) => g.roadTier[z * g.size + x] !== RoadTier.None,
+    });
 
     // Transit: the depots standing, built, powered and on their network field
     // each mode's pool; every line's route, ridership and share of that pool

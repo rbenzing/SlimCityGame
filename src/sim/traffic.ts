@@ -341,13 +341,16 @@ export class TrafficSystem {
     tickNo: number;
     /** Resident population; drives the people-tied, rush-hour trip volume. Omit (test doubles) to fall back to TRIPS_PER_TICK. */
     population?: number;
+    /** Whether tile (x, z) carries a road now; a vehicle on a tile that does not is taken off. Omit to keep every vehicle. */
+    roadAt?: (x: number, z: number) => boolean;
   }): void {
-    const { origins, destinations, tickNo, population } = input;
+    const { origins, destinations, tickNo, population, roadAt } = input;
 
     if (tickNo % TICKS_PER_DAY === 0) {
       this.network.decayVolumes(DAILY_DECAY_FACTOR);
     }
 
+    if (roadAt) this.dropVehiclesOffRoad(roadAt);
     this.advanceVehicles();
     const tripBudget = population === undefined ? TRIPS_PER_TICK : tripsForTick(population, tickNo);
     this.sampleTrips(origins, destinations, tripBudget);
@@ -497,6 +500,20 @@ export class TrafficSystem {
     const a = vehicle.points[vehicle.segIndex]!;
     const b = vehicle.points[vehicle.segIndex + 1]!;
     return `${a.x},${a.z},${b.x},${b.z}`;
+  }
+
+  /**
+   * A vehicle drives the route it was given when it set out, so a road removed
+   * under it would leave it driving on bare ground; it is taken off instead.
+   */
+  private dropVehiclesOffRoad(roadAt: (x: number, z: number) => boolean): void {
+    for (let slot = 0; slot < MAX_VEHICLES; slot += 1) {
+      if (!this.slots[slot]) continue;
+      const base = slot * VEHICLE_STRIDE;
+      const x = Math.floor(this.vehicleBuffer[base]! / TILE_METERS);
+      const z = Math.floor(this.vehicleBuffer[base + 1]! / TILE_METERS);
+      if (!roadAt(x, z)) this.freeSlot(slot);
+    }
   }
 
   private advanceVehicles(): void {

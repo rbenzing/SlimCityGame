@@ -313,6 +313,55 @@ describe('the farmstead’s detail', () => {
     }
     expect(top).toBeCloseTo(1.22, 5);
   });
+
+  it('runs both rails along every side of the paddock, flat, on all four sides', () => {
+    const scene = new THREE.Scene();
+    new FarmRenderer(scene, flat, catalog, dirtNorth).apply({
+      added: [standing('farm-pasture-2')],
+      updated: [],
+      removed: [],
+    });
+    const plan = planFarm(standing('farm-pasture-2'), catalog[3]!, dirtNorth)!;
+    const rails = scene.children.find(
+      (c): c is THREE.InstancedMesh =>
+        c instanceof THREE.InstancedMesh &&
+        c.count > 0 &&
+        (() => {
+          const m = new THREE.Matrix4();
+          c.getMatrixAt(0, m);
+          return Math.abs(new THREE.Vector3().setFromMatrixScale(m).y - 0.08) < 1e-6;
+        })(),
+    )!;
+    const { x0, x1, z0, z1 } = plan.field;
+    const along = { top: 0, bottom: 0, left: 0, right: 0 };
+    const m = new THREE.Matrix4();
+    const p = new THREE.Vector3();
+    const q = new THREE.Quaternion();
+    const s = new THREE.Vector3();
+    for (let i = 0; i < rails.count; i += 1) {
+      rails.getMatrixAt(i, m);
+      m.decompose(p, q, s);
+      const dir = new THREE.Vector3(1, 0, 0).applyQuaternion(q);
+      const up = new THREE.Vector3(0, 1, 0).applyQuaternion(q);
+      // Every rail lies flat on edge: its long axis level and its 8 cm face upright.
+      expect(Math.abs(dir.y)).toBeLessThan(1e-6);
+      expect(Math.abs(up.y)).toBeGreaterThan(1 - 1e-6);
+      const alongX = Math.abs(dir.x) > 0.99;
+      const alongZ = Math.abs(dir.z) > 0.99;
+      expect(alongX || alongZ).toBe(true);
+      if (alongX && Math.abs(p.z - z0) < 1e-6) along.top += 1;
+      else if (alongX && Math.abs(p.z - z1) < 1e-6) along.bottom += 1;
+      else if (alongZ && Math.abs(p.x - x0) < 1e-6) along.left += 1;
+      else if (alongZ && Math.abs(p.x - x1) < 1e-6) along.right += 1;
+    }
+    const spans = (len: number): number => 2 * Math.max(1, Math.round(len / 4));
+    expect(along).toEqual({
+      top: spans(x1 - x0),
+      bottom: spans(x1 - x0),
+      left: spans(z1 - z0),
+      right: spans(z1 - z0),
+    });
+  });
 });
 
 describe('cowPose', () => {
