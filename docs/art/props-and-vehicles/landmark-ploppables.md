@@ -15,7 +15,13 @@ landmarks, not a functional transit system. Each is drawn from one layout
   Aircraft are static props, nose to the building line; there is no flight
   simulation.
 - **Nothing above ground** stands in the runway's safety area or object
-  free area.
+  free area, but the far side's fence on its edge.
+- **Facilities** ([airport-facilities.md](../../specs/airport-facilities.md)):
+  fence posts and tanks are instanced, the fence's fabric is one
+  half see-through sheet a plot that casts no shadow, and the tower,
+  hangars, cargo buildings, garages, bridges and gantries reuse the body,
+  roof and pane pools. Roads, aprons and their paint are polygons on the
+  plate, every corner an arc ([paved-corners.md](../../specs/paved-corners.md)).
 
 The **former airport** (8 × 6 tiles) keeps the kit it was built with for the
 saves that hold one: a terminal slab with rooftop monitor boxes, a control

@@ -108,8 +108,9 @@ MUTCD citations below use 11th-edition section numbers.
 - [R-roads-092] A road with no kerb turns its bend, and the corners where two such roads
   meet, on its class's corner radius: 6.1 m for an alley. Its paved edge
   is never a square corner against open ground, and the arc stays on the
-  tiles the road holds. — [paved-corners.md](../specs/paved-corners.md);
-  `src/render/roadprofile.ts`
+  tiles the road holds. A dirt road takes the alley's radius. —
+  [paved-corners.md](../specs/paved-corners.md); `cornerRadiusOf` in
+  `src/shared/roadprofile.ts`
 - [R-roads-018] A grid tile where a road off the grid meets is drawn by one renderer only:
   the free-road junction, whole, with each grid road carried to the tile's
   edge. The tile renderer draws none of its road, and no furniture or lamp the

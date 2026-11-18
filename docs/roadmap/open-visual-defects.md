@@ -10,7 +10,7 @@ What two reviews of every screenshot the shot tools write found wrong in the gam
 ## Major: transit
 
 - A tram reservation on a free (off-grid) road draws its median but no guideway, columns or beams. `[R-roads-088]` — `shots-bends/tram-90-above`
-- An airport's terminal is a plain block with two window bands and no jet bridges, its car park's stall lines shimmer from afar, and the international's plot is longer than the camera's furthest view. — `shots-airport/international-airport-apron`
+- An airport's terminal, cargo buildings and tanks are plain bodies; its car park and its garages' roofs hold no cars and its loop road no trees; the international's plot is longer than the camera's furthest view. — `shots-airport/international-airport-landside`
 
 ## Major: buildings and lots
 
@@ -23,7 +23,7 @@ What two reviews of every screenshot the shot tools write found wrong in the gam
 
 - Seen once and not since: terrain spiking through the cap of a raised road's dead end, in the frame `shots-roadmatrix/highway-viaduct-end` held before the tools were fixed. The regenerated frame stands clean, and the clipping sweep finds no ground above a deck. `[R-roads-004]`
 - A tram depot's lead crosses the footway as a darker strip with no dropped kerb; a rail bend's first sleeper doubles the straight's last; a rail junction's turnouts are 10 m in radius, the tile's limit, and tram turns assume like lanes on both arms. `[R-roads-088]` — `shots-depots/b5-tram-turnout`, `shots-roadmatrix/rail-turn`, `rail-cross`
-- A footway's kerb face runs unbroken across a drive and an alley's mouth: no dropped kerb shows there. `[R-roads-074]` — `shots-conformity/alley-t-twolane-box`
+- A footway's kerb face runs unbroken across a drive and an alley's mouth: no dropped kerb shows there, and a car park's entrance meets the street square, with no return. `[R-roads-074]` — `shots-conformity/alley-t-twolane-box`, `shots-parking/com-strip-2-above`
 - Trees are planted in the avenue's 1.2 m median, narrower than a street tree's planting strip.
 - A viaduct's shadow lies detached from it; winter only dulls the trees' leaves a little, so the strip reads Winter over green ground.
 - A street's parking lane stands empty beside homes: a home's cars stand only on its drive `[R-render-026]`. — `shots-parking/kerb-both-1`

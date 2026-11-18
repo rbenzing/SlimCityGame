@@ -280,7 +280,10 @@
   City) and an **International Airport** (183 × 33, from Metropolis). Each
   plot includes the clear ground a real runway needs, so find or level a
   long, dry, flat site first; the long edge by the car park must face a
-  street. They draw power and water and are loud; no flights are simulated.
+  street. Each comes fenced, with a fuel store and a maintenance hangar; the
+  larger two add a control tower, cargo buildings and a loop road past the
+  terminal, and the International parks in two garages. They draw power and
+  water and are loud; no flights are simulated.
 - **Transit** — bus lines with stops and cosmetic buses; ridership depends on
   stops being close enough to demand. (Place stops within a few tiles of where
   people are.) Buses, trams and trains show in every view while their line
