@@ -24,6 +24,7 @@ import { TILE_METERS, tileToWorld } from '../shared/constants';
 import {
   carriagewayHalfWidthMeters,
   curbWidthMeters,
+  isArrowTile,
   ROAD_Y_OFFSET,
   CURB_Y_OFFSET,
 } from './roadsmesh';
@@ -34,6 +35,7 @@ import {
   hasFootway,
   isOneWayProfile,
   isParkingLane,
+  isServiceClass,
   kerbWidthOf,
   parkingSides,
   plainLaneCentres,
@@ -73,6 +75,8 @@ import {
   SIGN_BOTTOM_OVER_WALK_M,
   SIGN_NO_KERB_M,
   SLIDE_LIMIT_M,
+  type EndCap,
+  type KeepClear,
   type Roadside,
   type Spot,
 } from './roadsidespace';
@@ -252,6 +256,9 @@ export const TRAM_POLE_ARM_HEIGHT_M = TRAM_SUPPORT_HEIGHT_M;
 export const TRAM_POLE_SPACING_M = 22;
 /** How far an arm's tip may lie from a track's centre line and still carry the wire over it. */
 const TRAM_ARM_TOLERANCE_M = 0.1;
+/** A mast that stands on a kerb ramp moves on in steps of this, to at most this far. */
+const MAST_SLIDE_STEP_M = 0.25;
+const MAST_SLIDE_LIMIT_M = 3;
 /** A support the junction or a driveway took the place of stands this far inside the tile before it. */
 const TRAM_SUBSTITUTE_SETBACK_M = 2;
 /** A substitute is not stood within this of a support already there. */
@@ -653,7 +660,14 @@ export function joins(
   nx: number,
   nz: number,
 ): boolean {
-  if (!tileSet.has(tileKey(nx, nz))) return false;
+  const there = tileSet.get(tileKey(nx, nz));
+  if (!there) return false;
+  // A service access is no leg of the street it meets: that street does not turn
+  // or become a junction for it, exactly as the carriageway is drawn.
+  const here = tileSet.get(tileKey(x, z));
+  if (here && !isServiceClass(profileOf(here).class) && isServiceClass(profileOf(there).class)) {
+    return false;
+  }
   return !isSeparateRoad(x, z, nx - x, nz - z, surroundingsOf(tileSet));
 }
 
@@ -680,6 +694,31 @@ function neighborCount(tileSet: RoadTileIndex, x: number, z: number): number {
   let count = 0;
   for (const d of NEIGHBOR_DIRS) if (joins(tileSet, x, z, x + d.dx, z + d.dz)) count++;
   return count;
+}
+
+/**
+ * The rounded end every dead-end tile draws past its far edge: a half disc as
+ * wide as the carriageway and its kerb band, standing on the ground beyond.
+ */
+export function endCapsOf(roadTiles: readonly FurnitureRoadTile[]): EndCap[] {
+  const tileSet = buildTileSet(roadTiles);
+  const caps: EndCap[] = [];
+  for (const tile of roadTiles) {
+    if (tile.ring || neighborCount(tileSet, tile.x, tile.z) !== 1) continue;
+    const arm = NEIGHBOR_DIRS.find((d) =>
+      joins(tileSet, tile.x, tile.z, tile.x + d.dx, tile.z + d.dz),
+    );
+    if (!arm) continue;
+    const { half, kerb } = edgeOf(tile);
+    caps.push({
+      x: tileToWorld(tile.x) - (arm.dx * TILE_METERS) / 2,
+      z: tileToWorld(tile.z) - (arm.dz * TILE_METERS) / 2,
+      dx: -arm.dx,
+      dz: -arm.dz,
+      radius: half + Math.min(kerb, TILE_METERS / 2 - half),
+    });
+  }
+  return caps;
 }
 
 interface PresentSides {
@@ -920,12 +959,15 @@ export function computeManholePlacements(
     if (!periodHits(tile.x, tile.z, MANHOLE_PERIOD_TILES)) continue;
     const profile = profileOf(tile);
     if (profile.pieces.some((p) => p.bay === true)) continue; // a junction's approach is all paint
+    const axis = lateralAxis(tileSet, tile.x, tile.z);
+    // A one-way road paints an arrow down every lane of every third tile along its run.
+    if (tile.tier === RoadTier.OneWay && isArrowTile(axis === 'x' ? tile.z : tile.x)) continue;
     const lane = plainLaneCentres(profile)[0];
     if (lane === undefined) continue; // no plain lane to lie in
     out.push({
       x: tile.x,
       z: tile.z,
-      axis: lateralAxis(tileSet, tile.x, tile.z),
+      axis,
       // The lane's middle, from the tile's middle: half of a corridor's
       // carriageway is pushed against the edge it shares.
       lateral: lane + carriagewayShiftOf(profile),
@@ -1525,8 +1567,9 @@ export function isControlSign(type: SignType): boolean {
 export function controlSignSpots(
   roadTiles: readonly FurnitureRoadTile[],
   keepOff?: ReadonlySet<number>,
+  ramps?: KeepClear,
 ): Spot[] {
-  return computeSignPlacements(roadTiles)
+  return computeSignPlacements(roadTiles, undefined, ramps)
     .filter((s) => isControlSign(s.type) && !keepOff?.has(tileKey(s.x, s.z)))
     .map((s) => {
       const at = signWorldTransform(s);
@@ -1570,11 +1613,14 @@ const MOVABLE_BOARDS: ReadonlySet<SignType> = new Set<SignType>(['oneway', 'spee
  * line on the near right, both of them where they stand whatever else is near;
  * every other board takes its place after them and moves along its strip off a
  * bus stop's span, a drive or the centre of any object in `roadside`, or is not
- * put down. Each it puts down it adds to `roadside.taken`.
+ * put down. Each it puts down it adds to `roadside.taken`. A signal mast moves
+ * on along its strip, away from the junction, until it stands off a kerb ramp
+ * in `ramps`.
  */
 export function computeSignPlacements(
   roadTiles: readonly FurnitureRoadTile[],
   roadside?: Roadside,
+  ramps?: KeepClear,
 ): SignPlacement[] {
   const tileSet = buildTileSet(roadTiles);
   const out: SignPlacement[] = [];
@@ -1681,7 +1727,21 @@ export function computeSignPlacements(
         corner?.lateral ??
         (type === 'signal' ? mastKerbOffset(tile) : signOffset(tile)) +
           flankShift(tileSet, tile, pick);
-      const along = corner?.along ?? TILE_METERS / 2 - CONTROL_SIGN_SETBACK_M;
+      let along = corner?.along ?? TILE_METERS / 2 - CONTROL_SIGN_SETBACK_M;
+      // A mast at the far corner takes the strip past the junction's kerb
+      // ramp: it moves on, away from the junction, until it is off it.
+      if (corner && ramps) {
+        const limit = corner.along + MAST_SLIDE_LIMIT_M;
+        while (
+          along < limit &&
+          ramps.onRamp(
+            tileToWorld(tile.x) + rightX * lateral + towardX * along,
+            tileToWorld(tile.z) + rightZ * lateral + towardZ * along,
+          )
+        ) {
+          along += MAST_SLIDE_STEP_M;
+        }
+      }
       const control: SignPlacement = {
         x: tile.x,
         z: tile.z,
@@ -2675,7 +2735,7 @@ export class RoadFurnitureRenderer {
     // to what the roadside already holds and to what went down before it.
     const here = roadside && { clear: roadside.clear, taken: roadside.taken.clone() };
     this.manholes = allowed(computeManholePlacements(roadTiles));
-    this.signs = allowed(computeSignPlacements(roadTiles, here));
+    this.signs = allowed(computeSignPlacements(roadTiles, here, here?.clear));
     this.meters = allowed(computeMeterPlacements(roadTiles, here));
     this.boxes = allowed(computeBoxPlacements(roadTiles, here));
 

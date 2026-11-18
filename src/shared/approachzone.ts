@@ -30,7 +30,6 @@ import {
   dropWidth,
   kerbsideClosedAt,
   laneDrop,
-  laneTaperTiles,
   pavedCrossSection,
   TAPER_MAX_TILES,
   taperedCrossSection,
@@ -106,6 +105,8 @@ export interface ApproachAhead {
   pocket: boolean;
   /** How far open that pocket is here, 0 to 1: full against the junction. */
   openness: number;
+  /** Whether this tile is where the bay's storage begins, past its taper. */
+  storageHead?: boolean;
   /**
    * What the player has said about INDIVIDUAL lanes of this arm, packed a
    * nibble each. Zero is every lane on the set the approach derives, which is
@@ -115,17 +116,53 @@ export interface ApproachAhead {
 }
 
 /**
- * How far open a turn bay is on a tile `distance` tiles short of the junction,
- * given a zone of `zone` tiles. A bay is a taper and then storage: the taper
- * takes the class's own ratio to open one lane width, and what is left of the
- * zone is held at full width, since a queue standing in a wedge is a queue
- * standing half in the through lane. A zone with no room for both is all
- * taper but for the tile against the junction.
+ * The tiles a turn bay takes to open to its full width. A bay only lets a
+ * slowing driver leave the through lane, so it is far shorter than the lane-drop
+ * taper: one tile on every street class, two where traffic is fast.
  */
-function pocketOpenness(classId: RoadClassId, zone: number, distance: number): number {
-  const taper = Math.min(laneTaperTiles(classId), Math.max(0, zone - 1));
-  if (taper <= 0) return 1;
-  return Math.min(1, (zone - distance) / (taper + 1));
+const BAY_TAPER_TILES_BY_CLASS: Readonly<Record<RoadClassId, number>> = {
+  dirt: 1,
+  alley: 1,
+  rural: 1,
+  local: 1,
+  oneWay: 1,
+  urban: 1,
+  collector: 1,
+  arterial: 1,
+  divided: 2,
+  highway: 2,
+  ramp: 1,
+  rail: 1,
+};
+
+/** The tiles of the zone a class's turn bay spends opening. */
+export function bayTaperTiles(classId: RoadClassId): number {
+  return BAY_TAPER_TILES_BY_CLASS[classId];
+}
+
+/**
+ * How far open a turn bay is on a tile `distance` tiles short of the junction,
+ * given a zone of `zone` tiles. A bay is a taper and then storage, and every
+ * tile nearer the junction than the taper is full width. A tile is drawn
+ * bending from the width of the tile behind it to its own, so the tile's value
+ * is where its near edge stands: a one-tile taper is a tile at the full bay,
+ * and a two-tile taper is a half and then the full bay. A zone no longer than
+ * its taper is all taper but for the tile against the junction.
+ */
+export function pocketOpenness(classId: RoadClassId, zone: number, distance: number): number {
+  const taper = Math.min(bayTaperTiles(classId), Math.max(0, zone - 1));
+  const fromFar = zone - 1 - distance;
+  if (taper <= 0 || fromFar >= taper) return 1;
+  return (fromFar + 1) / taper;
+}
+
+/**
+ * Whether a tile is the first of a bay's storage lane, with a storage longer
+ * than the one tile that the stop line's arrow already marks.
+ */
+function isStorageHead(classId: RoadClassId, zone: number, distance: number): boolean {
+  const taper = Math.min(bayTaperTiles(classId), Math.max(0, zone - 1));
+  return distance > 0 && distance === zone - 1 - taper;
 }
 
 /**
@@ -432,6 +469,7 @@ export function approachAhead(
     allowed: warrant.allowed,
     pocket,
     openness: pocket && mine ? pocketOpenness(mine.class, zone, best.distance) : 1,
+    storageHead: pocket && mine ? isStorageHead(mine.class, zone, best.distance) : false,
     laneAllowed: world.laneTurnsAt(best.jx, best.jz, arm),
   };
 }

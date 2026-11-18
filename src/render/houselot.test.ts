@@ -27,6 +27,7 @@ import {
   SPLIT_UPPER_STOREY_M,
   TRAMPOLINE_RADIUS_M,
   chimneyRolled,
+  frontageKeepClear,
   driveRoadTiles,
   garageBaysOf,
   homeDriveCuts,
@@ -1234,5 +1235,53 @@ describe('a framed home’s drive tiles', () => {
       () => null,
     )!;
     expect(driveRoadTiles(building, small, plan)).toEqual([]);
+  });
+});
+
+describe('a framed home’s drive mouths', () => {
+  const parcel: ParcelFrame = { x: 212.5, z: 340.25, heading: 0.6 };
+  const building = home({ x: 10, z: 17, frame: parcel });
+  const plan = planHouseGround(
+    building,
+    small,
+    () => false,
+    () => null,
+  )!;
+
+  it('keeps every point of the drive and the width of the cut plus 0.6 m inside a keep-out disc', () => {
+    const spots = frontageKeepClear(building, plan);
+    expect(spots.length).toBeGreaterThan(0);
+    const covered = (p: { x: number; z: number }): boolean =>
+      spots.some((s) => Math.hypot(s.x - p.x, s.z - p.z) <= s.r);
+    for (const { cut, rect } of plan.drives) {
+      const uc = (cut.u0 + cut.u1) / 2;
+      for (const [u, v] of [
+        [uc, (cut.v0 + cut.v1) / 2],
+        [cut.u0 - 0.5, (cut.v0 + cut.v1) / 2],
+        [cut.u1 + 0.5, (cut.v0 + cut.v1) / 2],
+        [uc, rect.v0],
+        [uc, rect.v1],
+      ] as const) {
+        expect(covered(lotToWorld(plan.frame, u, v))).toBe(true);
+      }
+    }
+  });
+
+  it('leaves a point well clear of the drive free', () => {
+    const spots = frontageKeepClear(building, plan);
+    const { cut } = plan.drives[0]!;
+    const far = lotToWorld(plan.frame, cut.u1 + 8, (cut.v0 + cut.v1) / 2);
+    expect(spots.some((s) => Math.hypot(s.x - far.x, s.z - far.z) <= s.r)).toBe(false);
+  });
+
+  it('is empty for a home on the grid, whose drive tiles are exact', () => {
+    const grid = home({ x: 10, z: 17 });
+    const gridPlan = planHouseGround(
+      grid,
+      small,
+      () => false,
+      () => null,
+    )!;
+    expect(frontageKeepClear(grid, gridPlan)).toEqual([]);
   });
 });

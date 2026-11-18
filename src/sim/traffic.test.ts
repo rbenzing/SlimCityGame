@@ -223,6 +223,28 @@ describe('TrafficSystem trip sampling', () => {
     expect(countActiveSlots(sys.vehicleBuffer)).toBe(0);
   });
 
+  it('drops a vehicle whose road has been taken away from under it, and keeps one still on its road', () => {
+    const path = makePath(
+      Array.from({ length: 60 }, (_, x) => ({ x, z: 0 })),
+      [1],
+    );
+    const spawn = (): TrafficSystem => {
+      const network = createOneShotNetwork(path, [makeEdge(1, RoadTier.TwoLane)]);
+      const sys = new TrafficSystem(createScriptedRng(oneSuccessfulTripDraws(0.99)), network);
+      sys.tick({ origins: [{ x: 0, z: 0 }], destinations: [{ x: 60, z: 0 }], tickNo: 1 });
+      expect(countActiveSlots(sys.vehicleBuffer)).toBe(1);
+      return sys;
+    };
+
+    const kept = spawn();
+    kept.tick({ origins: [], destinations: [], tickNo: 2, roadAt: () => true });
+    expect(countActiveSlots(kept.vehicleBuffer)).toBe(1);
+
+    const bared = spawn();
+    bared.tick({ origins: [], destinations: [], tickNo: 2, roadAt: () => false });
+    expect(countActiveSlots(bared.vehicleBuffer)).toBe(0);
+  });
+
   it('adds no volume and spawns nothing when the network finds no path', () => {
     const network = createFakeNetwork(() => null);
     const sys = new TrafficSystem(createSeededRng(3), network);

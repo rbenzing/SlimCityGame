@@ -17,6 +17,7 @@ import {
   airportPlateGeometry,
   airportPlateQuads,
   buildingPanes,
+  ROOF_OVERHANG_M,
 } from './airportkit';
 import {
   CAB_GLASS_M,
@@ -611,5 +612,128 @@ describe('what the facilities cost to draw', () => {
 
   it.each(AIRPORT_IDS)('%s stays under its measured ceiling', (id) => {
     expect(total(id)).toBeLessThanOrEqual(CEILING[id]);
+  });
+});
+
+describe('the runway edge is one surface', () => {
+  it.each(AIRPORT_IDS)(
+    '%s: no point beside a runway connector is covered by two pavement triangles',
+    (id) => {
+      const layout = airportLayout(id);
+      const geometry = airportPlateGeometry(id, 0);
+      const position = geometry.getAttribute('position');
+      const index = geometry.getIndex()!;
+      const cx = layout.plot.w / 2;
+      const cz = layout.plot.d / 2;
+      const pavementY = Math.max(
+        ...Array.from({ length: position.count }, (_, i) => position.getY(i)),
+      );
+      const layers = [
+        ...new Set(Array.from({ length: position.count }, (_, i) => position.getY(i))),
+      ].sort((a, b) => a - b);
+      const y = layers[1]!;
+      expect(pavementY).toBeGreaterThan(y);
+      const tris: [number, number, number, number, number, number][] = [];
+      for (let t = 0; t < index.count; t += 3) {
+        const [a, b, c] = [index.getX(t), index.getX(t + 1), index.getX(t + 2)];
+        if (Math.abs(position.getY(a) - y) > 1e-9) continue;
+        tris.push([
+          position.getX(a) + cx,
+          position.getZ(a) + cz,
+          position.getX(b) + cx,
+          position.getZ(b) + cz,
+          position.getX(c) + cx,
+          position.getZ(c) + cz,
+        ]);
+      }
+      const covers = (px: number, pz: number): number =>
+        tris.filter(([ax, az, bx, bz, qx, qz]) => {
+          const d1 = (px - bx) * (az - bz) - (ax - bx) * (pz - bz);
+          const d2 = (px - qx) * (bz - qz) - (bx - qx) * (pz - qz);
+          const d3 = (px - ax) * (qz - az) - (qx - ax) * (pz - az);
+          const neg = d1 < -1e-9 || d2 < -1e-9 || d3 < -1e-9;
+          const pos = d1 > 1e-9 || d2 > 1e-9 || d3 > 1e-9;
+          return !(neg && pos);
+        }).length;
+      let sampled = 0;
+      for (const c of layout.connectors) {
+        for (let x = c.x - 12; x <= c.x + c.w + 12; x += 0.37) {
+          for (let z = c.z + 0.05; z <= c.z + 12; z += 0.37) {
+            const n = covers(x, z);
+            sampled++;
+            expect(n, `${id} at ${x.toFixed(2)}, ${z.toFixed(2)}`).toBeLessThanOrEqual(1);
+          }
+        }
+      }
+      expect(sampled).toBeGreaterThan(100);
+    },
+  );
+});
+
+describe('the way into the buildings', () => {
+  it.each(AIRPORT_IDS)('%s: every street face has a door from the ground up', (id) => {
+    const layout = airportLayout(id);
+    for (const box of airportBuildings(layout, entryHeight[id])) {
+      if (box.kind !== 'terminal' && box.kind !== 'pilots') continue;
+      const faceZ = box.rect.z + box.rect.d;
+      const doors = buildingPanes(box).filter((p) => p.cz === faceZ && p.y === 0 && p.h >= 2.4);
+      expect(doors.length, `${id} ${box.kind}`).toBeGreaterThanOrEqual(1);
+      for (const d of doors) {
+        expect(d.cx - d.w / 2).toBeGreaterThanOrEqual(box.rect.x);
+        expect(d.cx + d.w / 2).toBeLessThanOrEqual(box.rect.x + box.rect.w);
+      }
+    }
+  });
+
+  it('closes the airfield fence with the pilots building and walks from its car park to the door', () => {
+    const l = airportLayout('airfield');
+    const pilots = l.pilotsBuilding!;
+    expect(pilots.z + pilots.d).toBeCloseTo(l.fence.line[2]!.z, 6);
+    const door = buildingPanes({ kind: 'pilots', rect: pilots, height: 3.6 }).find(
+      (p) => p.y === 0,
+    )!;
+    const walk = facilityPlatePolys(l).filter(
+      (p) =>
+        p.layer === 'paint' &&
+        p.points.every((q) => Math.abs(q.x - door.cx) <= 1 + EPS) &&
+        Math.min(...p.points.map((q) => q.z)) <= pilots.z + pilots.d + EPS &&
+        Math.max(...p.points.map((q) => q.z)) >= l.carPark!.z - EPS,
+    );
+    expect(walk).toHaveLength(1);
+  });
+});
+
+describe('parts that stand near each other keep clear', () => {
+  it.each(AIRPORT_IDS)('%s: no aircraft wing or tail enters a building or its roof', (id) => {
+    const layout = airportLayout(id);
+    const o = ROOF_OVERHANG_M;
+    for (const p of aircraftPlacements(layout)) {
+      const g = aircraftGeometry(p.kind);
+      g.computeBoundingBox();
+      const b = g.boundingBox!;
+      const plane = {
+        x: p.x + b.min.x,
+        w: b.max.x - b.min.x,
+        z: p.z + b.min.z,
+        d: b.max.z - b.min.z,
+      };
+      for (const building of airportBuildings(layout, entryHeight[id])) {
+        const r = building.rect;
+        const roof = { x: r.x - o, z: r.z - o, w: r.w + 2 * o, d: r.d + 2 * o };
+        expect(overlaps(plane, roof), `${id} ${p.kind} at ${p.x},${p.z} in ${building.kind}`).toBe(
+          false,
+        );
+      }
+    }
+  });
+
+  it.each(AIRPORT_IDS)('%s: a garage ramp drum stays outside its deck', (id) => {
+    for (const g of airportLayout(id).garages) {
+      const r = g.rect;
+      const nearestX = Math.min(Math.max(g.drum.cx, r.x), r.x + r.w);
+      const nearestZ = Math.min(Math.max(g.drum.cz, r.z), r.z + r.d);
+      const gap = Math.hypot(g.drum.cx - nearestX, g.drum.cz - nearestZ) - g.drum.diameter / 2;
+      expect(gap).toBeGreaterThanOrEqual(-EPS);
+    }
   });
 });

@@ -102,7 +102,8 @@ colour rather than clipping to white — a lit part glows in its own livery
 colour, warm-shifted (`LIT_WARM_SHIFT` `[1, 0.88, 0.7]` times the instance
 colour), so a white band reads cream and a red one red, never a flat white
 slab. An industrial building lights few windows — the factory's clerestory
-and the warehouse's office corner — but carries a wall-pack over each dock
+and the glass front of the warehouse's office; the office's corner block is
+a tinted wall, not a lit part — but carries a wall-pack over each dock
 door and each walk door (`dockLight`, on the lit material), the small warm
 block a real yard reads by at night. A car park has no lot lights to glow:
 the lot kit stands no poles.

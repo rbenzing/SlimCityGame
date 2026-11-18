@@ -58,6 +58,7 @@ import {
 } from './shared/types';
 import { footprintForRotation } from './shared/footprint';
 import { PLATTED_ZONES } from './shared/lots';
+import { kerbRampBox } from './shared/kerbramps';
 import {
   carriagewayHalfWidthOf,
   carriagewayWidth,
@@ -120,6 +121,7 @@ import { civicAccessFor } from './shared/civicaccess';
 import { civicCutTiles, civicSiteFor, type KitSensors } from './render/civiccrossing';
 import type { TileDriveCut } from './shared/kerblayout';
 import {
+  frontageKeepClear,
   driveRoadTiles,
   homeDriveCuts,
   planHouseGround,
@@ -181,9 +183,11 @@ import {
 import {
   KEEP_CLEAR_NONE,
   keepClearOf,
+  type KeepClearDisc,
   Standing,
   TREE_FROM_CONTROL_M,
   TREE_FROM_LAMP_M,
+  TREE_FROM_RAMP_M,
   TREE_FROM_STOP_M,
   type Roadside,
   type Spot,
@@ -194,6 +198,7 @@ import { UndergroundView } from './render/underground';
 import {
   buildTileSet,
   computeSignPlacements,
+  endCapsOf,
   computeTramPolePlacements,
   computeTramWireRuns,
   controlSignSpots,
@@ -227,7 +232,10 @@ import { audioRuntime } from './app/audioruntime';
 import { ambientMix } from './app/audio';
 
 /** What a lot's driveway contributes: a road tile it crosses, or its cut on a kerb. */
-type DriveSite = { key: number; cut: null } | { key: null; cut: TileDriveCut };
+type DriveSite =
+  | { key: number; cut: null; disc: null }
+  | { key: null; cut: TileDriveCut; disc: null }
+  | { key: null; cut: null; disc: KeepClearDisc };
 
 /** Cheap set equality, so an unchanged driveway set costs no lamp rebuild. */
 function sameTileKeySet(a: ReadonlySet<number>, b: ReadonlySet<number>): boolean {
@@ -1410,6 +1418,9 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
    * is also when the lamps have to be rebuilt to notice.
    */
   let drivewayTiles: ReadonlySet<number> = new Set();
+  /** Where a framed home's drives open on a street whose kerb the tiles alone do not place. */
+  let driveDiscs: readonly KeepClearDisc[] = [];
+  let driveDiscSignature = '';
   const drivewayCache = new DrivewayTiles<DriveSite>();
   let latestRoadTiles: ReturnType<typeof clientGrid.roadTiles> = [];
   /** The same tiles indexed the way the furniture reads them; kept in step with latestRoadTiles. */
@@ -1447,6 +1458,10 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       ...lamps.standSpots().map((s) => ({ ...s, radius: TREE_FROM_LAMP_M })),
       ...roadsideControl.map((s) => ({ ...s, radius: TREE_FROM_CONTROL_M })),
       ...busStops.padSpots().map((s) => ({ ...s, radius: TREE_FROM_STOP_M })),
+      ...roadsMesh.kerbRamps().map((r) => {
+        const box = kerbRampBox(r);
+        return { x: (box.x0 + box.x1) / 2, z: (box.z0 + box.z1) / 2, radius: TREE_FROM_RAMP_M };
+      }),
     ]);
   };
   /** Draws the stops on the roads as they stand now. */
@@ -1595,14 +1610,17 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       freeJunctionTiles.size > 0 || stationTiles.size > 0
         ? new Set([...drivewayTiles, ...freeJunctionTiles, ...stationTiles])
         : drivewayTiles;
+    const ramps = roadsMesh.kerbRamps();
     const clear = keepClearOf(
       drivewayTiles,
       latestStops,
       STOP_CLEAR_HALF_M,
       (tx, tz) => lateralAxis(latestRoadTileSet, tx, tz),
       tileKey,
+      ramps,
+      driveDiscs,
     );
-    const control = controlSignSpots(latestRoadTiles, freeJunctionTiles);
+    const control = controlSignSpots(latestRoadTiles, freeJunctionTiles, clear);
     roadsideControl = control;
     // A bus stop's sign post is held like a mast: nothing stands within reach of it.
     const held = [
@@ -1646,7 +1664,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
         },
         roadSurfaceAt,
       );
-    lamps.rebuild(latestRoadTiles, keepOff, free, poles, latestStops, held, settle);
+    lamps.rebuild(latestRoadTiles, keepOff, free, poles, latestStops, held, settle, ramps);
     const upper = ahead.clone().addAll(lamps.standSpots());
     roadsideUpper = { clear, taken: upper };
     // A pole is laid again only where something it keeps clear of has moved.
@@ -2348,7 +2366,11 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
    * holds for a curve, for a building the sim grew, and for a city just
    * loaded, whose trees are regrown from the map it was founded on.
    */
-  const keepTreesOffOccupied = (): void => trees.clearAt(clientGrid.occupiedTiles());
+  const keepTreesOffOccupied = (): void => {
+    trees.clearAt(clientGrid.occupiedTiles());
+    trees.clearBeside(clientGrid.roadTilePoints());
+    trees.clearEndCaps(endCapsOf(clientGrid.roadTiles()));
+  };
 
   // --- worker messages -----------------------------------------------------------
   const onAck = (ack: CommandAck): void => {
@@ -2487,6 +2509,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
     garages.setNightFactor(nightFactor);
     roadsMesh.setNightFactor(nightFactor); // dim the unlit road so lamp pools stay the bright spots
     freeRoads.setNightFactor(nightFactor);
+    bridges.setNightFactor(nightFactor);
     lamps.setTimeOfDay(dayT); // lamps run their own dusk-to-dawn schedule, not the night ramp
     vehicles.setNightFactor(nightFactor);
     landmarks.setNightFactor(nightFactor);
@@ -2693,14 +2716,28 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
           cuts.push(...homeDriveCuts(inst, entry, home));
         }
         return [
-          ...keys.map((key): DriveSite => ({ key, cut: null })),
-          ...cuts.map((c): DriveSite => ({ key: null, cut: c })),
+          ...keys.map((key): DriveSite => ({ key, cut: null, disc: null })),
+          ...cuts.map((c): DriveSite => ({ key: null, cut: c, disc: null })),
+          ...(home ? frontageKeepClear(inst, home) : []).map((disc): DriveSite => ({
+            key: null,
+            cut: null,
+            disc,
+          })),
         ];
       });
       const driveSites = [...drivewayCache.keys()];
       const nextDriveways = new Set(driveSites.flatMap((s) => (s.key === null ? [] : [s.key])));
-      if (!sameTileKeySet(nextDriveways, drivewayTiles)) {
+      const nextDiscs = driveSites.flatMap((s) => (s.disc === null ? [] : [s.disc]));
+      const discSignature = nextDiscs
+        .map((d) => `${d.x.toFixed(2)},${d.z.toFixed(2)},${d.r.toFixed(2)}`)
+        .sort()
+        .join(';');
+      const drivesMoved =
+        !sameTileKeySet(nextDriveways, drivewayTiles) || discSignature !== driveDiscSignature;
+      if (drivesMoved) {
         drivewayTiles = nextDriveways;
+        driveDiscs = nextDiscs;
+        driveDiscSignature = discSignature;
         rebuildLamps();
       }
       // A drive is a no-parking zone on its kerb: the stalls along it are laid round it.

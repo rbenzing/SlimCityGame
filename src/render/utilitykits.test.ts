@@ -59,6 +59,9 @@ import {
   MRF_TRUCK_COUNT,
   computeParkBenchPlacements,
   computeParkTreeCount,
+  PARK_PATH_WIDTH_FRACTION,
+  SPORTS_STAND_WALK_M,
+  PARK_TREE_CANOPY_RADIUS,
   computeParkTreePlacements,
   computeRecyclingDepotLayout,
   computeWaterLegPlacements,
@@ -102,6 +105,7 @@ import {
   drapedQuad,
   parkWear,
   DISTRICT_POND,
+  DISTRICT_PAVILION_PATH_GAP_M,
   DISTRICT_SPECIMEN,
   PARK_MOUTH_CLEARANCE_M,
   PARK_RING_PATH_WIDTH_M,
@@ -109,7 +113,7 @@ import {
   POND_BANK_RGB,
   SCUFFED_EARTH_RGB,
 } from './utilitykits';
-import { PLOT_BAND_TOP } from './plotground';
+import { PLOT_BAND_TOP, PLOT_YARD_TOP } from './plotground';
 import { SHALLOW_WATER_COLOR } from './water';
 import { adaAccessibleSpaces } from '../shared/parkingcode';
 import catalogData from '../data/catalog.json';
@@ -752,6 +756,19 @@ describe('computeParkTreePlacements (pure)', () => {
       for (const p of placements) {
         expect(Math.abs(p.x)).toBeLessThan(halfW);
         expect(Math.abs(p.z)).toBeLessThan(halfD);
+      }
+    }
+  });
+
+  it('stands every canopy clear of both arms of the path cross', () => {
+    const footprint = { w: 1, d: 1 };
+    const half =
+      (Math.min(...Object.values(footprintHalfExtents(footprint))) * 2 * PARK_PATH_WIDTH_FRACTION) /
+      2;
+    for (let id = 0; id < 400; id++) {
+      for (const p of computeParkTreePlacements(id, footprint)) {
+        expect(Math.abs(p.x)).toBeGreaterThanOrEqual(half + PARK_TREE_CANOPY_RADIUS);
+        expect(Math.abs(p.z)).toBeGreaterThanOrEqual(half + PARK_TREE_CANOPY_RADIUS);
       }
     }
   });
@@ -1526,12 +1543,23 @@ describe('the district park layout (pure)', () => {
     expect(layout.benches).toHaveLength(16);
     expect(layout.pavilion.w).toBe(12);
     expect(layout.pavilion.d).toBe(8);
-    // The pavilion stands on the street side (local +Z), just inside the ring path.
+    // The pavilion stands on the street side (local +Z), inside the ring path with a strip of lawn between.
     expect(layout.pavilion.z).toBeGreaterThan(0);
     expect(layout.pavilion.z + layout.pavilion.d / 2).toBeCloseTo(
-      layout.lawn.z1 - 10 - PARK_RING_PATH_WIDTH_M / 2,
+      layout.lawn.z1 - 10 - PARK_RING_PATH_WIDTH_M / 2 - DISTRICT_PAVILION_PATH_GAP_M,
       9,
     );
+    const block: Rect = {
+      x0: layout.pavilion.x - layout.pavilion.w / 2,
+      x1: layout.pavilion.x + layout.pavilion.w / 2,
+      z0: layout.pavilion.z - layout.pavilion.d / 2,
+      z1: layout.pavilion.z + layout.pavilion.d / 2,
+    };
+    for (const path of layout.paths) {
+      const gapX = Math.max(path.x0 - block.x1, block.x0 - path.x1);
+      const gapZ = Math.max(path.z0 - block.z1, block.z0 - path.z1);
+      expect(Math.max(gapX, gapZ)).toBeGreaterThanOrEqual(DISTRICT_PAVILION_PATH_GAP_M);
+    }
     for (const path of layout.paths) {
       expect(rectHas(path, layout.pavilion)).toBe(false);
       for (const s of layout.specimens) expect(rectHas(path, s)).toBe(false);
@@ -1563,7 +1591,7 @@ describe('the district park layout (pure)', () => {
 describe('the sports ground layout (pure)', () => {
   const layout = computeSportsGroundLayout(SPORTS.footprint);
 
-  it('marks a 105 × 68 m pitch with its lines, two goals, 17 trees and 2 benches', () => {
+  it('marks a 105 × 64 m pitch with its lines, two goals, 17 trees and 2 benches', () => {
     expect(layout.pitch.x1 - layout.pitch.x0).toBe(PITCH.length);
     expect(layout.pitch.z1 - layout.pitch.z0).toBe(PITCH.width);
     expect(layout.lines).toHaveLength(5 + PITCH.centreSegments + 12);
@@ -1588,8 +1616,8 @@ describe('the sports ground layout (pure)', () => {
       pavilion.z0 < layout.pitch.z1 &&
       pavilion.z1 > layout.pitch.z0;
     expect(overlapsPitch).toBe(false);
-    // Street side is local +Z: the pavilion stands a metre back from that edge; the benches are at the two ends, facing in.
-    expect(pavilion.z1).toBe(layout.plate.z1 - 1);
+    // Street side is local +Z: the stand stands a walk back from that edge; the benches are at the two ends, facing in.
+    expect(pavilion.z1).toBe(layout.plate.z1 - SPORTS_STAND_WALK_M);
     for (const bench of layout.benches) {
       expect(rectHas(layout.pitch, bench)).toBe(false);
       expect(rectHas(pavilion, bench)).toBe(false);
@@ -2675,6 +2703,25 @@ describe('hospital kit', () => {
     expect(top).toBeCloseTo(EMERGENCY_DOORS.h, 5);
   });
 
+  it('frames the main entrance’s glass in the wall under its canopy, from the yard to above the doors', () => {
+    const position = positionsOf('hospitalBlock');
+    const { entrance } = layout;
+    const half = 3 + EMERGENCY_DOORS.frame; // the 6 m of glass and a frame either side
+    const top = RECYCLING_YARD_HEIGHT + 3 + EMERGENCY_DOORS.frame;
+    const frameVertices = Array.from({ length: position.count }, (_, i) => i).filter(
+      (i) =>
+        Math.abs(Math.abs(position.getX(i) - entrance.x) - half) < 1e-6 &&
+        position.getZ(i) > entrance.z &&
+        position.getZ(i) < entrance.z + 0.2,
+    );
+    expect(frameVertices.length).toBeGreaterThan(0);
+    expect(Math.max(...frameVertices.map((i) => position.getY(i)))).toBeCloseTo(top, 5);
+    expect(Math.min(...frameVertices.map((i) => position.getY(i)))).toBeCloseTo(
+      RECYCLING_YARD_HEIGHT,
+      5,
+    );
+  });
+
   it('runs a vehicle ramp up from the street side to the roof, no steeper than 1 in 8', () => {
     const { deck, ramp } = layout;
     const rise = DECK_STOREY_M * (DECK_LEVELS - 1);
@@ -2806,6 +2853,44 @@ describe('a paved kit on sloped ground', () => {
       }
     });
   }
+});
+
+describe('the pocket park on sloped ground', () => {
+  const slope = (x: number, z: number): number => 0.04 * x + 0.02 * z;
+
+  it('lays its lawn above the instancer plinth and the highest ground under the lot, so no pad shows through', () => {
+    for (const rotation of [0, 1, 2, 3] as const) {
+      const entry = makeSmallParkEntry();
+      const scene = new THREE.Scene();
+      const kits = new UtilityKitRenderer(scene, slope, [entry]);
+      const instancer = new BuildingInstancer(scene, [entry], slope, kits.kitIds());
+      const building = makeInstance(1, 'small-park', { x: 3, z: 4, rotation });
+      const delta = deltaAdd(building);
+      kits.apply(delta);
+      instancer.apply(delta);
+
+      const m = new THREE.Matrix4();
+      kits.getPartMatrix('small-park', 'parkGround', kits.partSlotsFor(1, 'parkGround')[0]!, m);
+      const lawnTop = decomposePosition(m).y + PLOT_YARD_TOP;
+
+      const plinth = instancer.getPickables().find((p) => p.catalogId === 'small-park')!.mesh;
+      const pm = new THREE.Matrix4();
+      plinth.getMatrixAt(0, pm);
+      const pos = new THREE.Vector3();
+      const scl = new THREE.Vector3();
+      pm.decompose(pos, new THREE.Quaternion(), scl);
+      expect(pos.y + scl.y / 2).toBeLessThan(lawnTop);
+
+      for (const [cx, cz] of [
+        [building.x, building.z],
+        [building.x + 1, building.z],
+        [building.x, building.z + 1],
+        [building.x + 1, building.z + 1],
+      ] as const) {
+        expect(slope(cx * TILE_METERS, cz * TILE_METERS)).toBeLessThanOrEqual(lawnTop);
+      }
+    }
+  });
 });
 
 // ---------------------------------------------------------------------------

@@ -8,6 +8,10 @@
  * higher one by moving along its own strip or by not standing at all.
  */
 import { TILE_METERS, tileToWorld, worldToTile } from '../shared/constants';
+import { kerbRampBox, onKerbRamp, type KerbRamp } from '../shared/kerbramps';
+
+/** How far from a kerb ramp's edge an object's centre stands, so its post is clear of the ramp. */
+export const RAMP_CLEARANCE_M = 0.3;
 
 /** Along one side of a street nothing stands within this of another object's centre, metres. */
 export const OBJECT_GAP_M = 1.5;
@@ -23,6 +27,8 @@ export const TREE_FROM_DRIVE_M = 1.8;
  * stands on the pad or in the path to its shelter.
  */
 export const TREE_FROM_STOP_M = 4;
+/** A scattered tree keeps this far from the middle of a kerb ramp, clear of its slab and the landing. */
+export const TREE_FROM_RAMP_M = 1.5;
 
 /** A sign's post stands this far behind the kerb face, metres. */
 export const SIGN_BEHIND_KERB_M = 0.46;
@@ -122,20 +128,56 @@ export interface StopSite {
   side: 0 | 1;
 }
 
-/** What a place may not be: a drive's tile, or a bus stop's span. */
+/** A round patch of ground, world metres, held clear: where a framed home's drive opens on the street. */
+export interface KeepClearDisc {
+  x: number;
+  z: number;
+  r: number;
+}
+
+/**
+ * A road's rounded dead end: a half disc of `radius` metres, centred on the
+ * middle of the last tile's far edge, bulging out along the unit (dx, dz) onto
+ * the open ground the road faces.
+ */
+export interface EndCap {
+  x: number;
+  z: number;
+  dx: number;
+  dz: number;
+  radius: number;
+}
+
+/** What a place may not be: a drive's tile or mouth, a bus stop's span, or a kerb ramp. */
 export interface KeepClear {
-  /** Whether the world point is on a drive or inside a stop's span, widened by `margin` metres along the span. */
+  /** Whether the world point is on a drive, inside a stop's span (widened by `margin` metres along it) or on a kerb ramp. */
   blocks(x: number, z: number, margin?: number): boolean;
+  /** Whether the world point is on a kerb ramp, or within RAMP_CLEARANCE_M of one. */
+  onRamp(x: number, z: number): boolean;
+}
+
+/** The ramps by the tile their rectangle's centre lies in, so a lookup tests only those near it. */
+function rampsByTile(ramps: readonly KerbRamp[]): Map<string, KerbRamp[]> {
+  const byTile = new Map<string, KerbRamp[]>();
+  for (const ramp of ramps) {
+    const box = kerbRampBox(ramp);
+    const key = `${worldToTile((box.x0 + box.x1) / 2)},${worldToTile((box.z0 + box.z1) / 2)}`;
+    const here = byTile.get(key);
+    if (here) here.push(ramp);
+    else byTile.set(key, [ramp]);
+  }
+  return byTile;
 }
 
 /** Nothing is blocked. */
-export const KEEP_CLEAR_NONE: KeepClear = { blocks: () => false };
+export const KEEP_CLEAR_NONE: KeepClear = { blocks: () => false, onRamp: () => false };
 
 /**
  * The places a drive or a bus stop holds clear. A drive takes its whole tile
  * (`drives`, keyed by `tileKeyOf`). A stop takes its kerb's side of its tile,
  * `spanHalfM` either side of the tile's middle along the run; `axisOf` says
- * which world axis a tile's street is crossed by (its kerbs lie along it).
+ * which world axis a tile's street is crossed by (its kerbs lie along it). A
+ * kerb ramp takes its rectangle, and RAMP_CLEARANCE_M round it.
  */
 export function keepClearOf(
   drives: ReadonlySet<number> | undefined,
@@ -143,8 +185,29 @@ export function keepClearOf(
   spanHalfM: number,
   axisOf: (tx: number, tz: number) => 'x' | 'z',
   tileKeyOf: (tx: number, tz: number) => number,
+  ramps: readonly KerbRamp[] = [],
+  discs: readonly KeepClearDisc[] = [],
 ): KeepClear {
-  if ((!drives || drives.size === 0) && stops.length === 0) return KEEP_CLEAR_NONE;
+  if (
+    (!drives || drives.size === 0) &&
+    stops.length === 0 &&
+    ramps.length === 0 &&
+    discs.length === 0
+  ) {
+    return KEEP_CLEAR_NONE;
+  }
+  const rampTiles = rampsByTile(ramps);
+  const onRamp = (x: number, z: number): boolean => {
+    const tx = worldToTile(x);
+    const tz = worldToTile(z);
+    for (let dz = -1; dz <= 1; dz++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        const here = rampTiles.get(`${tx + dx},${tz + dz}`);
+        if (here?.some((r) => onKerbRamp(r, x, z, RAMP_CLEARANCE_M))) return true;
+      }
+    }
+    return false;
+  };
   const sides = new Map<number, Set<-1 | 1>>();
   for (const stop of stops) {
     const key = tileKeyOf(stop.x, stop.z);
@@ -153,11 +216,13 @@ export function keepClearOf(
     sides.set(key, here);
   }
   return {
+    onRamp,
     blocks(x, z, margin = 0) {
+      if (discs.some((d) => Math.hypot(d.x - x, d.z - z) <= d.r)) return true;
       const tx = worldToTile(x);
       const tz = worldToTile(z);
       const key = tileKeyOf(tx, tz);
-      if (drives?.has(key)) return true;
+      if (drives?.has(key) || onRamp(x, z)) return true;
       const here = sides.get(key);
       if (!here) return false;
       const axis = axisOf(tx, tz);

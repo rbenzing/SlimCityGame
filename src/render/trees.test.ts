@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
 import {
   TreeRenderer,
+  crownReach,
   treeCountForDensity,
   isNearWater,
   speciesFor,
@@ -960,6 +961,61 @@ describe('TreeRenderer', () => {
       expect(renderer.materialFor('shrub').color.toArray()).toEqual([...SPRING_TINT]);
       expect(renderer.materialFor('pine').color.toArray()).toEqual([1, 1, 1]);
       expect(renderer.materialFor('poplar').color.toArray()).toEqual([1, 1, 1]);
+    });
+  });
+
+  describe('clearBeside', () => {
+    function standing(renderer: TreeRenderer): Array<{ x: number; z: number; reach: number }> {
+      const out: Array<{ x: number; z: number; reach: number }> = [];
+      for (const species of SPECIES_LIST) {
+        const mesh = renderer.meshFor(species);
+        if (!mesh) continue;
+        for (let i = 0; i < mesh.count; i++) {
+          const hidden = new THREE.Matrix4();
+          mesh.getMatrixAt(i, hidden);
+          if (isZeroScale(hidden)) continue;
+          const { position, scale } = decomposeAt(mesh, i);
+          out.push({ x: position.x, z: position.z, reach: crownReach(species, scale.x) });
+        }
+      }
+      return out;
+    }
+
+    it('leaves no crown over a road tile and keeps the trees clear of it standing', () => {
+      const size = 7;
+      const scene = new THREE.Scene();
+      const renderer = new TreeRenderer(scene, flatHeightAt);
+      renderer.build(
+        makeMap(size, new Array(size * size).fill(255), new Array(size * size).fill(0)),
+        9,
+      );
+      const road = [{ x: 3, z: 3 }];
+      const before = standing(renderer).length;
+      renderer.clearAt(road);
+      renderer.clearBeside(road);
+
+      const x0 = 3 * TILE_METERS;
+      const z0 = 3 * TILE_METERS;
+      const after = standing(renderer);
+      for (const t of after) {
+        const dx = Math.max(x0 - t.x, 0, t.x - (x0 + TILE_METERS));
+        const dz = Math.max(z0 - t.z, 0, t.z - (z0 + TILE_METERS));
+        expect(Math.hypot(dx, dz)).toBeGreaterThanOrEqual(t.reach);
+      }
+      expect(after.length).toBeLessThan(before);
+      expect(after.length).toBeGreaterThan(before - 40);
+    });
+
+    it('is harmless on a tile with no neighbours standing and on the map edge', () => {
+      const scene = new THREE.Scene();
+      const renderer = new TreeRenderer(scene, flatHeightAt);
+      renderer.build(makeMap(2, [255, 0, 0, 0], [0, 0, 0, 0]), 3);
+      expect(() =>
+        renderer.clearBeside([
+          { x: 0, z: 0 },
+          { x: 1, z: 1 },
+        ]),
+      ).not.toThrow();
     });
   });
 

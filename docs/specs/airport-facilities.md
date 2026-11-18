@@ -119,6 +119,8 @@ A service road leaves the loop along the landside of the building line to the ca
 
 ### The terminal's kerb and bridges
 
+A terminal's street face has a door 3.6 m wide every 30 m, two at least, and the airfield's pilots' building one of 1.0 m, reached by a 1.8 m walk from its car park. The pilots' building stands flush on the building line, so it closes the fence there. All three sizes are dials.
+
 A canopy covers the kerb walk. Each terminal stand has a boarding bridge from the terminal's face to the aircraft's forward left door. Both are dials: no standard for either is held.
 
 ### Signs

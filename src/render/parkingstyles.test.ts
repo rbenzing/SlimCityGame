@@ -253,7 +253,11 @@ describe('a block face’s accessible stalls on the ground', () => {
     // No paint across the lane inside the zone.
     const sign = Math.sign(outer - inner);
     for (const d of [1, 3, 5]) {
-      const white = runsAlong(r, inner + sign * d, zoneFrom + 0.2, zoneTo - 0.2, WHITE);
+      // A crossing's two 0.3 m lines run kerb to kerb across the lane; stall
+      // marks are thinner, and none of them lies in the zone.
+      const white = runsAlong(r, inner + sign * d, zoneFrom + 0.2, zoneTo - 0.2, WHITE).filter(
+        ([a, b]) => b - a < 0.25,
+      );
       expect(white, `${d} m into the lane`).toEqual([]);
     }
   });
@@ -321,17 +325,24 @@ describe('the parking a turn bay gives up along its taper', () => {
     });
     const r = street(profile, RoadFlow.None, 'signal');
     const depth = PARKING_STYLES.parallel.laneWidth;
-    let strips = 0;
+    // Every tile of a bay is full width, so the lane is given up whole on the
+    // side the bay opens beside, and what is left of it is never striped.
+    let pocketed = 0;
+    let givenUp = 0;
     for (let x = 0; x < 10; x++) {
       if (x === 5) continue;
       const drawn = drawnSectionAt(x, 2, r.kerbSurroundings())!;
-      for (const span of carriagewaySpans(drawn)) {
-        if (span.piece.kind !== 'parking' || span.piece.width >= depth - 0.01) continue;
-        strips++;
-        const side = span.from + span.to < 0 ? 'low' : 'high';
+      if (!drawn.pieces.some((p) => p.bay === true)) continue;
+      pocketed++;
+      const spans = carriagewaySpans(drawn).filter((s) => s.piece.kind === 'parking');
+      for (const side of ['low', 'high'] as const) {
+        const lane = spans.find((s) => s.from + s.to < 0 === (side === 'low'));
+        if (lane && lane.piece.width >= depth - 0.01) continue;
+        givenUp++;
         expect(r.parkingStallsAt(x, 2, side) ?? [], `tile ${x}, ${side}`).toEqual([]);
       }
     }
-    expect(strips).toBeGreaterThan(0);
+    expect(pocketed).toBeGreaterThan(0);
+    expect(givenUp).toBeGreaterThan(0);
   });
 });

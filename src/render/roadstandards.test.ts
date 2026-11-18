@@ -8,7 +8,7 @@ import {
   RoadMeshRenderer,
   SIDEWALK_COLOR,
 } from './roadsmesh';
-import { junctionArmLayout } from '../shared/junctionpaint';
+import { cornerReturnRadius, junctionArmLayout } from '../shared/junctionpaint';
 import { drawnSectionAt, halfAt } from '../shared/kerblayout';
 import {
   NO_PARKING_BEFORE_STOP_M,
@@ -24,6 +24,7 @@ import { RoadFlow, RoadTier } from '../shared/types';
 import type { JunctionControl, RoadProfile } from '../shared/types';
 import {
   carriagewayHalfWidthOf,
+  cornerRadiusOf,
   carriagewayWidth,
   composeProfile,
   kerbWidthOf,
@@ -394,9 +395,16 @@ describe('a parking lane', () => {
   // The road crossing the west arm is the street running north-south, drawn
   // as wide as it is at the junction's mouth, turn bays included.
   const mouth = crossroads().kerbSurroundings();
+  const crossHalf = Math.max(halfAt(4, 1, mouth), halfAt(4, 3, mouth));
+  // The crossing starts where the kerb return ends on the arm.
   const layout = junctionArmLayout(
-    Math.max(halfAt(4, 1, mouth), halfAt(4, 3, mouth)),
+    crossHalf,
     kerbWidthOf(drawnSectionAt(4, 2, mouth)!),
+    cornerReturnRadius(
+      cornerRadiusOf(drawnSectionAt(4, 2, mouth)!),
+      TILE_METERS / 2 - halfAt(4, 2, mouth),
+      TILE_METERS / 2 - crossHalf,
+    ),
   );
   const BEFORE_STOP = NO_PARKING_BEFORE_STOP_M - (TILE_METERS / 2 - layout.stopLineFar);
   const FROM_CROSSING = NO_PARKING_FROM_CROSSWALK_M - (TILE_METERS / 2 - layout.crosswalkNear);

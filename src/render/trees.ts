@@ -25,6 +25,18 @@ import { nightBodyMaterial } from './nightlook';
 import { MapData, TilePoint } from '../shared/types';
 import { TILE_METERS } from '../shared/constants';
 import { setInstanceCount } from './groundquad';
+import type { EndCap } from './roadsidespace';
+
+/** Farthest a tall tree's crown reaches from its trunk at scale 1 (the broadleaf's offset blob plus its radius). */
+const TALL_CROWN_REACH_M = 1.85;
+
+/** The widest any crown spreads: a tall tree at the largest scale any stand draws. */
+const MAX_CROWN_REACH_M = TALL_CROWN_REACH_M * 1.6;
+
+/** How far a tree's crown spreads from its trunk, in metres. */
+export function crownReach(species: TreeSpecies, scale: number): number {
+  return (species === 'shrub' ? SHRUB_RADIUS : TALL_CROWN_REACH_M) * scale;
+}
 
 export type TreeSpecies = 'broadleaf' | 'pine' | 'poplar' | 'shrub';
 
@@ -802,6 +814,93 @@ export class TreeRenderer {
       mesh.instanceColor.needsUpdate = true;
       this.scene.add(mesh);
       this.meshes[species] = mesh;
+    }
+  }
+
+  /**
+   * Hides every tree standing beside the given tiles whose crown reaches over
+   * one of them: a tree at the edge of the next tile overhangs a road's
+   * footway, a parapet or a deck. Trees whose crowns stay clear are kept.
+   */
+  clearBeside(tiles: TilePoint[]): void {
+    const touchedSpecies = new Set<TreeSpecies>();
+    const hide = (tx: number, tz: number, rect: TilePoint): void => {
+      const key = tz * this.gridSize + tx;
+      const refs = this.tileToInstances.get(key);
+      if (!refs) return;
+      const x0 = rect.x * TILE_METERS;
+      const z0 = rect.z * TILE_METERS;
+      const kept = refs.filter((ref) => {
+        const mesh = this.meshes[ref.species];
+        if (!mesh) return true;
+        mesh.getMatrixAt(ref.slot, _matrix);
+        _matrix.decompose(_position, _quaternion, _scale);
+        const dx = Math.max(x0 - _position.x, 0, _position.x - (x0 + TILE_METERS));
+        const dz = Math.max(z0 - _position.z, 0, _position.z - (z0 + TILE_METERS));
+        if (Math.hypot(dx, dz) >= crownReach(ref.species, _scale.x)) return true;
+        mesh.setMatrixAt(ref.slot, HIDDEN_MATRIX);
+        touchedSpecies.add(ref.species);
+        return false;
+      });
+      if (kept.length === 0) this.tileToInstances.delete(key);
+      else this.tileToInstances.set(key, kept);
+    };
+    for (const tile of tiles) {
+      for (let dz = -1; dz <= 1; dz++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          const tx = tile.x + dx;
+          const tz = tile.z + dz;
+          if (tx < 0 || tz < 0 || tx >= this.gridSize || tz >= this.gridSize) continue;
+          hide(tx, tz, tile);
+        }
+      }
+    }
+    for (const species of touchedSpecies) {
+      const mesh = this.meshes[species];
+      if (mesh) mesh.instanceMatrix.needsUpdate = true;
+    }
+  }
+
+  /**
+   * Hides every tree whose crown reaches over a road's rounded dead end. The
+   * cap bulges past its last tile onto the open ground, so the tile-keyed
+   * clears never reach the trees standing there.
+   */
+  clearEndCaps(caps: readonly EndCap[]): void {
+    const touchedSpecies = new Set<TreeSpecies>();
+    for (const cap of caps) {
+      const reach = cap.radius + MAX_CROWN_REACH_M;
+      const x0 = Math.floor((cap.x - reach) / TILE_METERS);
+      const x1 = Math.floor((cap.x + reach) / TILE_METERS);
+      const z0 = Math.floor((cap.z - reach) / TILE_METERS);
+      const z1 = Math.floor((cap.z + reach) / TILE_METERS);
+      for (let tz = Math.max(0, z0); tz <= Math.min(this.gridSize - 1, z1); tz++) {
+        for (let tx = Math.max(0, x0); tx <= Math.min(this.gridSize - 1, x1); tx++) {
+          const key = tz * this.gridSize + tx;
+          const refs = this.tileToInstances.get(key);
+          if (!refs) continue;
+          const kept = refs.filter((ref) => {
+            const mesh = this.meshes[ref.species];
+            if (!mesh) return true;
+            mesh.getMatrixAt(ref.slot, _matrix);
+            _matrix.decompose(_position, _quaternion, _scale);
+            const dx = _position.x - cap.x;
+            const dz = _position.z - cap.z;
+            // Only the half beyond the tile's edge is the cap's; the rest is the road's own tile.
+            if (dx * cap.dx + dz * cap.dz < 0) return true;
+            if (Math.hypot(dx, dz) >= cap.radius + crownReach(ref.species, _scale.x)) return true;
+            mesh.setMatrixAt(ref.slot, HIDDEN_MATRIX);
+            touchedSpecies.add(ref.species);
+            return false;
+          });
+          if (kept.length === 0) this.tileToInstances.delete(key);
+          else this.tileToInstances.set(key, kept);
+        }
+      }
+    }
+    for (const species of touchedSpecies) {
+      const mesh = this.meshes[species];
+      if (mesh) mesh.instanceMatrix.needsUpdate = true;
     }
   }
 

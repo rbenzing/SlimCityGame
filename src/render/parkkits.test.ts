@@ -8,6 +8,7 @@ import {
   PARK_TREE_CANOPY_RADIUS,
   PITCH,
   POND_BANK_RGB,
+  SPORTS_STAND_WALK_M,
   UtilityKitRenderer,
   computeDistrictParkLayout,
   computeNeighbourhoodParkLayout,
@@ -98,7 +99,7 @@ describe('the sports ground keeps its field and run-off clear', () => {
 
   it('lays the field at its real size with the run-off all round, inside the plate', () => {
     expect(layout.pitch.x1 - layout.pitch.x0).toBe(105);
-    expect(layout.pitch.z1 - layout.pitch.z0).toBe(68);
+    expect(layout.pitch.z1 - layout.pitch.z0).toBe(64);
     expect(layout.runOff).toEqual({
       x0: layout.pitch.x0 - PITCH.runOff,
       x1: layout.pitch.x1 + PITCH.runOff,
@@ -125,10 +126,21 @@ describe('the sports ground keeps its field and run-off clear', () => {
   it('stands everything inside the plot and a metre back from the street side', () => {
     insideLot(SPORTS, layout.trees, PARK_TREE_CANOPY_RADIUS, [blockRect(layout.pavilion)]);
     insideLot(SPORTS, layout.benches, BENCH_HALF_M, []);
-    expect(layout.pavilion.z + layout.pavilion.d / 2).toBeCloseTo(
-      layout.plate.z1 - PARK_STREET_SETBACK_M,
-      9,
-    );
+  });
+
+  it('leaves a walk of at least 3 m between the stand and the street side of the plot', () => {
+    const stand = blockRect(layout.pavilion);
+    expect(layout.plate.z1 - stand.z1).toBeGreaterThanOrEqual(SPORTS_STAND_WALK_M);
+    expect(SPORTS_STAND_WALK_M).toBe(3);
+    expect(stand.x0).toBeGreaterThanOrEqual(layout.plate.x0);
+    expect(stand.x1).toBeLessThanOrEqual(layout.plate.x1);
+  });
+
+  it('keeps the pitch inside the sizes the laws of the game allow for an international match', () => {
+    expect(layout.pitch.x1 - layout.pitch.x0).toBeGreaterThanOrEqual(100);
+    expect(layout.pitch.x1 - layout.pitch.x0).toBeLessThanOrEqual(110);
+    expect(layout.pitch.z1 - layout.pitch.z0).toBeGreaterThanOrEqual(64);
+    expect(layout.pitch.z1 - layout.pitch.z0).toBeLessThanOrEqual(75);
   });
 
   it('keeps the changing pavilion at its 255 m2 gross floor', () => {

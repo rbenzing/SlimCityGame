@@ -102,8 +102,9 @@ Back to [the index](../GROUND-TRUTHS.md).
 - [R-roads-090] A two-way road's bend at or under its class's bend radius is a no-passing
   zone: an unpaired broken yellow centre line becomes a solid yellow pair
   through it, on a free bend and a grid turn tile alike (MUTCD 3B.03 ¶03),
-  and the broken line fills its last gap up to the pair. White lane lines
-  stay broken. — [markings.md](../world-sim/road-model/markings.md);
+  centred on the road, and the pair runs out to the next whole dash: no gap,
+  no single solid line, and a dash under half a dash beside it becomes pair.
+  White lane lines stay broken and keep one rhythm through the bend. — [markings.md](../world-sim/road-model/markings.md);
   `bendIsNoPassing` in `src/shared/roadprofile.ts`
 - [R-roads-091] A road's end cap carries its edge line only: no centre line, lane line or
   dash wraps the cap. Two bike lanes' dotted extensions stop at each other's

@@ -11,8 +11,13 @@ import * as THREE from 'three';
 import { RoadFlow, RoadTier } from '../shared/types';
 import type { JunctionControl } from '../shared/types';
 import { carriagewaySpans } from '../shared/travellanes';
-import { carriagewayHalfWidthOf, kerbWidthOf, presetProfileForTier } from '../shared/roadprofile';
-import { junctionArmLayout } from '../shared/junctionpaint';
+import {
+  carriagewayHalfWidthOf,
+  cornerRadiusOf,
+  kerbWidthOf,
+  presetProfileForTier,
+} from '../shared/roadprofile';
+import { cornerReturnRadius, junctionArmLayout } from '../shared/junctionpaint';
 import { TILE_METERS } from '../shared/constants';
 
 const flatHeightAt = (): number => 0;
@@ -66,6 +71,37 @@ function crossroads(tier: RoadTier, mask = N | E | S | W): Buf {
     undefined,
     'allWayStop',
   );
+}
+
+/**
+ * The ground each crossing covers: the two 0.3 m lines of a crossing and the
+ * road between them, one box per arm.
+ */
+function crossingBoxes(v: Buf): Box[] {
+  const lines = rectsOf(v, WHITE).filter(
+    (b) =>
+      Math.abs(Math.min(b.x1 - b.x0, b.z1 - b.z0) - 0.3) < 0.02 &&
+      Math.max(b.x1 - b.x0, b.z1 - b.z0) > 3,
+  );
+  const boxes: Box[] = [];
+  for (const [i, a] of lines.entries()) {
+    for (const b of lines.slice(i + 1)) {
+      const sameRun =
+        a.x1 - a.x0 > a.z1 - a.z0
+          ? Math.abs(a.x0 - b.x0) < 1e-6 && Math.abs(a.x1 - b.x1) < 1e-6
+          : Math.abs(a.z0 - b.z0) < 1e-6 && Math.abs(a.z1 - b.z1) < 1e-6;
+      if (!sameRun) continue;
+      const box = {
+        x0: Math.min(a.x0, b.x0),
+        x1: Math.max(a.x1, b.x1),
+        z0: Math.min(a.z0, b.z0),
+        z1: Math.max(a.z1, b.z1),
+      };
+      // Both lines of one crossing lie within its depth of each other.
+      if (Math.min(box.x1 - box.x0, box.z1 - box.z0) < 3) boxes.push(box);
+    }
+  }
+  return boxes;
 }
 
 describe('a stop line crosses every lane arriving, reserved lanes included', () => {
@@ -251,10 +287,8 @@ describe('through a junction box nothing solid continues', () => {
       [RoadTier.BusLane, BUS_LANE_PAINT_COLOR],
     ] as const) {
       const v = crossroads(tier);
-      const bars = rectsOf(v, WHITE).filter(
-        (b) => Math.abs(Math.min(b.x1 - b.x0, b.z1 - b.z0) - 0.45) < 0.02,
-      );
-      expect(bars.length).toBeGreaterThan(8);
+      const bars = crossingBoxes(v);
+      expect(bars.length).toBe(4);
       for (const p of vertsOf(v, colour)) {
         for (const b of bars) {
           const inside =
@@ -275,10 +309,8 @@ describe('a reserved lane on the side of a signalised T with no arm', () => {
   ] as const) {
     it(`lays no ${name} colour in a crosswalk`, () => {
       const v = tile(tier, N | E | W, 'signal');
-      const bars = rectsOf(v, WHITE).filter(
-        (b) => Math.abs(Math.min(b.x1 - b.x0, b.z1 - b.z0) - 0.45) < 0.02,
-      );
-      expect(bars.length).toBeGreaterThan(8);
+      const bars = crossingBoxes(v);
+      expect(bars.length).toBe(3);
       for (const p of vertsOf(v, colour)) {
         for (const b of bars) {
           const inside =
@@ -319,7 +351,14 @@ describe('a reserved lane on the side of a signalised T with no arm', () => {
       )!;
       const z = 5.5 * TILE_METERS + (south.from + south.to) / 2;
       const profile = presetProfileForTier(tier);
-      const layout = junctionArmLayout(carriagewayHalfWidthOf(profile), kerbWidthOf(profile));
+      const half = carriagewayHalfWidthOf(profile);
+      // The crossing starts where the kerb return between two roads of this
+      // class ends on the arm.
+      const layout = junctionArmLayout(
+        half,
+        kerbWidthOf(profile),
+        cornerReturnRadius(cornerRadiusOf(profile), TILE_METERS / 2 - half, TILE_METERS / 2 - half),
+      );
       const centreX = 5.5 * TILE_METERS;
       const colourAt = (d: number): string | null =>
         renderer.surfaceGridAt(centreX + d, z, centreX + d, z, 1)[0]!;

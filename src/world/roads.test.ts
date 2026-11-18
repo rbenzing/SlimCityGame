@@ -68,6 +68,21 @@ describe('a road laid as its own road', () => {
     expect(Array.from(joined.roadSeparate).every((a) => a === 0)).toBe(true);
   });
 
+  it('keeps a track laid beside another a track of its own, and joins it into a ladder otherwise', () => {
+    const track = (join: boolean): GridState => {
+      const g = makeGrid(SIZE);
+      applyRoad(g, row(5, 2, 10), RoadTier.RailTrack);
+      lay(g, row(6, 2, 10), join, RoadTier.RailTrack);
+      return g;
+    };
+    const apart = track(false);
+    expect(masks(apart, row(5, 3, 9))).toEqual(Array<number>(7).fill(2 | 8));
+    expect(masks(apart, row(6, 3, 9))).toEqual(Array<number>(7).fill(2 | 8));
+    // Joined, every tile of the pair is a junction with its neighbour, which is
+    // what draws a ring between two parallel tracks.
+    expect(masks(track(true), row(5, 3, 9))).toEqual(Array<number>(7).fill(2 | 4 | 8));
+  });
+
   it('stays a dead end where it ends a tile short of another road in line with it', () => {
     const g = makeGrid(SIZE);
     applyRoad(g, row(5, 2, 5), RoadTier.TwoLane);

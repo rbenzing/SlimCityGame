@@ -33,6 +33,7 @@ import { bodyMetresFor, frontageSetbackFor, HOUSE_FRONT_YARD_M, tierHeightOf } f
 import { isHouseEntry } from './archetypes';
 import { framedLotPlanFor, type KerbCreditOf } from './lotplan';
 import { garageFor } from '../shared/garage';
+import type { KeepClearDisc } from './roadsidespace';
 import { lotDriveCuts, type TileDriveCut } from '../shared/kerblayout';
 import { housePaneMargins, MULLION_MARGIN_PUNCHED, windowGrid } from './facade';
 import { homesAcrossFrontage } from '../shared/buildingkind';
@@ -1917,6 +1918,42 @@ export function driveRoadTiles(
       );
     }
   }
+  return out;
+}
+
+/** How far a post stands off a drive's edge, metres: a car door's width, and a wheel's. */
+const DRIVE_POST_MARGIN_M = 0.6;
+/** Spacing of the discs laid down a drive, metres. */
+const DRIVE_DISC_STEP_M = 1;
+
+/**
+ * The ground a framed home's drives and front walk hold clear: discs the
+ * strip's half width plus a margin across, laid every metre down its centre
+ * line from the cut to the lot's edge. A curved street's drive meets a kerb
+ * that need not lie in the tiles the cut's corners fall in, so tiles alone
+ * miss where it opens, and nothing takes tiles to the door's steps at all.
+ * A grid home is none: its drive tiles are exact.
+ */
+export function frontageKeepClear(
+  building: BuildingInstance,
+  plan: HouseGroundPlan,
+): KeepClearDisc[] {
+  if (!building.frame) return [];
+  const out: KeepClearDisc[] = [];
+  const lay = (rects: readonly LotRect[]): void => {
+    const u0 = Math.min(...rects.map((r) => r.u0));
+    const u1 = Math.max(...rects.map((r) => r.u1));
+    const uc = (u0 + u1) / 2;
+    const r = (u1 - u0) / 2 + DRIVE_POST_MARGIN_M;
+    const v0 = Math.min(...rects.flatMap((q) => [q.v0, q.v1]));
+    const v1 = Math.max(...rects.flatMap((q) => [q.v0, q.v1]));
+    for (let v = v0; v < v1 + DRIVE_DISC_STEP_M; v += DRIVE_DISC_STEP_M) {
+      const at = lotToWorld(plan.frame, uc, Math.min(v, v1));
+      out.push({ x: at.x, z: at.z, r });
+    }
+  };
+  for (const { cut, rect } of plan.drives) lay([cut, rect]);
+  for (const walk of plan.paths) lay([walk]);
   return out;
 }
 

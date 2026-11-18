@@ -54,6 +54,7 @@ import {
 } from './roadfurniture';
 import { BUS_STOP_PAD } from './busstops';
 import { castsShadow } from './scene';
+import type { KerbRamp } from '../shared/kerbramps';
 import { firstFreeAlong, keepClearOf, Standing, type Spot } from './roadsidespace';
 
 /** Pole heights by the street's width: 20, 30 and 40 ft. */
@@ -376,6 +377,8 @@ export function computeLampPlacements(
    */
   stops: readonly LampStopSite[] = [],
   fixed: readonly Spot[] = [],
+  /** The kerb ramps at the crossings: no lamp stands on one. */
+  ramps: readonly KerbRamp[] = [],
 ): LampPlacement[] {
   const tileSet = buildTileSet(roadTiles);
   const clear = keepClearOf(
@@ -384,6 +387,7 @@ export function computeLampPlacements(
     STOP_CLEAR_HALF_M,
     (tx, tz) => lateralAxis(tileSet, tx, tz),
     tileKey,
+    ramps,
   );
   const taken = new Standing().addAll(poles).addAll(fixed);
 
@@ -936,9 +940,12 @@ export class LampRenderer {
     stops: readonly LampStopSite[] = [],
     fixed: readonly Spot[] = [],
     settle?: LampSettle,
+    ramps: readonly KerbRamp[] = [],
   ): void {
     const placed = [
-      ...computeLampPlacements(roadTiles, drivewayTiles, poles, stops, fixed).flatMap(standsOf),
+      ...computeLampPlacements(roadTiles, drivewayTiles, poles, stops, fixed, ramps).flatMap(
+        standsOf,
+      ),
       ...freeStands,
     ];
     const settled = settle ? settle(placed) : { posts: placed, carried: [] };

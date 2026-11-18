@@ -229,6 +229,15 @@ console.log(
   'tick',
   (await hook(() => window.__slimcity.getStats())).tick,
 );
+const tileM = await hook(() => window.__slimcity.tileMeters());
+const onBare = (await hook(() => window.__slimcity.readVehicles())).filter(
+  (v) => cut.roadTier[Math.floor(v.z / tileM) * N + Math.floor(v.x / tileM)] === 0,
+);
+console.log(
+  'vehicles standing on bare ground after the cut',
+  onBare.length,
+  JSON.stringify(onBare),
+);
 const after = await hook(() => window.__slimcity.readBuildings());
 // A farm that grew a level since the list above was taken has a new id, so
 // the cut-off farms are found by where they stand and what they report.
