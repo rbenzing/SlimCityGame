@@ -33,6 +33,8 @@ const GUY_THICKNESS_M = 0.06;
 const ARM_THICKNESS_M = 0.14;
 /** A guy meets its pole this far under the crossarm. */
 const GUY_BELOW_ARM_M = 0.4;
+/** A reaching crossarm starts this far behind the pole's axis. */
+const ARM_BEHIND_POLE_M = 0.3;
 /** The foot of a pole is this much wider than its top. */
 const POLE_TAPER = 0.6;
 const POLE_RADIAL_SEGMENTS = 6;
@@ -242,8 +244,20 @@ export class PowerLineRenderer {
       _matrix.compose(_position.set(pole.x, ground, pole.z), _quat.identity(), _scale);
       poles.push(..._matrix.elements);
       _quat.setFromAxisAngle(_up, Math.atan2(-pole.armZ, pole.armX));
-      _scale.set(pole.armLength, 1, 1);
-      _matrix.compose(_position.set(pole.x, ground + pole.arm, pole.z), _quat, _scale);
+      // An arm that reaches over the road runs from just behind the pole to its innermost wire.
+      const shift = pole.armShift ? Math.hypot(pole.armShift.x, pole.armShift.z) : 0;
+      const reachIn = shift + pole.spread;
+      const along = shift > 0 ? (reachIn - ARM_BEHIND_POLE_M) / 2 : 0;
+      _scale.set(shift > 0 ? reachIn + ARM_BEHIND_POLE_M : pole.armLength, 1, 1);
+      _matrix.compose(
+        _position.set(
+          pole.x + (pole.armShift ? (pole.armShift.x / shift) * along : 0),
+          ground + pole.arm,
+          pole.z + (pole.armShift ? (pole.armShift.z / shift) * along : 0),
+        ),
+        _quat,
+        _scale,
+      );
       arms.push(..._matrix.elements);
       if (pole.guy) {
         _from.set(pole.guy.x, this.heightAt(pole.guy.x, pole.guy.z), pole.guy.z);

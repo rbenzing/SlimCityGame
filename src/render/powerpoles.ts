@@ -96,6 +96,8 @@ export const POLE_SPECS: Readonly<Record<PoleKind, PoleSpec>> = {
   },
 };
 
+/** A wire keeps this far from a wall: 7.5 ft, supply conductors up to 22 kV. */
+export const WALL_CLEARANCE_M = 2.3;
 /** A pole stands at least this far behind the kerb face. */
 export const POLE_BEHIND_KERB_M = 0.6;
 /** A wire hangs at least this high over any road it crosses. */
@@ -130,6 +132,13 @@ export interface PoleStand {
   armZ: number;
   /** The ground anchor of the guy that holds it, or null where its wires pull evenly. */
   guy: { x: number; z: number } | null;
+  /**
+   * Where the crossarm's wires hang, as a ground offset from the pole's axis,
+   * where the pole stands too far out for its wires to keep clear of the lots
+   * beside the street: the arm reaches toward the road. Absent when they hang
+   * over the pole.
+   */
+  armShift?: { x: number; z: number };
   /**
    * A riser pole carries a buried cable up to the wire: the unit direction from
    * the pole to that cable, which the guard up its side faces. Absent otherwise.
@@ -169,6 +178,8 @@ export interface PoleSite {
   z: number;
   /** The unit direction to the cable this pole is the riser for, where it is one. */
   riser?: { x: number; z: number };
+  /** Where the wires hang relative to the pole's axis; see PoleStand. */
+  armShift?: { x: number; z: number };
 }
 
 /** What the street lines are laid over. */
@@ -250,6 +261,7 @@ export function shapePole(
         ? { x: site.x - (pullX / pull) * GUY_REACH_M, z: site.z - (pullZ / pull) * GUY_REACH_M }
         : null,
     ...(site.riser ? { riser: site.riser } : {}),
+    ...(site.armShift ? { armShift: site.armShift } : {}),
   };
 }
 
@@ -408,6 +420,12 @@ function roadsideSite(
 ): TileSite {
   const offset =
     (poleLateralOffset(profileOf(tile)) + flankShift(tileSet, tile, { axis, side })) * side;
+  // A pole too far out for its outer wire to keep the clearance from a wall at
+  // the tile edge carries its wires on an arm reaching over the road.
+  const shift = Math.max(
+    0,
+    Math.abs(offset) + POLE_SPECS[kind].spread - (TILE_METERS / 2 - WALL_CLEARANCE_M),
+  );
   return {
     key: tileKey(tile.x, tile.z),
     kind,
@@ -415,6 +433,9 @@ function roadsideSite(
     tz: tile.z,
     x: tileToWorld(tile.x) + (axis === 'x' ? offset : 0),
     z: tileToWorld(tile.z) + (axis === 'z' ? offset : 0),
+    ...(shift > 0
+      ? { armShift: { x: axis === 'x' ? -side * shift : 0, z: axis === 'z' ? -side * shift : 0 } }
+      : {}),
   };
 }
 
@@ -1080,8 +1101,8 @@ export function wirePoints(
   const attach = (p: PoleStand): { x: number; y: number; z: number } => {
     const sign = p.armX * acrossX + p.armZ * acrossZ >= 0 ? 1 : -1;
     const along = which * p.spread * sign;
-    const x = p.x + p.armX * along;
-    const z = p.z + p.armZ * along;
+    const x = p.x + (p.armShift?.x ?? 0) + p.armX * along;
+    const z = p.z + (p.armShift?.z ?? 0) + p.armZ * along;
     return { x, y: ground(p.x, p.z) + p.arm, z };
   };
   const from = attach(a);

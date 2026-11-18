@@ -594,15 +594,25 @@ describe('a street pole gives way to what stands beside the street', () => {
 describe('a street line clear of the buildings beside it', () => {
   /** NESC: 7.5 ft from a wall for supply conductors up to 22 kV. */
   const WALL_CLEAR_M = 2.3;
-  it.each([RoadTier.TwoLane, RoadTier.OneWay])(
-    'keeps the outer wire of tier %i 2.3 m inside the tile edge a lot starts at',
+  it.each([RoadTier.TwoLane, RoadTier.OneWay, RoadTier.Avenue, RoadTier.Alley, RoadTier.FourLane])(
+    'keeps every wire of tier %i 2.3 m inside the tile edge a lot starts at, with or without its profile',
     (tier) => {
-      const tiles = row(10, 14, 10, { tier });
-      const { poles } = lay(worldOf(tiles));
-      expect(poles.length).toBeGreaterThan(0);
-      for (const p of poles) {
-        const wireReach = Math.abs(p.z - tileToWorld(10)) + p.spread;
-        expect(TILE_METERS / 2 - wireReach).toBeGreaterThanOrEqual(WALL_CLEAR_M);
+      for (const withProfile of [true, false]) {
+        const tiles = row(10, 16, 10, {
+          tier,
+          ...(withProfile ? { profile: presetProfileForTier(tier) } : {}),
+        });
+        const { poles, spans } = lay(worldOf(tiles));
+        expect(poles.length).toBeGreaterThan(1);
+        expect(spans.length).toBeGreaterThan(0);
+        for (const span of spans) {
+          for (const which of [-1, 0, 1] as const) {
+            for (const pt of wirePoints(span.a, span.b, which, () => 0)) {
+              const reach = Math.abs(pt.z - tileToWorld(10));
+              expect(TILE_METERS / 2 - reach).toBeGreaterThanOrEqual(WALL_CLEAR_M - 1e-6);
+            }
+          }
+        }
       }
     },
   );
