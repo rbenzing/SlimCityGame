@@ -327,3 +327,10 @@ Back to [the index](../GROUND-TRUTHS.md).
   sim clock as demand × desirability. Civic and utility buildings are plopped;
   zones, districts, landfill and power lines are painted. —
   [gdd.md](../game-design/gdd.md), [gameplay-loop.md](../game-design/gameplay-loop.md)
+- [R-world-055] Below Small City a commercial or industrial kind grows on the first lot of
+  its ladder that holds its building, its code car park and its grounds.
+  From Small City a dense kind, and any kind on land of the best standing,
+  takes its compact lot; a standing building keeps its lot. Where the roomy
+  lot does not fit, the compact one grows: grounds are never a
+  prerequisite for growth. —
+  [commercial-industrial-grounds.md](../specs/commercial-industrial-grounds.md)
