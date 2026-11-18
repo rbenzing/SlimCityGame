@@ -25,7 +25,6 @@ What three reviews of every screenshot the shot tools write found wrong in the g
 - A tram depot's lead crosses the footway as a darker strip with no dropped kerb; a rail bend's first sleeper doubles the straight's last; a rail junction's turnouts are 10 m in radius, the tile's limit, and tram turns assume like lanes on both arms. `[R-roads-088]` — `shots-depots/b5-tram-turnout`, `shots-roadmatrix/rail-turn`, `rail-cross`
 - A footway's kerb face runs unbroken across a drive and an alley's mouth: no dropped kerb shows there, and a car park's entrance meets the street square, with no return. A crossing has no ramp at a median's opening or a corridor's seam. `[R-roads-074]` `[R-roads-095]` — `shots-conformity/alley-t-twolane-box`, `shots-parking/com-strip-2-above`
 - A local street's turn bay stores 20 m, under the 30 m a left turn is given `[R-roads-093]`.
-- Two rail rows laid side by side with joining on connect at every tile and draw as a ladder of rings.
 - A raised tram station's lift tower is 2.4 m square on a 1.9 m footway, so it stands 0.5 m onto the verge. — `shots-tramways/station-close`
 - A pole line's last span stops at its end pole outside a substation and does not drop to the gantry, whose insulators hang unconnected. `[R-services-039]` — `shots-powerline/substation-60m`
 - A viaduct's shadow lies detached from it; winter only dulls the trees' leaves a little, so the strip reads Winter over green ground.

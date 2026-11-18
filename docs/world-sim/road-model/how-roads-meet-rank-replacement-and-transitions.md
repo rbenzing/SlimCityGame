@@ -202,6 +202,14 @@ all join, as a road's always have, one held apart before included: laying a
 road again with snapping on is how a road laid apart is joined up. The arms of
 a tile the command leaves as it was are not touched.
 
+**Rail never joins sideways.** A stroke of rail track is always laid as its
+own track `[R-roads-096]`, whatever the snap toggle says: it joins along
+itself, on a tile that already held track (a crossing or an overlap), and
+head-on at each end, where the tile one step beyond the stroke's first or
+last tile, in the stroke's direction there, holds track. A one-tile stroke
+has no direction and joins every track it touches: that is the link between
+two parallel tracks. (`settleRailArms` in `src/world/roads.ts`.)
+
 The fact is stored where roads are stored, in the network, as the absence of a
 link: two neighbouring grid road tiles are joined exactly when the network
 links them. The per-tile arms that are held apart are a derived layer

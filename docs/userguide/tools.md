@@ -291,6 +291,8 @@
   runs; the Transit lens adds each line's coloured ribbon. Later, **rail**: lay rail track like any road, plop **stations**
   along it — a station must touch the track, or it is just a shed — and draw a
   **Rail Line** between them the same way you draw a bus line. Trains run it.
+  Two tracks laid side by side stay two tracks; they join only where you
+  draw one into or across the other, or click a single tile between them.
   People walk further to a train than to a bus stop and a train carries more of
   them, so a rail line serving a busy district takes real traffic off the
   streets around its stations. Your lines are saved with the city now.
