@@ -17,6 +17,7 @@ because reviewers keep upholding them.
 | [logging.md](logging.md)                           | What little logging convention exists, and where it doesn't                                                                |
 | [error-handling.md](error-handling.md)             | The command-ack/reason pattern, fail-soft storage access, what has no convention yet                                       |
 | [debugging.md](debugging.md)                       | `window.__slimcity` dev read-backs and the `tools/*-shots.mjs` visual harnesses                                            |
+| [shot-runs.md](shot-runs.md)                       | Running every shot harness with `npm run shots`, and what a frame must do to stay in a tool                                |
 
 ## How these relate to the rest of `docs/engineering/`
 
