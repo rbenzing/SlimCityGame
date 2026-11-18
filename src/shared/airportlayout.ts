@@ -5,6 +5,14 @@
  * the far side (half the object free area) toward the street the car park fronts.
  */
 import { TILE_METERS } from './constants';
+import { GARAGE_TIER_M } from './garage';
+import {
+  AISLE_WIDTH_M,
+  ISLAND_WIDTH_M,
+  STALL_LENGTH_M,
+  STALL_WIDTH_M,
+  stallsInRow,
+} from './parkingcode';
 
 export type AirportId = 'airfield' | 'regional-airport' | 'international-airport';
 export const AIRPORT_IDS: readonly AirportId[] = [
@@ -37,6 +45,103 @@ export interface Stand extends Rect {
   kind: StandKind;
 }
 
+/** The airside fence: a closed ring on the plot's far side and ends and on the building line. */
+export interface Fence {
+  height: number;
+  /** The barbed-wire arm leaning out of the top; none on the airfield. */
+  outrigger: { length: number; angleDeg: number } | null;
+  postSpacing: number;
+  /** Closed ring of axis-aligned corners, first point repeated last. */
+  line: Point[];
+  /** Openings on the building line, one where each road crosses it. */
+  gates: Line[];
+  /** The buildings standing on the building line: the fence runs between them. */
+  buildings: Rect[];
+}
+export interface Tower {
+  /** The shaft's footprint, on the building line. */
+  base: Rect;
+  height: number;
+  /** Width of the glazed cab at the top; the shaft's is the base's. */
+  cab: number;
+  shaft: number;
+  /** The controller's eye above the ground. */
+  eyeHeight: number;
+}
+export interface FuelTank {
+  footprint: Rect;
+  diameter: number;
+  /** Long if lying, high if upright. */
+  length: number;
+  lying: boolean;
+  /** Top above the ground. */
+  height: number;
+}
+export interface Fuel {
+  tanks: FuelTank[];
+  /** The bund round upright tanks. */
+  dike: Rect | null;
+  dikeWall: number | null;
+}
+/** A hangar or cargo building's airside: an apron at the stand line, a link back to the taxiway, an approach to the face. */
+export interface Maintenance {
+  hangar: Rect;
+  height: number;
+  apron: Rect;
+  link: Rect;
+  approach: Rect;
+}
+export interface Cargo {
+  building: Rect;
+  height: number;
+  apron: Rect;
+  stands: Stand[];
+  link: Rect;
+  approach: Rect;
+  /** Truck court on the landside face. */
+  court: Rect;
+  /** The landside face, where the dock doors are. */
+  dockFace: Line;
+}
+export interface Garage {
+  rect: Rect;
+  tiers: number;
+  stallsPerTier: number;
+  height: number;
+  /** The spur from the loop's last leg to the entry: a two-way centreline, loop end first. */
+  entry: Point[];
+  /** The entry's place on the garage's street face. */
+  entryFace: Line;
+  /** The round helix ramp the tiers connect to, standing against the street face. */
+  drum: { cx: number; cz: number; diameter: number };
+}
+export interface LoopRoad {
+  /** One-way centreline from the drive, past the terminal's kerb, round the parking and back. */
+  centreline: Point[];
+  lanes: number;
+  laneWidth: number;
+  kerbStoppingLane: number;
+  kerbThroughLanes: number;
+  kerbWalk: Rect;
+  cornerRadius: { inner: number; outer: number };
+}
+export interface ServiceRoad {
+  width: number;
+  lines: Point[][];
+}
+export interface Signs {
+  entrance: { rect: Rect; height: number; top: number };
+  /** Guide sign gantries, on the loop's centreline. */
+  gantries: Point[];
+}
+export interface BoardingBridge {
+  /** Index into `stands`. */
+  stand: number;
+  rect: Rect;
+  /** The aircraft's forward left door. */
+  door: Point;
+}
+
 export interface AirportLayout {
   id: AirportId;
   plot: Rect;
@@ -63,10 +168,22 @@ export interface AirportLayout {
   terminal: Rect | null;
   hangars: Rect[];
   pilotsBuilding: Rect | null;
+  /** The kerb road; on the two larger rungs the loop's lanes along the terminal. */
   kerbRoad: Rect;
-  carPark: Rect;
+  /** The surface car park; the international's is two garages. */
+  carPark: Rect | null;
   /** The drive's point on the street edge of the plot. */
   drive: Point;
+  fence: Fence;
+  tower: Tower | null;
+  fuel: Fuel;
+  maintenance: Maintenance;
+  cargo: Cargo[];
+  garages: Garage[];
+  loopRoad: LoopRoad | null;
+  serviceRoad: ServiceRoad;
+  signs: Signs;
+  boardingBridges: BoardingBridge[];
   paint: RunwayPaint;
   thresholdStripes: number;
 }
@@ -201,6 +318,134 @@ export const CAR_PARK_SPACES: Record<AirportId, number> = {
 };
 /** One surface space all in, aisle share included. */
 export const CAR_PARK_SPACE_M2 = 30;
+
+// The facilities beside the runway. Metres; "dial" is the game's own figure.
+
+/** Fence height, 2.1 fabric under a 0.3 outrigger on the two larger rungs. */
+export const FENCE_HEIGHT_M: Record<AirportId, number> = {
+  airfield: 1.2,
+  'regional-airport': 2.4,
+  'international-airport': 2.4,
+};
+/** Barbed-wire outrigger: three strands leaning out at 45 degrees. */
+export const FENCE_OUTRIGGER: Record<AirportId, { length: number; angleDeg: number } | null> = {
+  airfield: null,
+  'regional-airport': { length: 0.3, angleDeg: 45 },
+  'international-airport': { length: 0.3, angleDeg: 45 },
+};
+export const FENCE_POST_SPACING_M = 3.05;
+
+/** Primary surface width of the runway's approach category. */
+export const PRIMARY_SURFACE_WIDTH_M: Record<AirportId, number> = {
+  airfield: 76.2,
+  'regional-airport': 152.4,
+  'international-airport': 304.8,
+};
+/** The 7 to 1 surface rising from the primary surface's edge. */
+export const SURFACE_SLOPE = 7;
+
+export const TOWER_M: Record<AirportId, { height: number; cab: number; shaft: number } | null> = {
+  airfield: null,
+  'regional-airport': { height: 26.5, cab: 7.6, shaft: 6.0 },
+  'international-airport': { height: 60.4, cab: 7.6, shaft: 9.0 },
+};
+/** The controller's eye sits this far under the tower's top. */
+export const TOWER_EYE_BELOW_TOP_M = 3;
+/** Least angle below level to every runway and taxiway corner from the cab. */
+export const TOWER_SIGHT_ANGLE_DEG = 0.8;
+
+/** Fuel tanks: count, diameter, length if lying or height if upright. */
+export const FUEL_TANKS: Record<
+  AirportId,
+  { count: number; diameter: number; length: number; lying: boolean }
+> = {
+  airfield: { count: 1, diameter: 3.0, length: 6.4, lying: true },
+  'regional-airport': { count: 2, diameter: 9.1, length: 6.1, lying: false },
+  'international-airport': { count: 3, diameter: 16.3, length: 6.5, lying: false },
+};
+/** Tank to any building: a parked fuel truck's distance, used for tanks. */
+export const TANK_TO_BUILDING_M = 15.2;
+/** Height of the bund round upright tanks. */
+export const DIKE_WALL_M: Record<AirportId, number | null> = {
+  airfield: null,
+  'regional-airport': 1.0,
+  'international-airport': 1.0,
+};
+/** Gap between tanks, and from the outer tanks to the bund, and the fuel area's clearance from the fence. */
+export const TANK_GAP_M = 3.0;
+export const DIKE_MARGIN_M = 1.5;
+export const FUEL_FENCE_CLEARANCE_M = 1.5;
+
+export const MAINTENANCE_HANGAR_M: Record<AirportId, { w: number; d: number; h: number }> = {
+  airfield: { w: 18.3, d: 24.4, h: 6 },
+  'regional-airport': { w: 45, d: 62, h: 20 },
+  'international-airport': { w: 75, d: 95, h: 26.5 },
+};
+export const HANGAR_APRON_DEPTH_M: Record<AirportId, number> = {
+  airfield: 12,
+  'regional-airport': 40,
+  'international-airport': 72,
+};
+/** Clear gap between a support building's apron and the terminal's apron row or landside block. */
+export const SUPPORT_GAP_M = TANK_TO_BUILDING_M;
+
+export const CARGO_BUILDING_M: Record<
+  AirportId,
+  { count: number; w: number; d: number; h: number; stand: StandKind } | null
+> = {
+  airfield: null,
+  'regional-airport': { count: 1, w: 60, d: 30, h: 9, stand: 'narrow' },
+  'international-airport': { count: 2, w: 120, d: 36, h: 10, stand: 'wide' },
+};
+export const TRUCK_COURT_DEPTH_M = 36.6;
+
+export const GARAGES: Record<
+  AirportId,
+  { count: number; tiers: number; stallsPerTier: number; w: number; d: number } | null
+> = {
+  airfield: null,
+  'regional-airport': null,
+  'international-airport': { count: 2, tiers: 5, stallsPerTier: 400, w: 135, d: 73.2 },
+};
+/** Tier height of a garage: the shared garage kit's. */
+export const GARAGE_TIER_HEIGHT_M = GARAGE_TIER_M;
+/** Diameter of a garage's helix ramp drum: a dial. */
+export const GARAGE_DRUM_M = 18;
+/** Distance of the drum's centre from its garage's end wall: a dial. */
+export const GARAGE_DRUM_INSET_M = 12;
+/** Clear width between the international's two garages. */
+export const GARAGE_GAP_M = 7.2;
+
+/** Loop road lane width, the terminal's stopping lane, and the through lanes beside it. */
+export const LOOP_LANE_M = 3.6;
+export const LOOP_LANES = 2;
+export const KERB_STOPPING_LANE_M = 2.4;
+export const KERB_THROUGH_LANES: Record<AirportId, number | null> = {
+  airfield: null,
+  'regional-airport': 2,
+  'international-airport': 3,
+};
+export const KERB_WALK_M = 3.4;
+/** Inside radius of the loop's turns. */
+export const LOOP_INNER_RADIUS_M = 7.6;
+/** Verge between the loop's last leg and the street edge, where the entrance sign stands. */
+export const DRIVE_VERGE_M = 1.8;
+/** The 24 ft service aisle. */
+export const SERVICE_ROAD_M = KERB_ROAD_DEPTH_M;
+
+export const ENTRANCE_SIGN_M = { w: 2.4, d: 0.3, h: 1.2, top: 1.8 };
+/** Gap from the drive's edge to the entrance sign. */
+export const ENTRANCE_SIGN_GAP_M = 0.6;
+export const GANTRIES: Record<AirportId, number> = {
+  airfield: 0,
+  'regional-airport': 1,
+  'international-airport': 2,
+};
+
+/** Boarding bridge width; the forward door's distance behind the nose and its offset from the centreline by stand kind. */
+export const BOARDING_BRIDGE_WIDTH_M = 3.0;
+export const DOOR_BEHIND_NOSE_M = 4.0;
+export const DOOR_OFFSET_M: Record<StandKind, number> = { 'tie-down': 0, narrow: 2.0, wide: 3.1 };
 
 /** Float noise guard for rounding a metre length up to whole tiles. */
 const TILE_ROUND_EPS = 1e-6;
@@ -372,16 +617,25 @@ export function airportLayout(id: AirportId): AirportLayout {
     };
   }
 
-  const kerbZ = buildingsZ + buildingsDepth;
-  const carParkZ = kerbZ + KERB_ROAD_DEPTH_M;
-  const carParkDepth = plotD - carParkZ;
-  const carParkWidth = Math.min(
-    plotW,
-    Math.ceil((CAR_PARK_SPACES[id] * CAR_PARK_SPACE_M2) / carParkDepth),
-  );
-  const carParkX = (plotW - carParkWidth) / 2;
-  const kerbRoad: Rect = { x: carParkX, z: kerbZ, w: carParkWidth, d: KERB_ROAD_DEPTH_M };
-  const carPark: Rect = { x: carParkX, z: carParkZ, w: carParkWidth, d: carParkDepth };
+  const buildingLineZ = buildingsZ + buildingsDepth;
+  const drive: Point = { x: plotW / 2, z: plotD };
+  const landside = layLandside(id, plotW, plotD, buildingLineZ, terminal, drive);
+  const facilities = layFacilities({
+    id,
+    plot: { x: 0, z: 0, w: plotW, d: plotD },
+    runwayCentreZ: rz,
+    runway: { x: x0, z: rz - runwayWidth / 2, w: length, d: runwayWidth },
+    lastTaxiway: secondTaxiway ?? taxiway,
+    standLineZ,
+    apron,
+    stands,
+    terminal,
+    hangars,
+    pilotsBuilding,
+    buildingLineZ,
+    landside,
+    drive,
+  });
 
   return {
     id,
@@ -405,15 +659,424 @@ export function airportLayout(id: AirportId): AirportLayout {
     terminal,
     hangars,
     pilotsBuilding,
-    kerbRoad,
-    carPark,
-    drive: { x: plotW / 2, z: plotD },
+    kerbRoad: landside.kerbRoad,
+    carPark: landside.carPark,
+    drive,
     paint: RUNWAY_PAINT[id],
     thresholdStripes: THRESHOLD_STRIPES[id],
+    ...facilities,
+    garages: landside.garages,
+    loopRoad: landside.loopRoad,
   };
 }
 
-/** Spaces a car park holds at the all-in area of a surface space. */
+interface Landside {
+  kerbRoad: Rect;
+  carPark: Rect | null;
+  garages: Garage[];
+  loopRoad: LoopRoad | null;
+  /** Centre of the loop's last leg, and the loop's side legs' centres; null on the airfield. */
+  ring: { bottomZ: number; westX: number; eastX: number; kerbCentreZ: number } | null;
+}
+
+/** The airfield's kerb road and car park, or the loop road round the others' parking. */
+function layLandside(
+  id: AirportId,
+  plotW: number,
+  plotD: number,
+  buildingLineZ: number,
+  terminal: Rect | null,
+  drive: Point,
+): Landside {
+  const through = KERB_THROUGH_LANES[id];
+  if (through === null || !terminal) {
+    const carParkZ = buildingLineZ + KERB_ROAD_DEPTH_M;
+    const carParkDepth = plotD - carParkZ;
+    const carParkWidth = Math.min(
+      plotW,
+      Math.ceil((CAR_PARK_SPACES[id] * CAR_PARK_SPACE_M2) / carParkDepth),
+    );
+    const x = (plotW - carParkWidth) / 2;
+    return {
+      kerbRoad: { x, z: buildingLineZ, w: carParkWidth, d: KERB_ROAD_DEPTH_M },
+      carPark: { x, z: carParkZ, w: carParkWidth, d: carParkDepth },
+      garages: [],
+      loopRoad: null,
+      ring: null,
+    };
+  }
+
+  const half = (LOOP_LANES * LOOP_LANE_M) / 2;
+  const kerbWalk: Rect = { x: terminal.x, z: buildingLineZ, w: terminal.w, d: KERB_WALK_M };
+  const kerbDepth = KERB_STOPPING_LANE_M + through * LOOP_LANE_M;
+  const parkZ0 = kerbWalk.z + kerbWalk.d + kerbDepth;
+  const bottomZ = plotD - DRIVE_VERGE_M - half;
+  const parkZ1 = bottomZ - half;
+
+  const garageSpec = GARAGES[id];
+  let block: Rect;
+  let carPark: Rect | null = null;
+  const garages: Garage[] = [];
+  if (garageSpec) {
+    const total = garageSpec.count * garageSpec.w + (garageSpec.count - 1) * GARAGE_GAP_M;
+    const x0 = (plotW - total) / 2;
+    const z = parkZ0 + (parkZ1 - parkZ0 - garageSpec.d) / 2;
+    for (let i = 0; i < garageSpec.count; i++) {
+      const rect: Rect = {
+        x: x0 + i * (garageSpec.w + GARAGE_GAP_M),
+        z,
+        w: garageSpec.w,
+        d: garageSpec.d,
+      };
+      const faceZ = rect.z + rect.d;
+      const entryX = rect.x + rect.w / 2;
+      // The first garage's drum stands at its west end, the last one's at its east end.
+      const drumX = i === 0 ? rect.x + GARAGE_DRUM_INSET_M : rect.x + rect.w - GARAGE_DRUM_INSET_M;
+      garages.push({
+        rect,
+        tiers: garageSpec.tiers,
+        stallsPerTier: garageSpec.stallsPerTier,
+        height: garageSpec.tiers * GARAGE_TIER_HEIGHT_M,
+        entry: [
+          { x: entryX, z: bottomZ },
+          { x: entryX, z: faceZ },
+        ],
+        entryFace: { x: entryX - half, z: faceZ, w: 2 * half },
+        drum: { cx: drumX, cz: faceZ + GARAGE_DRUM_M / 2, diameter: GARAGE_DRUM_M },
+      });
+    }
+    block = { x: x0, z, w: total, d: garageSpec.d };
+  } else {
+    const depth = parkZ1 - parkZ0;
+    // Rows of stalls with an island at each end; the width is the fewest stalls a row needs.
+    const perRow = Math.ceil(CAR_PARK_SPACES[id] / carParkRowZs(depth).length);
+    const width = Math.min(
+      plotW,
+      Math.ceil((perRow * STALL_WIDTH_M + 2 * ISLAND_WIDTH_M) * 10) / 10,
+    );
+    carPark = { x: (plotW - width) / 2, z: parkZ0, w: width, d: depth };
+    block = carPark;
+  }
+
+  const westX = block.x - half;
+  const eastX = block.x + block.w + half;
+  const kerbCentreZ = kerbWalk.z + kerbWalk.d + kerbDepth / 2;
+  const kerbRoad: Rect = {
+    x: westX - half,
+    z: kerbWalk.z + kerbWalk.d,
+    w: block.w + 4 * half,
+    d: kerbDepth,
+  };
+  const loopRoad: LoopRoad = {
+    centreline: [
+      drive,
+      { x: drive.x, z: bottomZ },
+      { x: eastX, z: bottomZ },
+      { x: eastX, z: kerbCentreZ },
+      { x: westX, z: kerbCentreZ },
+      { x: westX, z: bottomZ },
+      { x: drive.x, z: bottomZ },
+      drive,
+    ],
+    lanes: LOOP_LANES,
+    laneWidth: LOOP_LANE_M,
+    kerbStoppingLane: KERB_STOPPING_LANE_M,
+    kerbThroughLanes: through,
+    kerbWalk,
+    cornerRadius: { inner: LOOP_INNER_RADIUS_M, outer: LOOP_INNER_RADIUS_M + 2 * half },
+  };
+  return { kerbRoad, carPark, garages, loopRoad, ring: { bottomZ, westX, eastX, kerbCentreZ } };
+}
+
+interface FacilitiesInput {
+  id: AirportId;
+  plot: Rect;
+  runwayCentreZ: number;
+  runway: Rect;
+  lastTaxiway: Rect;
+  standLineZ: number;
+  apron: Rect;
+  stands: Stand[];
+  terminal: Rect | null;
+  hangars: Rect[];
+  pilotsBuilding: Rect | null;
+  buildingLineZ: number;
+  landside: Landside;
+  drive: Point;
+}
+
+type Facilities = Pick<
+  AirportLayout,
+  'fence' | 'tower' | 'fuel' | 'maintenance' | 'cargo' | 'serviceRoad' | 'signs' | 'boardingBridges'
+>;
+
+const ceilTenth = (v: number): number => Math.ceil(v * 10) / 10;
+
+/** The fence, tower, fuel, maintenance and cargo buildings, service road, signs and bridges. */
+function layFacilities(input: FacilitiesInput): Facilities {
+  const { id, plot, standLineZ, buildingLineZ, landside, drive, terminal, stands } = input;
+  const { kerbRoad, ring } = landside;
+  const loopHalf = (LOOP_LANES * LOOP_LANE_M) / 2;
+
+  // A support building stands no nearer the runway than its 7 to 1 surface lets its height rise.
+  const surfaceZ = (height: number): number =>
+    ceilTenth(input.runwayCentreZ + PRIMARY_SURFACE_WIDTH_M[id] / 2 + SURFACE_SLOPE * height);
+  const apronEndZ = input.apron.z + input.apron.d;
+  const link = (x: number, w: number): Rect => ({
+    x,
+    z: input.lastTaxiway.z + input.lastTaxiway.d,
+    w,
+    d: standLineZ - (input.lastTaxiway.z + input.lastTaxiway.d),
+  });
+
+  let tower: Tower | null = null;
+  const towerSpec = TOWER_M[id];
+  if (towerSpec && terminal) {
+    tower = {
+      base: {
+        x: terminal.x + terminal.w + SUPPORT_GAP_M,
+        z: buildingLineZ - towerSpec.shaft,
+        w: towerSpec.shaft,
+        d: towerSpec.shaft,
+      },
+      height: towerSpec.height,
+      cab: towerSpec.cab,
+      shaft: towerSpec.shaft,
+      eyeHeight: towerSpec.height - TOWER_EYE_BELOW_TOP_M,
+    };
+  }
+
+  // The landside block and the terminal's apron row bound the support buildings either side.
+  const blockRects = [
+    input.apron,
+    kerbRoad,
+    ...(terminal ? [terminal] : []),
+    ...(input.pilotsBuilding ? [input.pilotsBuilding] : []),
+    ...input.hangars,
+    ...(landside.carPark ? [landside.carPark] : []),
+    ...landside.garages.map((g) => g.rect),
+    ...(tower ? [tower.base] : []),
+  ];
+  const westLimit = Math.min(...blockRects.map((r) => r.x));
+  const eastLimit = Math.max(...blockRects.map((r) => r.x + r.w));
+
+  const hangarSpec = MAINTENANCE_HANGAR_M[id];
+  const hangarApron = HANGAR_APRON_DEPTH_M[id];
+  // A lying tank stands on the tie-down apron's west edge, level with its taxilane, where an
+  // aircraft pulls up to it; the hangar keeps clear of it. Upright tanks lie beside the hangar.
+  const tankSpec = FUEL_TANKS[id];
+  const margin = tankSpec.lying ? 0 : DIKE_MARGIN_M;
+  const tankW = tankSpec.lying ? tankSpec.length : tankSpec.diameter;
+  const rowW = tankSpec.count * tankW + (tankSpec.count - 1) * TANK_GAP_M;
+  const areaW = rowW + 2 * margin;
+  const areaD = tankSpec.diameter + 2 * margin;
+  const hangarX = tankSpec.lying
+    ? input.apron.x - areaW - TANK_TO_BUILDING_M - hangarSpec.w
+    : westLimit - SUPPORT_GAP_M - hangarSpec.w;
+  const hangarRect: Rect = {
+    x: hangarX,
+    z: Math.max(buildingLineZ - hangarSpec.d, surfaceZ(hangarSpec.h), standLineZ + hangarApron),
+    w: hangarSpec.w,
+    d: hangarSpec.d,
+  };
+  const maintenance: Maintenance = {
+    hangar: hangarRect,
+    height: hangarSpec.h,
+    apron: { x: hangarRect.x, z: standLineZ, w: hangarRect.w, d: hangarApron },
+    link: link(hangarRect.x, hangarRect.w),
+    approach: {
+      x: hangarRect.x,
+      z: standLineZ + hangarApron,
+      w: hangarRect.w,
+      d: hangarRect.z - (standLineZ + hangarApron),
+    },
+  };
+
+  const cargo: Cargo[] = [];
+  const cargoSpec = CARGO_BUILDING_M[id];
+  if (cargoSpec) {
+    const wingspan = cargoSpec.stand === 'wide' ? WIDEST_WINGSPAN_M[id] : NARROW_WINGSPAN_M;
+    const standW = standWidth(id, wingspan);
+    let x = eastLimit + SUPPORT_GAP_M;
+    for (let i = 0; i < cargoSpec.count; i++) {
+      const z = Math.max(buildingLineZ - cargoSpec.d, surfaceZ(cargoSpec.h), apronEndZ);
+      const standX = x + (cargoSpec.w - standW) / 2;
+      const stand: Stand = {
+        kind: cargoSpec.stand,
+        x: standX,
+        z: standLineZ,
+        w: standW,
+        d: APRON_DEPTH_M[id],
+      };
+      cargo.push({
+        building: { x, z, w: cargoSpec.w, d: cargoSpec.d },
+        height: cargoSpec.h,
+        apron: { x: standX, z: standLineZ, w: standW, d: APRON_DEPTH_M[id] },
+        stands: [stand],
+        link: link(standX, standW),
+        approach: { x: standX, z: apronEndZ, w: standW, d: z - apronEndZ },
+        court: { x, z: z + cargoSpec.d, w: cargoSpec.w, d: TRUCK_COURT_DEPTH_M },
+        dockFace: { x, z: z + cargoSpec.d, w: cargoSpec.w },
+      });
+      x += cargoSpec.w + SUPPORT_GAP_M;
+    }
+  }
+
+  // Fuel stays inside the fence, at a gate of its own.
+  const area: Rect = tankSpec.lying
+    ? {
+        x: input.apron.x - areaW,
+        z: input.apron.z + input.apron.d / 2 - areaD / 2,
+        w: areaW,
+        d: areaD,
+      }
+    : {
+        x: hangarRect.x - TANK_TO_BUILDING_M - areaW,
+        z: buildingLineZ - FUEL_FENCE_CLEARANCE_M - areaD,
+        w: areaW,
+        d: areaD,
+      };
+  const tanks: FuelTank[] = Array.from({ length: tankSpec.count }, (_, i) => ({
+    footprint: {
+      x: area.x + margin + i * (tankW + TANK_GAP_M),
+      z: area.z + margin,
+      w: tankW,
+      d: tankSpec.diameter,
+    },
+    diameter: tankSpec.diameter,
+    length: tankSpec.length,
+    lying: tankSpec.lying,
+    height: tankSpec.lying ? tankSpec.diameter : tankSpec.length,
+  }));
+  const dikeWall = DIKE_WALL_M[id];
+  const fuel: Fuel = { tanks, dike: dikeWall === null ? null : area, dikeWall };
+  const fuelX = area.x + area.w / 2;
+
+  const serviceLines: Point[][] = [];
+  const fuelGate: Line = { x: fuelX - SERVICE_ROAD_M / 2, z: buildingLineZ, w: SERVICE_ROAD_M };
+  if (ring) {
+    // Under the hangar's landside face, then up to the fuel gate; and under the truck courts.
+    const hangarRoadZ = hangarRect.z + hangarRect.d + SERVICE_ROAD_M / 2;
+    serviceLines.push([
+      { x: kerbRoad.x, z: hangarRoadZ },
+      { x: fuelX, z: hangarRoadZ },
+      { x: fuelX, z: buildingLineZ },
+    ]);
+    const lastCourt = cargo[cargo.length - 1];
+    if (lastCourt) {
+      const courtRoadZ = lastCourt.court.z + lastCourt.court.d + SERVICE_ROAD_M / 2;
+      serviceLines.push([
+        { x: kerbRoad.x + kerbRoad.w, z: courtRoadZ },
+        { x: lastCourt.court.x + lastCourt.court.w, z: courtRoadZ },
+      ]);
+    }
+  } else {
+    const roadZ = buildingLineZ + SERVICE_ROAD_M / 2;
+    serviceLines.push([
+      { x: kerbRoad.x, z: roadZ },
+      { x: fuelX, z: roadZ },
+      { x: fuelX, z: buildingLineZ },
+    ]);
+  }
+
+  const signGantries: Point[] = [];
+  if (ring) {
+    signGantries.push(
+      { x: (drive.x + ring.eastX) / 2, z: ring.bottomZ },
+      { x: ring.eastX, z: (ring.kerbCentreZ + ring.bottomZ) / 2 },
+    );
+  }
+
+  const boardingBridges: BoardingBridge[] = terminal
+    ? stands.map((s, i) => {
+        const doorX = s.x + s.w / 2 + DOOR_OFFSET_M[s.kind];
+        const doorZ = s.z + s.d - STAND_CLEARANCE_M[id] - DOOR_BEHIND_NOSE_M;
+        return {
+          stand: i,
+          rect: {
+            x: doorX - BOARDING_BRIDGE_WIDTH_M / 2,
+            z: doorZ,
+            w: BOARDING_BRIDGE_WIDTH_M,
+            d: terminal.z - doorZ,
+          },
+          door: { x: doorX, z: doorZ },
+        };
+      })
+    : [];
+
+  const buildingsOnLine = [
+    ...(terminal ? [terminal] : []),
+    ...(input.pilotsBuilding ? [input.pilotsBuilding] : []),
+    ...input.hangars,
+    hangarRect,
+    ...cargo.map((c) => c.building),
+    ...(tower ? [tower.base] : []),
+  ].filter(
+    (r) => r.z < buildingLineZ - TILE_ROUND_EPS && r.z + r.d >= buildingLineZ - TILE_ROUND_EPS,
+  );
+
+  return {
+    fence: {
+      height: FENCE_HEIGHT_M[id],
+      outrigger: FENCE_OUTRIGGER[id],
+      postSpacing: FENCE_POST_SPACING_M,
+      line: [
+        { x: 0, z: 0 },
+        { x: plot.w, z: 0 },
+        { x: plot.w, z: buildingLineZ },
+        { x: 0, z: buildingLineZ },
+        { x: 0, z: 0 },
+      ],
+      gates: [fuelGate],
+      buildings: buildingsOnLine,
+    },
+    tower,
+    fuel,
+    maintenance,
+    cargo,
+    serviceRoad: { width: SERVICE_ROAD_M, lines: serviceLines },
+    signs: {
+      entrance: {
+        rect: {
+          x: drive.x + loopHalf + ENTRANCE_SIGN_GAP_M,
+          z: plot.d - DRIVE_VERGE_M / 2 - ENTRANCE_SIGN_M.d / 2,
+          w: ENTRANCE_SIGN_M.w,
+          d: ENTRANCE_SIGN_M.d,
+        },
+        height: ENTRANCE_SIGN_M.h,
+        top: ENTRANCE_SIGN_M.top,
+      },
+      gantries: signGantries.slice(0, GANTRIES[id]),
+    },
+    boardingBridges,
+  };
+}
+
+/** Spaces a layout's parking holds: its garages' stalls, or its surface car park at the all-in area of a space. */
+/** Where each row of a stalled car park starts below its top edge: back-to-back pairs, an aisle after each. */
+export function carParkRowZs(depth: number): number[] {
+  const out: number[] = [];
+  let z = 0;
+  for (let row = 0; z + STALL_LENGTH_M <= depth + 1e-6; row++) {
+    out.push(z);
+    z += STALL_LENGTH_M;
+    if (row % 2 === 1) z += AISLE_WIDTH_M;
+  }
+  return out;
+}
+
+/** Stalls in one row of a car park: the loop's has an island at each end. */
+export function carParkRowStalls(layout: AirportLayout): number {
+  const carPark = layout.carPark;
+  if (!carPark) return 0;
+  return stallsInRow(layout.loopRoad ? carPark.w - 2 * ISLAND_WIDTH_M : carPark.w);
+}
+
 export function carParkCapacity(layout: AirportLayout): number {
+  if (layout.garages.length > 0) {
+    return layout.garages.reduce((sum, g) => sum + g.tiers * g.stallsPerTier, 0);
+  }
+  if (!layout.carPark) return 0;
+  if (layout.loopRoad) return carParkRowZs(layout.carPark.d).length * carParkRowStalls(layout);
   return Math.floor((layout.carPark.w * layout.carPark.d) / CAR_PARK_SPACE_M2);
 }

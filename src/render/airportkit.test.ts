@@ -23,11 +23,13 @@ import {
   aircraftPlacements,
   airportBuildings,
   airportPlateGeometry,
+  airportPlateQuads,
   buildingPanes,
   runwayDesignations,
   ROOF_OVERHANG_M,
 } from './airportkit';
 import { LandmarkRenderer } from './landmarks';
+import { facilityParts } from './airportfacilities';
 import {
   AIRPORT_IDS,
   AirportId,
@@ -58,24 +60,8 @@ interface Q {
 
 /** The plate's quads read back from its built vertices, in the layout's frame. */
 function plateQuads(id: AirportId, rotation: Rotation = 0): Q[] {
-  const layout = airportLayout(id);
-  const g = airportPlateGeometry(id, rotation);
-  const pos = g.getAttribute('position');
-  const col = g.getAttribute('color');
-  const out: Q[] = [];
-  for (let i = 0; i < pos.count; i += 4) {
-    const xs = [0, 1, 2, 3].map((k) => pos.getX(i + k) + layout.plot.w / 2);
-    const zs = [0, 1, 2, 3].map((k) => pos.getZ(i + k) + layout.plot.d / 2);
-    out.push({
-      x0: Math.min(...xs),
-      x1: Math.max(...xs),
-      z0: Math.min(...zs),
-      z1: Math.max(...zs),
-      y: pos.getY(i),
-      color: [col.getX(i), col.getY(i), col.getZ(i)],
-    });
-  }
-  return out;
+  // The plate's rectangles; its rounded shapes are polygons the facilities' tests measure.
+  return airportPlateQuads(id, rotation);
 }
 
 function at<T>(items: readonly T[], i: number): T {
@@ -125,7 +111,9 @@ describe('plate', () => {
       expect(onTaxiway(q.x0, q.z0) && onTaxiway(q.x1, q.z1)).toBe(true);
     }
     for (const q of whites(qs)) {
-      expect(inside(q, layout.runway) || inside(q, layout.carPark)).toBe(true);
+      expect(inside(q, layout.runway) || (!!layout.carPark && inside(q, layout.carPark))).toBe(
+        true,
+      );
     }
   });
 });
@@ -437,6 +425,12 @@ describe('holding positions', () => {
 describe('car park', () => {
   it.each(AIRPORT_IDS)('%s marks as many stalls as the layout has spaces', (id) => {
     const cp = airportLayout(id).carPark;
+    if (!cp) {
+      // No surface car park: no stall line below the kerb lanes.
+      const kerb = airportLayout(id).kerbRoad;
+      expect(whites(plateQuads(id)).filter((q) => q.z0 > kerb.z + kerb.d)).toHaveLength(0);
+      return;
+    }
     const lines = whites(plateQuads(id)).filter((q) => inside(q, cp));
     const rows = new Map<string, number>();
     for (const q of lines) rows.set(q.z0.toFixed(2), (rows.get(q.z0.toFixed(2)) ?? 0) + 1);
@@ -471,8 +465,9 @@ describe('aircraft', () => {
     (id) => {
       const layout = airportLayout(id);
       const placed = aircraftPlacements(layout);
-      expect(placed).toHaveLength(layout.stands.length);
-      placed.forEach((p, i) => {
+      // One per terminal stand, then one nose to each cargo building.
+      expect(placed).toHaveLength(layout.stands.length + layout.cargo.length);
+      placed.slice(0, layout.stands.length).forEach((p, i) => {
         const stand = at(layout.stands, i);
         expect(p.kind).toBe(stand.kind);
         const box = aircraftBox(p.kind, p);
@@ -645,12 +640,14 @@ describe('LandmarkRenderer airports', () => {
       const total =
         renderer.airportPartMatrices(1, 'aircraftNarrow').length +
         renderer.airportPartMatrices(1, 'aircraftWide').length;
-      expect(total).toBe(layout.stands.length);
+      const cargoStands = layout.cargo.flatMap((c) => c.stands);
+      expect(total).toBe(layout.stands.length + cargoStands.length);
       for (const [kind, pool] of [
         ['narrow', 'aircraftNarrow'],
         ['wide', 'aircraftWide'],
       ] as const) {
-        const stands = layout.stands.filter((s) => s.kind === kind);
+        const stands = [...layout.stands, ...cargoStands].filter((s) => s.kind === kind);
+        const terminalCount = layout.stands.filter((s) => s.kind === kind).length;
         const ms = renderer.airportPartMatrices(1, pool);
         expect(ms).toHaveLength(stands.length);
         ms.forEach((m, i) => {
@@ -663,7 +660,8 @@ describe('LandmarkRenderer airports', () => {
           const stand = at(stands, i);
           expect(lx).toBeCloseTo(stand.x + stand.w / 2, 3);
           expect(lz).toBeGreaterThan(stand.z);
-          expect(lz).toBeLessThanOrEqual(stand.z + stand.d);
+          // A cargo aircraft's nose reaches past its stand onto the approach to the building.
+          if (i < terminalCount) expect(lz).toBeLessThanOrEqual(stand.z + stand.d);
         });
       }
     }
@@ -712,8 +710,14 @@ describe('LandmarkRenderer airports', () => {
     const scene = new THREE.Scene();
     const renderer = new LandmarkRenderer(scene, flat, catalog);
     renderer.apply(add(instance(1, 'airfield', 0)));
-    expect(renderer.airportPartMatrices(1, 'body')).toHaveLength(5);
-    expect(renderer.airportPartMatrices(1, 'roof')).toHaveLength(5);
+    const layout = airportLayout('airfield');
+    const boxes = airportBuildings(layout, 6).length;
+    const parts = facilityParts(layout);
+    expect(boxes).toBe(6);
+    expect(renderer.airportPartMatrices(1, 'body')).toHaveLength(
+      boxes + parts.filter((p) => p.pool === 'body').length,
+    );
+    expect(renderer.airportPartMatrices(1, 'roof')).toHaveLength(boxes);
     expect(renderer.airportPartMatrices(1, 'aircraftTieDown')).toHaveLength(20);
     expect(renderer.airportPartMatrices(1, 'pane').length).toBeGreaterThan(4);
   });

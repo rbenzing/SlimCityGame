@@ -60,6 +60,8 @@ import {
   AIRCRAFT_POOL_BY_STAND,
   AircraftPoolKind,
   AirportBuildingKind,
+  CARGO_BODY_COLOR,
+  CARGO_ROOF_COLOR,
   HANGAR_BODY_COLOR,
   HANGAR_ROOF_COLOR,
   PILOTS_BODY_COLOR,
@@ -77,6 +79,7 @@ import {
   PAVEMENT_Y,
   PLATE_LAYER_Y,
 } from './airportkit';
+import { facilityParts, fenceFabricGeometry, garageRoofMarksGeometry } from './airportfacilities';
 
 // ---------------------------------------------------------------------------
 // Registry ("acts ONLY on catalog ids in its landmark registry"). Fixed today
@@ -701,12 +704,13 @@ interface LandmarkKit {
 }
 
 /** The pools every airport's instanced parts share, whatever the rung. */
-export type AirportPartKind = 'body' | 'roof' | 'pane' | AircraftPoolKind;
+export type AirportPartKind = 'body' | 'roof' | 'pane' | 'cylinder' | AircraftPoolKind;
 
 const ALL_AIRPORT_PART_KINDS: readonly AirportPartKind[] = [
   'body',
   'roof',
   'pane',
+  'cylinder',
   'aircraftTieDown',
   'aircraftNarrow',
   'aircraftWide',
@@ -716,6 +720,7 @@ const AIRPORT_BODY_COLORS: Record<AirportBuildingKind, { body: number; roof: num
   terminal: { body: materialHex(TERMINAL_BODY_COLOR), roof: materialHex(TERMINAL_ROOF_COLOR) },
   hangar: { body: materialHex(HANGAR_BODY_COLOR), roof: materialHex(HANGAR_ROOF_COLOR) },
   pilots: { body: materialHex(PILOTS_BODY_COLOR), roof: materialHex(PILOTS_ROOF_COLOR) },
+  cargo: { body: materialHex(CARGO_BODY_COLOR), roof: materialHex(CARGO_ROOF_COLOR) },
 };
 const AIRPORT_GLASS_COLOR = materialHex('tintedGlass');
 
@@ -739,6 +744,7 @@ const _matrix = new THREE.Matrix4();
 const _position = new THREE.Vector3();
 const _quaternion = new THREE.Quaternion();
 const _unitScale = new THREE.Vector3(1, 1, 1);
+const _turned = new THREE.Quaternion();
 const _yAxis = new THREE.Vector3(0, 1, 0);
 
 export class LandmarkRenderer {
@@ -755,6 +761,8 @@ export class LandmarkRenderer {
   private readonly airportSlots = new Map<number, Record<AirportPartKind, number[]>>();
   private readonly airportPlates = new Map<number, THREE.Mesh>();
   private readonly plateGeometries = new Map<string, THREE.BufferGeometry>();
+  private readonly airportFences = new Map<number, THREE.Mesh>();
+  private readonly fabricGeometries = new Map<AirportId, THREE.BufferGeometry>();
 
   private nightFactorValue = 0;
   /** The same value, as the uniform the structure materials shade by. */
@@ -767,6 +775,24 @@ export class LandmarkRenderer {
     material.polygonOffsetUnits = -(layer + 1) * PLATE_DEPTH_BIAS;
     return material;
   });
+  /** The fence fabric: pale, double-sided and half see-through. */
+  private readonly roofMarksMaterial = (() => {
+    const material = nightBodyMaterial(this.nightFactorUniform, { vertexColors: true });
+    material.polygonOffset = true;
+    material.polygonOffsetFactor = -4;
+    material.polygonOffsetUnits = -4;
+    return material;
+  })();
+  private readonly fabricMaterial = (() => {
+    const material = nightBodyMaterial(this.nightFactorUniform, {
+      vertexColors: true,
+      side: THREE.DoubleSide,
+    });
+    material.transparent = true;
+    material.opacity = 0.5;
+    material.depthWrite = false;
+    return material;
+  })();
   private lastTMs = 0;
 
   constructor(
@@ -1011,6 +1037,7 @@ export class LandmarkRenderer {
         body: pool(unitBox(), body),
         roof: pool(unitBox(), body),
         pane: pool(unitBox(), paneMaterial),
+        cylinder: pool(new THREE.CylinderGeometry(0.5, 0.5, 1, 16).translate(0, 0.5, 0), body),
         aircraftTieDown: pool(aircraftGeometry('tie-down'), aircraft),
         aircraftNarrow: pool(aircraftGeometry('narrow'), aircraft),
         aircraftWide: pool(aircraftGeometry('wide'), aircraft),
@@ -1045,6 +1072,7 @@ export class LandmarkRenderer {
       body: [],
       roof: [],
       pane: [],
+      cylinder: [],
       aircraftTieDown: [],
       aircraftNarrow: [],
       aircraftWide: [],
@@ -1063,11 +1091,16 @@ export class LandmarkRenderer {
       y: number,
       scale: THREE.Vector3,
       tint?: number,
+      turn?: THREE.Quaternion,
     ): void => {
       const p = world(lx, lz);
       const pool = shared.pools[kind];
       const slot = pool.allocate();
-      _matrix.compose(_position.set(p.x, groundY + y, p.z), quaternion, scale);
+      _matrix.compose(
+        _position.set(p.x, groundY + y, p.z),
+        turn ? _turned.copy(quaternion).multiply(turn) : quaternion,
+        scale,
+      );
       pool.setMatrixAt(slot, _matrix);
       if (tint !== undefined) pool.setColorAt(slot, color.setHex(tint));
       slots[kind].push(slot);
@@ -1101,6 +1134,21 @@ export class LandmarkRenderer {
         );
       }
     }
+    for (const part of facilityParts(layout)) {
+      const turn =
+        part.rotX || part.rotZ
+          ? new THREE.Quaternion().setFromEuler(new THREE.Euler(part.rotX ?? 0, 0, part.rotZ ?? 0))
+          : undefined;
+      place(
+        part.pool,
+        part.cx,
+        part.cz,
+        GRASS_Y + part.y,
+        new THREE.Vector3(part.w, part.h, part.d),
+        part.pool === 'pane' ? undefined : part.tint,
+        turn,
+      );
+    }
     for (const plane of aircraftPlacements(layout)) {
       place(AIRCRAFT_POOL_BY_STAND[plane.kind], plane.x, plane.z, PAVEMENT_Y, _unitScale);
     }
@@ -1111,6 +1159,27 @@ export class LandmarkRenderer {
     plate.rotation.y = rotation * (Math.PI / 2);
     this.scene.add(plate);
     this.airportPlates.set(building.id, plate);
+
+    // The fence's thin fabric: see-through, and too thin for the shadow map.
+    const fabric = new THREE.Mesh(this.fabricGeometry(id), this.fabricMaterial);
+    fabric.position.set(centerX, groundY + GRASS_Y, centerZ);
+    fabric.rotation.y = rotation * (Math.PI / 2);
+    this.scene.add(fabric);
+    this.airportFences.set(building.id, fabric);
+    // The garages' painted roof rows ride on the same frame.
+    if (layout.garages.length > 0) {
+      const marks = new THREE.Mesh(garageRoofMarksGeometry(layout), this.roofMarksMaterial);
+      fabric.add(marks);
+    }
+  }
+
+  private fabricGeometry(id: AirportId): THREE.BufferGeometry {
+    let geometry = this.fabricGeometries.get(id);
+    if (!geometry) {
+      geometry = fenceFabricGeometry(airportLayout(id));
+      this.fabricGeometries.set(id, geometry);
+    }
+    return geometry;
   }
 
   private placeAt(
@@ -1257,6 +1326,11 @@ export class LandmarkRenderer {
     if (plate) {
       this.scene.remove(plate);
       this.airportPlates.delete(buildingId);
+    }
+    const fence = this.airportFences.get(buildingId);
+    if (fence) {
+      this.scene.remove(fence);
+      this.airportFences.delete(buildingId);
     }
 
     const apron = this.apronSurfaces.get(buildingId);
