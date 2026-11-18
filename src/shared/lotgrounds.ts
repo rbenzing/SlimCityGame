@@ -786,3 +786,9 @@ export function planLotGrounds(layout: LotLayout, facts: LotGroundsFacts): LotGr
   planFence(ctx);
   return { pieces: ctx.pieces };
 }
+
+/** The walk's end at the street line: its rect there, and whether the layout already paves it. Null where the walk starts short of the street. */
+export function streetWalk(layout: LotLayout): { rect: LotRect; laid: boolean } | null {
+  const first = walkPieces(layout).find((p) => p.rect.v0 <= EPS);
+  return first ? { rect: first.rect, laid: first.laid === true } : null;
+}

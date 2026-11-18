@@ -2748,7 +2748,10 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
         return [
           ...keys.map((key): DriveSite => ({ key, cut: null, disc: null })),
           ...cuts.map((c): DriveSite => ({ key: null, cut: c, disc: null })),
-          ...(home ? frontageKeepClear(inst, home) : []).map((disc): DriveSite => ({
+          ...[
+            ...(home ? frontageKeepClear(inst, home) : []),
+            ...lotGrounds.clearDiscs(inst, street),
+          ].map((disc): DriveSite => ({
             key: null,
             cut: null,
             disc,

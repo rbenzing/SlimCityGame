@@ -5,6 +5,9 @@ import { BuildingState, type BuildingCatalogEntry, type BuildingInstance } from 
 import { TILE_METERS } from '../shared/constants';
 import { footprintForRotation } from '../shared/footprint';
 import { groundsInstanceCounts, LotGroundsRenderer, type GroundsPool } from './lotgrounds';
+import { LotRenderer } from './lots';
+import { lotPlanFor, lotPointToWorld } from './lotplan';
+import { streetWalk } from '../shared/lotgrounds';
 
 const CATALOG = (catalogData as { buildings: BuildingCatalogEntry[] }).buildings;
 const entry = (id: string): BuildingCatalogEntry => CATALOG.find((e) => e.id === id)!;
@@ -161,5 +164,62 @@ describe('lot grounds renderer', () => {
     expect(materials.filter((m) => !(m instanceof THREE.MeshBasicMaterial)).length).toBeGreaterThan(
       3,
     );
+  });
+});
+
+describe('the walk across the street verge', () => {
+  const id = 'com-strip-1';
+  const roadAt = (_x: number, z: number): boolean => z === 8;
+  const southEdge = 8 * TILE_METERS;
+  const mesh = (street: (x: number, z: number) => { vergeM: number; sidewalkM: number } | null) => {
+    const scene = new THREE.Scene();
+    new LotRenderer(scene, flat, CATALOG, roadAt, street).apply({
+      added: [building(id, { x: 4, z: 6 })],
+      updated: [],
+      removed: [],
+    });
+    return (scene.children[0] as THREE.Mesh).geometry.getAttribute('position');
+  };
+  /** The world x of every vertex lying over the verge, below the lot's street line. */
+  const overVerge = (
+    position: THREE.BufferAttribute | THREE.InterleavedBufferAttribute,
+  ): number[] => {
+    const xs: number[] = [];
+    for (let i = 0; i < position.count; i += 1) {
+      if (position.getZ(i) > southEdge + 1e-6) xs.push(position.getX(i));
+    }
+    return xs;
+  };
+
+  it('carries a walk with no way through the stalls across the verge to the footway', () => {
+    const lot = lotPlanFor(entry(id), 4, 6, roadAt)!;
+    const walk = streetWalk(lot.layout)!;
+    expect(walk.laid).toBe(false);
+    const a = lotPointToWorld(lot.frame, walk.rect.u0, 0).x;
+    const b = lotPointToWorld(lot.frame, walk.rect.u1, 0).x;
+    const xs = overVerge(mesh(() => ({ vergeM: 4.375, sidewalkM: 1.875 })));
+    const near = xs.filter((x) => x >= Math.min(a, b) - 1e-6 && x <= Math.max(a, b) + 1e-6);
+    expect(near.length).toBeGreaterThanOrEqual(4);
+  });
+
+  it('ends the walk at the lot line on a road with no footway', () => {
+    const lot = lotPlanFor(entry(id), 4, 6, roadAt)!;
+    const walk = streetWalk(lot.layout)!;
+    const a = lotPointToWorld(lot.frame, walk.rect.u0, 0).x;
+    const b = lotPointToWorld(lot.frame, walk.rect.u1, 0).x;
+    const xs = overVerge(mesh(() => ({ vergeM: 7.1875, sidewalkM: 0 })));
+    const inWalk = xs.filter((x) => x > Math.min(a, b) + 1e-6 && x < Math.max(a, b) - 1e-6);
+    expect(inWalk).toHaveLength(0);
+  });
+
+  it('keeps street furniture off the walk where it meets the street', () => {
+    const grounds = new LotGroundsRenderer(new THREE.Scene(), flat, CATALOG, roadAt);
+    const b = building(id, { x: 4, z: 6 });
+    const discs = grounds.clearDiscs(b, () => ({ vergeM: 4.375, sidewalkM: 1.875 }));
+    expect(discs.length).toBeGreaterThan(0);
+    const lot = lotPlanFor(entry(id), 4, 6, roadAt)!;
+    const walk = streetWalk(lot.layout)!;
+    const mid = lotPointToWorld(lot.frame, (walk.rect.u0 + walk.rect.u1) / 2, -2);
+    expect(discs.some((d) => Math.hypot(d.x - mid.x, d.z - mid.z) <= d.r)).toBe(true);
   });
 });

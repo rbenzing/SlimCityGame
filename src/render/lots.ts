@@ -65,6 +65,7 @@ import {
 } from './parked';
 import type { KerbSurroundings } from '../shared/kerblayout';
 import { lotPaving } from '../shared/lotlayout';
+import { streetWalk } from '../shared/lotgrounds';
 import { garageEntranceWalk } from '../shared/garage';
 import { ENTRANCE_WALK_M, isDenseLotEntry } from '../shared/parkingcode';
 import {
@@ -691,6 +692,9 @@ export class LotRenderer {
   ): void {
     const { layout, edge } = plan;
     const street = this.street(edge.roadTileX, edge.roadTileZ);
+    // The layout's own entrance walk always crosses; one the grounds plan runs through the car park crosses to a footway only.
+    const found = streetWalk(layout);
+    const walk = found && (found.laid || (street?.sidewalkM ?? 0) > 0) ? found.rect : null;
     if (street?.bulb) {
       // Across a turning circle the drive and the walk run on to the ring along
       // lines through its centre, short of the street's mouth.
@@ -703,9 +707,7 @@ export class LotRenderer {
       if (layout.aisles.length > 0) {
         across(layout.curbCut.u0, layout.curbCut.u1, DRIVE_Y_OFFSET, surface);
       }
-      if (layout.entranceWalk) {
-        across(layout.entranceWalk.u0, layout.entranceWalk.u1, WALK_Y_OFFSET, 'cleanConcrete');
-      }
+      if (walk) across(walk.u0, walk.u1, WALK_Y_OFFSET, 'cleanConcrete');
       return;
     }
     const verge = street?.vergeM ?? 0;
@@ -714,7 +716,6 @@ export class LotRenderer {
       const cut = layout.curbCut;
       lay({ u0: cut.u0, u1: cut.u1, v0: -verge, v1: 0 }, DRIVE_Y_OFFSET, surface);
     }
-    const walk = layout.entranceWalk;
     if (walk) lay({ ...walk, v0: -verge, v1: 0 }, WALK_Y_OFFSET, 'cleanConcrete');
   }
 

@@ -23,6 +23,7 @@ import {
   BIKE_SPACES,
   ENTRANCE_BED_DEPTH_M,
   planLotGrounds,
+  streetWalk,
   REFUSE_ENCLOSURE_M,
   SHRUB_FOOTPRINT_M,
   type GroundsFacing,
@@ -32,6 +33,8 @@ import {
 } from '../shared/lotgrounds';
 import { materialHex, materialUnit, type MaterialName } from './palette';
 import { InstancedSlotPool } from './massing';
+import type { KeepClearDisc } from './roadsidespace';
+import type { StreetLookup } from './frontage';
 import { buildBroadleafGeometry } from './trees';
 import { LOT_TREE_SCALE } from './parked';
 import {
@@ -41,6 +44,10 @@ import {
   type KerbCreditOf,
   type LotPlan,
 } from './lotplan';
+
+/** A walk's clear ground reaches this far past its edge, and its discs lie this far apart. */
+const WALK_CLEAR_MARGIN_M = 0.6;
+const CLEAR_DISC_STEP_M = 1;
 
 /** Residents' side of a lot line is looked for this far out and this often along it. */
 const HOME_PROBE_OUT_M = 2;
@@ -647,6 +654,32 @@ export class LotGroundsRenderer {
     if (!lot) return null;
     const homes = this.homeSidesOf(lot);
     return { plan: planLotGrounds(lot.layout, groundsFactsFor(entry, homes)), lot };
+  }
+
+  /**
+   * The ground a walk holds clear across the street's verge, as discs down its
+   * centre line, the way a framed home's walk does: street furniture keeps off
+   * where the walk meets the footway. None for a lot with no walk at the street
+   * or a street with no verge to cross.
+   */
+  clearDiscs(building: BuildingInstance, street: StreetLookup): KeepClearDisc[] {
+    const entry = this.catalogById.get(building.catalogId);
+    if (!entry || (entry.category !== 'com' && entry.category !== 'ind')) return [];
+    const lot = lotPlanAt(entry, building, this.roadAt, this.kerb, this.kerbCreditOf);
+    const walk = lot ? streetWalk(lot.layout) : null;
+    if (!lot || !walk) return [];
+    const tile = street(lot.edge.roadTileX, lot.edge.roadTileZ);
+    // Only a street with a footway to meet is crossed.
+    const vergeM = tile && tile.sidewalkM > 0 ? tile.vergeM : 0;
+    if (vergeM <= 0) return [];
+    const u = (walk.rect.u0 + walk.rect.u1) / 2;
+    const r = (walk.rect.u1 - walk.rect.u0) / 2 + WALK_CLEAR_MARGIN_M;
+    const out: KeepClearDisc[] = [];
+    for (let v = 0; v < vergeM + CLEAR_DISC_STEP_M; v += CLEAR_DISC_STEP_M) {
+      const at = lotPointToWorld(lot.frame, u, -Math.min(v, vergeM));
+      out.push({ x: at.x, z: at.z, r });
+    }
+    return out;
   }
 
   private applyOne(building: BuildingInstance): void {
