@@ -261,6 +261,30 @@ describe('a gravel road into a paved T', () => {
     expect(onGravel.size).toBe(1);
     expect([...inBox][0]).not.toBe([...onGravel][0]);
   });
+
+  it('ends the footway square at the gravel edge, on the kerb return, with none standing in the gravel', () => {
+    const r = layRoads([
+      ...Array.from({ length: 9 }, (_, x) => ({ x, z: 2, tier: RoadTier.TwoLane })),
+      ...Array.from({ length: 6 }, (_, k) => ({ x: 4, z: 3 + k, tier: RoadTier.Gravel })),
+    ]);
+    const walkExtent = (z: number): { lo: number; hi: number } | null => {
+      const xs = rowAlongX(r, z, 4 * TILE_METERS, 4.5 * TILE_METERS, 400)
+        .filter((s) => s.colour === KERB)
+        .map((s) => s.at);
+      return xs.length ? { lo: Math.min(...xs), hi: Math.max(...xs) } : null;
+    };
+    const edge = 3 * TILE_METERS;
+    // Nothing of the footway stands on the gravel tile.
+    expect(walkExtent(edge + 0.3)).toBeNull();
+    // It runs straight, the same width and place, over the last metres to the edge:
+    // the return has finished turning and the end is cut square across.
+    const a = walkExtent(edge - 1.5)!;
+    const b = walkExtent(edge - 0.3)!;
+    expect(a.lo).toBeCloseTo(b.lo, 1);
+    expect(a.hi).toBeCloseTo(b.hi, 1);
+    // Its inner edge is the gravel's own edge, so the carriageway stays one width.
+    expect(b.hi - b.lo).toBeGreaterThan(1.5);
+  });
 });
 
 describe('a coloured lane on sloping ground', () => {
