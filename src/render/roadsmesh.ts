@@ -2359,7 +2359,29 @@ function emitStreetTrack(
   hi: number,
   hAt: (x: number, z: number) => number,
   across: number,
+  /** Where the lane's centre lies at the two ends of the run; omitted, it lies `across` all the way. */
+  ends?: { lo: number; hi: number },
 ): void {
+  if (ends) {
+    const centreAt = driftBetween(ends.lo, ends.hi, lo, hi);
+    for (const s of streetTrackStrips(0)) {
+      pushDriftingStrip(
+        positions,
+        colors,
+        vertical,
+        centerX,
+        centerZ,
+        (a) => centreAt(a) + s.from,
+        (a) => centreAt(a) + s.to,
+        lo,
+        hi,
+        s.yOff,
+        s.color,
+        hAt,
+      );
+    }
+    return;
+  }
   for (const s of streetTrackStrips(across)) {
     trackRect(
       positions,
@@ -6875,16 +6897,56 @@ function roadTileSurfaces(
     : reservation
       ? []
       : plan.bands.filter((b) => b.kind === 'tram').map((b) => (b.from + b.to) / 2);
-  if (tramAt.length > 0 && !isJunction && !isTurn) {
-    const emit = (vertical: boolean, lo: number, hi: number, across: number): void => {
-      if (railway) emitRailwayTrack(positions, colors, centerX, centerZ, vertical, lo, hi, hAt);
-      else emitStreetTrack(positions, colors, centerX, centerZ, vertical, lo, hi, hAt, across);
+  // Where this tile's plan meets its neighbours' along each axis: the values
+  // both tiles agree on, which the lane lines and the track bend between.
+  const axisSeam = (vertical: boolean): { lo: MarkingSeam; hi: MarkingSeam } => {
+    const [loLeg, hiLeg] = vertical ? ([legN, legS] as const) : ([legW, legE] as const);
+    const [loSide, hiSide] = vertical ? (['n', 's'] as const) : (['w', 'e'] as const);
+    return {
+      lo: seamWith(
+        plan,
+        loLeg ? (neighborHalves.plans?.[loSide] ?? null) : null,
+        neighborHalves[loSide],
+        coreHalf,
+      ),
+      hi: seamWith(
+        plan,
+        hiLeg ? (neighborHalves.plans?.[hiSide] ?? null) : null,
+        neighborHalves[hiSide],
+        coreHalf,
+      ),
     };
-    for (const across of tramAt) {
-      if (hasVertical) emit(true, legN ? -TILE_HALF : -reachN, legS ? TILE_HALF : reachS, across);
+  };
+  if (tramAt.length > 0 && !isJunction && !isTurn) {
+    const emit = (
+      vertical: boolean,
+      lo: number,
+      hi: number,
+      across: number,
+      bandIndex: number,
+    ): void => {
+      if (railway) {
+        emitRailwayTrack(positions, colors, centerX, centerZ, vertical, lo, hi, hAt);
+        return;
+      }
+      // The track follows its lane as the lane bends across the tile, so the
+      // rails meet the neighbouring tile's at the seam.
+      const seam = axisSeam(vertical);
+      const planIndex = tramBandIndices[bandIndex]!;
+      const mid = (b: { from: number; to: number } | undefined): number =>
+        b ? (b.from + b.to) / 2 : across;
+      emitStreetTrack(positions, colors, centerX, centerZ, vertical, lo, hi, hAt, across, {
+        lo: mid(seam.lo.bands?.[planIndex]),
+        hi: mid(seam.hi.bands?.[planIndex]),
+      });
+    };
+    const tramBandIndices = plan.bands.flatMap((b, i) => (b.kind === 'tram' ? [i] : []));
+    tramAt.forEach((across, bandIndex) => {
+      if (hasVertical)
+        emit(true, legN ? -TILE_HALF : -reachN, legS ? TILE_HALF : reachS, across, bandIndex);
       if (hasHorizontal)
-        emit(false, legW ? -TILE_HALF : -reachW, legE ? TILE_HALF : reachE, across);
-    }
+        emit(false, legW ? -TILE_HALF : -reachW, legE ? TILE_HALF : reachE, across, bandIndex);
+    });
   }
   // A tramway crossing this street goes straight over the junction box, so its
   // slab and rails run on across the whole tile between the two tram arms, at
@@ -7038,20 +7100,7 @@ function roadTileSurfaces(
       if (hasVertical && (!rampNode || rampNodeVertical)) {
         const zLo = legN ? -TILE_HALF : -reachN;
         const zHi = legS ? TILE_HALF : reachS;
-        const seam = {
-          lo: seamWith(
-            plan,
-            legN ? (neighborHalves.plans?.n ?? null) : null,
-            neighborHalves.n,
-            coreHalf,
-          ),
-          hi: seamWith(
-            plan,
-            legS ? (neighborHalves.plans?.s ?? null) : null,
-            neighborHalves.s,
-            coreHalf,
-          ),
-        };
+        const seam = axisSeam(true);
         emitAxisMarkings(
           positions,
           colors,
@@ -7110,20 +7159,7 @@ function roadTileSurfaces(
       if (hasHorizontal && (!rampNode || !rampNodeVertical)) {
         const xLo = legW ? -TILE_HALF : -reachW;
         const xHi = legE ? TILE_HALF : reachE;
-        const seam = {
-          lo: seamWith(
-            plan,
-            legW ? (neighborHalves.plans?.w ?? null) : null,
-            neighborHalves.w,
-            coreHalf,
-          ),
-          hi: seamWith(
-            plan,
-            legE ? (neighborHalves.plans?.e ?? null) : null,
-            neighborHalves.e,
-            coreHalf,
-          ),
-        };
+        const seam = axisSeam(false);
         emitAxisMarkings(
           positions,
           colors,

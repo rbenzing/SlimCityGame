@@ -7304,3 +7304,72 @@ describe('roadTileVertices — the kerb face under every footway edge', () => {
     ).toBeGreaterThan(8);
   });
 });
+
+describe('a tram street keeps its rails unbroken across the seam where a turn bay opens', () => {
+  const plain = presetProfileForTier(RoadTier.Tram);
+  const bay = withTurnPocket(plain, 1, 1);
+  const centreX = 4.5 * TILE_METERS;
+  const isRail = (c: readonly number[]): boolean =>
+    c.every((v, i) => Math.abs(v - TRAM_RAIL_COLOR[i]!) < 1e-6);
+  const tileOf = (row: number, own: RoadProfile, toward: RoadProfile, towardSide: 'n' | 's') => {
+    const next = markingPlan(toward, RoadFlow.None);
+    const plans = {
+      n: towardSide === 'n' ? next : null,
+      e: null,
+      s: towardSide === 's' ? next : null,
+      w: null,
+    };
+    const half = carriagewayHalfWidthOf(toward);
+    return roadTileVertices(
+      4,
+      row,
+      RoadTier.Tram,
+      N | S,
+      flatHeightAt,
+      { n: RoadTier.Tram, e: RoadTier.None, s: RoadTier.Tram, w: RoadTier.None },
+      own,
+      {
+        n: towardSide === 'n' ? half : 0,
+        e: 0,
+        s: towardSide === 's' ? half : 0,
+        w: 0,
+        plans,
+      },
+    );
+  };
+  /** Sorted rail offsets from the centreline of the rails on the row at `z`. */
+  const railsAt = (v: { positions: number[]; colors: number[] }, z: number): number[] => {
+    const col = toTriples(v.colors);
+    const xs = toTriples(v.positions)
+      .filter((p, i) => Math.abs(p[2]! - z) < 1e-6 && isRail(col[i] as number[]))
+      .map((p) => Math.round((p[0]! - centreX) * 1000) / 1000);
+    return [...new Set(xs)].sort((a, b) => a - b);
+  };
+
+  it('moves a tram lane when the bay opens, so the seam has something to bend', () => {
+    expect(bay).not.toBeNull();
+    const centres = (p: RoadProfile): number[] =>
+      markingPlan(p, RoadFlow.None)
+        .bands.filter((b) => b.kind === 'tram')
+        .map((b) => (b.from + b.to) / 2);
+    expect(centres(bay!)).not.toEqual(centres(plain));
+  });
+
+  it('lays each rail at the same offset on both sides of the seam, in either order', () => {
+    const seamZ = 5 * TILE_METERS;
+    // A plain tile before the bay's tile, and the bay's tile before a plain one.
+    const plainThenBay = [
+      railsAt(tileOf(4, plain, bay!, 's'), seamZ),
+      railsAt(tileOf(5, bay!, plain, 'n'), seamZ),
+    ];
+    const bayThenPlain = [
+      railsAt(tileOf(4, bay!, plain, 's'), seamZ),
+      railsAt(tileOf(5, plain, bay!, 'n'), seamZ),
+    ];
+    for (const [leaving, arriving] of [plainThenBay, bayThenPlain]) {
+      expect(leaving!.length).toBeGreaterThan(0);
+      expect(arriving!.length).toBe(leaving!.length);
+      leaving!.forEach((at, i) => expect(Math.abs(at - arriving![i]!)).toBeLessThan(0.05));
+    }
+  });
+});
