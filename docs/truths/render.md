@@ -277,4 +277,10 @@ Back to [the index](../GROUND-TRUTHS.md).
 - [R-render-044] A runway's paint is white and a taxiway's yellow, with the markings the
   runway's approach category requires and no more (AC 150/5340-1M Table
   2-1). — [airports.md](../specs/airports.md); `src/render/airportkit.ts`
+- [R-render-045] A paved edge turns on an arc wherever it turns against open ground or a
+  kerb: car parks, islands, plot roads, airport paving. A corner stays
+  square only against a wall, against paving that carries on, or on a
+  boundary paved on both sides. Rounding never changes a stall count
+  (the player's rule: rounded, not sharp). —
+  [paved-corners.md](../specs/paved-corners.md); `src/shared/roundedoutline.ts`
 

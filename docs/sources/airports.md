@@ -64,3 +64,38 @@ No published cost for building a runway was found, so each rung is priced from i
 | Airfield      | $12.5 million ÷ $318 million = 0.039   | 2,400  | 100      |
 
 Each figure here is from one report and none was cross-checked; the ratios matter, not the dollars.
+
+## Facilities
+
+What stands beside the runway, for [airport-facilities.md](../specs/airport-facilities.md). "Read" means the document's own text was read; "quoted" means a figure seen in a search result or a secondary page, not checked against the original.
+
+| Figure | Value | Source | How it was read |
+| --- | --- | --- | --- |
+| Fence, certificated airport | 8 ft: 7 ft chain link fabric and a 1 ft outrigger of three barbed strands at 45° | AC 150/5300-13B, 6.8 | read |
+| Fence, local or basic general aviation airport in a town | at least 4 ft chain link; 5 ft at a national or regional one | 13B E.6.3 | read |
+| Fence round landside fuel tanks | at least 6 ft | 13B E.5.1.1 | read |
+| Fuel at a general aviation airport | at the apron's periphery | 13B E.5.1.1 | read |
+| Tower's line of sight | clear to every point of movement area pavement, at 0.80° or more | 13B 6.11.7 | read |
+| Perimeter security road | 12 to 15 ft of gravel, only where a security assessment asks | 13B 6.5, Perimeter Security Road | read |
+| Taxiway fillet | up to 30 ft where straight taxiway edges meet | 13B 4.7 | read |
+| Rotating beacon | required at a certificated airport, within 5,000 ft of the runways | 13B 6.11.13; design in AC 150/5340-30, not held | read |
+| Primary surface width | 250 ft utility visual; 500 ft other visual and non-precision over ¾ mile; 1,000 ft precision | [14 CFR 77.19](https://www.law.cornell.edu/cfr/text/14/77.19) | a summary of the page |
+| Transitional surface | 7 to 1 from the primary surface's sides | same | a summary of the page |
+| Tower, small airport | 87 ft, cab 25 × 25 ft inside | [Gulf Shores](https://businessalabama.com/how-to-build-an-air-traffic-control-tower/) | quoted |
+| Tower, mid-size airport | 198 ft | [Birmingham-Shuttlesworth](https://www.bhamwiki.com/w/Birmingham_International_Airport_Control_Tower) | quoted |
+| Towers at the largest hubs | 325 to 398 ft | [list of the tallest US towers](https://en.wikipedia.org/wiki/List_of_tallest_air_traffic_control_towers_in_the_United_States) | quoted |
+| Self-service fuel tank | 1,000 to 12,000 gal; a 12,000 gal tank is about 10 ft across | [a maker's listing](https://www.aviationpros.com/directory/fuel-equipment/product/55416056/self-serve-avgas-fueling-systems); a bid document | quoted |
+| Fuel farm at a large hub | three tanks, each 120 ft across and 48 ft high | [Miami International](https://www.tylin.com/fr/node/158) | quoted |
+| Parked fuel truck to a building | 50 ft | NFPA 407, by [a maker's summary](https://blog.dixonvalve.com/fueling-aircraft-preventing-fires-nfpa) | quoted |
+| Hangar for a single-aisle airliner | 45 × 62 m, 18 m working height | [a hangar size guide](https://airplx-website.onrender.com/blog/aircraft-hangar-size-guide/) | quoted |
+| Hangar for a twin-aisle airliner | 75 × 95 m, 26.5 m high | same | quoted |
+| General aviation maintenance hangar | 60 × 80 ft | a maker's table | quoted; not a standard |
+| Truck court | about 120 ft for a semi-trailer | a loading dock guide | quoted |
+| Kerb lane; through lane | 8 ft; 12 ft | AC 150/5360-13, 1988 | quoted |
+| Kerb walk | a car door's swing and 8 ft | AC 150/5360-9 | quoted |
+| Lanes at a terminal's kerb | four or more are enough | [ACRP Research Report 266](https://www.nationalacademies.org/read/27952/chapter/8) | read |
+| Entrance sign | 4 × 8 ft, top no higher than 6 ft | [Centennial Airport's sign guide](https://www.centennialairport.com/files/7fce86038/33.+Signage+Guidelines_Redacted.pdf) | quoted |
+
+Not found: a tower's shaft width, a gate's width, cargo building depth and door spacing (ACRP Report 143 was not read), tank setbacks and dike height, a boarding bridge's size, a loop road's least radius. Each is a dial in the spec.
+
+The 12,000 gal tank's 6.4 m length is arithmetic: 45.4 m³ in a cylinder 3.0 m across.
