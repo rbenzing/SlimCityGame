@@ -13,6 +13,8 @@
  */
 
 import * as THREE from 'three';
+import { uniform } from 'three/tsl';
+import { nightBodyMaterial } from './nightlook';
 import { MIN_INSTANCE_CAPACITY, setInstanceCount } from './groundquad';
 import { JUNCTION_BOX_M, RISER_GUARD_OFFSET_M, TRANSFORMER_M, wirePoints } from './powerpoles';
 import type { PowerLay } from './powerpoles';
@@ -145,12 +147,15 @@ export class PowerLineRenderer {
   ).translate(0, 0.5, 0);
   private readonly armGeometry = new THREE.BoxGeometry(1, ARM_THICKNESS_M, ARM_THICKNESS_M);
   private readonly cableGeometry = new THREE.BoxGeometry(1, 1, 1);
-  private readonly timber = new THREE.MeshLambertMaterial({ color: POLE_COLOR });
-  private readonly wire = new THREE.MeshLambertMaterial({ color: WIRE_COLOR });
+  private readonly nightFactorUniform = uniform(0);
+  private readonly timber = nightBodyMaterial(this.nightFactorUniform, { color: POLE_COLOR });
+  private readonly wire = nightBodyMaterial(this.nightFactorUniform, { color: WIRE_COLOR });
   private readonly boxGeometry = new THREE.BoxGeometry(1, 1, 1).translate(0, 0.5, 0);
-  private readonly boxMaterial = new THREE.MeshLambertMaterial({ color: BOX_COLOR });
-  private readonly doorMaterial = new THREE.MeshLambertMaterial({ color: DOOR_COLOR });
-  private readonly guardMaterial = new THREE.MeshLambertMaterial({ color: GUARD_COLOR });
+  private readonly boxMaterial = nightBodyMaterial(this.nightFactorUniform, { color: BOX_COLOR });
+  private readonly doorMaterial = nightBodyMaterial(this.nightFactorUniform, { color: DOOR_COLOR });
+  private readonly guardMaterial = nightBodyMaterial(this.nightFactorUniform, {
+    color: GUARD_COLOR,
+  });
   private readonly polePool: InstancePool;
   private readonly armPool: InstancePool;
   private readonly cablePool: InstancePool;
@@ -170,6 +175,11 @@ export class PowerLineRenderer {
     this.boxPool = new InstancePool(scene, this.boxGeometry, this.boxMaterial, true);
     this.doorPool = new InstancePool(scene, this.boxGeometry, this.doorMaterial, false);
     this.guardPool = new InstancePool(scene, this.boxGeometry, this.guardMaterial, false);
+  }
+
+  /** 0 (day) .. 1 (night): how far the poles, wires and boxes are carried toward the night tint. */
+  setNightFactor(nightFactor: number): void {
+    this.nightFactorUniform.value = Math.min(1, Math.max(0, nightFactor));
   }
 
   /** Lays one slot anew, or empties it when given no lay. Nothing shows until commit(). */

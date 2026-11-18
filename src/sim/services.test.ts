@@ -804,6 +804,25 @@ describe('ServiceSim: capacity', () => {
 
     expect(summary.park.capped).toBe(0);
   });
+
+  it('reports a pocket park of 32 shared by 700 residents as a worst load of 700 / 32, a true figure and not a unit fault', () => {
+    const pocket: BuildingCatalogEntry = {
+      ...parkEntry,
+      id: 'pocket-32',
+      service: { kind: 'park', strength: 80, range: 8, capacity: 32 },
+    };
+    const cat = [...catalog, pocket, homeWith('home-700', 700)];
+    const g = makeGrid();
+    const buildings: BuildingInstance[] = [];
+    roadStrip(g, 9);
+    place(g, buildings, 1, 'pocket-32', 0, 0, 1, 1);
+    place(g, buildings, 2, 'home-700', 2, 2, 1, 1);
+
+    const summary = new ServiceSim(cat).tick(g, buildings, fullFunding(1));
+
+    expect(summary.park.load).toBeCloseTo(700 / 32, 6);
+    expect(summary.park.worst).toBeCloseTo(700 / 32, 6);
+  });
 });
 
 // ---------------------------------------------------------------------------

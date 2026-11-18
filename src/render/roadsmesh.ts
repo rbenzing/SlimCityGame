@@ -4502,6 +4502,25 @@ export function medianTreeStands(tier: RoadTier, mask: number, x: number, z: num
   return isAvenueMedianEligible(tier, mask) && arms >= 2 && hasMedianTree(x, z);
 }
 
+/**
+ * The narrowest planting strip a street tree gets in a median: 6 ft (1.8 m),
+ * the planting-strip minimum the roadside design guide asks for a tree.
+ */
+export const MEDIAN_TREE_MIN_STRIP_M = 1.8;
+
+/**
+ * Whether a tile's median can carry a tree: it sits at grade (a deck, a ramp
+ * or a bridge carries none) and, where the tile's profile is known, its
+ * median is at least the planting strip wide. A profile with no median
+ * carries none; a tile with no profile on record is not second-guessed.
+ */
+export function medianPlantable(profile: RoadProfile | null, elevation: number): boolean {
+  if (elevation > 0) return false;
+  if (!profile) return true;
+  const median = profile.pieces.find((p) => p.kind === 'median');
+  return median !== undefined && median.width >= MEDIAN_TREE_MIN_STRIP_M;
+}
+
 function pushCenterBand(
   positions: number[],
   colors: number[],
@@ -9932,12 +9951,12 @@ export class RoadMeshRenderer {
       for (const tile of chunk.tiles.values()) tiles.push(tile);
     }
 
-    // A tree stands in a median, so a road of the avenue's size built without
-    // one — an undivided arterial — plants none, rather than one in a lane.
+    // A tree stands in a median wide enough to plant and never on a deck, so
+    // an undivided road, a narrow median or a viaduct plants none.
     const treeTiles = tiles.filter(
       (t) =>
         medianTreeStands(t.tier, t.mask, t.x, t.z) &&
-        (this.profileAt(t.x, t.z)?.pieces.some((p) => p.kind === 'median') ?? true),
+        medianPlantable(this.profileAt(t.x, t.z), t.elevation),
     );
 
     // The two meshes outlive a rebuild: they are replaced, and the old ones

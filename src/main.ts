@@ -2516,6 +2516,11 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
     utilityKits.setNightFactor(nightFactor);
     buildingKit.setNightFactor(nightFactor);
     tramStations.setNightFactor(nightFactor);
+    busStops.setNightFactor(nightFactor);
+    soundWalls.setNightFactor(nightFactor);
+    powerLines.setNightFactor(nightFactor);
+    roadFurniture.setNightFactor(nightFactor);
+    lamps.setNightFactor(nightFactor);
     farms.setNightFactor(nightFactor);
     farms.setDayFraction(dayT); // the farm truck works sunrise to sunset
     transitRenderer.setDayHour(dayT * 24); // the lines run 05:00 to 23:00; their buses are in the depot otherwise

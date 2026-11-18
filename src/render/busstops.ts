@@ -18,6 +18,8 @@
  * Every part is one instanced pool; nothing here draws a stop per mesh.
  */
 import * as THREE from 'three';
+import { uniform } from 'three/tsl';
+import { nightBodyMaterial } from './nightlook';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { TILE_METERS, tileToWorld } from '../shared/constants';
 import {
@@ -273,7 +275,8 @@ export class BusStopRenderer {
     shelter: buildBusShelterGeometry(),
     bin: buildBinGeometry(),
   };
-  private readonly material = new THREE.MeshLambertMaterial({ vertexColors: true });
+  private readonly nightFactorUniform = uniform(0);
+  private readonly material = nightBodyMaterial(this.nightFactorUniform, { vertexColors: true });
   private meshes: Partial<Record<PartName, THREE.InstancedMesh>> = {};
   private drawn: DrawnStop[] = [];
   private ghost: THREE.Group | null = null;
@@ -390,6 +393,11 @@ export class BusStopRenderer {
     this.visible = visible;
     for (const mesh of Object.values(this.meshes)) mesh.visible = visible;
     if (this.ghost) this.ghost.visible = visible;
+  }
+
+  /** 0 (day) .. 1 (night): how far the stops' colour is carried toward the night tint. */
+  setNightFactor(nightFactor: number): void {
+    this.nightFactorUniform.value = Math.min(1, Math.max(0, nightFactor));
   }
 
   dispose(): void {

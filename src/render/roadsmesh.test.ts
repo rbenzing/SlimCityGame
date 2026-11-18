@@ -11,6 +11,7 @@ import {
   crosswalkBarCentres,
   isAvenueMedianEligible,
   hasMedianTree,
+  MEDIAN_TREE_MIN_STRIP_M,
   isArrowTile,
   ARROW_PERIOD_TILES,
   DASH_PAINT_LENGTH_M,
@@ -3280,9 +3281,20 @@ describe('RoadMeshRenderer', () => {
     }
   });
 
+  // The preset avenue's median (1.2 m) is too narrow to plant; these trees stand in a 1.8 m one.
+  const preset = presetProfileForTier(RoadTier.Avenue);
+  const plantableAvenue: RoadProfile = {
+    ...preset,
+    pieces: preset.pieces.map((p) =>
+      p.kind === 'median' ? { ...p, width: MEDIAN_TREE_MIN_STRIP_M } : p,
+    ),
+  };
+  const plantableLookup = (id: number): RoadProfile | null =>
+    id === RoadTier.Avenue ? plantableAvenue : null;
+
   it('places median-tree instances for eligible, hash-selected avenue tiles and none for the rest', () => {
     const scene = new THREE.Scene();
-    const renderer = new RoadMeshRenderer(scene, flatHeightAt);
+    const renderer = new RoadMeshRenderer(scene, flatHeightAt, plantableLookup);
     const deltas: RoadTileDelta[] = [];
     for (let z = 0; z < 20; z++) deltas.push(makeDelta(0, z, RoadTier.Avenue, N | S));
     renderer.apply(deltas);
@@ -3317,6 +3329,44 @@ describe('RoadMeshRenderer', () => {
     expect(renderer.medianTreeCount()).toBe(0);
   });
 
+  it('plants no tree in the preset avenue’s 1.2 m median, and trees a 1.8 m one', () => {
+    const preset = presetProfileForTier(RoadTier.Avenue);
+    const withMedian = (width: number): RoadProfile => ({
+      ...preset,
+      pieces: preset.pieces.map((p) => (p.kind === 'median' ? { ...p, width } : p)),
+    });
+    expect(preset.pieces.find((p) => p.kind === 'median')?.width).toBeCloseTo(1.2, 6);
+    const profiles: Record<number, RoadProfile> = {
+      41: preset,
+      42: withMedian(MEDIAN_TREE_MIN_STRIP_M),
+    };
+    const countFor = (id: number): number => {
+      const renderer = new RoadMeshRenderer(
+        new THREE.Scene(),
+        flatHeightAt,
+        (p) => profiles[p] ?? null,
+      );
+      const deltas: RoadTileDelta[] = [];
+      for (let z = 0; z < 20; z++)
+        deltas.push({ ...makeDelta(0, z, RoadTier.Avenue, N | S), profile: id });
+      renderer.apply(deltas);
+      return renderer.medianTreeCount();
+    };
+    expect(countFor(41)).toBe(0);
+    expect(countFor(42)).toBeGreaterThan(0);
+  });
+
+  it('plants no median tree on a deck, a ramp or a bridge', () => {
+    const renderer = new RoadMeshRenderer(new THREE.Scene(), flatHeightAt);
+    const deltas: RoadTileDelta[] = [];
+    for (let z = 0; z < 20; z++) {
+      deltas.push({ ...makeDelta(0, z, RoadTier.Avenue, N | S), elevation: z === 0 ? 0 : 6 });
+    }
+    renderer.apply(deltas);
+    expect(renderer.medianTreeCount()).toBeLessThanOrEqual(1);
+    expect(renderer.medianTreeCount()).toBe(hasMedianTree(0, 0) ? 1 : 0);
+  });
+
   it('removing every avenue tile drops the median-tree mesh back to zero', () => {
     const scene = new THREE.Scene();
     const renderer = new RoadMeshRenderer(scene, flatHeightAt);
@@ -3333,7 +3383,7 @@ describe('RoadMeshRenderer', () => {
 
   it('keeps the same two median-tree meshes across repeated edits and disposes a replaced one', () => {
     const scene = new THREE.Scene();
-    const renderer = new RoadMeshRenderer(scene, flatHeightAt);
+    const renderer = new RoadMeshRenderer(scene, flatHeightAt, plantableLookup);
     const avenue = (from: number, to: number): RoadTileDelta[] => {
       const out: RoadTileDelta[] = [];
       for (let z = from; z < to; z++) out.push(makeDelta(0, z, RoadTier.Avenue, N | S));
