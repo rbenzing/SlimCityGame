@@ -301,7 +301,8 @@ export async function setClock(page, hour, { toleranceMin = 2, budgetMs = 120000
         `[shotcam] setClock: still ${ahead} min short of ${hour} h after ${budgetMs} ms`,
       );
     }
-    const want = ahead > 40 ? 4 : 1;
+    // A busy page reads the clock slowly, so the fast speed stops well short of the hour.
+    const want = ahead > 150 ? 4 : 1;
     if (want !== speed) {
       speed = want;
       await page.evaluate((s) => window.__slimcity.setSpeed(s), want);

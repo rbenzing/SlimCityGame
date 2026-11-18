@@ -144,7 +144,7 @@ try {
     for (const name of names) {
       const b = standing[name]?.[0];
       if (b) console.log(name, b.catalogId, 'at', b.x, b.z);
-      else console.log('no building under construction in the', name, 'block');
+      else throw new Error(`construction-shots: no building began going up in the ${name} block`);
     }
     for (const stage of STAGES) {
       await hook((p) => window.__slimcity.constructionProgress(p), stage.progress);
@@ -169,19 +169,23 @@ try {
   for (const block of named('house', 'tall')) await zoneBlock(block);
   await growHeldAndShoot(['house', 'tall']);
 
-  // Then the hold is let go and the homes finish; shops and works are zoned and grow as
-  // demand for them arrives, which the first people bring and soon outgrow. The hold goes
-  // back on the moment both kinds have one going up, so those stay going up.
-  for (const block of named('shop', 'works')) await zoneBlock(block);
-  await hook(() => window.__slimcity.holdConstruction(false));
-  await hook(() => window.__slimcity.setSpeed(4));
-  for (let s = 0; s < GROW_SECONDS * 8; s++) {
-    await page.waitForTimeout(500);
-    const standing = await goingUp();
-    if (standing.shop?.length > 0 && standing.works?.length > 0) break;
-    if (s % 60 === 0) console.log('waiting for shops and works,', s / 2, 's');
+  // Then the hold is let go and the homes finish. Works are zoned first and held the moment
+  // one is going up; a block fills and finishes within seconds, so zoning both at once lets
+  // the other kind's window pass between polls. Shops open against open industry's jobs, so
+  // they are zoned after the works have finished, one block at a time, each held the same way.
+  for (const name of ['works', 'shop']) {
+    await zoneBlock(named(name)[0]);
+    await hook(() => window.__slimcity.holdConstruction(false));
+    await hook(() => window.__slimcity.setSpeed(2));
+    let begun = false;
+    for (let s = 0; s < GROW_SECONDS * 4 && !begun; s++) {
+      await page.waitForTimeout(250);
+      begun = ((await goingUp())[name]?.length ?? 0) > 0;
+      if (!begun && s % 120 === 0) console.log('waiting for the', name, 'block,', s / 4, 's');
+    }
+    if (!begun) throw new Error(`construction-shots: no building began going up in the ${name} block`);
+    await growHeldAndShoot([name]);
   }
-  await growHeldAndShoot(['shop', 'works']);
   await hook(() => window.__slimcity.holdConstruction(false));
   console.log(errors.length === 0 ? 'no page errors' : `page errors: ${errors.join(' | ')}`);
 } finally {

@@ -15,7 +15,7 @@
  * Usage: node tools/curve-shots.mjs [baseUrl] [outDir]   (a dev server must be running) */
 import { chromium } from 'playwright';
 import { mkdirSync } from 'node:fs';
-import { cleanShot, closeUp, hooksReady, tileCamera } from './shotcam.mjs';
+import { cleanShot, closeUp, hooksReady, requireInFrame, tileCamera } from './shotcam.mjs';
 
 const base = process.argv[2] ?? 'http://localhost:5173';
 const url = base + (base.includes('?') ? '&' : '?') + 'nobloom';
@@ -110,6 +110,11 @@ try {
   const setTool = (t) => call((x) => window.__slimcity.setTool(x), t);
   const cam = tileCamera(page);
   const T = await call(() => window.__slimcity.tileMeters());
+  /** Aims at a tile and checks the subject there is in frame before the shot is named for it. */
+  const look = async (name, tx, tz, distance, yaw, pitch) => {
+    await cam(tx, tz, distance, yaw, pitch);
+    await requireInFrame(page, name, tx, tz);
+  };
   const shot = async (name, settle = 1500) => {
     await page.waitForTimeout(settle);
     await cleanShot(page, `${out}/${name}.png`);
@@ -274,7 +279,7 @@ try {
   // --- the plat before anything grows -----------------------------------------
   const bendCentre = { x: midTile.x, z: midTile.z };
   await setTool('zone.resLow');
-  await cam(bendCentre.x, bendCentre.z, 260, 0, OVERHEAD_PITCH);
+  await look('0-plat-from-above', bendCentre.x, bendCentre.z, 260, 0, OVERHEAD_PITCH);
   await shot('0-plat-from-above', 2000);
   const framedPlat = await call(() => window.__slimcity.readFramedPlat());
   console.log(
@@ -343,7 +348,7 @@ try {
       await call((p) => window.__slimcity.constructionProgress(p), progress);
       // A paused sim posts a snapshot only when a command lands.
       await cmd('Progress', [{ kind: 'setUnlimitedMoney', on: true }]);
-      await cam(at.x + 1, at.z + 1, 90, f.heading + Math.PI / 2, 0.8);
+      await look(`site-${name}`, at.x + 1, at.z + 1, 90, f.heading + Math.PI / 2, 0.8);
       await shot(`site-${name}`, 1500);
     }
     process.exit(0);
@@ -400,9 +405,9 @@ try {
   await setTool('select');
 
   // (1) The bend from above: every house square to its street, drives to the kerb.
-  await cam(bendCentre.x, bendCentre.z, 260, 0, OVERHEAD_PITCH);
+  await look('1-bend-from-above', bendCentre.x, bendCentre.z, 260, 0, OVERHEAD_PITCH);
   await shot('1-bend-from-above', 2000);
-  await cam(bendCentre.x, bendCentre.z, 160, 0.6, 0.9);
+  await look('1b-bend-three-quarter', bendCentre.x, bendCentre.z, 160, 0.6, 0.9);
   await shot('1b-bend-three-quarter', 2000);
 
   // (2) Close on one drive at the bend: the framed home nearest the S's middle.
@@ -423,16 +428,16 @@ try {
     console.log('close on', nearest.bl.catalogId, 'frame', JSON.stringify(f));
     const restore = await closeUp(page, 2);
     // Looking along the drive from over the road: the camera yaw faces the parcel's inward direction.
-    await cam(front.x, front.z, 45, f.heading + Math.PI / 2, STREET_PITCH);
+    await look('2-drive-at-the-bend', front.x, front.z, 45, f.heading + Math.PI / 2, STREET_PITCH);
     await shot('2-drive-at-the-bend', 2500);
-    await cam(front.x, front.z, 45, f.heading + Math.PI / 2, OVERHEAD_PITCH);
+    await look('2b-drive-at-the-bend-above', front.x, front.z, 45, f.heading + Math.PI / 2, OVERHEAD_PITCH);
     await shot('2b-drive-at-the-bend-above', 2500);
     await restore();
   }
 
   // (3) The same bend through the zoning lens: parcel outlines turned with the road.
   await setTool('zone.resLow');
-  await cam(bendCentre.x, bendCentre.z, 200, 0, OVERHEAD_PITCH);
+  await look('3-bend-zoning-lens', bendCentre.x, bendCentre.z, 200, 0, OVERHEAD_PITCH);
   await shot('3-bend-zoning-lens', 2500);
   // Each outline against the drawn road: its origin should stand on the kerb
   // line, the road's half width off the centre line, and be cut by a known land value.
@@ -452,7 +457,7 @@ try {
   const WEST_REACH_TILES = 4.5;
   {
     const restore = await closeUp(page, 2);
-    await cam(west.x, west.z, 110, 0, Math.PI / 2);
+    await look('3d-west-side-straight-down', west.x, west.z, 110, 0, Math.PI / 2);
     await shot('3d-west-side-straight-down', 2500);
     await restore();
   }
@@ -473,7 +478,7 @@ try {
   const free = fit.parcels[0];
   if (free) {
     const restore = await closeUp(page, 2);
-    await cam(free.x / T - 0.5, free.z / T - 0.5, 40, 0, OVERHEAD_PITCH);
+    await look('3c-lens-parcel-on-kerb', free.x / T - 0.5, free.z / T - 0.5, 40, 0, OVERHEAD_PITCH);
     await shot('3c-lens-parcel-on-kerb', 2500);
     await restore();
   }
@@ -483,7 +488,7 @@ try {
   console.log('grown framed lots (sim):', JSON.stringify(grownLots));
   if (nearest) {
     const f = nearest.bl.frame;
-    await cam(f.x / T - 0.5, f.z / T - 0.5, 80, 0, OVERHEAD_PITCH);
+    await look('3b-lens-close', f.x / T - 0.5, f.z / T - 0.5, 80, 0, OVERHEAD_PITCH);
     await shot('3b-lens-close', 2500);
   }
   await setTool('select');
@@ -491,7 +496,7 @@ try {
   // (5) A ploppable in hand over the bend: the grid, the tint and every plat
   // show with the ghost, so nothing is set down over unseen lots.
   await setTool('plop.police-station');
-  await cam(bendCentre.x, bendCentre.z, 200, 0, OVERHEAD_PITCH);
+  await look('5-ploppable-in-hand', bendCentre.x, bendCentre.z, 200, 0, OVERHEAD_PITCH);
   await page.waitForTimeout(800);
   // Hold it on open ground beside the bend, clear of every road and building,
   // and to the right of the panel: the nearest such pixel to the bend.
@@ -565,9 +570,9 @@ try {
   await setTool('select');
 
   // (4) The grid street beside the bend: its lots exactly as before.
-  await cam(X + 8, GRID_Z + 1, 120, 0, STREET_PITCH);
+  await look('4-grid-street-beside-the-bend', X + 8, GRID_Z + 1, 120, 0, STREET_PITCH);
   await shot('4-grid-street-beside-the-bend', 2000);
-  await cam(X + 8, GRID_Z + 1, 140, 0, OVERHEAD_PITCH);
+  await look('4b-grid-street-above', X + 8, GRID_Z + 1, 140, 0, OVERHEAD_PITCH);
   await shot('4b-grid-street-above', 2000);
 
   // --- the rest of the ladder on the second arc ----------------------------------
@@ -602,9 +607,9 @@ try {
     const front = frontOf(shop);
     console.log('shop', shop.catalogId, 'frame', JSON.stringify(shop.frame));
     const restore = await closeUp(page, 2);
-    await cam(front.x, front.z, 55, front.yaw, STREET_PITCH);
+    await look('6-shop-car-park-at-the-bend', front.x, front.z, 55, front.yaw, STREET_PITCH);
     await shot('6-shop-car-park-at-the-bend', 2500);
-    await cam(front.x, front.z, 60, front.yaw, OVERHEAD_PITCH);
+    await look('6a-shop-car-park-above', front.x, front.z, 60, front.yaw, OVERHEAD_PITCH);
     await shot('6a-shop-car-park-above', 2500);
     await restore();
   } else {
@@ -617,7 +622,7 @@ try {
     const front = frontOf(strip);
     console.log('strip', strip.catalogId, 'width', widthOf(strip.catalogId), 'frame', JSON.stringify(strip.frame));
     const restore = await closeUp(page, 2);
-    await cam(front.x, front.z, 90, front.yaw, Math.PI / 2);
+    await look('6b-strip-on-a-run', front.x, front.z, 90, front.yaw, Math.PI / 2);
     await shot('6b-strip-on-a-run', 2500);
     await restore();
   } else {
@@ -630,7 +635,7 @@ try {
     const front = frontOf(walkUp);
     console.log('walk-up', walkUp.catalogId, 'frame', JSON.stringify(walkUp.frame));
     const restore = await closeUp(page, 2);
-    await cam(front.x, front.z, 60, front.yaw, STREET_PITCH);
+    await look('7-walk-up-on-the-bend', front.x, front.z, 60, front.yaw, STREET_PITCH);
     await shot('7-walk-up-on-the-bend', 2500);
     await restore();
   } else {
@@ -639,7 +644,7 @@ try {
 
   // (8) The commercial side through the lens: the runs' parcels outlined.
   await setTool('zone.comLow');
-  await cam(secondMid.x, secondMid.z, 200, 0, OVERHEAD_PITCH);
+  await look('8-lens-runs', secondMid.x, secondMid.z, 200, 0, OVERHEAD_PITCH);
   await shot('8-lens-runs', 2500);
   await setTool('select');
 
@@ -666,9 +671,9 @@ try {
     );
     const restore = await closeUp(page, 2);
     const at = { x: (cut.x + pole.x) / 2 / T - 0.5, z: (cut.z + pole.z) / 2 / T - 0.5 };
-    await cam(at.x, at.z, 35, bl.frame.heading + Math.PI / 2, STREET_PITCH);
+    await look('9-lamp-beside-framed-drive', at.x, at.z, 35, bl.frame.heading + Math.PI / 2, STREET_PITCH);
     await shot('9-lamp-beside-framed-drive', 2500);
-    await cam(at.x, at.z, 40, 0, Math.PI / 2);
+    await look('9b-lamp-beside-framed-drive-above', at.x, at.z, 40, 0, Math.PI / 2);
     await shot('9b-lamp-beside-framed-drive-above', 2500);
     await restore();
   } else {

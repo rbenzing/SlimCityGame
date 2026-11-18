@@ -13,7 +13,7 @@
  * Usage: node tools/tramway-shots.mjs [baseUrl] [outDir]   (a dev server must be running) */
 import { chromium } from 'playwright';
 import { mkdirSync, readFileSync } from 'node:fs';
-import { cleanShot, closeUp, hooksReady, tileCamera, unlimitedMoneyOption } from './shotcam.mjs';
+import { cleanShot, closeUp, hooksReady, requireInFrame, setClock, tileCamera, unlimitedMoneyOption } from './shotcam.mjs';
 
 const base = process.argv[2] ?? 'http://localhost:5173';
 const url = base + (base.includes('?') ? '&' : '?') + 'nobloom';
@@ -73,7 +73,12 @@ await page.waitForTimeout(3000);
 
 const hook = (fn, arg) => page.evaluate(fn, arg);
 const cmd = (label, commands) => hook(([l, c]) => window.__slimcity.cmd(l, c), [label, commands]);
-const camera = tileCamera(page);
+const aim = tileCamera(page);
+/** Aims at the tile the frame is named for and checks it is in frame. */
+const camera = async (name, tx, tz, d, yaw, pitch) => {
+  await aim(tx, tz, d, yaw, pitch);
+  await requireInFrame(page, name, tx, tz);
+};
 const shot = async (name, settle = 1800) => {
   await page.waitForTimeout(settle);
   await cleanShot(page, `${out}/${name}.png`);
@@ -246,7 +251,7 @@ views.push(['station-platform', X + STATION_AT - 1, reservedZ + 0.35, 45, Math.P
 views.push(['station-junction', X + CROSS_AT + 1.5, reservedZ, 45, Math.PI - 0.5, 0.4]);
 for (const [name, tx, tz, d, yaw, pitch] of views) {
   await lens(name.endsWith('-line'));
-  await camera(tx, tz, d, yaw, pitch);
+  await camera(name, tx, tz, d, yaw, pitch);
   await shot(name);
 }
 // Trams in frame. They are drawn cosmetically on real time and no hook says where
@@ -292,7 +297,7 @@ const motion = async (a, b) =>
 const TRAM_WAIT_MS = 420_000;
 const tramShot = async (name, tx, tz, d, yaw, pitch) => {
   await lens(true);
-  await camera(tx, tz, d, yaw, pitch);
+  await camera(name, tx, tz, d, yaw, pitch);
   await page.waitForTimeout(1500);
   // A guideway line's loop is minutes long at a tram's commercial speed, so the
   // wait is bounded by the clock: one tram passes the frame inside a full loop.
@@ -322,7 +327,7 @@ await tramShot('station-street-tram', X + STATION_AT, reservedZ, 60, Math.PI, PI
 // pixels, with the lens off so nothing is laid over the paving.
 await lens(false);
 const restore = await closeUp(page, 2);
-await camera(X + 11.5, Z, 40, Math.PI - 0.5, 0.55);
+await camera('tramway-rails-detail', X + 11.5, Z, 40, Math.PI - 0.5, 0.55);
 await shot('tramway-rails-detail');
 await restore();
 // The guideway's structure and the median under it, and the ramp down to the
@@ -334,25 +339,29 @@ for (const [name, tx, tz, d, yaw, pitch] of [
   ['guideway-from-above', X + 11, reservedZ, 50, Math.PI, 1.2],
   ['guideway-ramp', X + RAMP_FROM + 1, rampZ, 70, Math.PI - 0.9, 0.3],
 ]) {
-  await camera(tx, tz, d, yaw, pitch);
+  await camera(name, tx, tz, d, yaw, pitch);
   await shot(name);
 }
 
-// The night, before the trams pull in at 23:00: the clock is applied by the
-// next snapshot, which a command sends, and the cars go back after it.
-await hook(() => window.__slimcity.setDayT(0.9));
+// The night, before the trams pull in at 23:00: the game's own clock runs on to 22:00 so the
+// strip and the light agree, a command then posts the snapshot, and the cars go back after it.
+const standingBefore = await hook(() => window.__slimcity.readBuildings().length);
+await setClock(page, 22, { budgetMs: 480000 });
 await cmd('Phase', [{ kind: 'setUnlimitedMoney', on: true }]);
+const standingAfter = await hook(() => window.__slimcity.readBuildings().length);
+console.log('buildings before and after the clock ran to night', standingBefore, standingAfter);
+if (standingAfter !== standingBefore) throw new Error('tramway-shots: the scene changed while the clock ran');
 await page.waitForTimeout(2000);
 await placeCars();
 for (const r of ROWS.slice(0, 3)) {
   await lens(true);
-  await camera(X + 11, r.z, 150, Math.PI, PITCH);
+  await camera(`${r.name}-night-line`, X + 11, r.z, 150, Math.PI, PITCH);
   await shot(`${r.name}-night-line`, 2500);
   await lens(false);
-  await camera(X + 11, r.z, 60, Math.PI, PITCH);
+  await camera(`${r.name}-night`, X + 11, r.z, 60, Math.PI, PITCH);
   await shot(`${r.name}-night`, 2500);
 }
-await camera(X + STATION_AT, reservedZ, 60, Math.PI, PITCH);
+await camera('station-night', X + STATION_AT, reservedZ, 60, Math.PI, PITCH);
 await shot('station-night', 2500);
 
 console.log('page errors', errors.length ? errors : 'none');
