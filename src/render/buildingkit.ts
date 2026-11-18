@@ -2742,11 +2742,14 @@ function mailKiosk(b: Block, doorHalf: number, prefer: 1 | -1): PartPlacement[] 
     const along = k * (doorHalf + MAIL_KIOSK_GAP_M + w / 2);
     candidates.push(onSide('mailKiosk', side, along, out, w, d, h, h / 2, true));
   }
-  // The kiosk is reached from the front walk, so it may stand on it, and on nothing else that is laid.
-  const blocked = (lot?.taken ?? []).filter((t) => t !== lot?.frontWalk);
-  const free = candidates.find(
-    (p) => standsFree(p, lot) && !blocked.some((t) => rectsOverlap(t, placementBounds(p))),
-  );
+  // A kiosk out on the lot stands on nothing that is laid, the walk along the face included. Only the one
+  // at the wall may stand on that walk, being beside the door it serves.
+  const taken = lot?.taken ?? [];
+  const wallCandidates = candidates.length - 2;
+  const free = candidates.find((p, i) => {
+    const blocked = i < wallCandidates ? taken : taken.filter((t) => t !== lot?.frontWalk);
+    return standsFree(p, lot) && !blocked.some((t) => rectsOverlap(t, placementBounds(p)));
+  });
   return free ? [free] : [];
 }
 
@@ -3132,31 +3135,48 @@ function apartmentParts(b: Block): PartPlacement[] {
           },
         );
       }
-      // The ground flight runs along the wall beside the slot, its top at the slot's edge on the first landing.
+      // The ground flight runs beside the slot, its top at the slot's edge on the first landing.
       // Each flight above it starts on a gallery along the wall at its own floor, on the other side of the slot
       // from the flight below, and climbs back toward the slot beside the gallery to the next landing.
       const stairs: PartPlacement[] = [];
+      const guards: PartPlacement[] = [];
       const run = pitch / Math.tan(STAIR_PITCH);
       const length = pitch / Math.sin(STAIR_PITCH);
       for (let f = 0; f < rows - 1; f += 1) {
         const side: 1 | -1 = f % 2 === 0 ? flight : flight === 1 ? -1 : 1;
+        // Every flight stands off the wall by a gallery's depth, so none lies across a window.
         const along = side * (BREEZEWAY_WIDTH_M / 2 + run / 2);
         const outFromWall =
-          h +
-          BREEZEWAY_PROUD_M +
-          (f === 0
-            ? STAIR_WIDTH_M / 2
-            : LANDING_DEPTH_M - STAIR_GALLERY_OVERLAP_M + STAIR_WIDTH_M / 2);
+          h + BREEZEWAY_PROUD_M + LANDING_DEPTH_M - STAIR_GALLERY_OVERLAP_M + STAIR_WIDTH_M / 2;
         const toward = alongX ? { x: -side, z: 0 } : { x: 0, z: -side };
+        const centreY = f * pitch + pitch / 2;
         stairs.push({
           part: 'stairFlight',
           size: [STAIR_WIDTH_M, STAIR_SLAB_M, length],
-          offset: alongX
-            ? [along, f * pitch + pitch / 2, nz * outFromWall]
-            : [nx * outFromWall, f * pitch + pitch / 2, along],
+          offset: alongX ? [along, centreY, nz * outFromWall] : [nx * outFromWall, centreY, along],
           yaw: Math.atan2(toward.x, toward.z),
           pitch: STAIR_PITCH,
         });
+        // A guard along each open side, standing square to the slope on the slab's top face.
+        const lift = (STAIR_SLAB_M + GUARD_HEIGHT_M) / 2;
+        const back = -lift * Math.sin(STAIR_PITCH);
+        const [px, pz] = [-toward.z, toward.x];
+        for (const edge of [-1, 1]) {
+          const lateral = (edge * (STAIR_WIDTH_M - GUARD_THICKNESS_M)) / 2;
+          const [fx, fz] = alongX ? [along, nz * outFromWall] : [nx * outFromWall, along];
+          guards.push({
+            part: 'landingGuard',
+            size: [GUARD_THICKNESS_M, GUARD_HEIGHT_M, length],
+            offset: [
+              fx + lateral * px + back * toward.x,
+              centreY + lift * Math.cos(STAIR_PITCH),
+              fz + lateral * pz + back * toward.z,
+            ],
+            yaw: Math.atan2(toward.x, toward.z),
+            pitch: STAIR_PITCH,
+            color: railRgb,
+          });
+        }
         if (f > 0) {
           stairs.push(
             onSide(
@@ -3172,7 +3192,7 @@ function apartmentParts(b: Block): PartPlacement[] {
           );
         }
       }
-      out.push(...stairs);
+      out.push(...stairs, ...guards);
       // A patio and a balcony per upper floor in every bay clear of the slot and the flights.
       const { count, width } = windowBays(entry, span);
       const stairBounds = stairs.map(placementBounds);
@@ -3571,19 +3591,41 @@ export function computePartPlacements(
           : entry.kind === 'supermarket'
             ? towerWings(span)
             : [{ along: 0, width: facadeSpan(box, side) }];
-        const proud = hasMansard(entry) ? MANSARD_RUN_M : 0;
         const centreY = strip
           ? baseTop + PARAPET_STEP_M / 2
           : hotel
             ? roofY - storeysOf(entry, topBox).pitch / 2
             : SIGN_CENTRE_Y_M;
+        if (hasMansard(entry)) {
+          // The sign lies on the mansard's slope, its back on the slab's outer face.
+          const lean = (MANSARD_THICKNESS_M + SIGN_THICKNESS_M) / 2;
+          const plan = MANSARD_RUN_M + MANSARD_THICKNESS_M * Math.sin(MANSARD_PITCH);
+          for (const t of tenants) {
+            out.push({
+              ...onSide(
+                part,
+                side,
+                t.along,
+                halfDepthTo(box, side) + plan / 2 + lean * Math.sin(MANSARD_PITCH),
+                t.width * SIGN_FRONTAGE_FRACTION,
+                SIGN_HEIGHT_M,
+                SIGN_THICKNESS_M,
+                baseTop - MANSARD_BAND_M / 2 + lean * Math.cos(MANSARD_PITCH),
+                true,
+              ),
+              pitch: -MANSARD_PITCH,
+              color: accent(0),
+            });
+          }
+          break;
+        }
         tenants.forEach((t, i) => {
           out.push({
             ...onSide(
               part,
               side,
               t.along,
-              halfDepthTo(box, side) + proud + SIGN_THICKNESS_M / 2,
+              halfDepthTo(box, side) + SIGN_THICKNESS_M / 2,
               t.width * SIGN_FRONTAGE_FRACTION,
               SIGN_THICKNESS_M,
               SIGN_HEIGHT_M,

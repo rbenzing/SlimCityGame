@@ -187,6 +187,41 @@ function expectKeptToOwnLine(laid: Map<number, Laid>): void {
   }
 }
 
+/** The corners of a lot-frame rectangle in world metres. */
+function rectWorld(l: Laid, r: { u0: number; u1: number; v0: number; v1: number }) {
+  return [
+    l.lot.toWorld(r.u0, r.v0),
+    l.lot.toWorld(r.u1, r.v0),
+    l.lot.toWorld(r.u1, r.v1),
+    l.lot.toWorld(r.u0, r.v1),
+  ];
+}
+
+/** No fence of any lot passes through any home's body or roof, its own included. */
+function expectNoFenceThroughAHome(laid: Map<number, Laid>): void {
+  const all = [...laid.values()];
+  for (const a of all) {
+    for (const s of segsOf(a)) {
+      const len = Math.hypot(s.b.x - s.a.x, s.b.z - s.a.z);
+      for (let t = 0; t <= len; t += 0.1) {
+        const x = s.a.x + ((s.b.x - s.a.x) * t) / len;
+        const z = s.a.z + ((s.b.z - s.a.z) * t) / len;
+        for (const b of all) {
+          for (const [what, r] of [
+            ['body', b.plan.body],
+            ['roof', b.plan.kit.roof.rect],
+          ] as const) {
+            expect(
+              insideStrictly(rectWorld(b, r), x, z),
+              `lot ${a.id} fence through lot ${b.id}'s ${what}`,
+            ).toBe(false);
+          }
+        }
+      }
+    }
+  }
+}
+
 describe('a fence keeps to its own lot line', () => {
   const e = entry(2, 2);
   const { roadAt, street } = streetRow(8);
@@ -203,6 +238,7 @@ describe('a fence keeps to its own lot line', () => {
     expect(onLine(laid.get(low)!).length).toBeGreaterThan(0);
     expect(onLine(laid.get(high)!)).toHaveLength(0);
     expectKeptToOwnLine(laid);
+    expectNoFenceThroughAHome(laid);
   });
 
   it('lets the higher id fence the line when the lower has no fence', () => {
@@ -326,6 +362,7 @@ describe('a turned lot keeps its fence off its neighbours', () => {
       expect(ids.length).toBeGreaterThan(0);
       const laid = lay(arc(inner, step, fenced), e, noRoad, noStreets);
       expectKeptToOwnLine(laid);
+      expectNoFenceThroughAHome(laid);
       expect([...laid.values()].some((l) => l.runs.length > 0)).toBe(true);
     });
   }

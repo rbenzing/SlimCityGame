@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import catalogData from '../data/catalog.json';
+import { isApartmentEntry } from './archetypes';
 import {
   CAR_HALF_LENGTH_M,
   CHIMNEY_FLUE_M,
@@ -1283,5 +1285,30 @@ describe('a framed home’s drive mouths', () => {
       () => null,
     )!;
     expect(frontageKeepClear(grid, gridPlan)).toEqual([]);
+  });
+});
+
+describe('planHouseLot — the house and its roof stay inside the lot', () => {
+  const homes = (catalogData as { buildings: BuildingCatalogEntry[] }).buildings.filter(
+    (e) => e.category === 'res' && e.kind !== 'garden' && !isApartmentEntry(e),
+  );
+  it('keeps body and roof rectangles within the lot, so no fence stands across them', () => {
+    const worst: string[] = [];
+    for (const e of homes) {
+      const { roadAt, street } = streetRow(6 + e.footprint.d);
+      for (let i = 0; i < 12; i += 1) {
+        const p = planHouseLot(home({ id: i + 1, x: i * 4 }), e, roadAt, street);
+        if (!p) continue;
+        const roof = p.kit.roof.rect;
+        const over = Math.max(p.body.v1, roof.v1) - p.lotDepthM;
+        const side = Math.max(p.body.u1, roof.u1) - p.edgeLenM;
+        const side0 = -Math.min(p.body.u0, roof.u0);
+        if (Math.max(over, side, side0) > 1e-6)
+          worst.push(
+            `${e.id} rear +${over.toFixed(2)} right +${side.toFixed(2)} left +${side0.toFixed(2)}`,
+          );
+      }
+    }
+    expect([...new Set(worst)].slice(0, 12)).toEqual([]);
   });
 });

@@ -7,6 +7,8 @@ import {
   computePartPlacements,
   kitPlanFor,
   LIT_PARTS,
+  GUARD_HEIGHT_M,
+  GUARD_THICKNESS_M,
   LANDING_DEPTH_M,
   LANDING_THICKNESS_M,
   PENTHOUSE_PLATE_SHARE,
@@ -67,6 +69,48 @@ describe('a garden walk-up’s open stair', () => {
           );
           expect(met, `${e.id} flight ${i} meets a landing at floor ${i + 1}`).toBe(true);
         });
+      }
+    }
+  });
+
+  it('stands every flight off the wall clear of the window bays, with a guard along each open side', () => {
+    for (const e of byKind('garden')) {
+      const plan = planOf(e);
+      const wall = plan.baseBox.d / 2;
+      const flights = ofKind(plan.placements, 'stairFlight');
+      const rails = ofKind(plan.placements, 'landingGuard').filter(
+        (g) => g.size[0] === GUARD_THICKNESS_M,
+      );
+      expect(flights.length, e.id).toBeGreaterThan(0);
+      expect(rails, e.id).toHaveLength(2 * flights.length);
+      for (const f of flights) {
+        const near = Math.abs(f.offset[2]) - STAIR_WIDTH_M / 2;
+        expect(near - wall, e.id).toBeGreaterThanOrEqual(LANDING_DEPTH_M - 0.2 - 1e-6);
+      }
+      for (const r of rails) {
+        expect(r.size[1], e.id).toBe(GUARD_HEIGHT_M);
+        expect(r.pitch, e.id).toBe(STAIR_PITCH);
+        const rb = placementBounds(r);
+        const along = flights.some((f) => {
+          const fb = placementBounds(f);
+          return rb.x0 < fb.x1 + 1 && fb.x0 < rb.x1 + 1 && rb.z0 < fb.z1 + 1 && fb.z0 < rb.z1 + 1;
+        });
+        expect(along, `${e.id} rail stands on a flight`).toBe(true);
+      }
+    }
+  });
+
+  it('keeps the mail kiosk off every laid walk but the one at the wall', () => {
+    for (const e of byKind('garden')) {
+      const plan = planOf(e);
+      const [kiosk] = ofKind(plan.placements, 'mailKiosk');
+      if (!kiosk) continue;
+      const b = placementBounds(kiosk);
+      const wall = Math.abs(kiosk.offset[2]) - kiosk.size[2] / 2;
+      if (wall - plan.baseBox.d / 2 < 1) continue;
+      for (const t of plan.lot!.taken) {
+        const hit = b.x0 < t.x1 && t.x0 < b.x1 && b.z0 < t.z1 && t.z0 < b.z1;
+        expect(hit, `${e.id} kiosk on a walk`).toBe(false);
       }
     }
   });
