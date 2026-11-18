@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.92.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.91.1...slimcity-v1.92.0) (2026-11-18)
+
+
+### Features
+
+* **render:** a walk through an island, a chain-link fence, the island tree, the kit's own furniture kept clear ([cf50f13](https://github.com/rbenzing/SlimCityGame/commit/cf50f13eed4b61645cc5490187e308437ae3212d))
+* **render:** carry a shop's walk across the verge to the footway ([041ca50](https://github.com/rbenzing/SlimCityGame/commit/041ca50021ea35dfc213ffbe27056dae3ad73e58))
+* **render:** draw each shop and works lot's grounds from instanced pools ([50ca2bc](https://github.com/rbenzing/SlimCityGame/commit/50ca2bc99abcf53ebb532f0ab2c2a04ea05157b5))
+* **shared:** one grounds plan for every commercial and industrial lot ([a87ecd8](https://github.com/rbenzing/SlimCityGame/commit/a87ecd8dd088e1e9cc4b327553a70d1cd0d9f568))
+
 ## [1.91.1](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.91.0...slimcity-v1.91.1) (2026-11-18)
 
 
