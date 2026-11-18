@@ -516,6 +516,15 @@ describe('a line crosses a seam where the road changes', () => {
     expect(Math.abs(at[3]!)).toBeLessThan(CENTRE_PAIR_OFFSET_M);
   });
 
+  it('holds yellow still where two-way road meets one-way: no yellow runs diagonally across', () => {
+    const twoWay = [line(-3.75), line(-0.22, 'yellow'), line(0.22, 'yellow'), line(3.75)];
+    const oneWay = [line(-3.75), line(3.25, 'yellow')];
+    const yellowOf = (lines: ReturnType<typeof line>[], at: number[]): number[] =>
+      at.filter((_, i) => lines[i]!.color === 'yellow');
+    expect(yellowOf(twoWay, seamOffsets(twoWay, oneWay, 3.75))).toEqual([-0.22, 0.22]);
+    expect(yellowOf(oneWay, seamOffsets(oneWay, twoWay, 3.75))).toEqual([3.25]);
+  });
+
   it('holds a line still where there is no road on the other side', () => {
     const here: MarkingProfile = {
       solid: [line(-3), line(3)],

@@ -6546,7 +6546,9 @@ function roadTileSurfaces(
     ): Parameters<typeof emitRoundedCornerFill>[15] => {
       const a = kerbLaneOf(planX, kerbX, signX);
       const b = kerbLaneOf(planZ, kerbZ, signZ);
-      if (!a && !b) return null;
+      // A lane that the other arm does not carry on would only thin to nothing
+      // round the return; it ends square at the mouth instead.
+      if (!a || !b) return null;
       const crossing = (side: ArmSide): [number, number] | null => {
         if (!junctionArmPaint(arms, side).crossed) return null;
         const layout = crossingOf(side);
@@ -8079,7 +8081,9 @@ function roadTileSurfaces(
   // Paved -> dirt transition: a tapered grey->tan band on any connected edge
   // whose neighbor is an unpaved gravel road, so the two flow together. Only
   // the paved side emits it (gravel has no seam logic), so it's never doubled.
-  if (spec.paved) {
+  // A junction box meets the gravel at a straight joint: the road keeps its
+  // own width to the box, so there is no band to blend.
+  if (spec.paved && !isJunction) {
     const gravelHalf = TILE_METERS * GRAVEL_HALF_WIDTH_FRACTION;
     const seam = (edgeSign: 1 | -1, vertical: boolean): void =>
       emitGravelSeam(
