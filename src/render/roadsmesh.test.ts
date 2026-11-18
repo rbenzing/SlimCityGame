@@ -3062,18 +3062,27 @@ describe('RoadMeshRenderer', () => {
     const mesh = scene.children[0] as THREE.Mesh;
     const pos = mesh.geometry.getAttribute('position');
     const col = mesh.geometry.getAttribute('color');
-    // The longest yellow run along the centre line reaching the straight's end: a
-    // dash that starts at the last dash's own start (73.2 m) and ends at the turn (80 m).
-    let longest = 0;
+    // The centre line stays a dash at the pattern's own phase (the last one starts at
+    // 73.2 m), and from where it ends the solid pair runs on to the turn (80 m).
+    let longestDash = 0;
+    let pairFrom = Infinity;
+    let pairTo = -Infinity;
     for (let i = 0; i + 2 < pos.count; i += 3) {
       const rgb = [col.getX(i), col.getY(i), col.getZ(i)];
       const xs = [0, 1, 2].map((k) => pos.getX(i + k));
-      const z = pos.getZ(i);
-      if (!isMarkingYellow(rgb) || Math.abs(z - 2.5 * TILE_METERS) > 0.3) continue;
+      const off = Math.abs(pos.getZ(i) - 2.5 * TILE_METERS);
+      if (!isMarkingYellow(rgb) || off > 0.4) continue;
       if (Math.max(...xs) > 4 * TILE_METERS + 1e-6) continue;
-      longest = Math.max(longest, Math.max(...xs) - Math.min(...xs));
+      if (off < 0.1) {
+        longestDash = Math.max(longestDash, Math.max(...xs) - Math.min(...xs));
+      } else if (off > 0.1) {
+        pairFrom = Math.min(pairFrom, ...xs);
+        pairTo = Math.max(pairTo, ...xs);
+      }
     }
-    expect(longest).toBeCloseTo(4 * TILE_METERS - 6 * DASH_PERIOD_M, 3);
+    expect(longestDash).toBeCloseTo(DASH_PAINT_LENGTH_M, 3);
+    expect(pairFrom).toBeCloseTo(6 * DASH_PERIOD_M + DASH_PAINT_LENGTH_M, 3);
+    expect(pairTo).toBeCloseTo(4 * TILE_METERS, 3);
   });
 
   it('builds one merged mesh for a chunk containing the changed tiles', () => {
@@ -7158,9 +7167,20 @@ describe('roadTileVertices — a broken centre line meets a turn tile’s solid 
   it('keeps every dash that is not the last, at the pattern’s own phase', () => {
     const plain = beside({});
     const joined = beside({ s: true });
-    const dashes = (v: { positions: number[]; colors: number[] }): number =>
-      countWhere(v.colors, isMarkingYellow) / 6;
+    // Dashes lie on the centre line; the pair beside the turn lies 0.22 m either side of it.
+    const dashes = (v: { positions: number[]; colors: number[] }): number => {
+      let vertices = 0;
+      for (let i = 0; i < v.colors.length; i += 3) {
+        if (isMarkingYellow(v.colors.slice(i, i + 3)) && Math.abs(v.positions[i]! - 10) < 0.1) {
+          vertices++;
+        }
+      }
+      return vertices / 6;
+    };
+    expect(dashes(joined)).toBeGreaterThan(0);
     expect(dashes(joined)).toBe(dashes(plain));
+    // And the pair is there: two more lines of paint, no more.
+    expect(countWhere(joined.colors, isMarkingYellow) / 6).toBe(dashes(plain) + 2);
   });
 
   it('leaves a one-way road, which paints no yellow centre line, as it was', () => {

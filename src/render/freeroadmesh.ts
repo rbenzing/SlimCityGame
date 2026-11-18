@@ -51,7 +51,13 @@ import type { LampStand } from './lamps';
 import { POLE_SPECS, layFromLinks, poleLateralOffset } from './powerpoles';
 import type { PoleSite, PowerLay } from './powerpoles';
 import { firstFreeAlong, placeIsFree, type Roadside } from './roadsidespace';
-import { isMedianSideLine, markingPlan, noPassingCentres, noPassingPlan } from './roadmarkings';
+import {
+  CENTRE_PAIR_OFFSET_M,
+  isMedianSideLine,
+  markingPlan,
+  noPassingCentres,
+  noPassingPlan,
+} from './roadmarkings';
 import type { MarkingLine, MarkingPlan } from './roadmarkings';
 import { emitIsland, MEDIAN_RAISE } from './medianisland';
 import type { IslandPath } from './medianisland';
@@ -73,7 +79,7 @@ import {
   DASH_PERIOD_M,
   LANE_GLYPH_PERIOD_TILES,
   dashSegments,
-  joinedRuns,
+  noPassingRuns,
   laneGlyphPaint,
   medianHalfWidthOf,
   roadNightTint,
@@ -740,7 +746,25 @@ function drawSegment(
     list.map(([lo, hi]) => stations(samples, lo, hi, lay.flip));
   const runs = stationsOf(metres);
   const centres = noPassingCentres(lay.plan);
-  const joined = join.from || join.to ? stationsOf(joinedRuns(metres, from, to, join)) : runs;
+  // Where a no-passing bend ends the stretch, the broken centre line gives way to the solid
+  // pair. A grid road's tile before the stretch paints its own dashes, so the pair reaches
+  // back onto that tile to the dash before it.
+  const behind = lay.axis ? 2 * DASH_PERIOD_M : 0;
+  const total = samples[samples.length - 1]!.s;
+  const wideFrom = join.to && !join.from ? Math.max(0, from - behind) : from;
+  const wideTo = join.from && !join.to ? Math.min(total, to + behind) : to;
+  const zone =
+    (join.from || join.to) && isPaved(lay.profile)
+      ? noPassingRuns(dashRuns(lay, wideFrom, wideTo, nose), wideFrom, wideTo, join)
+      : null;
+  const trimmed = zone
+    ? stationsOf(
+        zone.dashes
+          .map(([lo, hi]): [number, number] => [Math.max(lo, from), Math.min(hi, to)])
+          .filter(([lo, hi]) => hi - lo > 1e-9),
+      )
+    : runs;
+  const pairs = zone ? stationsOf(zone.pair) : [];
   // A median that ends here ends in a nose, which spends its half-width of the run.
   const half = medianHalfWidthOf(lay.profile);
   const first = from + (nose.from ? half : 0);
@@ -757,8 +781,9 @@ function drawSegment(
     soup,
     lay,
     st,
-    (line) => (centres.some((c) => c.at === line.at) ? joined : runs),
+    (line) => (centres.some((c) => c.at === line.at) ? trimmed : runs),
     island,
+    pairs,
   );
 }
 
@@ -825,10 +850,11 @@ interface DashPhase {
  * The dashes of the broken line through a bend `length` metres along it, given
  * the pattern of the run before it (its phase at the bend's start) and of the
  * run after it (its phase at the bend's end). The line is one line: its dashes
- * stay 3.05 m and its gaps stretch or shrink evenly, so that the pattern leaves
- * the bend exactly in the phase the next run starts with. The number of periods
- * through the bend is the one that changes the gap least; a bend too short for
- * a gap of half the standard one paints no dash at all.
+ * stay 3.05 m and its gaps stretch or shrink evenly between the last dash of the
+ * run before and the first of the run after, so that the pattern leaves the bend
+ * exactly in the phase the next run starts with. The number of dashes between
+ * is the one that changes the gap least. Two dashes closer than half the
+ * standard gap are one dash.
  */
 export function bendDashes(
   near: DashPhase,
@@ -862,37 +888,52 @@ export function bendDashes(
     }
     return out.sort((p, q) => p[0] - q[0]);
   };
-  // The dash the run before is in at the bend's start (or the next to come), and
-  // the last dash of the run after that begins inside the bend.
-  const opening = dashesOf(near, 0, -DASH_PERIOD_M, length + DASH_PERIOD_M).find(
-    ([, end]) => end > 1e-9,
-  );
-  const closing = dashesOf(far, length, -DASH_PERIOD_M, length + DASH_PERIOD_M)
-    .filter(([start]) => start < length - 1e-9)
+  // The last dash of the run before that starts at or before the bend, and the
+  // first dash of the run after that ends at or past it: the bend carries on
+  // from the one and runs up to the other.
+  const before = dashesOf(near, 0, -DASH_PERIOD_M, length + DASH_PERIOD_M)
+    .filter(([start]) => start <= 1e-9)
     .at(-1);
-  if (!opening || !closing || opening[0] >= length) return [];
-  const span = closing[0] - opening[0];
-  const clip = (start: number): [number, number] => [
-    Math.max(0, start),
-    Math.min(length, start + DASH_PAINT_LENGTH_M),
-  ];
-  if (Math.abs(span) < 1e-9) return [clip(opening[0])];
-  const fewest = Math.floor(span / DASH_PERIOD_M);
+  const after = dashesOf(far, length, -DASH_PERIOD_M, length + DASH_PERIOD_M).find(
+    ([, end]) => end >= length - 1e-9,
+  );
+  if (!before || !after) return [];
+  const clip = (lo: number, hi: number): [number, number] | null =>
+    Math.min(length, hi) - Math.max(0, lo) > 1e-9 ? [Math.max(0, lo), Math.min(length, hi)] : null;
   const minGap = DASH_GAP_LENGTH_M / 2;
-  const counts = [fewest, fewest + 1].filter(
-    (n) => n >= 1 && span / n - DASH_PAINT_LENGTH_M >= minGap - 1e-9,
-  );
-  if (span < 0 || counts.length === 0) return [];
-  const periods = counts.reduce((best, n) =>
-    Math.abs(span / n - DASH_PERIOD_M) < Math.abs(span / best - DASH_PERIOD_M) ? n : best,
-  );
-  const stride = span / periods;
-  const out: [number, number][] = [];
-  for (let k = 0; k <= periods; k++) {
-    const [lo, hi] = clip(opening[0] + k * stride);
-    if (hi - lo > 1e-9) out.push([lo, hi]);
+  // What lies between the two dashes, from the end of one to the start of the next.
+  const open = after[0] - before[1];
+  const dashes: ([number, number] | null)[] = [];
+  if (open < minGap - 1e-9) {
+    // Too close for a gap: the two are one dash.
+    dashes.push(clip(before[0], after[1]));
+  } else {
+    // The dashes between keep their length and lie whole inside the bend, so none is cut
+    // short by it; their gaps stretch or shrink evenly where that leaves room, and the
+    // number of them is the one that changes the gaps least.
+    const latest = length - DASH_PAINT_LENGTH_M;
+    let best: { starts: number[]; worst: number } | null = null;
+    for (let n = 0; n <= Math.floor((open - minGap) / (DASH_PAINT_LENGTH_M + minGap)); n++) {
+      if (n > 0 && latest < 0) break;
+      const gap = (open - n * DASH_PAINT_LENGTH_M) / (n + 1);
+      const starts = Array.from({ length: n }, (_, k) =>
+        Math.min(
+          Math.max(before[1] + (k + 1) * gap + k * DASH_PAINT_LENGTH_M, 0),
+          Math.max(latest, 0),
+        ),
+      );
+      const gaps = [...starts, after[0]].map(
+        (start, k) => start - (k === 0 ? before[1] : starts[k - 1]! + DASH_PAINT_LENGTH_M),
+      );
+      if (gaps.some((g) => g < minGap - 1e-9)) continue;
+      const worst = Math.max(...gaps.map((g) => Math.abs(g - DASH_GAP_LENGTH_M)));
+      if (!best || worst < best.worst) best = { starts, worst };
+    }
+    dashes.push(clip(before[0], before[1]));
+    for (const start of best?.starts ?? []) dashes.push(clip(start, start + DASH_PAINT_LENGTH_M));
+    dashes.push(clip(after[0], after[1]));
   }
-  return out;
+  return dashes.filter((d): d is [number, number] => d !== null);
 }
 
 /**
@@ -934,6 +975,8 @@ function drawSweep(
    * runs the whole sweep and ends square, as it does where it runs on.
    */
   island?: { stations: readonly Station[]; noseStart: boolean; noseEnd: boolean },
+  /** Stretches where each broken yellow centre line is a solid pair instead: where the road runs up to a no-passing bend. */
+  pairRuns: readonly (readonly Station[])[] = [],
 ): void {
   if (st.length < 2) return;
   const { profile, plan } = lay;
@@ -1013,6 +1056,13 @@ function drawSweep(
     paint(line, besideMedian && island ? island.stations : st);
   }
   for (const line of plan.dashed) for (const run of dashes(line)) paint(line, run);
+  for (const centreLine of noPassingCentres(plan)) {
+    for (const run of pairRuns) {
+      for (const side of [-CENTRE_PAIR_OFFSET_M, CENTRE_PAIR_OFFSET_M]) {
+        paint({ at: centreLine.at + side, color: centreLine.color }, run);
+      }
+    }
+  }
 }
 
 /**

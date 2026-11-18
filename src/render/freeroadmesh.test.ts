@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { sampleCentreLine, tileCentreCm } from '../shared/roadgeom';
-import type { CmPoint, MPoint } from '../shared/roadgeom';
+import type { Bend, CmPoint, MPoint } from '../shared/roadgeom';
 import {
   bendRadiusOf,
   carriagewayHalfWidthOf,
@@ -721,7 +721,7 @@ describe('a bend where two runs of one road meet', () => {
     return { g, bend, vertices, polar, inArc, reach };
   }
 
-  it('marks a two-way two-lane bend no-passing: two solid yellow lines from its start to its end, joined to the broken line either side', () => {
+  it('marks a two-way two-lane bend no-passing: two solid yellow lines from its start to its end, met by yellow paint right up to it either side', () => {
     const arm = 120;
     for (const deg of [30, 90, 120]) {
       for (const shift of [0, 2.7, 5.1, 7.9]) {
@@ -748,8 +748,8 @@ describe('a bend where two runs of one road meet', () => {
           const after = (x - last.x) * last.hx + (z - last.z) * last.hz;
           const offFirst = Math.abs((x - first.x) * first.hz - (z - first.z) * first.hx);
           const offLast = Math.abs((x - last.x) * last.hz - (z - last.z) * last.hx);
-          if (before < 0.01 && offFirst < 0.1) backOf.near.push(-before);
-          else if (after > -0.01 && offLast < 0.1) backOf.far.push(after);
+          if (before < 0.01 && offFirst < 0.31) backOf.near.push(-before);
+          else if (after > -0.01 && offLast < 0.31) backOf.far.push(after);
           else if (before >= 0.01 && after <= -0.01) {
             const r = Math.hypot(x - bend.centre.x, z - bend.centre.z);
             const offset = Math.abs(bend.radius - r);
@@ -763,7 +763,7 @@ describe('a bend where two runs of one road meet', () => {
         for (const o of pairs) {
           expect(Math.abs(o - CENTRE_PAIR_OFFSET_M), label).toBeLessThan(PAINT_HALF_WIDTH_M + 0.01);
         }
-        // The broken line either side reaches the bend: no gap before a solid line begins.
+        // The paint either side reaches the bend: the solid pair runs on along the run up to a dash.
         expect(Math.min(...backOf.near), label).toBeLessThan(0.01);
         expect(Math.min(...backOf.far), label).toBeLessThan(0.01);
       }
@@ -866,10 +866,12 @@ describe('a bend where two runs of one road meet', () => {
     expect(insideBend).toBeGreaterThan(0);
   });
 
-  it('paints no dash in a bend too short for half a standard gap, and keeps every dash 3.05 m', () => {
+  it('carries the dash the run before ends in on through a short bend, and keeps every dash 3.05 m', () => {
     const near = { origin: 0, sign: 1 } as const;
     const far = { origin: 5, sign: 1 } as const;
-    expect(bendDashes(near, far, 6)).toEqual([]);
+    expect(bendDashes(near, far, 6)).toEqual([[0, DASH_PAINT_LENGTH_M]]);
+    // Two dashes closer than half a gap are one dash.
+    expect(bendDashes({ origin: 0, sign: 1 }, { origin: 0.95, sign: 1 }, 6)).toEqual([[0, 6]]);
     for (const length of [20, 33, 47]) {
       const dashes = bendDashes(near, far, length);
       expect(dashes.length, `${length} m`).toBeGreaterThan(1);
@@ -882,6 +884,249 @@ describe('a bend where two runs of one road meet', () => {
       }
     }
   });
+
+  type PaintRun = { a: number; b: number; at: number };
+
+  /**
+   * The paint of one colour a bend and the runs either side carry, as stretches along
+   * the road's centre line (`a`..`b`, negative before the bend, past `length` after
+   * it) and the offset `at` of each line from it. Each stretch is also given as the
+   * line's own length, which round the arc is not the centre line's.
+   */
+  function paintOf(
+    g: GridState,
+    tier: Tier,
+    colour: readonly number[],
+  ): {
+    runs: PaintRun[];
+    own: (t: number, at: number) => number;
+    length: number;
+    bend: Bend;
+  } {
+    const bend = [...bendsOf(g.roads!, radiusOf(tier)).values()][0]!.bend;
+    const path = bend.path;
+    const first = path[0]!;
+    const last = path[path.length - 1]!;
+    const line = [
+      { x: first.x - first.hx * 100, z: first.z - first.hz * 100, s: -100 },
+      ...path.map((p) => ({ x: p.x, z: p.z, s: p.s })),
+      { x: last.x + last.hx * 100, z: last.z + last.hz * 100, s: last.s + 100 },
+    ];
+    const project = (x: number, z: number): { t: number; off: number } => {
+      let best = { t: 0, off: 0, d: Infinity };
+      for (let i = 0; i + 1 < line.length; i++) {
+        const p = line[i]!;
+        const q = line[i + 1]!;
+        const sx = q.x - p.x;
+        const sz = q.z - p.z;
+        const len = Math.hypot(sx, sz);
+        const u = Math.max(0, Math.min(1, ((x - p.x) * sx + (z - p.z) * sz) / (len * len)));
+        const d = Math.hypot(x - p.x - sx * u, z - p.z - sz * u);
+        if (d < best.d) {
+          best = { t: p.s + (q.s - p.s) * u, off: ((x - p.x) * -sz + (z - p.z) * sx) / len, d };
+        }
+      }
+      return best;
+    };
+    const length = last.s;
+    // A line at offset `at` is shorter round the arc on the inside of the turn, longer on the outside.
+    const own = (t: number, at: number): number => {
+      if (t <= 0) return t;
+      const scale = (k: number): number =>
+        k >= bend.arc[0] && k <= bend.arc[1] ? (bend.radius - bend.turn * at) / bend.radius : 1;
+      let sum = 0;
+      for (let i = 1; i < path.length; i++) {
+        const ds = path[i]!.s - path[i - 1]!.s;
+        const used = Math.min(1, Math.max(0, (t - path[i - 1]!.s) / ds));
+        sum += ds * used * ((scale(i - 1) + scale(i)) / 2);
+      }
+      return sum + Math.max(0, t - length);
+    };
+    const soup = freeRoadSoup(g.roads!, noCustom, flat);
+    const runs: PaintRun[] = [];
+    for (let i = 0; i < soup.positions.length; i += 9) {
+      if (!sameColor(soup.colors.slice(i, i + 3), colour)) continue;
+      if (Math.abs(soup.positions[i + 1]! - MARK_Y_OFFSET) > 1e-9) continue;
+      const v = [0, 3, 6].map((k) => project(soup.positions[i + k]!, soup.positions[i + k + 2]!));
+      const ts = v.map((p) => p.t);
+      const offs = v.map((p) => p.off);
+      if (Math.min(...ts) > length + 45 || Math.max(...ts) < -45) continue;
+      runs.push({
+        a: Math.min(...ts),
+        b: Math.max(...ts),
+        at: (Math.min(...offs) + Math.max(...offs)) / 2,
+      });
+    }
+    return { runs, own, length, bend };
+  }
+
+  /** The unbroken stretches each line covers, joined where triangles touch. */
+  function stretchesOf(runs: readonly PaintRun[], at: number): [number, number][] {
+    const out: [number, number][] = [];
+    for (const r of runs
+      .filter((p) => Math.abs(p.at - at) < LINE_SPREAD_M)
+      .sort((p, q) => p.a - q.a)) {
+      const open = out[out.length - 1];
+      if (open && r.a <= open[1] + 0.06) open[1] = Math.max(open[1], r.b);
+      else out.push([r.a, r.b]);
+    }
+    return out;
+  }
+
+  /** Paint lines sit well over this far apart; the offsets one line's triangles measure at differ by less. */
+  const LINE_SPREAD_M = 0.12;
+  const atsOf = (runs: readonly PaintRun[]): number[] => {
+    const out: number[] = [];
+    for (const at of runs.map((r) => r.at).sort((p, q) => p - q)) {
+      if (out.length === 0 || at - out[out.length - 1]! > LINE_SPREAD_M) out.push(at);
+    }
+    return out;
+  };
+
+  /** A two-lane road's centre line through a bend, free or off a grid street, and the shifts of pattern that put the node on every phase of a dash. */
+  const centreScenes: [string, number, boolean, number][] = [30, 60, 90].flatMap((deg) => [
+    ...[0, 2.7, 5.1, 7.9, 10.3].map((shift): [string, number, boolean, number] => [
+      `${deg} degree free bend, node shifted ${shift} m`,
+      deg,
+      false,
+      shift,
+    ]),
+    [`${deg} degree bend off a grid street`, deg, true, 0],
+  ]);
+  for (const [label, deg, grid, shift] of centreScenes) {
+    it(`carries a two-lane road's centre line through a ${label} as one solid yellow pair, on the centre line, met by dashes with no gap and no single line`, () => {
+      const arm = grid ? 90 : 120;
+      const g = world();
+      const d = { x: Math.cos((deg * Math.PI) / 180), z: Math.sin((deg * Math.PI) / 180) };
+      if (grid) {
+        const tiles = Array.from({ length: 12 }, (_, i) => ({ x: 13 + i, z: 20 }));
+        applyRoad(
+          g,
+          tiles,
+          RoadTier.TwoLane,
+          undefined,
+          RoadTier.TwoLane,
+          false,
+          tiles.map(() => RoadFlow.East),
+        );
+        settle(g);
+        const end = centre(24, 20);
+        lay(g, { a: end, b: at(end.x / 100 + d.x * arm, end.z / 100 + d.z * arm) });
+      } else {
+        const node = { x: NODE.x + shift, z: NODE.z };
+        lay(g, { a: at(node.x - arm, node.z), b: at(node.x, node.z) });
+        lay(g, { a: at(node.x, node.z), b: at(node.x + d.x * arm, node.z + d.z * arm) });
+      }
+      const { runs, length, bend } = paintOf(g, RoadTier.TwoLane, YELLOW_MARKING_COLOR);
+      const left = stretchesOf(runs, -CENTRE_PAIR_OFFSET_M);
+      const right = stretchesOf(runs, CENTRE_PAIR_OFFSET_M);
+      const dashes = stretchesOf(runs, 0);
+      // One pair, both lines the same stretch, covering the whole bend.
+      expect(left).toHaveLength(1);
+      expect(right).toHaveLength(1);
+      expect(left[0]![0]).toBeCloseTo(right[0]![0], 1);
+      expect(left[0]![1]).toBeCloseTo(right[0]![1], 1);
+      const [lo, hi] = left[0]!;
+      expect(lo).toBeLessThanOrEqual(0.05);
+      expect(hi).toBeGreaterThanOrEqual(length - 0.05);
+      // It lies on the centre line: each line CENTRE_PAIR_OFFSET_M off it, the pair centred on it.
+      for (const r of runs) {
+        if (Math.abs(r.at) < 0.03 || r.a < lo - 0.01 || r.b > hi + 0.01) continue;
+        expect(Math.abs(Math.abs(r.at) - CENTRE_PAIR_OFFSET_M)).toBeLessThan(0.05);
+      }
+      // No single solid line: every stretch of the broken line is one dash at most, and none inside the pair.
+      for (const [a, b] of dashes) {
+        expect(b - a, `dash ${a.toFixed(2)}..${b.toFixed(2)}`).toBeLessThan(
+          DASH_PAINT_LENGTH_M + 0.1,
+        );
+        expect(b <= lo + 0.05 || a >= hi - 0.05, `dash ${a}..${b} inside the pair`).toBe(true);
+      }
+      // The dash nearest each end of the pair meets it with no gap, and is no stub.
+      const after = dashes.find(([a]) => a >= hi - 0.05);
+      expect(after).toBeDefined();
+      expect(after![0] - hi, 'gap after the pair').toBeLessThan(0.1);
+      expect(after![1] - after![0]).toBeGreaterThan(DASH_PAINT_LENGTH_M / 2 - 0.1);
+      if (grid) {
+        // The street's own tile before the bend paints its dashes on the world's pattern,
+        // so the pair starts where one of them ends.
+        const k = (bend.path[0]!.x + lo - DASH_PAINT_LENGTH_M) / DASH_PERIOD_M;
+        expect(
+          Math.abs(k - Math.round(k)) * DASH_PERIOD_M,
+          'pair start off a dash end',
+        ).toBeLessThan(0.1);
+      } else {
+        const before = dashes.filter(([, b]) => b <= lo + 0.05).at(-1);
+        expect(before).toBeDefined();
+        expect(lo - before![1], 'gap before the pair').toBeLessThan(0.1);
+        expect(before![1] - before![0]).toBeGreaterThan(DASH_PAINT_LENGTH_M / 2 - 0.1);
+      }
+    });
+  }
+
+  const LANE_CASES: [string, Tier, number, number][] = [
+    ['four-lane', RoadTier.FourLane, 30, 0],
+    ['four-lane', RoadTier.FourLane, 90, 0],
+    ['avenue', RoadTier.Avenue, 30, 0],
+    ['avenue', RoadTier.Avenue, 60, 0],
+    ['avenue', RoadTier.Avenue, 90, 0],
+    ['motorway', RoadTier.Highway, 30, 0],
+    ['motorway', RoadTier.Highway, 60, 0],
+    ['motorway', RoadTier.Highway, 90, 0],
+    ['one-way', RoadTier.OneWay, 30, 1],
+    ['one-way', RoadTier.OneWay, 60, 1],
+  ];
+  for (const [name, tier, deg, flow] of LANE_CASES) {
+    for (const shift of [0, 3.3, 7.7]) {
+      it(`keeps one dash rhythm on every lane line through a ${deg} degree ${name} bend, node shifted ${shift} m: no gap, no stub`, () => {
+        const arm = 120;
+        const g = world();
+        const node = { x: NODE.x + shift, z: NODE.z };
+        const d = { x: Math.cos((deg * Math.PI) / 180), z: Math.sin((deg * Math.PI) / 180) };
+        lay(g, { tier, flow, a: at(node.x - arm, node.z), b: at(node.x, node.z) });
+        lay(g, {
+          tier,
+          flow,
+          a: at(node.x, node.z),
+          b: at(node.x + d.x * arm, node.z + d.z * arm),
+        });
+        const { runs, own, length } = paintOf(g, tier, MARKING_COLOR);
+        let broken = 0;
+        for (const lineAt of atsOf(runs)) {
+          const stretches = stretchesOf(runs, lineAt);
+          if (stretches.length < 2) continue;
+          broken++;
+          const ownEnd = own(length, lineAt);
+          const dashes = stretches.map(([a, b]) => [own(a, lineAt), own(b, lineAt)] as const);
+          for (const [k, [a, b]] of dashes.entries()) {
+            const label = `line ${lineAt}: dash ${a.toFixed(2)}..${b.toFixed(2)} of a bend ${ownEnd.toFixed(2)} long`;
+            // Judge the stretch round the bend: the dashes at the window's edge are cut by it.
+            if (k === 0 || k === dashes.length - 1) continue;
+            expect(b - a, label).toBeGreaterThan(DASH_PAINT_LENGTH_M / 2 - 0.1);
+            expect(b - a, label).toBeLessThan(DASH_PAINT_LENGTH_M * 3.5);
+            // A dash the bend draws on its own, between its two ends, is whole (to what the chords of the arc measure).
+            if (a > 0.05 && b < ownEnd - 0.05) {
+              expect(b - a, label).toBeGreaterThan(DASH_PAINT_LENGTH_M - 0.25);
+            }
+            const next = dashes[k + 1]!;
+            if (k + 1 === dashes.length - 1) continue;
+            expect(next[0] - b, `gap after ${label}`).toBeGreaterThan(DASH_GAP_LENGTH_M / 2 - 0.1);
+            expect(next[0] - b, `gap after ${label}`).toBeLessThan(DASH_GAP_LENGTH_M * 1.5);
+          }
+          // Through the bend itself there is always paint: no stretch of a line's own length longer than a gap and a half is bare.
+          const covered = dashes.filter(([a, b]) => b > 0 && a < ownEnd);
+          expect(covered.length, `line ${lineAt} paints through the bend`).toBeGreaterThan(0);
+          let bare = 0;
+          let from = 0;
+          for (const [a, b] of [...covered, [ownEnd, ownEnd] as const]) {
+            bare = Math.max(bare, a - from);
+            from = Math.max(from, b);
+          }
+          expect(bare, `line ${lineAt} bare stretch`).toBeLessThan(DASH_GAP_LENGTH_M * 1.5);
+        }
+        expect(broken, 'a broken lane line').toBeGreaterThan(0);
+      });
+    }
+  }
 
   const TIERS: [string, Tier][] = [
     ['two-lane', RoadTier.TwoLane],

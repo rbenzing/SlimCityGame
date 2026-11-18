@@ -160,6 +160,7 @@ import { axisOfFlow } from '../shared/overpass';
 import type { TaperStep } from '../shared/taper';
 import type { ApproachAhead, AuxiliaryLane, RampMouth } from '../shared/approachzone';
 import {
+  CENTRE_PAIR_OFFSET_M,
   centrePair,
   isMedianSideLine,
   markingPlan,
@@ -386,28 +387,34 @@ export function dashSegments(
 }
 
 /**
- * The runs of a broken line along a stretch `from..to`, with the last gap at an
- * end that meets a no-passing zone filled, so the line carries on as the solid
- * pair begins.
+ * A broken centre line along a stretch `from..to`, split where an end meets a
+ * no-passing zone: the dashes that stay, and the stretches there that carry the
+ * solid pair instead. The pair runs out from the zone to the next dash that is
+ * at least half a dash long, so the dashes meet it with no gap and no single
+ * solid line, and no stub of a dash is left beside it.
  */
-export function joinedRuns(
+export function noPassingRuns(
   runs: ReadonlyArray<[number, number]>,
   from: number,
   to: number,
   join: { from: boolean; to: boolean },
-): Array<[number, number]> {
-  const out = runs.map(([lo, hi]): [number, number] => [lo, hi]);
-  if (join.to) {
-    const last = out.at(-1);
-    if (last && last[1] < to) last[1] = to;
-    else if (!last) out.push([Math.max(from, to - DASH_GAP_LENGTH_M), to]);
-  }
+): { dashes: Array<[number, number]>; pair: Array<[number, number]> } {
+  const dashes = runs.map(([lo, hi]): [number, number] => [lo, hi]);
+  const stub = (run: [number, number]): boolean => run[1] - run[0] < DASH_PAINT_LENGTH_M / 2 - 1e-9;
   if (join.from) {
-    const first = out[0];
-    if (first && first[0] > from) first[0] = from;
-    else if (!first) out.push([from, Math.min(to, from + DASH_GAP_LENGTH_M)]);
+    while (dashes.length > 0 && dashes[0]![0] <= from + 1e-9 && stub(dashes[0]!)) dashes.shift();
   }
-  return out;
+  if (join.to) {
+    while (dashes.length > 0 && dashes.at(-1)![1] >= to - 1e-9 && stub(dashes.at(-1)!))
+      dashes.pop();
+  }
+  const pair: Array<[number, number]> = [];
+  if (join.from) pair.push([from, dashes.length > 0 ? dashes[0]![0] : to]);
+  // With no dash left, the one pair from the start already runs to the end.
+  if (join.to && !(join.from && dashes.length === 0)) {
+    pair.push([dashes.length > 0 ? dashes.at(-1)![1] : from, to]);
+  }
+  return { dashes, pair: pair.filter(([lo, hi]) => hi - lo > 1e-9) };
 }
 
 /**
@@ -1113,10 +1120,29 @@ function emitAxisMarkings(
     const from = origin + lo + laneEnd.lo;
     const to = origin + hi - laneEnd.hi;
     const runs = dashSegments(from, to, cut);
-    const joined = noPassing.some((c) => c.at === line.at)
-      ? joinedRuns(runs, from, to, { from: joinsTurn.lo, to: joinsTurn.hi })
-      : runs;
-    for (const [segLo, segHi] of joined) {
+    const zone = noPassing.some((c) => c.at === line.at)
+      ? noPassingRuns(runs, from, to, { from: joinsTurn.lo, to: joinsTurn.hi })
+      : { dashes: runs, pair: [] };
+    for (const [segLo, segHi] of zone.pair) {
+      for (const side of [-CENTRE_PAIR_OFFSET_M, CENTRE_PAIR_OFFSET_M]) {
+        const a0 = segLo - origin;
+        const a1 = segHi - origin;
+        pushMarkingRun(
+          positions,
+          colors,
+          vertical,
+          centerX,
+          centerZ,
+          offsetAt(a0) + side,
+          offsetAt(a1) + side,
+          a0,
+          a1,
+          hAt,
+          paintOf(line),
+        );
+      }
+    }
+    for (const [segLo, segHi] of zone.dashes) {
       const a0 = segLo - origin;
       const a1 = segHi - origin;
       // A dash that reaches the edge line is not a lane's boundary, only a stub
