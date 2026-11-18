@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.91.1](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.91.0...slimcity-v1.91.1) (2026-11-18)
+
+
+### Bug Fixes
+
+* **render:** bus stop pad on an unkerbed road adjoins the roadway ([c941a22](https://github.com/rbenzing/SlimCityGame/commit/c941a22f04c7360d1fe4dc0a1c92b485e3b8df87))
+* **render:** fences stop at roofs, mansard sign lies on its slope, garden stair guards ([f722b3c](https://github.com/rbenzing/SlimCityGame/commit/f722b3c6cc2ef50a6f46bdcd044beaba75c09e93))
+* **render:** gravel joint, one-way yellow and bike lane ends ([46e444a](https://github.com/rbenzing/SlimCityGame/commit/46e444aac310194d1ee419f6daa8617c2c204b7a))
+* **render:** keep every street wire inside its tile and 2.3 m from a wall ([4078576](https://github.com/rbenzing/SlimCityGame/commit/4078576ebe9bbf50ec18f626e94ad1500113744b))
+* **render:** keep wild trees and shrubs off the landfill fill and its office ([cdc8161](https://github.com/rbenzing/SlimCityGame/commit/cdc81616fc352c5793561f61d10f1f74c8daa2a8))
+* **render:** night tint on street furniture and landfill; no median trees on decks or narrow medians ([7c745a3](https://github.com/rbenzing/SlimCityGame/commit/7c745a3a35a2d435acb01d80b959d0cc54f8b33c))
+* **render:** one arrow set per one-way approach tile, motorway cap edge lines, grid bend dash phase ([62cc262](https://github.com/rbenzing/SlimCityGame/commit/62cc26231cdfb692d8340198d197869344677d08))
+* **render:** one unbroken buried cable to its riser foot; source-end pole guy clear of the fence ([532f50d](https://github.com/rbenzing/SlimCityGame/commit/532f50df25572c6345b2ae58cf96ceef380cfc26))
+* **render:** open stair on the footway for raised tram stations ([4a8ee88](https://github.com/rbenzing/SlimCityGame/commit/4a8ee88a93ce87a51d17870b0accf074ba914aab))
+* **tools:** give the long shot tools the timeout their duration needs ([8d5d6ad](https://github.com/rbenzing/SlimCityGame/commit/8d5d6ad14cdf34e0268b2fbc767c8c206980319a))
+
 ## [1.91.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.90.0...slimcity-v1.91.0) (2026-11-18)
 
 
