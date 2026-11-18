@@ -90,7 +90,11 @@ const row = (z, tier, x0, x1) =>
   ]);
 // The street along row Z, the railway four rows north of it.
 await row(Z, RT.TwoLane, X, X + 40);
-await row(Z - 4, RT.RailTrack, X, X + 40);
+// Station B's stretch is a separate line one row nearer the street, so the
+// station stands on the street's kerb with the track against its long edge; the
+// two lines never touch (rail tiles beside each other join).
+await row(Z - 4, RT.RailTrack, X, X + 17);
+await row(Z - 3, RT.RailTrack, X + 19, X + 40);
 await page.waitForTimeout(800);
 
 const place = (catalogId, x, z, rotation) =>
@@ -98,9 +102,7 @@ const place = (catalogId, x, z, rotation) =>
 // Station A fills the block between the track and the street, its short edge on
 // the track; station B stands with its long edge on the track.
 await place('rail-station', X + 8, Z - 3, 0);
-// B turned, it is two deep and stands on the street's kerb, so a short siding
-// off the main track runs along its north edge.
-await row(Z - 3, RT.RailTrack, X + 21, X + 25);
+// B turned, it is two deep and stands on the street's kerb with its long edge on the track.
 await place('rail-station', X + 22, Z - 2, 1);
 // The clinic on the street's south kerb, turned to face it; the bus stops are
 // street furniture on the street tiles themselves, on the south side.
