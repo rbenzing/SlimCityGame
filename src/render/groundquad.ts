@@ -141,6 +141,87 @@ export function pushConformingTurnedQuad(
   }
 }
 
+/**
+ * Appends a convex polygon laid in a turned frame (`poly` in local x = u, z = v) as
+ * terrain-conforming pieces: the polygon is cut on the same (u, v) grid a conforming
+ * quad uses, and each piece is fanned into upward-facing triangles whose corners ride the
+ * ground. A polygon that is a whole number of cells gives exactly the quad's cells.
+ */
+export function pushConformingPolygon(
+  positions: number[],
+  colors: number[],
+  poly: readonly { x: number; z: number }[],
+  toWorld: (u: number, v: number) => { x: number; z: number },
+  yOffset: number,
+  color: readonly [number, number, number],
+  heightAt: (x: number, z: number) => number,
+  maxCellM: number = CONFORM_MAX_CELL_M,
+): void {
+  let u0 = Infinity;
+  let u1 = -Infinity;
+  let v0 = Infinity;
+  let v1 = -Infinity;
+  for (const p of poly) {
+    u0 = Math.min(u0, p.x);
+    u1 = Math.max(u1, p.x);
+    v0 = Math.min(v0, p.z);
+    v1 = Math.max(v1, p.z);
+  }
+  const nu = Math.max(1, Math.ceil((u1 - u0) / maxCellM));
+  const nv = Math.max(1, Math.ceil((v1 - v0) / maxCellM));
+  const stepU = (u1 - u0) / nu;
+  const stepV = (v1 - v0) / nv;
+  const vertex = (p: { x: number; z: number }): [number, number, number] => {
+    const w = toWorld(p.x, p.z);
+    return [w.x, heightAt(w.x, w.z) + yOffset, w.z];
+  };
+  for (let iv = 0; iv < nv; iv++) {
+    for (let iu = 0; iu < nu; iu++) {
+      let piece = [...poly];
+      piece = clipAxis(piece, 'x', u0 + iu * stepU, 1);
+      piece = clipAxis(piece, 'x', u0 + (iu + 1) * stepU, -1);
+      piece = clipAxis(piece, 'z', v0 + iv * stepV, 1);
+      piece = clipAxis(piece, 'z', v0 + (iv + 1) * stepV, -1);
+      if (piece.length < 3) continue;
+      const corners = piece.map(vertex);
+      for (let i = 1; i + 1 < corners.length; i++) {
+        const a = corners[0]!;
+        let b = corners[i]!;
+        let c = corners[i + 1]!;
+        // The ground's winding: normal up, which is a positive (z, x) cross of the two edges.
+        const facing = (b[2] - a[2]) * (c[0] - a[0]) - (b[0] - a[0]) * (c[2] - a[2]);
+        if (Math.abs(facing) < 1e-9) continue;
+        if (facing < 0) [b, c] = [c, b];
+        positions.push(...a, ...b, ...c);
+        for (let k = 0; k < 3; k++) colors.push(color[0], color[1], color[2]);
+      }
+    }
+  }
+}
+
+/** Keeps the part of a convex polygon on the `keep` side of the line at `axis` = `at`. */
+function clipAxis(
+  poly: { x: number; z: number }[],
+  axis: 'x' | 'z',
+  at: number,
+  keep: 1 | -1,
+): { x: number; z: number }[] {
+  const out: { x: number; z: number }[] = [];
+  const side = (p: { x: number; z: number }): number => (p[axis] - at) * keep;
+  for (let i = 0; i < poly.length; i++) {
+    const p = poly[i]!;
+    const q = poly[(i + 1) % poly.length]!;
+    const sp = side(p);
+    const sq = side(q);
+    if (sp >= 0) out.push(p);
+    if ((sp > 0 && sq < 0) || (sp < 0 && sq > 0)) {
+      const t = sp / (sp - sq);
+      out.push({ x: p.x + (q.x - p.x) * t, z: p.z + (q.z - p.z) * t });
+    }
+  }
+  return out;
+}
+
 /** Vertices a conforming quad of this size will produce — for budgeting a merged mesh. */
 export function conformingQuadVertexCount(
   x0: number,

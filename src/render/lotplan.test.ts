@@ -41,11 +41,13 @@ import { hasPart } from './archetypes';
 import type { EdgeFrame } from './frontage';
 import { framedLotPlanFor, lotLayoutFor, lotPlanAt, lotPlanFor, lotPointToWorld } from './lotplan';
 import { toLocal } from '../shared/lotframe';
+import { carParkShape } from '../shared/carparkshape';
+import { roundedRect } from '../shared/roundedoutline';
 import type { ParcelFrame } from '../shared/types';
 import { DRIVE_Y_OFFSET, LANE_Y_OFFSET, LOT_Y_OFFSET, LotRenderer, WALK_Y_OFFSET } from './lots';
 import { materialUnit } from './palette';
 import { computeSetbacks, frontageSetbackFor } from './massing';
-import { ParkedCarRenderer } from './parked';
+import { LOT_CAR_BODY, ParkedCarRenderer } from './parked';
 
 const catalog = (catalogData as { buildings: BuildingCatalogEntry[] }).buildings;
 const suburban = catalog.filter((e) => lotParkingRequirement(e) !== null && !isDenseLotEntry(e));
@@ -687,6 +689,16 @@ describe('the lot’s paved ground', () => {
           const yardOnMap = yard.map((r) => onMap(frame, r));
           const concreteOnMap = concrete.map((r) => onMap(frame, r));
           const islands = layout.islands.map((r) => onMap(frame, r));
+          const shape = carParkShape(layout, true, LOT_CAR_BODY);
+          // The paving turned round a planted corner: pieces of fill, on the planted ground.
+          const fillsOnMap = shape.fills.map((tri) =>
+            onMap(frame, {
+              u0: Math.min(...tri.map((p) => p.x)),
+              u1: Math.max(...tri.map((p) => p.x)),
+              v0: Math.min(...tri.map((p) => p.z)),
+              v1: Math.max(...tri.map((p) => p.z)),
+            }),
+          );
           const { tris } = groundOf(e, rotation, roadAt);
           const id = `${e.id} turned ${rotation}, ${side}`;
           let lawn = 0;
@@ -698,19 +710,34 @@ describe('the lot’s paved ground', () => {
               lawn += t.area;
             } else if (at(t, DRIVE_Y_OFFSET)) {
               paved += t.area;
-              // Paving lies on a piece of the yard, never over a planted island.
+              // Paving lies on a piece of the yard or a corner fill, and over a planted island only as a fill.
               const onYard = yardOnMap.some((r) => within(t, r));
-              if (!onYard || islands.some((r) => within(t, r))) stray.push(t);
+              const onFill = fillsOnMap.some((r) => within(t, r));
+              if ((!onYard && !onFill) || (!onFill && islands.some((r) => within(t, r)))) {
+                stray.push(t);
+              }
             } else if (!at(t, WALK_Y_OFFSET) || !concreteOnMap.some((r) => within(t, r))) {
               stray.push(t);
             }
           }
           expect(stray, id).toEqual([]);
-          const area = (r: LotRect): number => (r.u1 - r.u0) * (r.v1 - r.v0);
+          const polygonArea = (pts: readonly { x: number; z: number }[]): number =>
+            Math.abs(
+              pts.reduce((s, p, i) => {
+                const q = pts[(i + 1) % pts.length]!;
+                return s + p.x * q.z - q.x * p.z;
+              }, 0) / 2,
+            );
+          const area = (r: LotRect): number => {
+            const radii = shape.rounded.get(r);
+            const outline = { x: r.u0, z: r.v0, w: r.u1 - r.u0, d: r.v1 - r.v0 };
+            return radii ? polygonArea(roundedRect(outline, radii)) : outline.w * outline.d;
+          };
           expect(lawn).toBeCloseTo((bounds.x1 - bounds.x0) * (bounds.z1 - bounds.z0), 0);
-          // Every piece of the yard is laid, each once.
+          // Every piece of the yard is laid, each once, with its rounded corners cut and the fills added.
           expect(paved).toBeCloseTo(
-            yard.reduce((s, r) => s + area(r), 0),
+            yard.reduce((s, r) => s + area(r), 0) +
+              shape.fills.reduce((s, tri) => s + polygonArea(tri), 0),
             0,
           );
           expect(plantedShare(layout)).toBeGreaterThan(0);

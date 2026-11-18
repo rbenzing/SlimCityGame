@@ -345,6 +345,33 @@ try {
     await above(s);
   }
 
+  // Two close frames on a strip mall's car park, each about 25 m across: a rear corner of
+  // the paving (the lot's own ground shows in the cut), and the end of a planted island.
+  // The camera floor is 40 m, so the frame is shot at twice the pixels and cropped to 25 m.
+  const closeSubject = spots.find((n) => n.id === 'com-strip-2');
+  if (closeSubject) {
+    const restoreClose = await closeUp(page, 2);
+    const viewport = page.viewportSize();
+    const metresAcross = 2 * CAMERA_MIN_DISTANCE * Math.tan(Math.PI / 8) * aspect;
+    const cropW = Math.round((viewport.width * 25) / metresAcross);
+    const clip = {
+      x: Math.round((viewport.width - cropW) / 2),
+      y: Math.round((viewport.height - cropW * 0.625) / 2),
+      width: cropW,
+      height: Math.round(cropW * 0.625),
+    };
+    const shootClose = async (name, tx, tz) => {
+      await cam(tx, tz, CAMERA_MIN_DISTANCE, 0, TOP_PITCH);
+      await page.waitForTimeout(1500);
+      await cleanShot(page, `${out}/${name}.png`, { clip });
+    };
+    const { x, z, d } = closeSubject;
+    // Tile coordinates, the lot's west side and rear (south) end, where the car park lies.
+    await shootClose('corner-close', x + 0.4 - 0.5, z + d - 0.3 - 0.5);
+    await shootClose('island-close', x + 0.3 - 0.5, z + d - 0.7 - 0.5);
+    await restoreClose();
+  }
+
   // The dense kinds that park in a garage on their lot: from the rear (the open
   // tiers, the ramp and the stair tower) and from the street (the body on the
   // street line, the entry and its sign), each at 80 m, and the office again from
