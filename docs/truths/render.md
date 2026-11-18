@@ -270,4 +270,8 @@ Back to [the index](../GROUND-TRUTHS.md).
   top, the pool ended in a hard line mid-road. —
   [lighting.md](../visual-render/lighting.md); `POOL_Y_OFFSET` in
   `src/render/lamps.ts`
+- [R-render-043] A part thinner than one shadow-map texel casts no shadow; a post or
+  anything a texel wide or wider does. A lamp's 0.1 m arm, at 0.57 of a
+  texel, drew a jagged scribble on the road. —
+  [lighting.md](../visual-render/lighting.md); `src/render/scene.ts`
 

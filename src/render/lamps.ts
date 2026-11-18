@@ -53,6 +53,7 @@ import {
   type TramPoleStand,
 } from './roadfurniture';
 import { BUS_STOP_PAD } from './busstops';
+import { castsShadow } from './scene';
 import { firstFreeAlong, keepClearOf, Standing, type Spot } from './roadsidespace';
 
 /** Pole heights by the street's width: 20, 30 and 40 ft. */
@@ -960,11 +961,12 @@ export class LampRenderer {
         this.capacity,
       );
       this.lensMesh = new THREE.InstancedMesh(this.lensGeometry, this.lensMaterial, this.capacity);
-      // Pole/arm/housing are real modeled geometry — they cast shadows. The lens
-      // is a light source, so it stays non-shadow-casting.
-      this.poleMesh.castShadow = true;
-      this.armMesh.castShadow = true;
-      this.housingMesh.castShadow = true;
+      // A part casts only if the shadow map can hold it (a texel wide or more);
+      // a thinner arm would alias into dashes. The lens is a light source, so
+      // it never casts.
+      this.poleMesh.castShadow = castsShadow(this.poleGeometry);
+      this.armMesh.castShadow = castsShadow(this.armGeometry);
+      this.housingMesh.castShadow = castsShadow(this.housingGeometry);
       this.scene.add(this.poleMesh, this.armMesh, this.housingMesh, this.lensMesh);
     }
     const { poleMesh, armMesh, housingMesh, lensMesh } = this;

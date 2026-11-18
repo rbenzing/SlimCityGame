@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
+import { SHADOW_TEXEL_METERS } from './scene';
 import {
   CANTILEVER_FACE_Z,
   computeBoxPlacements,
@@ -844,6 +845,32 @@ describe('RoadFurnitureRenderer', () => {
 
     const box = meshes.find((m) => m.userData.furnitureKind === 'box')!;
     expect(box.castShadow).toBe(true);
+  });
+
+  it('a signal head casts a shadow but its mast and arm, thinner than a shadow texel, cast none', () => {
+    const scene = new THREE.Scene();
+    const renderer = new RoadFurnitureRenderer(scene, flatHeightAt);
+    renderer.rebuild(controlledPlus('signal', RoadTier.Avenue));
+
+    const meshes = scene.children.filter(
+      (c): c is THREE.InstancedMesh => c instanceof THREE.InstancedMesh,
+    );
+    const head = meshes.filter(
+      (m) => m.userData.furnitureKind === 'sign' && m.userData.signType === 'signal',
+    );
+    const frame = meshes.filter((m) => m.userData.furnitureKind === 'signalFrame');
+    expect(head).toHaveLength(1);
+    expect(frame).toHaveLength(1);
+    expect(head[0]!.castShadow).toBe(true);
+    expect(frame[0]!.castShadow).toBe(false);
+    expect(frame[0]!.count).toBe(head[0]!.count);
+    for (const geometry of [head[0]!.geometry, frame[0]!.geometry]) {
+      geometry.computeBoundingBox();
+      const size = geometry.boundingBox!.getSize(new THREE.Vector3());
+      expect(Math.min(size.x, size.y, size.z) >= SHADOW_TEXEL_METERS).toBe(
+        geometry === head[0]!.geometry,
+      );
+    }
   });
 
   it('tags each sign layer by furnitureKind and its signType, casting shadows', () => {

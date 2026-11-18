@@ -512,13 +512,13 @@ describe('LampRenderer', () => {
     expect(reused.poolVertexCount()).toBe(fresh.poolVertexCount());
   });
 
-  it('casts shadows from the pole, arm, and housing — the lens is a light source, not an occluder', () => {
+  it('casts shadows from the pole and housing, which are a shadow texel wide or more; the arm is thinner and casts none; the lens is a light source', () => {
     const scene = new THREE.Scene();
     const renderer = new LampRenderer(scene, flatHeightAt);
     renderer.rebuild(strip(0, 0, 12, 'ew'));
 
     expect(renderer.poleCastShadow()).toBe(true);
-    expect(renderer.armCastShadow()).toBe(true);
+    expect(renderer.armCastShadow()).toBe(false);
     expect(renderer.housingCastShadow()).toBe(true);
 
     const instancedMeshes = scene.children.filter(

@@ -11,7 +11,7 @@
  * Usage: node tools/town-shots.mjs [baseUrl] [outDir]   (a dev server must be running) */
 import { chromium } from 'playwright';
 import { mkdirSync } from 'node:fs';
-import { cleanShot, hooksReady, logAlerts, requireInFrame, tileCamera, tileMeters, unlimitedMoneyOption } from './shotcam.mjs';
+import { cleanShot, hooksReady, logAlerts, requireInFrame, setClock, tileCamera, tileMeters, unlimitedMoneyOption } from './shotcam.mjs';
 
 const base = process.argv[2] ?? 'http://localhost:5173';
 const out = process.argv[3] ?? 'tools/shots-town';
@@ -122,9 +122,6 @@ await hook(() => window.__slimcity.setOverlay('trash'));
 await camera(TOWN.landfill.x0 + TOWN.landfill.w / 2, TOWN.landfill.z0 + 1, 360, 0, 1.1);
 await shot('10-trash-lens');
 await hook(() => window.__slimcity.setOverlay(null));
-await hook(() => window.__slimcity.setDayT(0.96));
-await camera(90, 100, 1200, Math.PI / 5, 0.9);
-await shot('11-night');
 // The landfill office's parking bays and yard light, close up at night: the paint must
 // read no brighter than the ground round it and the lamp head must still glow.
 const office = await hook(async (L) => {
@@ -140,9 +137,21 @@ if (!office) throw new Error('[town] the landfill has no office to frame');
 console.log('landfill office', JSON.stringify(office));
 await camera(office.x + 0.5, office.z + 0.5, 50, Math.PI / 5, 1.0);
 await requireInFrame(page, 'landfill-office', office.x + 0.5, office.z + 0.5);
-await shot('12-landfill-office-night');
-await hook(() => window.__slimcity.setDayT(0.5));
 await shot('12b-landfill-office-noon');
+
+// Night last: the game's own clock runs on to 23:00, so the strip and the light agree,
+// and a sim that runs on could change the town the day frames show.
+const standingBefore = (await hook(() => window.__slimcity.readBuildings())).length;
+await setClock(page, 23);
+// A paused sim posts a snapshot only when a command lands: this one carries the phase to the lighting.
+await hook(() => window.__slimcity.cmd('Phase', [{ kind: 'setUnlimitedMoney', on: true }]));
+const standingAfter = (await hook(() => window.__slimcity.readBuildings())).length;
+console.log('buildings before and after the clock ran to night', standingBefore, standingAfter);
+await camera(90, 100, 1200, Math.PI / 5, 0.9);
+await shot('11-night');
+await camera(office.x + 0.5, office.z + 0.5, 50, Math.PI / 5, 1.0);
+await requireInFrame(page, 'landfill-office-night', office.x + 0.5, office.z + 0.5);
+await shot('12-landfill-office-night');
 
 console.log('stats', JSON.stringify(await hook(() => window.__slimcity.getStats())));
 console.log('farm kit', JSON.stringify(await hook(() => window.__slimcity.farmKit())));

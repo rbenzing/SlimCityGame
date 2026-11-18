@@ -118,8 +118,8 @@ Back to [the index](../GROUND-TRUTHS.md).
   about the shared tile corner, and a rail junction lays ballast only under
   its rails. Gauge is 1,435 mm between the heads' inner faces, on railway
   and tramway alike. A free (off-grid) road lays the same street track as
-  a grid street, on its straights and round its bends, and a reservation
-  its median. —
+  a grid street, on its straights, round its bends and through a junction
+  between each pair of tram arms, and a reservation its median. —
   [asphalt-and-paint.md](../art/streets/asphalt-and-paint.md);
   `trackPaths` in `src/render/trackpaths.ts`, `streetTrackStrips` in
   `src/render/roadsmesh.ts`

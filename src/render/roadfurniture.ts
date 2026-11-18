@@ -50,6 +50,7 @@ import { isSeparateRoad } from '../shared/approachzone';
 import type { SeparateRoadSurroundings } from '../shared/approachzone';
 import type { JunctionControl, RoadProfile } from '../shared/types';
 import { materialHex } from './palette';
+import { castsShadow } from './scene';
 import { markingPlan } from './roadmarkings';
 import {
   buildWireGeometry,
@@ -2086,7 +2087,7 @@ function buildNoThroughSign(): THREE.BufferGeometry {
  * model. Authored facing ±z like the boards, so writeSign's yaw rule applies
  * unchanged.
  */
-function buildTrafficSignal(): THREE.BufferGeometry {
+function buildSignalFrame(): THREE.BufferGeometry {
   const mast = new THREE.CylinderGeometry(
     SIGNAL_MAST_RADIUS,
     SIGNAL_MAST_RADIUS,
@@ -2099,14 +2100,20 @@ function buildTrafficSignal(): THREE.BufferGeometry {
   const arm = new THREE.BoxGeometry(SIGNAL_ARM_LENGTH, SIGNAL_ARM_THICKNESS, SIGNAL_ARM_THICKNESS);
   arm.translate(SIGNAL_ARM_LENGTH / 2, SIGNAL_MAST_HEIGHT - SIGNAL_ARM_THICKNESS, 0);
 
+  return mergeColoredGeometries([
+    { geometry: mast, color: SIGN_POLE_COLOR },
+    { geometry: arm, color: SIGN_POLE_COLOR },
+  ]);
+}
+
+/** The signal's head: the housing and its three dark lenses, hung at the arm's end. */
+function buildTrafficSignal(): THREE.BufferGeometry {
   const headX = SIGNAL_ARM_LENGTH;
   const headY = SIGNAL_MAST_HEIGHT - SIGNAL_ARM_THICKNESS - SIGNAL_HEAD_HEIGHT / 2;
   const housing = new THREE.BoxGeometry(SIGNAL_HEAD_WIDTH, SIGNAL_HEAD_HEIGHT, SIGNAL_HEAD_DEPTH);
   housing.translate(headX, headY, 0);
 
   const parts: { geometry: THREE.BufferGeometry; color: number }[] = [
-    { geometry: mast, color: SIGN_POLE_COLOR },
-    { geometry: arm, color: SIGN_POLE_COLOR },
     { geometry: housing, color: SIGNAL_HOUSING_COLOR },
   ];
 
@@ -2522,6 +2529,9 @@ export class RoadFurnitureRenderer {
 
   private readonly signGeometries = buildSignGeometries();
   private readonly signMaterial = new THREE.MeshLambertMaterial({ vertexColors: true });
+  /** The signal's mast and arm, apart from its head so each is judged for a shadow on its own size. */
+  private readonly signalFrameGeometry = buildSignalFrame();
+  private readonly signalFrameLayer: KeptInstances;
 
   private readonly manholeLayer: KeptInstances;
   private readonly boxLayer: KeptInstances;
@@ -2608,6 +2618,15 @@ export class RoadFurnitureRenderer {
       { furnitureKind: 'meter' },
       (mesh) => {
         mesh.castShadow = true;
+      },
+    );
+    this.signalFrameLayer = new KeptInstances(
+      scene,
+      this.signalFrameGeometry,
+      this.signMaterial,
+      { furnitureKind: 'signalFrame' },
+      (mesh) => {
+        mesh.castShadow = castsShadow(this.signalFrameGeometry);
       },
     );
     this.lampLayer = new KeptInstances(
@@ -2722,6 +2741,12 @@ export class RoadFurnitureRenderer {
     }
 
     this.signalHeads = this.signs.filter((s) => s.type === 'signal');
+    const frameMesh = this.signalFrameLayer.fit(this.signalHeads.length);
+    if (frameMesh) {
+      for (let i = 0; i < this.signalHeads.length; i++)
+        this.writeSign(frameMesh, i, this.signalHeads[i]!);
+      frameMesh.instanceMatrix.needsUpdate = true;
+    }
     this.lampMesh = this.lampLayer.fit(this.signalHeads.length);
     this.writeSignalLamps();
   }
@@ -2949,6 +2974,7 @@ export class RoadFurnitureRenderer {
       this.pedestalLayer,
       this.meterLayer,
       ...this.signLayers.values(),
+      this.signalFrameLayer,
       this.lampLayer,
       this.tramPoleLayer,
       this.tramArmLayer,
@@ -2968,6 +2994,7 @@ export class RoadFurnitureRenderer {
     this.pedestalGeometry.dispose();
     this.meterGeometry.dispose();
     for (const geometry of Object.values(this.signGeometries)) geometry.dispose();
+    this.signalFrameGeometry.dispose();
     this.manholeMaterial.dispose();
     this.boxMaterial.dispose();
     this.meterMaterial.dispose();

@@ -23,6 +23,7 @@ import {
   CAP_Y_OFFSET,
   isPlainCenterlineTier,
   CURB_Y_OFFSET,
+  KERB_FACE_COLOR,
   MARK_Y_OFFSET,
   ROAD_Y_OFFSET,
   SIDEWALK_COLOR,
@@ -206,8 +207,15 @@ function countWhere(colors: readonly number[], pred: (t: readonly number[]) => b
   return toTriples(colors).filter(pred).length;
 }
 
-function vertexCount(positions: readonly number[]): number {
-  return positions.length / 3;
+/** The kerb face under a footway edge: a surface the structural counts below leave to its own tests. */
+function isKerbFace(t: readonly number[]): boolean {
+  return t.every((v, k) => Math.abs(v - KERB_FACE_COLOR[k]!) < 1e-6);
+}
+
+/** Vertices of the road's surfaces and paint, the kerb faces left out. */
+function vertexCount(positions: readonly number[], colors?: readonly number[]): number {
+  const faces = colors ? countWhere(colors, isKerbFace) : 0;
+  return positions.length / 3 - faces;
 }
 
 describe('roadTileVertices — transit lane variants (Bus Lane / Bike Lane)', () => {
@@ -1805,7 +1813,7 @@ describe('roadTileVertices — vertex count sanity per tile kind', () => {
     const bothEnds = 2 * (END_CAP_SEGMENTS * 3 + END_CAP_SEGMENTS * 6);
     const { positions, colors } = roadTileVertices(0, 0, RoadTier.TwoLane, 0, flatHeightAt);
     const paint = countWhere(colors, isPaint);
-    expect(vertexCount(positions) - paint).toBe(3 * 6 + bothEnds);
+    expect(vertexCount(positions, colors) - paint).toBe(3 * 6 + bothEnds);
   });
 
   it('a lone tile of a divided road still carries its median — it is a run one tile long, not a bare patch', () => {
@@ -1825,7 +1833,7 @@ describe('roadTileVertices — vertex count sanity per tile kind', () => {
     const rounded = JUNCTION_CORNER_SEGMENTS * 12 + 12;
     const { positions, colors } = controlledJunction(5, 5, RoadTier.TwoLane, N | E | S);
     const markingVerts = countWhere(colors, isPaint);
-    expect(vertexCount(positions)).toBe(30 + 2 * rounded + markingVerts);
+    expect(vertexCount(positions, colors)).toBe(30 + 2 * rounded + markingVerts);
     expect(markingVerts).toBeGreaterThan(0); // v2: junctions now carry arm markings
   });
 
@@ -1835,7 +1843,7 @@ describe('roadTileVertices — vertex count sanity per tile kind', () => {
     const rounded = JUNCTION_CORNER_SEGMENTS * 12 + 12;
     const { positions, colors } = controlledJunction(5, 5, RoadTier.TwoLane, 15);
     const markingVerts = countWhere(colors, isMarkingWhite);
-    expect(vertexCount(positions)).toBe(30 + 4 * rounded + markingVerts);
+    expect(vertexCount(positions, colors)).toBe(30 + 4 * rounded + markingVerts);
     expect(markingVerts).toBeGreaterThan(0); // v2: junctions now carry arm markings on every side
   });
 });
@@ -1857,7 +1865,7 @@ describe('roadTileVertices — terrain-conforming tessellation on slopes', () =>
     // A straight run: the plain rectangular case, with none of a lone tile's
     // or a junction's extra geometry to hide a subdivision in.
     const flat = roadTileVertices(0, 0, RoadTier.TwoLane, N | S, flatHeightAt);
-    expect(vertexCount(flat.positions)).toBe(FLAT_STRAIGHT_RUN_VERTS);
+    expect(vertexCount(flat.positions, flat.colors)).toBe(FLAT_STRAIGHT_RUN_VERTS);
   });
 
   it('emits more vertices on a slope (quads split into sub-cells)', () => {
@@ -3738,7 +3746,7 @@ describe('a run that changes width carries its footway across the seam', () => {
       let reach = 0;
       const triples = toTriples(v.colors);
       for (let i = 0; i < triples.length; i++) {
-        if (isSidewalk(triples[i]!) || isPaint(triples[i]!)) continue;
+        if (isSidewalk(triples[i]!) || isPaint(triples[i]!) || isKerbFace(triples[i]!)) continue;
         if (Math.abs(v.positions[i * 3 + 2]! - z) > 0.05) continue;
         reach = Math.max(reach, Math.abs(v.positions[i * 3]! - CENTRE_X));
       }
@@ -4738,6 +4746,7 @@ describe('roadTileVertices — the kerb return is a design radius, not leftover 
     const out: [number, number][] = [];
     for (let i = 0; i < col.length; i++) {
       if (isPaint(col[i] as number[]) || isSidewalk(col[i] as number[])) continue;
+      if (isKerbFace(col[i] as number[])) continue;
       const p = pos[i] as number[];
       const dx = Math.abs((p[0] as number) - centre);
       const dz = Math.abs((p[2] as number) - centre);
@@ -6993,5 +7002,64 @@ describe('roadTileVertices — a broken centre line meets a turn tile’s solid 
       flow,
     );
     expect(withTurn.positions).toEqual(without.positions);
+  });
+});
+
+describe('roadTileVertices — the kerb face under every footway edge', () => {
+  /** The triangles of a mesh whose three vertices are vertical-walled: no horizontal extent across the face. */
+  function faces(v: {
+    positions: number[];
+  }): Array<{ x: number; z: number; nx: number; nz: number }> {
+    const out: Array<{ x: number; z: number; nx: number; nz: number }> = [];
+    const p = v.positions;
+    for (let i = 0; i < p.length; i += 9) {
+      const ax = p[i + 3]! - p[i]!;
+      const ay = p[i + 4]! - p[i + 1]!;
+      const az = p[i + 5]! - p[i + 2]!;
+      const bx = p[i + 6]! - p[i]!;
+      const by = p[i + 7]! - p[i + 1]!;
+      const bz = p[i + 8]! - p[i + 2]!;
+      const nx = ay * bz - az * by;
+      const ny = az * bx - ax * bz;
+      const nz = ax * by - ay * bx;
+      const len = Math.hypot(nx, ny, nz);
+      if (len < 1e-9 || Math.abs(ny / len) > 0.1) continue;
+      out.push({
+        x: (p[i]! + p[i + 3]! + p[i + 6]!) / 3,
+        z: (p[i + 2]! + p[i + 5]! + p[i + 8]!) / 3,
+        nx: nx / len,
+        nz: nz / len,
+      });
+    }
+    return out;
+  }
+
+  it('closes the step from the carriageway up to a straight footway, facing the road', () => {
+    const cx = 3 * TILE_METERS + TILE_METERS / 2;
+    const half = TILE_METERS * TWO_LANE_HALF_WIDTH_FRACTION;
+    const v = roadTileVertices(3, 5, RoadTier.TwoLane, N | S, flatHeightAt);
+    const walls = faces(v);
+    for (const side of [-1, 1]) {
+      const here = walls.filter((w) => Math.abs(w.x - (cx + side * half)) < 1e-6);
+      expect(here.length).toBeGreaterThan(0);
+      // It spans the step, and its front faces the carriageway, not the footway.
+      for (const w of here) expect(Math.sign(w.nx)).toBe(-side);
+      const ys: number[] = [];
+      for (let i = 0; i < v.positions.length; i += 3) {
+        if (Math.abs(v.positions[i]! - (cx + side * half)) < 1e-6) ys.push(v.positions[i + 1]!);
+      }
+      expect(Math.min(...ys)).toBeCloseTo(ROAD_Y_OFFSET, 6);
+      expect(Math.max(...ys)).toBeCloseTo(CURB_Y_OFFSET, 6);
+    }
+  });
+
+  it('lays no face on a road with no footway', () => {
+    expect(faces(roadTileVertices(3, 5, RoadTier.Gravel, N | S, flatHeightAt))).toEqual([]);
+  });
+
+  it('closes a crossroads’ kerb returns too', () => {
+    expect(
+      faces(roadTileVertices(3, 5, RoadTier.TwoLane, N | E | S | W, flatHeightAt)).length,
+    ).toBeGreaterThan(8);
   });
 });

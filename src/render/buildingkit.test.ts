@@ -1058,6 +1058,16 @@ describe('a filling station', () => {
   });
 });
 
+describe('the supermarket at night', () => {
+  it('stands a lit glazed tower face and a lit sign band, so its ground floor is not left to the window hash', () => {
+    const plan = southern(byId('com-market-1'));
+    for (const part of ['towerGlazing', 'signageBand'] as const) {
+      expect(LIT_PARTS.has(part), part).toBe(true);
+      expect(only(plan, part).length, part).toBeGreaterThan(0);
+    }
+  });
+});
+
 describe('the shop at night', () => {
   it('lights its sign bands and its glass front on the kit’s emissive material', () => {
     for (const part of ['signageBand', 'storefrontBand', 'glassFront'] as const) {
