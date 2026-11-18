@@ -191,6 +191,7 @@ import {
 } from '../shared/kerbstalls';
 import {
   arrivesOn,
+  cornerReturnRadius,
   junctionArmLayout,
   junctionArmPaint,
   laneBareSpan,
@@ -5880,18 +5881,61 @@ function roadTileSurfaces(
   const approaches = isJunction
     ? (neighborHalves.approaches ?? presetHalves(neighbors).approaches!)
     : null;
+  /** The radius a corner between two arms can actually turn through, in the quadrant (signX, signZ). */
+  const cornerRadius = (halfX: number, halfZ: number, signX: 1 | -1, signZ: 1 | -1): number =>
+    cornerReturnRadius(cornerRadiusOf(own), edgeX(signX) - halfX, edgeZ(signZ) - halfZ);
   // The crossing over an arm is the footway of the road crossing it carried
-  // across, so it starts on that road's kerb line: half its carriageway, the
-  // widest where two roads cross it, and this tile's own where none does.
+  // across, so it starts where the arm's kerb is straight again: past the
+  // return of the road crossing it (half its carriageway out from the centre,
+  // the widest where two roads cross it, and this tile's own where none does).
   const crossingOf = (side: ArmSide): JunctionArmLayout => {
-    const across: ArmSide[] = side === 'n' || side === 's' ? ['e', 'w'] : ['n', 's'];
-    const halves = across.filter((a) => legOf[a] && a !== partner).map((a) => armHalves[a]);
+    const vertical = side === 'n' || side === 's';
+    // The two halves of an undivided corridor lay one crossing, and neither
+    // can see the corner on the other's far side, so it keeps to the kerb line.
+    const seamed = vertical ? seamAt.x !== 0 : seamAt.z !== 0;
+    const across: ArmSide[] = vertical ? ['e', 'w'] : ['n', 's'];
+    // Each road crossing the arm, with the side of the arm it lies on.
+    const roads: Array<[half: number, dir: 1 | -1, beyond: boolean]> = across
+      .filter((a) => legOf[a] && a !== partner)
+      .map((a) => [armHalves[a], a === 'e' || a === 's' ? 1 : -1, false]);
     // Across a median opening the street on the other half's far side crosses
-    // the same arm, so both halves take the wider of the two streets.
+    // the same arm, so both halves take the wider of the two streets. Its
+    // corner turns on the other half, mirrored from this one's own.
     if (partner && across.includes(partner) && neighborHalves.partnerAcross) {
-      halves.push(neighborHalves.partnerAcross);
+      roads.push([neighborHalves.partnerAcross, partner === 'e' || partner === 's' ? 1 : -1, true]);
     }
-    return junctionArmLayout(halves.length > 0 ? Math.max(...halves) : coreHalf, footwayAcross);
+    const crossHalf = roads.length > 0 ? Math.max(...roads.map(([h]) => h)) : coreHalf;
+    // The crossing starts where the arm's kerb stops turning: past the
+    // furthest tangent point of the returns the roads across it round.
+    const armSign: 1 | -1 = side === 'n' || side === 'w' ? -1 : 1;
+    const kerb = armHalves[side];
+    const tangent =
+      rampNode || seamed
+        ? crossHalf
+        : Math.max(
+            crossHalf,
+            ...roads.map(([h, dir, beyond]) => {
+              const signX = vertical ? dir : armSign;
+              const signZ = vertical ? armSign : dir;
+              // No kerb turns at the edge halves share or round a median.
+              if (
+                !beyond &&
+                (signX === seamAt.x ||
+                  signZ === seamAt.z ||
+                  signX === medianAt.x ||
+                  signZ === medianAt.z)
+              ) {
+                return h;
+              }
+              return (
+                h +
+                (vertical
+                  ? cornerRadius(kerb, h, dir, armSign)
+                  : cornerRadius(h, kerb, armSign, dir))
+              );
+            }),
+          );
+    return junctionArmLayout(crossHalf, footwayAcross, tangent - crossHalf);
   };
   // The gap between the halves is paved as wide as the crossings over the
   // arms either side are deep, so the median's nose ends behind them.
@@ -5907,10 +5951,6 @@ function roadTileSurfaces(
   const halfS = partnerHalf('s');
   const halfE = partnerHalf('e');
   const halfW = partnerHalf('w');
-  // The radius a corner between two arms can actually turn through, in the
-  // quadrant (signX, signZ).
-  const cornerRadius = (halfX: number, halfZ: number, signX: 1 | -1, signZ: 1 | -1): number =>
-    Math.max(0, Math.min(cornerRadiusOf(own), edgeX(signX) - halfX, edgeZ(signZ) - halfZ));
   /** The plan the arm on each side paints: its own where it has one. */
   const armPlan = (has: boolean, neighbour: MarkingPlan | null | undefined): MarkingPlan | null =>
     has ? (neighbour ?? plan) : null;
@@ -7505,7 +7545,7 @@ function roadTileSurfaces(
             // The lane can be carried on from the box's edge, the crossing
             // road's kerb line, which lies behind any crossing and stop line.
             bikeEnds.set(`${side}${across}`, {
-              start: layout.crosswalkNear,
+              start: layout.boxEdge,
               band,
               plan: armPlanHere,
               mouth: turns,

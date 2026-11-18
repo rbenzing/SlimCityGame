@@ -22,6 +22,7 @@ import type { ApproachAhead, ApproachSurroundings } from './approachzone';
 import { corridorPartners } from './corridor';
 import {
   arrivesOn,
+  cornerReturnRadius,
   junctionArmLayout,
   junctionArmPaint,
   laneBareSpan,
@@ -46,6 +47,7 @@ import { axisOfFlow } from './overpass';
 import { kerbSideFacing, type KerbSide, type Side } from './roadedge';
 import {
   carriagewayHalfWidthOf,
+  cornerRadiusOf,
   corridorHalfProfile,
   hasFootway,
   isParkingLane,
@@ -437,6 +439,18 @@ export function junctionEndsAt(x: number, z: number, s: KerbSurroundings): Junct
     const crossHalf =
       crossHalves.length > 0 ? Math.max(...crossHalves) : carriagewayHalfWidthOf(section);
     const footwayWidth = kerbWidthOf(section);
+    // The crossing starts where the kerb return ends on this arm: the
+    // furthest tangent point of the returns the roads across it turn.
+    const armHalf = halfAt(x, z, s);
+    const corner = Math.max(
+      0,
+      ...crossHalves.map(
+        (h) =>
+          h +
+          cornerReturnRadius(cornerRadiusOf(section), TILE_HALF - armHalf, TILE_HALF - h) -
+          crossHalf,
+      ),
+    );
     // A stop line crosses only the lanes arriving, so it is only the kerb
     // beside an arriving lane that is kept clear for it.
     const arriving = approachingLanes(
@@ -453,10 +467,11 @@ export function junctionEndsAt(x: number, z: number, s: KerbSurroundings): Junct
       noParkingReach({
         crossHalf,
         footwayWidth,
+        corner,
         crossed: paint.crossed,
         stopLine: paint.stops && kerbLaneArrives(k),
       });
-    const layout = junctionArmLayout(crossHalf, footwayWidth);
+    const layout = junctionArmLayout(crossHalf, footwayWidth, corner);
     const approaching = approachingSpan(
       drawn,
       own,

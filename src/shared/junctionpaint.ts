@@ -37,14 +37,25 @@ const STOP_LINE_GAP_M = 1.2;
 export interface JunctionArmLayout {
   /**
    * Distances along the approach from the junction's CENTRE, positive
-   * outward. The crossing lies outside the box, from the crossing road's
-   * kerb line out; the stop line lies further out still, because that is
-   * where a driver has to stop. `crosswalkNear` is the kerb line itself.
+   * outward. The crossing lies outside the box, from the tangent point of
+   * the kerb return out, where the arm's own kerb is straight; the stop line
+   * lies further out still, because that is where a driver has to stop.
    */
   crosswalkNear: number;
   crosswalkFar: number;
   stopLineNear: number;
   stopLineFar: number;
+  /** The crossing road's kerb line: where the box ends and the kerb return begins. */
+  boxEdge: number;
+}
+
+/**
+ * The radius a kerb return turns through between two roads, metres: the
+ * class's return radius, cut back to the room each road leaves it in the tile
+ * (`room` is the tile's half-extent less that road's half carriageway).
+ */
+export function cornerReturnRadius(returnM: number, roomA: number, roomB: number): number {
+  return Math.max(0, Math.min(returnM, roomA, roomB));
 }
 
 /**
@@ -52,23 +63,26 @@ export interface JunctionArmLayout {
  * centre: the crosswalk first, then the gap, then the stop line a driver halts
  * behind. The measurements are the real ones and never shrink.
  *
- * A crossing is the FOOTWAY OF THE CROSSING ROAD carried across this arm, so
- * it starts at that road's kerb line (`crossHalf`, half its carriageway) and
- * runs outward from there, as deep as that footway and never under the
- * minimum a marked crossing may be. It never lies inside the box.
+ * A crossing is the FOOTWAY OF THE CROSSING ROAD carried across this arm. The
+ * arm's kerb turns the corner on a return of radius `corner`, so the kerb is
+ * only straight from the return's tangent point, `crossHalf + corner` out, and
+ * the crossing starts there and runs outward, as deep as that footway and
+ * never under the minimum a marked crossing may be. It never lies inside the
+ * box or on the curve.
  */
 export function junctionArmLayout(
   crossHalf: number,
   footwayWidth = FOOTWAY_WIDTH_M,
+  corner = 0,
 ): JunctionArmLayout {
   const depth = Math.max(footwayWidth, CROSSWALK_MIN_DEPTH_M);
-  const crosswalkNear = crossHalf;
+  const crosswalkNear = crossHalf + corner;
   const crosswalkFar = crosswalkNear + depth;
   // The stop line stands IN ADVANCE of the crossing, back down the approach:
   // stopping past the crossing is stopping on the people using it.
   const stopLineNear = crosswalkFar + STOP_LINE_GAP_M;
   const stopLineFar = stopLineNear + STOP_LINE_THICKNESS_M;
-  return { crosswalkNear, crosswalkFar, stopLineNear, stopLineFar };
+  return { crosswalkNear, crosswalkFar, stopLineNear, stopLineFar, boxEdge: crossHalf };
 }
 
 /** Whether the lanes at `across` offsets from an arm's centre arrive at the junction, given the arm's approaching span. */
@@ -135,12 +149,14 @@ export function noParkingReach(arm: {
   crossHalf: number;
   /** The footway a crossing on this arm carries across the road. */
   footwayWidth: number;
+  /** The radius of the kerb return the crossing starts beyond. */
+  corner: number;
   /** Whether a crossing is painted across the arm. */
   crossed: boolean;
   /** Whether a stop line is painted across the lanes beside this kerb. */
   stopLine: boolean;
 }): number {
-  const layout = junctionArmLayout(arm.crossHalf, arm.footwayWidth);
+  const layout = junctionArmLayout(arm.crossHalf, arm.footwayWidth, arm.corner);
   // Distances back from the tile's edge, negative where the paint lies past it.
   const mouth = TILE_HALF - (arm.crossed ? layout.crosswalkNear : arm.crossHalf);
   let reach = NO_PARKING_FROM_CROSSWALK_M - mouth;

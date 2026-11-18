@@ -11,8 +11,13 @@ import * as THREE from 'three';
 import { RoadFlow, RoadTier } from '../shared/types';
 import type { JunctionControl } from '../shared/types';
 import { carriagewaySpans } from '../shared/travellanes';
-import { carriagewayHalfWidthOf, kerbWidthOf, presetProfileForTier } from '../shared/roadprofile';
-import { junctionArmLayout } from '../shared/junctionpaint';
+import {
+  carriagewayHalfWidthOf,
+  cornerRadiusOf,
+  kerbWidthOf,
+  presetProfileForTier,
+} from '../shared/roadprofile';
+import { cornerReturnRadius, junctionArmLayout } from '../shared/junctionpaint';
 import { TILE_METERS } from '../shared/constants';
 
 const flatHeightAt = (): number => 0;
@@ -319,7 +324,14 @@ describe('a reserved lane on the side of a signalised T with no arm', () => {
       )!;
       const z = 5.5 * TILE_METERS + (south.from + south.to) / 2;
       const profile = presetProfileForTier(tier);
-      const layout = junctionArmLayout(carriagewayHalfWidthOf(profile), kerbWidthOf(profile));
+      const half = carriagewayHalfWidthOf(profile);
+      // The crossing starts where the kerb return between two roads of this
+      // class ends on the arm.
+      const layout = junctionArmLayout(
+        half,
+        kerbWidthOf(profile),
+        cornerReturnRadius(cornerRadiusOf(profile), TILE_METERS / 2 - half, TILE_METERS / 2 - half),
+      );
       const centreX = 5.5 * TILE_METERS;
       const colourAt = (d: number): string | null =>
         renderer.surfaceGridAt(centreX + d, z, centreX + d, z, 1)[0]!;

@@ -57,7 +57,7 @@ import {
   SPLITTER_WIDTH_M,
 } from '../shared/roundabout';
 import type { NeighborHalves, NeighborTiers } from './roadsmesh';
-import { junctionArmLayout } from '../shared/junctionpaint';
+import { cornerReturnRadius, junctionArmLayout } from '../shared/junctionpaint';
 import { RoadFlow, RoadTileDelta, RoadTier, storedFlow } from '../shared/types';
 import type { JunctionControl, RoadProfile } from '../shared/types';
 import {
@@ -4121,6 +4121,22 @@ describe('roadTileVertices — a crossing is the crossing road’s footway carri
         }
       });
 
+      it('starts every crossing where the kerb return ends, so both ends land on straight kerb', () => {
+        for (const side of ['n', 'e', 's', 'w'] as const) {
+          const tangent =
+            crossHalf[side] +
+            cornerReturnRadius(
+              cornerRadiusOf(presetProfileForTier(tile)),
+              TILE_METERS / 2 - half(arm[side]),
+              TILE_METERS / 2 - crossHalf[side],
+            );
+          for (const b of barsOf(v, side)) {
+            const near = side === 'n' ? -b.z1 : side === 's' ? b.z0 : side === 'e' ? b.x0 : -b.x1;
+            expect(near, `${side} crossing`).toBeCloseTo(tangent, 6);
+          }
+        }
+      });
+
       it('lays every bar wholly on the arm’s carriageway', () => {
         for (const side of ['n', 'e', 's', 'w'] as const) {
           const reach = half(arm[side]) + 4;
@@ -4197,11 +4213,14 @@ describe('roadTileVertices — a crossing is the crossing road’s footway carri
     expect(stops.some((b) => b.z0 > 0 && b.x1 - b.x0 > b.z1 - b.z0)).toBe(false);
   });
 
-  it('moves a two-lane crossroads’ crossings only as far as the crossing road’s kerb line', () => {
+  it('starts a two-lane crossroads’ crossings at the tangent point of the kerb return, no nearer', () => {
     const v = junction(RoadTier.TwoLane, RoadTier.TwoLane, RoadTier.TwoLane);
     const bars = barsOf(v, 'n');
     const near = Math.min(...bars.map((b) => -b.z1));
-    expect(near).toBeCloseTo(half(RoadTier.TwoLane), 6);
+    expect(near).toBeCloseTo(
+      half(RoadTier.TwoLane) + cornerRadiusOf(presetProfileForTier(RoadTier.TwoLane)),
+      6,
+    );
   });
 
   it('paints a T on its three arms only, each crossing off the road it crosses', () => {
@@ -4369,11 +4388,22 @@ describe('roadTileVertices — a street crossing a divided road is one intersect
           b.z1 < 0 && b.z0 > -TILE_METERS && Math.abs(b.x1 - b.x0 - 0.45) < 0.02 && b.z1 - b.z0 > 1,
       );
 
-    it('puts the crossing over both halves on one line, the wider street’s kerb line', () => {
+    it('puts the crossing over both halves on one line, past the tangent of the furthest kerb return', () => {
+      const tangent = Math.max(
+        ...[narrow, wide].map(
+          (h) =>
+            h +
+            cornerReturnRadius(
+              cornerRadiusOf(lanes()),
+              TILE_METERS / 2 - halfOfCorridor,
+              TILE_METERS / 2 - h,
+            ),
+        ),
+      );
       for (const v of [northBars(w(), cxWest), northBars(e(), cxEast)]) {
         expect(v.length).toBeGreaterThan(4);
-        expect(Math.max(...v.map((b) => -b.z0))).toBeCloseTo(wide + depth, 6);
-        expect(Math.min(...v.map((b) => -b.z1))).toBeCloseTo(wide, 6);
+        expect(Math.max(...v.map((b) => -b.z0))).toBeCloseTo(tangent + depth, 6);
+        expect(Math.min(...v.map((b) => -b.z1))).toBeCloseTo(tangent, 6);
       }
     });
 
