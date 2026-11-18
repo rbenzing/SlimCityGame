@@ -26,7 +26,7 @@ import {
 } from '../shared/airportlayout';
 import { ISLAND_WIDTH_M, STALL_LENGTH_M, STALL_WIDTH_M } from '../shared/parkingcode';
 import { materialUnit, saturatedUnit } from './palette';
-import { facilityPlatePolys } from './airportfacilities';
+import { facilityPlatePolys, shoulderPieces } from './airportfacilities';
 import { PLOT_YARD_TOP } from './plotground';
 import { MARKING_COLOR, YELLOW_MARKING_COLOR } from './roadsmesh';
 import { mergeGeometryParts } from './trees';
@@ -371,7 +371,7 @@ export function airportPlateQuads(id: AirportId, rotation: 0 | 1 | 2 | 3): Plate
   };
 
   pave(layout.runway, RUNWAY_COLOR);
-  for (const r of layout.shoulders) pave(r, APRON_COLOR);
+  for (const r of shoulderPieces(layout).rects) pave(r, APRON_COLOR);
   for (const r of layout.blastPads) pave(r, APRON_COLOR);
   pave(layout.taxiway, RUNWAY_COLOR);
   for (const r of layout.connectors) pave(r, RUNWAY_COLOR);
@@ -523,6 +523,11 @@ export const ROOF_OVERHANG_M = 0.3;
 export const ROOF_THICKNESS_M = 0.5;
 /** A lit pane's depth, centred on the wall face. */
 export const PANE_DEPTH_M = 0.3;
+/** Entrance doors on a street face: a pair of leaves 3.6 m across every 30 m of a terminal, one 1.0 m door on the pilots' building, both 2.4 m high from the ground. */
+export const TERMINAL_DOOR_SPACING_M = 30;
+export const TERMINAL_DOOR_W_M = 3.6;
+export const PILOTS_DOOR_W_M = 1.0;
+export const ENTRANCE_DOOR_H_M = 2.4;
 
 /** The buildings of a layout with their heights: the terminal and hangars take the catalog entry's. */
 export function airportBuildings(layout: AirportLayout, entryHeight: number): AirportBox[] {
@@ -547,7 +552,7 @@ export interface PaneBox {
   d: number;
 }
 
-/** Glazing on a building's apron face and street face: a band a floor on a terminal, a door on a hangar, two windows on the pilots' building. */
+/** Glazing on a building's apron face and street face: a band a floor on a terminal, a door on a hangar, two windows on the pilots' building; and the entrance doors on a street face. */
 export function buildingPanes(box: AirportBox): PaneBox[] {
   const { rect, height } = box;
   const faces = [rect.z, rect.z + rect.d];
@@ -567,6 +572,17 @@ export function buildingPanes(box: AirportBox): PaneBox[] {
         });
       }
     }
+    const doors = Math.max(2, Math.floor(rect.w / TERMINAL_DOOR_SPACING_M));
+    for (let i = 0; i < doors; i++) {
+      out.push({
+        cx: rect.x + ((i + 0.5) * rect.w) / doors,
+        cz: rect.z + rect.d,
+        y: 0,
+        w: TERMINAL_DOOR_W_M,
+        h: ENTRANCE_DOOR_H_M,
+        d: PANE_DEPTH_M,
+      });
+    }
   } else if (box.kind === 'hangar') {
     out.push({ cx, cz: rect.z, y: 0, w: rect.w * 0.8, h: height * 0.7, d: PANE_DEPTH_M });
   } else if (box.kind === 'pilots') {
@@ -575,6 +591,14 @@ export function buildingPanes(box: AirportBox): PaneBox[] {
         out.push({ cx: cx + dx * rect.w, cz, y: 1.0, w: rect.w * 0.3, h: 1.4, d: PANE_DEPTH_M });
       }
     }
+    out.push({
+      cx,
+      cz: rect.z + rect.d,
+      y: 0,
+      w: PILOTS_DOOR_W_M,
+      h: ENTRANCE_DOOR_H_M,
+      d: PANE_DEPTH_M,
+    });
   }
   return out;
 }

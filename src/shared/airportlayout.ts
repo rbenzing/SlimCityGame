@@ -597,7 +597,11 @@ export function airportLayout(id: AirportId): AirportLayout {
     const half = HANGAR_COUNT / 2;
     for (let i = 0; i <= HANGAR_COUNT; i++) {
       if (i === half) {
-        pilotsBuilding = { x, z: buildingsZ, ...PILOTS_BUILDING_M };
+        pilotsBuilding = {
+          x,
+          z: buildingsZ + buildingsDepth - PILOTS_BUILDING_M.d,
+          ...PILOTS_BUILDING_M,
+        };
         x += PILOTS_BUILDING_M.w;
       } else {
         hangars.push({ x, z: buildingsZ, w: HANGAR_M.w, d: HANGAR_M.d });

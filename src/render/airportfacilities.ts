@@ -8,6 +8,7 @@
  */
 import * as THREE from 'three';
 import { AirportLayout, Garage, Rect, carParkRowZs } from '../shared/airportlayout';
+import { CIVIC_WALK_WIDTH_M } from '../shared/civicaccess';
 import { ISLAND_WIDTH_M, STALL_LENGTH_M, STALL_WIDTH_M, stallsInRow } from '../shared/parkingcode';
 import {
   AISLE_TURN_RADIUS_M,
@@ -154,6 +155,20 @@ export function filletPatch(j: Pt, u: Pt, v: Pt, r: number): Pt[] {
   return out;
 }
 
+/** The sides of an arm that turn into a wide pavement by a fillet: the arm's edge x and which way the wide pavement runs on from it. */
+function filletSides(arm: Rect, wide: Rect, radius: number): { x: number; ux: -1 | 1 }[] {
+  if (arm.d <= 2 * radius) return [];
+  return (
+    [
+      { x: arm.x, ux: -1 },
+      { x: arm.x + arm.w, ux: 1 },
+    ] as const
+  ).filter(({ x, ux }) => {
+    const far = x + ux * radius;
+    return far >= wide.x - 1e-6 && far <= wide.x + wide.w + 1e-6;
+  }) as { x: number; ux: -1 | 1 }[];
+}
+
 /** Fillets for both sides of an arm below or above a wide pavement, wherever the pavement runs on past it. */
 function junctionPatches(
   arm: Rect,
@@ -162,19 +177,64 @@ function junctionPatches(
   radius: number,
   color: RGB,
 ): PlatePoly[] {
-  if (arm.d <= 2 * radius) return [];
   const z = side === 'below' ? wide.z + wide.d : wide.z;
   const v: Pt = { x: 0, z: side === 'below' ? 1 : -1 };
-  const out: PlatePoly[] = [];
-  for (const [x, ux] of [
-    [arm.x, -1],
-    [arm.x + arm.w, 1],
-  ] as const) {
-    const far = x + ux * radius;
-    if (far < wide.x - 1e-6 || far > wide.x + wide.w + 1e-6) continue;
-    out.push(pave(filletPatch({ x, z }, { x: ux, z: 0 }, v, radius), color));
+  return filletSides(arm, wide, radius).map(({ x, ux }) =>
+    pave(filletPatch({ x, z }, { x: ux, z: 0 }, v, radius), color),
+  );
+}
+
+/**
+ * The runway shoulders with the connectors' footprints taken out: each shoulder
+ * is cut where a connector leaves it and, past the connector's fillet, resumes;
+ * the sliver of shoulder between a fillet's arc and the shoulder's outer edge
+ * is a polygon on the arc's own points, so no two shapes cover the same ground.
+ */
+export function shoulderPieces(layout: AirportLayout): { rects: Rect[]; polys: PlatePoly[] } {
+  const rects: Rect[] = [];
+  const polys: PlatePoly[] = [];
+  const radius = TAXIWAY_FILLET_RADIUS_M;
+  for (const shoulder of layout.shoulders) {
+    const arms = layout.connectors.filter((c) => Math.abs(c.z - shoulder.z) < 1e-6);
+    const cuts: { from: number; to: number }[] = [];
+    for (const arm of arms) {
+      const sides = filletSides(arm, layout.runway, radius);
+      const west = sides.find((s) => s.ux === -1);
+      const east = sides.find((s) => s.ux === 1);
+      cuts.push({
+        from: west ? arm.x - radius : arm.x,
+        to: east ? arm.x + arm.w + radius : arm.x + arm.w,
+      });
+      for (const { x, ux } of sides) {
+        const arc = filletPatch(
+          { x, z: shoulder.z },
+          { x: ux, z: 0 },
+          { x: 0, z: 1 },
+          radius,
+        ).slice(1);
+        const edge = shoulder.z + shoulder.d;
+        const k = arc.findIndex((p) => p.z >= edge);
+        if (k <= 0) continue;
+        const a = arc[k - 1]!;
+        const b = arc[k]!;
+        const f = (edge - a.z) / (b.z - a.z);
+        polys.push(
+          pave(
+            [...arc.slice(0, k), { x: a.x + f * (b.x - a.x), z: edge }, { x: arc[0]!.x, z: edge }],
+            APRON_COLOR,
+          ),
+        );
+      }
+    }
+    cuts.sort((p, q) => p.from - q.from);
+    let x = shoulder.x;
+    for (const cut of cuts) {
+      if (cut.from > x) rects.push({ ...shoulder, x, w: cut.from - x });
+      x = Math.max(x, cut.to);
+    }
+    if (x < shoulder.x + shoulder.w) rects.push({ ...shoulder, x, w: shoulder.x + shoulder.w - x });
   }
-  return out;
+  return { rects, polys };
 }
 
 /** The loop's centreline with each turn filleted so its inside radius is the loop's. */
@@ -284,6 +344,23 @@ export function facilityPlatePolys(layout: AirportLayout): PlatePoly[] {
 
   // Taxiway connectors and links turn into the pavements they leave.
   const runway = layout.runway;
+  out.push(...shoulderPieces(layout).polys);
+  // The airfield's walk from its car park, over the kerb road, to the pilots' door.
+  const pilots = layout.pilotsBuilding;
+  if (pilots && layout.carPark) {
+    const faceZ = pilots.z + pilots.d;
+    out.push(
+      paint(
+        rectPoints({
+          x: pilots.x + pilots.w / 2 - CIVIC_WALK_WIDTH_M / 2,
+          z: faceZ,
+          w: CIVIC_WALK_WIDTH_M,
+          d: layout.carPark.z - faceZ,
+        }),
+        WALK_COLOR,
+      ),
+    );
+  }
   for (const c of layout.connectors) {
     out.push(...junctionPatches(c, runway, 'below', fillet, ROAD_COLOR));
     out.push(...junctionPatches(c, layout.taxiway, 'above', fillet, ROAD_COLOR));
