@@ -6441,7 +6441,7 @@ const GENERATOR_LOT_PARTS: Readonly<Record<string, readonly UtilityKitPartKind[]
 // ---------------------------------------------------------------------------
 
 const PARK_LAWN_HEIGHT = PLOT_YARD_TOP;
-const PARK_PATH_WIDTH_FRACTION = 0.16; // of the tile's shorter side
+export const PARK_PATH_WIDTH_FRACTION = 0.16; // of the tile's shorter side
 const PARK_PATH_Y_OFFSET = PLOT_SURFACE_M;
 const PARK_PATH_HEIGHT = PLOT_SURFACE_M;
 
@@ -6476,17 +6476,26 @@ export function computeParkTreeCount(buildingId: number): number {
   return PARK_TREE_MIN + Math.floor(hash1(seed) * (PARK_TREE_MAX - PARK_TREE_MIN + 1));
 }
 
-/** computeParkTreeCount(id) scattered placements, deterministic per (buildingId, footprint). Pure. */
+/** A hash in [-1, 1] mapped to a signed offset whose size lies between `near` and `far` from the axis. */
+function offAxis(unit: number, near: number, far: number): number {
+  const side = unit < 0 ? -1 : 1;
+  return side * (near + Math.abs(unit) * (far - near));
+}
+
+/** computeParkTreeCount(id) scattered placements, deterministic per (buildingId, footprint), each canopy clear of both arms of the path cross. Pure. */
 export function computeParkTreePlacements(buildingId: number, footprint: FootprintSize): Vec2[] {
   const count = computeParkTreeCount(buildingId);
   const { halfW, halfD } = footprintHalfExtents(footprint);
+  const pathHalf = (Math.min(halfW, halfD) * 2 * PARK_PATH_WIDTH_FRACTION) / 2;
+  const clear = pathHalf + PARK_TREE_CANOPY_RADIUS;
   const placements: Vec2[] = [];
   for (let i = 0; i < count; i++) {
     const seedX = buildingId * PARK_TREE_HASH_MULT + PARK_TREE_HASH_SLOT_BASE + i * 2;
     const seedZ = seedX + 1;
-    const fx = (hash1(seedX) * 2 - 1) * halfW * PARK_TREE_MARGIN_FRACTION;
-    const fz = (hash1(seedZ) * 2 - 1) * halfD * PARK_TREE_MARGIN_FRACTION;
-    placements.push({ x: fx, z: fz });
+    placements.push({
+      x: offAxis(hash1(seedX) * 2 - 1, clear, halfW * PARK_TREE_MARGIN_FRACTION),
+      z: offAxis(hash1(seedZ) * 2 - 1, clear, halfD * PARK_TREE_MARGIN_FRACTION),
+    });
   }
   return placements;
 }
@@ -6644,9 +6653,14 @@ export const PAVILION_HEIGHT_M = 3.2;
 const PAVILION_ROOF_M = 0.3;
 const PAVILION_FOOTING_M = 0.6;
 
+/** The strip of lawn between the district park's pavilion and the ring path. */
+export const DISTRICT_PAVILION_PATH_GAP_M = 1.5;
+/** A walk behind the sports stand, between its back wall and the street side of the plot. */
+export const SPORTS_STAND_WALK_M = 3;
+
 export const PITCH = {
   length: 105,
-  width: 68,
+  width: 64,
   runOff: 3,
   line: 0.12,
   centreRadius: 9.15,
@@ -7045,7 +7059,7 @@ export function computeDistrictParkLayout(
   }
   const pavilion: PlacedBlock = {
     x: ring.x1 / 2,
-    z: ring.z1 - h - DISTRICT_PAVILION.d / 2,
+    z: ring.z1 - h - DISTRICT_PAVILION_PATH_GAP_M - DISTRICT_PAVILION.d / 2,
     w: DISTRICT_PAVILION.w,
     d: DISTRICT_PAVILION.d,
   };
@@ -7168,12 +7182,12 @@ export interface SportsGroundLayout {
   pavilion: PlacedBlock;
 }
 
-/** A FIFA pitch with its run-off, behind the street-side strip (local +Z) the pavilion takes a metre back from the lot line; its lines and goals, a bench at each end and trees along the two end strips, all beyond the run-off. Pure. */
+/** A 105 x 64 m pitch with its run-off, behind the street-side strip (local +Z) the stand takes with a 3 m walk behind it; its lines and goals, a bench at each end and trees along the two end strips, all beyond the run-off. Pure. */
 export function computeSportsGroundLayout(footprint: FootprintSize): SportsGroundLayout {
   const plate = footprintRect(footprint);
   const pavilion: PlacedBlock = {
     x: 0,
-    z: plate.z1 - PARK_STREET_SETBACK_M - SPORTS_PAVILION.d / 2,
+    z: plate.z1 - SPORTS_STAND_WALK_M - SPORTS_PAVILION.d / 2,
     w: SPORTS_PAVILION.w,
     d: SPORTS_PAVILION.d,
   };
@@ -11473,6 +11487,7 @@ export class UtilityKitRenderer {
   private buildSmallParkKit(entry: BuildingCatalogEntry): KitDefinition {
     return {
       entry,
+      pavesLot: true,
       pools: {
         parkGround: new InstancedSlotPool(
           this.scene,
