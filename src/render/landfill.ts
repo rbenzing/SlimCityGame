@@ -454,6 +454,15 @@ export class LandfillRenderer {
     return this.fill * LANDFILL_MAX_PILE_METERS;
   }
 
+  /** Every landfill tile, the office tile included, for keeping scatter off the fill. */
+  memberTilePoints(): TilePoint[] {
+    const out: TilePoint[] = [];
+    for (let z = 0; z < MAP_SIZE; z++) {
+      for (let x = 0; x < MAP_SIZE; x++) if (this.memberAt(x, z) !== 0) out.push({ x, z });
+    }
+    return out;
+  }
+
   /** The entrance/office tile of each street-connected landfill area, in area order. */
   officeTiles(): TilePoint[] {
     return this.offices.map((t) => ({ ...t }));

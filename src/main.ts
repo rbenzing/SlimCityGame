@@ -2370,6 +2370,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
     trees.clearAt(clientGrid.occupiedTiles());
     trees.clearBeside(clientGrid.roadTilePoints());
     trees.clearEndCaps(endCapsOf(clientGrid.roadTiles()));
+    trees.clearAt(landfillRenderer.memberTilePoints());
   };
 
   // --- worker messages -----------------------------------------------------------
@@ -2916,6 +2917,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
     // Garbage: landfill-area tint + trash piles, and feed the 'trash' coverage lens.
     if (snap.garbage) {
       landfillRenderer.apply(snap.garbage);
+      if (snap.garbage.landfill?.length) keepTreesOffOccupied();
       if (snap.garbage.trash) overlays.setCoverage('trash', snap.garbage.trash);
     }
     // Service load: publish the per-kind gauges the Services panel reads. Absent
