@@ -4,8 +4,8 @@ import type { CmPoint, MPoint } from '../shared/roadgeom';
 import {
   bendRadiusOf,
   carriagewayHalfWidthOf,
+  cornerRadiusOf,
   hasKerbs,
-  kerbReturnRadiusOf,
   kerbWidthOf,
   presetProfileForTier,
 } from '../shared/roadprofile';
@@ -295,6 +295,29 @@ describe('freeRoadSoup', () => {
       if (t.y < ROAD_Y_OFFSET - 1e-9) wrong.push(`below road height at ${at}`);
     }
     expect(wrong).toEqual([]);
+  });
+
+  it('turns the inside corners where alleys meet on the alley radius, not square', () => {
+    const g = world();
+    const hub = at(400, 400);
+    lay(g, { tier: RoadTier.Alley, a: hub, b: at(300, 400) });
+    lay(g, { tier: RoadTier.Alley, a: hub, b: at(500, 400) });
+    lay(g, { tier: RoadTier.Alley, a: hub, b: at(400, 500) });
+    const half = carriagewayHalfWidthOf(presetProfileForTier(RoadTier.Alley));
+    const r = cornerRadiusOf(presetProfileForTier(RoadTier.Alley));
+    expect(r).toBeCloseTo(6.1, 6);
+    const covered = coverage(g, { x: 400, z: 400 });
+    for (const sx of [-1, 1]) {
+      // The fillet between the south arm and the arm on side sx.
+      const c = { x: 400 + sx * (half + r), z: 400 + half + r };
+      const diag = { x: -sx * Math.SQRT1_2, z: -Math.SQRT1_2 };
+      const at = (d: number): MPoint => ({ x: c.x + diag.x * d, z: c.z + diag.z * d });
+      // Past the arc the corner is ground; between the arc and the square corner it is paved.
+      expect(covered(at(r - 0.4)), `inside the fillet, side ${sx}`).toBe(false);
+      expect(covered(at(r + 0.4)), `on the pavement, side ${sx}`).toBe(true);
+    }
+    // The side opposite the south arm has no corner to turn.
+    expect(covered({ x: 400, z: 400 - half - 0.5 })).toBe(false);
   });
 
   it('builds a junction where three roads meet: no footway crosses another road', () => {
@@ -865,6 +888,7 @@ describe('a bend where two runs of one road meet', () => {
     ['avenue', RoadTier.Avenue],
     ['four-lane', RoadTier.FourLane],
     ['gravel', RoadTier.Gravel],
+    ['alley', RoadTier.Alley],
   ];
   const DEFLECTIONS = [15, 30, 60, 90, 120];
 
@@ -890,7 +914,7 @@ describe('a bend where two runs of one road meet', () => {
         const { g, bend, vertices, polar, inArc, reach } = scene(tier, deg, grid ? 90 : 120, grid);
         // The inner kerb holds the class's kerb return, unless the grid tile's half holds less.
         if (bend.setback[0] < TILE_METERS / 2 - 1e-6 || !grid) {
-          expect(bend.radius - half).toBeCloseTo(kerbReturnRadiusOf(profile), 2);
+          expect(bend.radius - half).toBeCloseTo(cornerRadiusOf(profile), 2);
         }
         if (grid) {
           // The grid road's cross-section runs on to the tile's edge: the bend's own edges

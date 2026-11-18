@@ -65,6 +65,7 @@ import {
   carriagewayWidth,
   composeProfile,
   corridorHalfProfile,
+  cornerRadiusOf,
   kerbReturnRadiusOf,
   kerbWidthOf,
   NO_EDITS,
@@ -4786,7 +4787,7 @@ describe('roadTileVertices — the kerb return is a design radius, not leftover 
     for (const tier of [RoadTier.Alley, RoadTier.TwoLane, RoadTier.Avenue, RoadTier.FourLane]) {
       const coreHalf = carriagewayHalfWidthMeters(tier);
       const armDepth = TILE_METERS / 2 - coreHalf;
-      const r = kerbReturnFor(presetProfileForTier(tier), armDepth);
+      const r = Math.min(cornerRadiusOf(presetProfileForTier(tier)), armDepth);
       const cx = coreHalf + r;
       const points = cornerAsphalt(tier, coreHalf);
       expect(points.length, `${named(tier)} lays no corner asphalt`).toBeGreaterThan(0);
@@ -4800,6 +4801,91 @@ describe('roadTileVertices — the kerb return is a design radius, not leftover 
       }
       expect(onTheArc, `${named(tier)} never reaches its own arc`).toBeGreaterThan(0);
     }
+  });
+
+  describe('an alley that meets alleys, as the map draws it', () => {
+    const alleys = { n: RoadTier.Alley, e: RoadTier.Alley, s: RoadTier.Alley, w: RoadTier.Alley };
+    const coreHalf = carriagewayHalfWidthMeters(RoadTier.Alley);
+    const centre = TILE_METERS / 2;
+
+    /** Asphalt offsets from the tile centre, in the armpit past both carriageways of a quadrant. */
+    const armpit = (mask: number): [number, number][] => {
+      const { positions, colors } = roadTileVertices(
+        0,
+        0,
+        RoadTier.Alley,
+        mask,
+        flatHeightAt,
+        alleys,
+      );
+      const pos = toTriples(positions);
+      const col = toTriples(colors);
+      const out: [number, number][] = [];
+      for (let i = 0; i < col.length; i++) {
+        const p = pos[i] as number[];
+        const dx = (p[0] as number) - centre;
+        const dz = (p[2] as number) - centre;
+        if (Math.abs(dx) < coreHalf + 1e-6 || Math.abs(dz) < coreHalf + 1e-6) continue;
+        out.push([dx, dz]);
+      }
+      return out;
+    };
+
+    it('turns each inside corner of a crossing on the alley radius', () => {
+      const r = cornerRadiusOf(presetProfileForTier(RoadTier.Alley));
+      expect(r).toBeCloseTo(6.1, 6);
+      const points = armpit(15).filter(([dx, dz]) => dx > 0 && dz > 0);
+      expect(points.length).toBeGreaterThan(0);
+      const c = coreHalf + r;
+      let onTheArc = 0;
+      for (const [dx, dz] of points) {
+        const d = Math.hypot(dx - c, dz - c);
+        expect(d).toBeGreaterThan(r - 1e-6);
+        if (Math.abs(d - r) < 1e-6) onTheArc++;
+      }
+      expect(onTheArc).toBeGreaterThan(0);
+    });
+
+    it('turns both inside corners of a T, and keeps the closed side straight', () => {
+      const points = armpit(N | E | S);
+      const r = cornerRadiusOf(presetProfileForTier(RoadTier.Alley));
+      const c = coreHalf + r;
+      for (const sz of [1, -1]) {
+        const corner = points.filter(([dx, dz]) => dx > 0 && Math.sign(dz) === sz);
+        expect(corner.length).toBeGreaterThan(0);
+        for (const [dx, dz] of corner) {
+          expect(Math.hypot(dx - c, Math.abs(dz) - c)).toBeGreaterThan(r - 1e-6);
+        }
+      }
+      expect(points.filter(([dx]) => dx < 0)).toEqual([]);
+    });
+
+    it('bends a turn tile on a quarter annulus about its tile corner, inside the tile', () => {
+      const { positions, colors } = roadTileVertices(
+        0,
+        0,
+        RoadTier.Alley,
+        N | E,
+        flatHeightAt,
+        alleys,
+      );
+      const pos = toTriples(positions);
+      const col = toTriples(colors);
+      expect(pos.length).toBeGreaterThan(0);
+      const rIn = TILE_METERS / 2 - coreHalf;
+      for (let i = 0; i < pos.length; i++) {
+        const p = pos[i] as number[];
+        expect(p[0] as number).toBeGreaterThanOrEqual(-1e-6);
+        expect(p[0] as number).toBeLessThanOrEqual(TILE_METERS + 1e-6);
+        expect(p[2] as number).toBeGreaterThanOrEqual(-1e-6);
+        expect(p[2] as number).toBeLessThanOrEqual(TILE_METERS + 1e-6);
+        expect(isPaint(col[i] as number[])).toBe(false);
+        // No asphalt closer to the pivot (the tile's north-east corner) than the inner edge.
+        expect(Math.hypot((p[0] as number) - TILE_METERS, p[2] as number)).toBeGreaterThanOrEqual(
+          rIn - 1e-4,
+        );
+      }
+    });
   });
 
   it('turns the corner the ARMS make, not the junction’s own square', () => {
