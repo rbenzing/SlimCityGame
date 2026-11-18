@@ -39,7 +39,6 @@ const HOMES = 4;
 const STREET_ROWS = 7;
 const NOON = 0.5;
 const THREE_AM = 3 / 24;
-const MIDNIGHT = 0;
 
 /** A body at night against the same pixel at noon. */
 const BODY_RATIO_MIN = 0.18;
@@ -353,7 +352,6 @@ const report = (line) => console.log(line);
     const shots = {};
     for (const [phase, tag] of [
       [NOON, 'noon'],
-      [MIDNIGHT, '0000'],
       [THREE_AM, '0300'],
     ]) {
       // Each hour is its own page (see openTown); the same seed puts the same town in the same place.
@@ -377,7 +375,6 @@ const report = (line) => console.log(line);
     for (const v of views) {
       const noon = readPng(shots[`${v.name}-noon`]);
       const night = readPng(shots[`${v.name}-0300`]);
-      const midnight = readPng(shots[`${v.name}-0000`]);
       for (const [key, box] of Object.entries(v.boxes)) {
         const day = sample(noon, box);
         const bad = checkNoon(`${v.name}.${key}`, box, day);
@@ -386,12 +383,10 @@ const report = (line) => console.log(line);
           continue;
         }
         const at3 = sample(night, box);
-        const at0 = sample(midnight, box);
         const ratio3 = lightRatio(at3, day);
-        const ratio0 = lightRatio(at0, day);
         const shown = (luma(at3) / luma(day)).toFixed(2);
         report(
-          `${v.name}.${key}: noon ${show(day)} 03:00 ${show(at3)} light ${ratio3.toFixed(3)} (pixel ${shown}) | 00:00 ${show(at0)} light ${ratio0.toFixed(3)}`,
+          `${v.name}.${key}: noon ${show(day)} 03:00 ${show(at3)} light ${ratio3.toFixed(3)} (pixel ${shown})`,
         );
         const [lo, hi] = BAND[box.band];
         if (ratio3 < lo || ratio3 > hi) {

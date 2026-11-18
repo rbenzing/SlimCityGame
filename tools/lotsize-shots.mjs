@@ -225,7 +225,6 @@ try {
     const wide = Math.max((rowM + 4 * T) / 1.6, ((fam.d + 3) * T) / 0.95);
     // Aiming south of the lots' middle lifts them clear of the toolbar along the bottom.
     const liftTiles = (0.12 * 1.19 * wide) / T;
-    await shoot(`${fam.name}-street`, midX, roadRow(s) - 1, wide * 1.1, 0.3);
     await shoot(`${fam.name}-above`, midX, midZ + liftTiles, wide, 0, TOP_PITCH);
     // The car stands beside its house: aim between them so both are in frame.
     // Prefer a car on the street side of its house, which the camera at the street sees past the roof.

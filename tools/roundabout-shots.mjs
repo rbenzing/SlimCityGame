@@ -9,7 +9,7 @@
  *            refusal is logged and the case has no frames)
  *   oneway   a crossing with one one-way arm
  *
- * Frames: <case>-above and <case>-oblique per laid case, fourway-entry-close
+ * Frames: <case>-above per laid case, fourway-entry-close
  * (one entry at the camera's 40 m floor: yield line, splitter island,
  * crosswalk) and fourway-night.
  *
@@ -289,7 +289,6 @@ try {
     const cx = c.bx + 0.5;
     const cz = c.bz + 0.5;
     await shot(`${c.name}-above`, cx, cz, 130, 0, 1.45);
-    await shot(`${c.name}-oblique`, cx, cz, 110, 0.7, 0.75);
     if (c.name === 'fourway') {
       await shot('fourway-entry-close', c.bx - 0.3, c.bz + 0.2, 40, 0, 0.95);
     }

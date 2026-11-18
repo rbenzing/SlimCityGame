@@ -258,11 +258,18 @@ try {
   const shootLineup = (suffix) => frame(`lineup${suffix}`, rowBox(lineup), 0.2);
 
   const views = (suffix) => async () => {
+    // At night the first street, the pylon and the fuel canopy stand for the kit; the rest repeat the day frames.
+    const night = suffix === '-night';
     for (const [s, street] of STREETS.entries()) {
       if (street.lineup) continue;
+      if (night && s !== 0) continue;
       await frame(`${street.name}${suffix}`, rowBox(s), 0.3);
     }
     await frame(`strip-pylon${suffix}`, boxOf([find('strip', 'com-strip-2')]), 0.3);
+    if (night) {
+      await frame(`fuel-station${suffix}`, boxOf([find('fuel', 'com-fuel-2')]), 0.3);
+      return;
+    }
     await frame(`market-car-park${suffix}`, boxOf([find('market', 'com-market-2')]), 0.2);
     await frame(
       `restaurant-above${suffix}`,

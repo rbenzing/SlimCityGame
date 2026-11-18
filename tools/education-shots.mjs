@@ -209,10 +209,6 @@ await hook(() => window.__slimcity.setSpeed(1));
 await hook(() => window.__slimcity.setDayT(0.96));
 await camera(65.5, 106, 190, yaw, 0.65);
 await shot('d-campuses-night', 2500);
-await camera(elementary.x + 1, elementary.z + 1.5, 100, elYaw + 0.3, 0.5);
-await shot('d2-elementary-night', 2500);
-await camera(saved.library.x + 1, saved.library.z + 0.5, 90, libYaw + 0.3, 0.45);
-await shot('d3-library-night', 2500);
 
 console.log('page errors', errors.length ? errors : 'none');
 await browser.close();

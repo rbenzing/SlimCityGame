@@ -145,10 +145,8 @@ const shot = async (name, tx, tz, d, yaw, pitch, scale = 1) => {
   console.log('shot', name);
 };
 await shot('junction-top', X + JX, Z + JZ, 105, 0.0, 1.15);
-await shot('junction-close', X + JX, Z + JZ, 48, 0.0, 1.25);
 // Eye level: the junction itself at the middle of the frame, all four arms
 // round it, seen from low and from the south.
-await shot('junction-eye', X + JX, Z + JZ, 40, 0.0, 0.6);
 // The north-west corner, where the avenue's kerb strip has to meet the
 // street's wider footway: the corner at the middle, on doubled pixels.
 await shot('junction-corner', X + JX - 0.5, Z + JZ - 0.5, 40, 0.0, 1.1, 2);

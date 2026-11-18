@@ -206,8 +206,6 @@ await cmd('Phase', [{ kind: 'setUnlimitedMoney', on: true }]);
 await page.waitForTimeout(2000);
 for (const [name, tx, tz, d, yaw, pitch] of [
   ['d-bus-depots-night', depots.x, depots.z, 130, Math.PI, PITCH],
-  ['d2-tram-depot-night', tram.x, tram.z, 95, Math.PI, PITCH],
-  ['d3-rail-yard-night', yard.x, yard.z, 130, Math.PI, PITCH],
 ]) {
   await camera(tx, tz, d, yaw, pitch);
   await shot(name, 2500);

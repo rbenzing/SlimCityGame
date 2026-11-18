@@ -205,8 +205,6 @@ const home = farms.find((b) => b.state === 1 && b.z > dirtZ);
 if (home) {
   await camera(home.x + 0.4, home.z + 0.4, 45, Math.PI / 4, 0.5);
   await shot('farmhouse-night');
-  await hook(() => window.__slimcity.setDayT(0.5));
-  await shot('farmhouse-day');
 }
 await hook(() => window.__slimcity.setDayT(0.5));
 

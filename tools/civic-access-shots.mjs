@@ -138,16 +138,12 @@ try {
   // The whole street from above, then at the default pitch from either end.
   await shoot('a-street-from-above', middle, road, 150, 0, OVERHEAD_PITCH);
   await shoot('a2-street-west', X + 3, road - 0.5, 90, 0.4);
-  await shoot('a3-street-east', X + 12, road - 0.5, 90, -0.4);
 
   // The fire apron and the clinic's drives at twice the pixels, from above and low.
   const restore = await closeUp(page, 2);
-  await shoot('b-fire-apron-above', X + 2, road, 45, 0, OVERHEAD_PITCH);
   await shoot('b2-fire-apron-low', X + 2, road, 40, 0.5, 0.45);
   await shoot('c-clinic-drives-above', X + 8.5, road, 45, 0, OVERHEAD_PITCH);
   await shoot('c2-clinic-drives-low', X + 8.5, road, 40, -0.5, 0.45);
-  await shoot('d-school-entrance-above', X + 5.5, road, 55, 0, OVERHEAD_PITCH);
-  await shoot('e-depot-gate-above', X + 11, road, 45, 0, OVERHEAD_PITCH);
   await restore();
 
   // The turned station: its apron lands on the north kerb of the street, beside the first.

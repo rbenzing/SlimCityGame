@@ -219,24 +219,12 @@ for (const r of [...ROWS, viaduct])
   );
 // Overhead: what stands on the deck, and how wide the deck is against its road.
 await shot('highway-deck-top', midOf(ROWS[0].c), ROWS[0].c.z, 60, 0, 1.3);
-await shot('street-deck-top', midOf(ROWS[1].c), ROWS[1].c.z, 60, 0, 1.3);
 // The ramp: where a viaduct climbs off the ground and lands again.
 // Aimed at the first raised tile, seen edge-on from the side so the climb reads.
 let rampAt = viaduct.c.from - BANK;
 while (rampAt < N && (grid.roadElevation?.[idx(rampAt, viaduct.c.z)] ?? 0) === 0) rampAt++;
 console.log('viaduct deck first raised at x', rampAt);
 await shot('viaduct-ramp', rampAt + 1, viaduct.c.z, 70, 0, 0.2);
-// Every span in one frame.
-const all = [...ROWS, viaduct].map((r) => r.c);
-const meanOf = (f) => Math.round(all.reduce((s, c) => s + f(c), 0) / all.length);
-await shot(
-  'overview',
-  meanOf(midOf),
-  meanOf((c) => c.z),
-  800,
-  0.6,
-  0.9,
-);
 
 console.log('done ->', out);
 await b.close();

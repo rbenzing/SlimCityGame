@@ -158,10 +158,6 @@ await page.waitForTimeout(600);
 // Three times the pixels over the same ground: the camera has a 40 m floor, so
 // resolution is the only way to get a person big enough to measure.
 const restore = await closeUp(page, 3);
-// A person's height reads against a car only from near ground level.
-await cam(X + 6, Z, 40, 0, 0.18);
-await page.waitForTimeout(900);
-await cleanShot(page, `${out}/shelter-and-car.png`);
 
 await cam(X + 18, Z, 40, Math.PI / 2, 0.15);
 await page.waitForTimeout(900);
@@ -180,9 +176,6 @@ await page.waitForTimeout(900);
 await cleanShot(page, `${out}/houses-and-people.png`);
 await restore();
 
-await cam(X + 12, Z, 120, 0, 0.5);
-await page.waitForTimeout(900);
-await cleanShot(page, `${out}/overview.png`);
 
 console.log('done');
 await b.close();

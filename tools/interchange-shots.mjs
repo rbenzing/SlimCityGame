@@ -304,7 +304,6 @@ try {
     // comes up to the deck: the first tile west of the motorway with a lift.
     const west = [...streetJoins].map((k) => k.split(',').map(Number)).sort((a, c) => a[0] - c[0])[0];
     await shot('diamond-above', cx, S, 260, 0, 1.45);
-    await shot('diamond-oblique', cx, S, 230, 0.7, 0.8);
     await shot('ramp-terminal-close', west[0] + 0.5, S, 40, 0, 0.95);
     const gore = ramps
       .flat()
