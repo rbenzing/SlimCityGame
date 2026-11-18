@@ -186,7 +186,7 @@ describe('kerb ramps at a controlled crossroads', () => {
                 ? l.x1 - l.x0 > l.z1 - l.z0 && l.x0 <= r.kerb + TOL && l.x1 >= r.kerb - TOL
                 : l.z1 - l.z0 > l.x1 - l.x0 && l.z0 <= r.kerb + TOL && l.z1 >= r.kerb - TOL,
             )
-            .map((l) => (lateral === 'x' ? [l.z0, l.z1] : [l.x0, l.x1]))
+            .map((l): [number, number] => (lateral === 'x' ? [l.z0, l.z1] : [l.x0, l.x1]))
             .filter(([a, b]) => b > r.from - 1 && a < r.to + 1)
             .sort((p, q) => p[0]! - q[0]!);
           expect(mine.length, 'two lines').toBe(2);
