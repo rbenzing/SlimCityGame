@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.90.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.89.0...slimcity-v1.90.0) (2026-11-18)
+
+
+### Features
+
+* **airports:** fence, tower, fuel, hangars, cargo, garages and a loop road ([459de12](https://github.com/rbenzing/SlimCityGame/commit/459de123240a70a8b5ca0a05c82c870f4970d7e9))
+
+
+### Bug Fixes
+
+* **render:** round a lot's car park corners and island ends ([8242447](https://github.com/rbenzing/SlimCityGame/commit/8242447dfc102b50568a08920d5425b96b0fc6bc))
+* **roads:** turn a kerbless road's bends and corners on an arc ([077e142](https://github.com/rbenzing/SlimCityGame/commit/077e1422627ac7f9ebcaca83f272f011513c65b3))
+
 ## [1.89.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.88.3...slimcity-v1.89.0) (2026-11-18)
 
 
