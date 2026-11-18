@@ -12,6 +12,7 @@
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src tests",
+    "shots": "node tools/shots.mjs",
     "lint:docs": "node tools/check-docs.mjs",
     "format": "prettier --write ."
   },
