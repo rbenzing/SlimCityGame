@@ -127,7 +127,7 @@ describe('lot grounds renderer', () => {
 
   it('draws nothing for a building that is not standing, nor for a home', () => {
     const { grounds } = renderer('ind-warehouse-2');
-    const under = building('ind-warehouse-2', { state: BuildingState.UnderConstruction });
+    const under = building('ind-warehouse-2', { state: BuildingState.Constructing });
     grounds.apply({ added: [under], updated: [], removed: [] });
     expect(total(grounds.instancesOf(under.id))).toBe(0);
     const home = CATALOG.find((e) => e.category === 'res')!;
