@@ -208,9 +208,10 @@ single-sided. Daylight reads almost exactly as before, since road faces are
 flat and evenly lit, but the surface now takes real shading and shadows from
 the sun, cars and lamps; the night-factor dim from the ramp above still
 layers on top of that lighting rather than replacing it. The sun's own
-shadow camera is a focused span of about 360 m that follows the camera
-target, at roughly 0.35 m per shadow-map texel — fine enough to resolve lamp
-poles and other small props.
+shadow camera is a focused span of 720 m, 360 m either side of the camera
+target, at 0.176 m per shadow-map texel — fine enough to resolve a lamp's
+post. A part thinner than one texel (a lamp's 0.1 m arm, a signal's mast
+arm) casts no shadow: it would break into dashes `[R-render-043]`.
 
 ## Sky, sun and clouds
 

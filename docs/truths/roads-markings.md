@@ -89,7 +89,8 @@ Back to [the index](../GROUND-TRUTHS.md).
   two dotted lines, green only between each pair of marks (9E.03 ¶07, ¶10;
   3H.06 ¶04). A bus lane's red lies only where general traffic may not go:
   none in a kerb return's wedge or across a mouth (3H.07 ¶03). A stop line
-  crosses every arriving lane, reserved ones too. — [markings.md](../world-sim/road-model/markings.md);
+  crosses every arriving lane, reserved ones too. A free road lays the
+  grid's lane symbols every 60 m along its arc. — [markings.md](../world-sim/road-model/markings.md);
   `src/render/roadsmesh.ts`
 - [R-roads-089] An exit's neutral area carries a wide white channelizing line on each side,
   from the theoretical gore to the nose, and white chevrons between them

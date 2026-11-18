@@ -4,6 +4,10 @@
   (darker than the sidewalk, lighter than a near-black), with a slight tier
   darkening — highway darkest. Gravel Road instead renders a dusty tan
   unpaved look with no paint and no kerbs.
+- **A footway stands 0.08 m above the carriageway** (`CURB_RAISE`) and every
+  free edge of it carries a vertical kerb face down to the carriageway
+  (`addKerbFaces`). Without the face the ground showed through the step as a
+  green hairline.
 - **Paint is true-world scale**, not tile-scaled: line width is ~0.15 m; a
   broken line, lane line and centre line alike, is 3.05 m of paint and a
   9.15 m gap (a 12.2 m period). Dash phase derives from GLOBAL world
