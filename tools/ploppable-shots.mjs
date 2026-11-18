@@ -92,7 +92,7 @@ const row = (z, tier, x0, x1) =>
 await row(Z, RT.TwoLane, X, X + 40);
 // Station B's stretch is a separate line one row nearer the street, so the
 // station stands on the street's kerb with the track against its long edge; the
-// two lines never touch (rail tiles beside each other join).
+// two lines never touch.
 await row(Z - 4, RT.RailTrack, X, X + 17);
 await row(Z - 3, RT.RailTrack, X + 19, X + 40);
 await page.waitForTimeout(800);

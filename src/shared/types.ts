@@ -573,7 +573,9 @@ export type Command =
        * Omitted, it joins them, as a road always has. False — the road tool
        * with snapping to roads off — every arm between a tile it lays and a
        * road outside the drag stays as joined as it was before, so a road it
-       * only lies beside or ends against stays a road of its own.
+       * only lies beside or ends against stays a road of its own. A stroke of
+       * rail ignores it: track joins track only along itself, over track it
+       * crosses or overlaps, and head-on at either end.
        */
       join?: boolean;
       /**

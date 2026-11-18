@@ -245,5 +245,35 @@ await trainShot('train-side', X + 12, Z, 80, NORTH, 0.3);
 // The whole line is in frame, so both trains are, wherever they are on it.
 await shot('line-overview', X + 14, Z + 2, 340, 0, 0.9);
 
+// Track joins track only where the player intersects it. On open ground, each
+// as its own stroke with snapping left on: (a) two parallel tracks on
+// neighbouring rows, (b) a stroke drawn head-on into the side of the lower one,
+// (c) a second pair two rows apart linked by a single-tile stroke.
+let open = null;
+for (let z = 20; z < N - 20 && !open; z++) {
+  for (let x = 20; x < N - 40 && !open; x += 2) {
+    let ok = true;
+    for (let k = 0; k < 24 && ok; k++) {
+      for (let dz = 0; dz < 9 && ok; dz++) {
+        const i = idx(x + k, z + dz);
+        if (g0.water[i] || Math.abs(g0.height[i]) > 12) ok = false;
+      }
+    }
+    if (ok) open = { x, z };
+  }
+}
+if (!open) throw new Error('no open ground for the join case');
+const { x: OX, z: OZ } = open;
+const stroke = (tiles) => cmd('Track', [{ kind: 'buildRoad', tier: RT.RailTrack, tiles }]);
+const across = (z, x0, x1) => Array.from({ length: x1 - x0 + 1 }, (_, i) => ({ x: x0 + i, z }));
+await stroke(across(OZ, OX, OX + 7));
+await stroke(across(OZ + 1, OX, OX + 7));
+await stroke([5, 4, 3, 2].map((k) => ({ x: OX + 3, z: OZ + k })));
+await stroke(across(OZ + 1, OX + 12, OX + 19));
+await stroke(across(OZ + 3, OX + 12, OX + 19));
+await stroke([{ x: OX + 15, z: OZ + 2 }]);
+await page.waitForTimeout(900);
+await shot('parallel-and-joined', OX + 8, OZ + 3, 320, 0, 1.45);
+
 console.log('done ->', out);
 await b.close();
