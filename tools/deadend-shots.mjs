@@ -120,9 +120,34 @@ try {
     if (restore) await restore();
   };
   /** Top-down and oblique frames of the end at tile (ex, ez), from the side the street leaves by. */
-  const frames = async (name, ex, ez, yaw = 0) => {
+  const frames = async (name, ex, ez, yaw = 0, oblique = false) => {
     await shoot(`${name}-top`, ex - 0.3, ez, 40, yaw, TOP_DOWN, 2, [ex, ez, 0]);
-    await shoot(`${name}-oblique`, ex - 2, ez + 0.5, 50, yaw - 0.9, OBLIQUE, 2, [ex, ez, 0]);
+    // The oblique repeats the top frame except where the street's own bend is the subject.
+    if (oblique) {
+      await shoot(`${name}-oblique`, ex - 2, ez + 0.5, 50, yaw - 0.9, OBLIQUE, 2, [ex, ez, 0]);
+    }
+  };
+
+  /**
+   * Polls the buildings `near` until the homes stop growing: at least `want` stand and nothing
+   * is still going up, or the count has not moved for STILL_POLLS polls, or POLL_CAP polls pass.
+   */
+  const waitForHomes = async (near, want) => {
+    const POLL_MS = 2000;
+    const STILL_POLLS = 6;
+    const POLL_CAP = 45;
+    let standing = 0;
+    let still = 0;
+    for (let i = 0; i < POLL_CAP; i++) {
+      await page.waitForTimeout(POLL_MS);
+      const here = (await readBuildings()).filter(near);
+      const homes = here.filter((b) => b.catalogId.startsWith('res')).length;
+      const building = here.filter((b) => b.state === 0 || b.state === 1).length;
+      still = homes === standing ? still + 1 : 0;
+      standing = homes;
+      if (building === 0 && (standing >= want || (standing > 0 && still >= STILL_POLLS))) break;
+    }
+    return standing;
   };
 
   /** A street running east along row `r` from x0 to x1 (the end), homes both sides. */
@@ -331,14 +356,7 @@ try {
     await send('Zone', [{ kind: 'paintZone', zone: 1, tiles: free }]);
     const near = (b) => b.x >= x + 2 && b.x <= bx + 6 && b.z >= r - 5 && b.z <= r + 6;
     await run(4);
-    let standing = 0;
-    for (let i = 0; i < 90; i++) {
-      await page.waitForTimeout(2000);
-      const here = (await readBuildings()).filter(near);
-      standing = here.filter((b) => b.catalogId.startsWith('res')).length;
-      const building = here.filter((b) => b.state === 0 || b.state === 1).length;
-      if (standing >= 14 && building === 0) break;
-    }
+    const standing = await waitForHomes(near, 14);
     await run(0);
     await page.waitForTimeout(1500);
     console.log(`grown homes near the bulb: ${standing}`);
@@ -392,14 +410,7 @@ try {
     await send('Zone', [{ kind: 'paintZone', zone: 1, tiles: zone }]);
     const nearCurve = (b) => b.x >= x + 3 && b.x <= x + 24 && b.z >= r - 5 && b.z <= r + 9;
     await run(4);
-    let standing = 0;
-    for (let i = 0; i < 90; i++) {
-      await page.waitForTimeout(2000);
-      const here = (await readBuildings()).filter(nearCurve);
-      standing = here.filter((b) => b.catalogId.startsWith('res')).length;
-      const building = here.filter((b) => b.state === 0 || b.state === 1).length;
-      if (standing >= 10 && building === 0) break;
-    }
+    const standing = await waitForHomes(nearCurve, 10);
     await run(0);
     await page.waitForTimeout(1500);
     console.log(`free street: ${standing} homes grown beside the curve`);
@@ -407,7 +418,7 @@ try {
       refused.push(`free street: only ${standing} homes grew beside the curve (wanted at least 6)`);
     }
     await dismissToasts(page);
-    await frames('free', x + 21, r + 3);
+    await frames('free', x + 21, r + 3, 0, true);
   }
 
   for (const [name, south] of [
@@ -421,7 +432,6 @@ try {
     await dismissToasts(page);
     await shoot(`${name}-top`, bx + 0.5, bz + 0.5, 60, 0, TOP_DOWN);
     await shoot(`${name}-oblique`, bx + 0.5, bz + 0.5, 70, -0.9, OBLIQUE);
-    await shoot(`${name}-oblique-east`, bx + 0.5, bz + 0.5, 70, 0.9, OBLIQUE);
   }
 
   if (wanted('culdesac-cars')) {
@@ -447,7 +457,11 @@ try {
     const standing = (await readBuildings()).filter((b) => b.catalogId.startsWith('com')).length;
     console.log(`shops standing: ${standing}`);
     await run(4);
-    await page.waitForTimeout(20000);
+    await page.waitForFunction(() => window.__slimcity.readVehicles().length > 0, null, {
+      timeout: 20000,
+      polling: 500,
+    });
+    await page.waitForTimeout(2000);
     await run(1);
     console.log(
       'cars after the run-up:',
@@ -459,7 +473,7 @@ try {
     const seen = [];
     let mostCars = 0;
     let framesTaken = 0;
-    for (let i = 0; i < 240 && framesTaken < 6; i++) {
+    for (let i = 0; i < 240 && framesTaken < 3; i++) {
       await page.waitForTimeout(250);
       const cars = await page.evaluate(() => window.__slimcity.readVehicles());
       mostCars = Math.max(mostCars, cars.length);

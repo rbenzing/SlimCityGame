@@ -441,7 +441,11 @@ await page.waitForTimeout(1500);
 
 // Let the depots field their vehicles, then hold the city still.
 await call(() => window.__slimcity.setSpeed(1));
-await page.waitForTimeout(8000);
+await page.waitForFunction(() => window.__slimcity.readTransitRender().vehicles > 0, null, {
+  timeout: 20000,
+  polling: 250,
+});
+await page.waitForTimeout(1500);
 await call(() => window.__slimcity.setSpeed(0));
 await page.waitForTimeout(600);
 console.log(

@@ -196,7 +196,11 @@ console.log('depots', JSON.stringify(depots));
 
 // Let the depots field their trams, then hold the city still for the shots.
 await hook(() => window.__slimcity.setSpeed(1));
-await page.waitForTimeout(6000);
+await page.waitForFunction(() => window.__slimcity.readTransitRender().vehicles > 0, null, {
+  timeout: 20000,
+  polling: 250,
+});
+await page.waitForTimeout(1500);
 await hook(() => window.__slimcity.setSpeed(0));
 await page.waitForTimeout(1000);
 console.log(

@@ -127,7 +127,11 @@ try {
   await page.waitForTimeout(1500);
   // Let the depot field its buses, then hold the city still for the shots.
   await page.evaluate(() => window.__slimcity.setSpeed(4));
-  await page.waitForTimeout(10000);
+  await page.waitForFunction(() => window.__slimcity.readTransitRender().vehicles > 0, null, {
+    timeout: 20000,
+    polling: 250,
+  });
+  await page.waitForTimeout(1500);
   await page.evaluate(() => window.__slimcity.setSpeed(0));
   await page.waitForTimeout(500);
   console.log(
@@ -151,7 +155,6 @@ try {
     await page.waitForTimeout(1200);
     await cleanShot(page, `${out}/${name}.png`);
   };
-  const midZ = Z + GAP / 2;
 
   // A bus at the shelter: no hook says where a line's buses are, so two frames
   // a beat apart differ where one moves (the city is held still). Shoot once
@@ -211,19 +214,9 @@ try {
   }
 
   const back = await closeUp(page, 2);
-  // Both roads and the stops on them, close enough to read.
-  await shoot('overview', X + (SIGN_AT + BOTH_AT) / 2, midZ, 112, 0, 1);
-
-  const plates = [
-    { name: 'sign', at: SIGN_AT },
-    { name: 'shelter-and-sign', at: BOTH_AT },
-  ];
+  // The tile holding both stop kinds, on each road, from the south (the high side's own kerb).
   for (const road of roads) {
-    for (const plate of plates) {
-      // From the south (the high side's own kerb) and from the north.
-      await shoot(`${road.name}-${plate.name}-south`, X + plate.at, road.z, 40, 0, 0.5);
-      await shoot(`${road.name}-${plate.name}-north`, X + plate.at, road.z, 40, Math.PI, 0.5);
-    }
+    await shoot(`${road.name}-shelter-and-sign-south`, X + BOTH_AT, road.z, 40, 0, 0.5);
   }
   await back();
 } finally {

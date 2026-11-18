@@ -73,7 +73,15 @@ await page.waitForTimeout(4000);
 const call = (fn, ...a) => page.evaluate(fn, ...a);
 const cmd = (l, c) => call(([x, y]) => window.__slimcity.cmd(x, y), [l, c]);
 const readGrid = () => call(() => window.__slimcity.readGrid());
+/** The tiles of `tiles` that carry a road. The grid is read and filtered in the page: shipping it whole costs seconds a call. */
+const roadTilesOf = (tiles) =>
+  call((ts) => {
+    const g = window.__slimcity.readGrid();
+    return ts.filter((t) => g.roadTier[t.z * g.size + t.x] !== 0);
+  }, tiles);
 const cam = tileCamera(page);
+const startedAt = Date.now();
+const lap = (what) => console.log(`[${Math.round((Date.now() - startedAt) / 1000)}s] ${what}`);
 
 await cmd('Sandbox', [{ kind: 'setSandbox', on: true }]);
 await cmd('Money', [{ kind: 'setUnlimitedMoney', on: true }]);
@@ -100,12 +108,11 @@ const runIsDry = (x, z, len) => {
   return true;
 };
 
-// Candidate runs in three grade bands, so the sweep covers flat ground, a
-// moderate hillside, and the steepest a road is allowed on at all.
+// Candidate runs in two grade bands, so the sweep covers flat ground and a
+// moderate hillside. The steepest cross-slope is the parade's own ground.
 const BANDS = [
   { name: 'flat', lo: 0, hi: 0.5 },
   { name: 'gentle', lo: 2, hi: 5 },
-  { name: 'steep', lo: 7, hi: ROAD_MAX_SLOPE },
 ];
 const sites = new Map();
 for (let z = 30; z < N - 30; z += 3) {
@@ -125,47 +132,6 @@ for (let z = 30; z < N - 30; z += 3) {
 }
 for (const band of BANDS)
   console.log(`${band.name}: ${(sites.get(band.name) ?? []).length} sites found`);
-
-// A generated map may hold no slope as steep as a road is ALLOWED on, and the
-// steepest grade is exactly where this has to be tested. So build one: a
-// staircase of raised ground climbing toward ROAD_MAX_SLOPE per tile, well
-// clear of everything else, and use it as the steep band.
-if (runs('grades') && (sites.get('steep') ?? []).length === 0) {
-  const RX = 60;
-  const RZ = N - 60;
-  const lanes = TIERS.length * ELEVATIONS.length;
-  // terraformSet writes exact heights. The raise brush cannot build a grade
-  // this steep — it smooths as it goes, and topped out around 1.8 m/tile,
-  // which is not the steep band and must not be reported as one.
-  const GRADE = ROAD_MAX_SLOPE - 0.5; // just inside what a road is allowed on
-  const W = RUN_TILES + 3;
-  const H = lanes * 4 + 4;
-  await call(
-    ([x, z, w, h, grade, span]) => {
-      const heights = new Float32Array(w * h);
-      for (let row = 0; row < h; row++)
-        for (let col = 0; col < w; col++) heights[row * w + col] = Math.min(col, span) * grade;
-      window.__slimcity.cmd('Steep slope', [{ kind: 'terraformSet', x, z, w, h, heights }]);
-    },
-    [RX, RZ - lanes * 4, W, H, GRADE, RUN_TILES],
-  );
-  await page.waitForTimeout(1500);
-  const gr = await readGrid();
-  const made = [];
-  for (let lane = 0; lane < lanes; lane++) {
-    const z = RZ - lane * 4;
-    let grade = 0;
-    for (let i = 0; i < RUN_TILES; i++)
-      grade = Math.max(
-        grade,
-        Math.abs((gr.height[idx(RX + i + 1, z)] ?? 0) - (gr.height[idx(RX + i, z)] ?? 0)),
-      );
-    if (grade >= 1) made.push({ x: RX, z, grade });
-  }
-  sites.set('steep', made);
-  const steepest = made.reduce((m, s) => Math.max(m, s.grade), 0);
-  console.log(`built ${made.length} steep lanes, steepest ${steepest.toFixed(1)} m/tile`);
-}
 
 /**
  * The worst height by which the rendered ground stands above the road deck,
@@ -230,8 +196,7 @@ for (const band of runs('grades') ? BANDS : []) {
       }));
       await cmd(`${name} @${elevation}`, [{ kind: 'buildRoad', tier, tiles, elevation }]);
       await page.waitForTimeout(260);
-      const g = await readGrid();
-      const laid = tiles.filter((t) => g.roadTier[idx(t.x, t.z)] !== 0);
+      const laid = await roadTilesOf(tiles);
       // A refusal is the game saying no, and counting them is what stops a
       // band reading as clean when nothing in it was ever built.
       tally[band.name] = tally[band.name] ?? { laid: 0, refused: 0 };
@@ -268,6 +233,7 @@ for (let z = 30; runs('bridges') && z < N - 30 && shorelines.length < 12; z += 2
     shorelines.push({ x, z, wet });
   }
 }
+lap('grades done');
 console.log(`\nshoreline crossings found: ${shorelines.length}`);
 let bridgeLaid = 0;
 for (const site of shorelines) {
@@ -275,8 +241,7 @@ for (const site of shorelines) {
   const tiles = Array.from({ length: 11 }, (_, i) => ({ x: site.x + i, z: site.z }));
   await cmd(`${spec.name} bridge`, [{ kind: 'buildRoad', tier: spec.tier, tiles, elevation: 0 }]);
   await page.waitForTimeout(300);
-  const g = await readGrid();
-  const laid = tiles.filter((t) => g.roadTier[idx(t.x, t.z)] !== 0);
+  const laid = await roadTilesOf(tiles);
   if (laid.length === 0) continue;
   bridgeLaid++;
   const worst = await worstIntrusion(laid);
@@ -341,15 +306,12 @@ for (const topo of TOPOLOGIES) {
       });
       await cmd(`${topo.name} ${main.name}/${cross.name}`, cmds);
       await page.waitForTimeout(280);
-      const g = await readGrid();
       // Measure the junction box and the tiles immediately around it, which is
       // where the kerb returns and the corner fills are.
-      const near = [];
+      const around = [];
       for (let dz = -2; dz <= 2; dz++)
-        for (let dx = -2; dx <= 2; dx++) {
-          const t = { x: centre.x + dx, z: centre.z + dz };
-          if (g.roadTier[idx(t.x, t.z)] !== 0) near.push(t);
-        }
+        for (let dx = -2; dx <= 2; dx++) around.push({ x: centre.x + dx, z: centre.z + dz });
+      const near = await roadTilesOf(around);
       if (near.length === 0) continue;
       junctionsBuilt++;
       const worst = await worstIntrusion(near);
@@ -360,6 +322,7 @@ for (const topo of TOPOLOGIES) {
     }
   }
 }
+lap('junctions done');
 console.log(`junctions built: ${junctionsBuilt}`);
 if (junctionsBuilt === 0)
   console.log('!! no junction was built — the junction case proves nothing');
@@ -437,8 +400,8 @@ const PARADES = [
   { name: 'fall-1.9m', alongX: false, ground: 'built', grade: ROAD_MAX_CLIMB - 0.1 },
 ];
 
-/** The parades shot tier by tier at the kerb: the control, the worst cross-slope and the worst fall. */
-const KERB_SHOT_PARADES = new Set(['flat', 'cross-9.5m', 'fall-1.9m']);
+/** The parade shot tier by tier at the kerb: the worst cross-slope (flat ground cannot clip, and the fall repeats it). */
+const KERB_SHOT_PARADES = new Set(['cross-9.5m']);
 
 /**
  * Where a parade goes: a dry, road-free footprint with a margin of one tile
@@ -646,8 +609,7 @@ if (runs('parade')) {
       await dismissToasts();
       await cmd(`${parade.name} ${spec.name}`, [build]);
       await page.waitForTimeout(300);
-      const g = await readGrid();
-      const laid = tiles.filter((t) => g.roadTier[idx(t.x, t.z)] !== 0);
+      const laid = await roadTilesOf(tiles);
       const entry = {
         tier: spec.name,
         orientation: parade.name,
@@ -692,6 +654,7 @@ if (runs('parade')) {
         });
     }
   }
+  lap('parade done');
   console.log('\nparade: ground above the deck, per tier and orientation');
   console.log(
     `  ${'tier'.padEnd(18)}${'orientation'.padEnd(13)}${'tiles'.padEnd(8)}${'clipped'.padEnd(9)}${'max m'.padEnd(8)}worst tile`,
