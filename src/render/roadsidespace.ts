@@ -135,6 +135,19 @@ export interface KeepClearDisc {
   r: number;
 }
 
+/**
+ * A road's rounded dead end: a half disc of `radius` metres, centred on the
+ * middle of the last tile's far edge, bulging out along the unit (dx, dz) onto
+ * the open ground the road faces.
+ */
+export interface EndCap {
+  x: number;
+  z: number;
+  dx: number;
+  dz: number;
+  radius: number;
+}
+
 /** What a place may not be: a drive's tile or mouth, a bus stop's span, or a kerb ramp. */
 export interface KeepClear {
   /** Whether the world point is on a drive, inside a stop's span (widened by `margin` metres along it) or on a kerb ramp. */

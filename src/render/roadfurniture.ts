@@ -75,6 +75,7 @@ import {
   SIGN_BOTTOM_OVER_WALK_M,
   SIGN_NO_KERB_M,
   SLIDE_LIMIT_M,
+  type EndCap,
   type KeepClear,
   type Roadside,
   type Spot,
@@ -693,6 +694,31 @@ function neighborCount(tileSet: RoadTileIndex, x: number, z: number): number {
   let count = 0;
   for (const d of NEIGHBOR_DIRS) if (joins(tileSet, x, z, x + d.dx, z + d.dz)) count++;
   return count;
+}
+
+/**
+ * The rounded end every dead-end tile draws past its far edge: a half disc as
+ * wide as the carriageway and its kerb band, standing on the ground beyond.
+ */
+export function endCapsOf(roadTiles: readonly FurnitureRoadTile[]): EndCap[] {
+  const tileSet = buildTileSet(roadTiles);
+  const caps: EndCap[] = [];
+  for (const tile of roadTiles) {
+    if (tile.ring || neighborCount(tileSet, tile.x, tile.z) !== 1) continue;
+    const arm = NEIGHBOR_DIRS.find((d) =>
+      joins(tileSet, tile.x, tile.z, tile.x + d.dx, tile.z + d.dz),
+    );
+    if (!arm) continue;
+    const { half, kerb } = edgeOf(tile);
+    caps.push({
+      x: tileToWorld(tile.x) - (arm.dx * TILE_METERS) / 2,
+      z: tileToWorld(tile.z) - (arm.dz * TILE_METERS) / 2,
+      dx: -arm.dx,
+      dz: -arm.dz,
+      radius: half + Math.min(kerb, TILE_METERS / 2 - half),
+    });
+  }
+  return caps;
 }
 
 interface PresentSides {

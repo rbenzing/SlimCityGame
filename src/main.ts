@@ -198,6 +198,7 @@ import { UndergroundView } from './render/underground';
 import {
   buildTileSet,
   computeSignPlacements,
+  endCapsOf,
   computeTramPolePlacements,
   computeTramWireRuns,
   controlSignSpots,
@@ -2368,6 +2369,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
   const keepTreesOffOccupied = (): void => {
     trees.clearAt(clientGrid.occupiedTiles());
     trees.clearBeside(clientGrid.roadTilePoints());
+    trees.clearEndCaps(endCapsOf(clientGrid.roadTiles()));
   };
 
   // --- worker messages -----------------------------------------------------------
