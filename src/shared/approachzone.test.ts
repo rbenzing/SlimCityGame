@@ -4,11 +4,13 @@ import {
   approachAhead,
   AUXILIARY_ZONE_TILES,
   auxiliaryLaneAt,
+  bayTaperTiles,
   isRampNodeAt,
   narrowingAhead,
   rampMouthAt,
   oppositeFlow,
   pocketedCrossSection,
+  pocketOpenness,
   roadDegree,
   SHARED_TURN_LANE_MAX_TILES,
   sharedTurnLaneAt,
@@ -84,6 +86,16 @@ const LONG_ARM = `
   ..#..
 `;
 
+/** The same crossroads at (2,4), with an arm four tiles long running north out of it. */
+const LONGER_ARM = `
+  ..#..
+  ..#..
+  ..#..
+  ..#..
+  #####
+  ..#..
+`;
+
 describe('the approach zone', () => {
   it('counts the roads meeting on a tile', () => {
     const w = world(CROSSROADS);
@@ -111,16 +123,61 @@ describe('the approach zone', () => {
     expect(approachAhead(2, 1, 1, w)).toBeUndefined();
   });
 
-  it('opens the bay as the junction nears, and holds it full against the stop line', () => {
-    const w = world(LONG_ARM, { '2,3': { control: 'signal' } });
+  it('holds a street bay full on every tile of its zone: one taper tile, the rest storage', () => {
+    const w = world(LONGER_ARM, { '2,4': { control: 'signal' } });
     const at = (z: number): number => approachAhead(2, z, 3, w)!.openness;
-    // The tile at the stop line has the whole bay; the one behind it is still
-    // opening, and never more open than the one in front.
+    // The taper tile is drawn at the full bay: the pavement closes over it
+    // toward the narrower road behind, so it is the tile's own width.
+    expect(at(3)).toBe(1);
     expect(at(2)).toBe(1);
-    expect(at(1)).toBeLessThan(1);
-    expect(at(1)).toBeGreaterThan(0);
+    expect(at(1)).toBe(1);
     // A tile carrying no bay is not half of one.
     expect(approachAhead(2, 1, 3, world(LONG_ARM))!.openness).toBe(1);
+  });
+
+  it('gives a bay its own taper by class, one tile on a street and two on a divided road', () => {
+    for (const id of ['local', 'urban', 'collector', 'arterial'] as const) {
+      expect(bayTaperTiles(id), id).toBe(1);
+    }
+    expect(bayTaperTiles('divided')).toBe(2);
+    expect(bayTaperTiles('highway')).toBe(2);
+  });
+
+  it('opens a two-tile taper in two equal steps, then holds storage full', () => {
+    // A zone of five: two taper tiles, then three of storage. Tile 4 is the
+    // far end of the zone and tile 0 stands against the junction.
+    const open = [4, 3, 2, 1, 0].map((d) => pocketOpenness('divided', 5, d));
+    expect(open).toEqual([0.5, 1, 1, 1, 1]);
+  });
+
+  it('leaves every class at least one storage tile after its taper', () => {
+    const zones = {
+      local: 2,
+      urban: 3,
+      collector: 3,
+      arterial: 4,
+      divided: 5,
+      highway: 5,
+    } as const;
+    for (const [id, zone] of Object.entries(zones) as [keyof typeof zones, number][]) {
+      // Storage tiles are the ones past the taper, all at the full bay.
+      const storage = zone - bayTaperTiles(id);
+      expect(storage, id).toBeGreaterThanOrEqual(1);
+      const fullTiles = [...Array(zone).keys()].filter((d) => pocketOpenness(id, zone, d) === 1);
+      expect(fullTiles.length, id).toBeGreaterThanOrEqual(storage);
+      expect(pocketOpenness(id, zone, 0), id).toBe(1);
+    }
+  });
+
+  it('marks the head of the storage only where the storage is longer than one tile', () => {
+    const w = world(LONGER_ARM, { '2,4': { control: 'signal' } });
+    // Zone 3: taper tile at distance 2, storage at distances 1 and 0.
+    expect(approachAhead(2, 2, 3, w)!.storageHead).toBe(true);
+    expect(approachAhead(2, 1, 3, w)!.storageHead).toBe(false);
+    expect(approachAhead(2, 3, 3, w)!.storageHead).toBe(false);
+    // Zone 2: one taper tile and one storage tile, so one arrow only.
+    expect(approachAhead(2, 3, 2, w)!.storageHead).toBe(false);
+    expect(approachAhead(2, 2, 2, w)!.storageHead).toBe(false);
   });
 
   it('never narrows a road on its way into the junction, whatever the bay takes from it', () => {

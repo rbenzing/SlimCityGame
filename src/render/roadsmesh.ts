@@ -7148,7 +7148,14 @@ function roadTileSurfaces(
       // the approach is allowed to do, painted from its movement set. A
       // single-lane approach does everything and is left unmarked, which is also
       // what MUTCD 3D.06 ¶01 says of one at a circular intersection.
-      if (approach?.distance === 0 && plan.solid.length + plan.dashed.length > 0) {
+      // A turn bay with storage longer than a tile carries its arrow again at
+      // the head of the storage, in the bay lane alone.
+      const atStopLine = approach?.distance === 0;
+      if (
+        approach &&
+        (atStopLine || approach.storageHead) &&
+        plan.solid.length + plan.dashed.length > 0
+      ) {
         const approachToward = approach.toward;
         const { vertical, ahead, leftSign } = approachAxis(approachToward);
         // Which lanes a driver arrives in — the same question the stop line
@@ -7186,8 +7193,13 @@ function roadTileSurfaces(
                 : approachToward === RoadFlow.South
                   ? standing.s
                   : standing.w;
-          const shift = ahead * (TILE_HALF - LANE_ARROW_SETBACK_M - stopReach);
+          // At the head of the storage the arrow stands just inside the tile's
+          // far edge, where the taper ends.
+          const shift = atStopLine
+            ? ahead * (TILE_HALF - LANE_ARROW_SETBACK_M - stopReach)
+            : -ahead * (TILE_HALF - LANE_ARROW_SETBACK_M);
           for (let i = 0; i < ordered.length; i++) {
+            if (!atStopLine && i !== 0) continue;
             emitLaneUseArrow(
               positions,
               colors,

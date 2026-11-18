@@ -1505,7 +1505,10 @@ describe('roadTileVertices — lane-use arrows on the last tile before a junctio
     mask = N | S,
     flow: RoadFlow = RoadFlow.None,
     allowed: number = DEFAULT_ALLOWED,
-    zone: { distance: number; pocket: boolean } = { distance: 0, pocket: false },
+    zone: { distance: number; pocket: boolean; storageHead?: boolean } = {
+      distance: 0,
+      pocket: false,
+    },
   ): { positions: number[]; colors: number[] } =>
     roadTileVertices(
       4,
@@ -1590,6 +1593,45 @@ describe('roadTileVertices — lane-use arrows on the last tile before a junctio
     expect(countWhere(behind.colors, isMarkingWhite)).toBeLessThan(
       countWhere(atHead.colors, isMarkingWhite),
     );
+  });
+
+  it('repeats the bay arrow at the head of a storage longer than a tile, in the bay lane alone', () => {
+    const at = (
+      distance: number,
+      storageHead: boolean,
+    ): { positions: number[]; colors: number[] } =>
+      approach(RoadTier.TwoLane, RoadFlow.South, N | S, RoadFlow.None, DEFAULT_ALLOWED, {
+        distance,
+        pocket: true,
+        storageHead,
+      });
+    const white = (v: { colors: number[] }): number => countWhere(v.colors, isMarkingWhite);
+    const head = at(1, true);
+    const body = at(1, false);
+    const stopLine = at(0, false);
+    // One more arrow on the head tile than on the same tile without the mark...
+    expect(white(head)).toBeGreaterThan(white(body));
+    // ...and fewer than the stop line's, which arrows the through lane as well.
+    expect(white(head) - white(body)).toBeLessThan(white(stopLine) - white(body));
+    // The arrow stands in the far half of the tile, where the taper ends.
+    const farZ = (v: { positions: number[]; colors: number[] }): number => {
+      const pos = toTriples(v.positions);
+      const col = toTriples(v.colors);
+      const zs: number[] = [];
+      const bodyKeys = new Set(
+        toTriples(body.positions).map((p, i) =>
+          isMarkingWhite(toTriples(body.colors)[i] as number[]) ? p.join() : '',
+        ),
+      );
+      for (let i = 0; i < pos.length; i++) {
+        if (!isMarkingWhite(col[i] as number[]) || bodyKeys.has((pos[i] as number[]).join()))
+          continue;
+        zs.push((pos[i] as number[])[2]! - 4.5 * TILE_METERS);
+      }
+      return zs.length === 0 ? 0 : zs.reduce((a, b) => a + b, 0) / zs.length;
+    };
+    // Heading south the far edge is toward -z.
+    expect(farZ(head)).toBeLessThan(-TILE_METERS / 4);
   });
 
   it('arrows only the half of the carriageway that is driving toward the junction', () => {
