@@ -2507,6 +2507,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
     garages.setNightFactor(nightFactor);
     roadsMesh.setNightFactor(nightFactor); // dim the unlit road so lamp pools stay the bright spots
     freeRoads.setNightFactor(nightFactor);
+    bridges.setNightFactor(nightFactor);
     lamps.setTimeOfDay(dayT); // lamps run their own dusk-to-dawn schedule, not the night ramp
     vehicles.setNightFactor(nightFactor);
     landmarks.setNightFactor(nightFactor);

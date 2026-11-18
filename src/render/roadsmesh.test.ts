@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import * as THREE from 'three';
-import { NIGHT_TINT } from './nightlook';
+import { MeshLambertNodeMaterial } from 'three/webgpu';
 import {
   roadTileVertices,
   RoadMeshRenderer,
@@ -1931,21 +1931,43 @@ describe('roadTileVertices — terrain-conforming tessellation on slopes', () =>
 });
 
 describe('RoadMeshRenderer — night dimming', () => {
-  it('dims the shared road material toward the night floor at full night and back to full by day', () => {
+  it('carries the one night tint as a shader uniform, not a mutated material colour, so no chunk can keep a stale tint', () => {
     const scene = new THREE.Scene();
     const renderer = new RoadMeshRenderer(scene, flatHeightAt);
     renderer.apply([makeDelta(0, 0, RoadTier.TwoLane)]);
-    const material = (scene.children[0] as THREE.Mesh).material as THREE.MeshBasicMaterial;
+    const material = (scene.children[0] as THREE.Mesh).material as MeshLambertNodeMaterial;
 
+    expect(material).toBeInstanceOf(MeshLambertNodeMaterial);
+    expect(material.vertexColors).toBe(true);
+    expect(material.colorNode).not.toBeNull();
+    expect(renderer.nightFactor()).toBe(0);
     renderer.setNightFactor(1);
-    // The one night tint every sunlit surface reads: cool, so blue holds more than red.
-    expect(material.color.toArray()).toEqual([...NIGHT_TINT]);
-    expect(material.color.b).toBeGreaterThan(material.color.r);
-    const night = material.color.r;
+    expect(renderer.nightFactor()).toBe(1);
+    renderer.setNightFactor(0.4);
+    expect(renderer.nightFactor()).toBeCloseTo(0.4, 9);
+    renderer.setNightFactor(7);
+    expect(renderer.nightFactor()).toBe(1);
+    renderer.setNightFactor(-3);
+    expect(renderer.nightFactor()).toBe(0);
+    // The tint lives in the colour node: the material's own colour never moves.
+    renderer.setNightFactor(1);
+    expect(material.color.toArray()).toEqual([1, 1, 1]);
+  });
 
-    renderer.setNightFactor(0);
-    expect(material.color.r).toBeCloseTo(1, 5);
-    expect(night).toBeLessThan(material.color.r);
+  it('draws every layer of a road, its end caps and its far chunks with the one tinted material', () => {
+    const scene = new THREE.Scene();
+    const renderer = new RoadMeshRenderer(scene, flatHeightAt);
+    const tiles = [];
+    for (let x = 2; x < 40; x += 1) tiles.push(makeDelta(x, 3, RoadTier.TwoLane));
+    renderer.apply(tiles);
+    const roadMeshes = scene.children.filter(
+      (c): c is THREE.Mesh => c instanceof THREE.Mesh && c.userData['underground'] === 'road',
+    );
+    // 38 tiles of 20 m span more than one 16-tile chunk.
+    expect(roadMeshes.length).toBeGreaterThan(1);
+    const material = roadMeshes[0]!.material;
+    for (const mesh of roadMeshes) expect(mesh.material).toBe(material);
+    expect(material).toBeInstanceOf(MeshLambertNodeMaterial);
   });
 });
 

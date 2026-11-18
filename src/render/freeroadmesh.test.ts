@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import * as THREE from 'three';
+import { MeshLambertNodeMaterial } from 'three/webgpu';
 import { sampleCentreLine, tileCentreCm } from '../shared/roadgeom';
 import type { Bend, CmPoint, MPoint } from '../shared/roadgeom';
 import {
@@ -23,7 +25,13 @@ import {
   syncRoadLayers,
 } from '../world/roadnet';
 import { TILE_METERS } from '../shared/constants';
-import { bendDashes, freeJunctionTiles, freeRoadLampStands, freeRoadSoup } from './freeroadmesh';
+import {
+  FreeRoadRenderer,
+  bendDashes,
+  freeJunctionTiles,
+  freeRoadLampStands,
+  freeRoadSoup,
+} from './freeroadmesh';
 import type { RoadSoup } from './freeroadmesh';
 import { LAMP_HEIGHTS_M, lampLateralOffset } from './lamps';
 import { CENTRE_PAIR_OFFSET_M, markingPlan, noPassingPlan } from './roadmarkings';
@@ -1595,5 +1603,26 @@ describe('a free road’s reserved lane symbols', () => {
 
   it('lays no symbol on a road with no reserved lane', () => {
     expect(symbolCentres(straight(RoadTier.TwoLane), RoadTier.BusLane, 'bus')).toEqual([]);
+  });
+});
+
+describe('FreeRoadRenderer — night tint', () => {
+  it('carries the one night tint as a shader uniform on a vertex-coloured Lambert node material', () => {
+    const g = world();
+    lay(g, { a: at(200, 200), b: at(500, 500), control: at(500, 200) });
+    const scene = new THREE.Scene();
+    const renderer = new FreeRoadRenderer(scene, flat, noCustom);
+    renderer.rebuild(g.roads!);
+    const mesh = scene.children[0] as THREE.Mesh;
+    const material = mesh.material as MeshLambertNodeMaterial;
+    expect(material).toBeInstanceOf(MeshLambertNodeMaterial);
+    expect(material.vertexColors).toBe(true);
+    expect(material.colorNode).not.toBeNull();
+    expect(renderer.nightFactor()).toBe(0);
+    renderer.setNightFactor(1);
+    expect(renderer.nightFactor()).toBe(1);
+    renderer.setNightFactor(9);
+    expect(renderer.nightFactor()).toBe(1);
+    expect(material.color.toArray()).toEqual([1, 1, 1]);
   });
 });

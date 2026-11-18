@@ -78,7 +78,8 @@
  * only this per-tile cosmetic paint/geometry curves.
  */
 import * as THREE from 'three';
-import { NIGHT_TINT } from './nightlook';
+import { uniform } from 'three/tsl';
+import { nightBodyMaterial } from './nightlook';
 import {
   flowDirection,
   isStreetTier,
@@ -274,16 +275,6 @@ const ROAD_QUAD_MAX_CELL_M = 2;
  * conforming band over it can never swap places.
  */
 const ROAD_QUAD_FLAT_EPSILON_M = 0.002;
-/**
- * The multiplier the road surface's lit colour takes at a night factor in
- * [0, 1]: the one night tint every sunlit surface reads, so the pavement
- * dims with the terrain beside it and the lamp pools stay the bright spots.
- */
-export function roadNightTint(nightFactor: number): [number, number, number] {
-  const f = Math.min(1, Math.max(0, nightFactor));
-  const [r, g, b] = NIGHT_TINT;
-  return [1 - f * (1 - r), 1 - f * (1 - g), 1 - f * (1 - b)];
-}
 /** Lane markings sit a hair above the road surface to avoid z-fighting. */
 export const MARK_Y_OFFSET = 0.16;
 /** Sidewalk/shoulder curbs stand physically proud of the road surface. */
@@ -8302,7 +8293,10 @@ export class RoadMeshRenderer {
   // Lit (Lambert) so the pavement receives cast shadows from cars, lamps and
   // buildings and shades with the sun; road faces are flat +Y, so daylight
   // reads nearly as uniform as the old unlit fill but now grounds its traffic.
-  private readonly material = new THREE.MeshLambertMaterial({ vertexColors: true });
+  // The night tint rides a shader uniform, so every chunk reads the current
+  // factor; a mutated material colour left a chunk drawn with the day value.
+  private readonly nightFactorUniform = uniform(0);
+  private readonly material = nightBodyMaterial(this.nightFactorUniform, { vertexColors: true });
   private readonly chunks = new Map<number, ChunkEntry>();
   /**
    * The same deltas the chunk maps hold, by `z * MAP_SIZE + x`, so a lookup of
@@ -8342,9 +8336,11 @@ export class RoadMeshRenderer {
   // Detectable warning pads: one InstancedMesh of thin slabs, one per kerb
   // ramp, laid along the ramp's slope.
   private readonly padGeometry = new THREE.BoxGeometry(1, 1, 1);
-  private readonly padMaterial = new THREE.MeshLambertMaterial({
-    color: new THREE.Color().setRGB(...YELLOW_MARKING_COLOR, THREE.LinearSRGBColorSpace),
-  });
+  private readonly padMaterial = (() => {
+    const material = nightBodyMaterial(this.nightFactorUniform);
+    material.color.setRGB(...YELLOW_MARKING_COLOR, THREE.LinearSRGBColorSpace);
+    return material;
+  })();
   private padMesh: THREE.InstancedMesh | null = null;
   /**
    * Resolves a profile id to its cross-section, so a composed road draws its
@@ -8378,21 +8374,18 @@ export class RoadMeshRenderer {
   }
 
   /**
-   * The night tint, on top of the Lambert lighting's own darkening. Scales
-   * material.color (a multiplier on lit vertex color), so it deepens the
-   * pavement at night without touching per-tile colors, keeping the lamp
-   * pools as the bright spots. At day (factor 0) it is 1 → the road shows
-   * its full lit color.
+   * The night tint, on top of the Lambert lighting's own darkening: the one
+   * shared tint multiplies the pavement's vertex colours, so it dims with the
+   * terrain beside it and the lamp pools stay the bright spots. At day
+   * (factor 0) the road shows its full lit colour.
    */
   setNightFactor(nightFactor: number): void {
-    const tint = roadNightTint(nightFactor);
-    this.material.color.setRGB(...tint);
-    this.padMaterial.color.setRGB(
-      YELLOW_MARKING_COLOR[0] * tint[0],
-      YELLOW_MARKING_COLOR[1] * tint[1],
-      YELLOW_MARKING_COLOR[2] * tint[2],
-      THREE.LinearSRGBColorSpace,
-    );
+    this.nightFactorUniform.value = Math.min(1, Math.max(0, nightFactor));
+  }
+
+  /** The night factor the pavement is tinted by: 0 by day, 1 at full night. */
+  nightFactor(): number {
+    return this.nightFactorUniform.value;
   }
 
   /** Every kerb ramp the roads' junctions lay, in world metres. */

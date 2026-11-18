@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
+import { MeshLambertNodeMaterial } from 'three/webgpu';
 import { PIER_SPACING_TILES, TILE_METERS } from '../shared/constants';
 import {
   carriagewayHalfWidthOf,
@@ -160,6 +161,25 @@ describe('groupByStyle', () => {
 });
 
 describe('BridgeRenderer', () => {
+  it('tints every deck, girder and parapet material with the one night tint, which a night factor of 1 carries', () => {
+    const scene = new THREE.Scene();
+    const renderer = new BridgeRenderer(scene, flatDeckAt);
+    renderer.rebuild([deckTile(1, 0), deckTile(1, 1), deckTile(1, 2)]);
+    const meshes = scene.children.filter((c): c is THREE.Mesh => c instanceof THREE.Mesh);
+    expect(meshes.length).toBeGreaterThan(0);
+    for (const mesh of meshes) {
+      const material = mesh.material as MeshLambertNodeMaterial;
+      expect(material).toBeInstanceOf(MeshLambertNodeMaterial);
+      expect(material.colorNode).not.toBeNull();
+    }
+    expect(renderer.nightFactor()).toBe(0);
+    renderer.setNightFactor(1);
+    expect(renderer.nightFactor()).toBe(1);
+    renderer.setNightFactor(5);
+    expect(renderer.nightFactor()).toBe(1);
+    renderer.dispose();
+  });
+
   it('adds nothing to the scene when the city has no decks', () => {
     const scene = new THREE.Scene();
     const renderer = new BridgeRenderer(scene, flatDeckAt);

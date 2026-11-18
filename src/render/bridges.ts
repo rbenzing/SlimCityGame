@@ -21,6 +21,9 @@
  * timber footbridge and a motorway viaduct pays for two, not for every span.
  */
 import * as THREE from 'three';
+import type { MeshLambertNodeMaterial } from 'three/webgpu';
+import { uniform } from 'three/tsl';
+import { nightBodyMaterial } from './nightlook';
 import { PIER_SPACING_TILES, TILE_METERS, tileToWorld, worldToTile } from '../shared/constants';
 import { bridgeStyleFor, GIRDER_DEPTH_M } from '../shared/bridgestyle';
 import type { BridgeStyle } from '../shared/bridgestyle';
@@ -303,7 +306,8 @@ export class BridgeRenderer {
 
   private readonly boxGeometry = new THREE.BoxGeometry(1, 1, 1);
   private readonly columnGeometry = new THREE.CylinderGeometry(1, 1, 1, PIER_RADIAL_SEGMENTS);
-  private readonly materials = new Map<number, THREE.MeshLambertMaterial>();
+  private readonly nightFactorUniform = uniform(0);
+  private readonly materials = new Map<number, MeshLambertNodeMaterial>();
   private meshes: (THREE.InstancedMesh | THREE.Mesh)[] = [];
   private readonly deckHeightAt: (wx: number, wz: number) => number;
   private readonly crossingDeckAt: (wx: number, wz: number, cx: number, cz: number) => number;
@@ -773,10 +777,10 @@ export class BridgeRenderer {
     return slot;
   }
 
-  private material(color: number): THREE.MeshLambertMaterial {
+  private material(color: number): MeshLambertNodeMaterial {
     let material = this.materials.get(color);
     if (!material) {
-      material = new THREE.MeshLambertMaterial({ color });
+      material = nightBodyMaterial(this.nightFactorUniform, { color });
       this.materials.set(color, material);
     }
     return material;
@@ -820,6 +824,16 @@ export class BridgeRenderer {
       else mesh.geometry.dispose();
     }
     this.meshes = [];
+  }
+
+  /** The night tint every sunlit surface reads, on the deck, girders, parapets and piers. */
+  setNightFactor(nightFactor: number): void {
+    this.nightFactorUniform.value = Math.min(1, Math.max(0, nightFactor));
+  }
+
+  /** The night factor the structure is tinted by: 0 by day, 1 at full night. */
+  nightFactor(): number {
+    return this.nightFactorUniform.value;
   }
 
   dispose(): void {

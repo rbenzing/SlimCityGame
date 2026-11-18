@@ -19,6 +19,8 @@
  */
 
 import * as THREE from 'three';
+import { uniform } from 'three/tsl';
+import { nightBodyMaterial } from './nightlook';
 import { TILE_METERS } from '../shared/constants';
 import { MAX_SETBACK_SHARE, leavingDirection, sampleCentreLine } from '../shared/roadgeom';
 import type { MPoint } from '../shared/roadgeom';
@@ -82,7 +84,6 @@ import {
   noPassingRuns,
   laneGlyphPaint,
   medianHalfWidthOf,
-  roadNightTint,
   streetTrackStrips,
   surfaceColor,
 } from './roadsmesh';
@@ -1465,7 +1466,8 @@ export function freeRoadPoleLay(
 export class FreeRoadRenderer {
   // Lit like the tile roads so the two shade alike. Kerb faces are drawn
   // without a winding of their own, so both sides are lit.
-  private readonly material = new THREE.MeshLambertMaterial({
+  private readonly nightFactorUniform = uniform(0);
+  private readonly material = nightBodyMaterial(this.nightFactorUniform, {
     vertexColors: true,
     side: THREE.DoubleSide,
   });
@@ -1499,7 +1501,12 @@ export class FreeRoadRenderer {
   }
 
   setNightFactor(nightFactor: number): void {
-    this.material.color.setRGB(...roadNightTint(nightFactor));
+    this.nightFactorUniform.value = Math.min(1, Math.max(0, nightFactor));
+  }
+
+  /** The night factor the pavement is tinted by: 0 by day, 1 at full night. */
+  nightFactor(): number {
+    return this.nightFactorUniform.value;
   }
 
   /** The grid tiles the last rebuild drew a junction over, which the tile renderer leaves to it. */

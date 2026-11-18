@@ -37,6 +37,8 @@ describe('NIGHT_TINT — the one shade every sunlit surface reads at night', () 
       'trees.ts',
       'lots.ts',
       'roadsmesh.ts',
+      'freeroadmesh.ts',
+      'bridges.ts',
       'water.ts',
     ];
     for (const file of readers) {
