@@ -498,6 +498,24 @@ describe('buildVehicleGeometry (§6.8 multi-part merged geometry + region mask)'
     expect(taillightCount).toBeGreaterThan(0);
   });
 
+  it('bakes every wheel vertex at the one tyre number 0x0d0e10 ÷ 255, on the vertex path alone, so nothing darkens it twice', () => {
+    for (const kind of [VehicleKind.Car, VehicleKind.Truck, VehicleKind.Bus]) {
+      const geo = buildVehicleGeometry(kind);
+      const position = geo.getAttribute('position');
+      const region = geo.getAttribute('vehicleRegion');
+      const color = geo.getAttribute('color');
+      let wheelVertices = 0;
+      for (let i = 0; i < region.count; i++) {
+        if (region.getX(i) !== VEHICLE_REGION.FIXED || position.getY(i) > -0.2) continue;
+        wheelVertices++;
+        expect(color.getX(i)).toBeCloseTo(0x0d / 255, 6);
+        expect(color.getY(i)).toBeCloseTo(0x0e / 255, 6);
+        expect(color.getZ(i)).toBeCloseTo(0x10 / 255, 6);
+      }
+      expect(wheelVertices, `kind ${kind}`).toBeGreaterThan(0);
+    }
+  });
+
   it('builds a distinct geometry (multi-part: body + cabin/window mass + wheels + lights) for every kind', () => {
     for (const kind of [VehicleKind.Car, VehicleKind.Truck, VehicleKind.Bus]) {
       const geo = buildVehicleGeometry(kind);

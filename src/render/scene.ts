@@ -324,6 +324,23 @@ export interface WorldScene {
   setShadowFocus(x: number, z: number): void;
 }
 
+/** The sun's shadow map is this many texels square. */
+export const SHADOW_MAP_SIZE = 4096;
+/** The shadow frustum reaches this far each side of the camera target, metres. */
+export const SHADOW_SPAN_METERS = 360;
+/** What one shadow texel covers on the ground, metres. */
+export const SHADOW_TEXEL_METERS = (2 * SHADOW_SPAN_METERS) / SHADOW_MAP_SIZE;
+
+/**
+ * Whether a part casts a shadow: its thinnest side is at least one shadow
+ * texel, so the map can hold it. A thinner part aliases into broken dashes.
+ */
+export function castsShadow(geometry: THREE.BufferGeometry): boolean {
+  geometry.computeBoundingBox();
+  const size = geometry.boundingBox!.getSize(new THREE.Vector3());
+  return Math.min(size.x, size.y, size.z) >= SHADOW_TEXEL_METERS;
+}
+
 /** Builds the lit THREE.Scene: hemisphere ambient, shadow-casting sun, fog, sky background. */
 export function createWorldScene(): WorldScene {
   const scene = new THREE.Scene();
@@ -335,7 +352,7 @@ export function createWorldScene(): WorldScene {
 
   const sun = new THREE.DirectionalLight(0xffffff, 1.5);
   sun.castShadow = true;
-  sun.shadow.mapSize.set(4096, 4096);
+  sun.shadow.mapSize.set(SHADOW_MAP_SIZE, SHADOW_MAP_SIZE);
   sun.shadow.bias = -0.0006;
 
   // Shadow sweep: rather than stretch one map over the
@@ -347,7 +364,6 @@ export function createWorldScene(): WorldScene {
   // a tree's shadow bridges from its trunk base to the canopy blob instead of
   // reading as a detached floating patch. Distant props fall outside the
   // frustum, which is fine for a top-down RTS.
-  const SHADOW_SPAN_METERS = 360;
   const shadowCamera = sun.shadow.camera;
   shadowCamera.left = -SHADOW_SPAN_METERS;
   shadowCamera.right = SHADOW_SPAN_METERS;

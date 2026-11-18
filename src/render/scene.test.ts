@@ -327,6 +327,16 @@ describe('createWorldScene', () => {
     expect(scene.background).toBeNull();
   });
 
+  it('keeps a shadow texel under 0.2 m on the ground, narrower than a lamp pole (0.24 m) so a pole casts a whole shadow', () => {
+    const { scene } = createWorldScene();
+    const sun = scene.children.find(
+      (c): c is THREE.DirectionalLight => c instanceof THREE.DirectionalLight,
+    )!;
+    const texelMeters = (sun.shadow.camera.right - sun.shadow.camera.left) / sun.shadow.mapSize.x;
+    expect(texelMeters).toBeLessThan(0.2);
+    expect(texelMeters).toBeGreaterThan(0.1);
+  });
+
   it('renders the sky dome behind everything with depth-write disabled (UI-SPEC §6.14 z-order)', () => {
     const { scene } = createWorldScene();
     const dome = scene.children.find((c): c is THREE.Mesh => c instanceof THREE.Mesh)!;
