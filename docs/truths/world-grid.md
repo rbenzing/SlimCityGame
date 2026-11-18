@@ -212,3 +212,9 @@ Back to [the index](../GROUND-TRUTHS.md).
   pavement may lie in the object free area (the player's rule: real sizing
   and structure). — [airports.md](../specs/airports.md);
   `src/shared/airportlayout.ts`
+- [R-world-053] A fence closes an airport's airside on every side, with a gate at each
+  road through it; buildings on its line are part of it. Every support
+  building fits the plot its rung shipped with, off the clear areas and
+  under the 7 to 1 surface from the runway's primary surface; the tower
+  alone rises above it. — [airport-facilities.md](../specs/airport-facilities.md);
+  `src/shared/airportlayout.ts`

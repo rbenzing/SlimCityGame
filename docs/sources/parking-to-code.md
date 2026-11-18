@@ -129,3 +129,20 @@ So a strip on a street painting parallel parking takes four lots, and on a stree
 ## Kinds not covered
 
 Parking maximums, shared-parking reductions and transit-area waivers (Minneapolis 2021, Austin 2023, California AB 2097 near major transit) repeal minimums rather than draw them, so the game does not model them.
+
+## Corner radii
+
+For [paved-corners.md](../specs/paved-corners.md). Each figure was seen in a search result for the code named, and the code's own page was not read; where two codes agree both are listed.
+
+| Corner | Figure | Code |
+| --- | --- | --- |
+| Any kerb line in a car park | at least 5 ft | [York, Pennsylvania](https://codelibrary.amlegal.com/codes/yorkpa/latest/york_pa/0-0-0-12758) |
+| A car park kerb | at least 4.5 ft | [Henrico County, Virginia](https://henrico.gov/services/parking/) |
+| A landscape island's kerb | at least 2 ft | [Sedona, Arizona](https://sedona.municipal.codes/SLDC/5.5.F) |
+| Inside of a turn in a car park | at least 15 ft | Sedona; [Silverton, Oregon](https://silverton.municipal.codes/PWDS/2.28) |
+| Inside of a turn on an emergency lane | 25 ft | Silverton |
+| Inside of a turn, by default | 20 ft | [San Luis Obispo, California](https://sanluisobispo.municipal.codes/Code/12.38.050) |
+| Where two alleys meet | 20 ft radius at the property line | [Jerome, Idaho](https://codelibrary.amlegal.com/codes/jeromeid/latest/jerome_id/0-0-0-4754) |
+| Alley to street kerb return | 5 ft; 10 ft in commercial and industrial zones | [Los Angeles](https://completestreetdesignmanual.engineering.lacity.gov/e-500-design-criteria-special-street-components-and-projects/e-510-alleys/e-515-curb-return-radii); [Minneapolis](https://sdg.minneapolismn.gov/street-types/alley) |
+
+Not found: a radius for a car park's outer corner as such, or for the return where its drive meets the street. The outer corner takes the any-kerb-line figure.

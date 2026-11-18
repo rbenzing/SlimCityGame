@@ -32,3 +32,5 @@ One spec a built feature, card first; the template is [_template.md](_template.m
 | [emergency-services.md](emergency-services.md) | How far a police or fire station answers, how many calls it runs, unanswered calls, and the two-rung ladder |
 | [parks-and-recreation.md](parks-and-recreation.md) | Five park rungs at real size, the open-space standard, and how park coverage lifts land value |
 | [airports.md](airports.md) | An airfield, a regional and an international airport at FAA sizes, their strips, paint and prices |
+| [airport-facilities.md](airport-facilities.md) | An airport's fence, tower, fuel, hangars, cargo, garages, loop road, signs and boarding bridges |
+| [paved-corners.md](paved-corners.md) | The radius every paved corner turns on: car parks, islands, plot roads, alleys and taxiways |
