@@ -188,7 +188,10 @@ standard, capped like every other service, drawn as five kits that read
 apart and worn when full. **The municipal services programme is complete.**
 Next, the [DESIGN.md](DESIGN.md) deferred backlog (weather, deeper industry,
 more transit modes) and AI raster map packs, facade-atlas stage 2 and
-screen-space AO/reflections are the shelf to pick from.
+screen-space AO/reflections are the shelf to pick from. **In progress, at
+the player's request: commercial and industrial grounds**
+([commercial-industrial-grounds.md](specs/commercial-industrial-grounds.md)),
+agreed and not yet built.
 
 ---
 

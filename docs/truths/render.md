@@ -299,4 +299,11 @@ Back to [the index](../GROUND-TRUTHS.md).
   avenue's 1.2 m median carries no trees. —
   [street-furniture.md](../specs/street-furniture.md); `clearBeside` and
   `clearEndCaps` in `src/render/trees.ts`
+- [R-render-048] Every commercial and industrial lot is furnished from one shared plan:
+  lights, a free-standing sign, planting, a walk to the door, a bench and a
+  bin, a refuse enclosure, a fence round a works' yard. A piece is laid
+  only where it fits, in a fixed order of need, and never on a stall, an
+  aisle, a drive, a walk, a berth, a door or the street's footway; the
+  building and its stalls never move for one. —
+  [commercial-industrial-grounds.md](../specs/commercial-industrial-grounds.md)
 

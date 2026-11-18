@@ -18,11 +18,11 @@ How to use it:
 | Roads: markings and kerb parking       | [roads-markings.md](truths/roads-markings.md) | 13    | `R-roads-044–050, 068, 069, 087, 089–091` |
 | Roads: rail, tram and transit          | [roads-transit.md](truths/roads-transit.md)   | 11    | `R-roads-007, 008, 011–014, 037–039, 082, 088` |
 | World: grid and simulation core        | [world-grid.md](truths/world-grid.md)         | 25    | `R-world-001–006, 019–024, 027, 030–035, 049–054` |
-| World: growth, lots and population     | [world-growth.md](truths/world-growth.md)     | 29    | `R-world-007–018, 025, 026, 028, 029, 036–048` |
+| World: growth, lots and population     | [world-growth.md](truths/world-growth.md)     | 30    | `R-world-007–018, 025, 026, 028, 029, 036–048, 055` |
 | Utilities and services                 | [services.md](truths/services.md)             | 42    | `R-services-001` to `R-services-042` |
 | Saves and the data model               | [saves.md](truths/saves.md)                   | 13    | `R-saves-001` to `R-saves-013`       |
 | Architecture and the thread boundary   | [architecture.md](truths/architecture.md)     | 17    | `R-architecture-001` to `R-architecture-017` |
-| Rendering and art                      | [render.md](truths/render.md)                 | 47    | `R-render-001` to `R-render-047`     |
+| Rendering and art                      | [render.md](truths/render.md)                 | 48    | `R-render-001` to `R-render-048`     |
 | Game design and interface              | [design.md](truths/design.md)                 | 22    | `R-design-001` to `R-design-022`     |
 | Process                                | [process.md](truths/process.md)               | 10    | `R-process-001` to `R-process-010`   |
 
