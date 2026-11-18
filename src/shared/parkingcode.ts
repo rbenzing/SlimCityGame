@@ -132,6 +132,15 @@ export function isDenseLotEntry(entry: BuildingCatalogEntry): boolean {
   return entry.bodyFootprint !== undefined && entry.level === 1 && isDenseLotKind(entry.kind);
 }
 
+/**
+ * Whether `entry` is a suburban commercial or industrial building on a lot
+ * larger than its body: a roomy rung, whose car park keeps a planted strip
+ * inside its lot lines.
+ */
+export function isRoomyLotEntry(entry: BuildingCatalogEntry): boolean {
+  return entry.bodyFootprint !== undefined && !isDenseLotEntry(entry) && drawsLotParking(entry);
+}
+
 /** Whether a building parks on its own lot to code: suburban commerce and industry and a dense kind on its larger lot, never a farm. */
 export function drawsLotParking(entry: BuildingCatalogEntry): boolean {
   if (isDenseLotEntry(entry)) return true;
