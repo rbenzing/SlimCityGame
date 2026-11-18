@@ -10,12 +10,12 @@ What two reviews of every screenshot the shot tools write found wrong in the gam
 ## Major: transit
 
 - A tram reservation on a free (off-grid) road draws its median but no guideway, columns or beams. `[R-roads-088]` — `shots-bends/tram-90-above`
-- The airport has no runway. Its terminal is one slab over the middle of the plot, aircraft stand half under its walls, and its car park is an outline on lawn. — `shots-airport/airport-above`
+- An airport's terminal is a plain block with two window bands and no jet bridges, its car park's stall lines shimmer from afar, and the international's plot is longer than the camera's furthest view. — `shots-airport/international-airport-apron`
 
 ## Major: buildings and lots
 
 - On sloping ground a civic or utility pad shows a dark footing wall along its low side, a storey high at the shore plants, and a drive's apron leaves grass wedges against the footway. `[R-render-034]` — `shots-civic-access/b2-fire-apron-low`, `shots-power/3a-reactor-from-across-the-water`
-- At night the airport's apron takes no night tint, and the landfill's mound and pad dim with the light alone, without the shared tint. — `shots-town/12-landfill-office-night`
+- At night the former airport's apron takes no night tint, and the landfill's mound and pad dim with the light alone, without the shared tint. — `shots-town/12-landfill-office-night`
 - Where a zone has no room for its car park a level-1 office, hotel, mixed-use block or mid-rise still stands on a bare pad and parks at the kerb, and a level-2 hotel on its own 2 × 2 footprint has no garage. `[R-services-040]` — `shots-mixeduse/close-mixed-1`
 - A reactor's intake forebay stands at plate height over a sloping beach, and where the shore lies further out than 6 m its crib stops short of the water. — `shots-power/3c-reactor-intake-close`
 

@@ -9,6 +9,7 @@
  * meets the street; the renderer lays the crossing from it, and a test holds
  * every span to its kit's own layout.
  */
+import { AirportId, airportLayout } from './airportlayout';
 
 /** A two-way vehicle crossing: 24 ft. */
 export const CIVIC_DRIVE_WIDTH_M = 7.3;
@@ -46,6 +47,12 @@ const apron = (u0: number, u1: number): CivicSpan => ({ u0, u1, kind: 'apron' })
 const parkWalk = (widthTiles: number): CivicAccess => ({ spans: [walk(widthTiles * 10)] });
 
 const SHORE: Pick<CivicAccess, 'edge' | 'turn'> = { edge: 'back', turn: 'water' };
+
+/** An airport's drive meets the street where its layout puts it, the middle of the car park's edge. */
+const airportAccess = (id: AirportId): CivicAccess => {
+  const x = airportLayout(id).drive.x;
+  return { spans: [drive(x - CIVIC_DRIVE_WIDTH_M / 2, x + CIVIC_DRIVE_WIDTH_M / 2)] };
+};
 
 /**
  * Every civic catalog id: the utility kits (UTILITY_KIT_CATALOG_IDS) and the
@@ -91,6 +98,9 @@ export const CIVIC_ACCESS_BY_ID: Readonly<Record<string, CivicAccess>> = {
   'rail-yard': { turn: 'yard', spans: [drive(71.2, 78.4)] },
   substation: { spans: [drive(17, 23)] },
   airport: { edge: 'back', spans: [drive(76.35, 83.65)] },
+  airfield: airportAccess('airfield'),
+  'regional-airport': airportAccess('regional-airport'),
+  'international-airport': airportAccess('international-airport'),
 };
 
 /** A civic entry's access, or null for any other catalog entry. */

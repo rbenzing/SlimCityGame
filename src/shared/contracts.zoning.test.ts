@@ -679,7 +679,7 @@ describe('a larger lot for a kind is the same building on more car park', () => 
   });
 
   it('appends the dense kinds’ level-1 car-park lots and their next levels to the catalog, whose saved ids never move', () => {
-    expect(catalog.slice(-7).map((e) => e.id)).toEqual([
+    expect(catalog.slice(-10, -3).map((e) => e.id)).toEqual([
       'res-high-1-lot2x2',
       'mixed-1-lot2x2',
       'com-high-1-lot4x4',

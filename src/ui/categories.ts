@@ -174,12 +174,14 @@ function culDeSacCard(): AssetCard[] {
 }
 
 function catalogCards(predicate: (entry: BuildingCatalogEntry) => boolean): AssetCard[] {
-  return catalog.filter(predicate).map((entry) => ({
-    id: `plop.${entry.id}` as ToolId,
-    name: entry.name,
-    cost: entry.cost,
-    unlockMilestone: entry.unlockMilestone,
-  }));
+  return catalog
+    .filter((entry) => !entry.retired && predicate(entry))
+    .map((entry) => ({
+      id: `plop.${entry.id}` as ToolId,
+      name: entry.name,
+      cost: entry.cost,
+      unlockMilestone: entry.unlockMilestone,
+    }));
 }
 
 /**

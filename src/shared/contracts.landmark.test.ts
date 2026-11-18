@@ -15,6 +15,7 @@ import { describe, expect, it } from 'vitest';
 
 import type { BuildingCatalogEntry } from './types';
 import { MILESTONES } from './constants';
+import { airportPlotTiles } from './airportlayout';
 import catalogData from '../data/catalog.json';
 
 const catalog = (catalogData as { buildings: BuildingCatalogEntry[] }).buildings;
@@ -76,7 +77,11 @@ describe('airport landmark catalog entry (UI-SPEC §6.10)', () => {
 
   it('exists exactly once in the production catalog', () => {
     expect(catalog.filter((entry) => entry.id === 'airport')).toHaveLength(1);
-    expect(airport?.name).toBe('International Airport');
+    expect(airport?.name).toBe('Former Airport');
+  });
+
+  it('is retired: out of the build drawer, still a catalog entry every save can load', () => {
+    expect(airport?.retired).toBe(true);
   });
 
   it('is a transit-category ploppable, not a park — no zone, no level, no utility spec', () => {
@@ -135,5 +140,89 @@ describe('airport landmark catalog entry (UI-SPEC §6.10)', () => {
     expect(airport?.unlockMilestone).toBe(5);
     expect(MILESTONES.length).toBeGreaterThan(5);
     expect(MILESTONES[5]?.population).toBeGreaterThan(0);
+  });
+});
+
+describe('the three airport catalog entries', () => {
+  const byId = (id: string): BuildingCatalogEntry => catalog.find((e) => e.id === id)!;
+  const rungs = [
+    {
+      id: 'airfield',
+      name: 'Airfield',
+      plot: airportPlotTiles('airfield'),
+      height: 6,
+      power: 0.0015,
+      water: 0.5,
+      pollution: 5,
+      noise: 60,
+      cost: 2_400,
+      upkeep: 100,
+      unlock: 'Busy Township',
+    },
+    {
+      id: 'regional-airport',
+      name: 'Regional Airport',
+      plot: airportPlotTiles('regional-airport'),
+      height: 9,
+      power: 0.12,
+      water: 52,
+      pollution: 15,
+      noise: 120,
+      cost: 18_000,
+      upkeep: 750,
+      unlock: 'Small City',
+    },
+    {
+      id: 'international-airport',
+      name: 'International Airport',
+      plot: airportPlotTiles('international-airport'),
+      height: 14,
+      power: 0.4,
+      water: 175,
+      pollution: 30,
+      noise: 160,
+      cost: 60_000,
+      upkeep: 2_500,
+      unlock: 'Metropolis',
+    },
+  ];
+
+  it.each(rungs)('pins $id to the spec', (rung) => {
+    const e = byId(rung.id);
+    expect(e.name).toBe(rung.name);
+    expect(e.category).toBe('transit');
+    expect(e.footprint).toEqual(rung.plot);
+    expect(e.height).toBe(rung.height);
+    expect(e.powerUse).toBe(rung.power);
+    expect(e.waterUse).toBe(rung.water);
+    expect(e.pollution).toBe(rung.pollution);
+    expect(e.noise).toBe(rung.noise);
+    expect(e.cost).toBe(rung.cost);
+    expect(e.upkeep).toBe(rung.upkeep);
+    expect(MILESTONES[e.unlockMilestone]?.name).toBe(rung.unlock);
+    expect(e.service).toBeUndefined();
+    expect(e.landValueBonus).toBeUndefined();
+    expect(e.retired).toBeUndefined();
+  });
+
+  it('leaves the former airport as it was but for its name and its retirement', () => {
+    const { name, retired, ...rest } = byId('airport');
+    expect(name).toBe('Former Airport');
+    expect(retired).toBe(true);
+    expect(rest).toEqual({
+      id: 'airport',
+      category: 'transit',
+      footprint: { w: 8, d: 6 },
+      height: 14,
+      color: 14932681,
+      powerUse: 0.4,
+      waterUse: 175,
+      pollution: 30,
+      noise: 160,
+      landValueBonus: 120,
+      cost: 60000,
+      upkeep: 2500,
+      unlockMilestone: 5,
+    });
   });
 });

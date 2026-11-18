@@ -206,3 +206,9 @@ Back to [the index](../GROUND-TRUTHS.md).
   on a lot that rose behind it stood a metre above its own drive. —
   [municipal-services.md](../specs/municipal-services.md);
   `computeFlattenPatch` in `src/sim/worker.entry.ts`
+- [R-world-052] An airport's plot holds its runway, its runway safety area and its object
+  free area, each sized from its FAA design group and none shrunk to fit.
+  Nothing above ground stands in the two clear areas, though a taxiway's
+  pavement may lie in the object free area (the player's rule: real sizing
+  and structure). — [airports.md](../specs/airports.md);
+  `src/shared/airportlayout.ts`

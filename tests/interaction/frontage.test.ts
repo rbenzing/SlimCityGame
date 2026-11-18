@@ -191,7 +191,7 @@ describe('a placed building stands beside a street [R-world-049]', () => {
 
   it('keeps funds and locked as the codes they are', () => {
     const early = initialized();
-    expect(run(early, 1, [place('airport', 60, 60)]).reason).toBe('locked');
+    expect(run(early, 1, [place('international-airport', 60, 60)]).reason).toBe('locked');
   });
 
   it('undoes an accepted placement to the grid it found, and redoes it', () => {

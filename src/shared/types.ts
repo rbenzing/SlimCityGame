@@ -1527,6 +1527,12 @@ export interface BuildingCatalogEntry {
    * follow the hillside they are laid on. Catalog data, never saved.
    */
   ground?: 'level' | 'drape';
+  /**
+   * No longer for sale: left out of the build drawer and refused as a new
+   * placement, while a saved one still loads, draws, bulldozes and is put back
+   * by an undo. Catalog data, never saved.
+   */
+  retired?: true;
 }
 
 // ---------------------------------------------------------------------------

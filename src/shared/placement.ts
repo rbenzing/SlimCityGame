@@ -15,6 +15,7 @@ export const PLACEMENT_REFUSALS = {
   needsShore: 'It must stand on a shore.',
   crowded: 'It stands too close to another of its kind.',
   blocked: 'It cannot be placed there.',
+  retired: 'It is no longer built.',
 } as const;
 
 /**

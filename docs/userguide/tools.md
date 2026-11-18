@@ -275,6 +275,12 @@
 - **Services** — fire, police, health, education, and parks. Each projects a
   coverage/effect field around it; gaps in coverage show up in the infoview
   lenses and drag down happiness.
+- **Airports** — three sizes in the Transit drawer: an **Airfield** (49 × 9
+  tiles, from Busy Township), a **Regional Airport** (107 × 23, from Small
+  City) and an **International Airport** (183 × 33, from Metropolis). Each
+  plot includes the clear ground a real runway needs, so find or level a
+  long, dry, flat site first; the long edge by the car park must face a
+  street. They draw power and water and are loud; no flights are simulated.
 - **Transit** — bus lines with stops and cosmetic buses; ridership depends on
   stops being close enough to demand. (Place stops within a few tiles of where
   people are.) Buses, trams and trains show in every view while their line

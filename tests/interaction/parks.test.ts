@@ -18,7 +18,8 @@ describe('open-space provision rides every snapshot', () => {
       { kind: 'buildRoad', tier: RoadTier.TwoLane, tiles: roadRow(80, 99, 40) },
       { kind: 'placeBuilding', catalogId: 'small-park', x: 80, z: 100, rotation: 2 },
       { kind: 'placeBuilding', catalogId: districtPark.id, x: 82, z: 100, rotation: 2 },
-      { kind: 'placeBuilding', catalogId: airport.id, x: 104, z: 100, rotation: 0 },
+      // A saved airport, since the former one is no longer sold.
+      { kind: 'placeBuilding', catalogId: airport.id, x: 104, z: 100, rotation: 0, restore: true },
     ]);
     expect(ack.ok).toBe(true);
 

@@ -82,8 +82,8 @@ describe('worker sim', () => {
   });
 
   it('sandbox mode bypasses milestone gating for both roads and buildings', () => {
-    // Baseline at milestone 0: the airport (unlockMilestone 5) is locked.
-    send(h, 2, [{ kind: 'placeBuilding', catalogId: 'airport', x: 100, z: 100, rotation: 0 }]);
+    // Baseline at milestone 0: the airfield (unlockMilestone 2) is locked.
+    send(h, 2, [{ kind: 'placeBuilding', catalogId: 'airfield', x: 100, z: 100, rotation: 0 }]);
     h.ticks(1);
     expect(h.ackFor(2)!.ok).toBe(false);
     expect(h.ackFor(2)!.reason).toBe('locked');
@@ -99,7 +99,7 @@ describe('worker sim', () => {
     expect(roadAck.ok).toBe(true);
     expect(roadAck.reason).toBeUndefined();
 
-    // Bump funds so the airport's cost is affordable; milestoneLevel stays 0.
+    // Bump funds so the airfield's cost is affordable; milestoneLevel stays 0.
     h.sim.handleMessage({ type: 'requestSave' });
     const saveMsg = h.messages.find((m) => m.type === 'save');
     if (!saveMsg || saveMsg.type !== 'save') throw new Error('no save message');
@@ -109,8 +109,8 @@ describe('worker sim', () => {
     h.sim.handleMessage({ type: 'commands', seq: 5, commands: [{ kind: 'setSandbox', on: true }] });
 
     send(h, 6, [
-      { kind: 'buildRoad', tier: RoadTier.TwoLane, tiles: roadRow(150, 149, 12) },
-      { kind: 'placeBuilding', catalogId: 'airport', x: 150, z: 150, rotation: 0 },
+      { kind: 'buildRoad', tier: RoadTier.TwoLane, tiles: roadRow(150, 159, 12) },
+      { kind: 'placeBuilding', catalogId: 'airfield', x: 150, z: 150, rotation: 0 },
     ]);
     h.ticks(1);
     const buildingAck = h.ackFor(6)!;
