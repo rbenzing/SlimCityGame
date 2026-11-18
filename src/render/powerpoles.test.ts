@@ -25,6 +25,7 @@ import {
   wirePoints,
 } from './powerpoles';
 import type { PowerLay, PowerWorld } from './powerpoles';
+import { SUBSTATION_FENCE_INSET_M } from './substationkit';
 
 type RoadSpec = Partial<FurnitureRoadTile> & { powered?: boolean };
 
@@ -295,9 +296,12 @@ describe('the line a player strings', () => {
     const { poles } = layStrungLine({ ...none(), sources }, line);
     const first = [...poles].sort((a, b) => a.x - b.x)[0]!;
     const edge = 2 * TILE_METERS;
-    expect(first.x).toBeLessThan(edge + 1.5);
     expect(first.x).toBeGreaterThanOrEqual(edge);
+    expect(first.x).toBeLessThan(edge + TILE_METERS / 2);
     expect(first.z).toBe(tileToWorld(2));
+    // Its guy is anchored outside the yard's fence, which stands inside the lot's edge.
+    expect(first.guy).not.toBeNull();
+    expect(first.guy!.x).toBeGreaterThanOrEqual(edge - SUBSTATION_FENCE_INSET_M + 0.5);
     // Without the source the same pole stands in the middle of its tile.
     const bare = [...layStrungLine(none(), line).poles].sort((a, b) => a.x - b.x)[0]!;
     expect(bare.x).toBe(tileToWorld(2));
@@ -585,4 +589,21 @@ describe('a street pole gives way to what stands beside the street', () => {
     const xs = poles.map((p) => tileOf(p).x).sort((a, b) => a - b);
     for (let i = 1; i < xs.length; i++) expect(xs[i]! - xs[i - 1]!).toBeLessThanOrEqual(2);
   });
+});
+
+describe('a street line clear of the buildings beside it', () => {
+  /** NESC: 7.5 ft from a wall for supply conductors up to 22 kV. */
+  const WALL_CLEAR_M = 2.3;
+  it.each([RoadTier.TwoLane, RoadTier.OneWay])(
+    'keeps the outer wire of tier %i 2.3 m inside the tile edge a lot starts at',
+    (tier) => {
+      const tiles = row(10, 14, 10, { tier });
+      const { poles } = lay(worldOf(tiles));
+      expect(poles.length).toBeGreaterThan(0);
+      for (const p of poles) {
+        const wireReach = Math.abs(p.z - tileToWorld(10)) + p.spread;
+        expect(TILE_METERS / 2 - wireReach).toBeGreaterThanOrEqual(WALL_CLEAR_M);
+      }
+    },
+  );
 });

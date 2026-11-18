@@ -33,6 +33,7 @@ import type { RoadProfile, TilePoint } from '../shared/types';
 import { flankShift, hasCrossingRoad, joins, lateralAxis, tileKey } from './roadfurniture';
 import type { FurnitureRoadTile, RoadTileIndex } from './roadfurniture';
 import type { CablePlace } from './cables';
+import { SUBSTATION_FENCE_INSET_M } from './substationkit';
 import {
   alongOffsets,
   firstFreeAlong,
@@ -196,8 +197,12 @@ export interface PowerWorld {
 /** How far a pole slides along its tile's strip to find a free place, metres. */
 const POLE_SLIDE_LIMIT_M = TILE_METERS / 2 - 1;
 
-/** How far outside a source's edge the pole that ends a line beside it stands. */
-export const SOURCE_POLE_SETBACK_M = 0.8;
+/**
+ * How far outside a source's edge the pole that ends a line beside it stands:
+ * far enough that its guy, anchored back toward the source, lands a metre
+ * outside the fence a substation keeps inside its lot's edge.
+ */
+export const SOURCE_POLE_SETBACK_M = GUY_REACH_M - SUBSTATION_FENCE_INSET_M + 1;
 
 /** How hard a span sags at its middle, metres: half a metre at the 40 m street span. */
 export function wireSagM(lengthM: number): number {
