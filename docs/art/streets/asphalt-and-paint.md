@@ -168,10 +168,12 @@
   interchanges). What an approach into a proper intersection is painted
   follows the junction's control. An approach that gives way under a stop or
   a give-way, and every approach under an all-way stop or a signal, gets a
-  zebra crosswalk where there is a footway to carry across: bars ~0.45 m wide
-  at ~0.6 m spacing, as deep as that footway but never under 1.8 m, lying
-  outside the box against the kerb line of the road the footway follows, and
-  never over an alley mouth. An approach that has
+  crosswalk where there is a footway to carry across: two white lines 0.3 m
+  wide, as far apart as that footway is deep but never under 1.8 m, lying
+  outside the box where the corner's curve ends, with a kerb ramp and a
+  yellow tactile pad at each end, and never over an alley mouth. Bars
+  ~0.45 m wide at ~0.6 m spacing mark a crossing no control holds, as at a
+  roundabout. An approach that has
   to stop also gets a stop line: a 0.4 m bar across its arriving lanes, 1.2 m
   in advance of the crosswalk. The road running through a give-way or a
   minor-road stop is not painted, an uncontrolled junction carries neither,

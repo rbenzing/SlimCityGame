@@ -160,11 +160,10 @@ Back to [the index](../GROUND-TRUTHS.md).
   v/c against that capacity. — [road-model.md](../world-sim/road-model/README.md);
   `roundaboutEntryCapacity` in `src/shared/junction.ts`
 - [R-roads-073] Crosswalks are derived (footway present, arm below top rank). The crossing
-  over an arm is the crossing road's footway carried across it (MUTCD 1C.02
-  def. 50): its inner edge lies on that road's kerb line and it runs outward,
-  as deep as the footway but never under 1.8 m (3C.03 ¶05), so it stands
-  outside the box. Every bar lies on carriageway, the crossing meets a kerb
-  at both ends, and no two crossings touch. The stop line sits at least
+  over an arm is as deep as the footway it carries but never under 1.8 m
+  (3C.03 ¶05), and stands outside the box, where `[R-roads-095]` puts it.
+  Every mark lies on carriageway, the crossing meets a kerb at both ends,
+  and no two crossings touch. The stop line sits at least
   1.2 m in advance of it (3B.19 ¶13), and lane lines, centre lines and arrows
   end by the stop line. Never over an alley mouth. —
   [road-model.md](../world-sim/road-model/README.md); `junctionArmLayout` in
@@ -237,3 +236,24 @@ Back to [the index](../GROUND-TRUTHS.md).
   the ring's footway along a line through its centre. —
   [cul-de-sacs.md](../specs/cul-de-sacs.md); `culDeSacBlockOf` in
   `src/shared/culdesac.ts`
+- [R-roads-093] A turn bay is a short bay taper and a storage lane, never a lane-drop
+  taper: one tile of taper on a street, two on a divided road or a highway,
+  and full width for every tile nearer the junction. A solid white line
+  divides the storage from the through lane, and the bay's arrow is painted
+  at its head and before the stop line. A bay drawn at the lane-drop length
+  was a wedge (the player's report). —
+  [approach lanes](../world-sim/road-model/approach-lanes-turn-pockets-and-tapers.md);
+  `pocketOpenness` in `src/shared/approachzone.ts`
+- [R-roads-094] A crossing over an arm a signal, a stop or a give-way holds is two
+  transverse white lines 0.3 m wide (MUTCD 3C.04). Bars along the traffic's
+  path are for a crossing nothing holds and a crossing away from a junction
+  (3C.05, 3C.03 ¶07). —
+  [furniture](../world-sim/road-model/furniture-and-what-gates-it.md);
+  `emitJunctionArmMarkings` in `src/render/roadsmesh.ts`
+- [R-roads-095] A crossing meets the kerb where the kerb is straight: its nearer line is
+  at the corner's tangent point, cut back to what the arm holds. Each end
+  has a kerb ramp square to it and wholly within its lines (3C.03 ¶09), the
+  kerb face dropped flush, with a detectable warning pad 0.61 m deep at the
+  back of the kerb (PROWAG R305). The stop line keeps 1.2 m before it. —
+  [furniture](../world-sim/road-model/furniture-and-what-gates-it.md);
+  `junctionArmLayout` in `src/shared/junctionpaint.ts`
