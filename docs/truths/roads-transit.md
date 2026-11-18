@@ -123,3 +123,13 @@ Back to [the index](../GROUND-TRUTHS.md).
   [asphalt-and-paint.md](../art/streets/asphalt-and-paint.md);
   `trackPaths` in `src/render/trackpaths.ts`, `streetTrackStrips` in
   `src/render/roadsmesh.ts`
+- [R-roads-096] Rail track joins rail only where the player intersects it, never because
+  two tracks lie side by side. A stroke of track joins along itself, on
+  every tile it runs over that already holds track, and head-on where its
+  first or last tile points at track one step beyond it. Track beside the
+  stroke stays a track of its own, with the road snap on or off; a
+  one-tile stroke joins every track it touches, which is how a link is
+  laid between two tracks. Two rows laid side by side once joined at every
+  tile and drew as a ladder of turnouts. —
+  [how roads meet](../world-sim/road-model/how-roads-meet-rank-replacement-and-transitions.md);
+  `settleRailArms` in `src/world/roads.ts`
