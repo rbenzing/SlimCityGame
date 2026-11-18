@@ -3140,8 +3140,23 @@ function buildHospitalBlockGeometry(footprint: FootprintSize): THREE.BufferGeome
     ),
   );
 
+  // The main entrance's frame, standing proud of the wall round its glass, and
+  // a mullion down the middle where the two leaves meet.
+  const { canopyW, canopyD, canopyY, doorW, doorH } = HOSPITAL_ENTRANCE;
+  parts.push(
+    standingBox(
+      doorW + 2 * frame,
+      doorH + frame,
+      0.15,
+      entrance.x,
+      y0,
+      front + 0.075,
+      HOSPITAL_FRAME_RGB,
+    ),
+    standingBox(0.2, doorH, 0.35, entrance.x, y0, front + 0.175, HOSPITAL_FRAME_RGB),
+  );
+
   // The main entrance's canopy on two posts.
-  const { canopyW, canopyD, canopyY } = HOSPITAL_ENTRANCE;
   const canopySlab = 0.35;
   parts.push(
     standingBox(

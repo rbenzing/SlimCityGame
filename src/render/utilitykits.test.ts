@@ -2703,6 +2703,25 @@ describe('hospital kit', () => {
     expect(top).toBeCloseTo(EMERGENCY_DOORS.h, 5);
   });
 
+  it('frames the main entrance’s glass in the wall under its canopy, from the yard to above the doors', () => {
+    const position = positionsOf('hospitalBlock');
+    const { entrance } = layout;
+    const half = 3 + EMERGENCY_DOORS.frame; // the 6 m of glass and a frame either side
+    const top = RECYCLING_YARD_HEIGHT + 3 + EMERGENCY_DOORS.frame;
+    const frameVertices = Array.from({ length: position.count }, (_, i) => i).filter(
+      (i) =>
+        Math.abs(Math.abs(position.getX(i) - entrance.x) - half) < 1e-6 &&
+        position.getZ(i) > entrance.z &&
+        position.getZ(i) < entrance.z + 0.2,
+    );
+    expect(frameVertices.length).toBeGreaterThan(0);
+    expect(Math.max(...frameVertices.map((i) => position.getY(i)))).toBeCloseTo(top, 5);
+    expect(Math.min(...frameVertices.map((i) => position.getY(i)))).toBeCloseTo(
+      RECYCLING_YARD_HEIGHT,
+      5,
+    );
+  });
+
   it('runs a vehicle ramp up from the street side to the roof, no steeper than 1 in 8', () => {
     const { deck, ramp } = layout;
     const rise = DECK_STOREY_M * (DECK_LEVELS - 1);
