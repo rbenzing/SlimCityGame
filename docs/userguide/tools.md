@@ -155,9 +155,10 @@
   somebody can actually walk: the people using a crossing are travelling the
   other way, so an arm is crossed only where the roads across from it have
   footways — a road built without one sends nobody over the street it meets,
-  and gets no zebra. A crossing is the footway carried over the road, so it
-  lies at the END of the approach, in the strip of tile between the junction
-  and the pavement it continues, rather than out in the middle of the box. The
+  and gets no crossing. A crossing is two white lines across the road with a
+  ramp and a yellow tactile pad at each end. It lies at the END of the
+  approach, just past the corner's curve where the kerb runs straight, rather
+  than out in the middle of the box. The
   **stop line** comes before it, back down the approach, which is the order you
   meet them in and where you actually have to stop; it is as wide as the road
   it is painted across rather than as wide as the junction. Under signals or an all-way

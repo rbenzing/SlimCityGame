@@ -22,22 +22,47 @@ stall marks and the cars out of it.
 
 A junction places its own furniture by control rather than by tier: the
 road ranked highest at a node runs through with no stop marking; every arm
-below it gets a stop bar, and a ladder crosswalk wherever the road has a
-footway (a road with no footway paints no crossing, since there is nobody
-on foot to cross, and its kerb still sweeps round at the corner radius with
-grass filling what would be the footway). Crosswalk presence at a junction
+below it gets a stop bar, and a crosswalk wherever the road has a
+footway on both sides to land on (a road with no footway paints no crossing,
+since there is nobody on foot to cross, and its kerb still sweeps round at the
+corner radius with grass filling what would be the footway).
+
+**A crossing's marking follows the control that holds its arm**
+`[R-roads-094]`. An arm a signal, a stop sign or a give-way holds takes the
+transverse line crosswalk: two parallel white lines 0.3 m (12 in) wide across
+the carriageway, with clear road between them (MUTCD §3C.04 limits this kind
+to exactly those arms; §3C.03 ¶03 allows 6 to 24 in). An arm nothing holds
+takes the high-visibility kind where it is marked at all: bars along the
+traffic's path (§3C.05 ¶03, an uncontrolled approach), as does a crossing
+away from a junction (§3C.03 ¶07). Bars everywhere was the wrong default: the
+standard's ordinary crossing is the two lines. Crosswalk presence at a junction
 is derived this way from footway presence and rank; it is not (yet) an
 independent per-approach toggle a player sets from the junction inspector.
 
 A crossing is as DEEP as the footway it carries across the road, never less
-than the 1.8 m a marked crossing may be (MUTCD 3C.03 ¶05), and it lies AGAINST THE
-KERB LINE of the road it runs along, on the side away from the box: a
-crosswalk is the part of the roadway between the footway's two lines carried
-over (MUTCD 1C.02 def. 50), and the kerb ramps must fall within it (3C.03
-¶09). Set inside the box instead, four crossings of wide roads made a
-square in the middle of the junction with their bars piled at its corners.
-Bars are cut to the carriageway, so a crossing follows the kerb return out
-to the kerb at each end. It is not as deep as the strip of
+than the 1.8 m a marked crossing may be (MUTCD 3C.03 ¶05). **It meets the
+kerb where the kerb is straight** `[R-roads-095]`: its nearer line lies at
+the corner's tangent point, where the kerb return ends and the arm's own
+kerb begins, cut back to what the arm holds. There each end has a **kerb
+ramp** square to the crossing, and the ramp lies wholly inside the
+crossing's two lines (3C.03 ¶09). Two ramps a corner, one for each crossing,
+is the preferred form, and a ramp on the curve the last resort (TxDOT
+Roadway Design Manual 19.4.5). Laid against the crossing road's kerb line
+instead, a crossing ended on the curve of the corner at both ends, where no
+ramp can stand square to it. Set inside the box, four crossings of wide
+roads made a square in the middle of the junction.
+
+A kerb ramp is 1.22 m (48 in) wide or the crossing's depth less 0.3 m each
+side, whichever is more; it falls to the road at 1 in 12, so 0.96 m of run
+for the 0.08 m kerb; and the kerb's face is dropped flush across it
+(PROWAG R304.2.1, R304.5.1). At the back of the kerb it carries a
+**detectable warning**: a pad 0.61 m (24 in) deep and as wide as the ramp, in
+a colour that stands out from the walk, yellow here (PROWAG R305.1.3,
+R305.1.4, R305.2.1). The pad is the mark at each end of a crossing: where
+the walk stops and the road starts.
+
+The stop line stays 1.2 m (4 ft, §3B.19) before the crossing, so it moves
+back with it. A crossing is not as deep as the strip of
 tile the footway sits in: the strip is the room available and runs opposite to
 the road, leaving 6.25 m beside a two-lane street and 1.90 m beside an avenue —
 so reading the room as the figure gave the quiet street a crossing 20 ft deep

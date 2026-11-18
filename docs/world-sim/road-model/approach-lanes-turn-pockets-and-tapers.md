@@ -48,10 +48,23 @@ lanes themselves narrowed to as little as 10 ft (3.05 m, the US minimum for
 a constrained retrofit). A pocket that cannot find at least that width is
 not built. A road that already carries a two-way centre turn lane needs no
 pocket — it already turns from a lane of its own everywhere. The pocket
-does not snap in at full width: it opens over a taper the same length as an
-ordinary lane-drop taper for the class, full width only against the
-junction itself, so the width the road gives up (parking, verge) shrinks
-gracefully rather than vanishing at a line. On a partly open tile the road
+is a **bay taper and a storage lane** `[R-roads-093]`. It opens over a short
+bay taper at the far end of its zone — one tile (20 m) on a street, two (40 m)
+on a divided road or a highway — and is full width for every tile nearer the
+junction: 20 m of storage on a local street, 40 m on an urban street or a
+collector, 60 m on an arterial, a divided road and a highway. A bay taper is
+not a lane-drop taper. A lane drop moves through traffic sideways at speed
+and takes the MUTCD's length (§3B.12: width × speed² ÷ 60, about 15 to 1 at
+30 mph); a bay only lets a slowing driver leave the through lane, and takes
+50 ft at 30 to 40 mph and 100 ft at 45 to 60 (TxDOT Roadway Design Manual,
+4-10.2), or 8 to 1 (Nebraska). Drawn at the lane-drop length, a bay was a
+wedge with one car's length of lane at its tip. The storage is what the bay
+is for: a queued car takes 25 ft (7.6 m), and the same manual asks 100 ft for
+a left turn, which the local street's 20 m does not reach. The lane line
+between the bay and the through lane is solid white along the storage, and
+the bay carries its turn arrow twice, at the head of the storage and before
+the stop line (§3B.23 ¶04). Along the taper the width the road gives up
+(parking, verge) still shrinks with the bay rather than vanishing at a line. On a partly open tile the road
 gives up only what the opened bay needs beyond its spare width — first the
 verge, then as much of the parking as the bay has reached, then the through
 lanes in proportion — so the carriageway is never narrower than the plain
