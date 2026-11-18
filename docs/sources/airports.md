@@ -28,7 +28,11 @@ A stand is as wide as its group's widest wingspan plus the clearance of AC 150/5
 
 The regional's four stands and the airfield's twenty tie-downs are the game's own counts. A tie-down's area is the circular's Table E-1: wingspan plus 10 ft by length plus 5 ft.
 
-Stand depth is not sourced: an aircraft's length is in no held circular. The spec uses 40 m for group III and 76 m for group V and says so in its Open list.
+Stand depth is not sourced: an aircraft's length is in no held circular. The spec uses 40 m for group III and 76 m for group V and says so in its Open list. The three aircraft drawn are the game's own sizes, each inside its group's wingspan limit.
+
+## Paint
+
+Every size in the spec's paint table is from AC 150/5340-1M: numerals and the rule against a leading zero, the centreline, the threshold stripes and their doubled centre gap, the aiming point's place and widths by runway width, the touchdown zone's bars, the side stripes and the holding position's Pattern A. Two things are readings, not quotations: the touchdown groups' counts by step (the text gives the pattern and the 500 ft steps, and leaves the aiming point's step empty), and the digits' shape, which the circular gives only as a figure.
 
 ## Plots
 

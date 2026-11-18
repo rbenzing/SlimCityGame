@@ -1,18 +1,18 @@
 # Airports
 
-- **Status:** Proposed
+- **Status:** Built
 
 **Owns:** the three airports' plots, runways, safety areas, taxiways, aprons, terminals, paint, prices and unlocks.
 
 **Rules:**
 
-- Size every airport from its FAA design group. The runway, its safety area and its object free area all lie inside the plot; never shrink one to fit.
+- Size every airport from its FAA design group. The runway, its safety area and its object free area all lie inside the plot; never shrink one to fit. `[R-world-052]`
 - Lay the plot in strips parallel to the runway: object free area, runway, taxiway, apron, buildings, car park. The car park's edge fronts the street. `[R-world-050]`
-- Keep the safety area and the object free area clear: grass only, with no building, tree, fence, lamp or parked aircraft.
-- Paint a runway white and a taxiway yellow, with the markings its approach category requires and no more.
+- Keep the safety area and the object free area clear of everything above ground: no building, tree, fence, lamp or parked aircraft. Pavement may lie in the object free area (13B ¶3.12.1).
+- Paint a runway white and a taxiway yellow, with the markings its approach category requires and no more. `[R-render-044]`
 - Park aircraft on stands and tie-downs only, nose to the building line, clear of every taxiway's object line.
-- Level the whole plot to one height, and refuse it where a tile is steep or wet, as any building is refused.
-- Keep the old `airport` entry loadable and drawn as it was, and take it out of the drawer.
+- Level the whole plot to one height, and refuse it where a tile is steep or wet, as any building is refused. `[R-world-051]`
+- Keep the old `airport` entry loadable and drawn as it was, named Former Airport, and take it out of the drawer. `[R-saves-013]`
 
 **Numbers:** lengths in metres; the rest are in [Dimensions and paint](#dimensions-and-paint).
 
@@ -28,16 +28,18 @@
 | Cost; upkeep           | 2,400; 100    | 18,000; 750        | 60,000; 2,500           | [sources](../sources/airports.md#price)         |
 | Unlocks at             | Busy Township | Small City         | Metropolis              | dial                                            |
 
-**Code:** planned, none built. `src/shared/airportlayout.ts` (one layout a rung, in the plot's frame), `src/render/landmarks.ts` `LandmarkRenderer` (draws it), `src/data/catalog.json` (three entries; `airport` stays), `src/shared/civicaccess.ts` (the drive on the car park's edge).
+**Code:** `src/shared/airportlayout.ts` `airportLayout` (one layout a rung, every figure a named constant); `src/render/airportkit.ts` (the plate, its paint, and shared pools for buildings, panes and aircraft), drawn by `LandmarkRenderer` in `src/render/landmarks.ts`; `src/data/catalog.json` (three entries; `airport` carries `retired`); `cmdPlaceBuilding` in `src/sim/worker.entry.ts` (refuses a retired entry as new); `src/shared/civicaccess.ts` (the drive).
 
-**Tests:** planned. A layout test a rung measures every figure here and finds only grass in the clear areas; a contract test pins each entry and the old `airport`; a placement test places, undoes and bulldozes the largest plot inside the frame budget.
+**Tests:** `src/shared/airportlayout.test.ts` (every figure here; the clear areas); `src/render/airportkit.test.ts` (paint sizes and colours from the geometry, aircraft on stands, shared pools); `tests/interaction/airports.test.ts` (the largest plot places, undoes and bulldozes back to the same world; the old airport loads and restores); `src/shared/contracts.landmark.test.ts`, `src/ui/categories.test.ts` (the entries; the drawer).
 
 **Open:**
 
 - An airport carries no passengers or freight in the simulation: it draws power and water and makes noise.
 - Runway and taxiway lights are not specified: their standard (AC 150/5340-30) is not held.
-- A wide-body's length is not in the held circulars, so a stand's depth is the game's own 76 m.
+- A wide-body's length is not in the held circulars, so stand depth and aircraft lengths are the game's own.
 - A runway's cost is not sourced, so the price counts the terminal only.
+- Numerals are seven-segment digits, not the circular's Figure A-6 forms.
+- The international's plot is longer than the camera's furthest view.
 
 ## Dimensions and paint
 
@@ -57,21 +59,27 @@
 | Passengers a year                   | none         | 1.2 million   | 4 million                  | same                                                    |
 | Car park spaces                     | 20           | 1,200         | 4,000                      | same                                                    |
 | Aircraft positions                  | 20 tie-downs | 4 stands      | 2 wide and 4 narrow stands | [sources](../sources/airports.md#aircraft-positions)    |
+| Terminal, long × deep; floors       | 15 × 10; 1   | 145 × 40; 2   | 320 × 60; 2                | dial, from the floor area                               |
+| Hangars                             | 4 of 15 × 15 | none          | none                       | dial                                                    |
+| Kerb road                           | 7.32         | 7.32          | 7.32                       | one 24 ft aisle, [parking to code](parking-to-code.md)  |
 | Power kW; water kL                  | 1.5; 0.5     | 120; 52       | 400; 175                   | [municipal services](../sources/municipal-services.md)  |
 | Noise; pollution                    | 60; 5        | 120; 15       | 160; 30                    | dial; the last is the old airport's                     |
 
-Paint, from AC 150/5340-1M:
+Paint, from AC 150/5340-1M chapter 2 (runway), 3 (holding position) and 4 (taxiway):
 
-| Marking              | Size                                                                       | Chapter      |
-| -------------------- | -------------------------------------------------------------------------- | ------------ |
-| Designation numerals | 18.3 tall, white, read from the approach                                   | 2            |
-| Centreline           | 36.6 stripe, 24.4 gap; 0.3, 0.45 or 0.9 wide by category                   | 2            |
-| Threshold stripes    | 45.7 long, 1.75 wide, from 6.1 past the threshold                          | 2, Table 2-2 |
-| Aiming point         | 45.7 long, on a runway of 1,280 or longer                                  | 2            |
-| Touchdown zone       | bar groups of 3, 2 and 1 at 152 steps, precision only                      | 2            |
-| Side stripes         | 0.9 wide, precision only                                                   | 2            |
-| Taxiway centreline   | 0.15 wide, yellow                                                          | 4            |
-| Holding position     | two solid and two broken yellow lines, 0.3 each, solid on the holding side | 3, Pattern A |
+| Marking              | Size                                                                                              |
+| -------------------- | ------------------------------------------------------------------------------------------------- |
+| Designation numerals | 18.3 tall, white, read from the approach; a single digit has no zero before it                    |
+| Centreline           | 36.5 stripe, 24.3 gap; 0.3, 0.45 or 0.9 wide by category                                          |
+| Threshold stripes    | 45.7 long, 1.75 wide, 1.75 apart and 3.5 apart at the centre, from 6.1 past the threshold         |
+| Aiming point         | from 311 past the threshold, 45.7 long; 6.0 wide and 14.6 apart on 30.5, 9.1 and 21.9 on 45.7     |
+| Touchdown zone       | precision only: bars 22.9 × 1.8 along the runway, 1.5 apart, 21.9 between the innermost           |
+| Touchdown groups     | 3, 2, 2, 1, 1 bars a side at 152, 457, 610, 762 and 914 from the threshold (a reading of the text) |
+| Side stripes         | 0.9 wide, precision only                                                                          |
+| Taxiway centreline   | 0.15 wide, yellow                                                                                 |
+| Holding position     | two solid and two broken yellow lines, 0.3 each, solid on the holding side (Pattern A)            |
+
+Aircraft are the game's own, each inside its group's wingspan: a trainer 11.0 × 8.3, a regional jet 26.0 × 31.7, a twin-aisle airliner 60.3 × 63.7 (span × length).
 
 ## Why the rules are what they are
 
@@ -89,13 +97,13 @@ Each rung is one design group. An airfield serves light aircraft by sight. A reg
 
 Every separation in the standard is a distance from the runway's centreline. Strips parallel to the runway turn each one into a line across the plot, so a test can measure it.
 
-The far side holds half the object free area and nothing else. The near side holds, in order, the taxiway, the apron, the buildings and the car park, so passengers reach the street without crossing aircraft.
+The far side holds half the object free area and nothing else. On the two larger rungs the taxiway's centreline lies on the object free area's near edge, both 121.9 m out, so half its pavement is inside: the standard clears that area of objects, and a taxiing aircraft is not one. The near side holds, in order, the taxiway, the apron, the buildings and the car park, so passengers reach the street without crossing aircraft.
 
 ### Why the paint differs by rung
 
 The marking circular ties paint to the approach a runway supports. A visual runway has numerals and a centreline. A non-precision runway adds threshold stripes and an aiming point. A precision runway adds touchdown zone bars and side stripes.
 
-Numerals come from the runway's heading on the map with north up: 09 and 27 east to west, 18 and 36 north to south.
+Numerals come from the runway's heading on the map with north up: 9 and 27 east to west, 18 and 36 north to south.
 
 ### Why the terminal and the car park are these sizes
 
@@ -109,11 +117,13 @@ No published cost for a runway was found. Terminal costs were, so each rung is p
 
 ### What happens to the old airport
 
-A save holds a building by its catalog id and its corner. Changing the old entry's footprint would move every saved airport's tiles. It stays as it is, drawn as it was, and can no longer be bought.
+A save holds a building by its catalog id and its corner. Changing the old entry's footprint would move every saved airport's tiles. It stays as it is, drawn as it was. Its entry carries `retired`: the drawer does not list it and the place command refuses it as a new building, while a saved one loads, bulldozes and comes back on undo.
 
-### Level ground
+### Level ground and a very large plot
 
 A runway's grade is at most 2% for the airfield's group and 1.5% for the larger two (AC 150/5300-13B, figures 3-31 and 3-32). The plot is levelled to one height, as every ploppable is. On a slope the fill shows the footing wall of `[R-render-034]`, which stays open.
+
+The international's 6,039 tiles place, undo and bulldoze in about a tenth of a second each, and its largest command is 88 KB. The town regression's map cannot hold an airport, so each is placed on a map of its own.
 
 ## Decided
 

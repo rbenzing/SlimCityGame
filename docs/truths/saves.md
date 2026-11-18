@@ -60,4 +60,9 @@ Back to [the index](../GROUND-TRUTHS.md).
   `saves`, at most 10), `localStorage` and `sessionStorage`; nothing fetches an
   API. — [constraints.md](../engineering/constraints.md),
   [data-model.md](../engineering/data-model/README.md)
+- [R-saves-013] A ploppable's catalog footprint never grows. A larger design is a new
+  catalog id; the old entry stays loadable and drawn as it was, and only
+  leaves the drawer. A grown footprint would claim tiles a save gave to
+  something else. — [airports.md](../specs/airports.md);
+  `src/data/catalog.json`
 

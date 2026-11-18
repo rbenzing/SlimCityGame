@@ -25,7 +25,7 @@ current behavior only and carry no dates of their own._
 
 ## Status (2026-09-29)
 
-**Test suite:** 8,696 tests passing across 267 test files, run 2026-11-17.
+**Test suite:** 8,801 tests passing across 271 test files, run 2026-11-17.
 This is the only test count in the documentation set. When the suite changes
 again, update the figure here and nowhere else.
 
@@ -37,8 +37,6 @@ again, update the figure here and nowhere else.
 
 - What a review of every shot the tools write found wrong in the game is
   ranked in [open-visual-defects.md](roadmap/open-visual-defects.md).
-- Three airports at FAA sizes are proposed and not yet built:
-  [airports.md](specs/airports.md).
 - A bend turns at its kerb return's radius, not its class's minimum curve
   radius `[R-roads-081]`: the wider sweep leaves the tiles the road holds, so
   lots, traffic and saves would have to follow it. Not yet bends: a one-way

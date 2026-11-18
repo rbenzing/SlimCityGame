@@ -274,4 +274,7 @@ Back to [the index](../GROUND-TRUTHS.md).
   anything a texel wide or wider does. A lamp's 0.1 m arm, at 0.57 of a
   texel, drew a jagged scribble on the road. —
   [lighting.md](../visual-render/lighting.md); `src/render/scene.ts`
+- [R-render-044] A runway's paint is white and a taxiway's yellow, with the markings the
+  runway's approach category requires and no more (AC 150/5340-1M Table
+  2-1). — [airports.md](../specs/airports.md); `src/render/airportkit.ts`
 
