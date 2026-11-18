@@ -69,6 +69,34 @@ Code ceilings for general commercial run far above what is built: floor area rat
 
 A one-storey shop at the game's 46% body fill stands at a ratio of 0.46, above the retail median of 0.28: the gap is the grounds this spec adds.
 
+## The roomy lot of each kind
+
+Measured on the game's own layout: the smallest lot, at most three tiles deep, on which the code car park is laid with a 1.5 m strip free on every side, the building fits, and the building covers no more than the target share (0.28 retail, 0.32 industry). Lots in tiles, frontage by depth.
+
+| Kind | Level 1 | Level 2 | Level 3 |
+| ---- | ------- | ------- | ------- |
+| Shop | 1×1 → 2×1 | 1×2 → 2×2 | 2×2 → 4×2 |
+| Restaurant | 1×2 → 1×3 | 2×2 → 3×2 | 3×2 → 6×2 |
+| Filling station | 2×2, roomy already | 3×2, roomy already | 3×3, roomy already |
+| Strip | 3×2 → 5×2 | 4×2 → 7×2 | 5×2 → 9×2 |
+| Supermarket | 3×3 → 5×3 | 4×3 → 6×3 | 5×4 → 12×3 |
+| Workshop | 2×2 → 3×2 | 3×2 → 3×3 | 3×3 → 5×3 |
+| Depot | 3×3 → 5×3 | 4×3 → 6×3 | 5×4 → 10×3 |
+| Factory | 2×3 → 3×3 | 3×3 → 5×3 | 4×3 → 6×3 |
+| Flex | 2×2 → 3×2 | 3×2 → 4×2 | 3×4 → 5×3 |
+| Cannery, foundry, paper mill | 3×3 → 5×3 | 4×3 or 4×4 → 6×3 to 8×3 | 5×3 or 5×4 → 8×3 to 10×3 |
+| Chemical works | 3×3, roomy already | 4×4, roomy already | 5×4, roomy already |
+
+The office and the hotel are dense kinds and keep their own lots ([structured parking](../specs/structured-parking.md)); the tallest office has no roomy lot at any size.
+
+What it costs, weighting each zone's level-1 kinds by their draw:
+
+| Zone | Jobs a zoned tile, compact | Roomy | Kept |
+| ---- | -------------------------- | ----- | ---- |
+| Low commercial | 7.14 | 4.71 | 66% |
+| Industry | 3.13 | 1.93 | 62% |
+| Heavy industry | 4.36 | 3.08 | 71% |
+
 ## The new kinds, as they stand on the ground
 
 All _typical_: listings and trade prototypes. Jobs, power, water and draw weights are derived when each kind enters the catalog, by the method in [building-types](building-types.md).

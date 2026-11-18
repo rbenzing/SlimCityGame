@@ -81,7 +81,11 @@ The catalog already holds, for the kinds whose car park did not fit, larger lots
 
 Growth takes that roomy rung while the town is below Small City, wherever the zoned block has the room. From Small City the dense kinds unlock, and land of the best standing is worth building tight: there a new building takes the compact lot and parks by its kerb credit or a garage. Nothing already standing is moved or shrunk.
 
-A block too shallow or too short for the roomy rung grows the compact lot, as it does now. A first town never waits on grounds.
+A block too shallow or too short for the roomy rung grows the next rung down, and at last the compact lot, as it does now. A first town never waits on grounds.
+
+Each kind's roomy lot is [measured on the layout](../sources/commercial-industrial-grounds.md#the-roomy-lot-of-each-kind). On a roomy rung the car park keeps a 1.5 m planted strip inside every lot line. A kind already under the target (the filling station, the chemical works) keeps its lot. A level-up keeps its lot where the next level's building and car park fit it, and otherwise redevelops onto free lots, as before.
+
+Roomy lots hold fewer jobs a tile: a zone keeps about two thirds of what it held, so the same town needs half as much zoned land again for its shops and works. That is the price of the request, and the Demand panel shows it as room, not as a fault.
 
 ### More kinds
 
