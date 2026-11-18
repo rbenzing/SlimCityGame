@@ -114,29 +114,31 @@ describe('lot grounds plan over the catalog', () => {
   });
 
   it('keeps every piece inside its lot, off the street footway', () => {
+    const faults: string[] = [];
     for (const v of ALL) {
       const plan = planLotGrounds(v.layout, groundsFactsFor(v.entry, v.homes));
       for (const p of plan.pieces) {
-        expect(inside(p.rect, v.layout.lot), `${v.label} ${p.kind}`).toBe(true);
+        if (!inside(p.rect, v.layout.lot)) faults.push(`${v.label} ${p.kind}`);
       }
     }
+    expect(faults).toEqual([]);
   });
 
   it('keeps every piece off stalls, access aisles, berths, the forecourt, yards and the body', () => {
+    const faults: string[] = [];
     for (const v of ALL) {
       const plan = planLotGrounds(v.layout, groundsFactsFor(v.entry, v.homes));
       const solid = solidGround(v.layout);
       for (const p of plan.pieces) {
-        if (isLine(p)) {
-          for (const s of solid) expect(linePasses(p.rect, s), `${v.label} ${p.kind}`).toBe(false);
-          continue;
-        }
-        for (const s of solid) expect(overlaps(p.rect, s), `${v.label} ${p.kind}`).toBe(false);
+        const meets = isLine(p) ? linePasses : overlaps;
+        if (solid.some((s) => meets(p.rect, s))) faults.push(`${v.label} ${p.kind}`);
       }
     }
+    expect(faults).toEqual([]);
   });
 
   it('keeps every piece but a painted crossing off the aisles and the drive', () => {
+    const faults: string[] = [];
     for (const v of ALL) {
       const plan = planLotGrounds(v.layout, groundsFactsFor(v.entry, v.homes));
       const driven = drivenGround(v.layout);
@@ -146,9 +148,10 @@ describe('lot grounds plan over the catalog', () => {
         // The front walk lies over the aisle's end, and the wall furniture stands on it.
         if (AT_WALL.has(p.kind) && front && inside(p.rect, front)) continue;
         if (p.kind === 'walk' && p.laid) continue;
-        for (const a of driven) expect(overlaps(p.rect, a), `${v.label} ${p.kind}`).toBe(false);
+        if (driven.some((a) => overlaps(p.rect, a))) faults.push(`${v.label} ${p.kind}`);
       }
     }
+    expect(faults).toEqual([]);
   });
 
   it('puts a crossing only where a walk meets driven ground', () => {
@@ -164,6 +167,7 @@ describe('lot grounds plan over the catalog', () => {
   });
 
   it('keeps every other piece off the walks and leaves the front walk a clear lane', () => {
+    const faults: string[] = [];
     for (const v of ALL) {
       const plan = planLotGrounds(v.layout, groundsFactsFor(v.entry, v.homes));
       const walks = [
@@ -173,46 +177,47 @@ describe('lot grounds plan over the catalog', () => {
       const front = v.layout.frontWalk;
       for (const p of plan.pieces) {
         if (isWalk(p) || isLine(p)) continue;
-        for (const w of walks) expect(overlaps(p.rect, w), `${v.label} ${p.kind}`).toBe(false);
+        if (walks.some((w) => overlaps(p.rect, w))) faults.push(`${v.label} ${p.kind} on a walk`);
         if (front && overlaps(p.rect, front)) {
           const depth = p.rect.v1 - p.rect.v0;
-          expect(AT_WALL.has(p.kind), `${v.label} ${p.kind} on the front walk`).toBe(true);
-          expect(p.rect.v1, `${v.label} ${p.kind} against the wall`).toBeCloseTo(
-            v.layout.body.v0,
-            6,
-          );
-          expect(front.v1 - front.v0 - depth, `${v.label} ${p.kind} lane`).toBeGreaterThanOrEqual(
-            MIN_FRONT_WALK_M - EPS,
-          );
+          const lane = front.v1 - front.v0 - depth;
+          const onWall = Math.abs(p.rect.v1 - v.layout.body.v0) < EPS;
+          if (!AT_WALL.has(p.kind) || !onWall || lane < MIN_FRONT_WALK_M - EPS) {
+            faults.push(`${v.label} ${p.kind} blocks the front walk`);
+          }
         }
       }
     }
+    expect(faults).toEqual([]);
   });
 
   it('keeps every piece off the doors, the walk to the door excepted', () => {
+    const faults: string[] = [];
     for (const v of ALL) {
       const plan = planLotGrounds(v.layout, groundsFactsFor(v.entry, v.homes));
       const doors = doorClearances(v.layout);
       for (const p of plan.pieces) {
         if (isWalk(p)) continue;
-        for (const d of doors) expect(overlaps(p.rect, d), `${v.label} ${p.kind}`).toBe(false);
+        if (doors.some((d) => overlaps(p.rect, d))) faults.push(`${v.label} ${p.kind}`);
       }
     }
+    expect(faults).toEqual([]);
   });
 
   it('keeps pieces off one another', () => {
+    const faults: string[] = [];
     for (const v of ALL) {
       const plan = planLotGrounds(v.layout, groundsFactsFor(v.entry, v.homes));
       const solid = plan.pieces.filter((p) => !isLine(p));
       for (let i = 0; i < solid.length; i++) {
         for (let j = i + 1; j < solid.length; j++) {
-          expect(
-            overlaps(solid[i]!.rect, solid[j]!.rect),
-            `${v.label} ${solid[i]!.kind}/${solid[j]!.kind}`,
-          ).toBe(false);
+          if (overlaps(solid[i]!.rect, solid[j]!.rect)) {
+            faults.push(`${v.label} ${solid[i]!.kind}/${solid[j]!.kind}`);
+          }
         }
       }
     }
+    expect(faults).toEqual([]);
   });
 
   it('is the same plan for the same lot', () => {
@@ -280,6 +285,7 @@ describe('the pieces a lot has room for', () => {
   });
 
   it('stands lights apart and short beside homes, a pole height from their lot line', () => {
+    const faults: string[] = [];
     for (const { v, plan } of plans) {
       const lights = plan.pieces.filter((p) => p.kind === 'light');
       const lot = v.layout.lot;
@@ -290,21 +296,20 @@ describe('the pieces a lot has room for', () => {
           s === 'u-' ? u - lot.u0 : s === 'u+' ? lot.u1 - u : lot.v1 - w,
         );
         const nearest = Math.min(Infinity, ...dist);
-        if (nearest < LOT_LIGHT_HOME_REACH_M) {
-          expect(l.height, v.label).toBe(LOT_LIGHT_NEAR_HOMES_M);
-          expect(nearest, v.label).toBeGreaterThanOrEqual(LOT_LIGHT_NEAR_HOMES_M - EPS);
-        } else {
-          expect(l.height, v.label).toBe(LOT_LIGHT_HEIGHT_M);
-        }
+        const near = nearest < LOT_LIGHT_HOME_REACH_M;
+        const height = near ? LOT_LIGHT_NEAR_HOMES_M : LOT_LIGHT_HEIGHT_M;
+        if (l.height !== height) faults.push(`${v.label} light height ${l.height}`);
+        if (near && nearest < height - EPS) faults.push(`${v.label} light ${nearest} from homes`);
         for (const m of lights) {
           if (m === l) continue;
           const d = Math.hypot(u - (m.rect.u0 + m.rect.u1) / 2, w - (m.rect.v0 + m.rect.v1) / 2);
-          expect(d, v.label).toBeGreaterThanOrEqual(
-            LOT_LIGHT_SPACING_HEIGHTS * LOT_LIGHT_NEAR_HOMES_M - EPS,
-          );
+          if (d < LOT_LIGHT_SPACING_HEIGHTS * LOT_LIGHT_NEAR_HOMES_M - EPS) {
+            faults.push(`${v.label} lights ${d} apart`);
+          }
         }
       }
     }
+    expect(faults).toEqual([]);
   });
 
   it('plants a deeper buffer on a side that abuts homes and trees it a frontage apart', () => {
