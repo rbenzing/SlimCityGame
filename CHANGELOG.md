@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.91.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.90.0...slimcity-v1.91.0) (2026-11-18)
+
+
+### Features
+
+* **tools:** a shot runner that runs every shot tool in parallel shards ([bffafb5](https://github.com/rbenzing/SlimCityGame/commit/bffafb59803ab15c1bf81c00f3355bf726813446))
+
+
+### Performance Improvements
+
+* **tools:** shot tools wait on conditions and stop shipping the whole grid ([6767367](https://github.com/rbenzing/SlimCityGame/commit/6767367233e97ac0b67e2b7a5d10655b31cea62c))
+* **tools:** tramway waits on the tram's reported position, not on screenshot differences ([f631384](https://github.com/rbenzing/SlimCityGame/commit/f6313840b7e2c957a5da3cd8e79aeca638bac950))
+
 ## [1.90.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.89.0...slimcity-v1.90.0) (2026-11-18)
 
 
