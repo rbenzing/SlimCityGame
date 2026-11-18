@@ -129,6 +129,7 @@ import {
   type HouseLotPlan,
 } from './render/houselot';
 import { LotRenderer } from './render/lots';
+import { LotGroundsRenderer } from './render/lotgrounds';
 import { GarageRenderer } from './render/garages';
 import { BuildingKitRenderer } from './render/buildingkit';
 import { LANDMARK_PAD_IDS, LandmarkRenderer } from './render/landmarks';
@@ -569,6 +570,27 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
     // what the road mesh paints.
     roadsMesh,
     kerbCreditOf,
+  );
+  // A shop's or a works' lot furnished from one plan: lights, a sign, planting,
+  // a walk, a bench and bin, a refuse enclosure and a works' yard fence. A side
+  // with a residential zone beside it gets the deeper buffer and the short poles.
+  const lotGrounds = new LotGroundsRenderer(
+    world.scene,
+    heightAt,
+    catalog,
+    roadAt,
+    kerb,
+    kerbCreditOf,
+    (x, z) => {
+      if (!inBounds(x, z)) return false;
+      const zone = clientGrid.zone[z * clientGrid.size + x];
+      return (
+        zone === ZoneType.ResLow ||
+        zone === ZoneType.ResHigh ||
+        zone === ZoneType.ResMediumRow ||
+        zone === ZoneType.ResMedium
+      );
+    },
   );
   // Residential house kit: the roof, what each drive ends at, the car, the
   // front door and the yard, stood on the lot plan laid out from the street the
@@ -2502,6 +2524,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
     trees.setNightFactor(nightFactor);
     lots.setNightFactor(nightFactor);
     parkedCars.setNightFactor(nightFactor);
+    lotGrounds.setNightFactor(nightFactor);
     landfillRenderer.setNightFactor(nightFactor);
     massing.setNightFactor(nightFactor);
     sites.setNightFactor(nightFactor);
@@ -2677,6 +2700,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       houseRoofs.apply(snap.buildings);
       garages.apply(snap.buildings);
       parkedCars.apply(snap.buildings);
+      lotGrounds.apply(snap.buildings);
       landmarks.apply(snap.buildings);
       utilityKits.apply(snap.buildings);
       // Walker scatter tracks the Active-building set incrementally; feed it
@@ -2791,6 +2815,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
         houseRoofs.apply(relaid);
         garages.apply(relaid);
         parkedCars.apply(relaid);
+        lotGrounds.apply(relaid);
         pedestrianRenderer.apply({ stops: latestStopPoints, buildings: relaid });
       }
     }
