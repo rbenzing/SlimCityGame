@@ -25,7 +25,7 @@ current behavior only and carry no dates of their own._
 
 ## Status (2026-09-29)
 
-**Test suite:** 9,330 tests passing across 279 test files, run 2026-11-18.
+**Test suite:** 9,440 tests passing across 282 test files, run 2026-11-18.
 This is the only test count in the documentation set. When the suite changes
 again, update the figure here and nowhere else.
 
@@ -191,7 +191,7 @@ more transit modes) and AI raster map packs, facade-atlas stage 2 and
 screen-space AO/reflections are the shelf to pick from. **In progress, at
 the player's request: commercial and industrial grounds**
 ([commercial-industrial-grounds.md](specs/commercial-industrial-grounds.md)),
-agreed and not yet built.
+its lot furniture built; the roomy lots and the new kinds are not.
 
 ---
 
