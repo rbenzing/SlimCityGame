@@ -12,8 +12,9 @@
  * the pad's road-side edge at its leading end, the end traffic reaches first;
  * the shelter stands at the back of the pad with its front 0.9 m from that
  * edge; the bin stands at the pad's trailing end. A road with no footway has
- * nothing to keep clear, so the same pad stands back from the edge of its
- * pavement until its pole is a sign's no-kerb distance from the travelled way.
+ * nothing to keep clear, so its pole stands a sign's no-kerb distance from the
+ * travelled way and the pad reaches from the roadway's edge back to the same
+ * far edge, so the boarding area adjoins the road.
  *
  * Every part is one instanced pool; nothing here draws a stop per mesh.
  */
@@ -153,7 +154,11 @@ export function busStopPlacement(
   });
   const yaw =
     lateral === 'z' ? (side === 1 ? Math.PI : 0) : side === 1 ? -Math.PI / 2 : Math.PI / 2;
-  const padMid = kerbOut + BUS_STOP_PAD.out / 2;
+  // With no footway the pad reaches from the travelled way's edge back to where
+  // a footway road's pad ends, so people step from the roadway onto it.
+  const padOut0 = onFootway ? kerbOut : kerbFace;
+  const padOut1 = kerbOut + BUS_STOP_PAD.out;
+  const padMid = (padOut0 + padOut1) / 2;
   const frontOut = kerbOut + BUS_STOP_SHELTER_FRONT_M;
   const shelterOut = frontOut + BUS_SHELTER.d / 2;
   const isShelter = stop.kind === 'shelter';
@@ -163,8 +168,8 @@ export function busStopPlacement(
     kerbOut,
     pad: {
       ...at(0, padMid),
-      out0: kerbOut,
-      out1: kerbOut + BUS_STOP_PAD.out,
+      out0: padOut0,
+      out1: padOut1,
       along: BUS_STOP_PAD.along,
     },
     pole: at(leading * (BUS_STOP_PAD.along / 2), kerbOut + BUS_STOP_POLE_FROM_KERB_M),
@@ -375,7 +380,7 @@ export class BusStopRenderer {
     const group = new THREE.Group();
     const add = (part: PartName, spot: StopSpot): void => {
       const mesh = new THREE.Mesh(this.parts[part], material);
-      this.compose(spot, placement, _matrix);
+      this.compose(spot, placement, _matrix, this.depthScale(part, placement));
       mesh.applyMatrix4(_matrix);
       group.add(mesh);
     };
@@ -408,11 +413,23 @@ export class BusStopRenderer {
   }
 
   /** Writes the matrix standing a part at `spot`, on the footway or carriageway level of the terrain there. */
-  private compose(spot: StopSpot, placement: BusStopPlacement, out: THREE.Matrix4): void {
+  private compose(
+    spot: StopSpot,
+    placement: BusStopPlacement,
+    out: THREE.Matrix4,
+    depthScale = 1,
+  ): void {
     const base = placement.onFootway ? CURB_Y_OFFSET : ROAD_Y_OFFSET;
     _position.set(spot.x, this.heightAt(spot.x, spot.z) + base, spot.z);
     _quaternion.setFromAxisAngle(_yAxis, placement.yaw);
+    _scale.set(1, 1, depthScale);
     out.compose(_position, _quaternion, _scale);
+    _scale.set(1, 1, 1);
+  }
+
+  /** How far the unit pad slab stretches across the road to reach this stop's pad. */
+  private depthScale(part: PartName, placement: BusStopPlacement): number {
+    return part === 'pad' ? (placement.pad.out1 - placement.pad.out0) / BUS_STOP_PAD.out : 1;
   }
 
   private build(
@@ -424,7 +441,7 @@ export class BusStopRenderer {
     const mesh = new THREE.InstancedMesh(this.parts[part], this.material, count);
     for (let i = 0; i < count; i++) {
       const { spot, d } = at(i);
-      this.compose(spot, d.placement, _matrix);
+      this.compose(spot, d.placement, _matrix, this.depthScale(part, d.placement));
       mesh.setMatrixAt(i, _matrix);
     }
     mesh.instanceMatrix.needsUpdate = true;
