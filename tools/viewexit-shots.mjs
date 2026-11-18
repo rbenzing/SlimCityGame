@@ -131,7 +131,6 @@ try {
   await press('Escape');
   check((await view()).overlay === null, 'a: Escape did not clear the lens');
   check(!(await chip().count()), 'a: the chip stayed after the lens went');
-  await shot('a-lens-off');
 
   // b. Pipe tool: underground chip, then Escape (drawer first, then the tool).
   await pickPipe();
@@ -147,7 +146,6 @@ try {
   await press('Escape'); // the tool
   check((await view()).tool === 'select', 'b: Escape did not drop the pipe tool');
   check(!(await underground()), 'b: the city stayed underground after the tool went');
-  await shot('b-surface');
 
   // c. Water lens + pipe tool: the chip's own button.
   await openGrid();
@@ -164,7 +162,6 @@ try {
     await chip().filter({ hasText: 'Water lens · underground' }).isVisible(),
     'c: no "Water lens · underground" chip',
   );
-  await shot('c-water-lens-pipe');
   await page.getByRole('button', { name: 'Exit view' }).click({ timeout: CLICK_MS });
   await page.waitForTimeout(500);
   v = await view();
@@ -175,7 +172,6 @@ try {
   // d. The Infoviews grid closes on Escape.
   await openGrid();
   check(await gridOpen(), 'd: the Infoviews grid did not open');
-  await shot('d-grid-open');
   await press('Escape');
   check(!(await gridOpen()), 'd: Escape did not close the Infoviews grid');
 

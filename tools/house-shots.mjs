@@ -299,10 +299,9 @@ try {
   await restore();
 
   await setPhase(0.96);
-  for (const [s, street] of STREETS.entries()) {
-    if (street.lineup) continue;
-    await shoot(`night-${street.name}`, middle, roadRow(s) - 1, 70, 0.3);
-  }
+  // One street at night shows the lit windows and lamps; the rest only repeat it.
+  const [first] = STREETS.entries().filter(([, street]) => !street.lineup);
+  await shoot(`night-${first[1].name}`, middle, roadRow(first[0]) - 1, 70, 0.3);
   await setPhase(LINEUP_NIGHT);
   await shootLineup('-night');
 } finally {

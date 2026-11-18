@@ -186,7 +186,6 @@ const shot = async (name, tx, tz, d, yaw, pitch) => {
   await cleanShot(page, `${out}/${name}.png`);
   console.log('shot', name);
 };
-await shot('taper-down', X + CX, Z + 9, 90, 0.0, 1.15);
 await shot('taper-head', X + CX, Z + 5, 34, 0.0, 1.2);
 await shot('taper-along', X + CX, Z + 8, 120, 0.5, 0.7);
 
@@ -237,7 +236,6 @@ if (!(narrowMotorway < wideMotorway))
 // enough to hold the lot, then closed on where the lane has finished closing.
 await shot('gore-down', X + MX, Z + 7.5, 230, 0.0, 1.4);
 const restore = await closeUp(page, 2);
-await shot('gore-close', X + MX, Z + 10, 40, 0.0, 1.3);
 await restore();
 
 console.log(failures.length === 0 ? 'PASS' : 'FAIL');

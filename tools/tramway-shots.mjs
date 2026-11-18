@@ -196,7 +196,11 @@ console.log('depots', JSON.stringify(depots));
 
 // Let the depots field their trams, then hold the city still for the shots.
 await hook(() => window.__slimcity.setSpeed(1));
-await page.waitForTimeout(6000);
+await page.waitForFunction(() => window.__slimcity.readTransitRender().vehicles > 0, null, {
+  timeout: 20000,
+  polling: 250,
+});
+await page.waitForTimeout(1500);
 await hook(() => window.__slimcity.setSpeed(0));
 await page.waitForTimeout(1000);
 console.log(
@@ -254,74 +258,42 @@ for (const [name, tx, tz, d, yaw, pitch] of views) {
   await camera(name, tx, tz, d, yaw, pitch);
   await shot(name);
 }
-// Trams in frame. They are drawn cosmetically on real time and no hook says where
-// they are, so the frame says: two frames a beat apart differ where something
-// moves, and with the city held still the trams are all that does. The shot is
-// taken once that movement sits wholly inside the frame, clear of the lens panel.
-const motion = async (a, b) =>
-  page.evaluate(
-    async ([pa, pb]) => {
-      const load = async (b64) => {
-        const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
-        const bmp = await createImageBitmap(new Blob([bytes], { type: 'image/png' }));
-        const c = document.createElement('canvas');
-        c.width = bmp.width;
-        c.height = bmp.height;
-        const ctx = c.getContext('2d');
-        ctx.drawImage(bmp, 0, 0);
-        return ctx.getImageData(0, 0, c.width, c.height);
-      };
-      const [ia, ib] = await Promise.all([load(pa), load(pb)]);
-      let n = 0;
-      let x0 = ia.width;
-      let x1 = 0;
-      // Clear of the lens panel (top-left), the buttons and the bottom bar.
-      for (let y = 280; y < ia.height - 110; y++) {
-        for (let x = 0; x < ia.width; x++) {
-          const i = (y * ia.width + x) * 4;
-          const d =
-            Math.abs(ia.data[i] - ib.data[i]) +
-            Math.abs(ia.data[i + 1] - ib.data[i + 1]) +
-            Math.abs(ia.data[i + 2] - ib.data[i + 2]);
-          if (d > 60) {
-            n++;
-            if (x < x0) x0 = x;
-            if (x > x1) x1 = x;
-          }
-        }
-      }
-      return { n, x0, x1, width: ia.width };
-    },
-    [a.toString('base64'), b.toString('base64')],
-  );
+// Trams in frame. They are drawn cosmetically on real time, so the frame waits for
+// one: the transit renderer reports where each vehicle stands, and the shot is taken
+// once a tram on the row is inside the frame. `follow` aims the camera at whichever
+// tram is on the row now instead of waiting for one to reach a fixed tile.
 const TRAM_WAIT_MS = 420_000;
-const tramShot = async (name, tx, tz, d, yaw, pitch) => {
+const IN_FRAME_M = 25;
+const tramsOnRow = async (tz) =>
+  (await hook(() => window.__slimcity.readTransitRender().positions)).filter(
+    (p) => Math.abs(p.z - (tz + 0.5) * T) < T,
+  );
+const tramShot = async (name, tx, tz, d, yaw, pitch, follow = false) => {
   await lens(true);
-  await camera(name, tx, tz, d, yaw, pitch);
-  await page.waitForTimeout(1500);
-  // A guideway line's loop is minutes long at a tram's commercial speed, so the
-  // wait is bounded by the clock: one tram passes the frame inside a full loop.
   const started = Date.now();
   while (Date.now() - started < TRAM_WAIT_MS) {
-    const a = await page.screenshot();
-    await page.waitForTimeout(150);
-    const m = await motion(a, await page.screenshot());
-    if (m.n >= 300 && m.x0 > 320 && m.x1 < m.width - 160) {
-      console.log(
-        name,
-        'tram motion',
-        m.n,
-        m.x0,
-        m.x1,
-        `after ${Math.round((Date.now() - started) / 1000)} s`,
-      );
+    const [first] = await tramsOnRow(tz);
+    const near = follow
+      ? first
+      : (await tramsOnRow(tz)).find((p) => Math.abs(p.x - (tx + 0.5) * T) < 2 * IN_FRAME_M);
+    if (!near) {
+      await page.waitForTimeout(250);
+      continue;
+    }
+    const aimX = follow ? near.x / T - 0.5 : tx;
+    await camera(name, aimX, tz, d, yaw, pitch);
+    await page.waitForTimeout(1000);
+    // The tram has moved while the camera settled: it must still be in the frame.
+    const still = (await tramsOnRow(tz)).find((p) => Math.abs(p.x - (aimX + 0.5) * T) < IN_FRAME_M);
+    if (still) {
+      console.log(name, 'tram at', Math.round(still.x), `after ${Math.round((Date.now() - started) / 1000)} s`);
       await shot(name, 0);
       return;
     }
   }
   throw new Error(`no tram came into frame for ${name}`);
 };
-await tramShot('tramway-street-tram', X + 11, Z, 60, Math.PI, PITCH);
+await tramShot('tramway-street-tram', X + 11, Z, 60, Math.PI, PITCH, true);
 await tramShot('station-street-tram', X + STATION_AT, reservedZ, 60, Math.PI, PITCH);
 // Fine detail: the slab, rails and grooves over the same ground, at twice the
 // pixels, with the lens off so nothing is laid over the paving.

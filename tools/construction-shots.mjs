@@ -32,7 +32,6 @@ const GROW_SECONDS = 150;
 const STAGES = [
   { name: 'earth', progress: 0.05 },
   { name: 'foundation', progress: 0.2 },
-  { name: 'frame-low', progress: 0.4 },
   { name: 'frame-high', progress: 0.65 },
   { name: 'enclosed', progress: 0.9 },
 ];
@@ -157,9 +156,12 @@ try {
         await camera(b.x + 1, b.z + 1, 150, 0.3, 0.45);
         await page.waitForTimeout(1000);
         await cleanShot(page, `${out}/${name}-${stage.name}-street.png`);
-        await camera(b.x + 1, b.z + 1, 150, 0.3, 1.3);
-        await page.waitForTimeout(1000);
-        await cleanShot(page, `${out}/${name}-${stage.name}-above.png`);
+        // From above only the groundworks show something the street view does not.
+        if (stage.name === 'earth' || stage.name === 'foundation') {
+          await camera(b.x + 1, b.z + 1, 150, 0.3, 1.3);
+          await page.waitForTimeout(1000);
+          await cleanShot(page, `${out}/${name}-${stage.name}-above.png`);
+        }
       }
     }
   };

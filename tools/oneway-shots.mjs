@@ -121,11 +121,9 @@ const shot = async (name, tx, tz, d, yaw, pitch, scale = 1) => {
 // The two columns while they still disagree: same geometry, opposite arrows.
 // The camera's floor is 40 m, so the arrows are read from doubled pixels.
 await shot('drawn-southward', X, Z + 5, 60, 0.0, 1.45, 2);
-await shot('drawn-northward', X + 4, Z + 5, 60, 0.0, 1.45, 2);
 // One arrow tile of each, close: the head is the wide end, and the two point
 // opposite ways down the same axis.
 const arrowZ = Z + ((3 - (Z % 3)) % 3) + 3;
-await shot('arrow-southward', X, arrowZ, 26, 0.0, 1.5);
 await shot('arrow-northward', X + 4, arrowZ, 26, 0.0, 1.5);
 
 // Turning one round is a redraw, not a rebuild: the road stays, the flow flips.

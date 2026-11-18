@@ -18,9 +18,7 @@ const RT = { TwoLane: 1 };
 const ZONE = { ResLow: 1, ComLow: 3, Industrial: 5 };
 const LENSES = [
   ['pollution-worse', 1],
-  ['happiness-better', 8],
   ['landvalue-better', 0],
-  ['education-better', 6],
 ];
 
 const browser = await chromium.launch({ headless: true, args: ['--use-angle=default'] });

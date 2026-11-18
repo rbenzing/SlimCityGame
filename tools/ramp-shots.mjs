@@ -197,9 +197,7 @@ const shot = async (name, tx, tz, d, yaw, pitch) => {
   await cleanShot(page, `${out}/${name}.png`);
   console.log('shot', name);
 };
-await shot('ramp-merge', X + ON.mergeX, Z + HWY + 1, 90, 0.6, 0.95);
 await shot('ramp-merge-above', X + ON.mergeX, Z + HWY + 1, 90, 0, 1.45);
-await shot('ramp-elbow', X + ON.x, Z + HWY + 1, 110, 0.4, 1.0);
 await shot('ramp-terminal', X + ON.x, Z + STREET - 1, 90, 0.6, 0.95);
 await shot('ramp-wide', X + 8, Z + 9, 300, 0.7, 1.0);
 

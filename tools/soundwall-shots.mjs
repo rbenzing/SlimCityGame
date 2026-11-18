@@ -202,11 +202,9 @@ await shot('walled-oblique', X + 8, Z + 4, 70, 0.5, 0.45);
 // The same wall from the far side: one face takes the sun, the other does not.
 await shot('walled-far-side', X + 8, Z + 4, 70, 0.5 + Math.PI, 0.45);
 const back = await closeUp(page, 2);
-await shot('wall-closeup', X + 6, Z + 4, 40, 0.9, 0.25);
 await back();
 await shot('ramp-gap', X + 12, Z + 4, 60, -0.6, 0.55);
 await shot('six-lane', X + 34, Z + 10, 80, 1.2, 0.5);
-await shot('bridge', X + 8, Z + 24, 90, 0.3, 0.35);
 
 // The panel, through the real drawer, with the sandbox unlocking the motorway.
 await page.getByRole('button', { name: 'Menu', exact: true }).click();

@@ -99,6 +99,7 @@ const CZ = 14;
 
 // major runs east-west through the plot; minor runs north-south, crossing it.
 // `shape` 'cross' carries the minor right through; 'tee' stops it at the box.
+const CORNER_CLOSEUPS = new Set(['twolane-x-twolane', 'twolane-t-avenue']);
 const SCENARIOS = [
   { name: 'twolane-x-avenue', major: TIER.avenue, minor: TIER.twoLane, shape: 'cross' },
   { name: 'twolane-t-avenue', major: TIER.avenue, minor: TIER.twoLane, shape: 'tee' },
@@ -472,8 +473,8 @@ for (let i = 0; i < SCENARIOS.length && i < plots.length; i++) {
     // Wider than the box itself, and aimed a little south, so the arm ends and
     // the bike symbols at the north clear the frame edges and the bottom HUD bar.
     ['box', jx, jz + 0.3, 64, 0, 1.5],
-    ['corner-nw', jx - 0.5, jz - 0.5, 40, 0, 1.5],
-    ['wide', jx, jz, 90, 0, 1.5],
+    // The corner close-up is kept where a kerb return is the subject.
+    ...(CORNER_CLOSEUPS.has(s.name) ? [['corner-nw', jx - 0.5, jz - 0.5, 40, 0, 1.5]] : []),
   ];
   const restore = await closeUp(page, 2);
   for (const [name, tx, tz, d, yaw, pitch] of shots) {

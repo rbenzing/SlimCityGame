@@ -148,8 +148,6 @@ await hook(() => window.__slimcity.setSpeed(1));
 await hook(() => window.__slimcity.setDayT(0.96));
 await camera(rowX, 99, 190, yaw, ROW_PITCH);
 await shot('c-four-stations-night', 2500);
-await camera(rowX, 99, 185, yaw + 0.15, ROW_PITCH - 0.2);
-await shot('c2-four-stations-night-closer', 2500);
 
 console.log('page errors', errors.length ? errors : 'none');
 await browser.close();

@@ -362,13 +362,16 @@ try {
       ['steel', 'heavy-metals-2'],
       ['paper', 'heavy-paper-2'],
     ];
+    // At night one light and one heavy plant stand for the kit; the rest only repeat the day frames.
+    const night = suffix === '-night';
     for (const [street, id] of subjects) {
+      if (night && street !== 'factory' && street !== 'chem') continue;
       await frame(`${street}${suffix}`, boxOf([find(street, id)]), 0.3);
     }
+    if (night) return;
     // The warehouse and the food plant from behind, where the truck court is.
     for (const [street, id] of [
       ['warehouse', 'ind-warehouse-2'],
-      ['warehouse', 'ind-warehouse-3'],
       ['food', 'heavy-food-2'],
     ]) {
       await frame(`${street}-${id}-court${suffix}`, boxOf([find(street, id)]), Math.PI + 0.3);
@@ -377,8 +380,6 @@ try {
     for (const [street, id] of [
       ['chem', 'heavy-chem-2'],
       ['steel', 'heavy-metals-3'],
-      ['steel', 'heavy-metals-2'],
-      ['paper', 'heavy-paper-3'],
     ]) {
       await frame(
         `${street}-${id}-behind${suffix}`,

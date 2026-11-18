@@ -128,9 +128,6 @@ if (after.power?.[idx(X + 23, Z + 10)] !== 1)
 await cam(X + 14, Z + 10, 420, 0.55, 0.85);
 await page.waitForTimeout(800);
 await cleanShot(page, `${out}/after.png`);
-await cam(X + 8, Z + 10, 45, 0.6, 0.55);
-await page.waitForTimeout(800);
-await cleanShot(page, `${out}/close.png`);
 
 // SPEC 30 slice 1, in the running game: a gravel lane carries no cable, so
 // nothing down it is supplied. The remedy is to run the line ALONG the lane —
@@ -262,9 +259,6 @@ await cleanShot(page, `${out}/substation-60m.png`);
 await cam(X + 17, Z + 1, 60, 0, 1.45);
 await page.waitForTimeout(800);
 await cleanShot(page, `${out}/substation-above.png`);
-await cam(X + 22, Z + 1, 300, 0.6, 0.6);
-await page.waitForTimeout(800);
-await cleanShot(page, `${out}/substation-300m.png`);
 await cam(X + 24, Z + 1, 110, 0.9, 0.4);
 await page.waitForTimeout(800);
 await cleanShot(page, `${out}/substation-line.png`);
@@ -393,9 +387,6 @@ await cleanShot(page, `${out}/cable-substation-end.png`);
 await cam(X + 27, Z + 24, 80, 0.4, 0.5);
 await page.waitForTimeout(800);
 await cleanShot(page, `${out}/cable-meets-line.png`);
-await cam(X + 26, Z + 24, 30, 0.4, 0.6);
-await page.waitForTimeout(800);
-await cleanShot(page, `${out}/cable-meets-line-close.png`);
 
 // The refusal: with the Power Line tool in hand, the cursor over open ground that
 // touches no source and no line says why the run would not stand.
@@ -433,7 +424,6 @@ else {
   await page.mouse.move(open.sx - 4, open.sy - 4);
   await page.mouse.move(open.sx, open.sy);
   await page.waitForTimeout(800);
-  await cleanShot(page, `${out}/refusal-chip.png`);
   const chip = await page.locator('body').innerText();
   if (!chip.includes('A line must start at a power station, a substation or a live line.'))
     failures.push('the cursor chip does not say where a line must start');

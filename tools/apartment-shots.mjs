@@ -231,7 +231,8 @@ try {
   const views = (suffix) => async () => {
     // Each kind at every level from the street, beside the kerb car; the taller the farther back.
     for (const [s, street] of STREETS.entries()) {
-      for (const id of street.ids) {
+      // At night the street frame holds every level, so the per-level frames only repeat it.
+      for (const id of suffix === '-night' ? [] : street.ids) {
         await frame(`${street.name}-${id}${suffix}`, boxOf([find(street.name, id)]), 0.3);
       }
       // The street of the kind, all three levels in one frame.
@@ -263,7 +264,6 @@ try {
   await views('-night')();
   const restoreNight = await closeUp(page, 2);
   await frame('close-tower-podium-night', tower, 0.2, 0.5, 0.7);
-  await frame('close-garden-breezeway-night', garden, 0.15, 0.35, 0.7);
   await restoreNight();
 } finally {
   await browser.close();

@@ -1,8 +1,8 @@
 /** Shots of a bend: two straight runs of one road meeting at an angle, which the road turns
  * through on one arc, the kerbs, footways, lane lines and median sweeping about it. For each of
- * two-lane, avenue, four-lane, one-way and gravel, the runs meet 30, 60, 90 and 120 degrees off
+ * two-lane, avenue, four-lane, one-way and gravel, the runs meet 30 and 120 degrees off
  * straight, laid on flat dry ground with the game's own buildSegment command, and shot from
- * straight above (~120 m) and from an oblique angle (~70 m). Two last frames are the 60 degree
+ * straight above (~120 m). Two last frames are the 60 degree
  * two-lane bend with vehicles stood on it, each at a point of the bend's centre line read from
  * the shared bend geometry and facing along it, in both directions, so the renderer's own lane
  * offset puts each in its lane.
@@ -30,7 +30,6 @@ const VEHICLE = { Car: 0, Truck: 1, Bus: 2 };
 /** One free segment is one way when its flow is 1; every other kind is two-way. */
 const RT_ALLEY = 5;
 const RT_HIGHWAY = 3;
-const RT_RAMP = 12;
 /** Custom cross-sections for the kinds that are options on a street: ids clear of the presets. */
 const BUS_PROFILE = 40;
 const BIKE_PROFILE = 41;
@@ -105,28 +104,25 @@ const KINDS = [
   { name: 'four-lane', tier: RT.FourLane, flow: 0 },
   { name: 'one-way', tier: RT.OneWay, flow: 1 },
   { name: 'gravel', tier: RT.Gravel, flow: 0 },
-  { name: 'alley', tier: RT_ALLEY, flow: 0, deflections: [30, 90] },
-  { name: 'bus-lane', tier: RT.TwoLane, flow: 0, profile: BUS_PROFILE, deflections: [30, 90] },
-  { name: 'bike-lane', tier: RT.TwoLane, flow: 0, profile: BIKE_PROFILE, deflections: [30, 90] },
+  { name: 'alley', tier: RT_ALLEY, flow: 0, deflections: [30] },
+  { name: 'bus-lane', tier: RT.TwoLane, flow: 0, profile: BUS_PROFILE, deflections: [30] },
+  { name: 'bike-lane', tier: RT.TwoLane, flow: 0, profile: BIKE_PROFILE, deflections: [30] },
   { name: 'tram', tier: RT.Avenue, flow: 0, profile: TRAM_PROFILE, deflections: [30, 90] },
   {
     name: 'tram-street',
     tier: RT.TwoLane,
     flow: 0,
     profile: TRAM_STREET_PROFILE,
-    deflections: [30, 90],
+    deflections: [30],
   },
-  { name: 'motorway', tier: RT_HIGHWAY, flow: 0, deflections: [30, 60] },
-  { name: 'ramp', tier: RT_RAMP, flow: 1, deflections: [30, 90] },
+  { name: 'motorway', tier: RT_HIGHWAY, flow: 0, deflections: [30] },
 ];
-const DEFLECTIONS = [30, 60, 90, 120];
+const DEFLECTIONS = [30, 120];
 /** Each run's length, metres: long enough that no kind's arc is held short. */
 const ARM_M = 90;
 /** A scene's ground, tiles on a side: the flattest dry block left is taken. */
 const SITE_TILES = 14;
 const ABOVE_M = 120;
-const OBLIQUE_M = 70;
-const OBLIQUE_PITCH = 0.9;
 const START_MILESTONE = 2;
 
 const b = await chromium.launch({ headless: true, args: ['--use-angle=default'] });
@@ -272,15 +268,12 @@ try {
       await look(n.x, n.z, ABOVE_M, 0, Math.PI / 2);
       await requireInFrame(page, `${name}-above`, n.x / T - 0.5, n.z / T - 0.5, 0);
       await shot(`${name}-above`, 1000);
-      await look(n.x, n.z, OBLIQUE_M, 0.6, OBLIQUE_PITCH);
-      await requireInFrame(page, `${name}-oblique`, n.x / T - 0.5, n.z / T - 0.5, 0);
-      await shot(`${name}-oblique`, 1000);
     }
   }
 
   // --- a free run off the end of a grid street, which is how a player draws a bend --------
   for (const kind of KINDS.filter((k) => k.name === 'two-lane' || k.name === 'avenue')) {
-    for (const deg of [30, 60, 90]) {
+    for (const deg of [90]) {
       const site = claimSite(SITE_TILES, SITE_TILES);
       if (!site) {
         console.log(`WARNING: no flat site left for grid ${kind.name} ${deg}`);
@@ -305,8 +298,6 @@ try {
       const name = `grid-${kind.name}-${deg}`;
       await look(n.x - 20, n.z + 10, ABOVE_M, 0, Math.PI / 2);
       await shot(`${name}-above`, 1000);
-      await look(n.x - 20, n.z + 10, OBLIQUE_M, 0.6, OBLIQUE_PITCH);
-      await shot(`${name}-oblique`, 1000);
     }
   }
 

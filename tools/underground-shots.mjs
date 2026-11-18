@@ -13,7 +13,6 @@ import { mkdirSync } from 'node:fs';
 import {
   cleanShot,
   hooksReady,
-  requireInFrame,
   tileCamera,
   unlimitedMoneyOption,
 } from './shotcam.mjs';
@@ -232,10 +231,6 @@ try {
   check(flats.length === 2, `apartment block and business not both standing (${flats})`);
   await hook(() => window.__slimcity.setTool('water.pipe'));
   await page.waitForTimeout(800);
-  await camera(X + 18.5, Z + 2, 90, Math.PI, 1.3);
-  await requireInFrame(page, 'lead-apartment', X + 17, Z + 2);
-  await requireInFrame(page, 'lead-business', X + 19.5, Z + 2);
-  await shot('leads-apartment-business');
 
   // The buried cable: the street's own supply buried along its middle (above the
   // pipes under it), and a cable from a wind turbine north over open ground. The
@@ -264,8 +259,6 @@ try {
   check(c.boxes.length >= 3, `too few boxes on the surface (${c.boxes.length})`);
   await camera(X + 22, Z, 60, Math.PI, 0.6);
   await shot('cable-surface-street');
-  await camera(X + 33, Z - 5, 50, Math.PI, 0.6);
-  await shot('cable-surface-open');
 
   await hook(() => window.__slimcity.setTool('power.cable'));
   await page.waitForTimeout(1000);
@@ -298,6 +291,8 @@ try {
     console.log(`lens ${lens}`, JSON.stringify({ active: u.active, overlayButtonDisabled: off }));
     check(off === false, `lens ${lens} not set (overlay-off button disabled)`);
     check(u.active === underground, `lens ${lens}: underground active=${u.active}, wanted ${underground}`);
+    // The sewer lens is the water lens underground again; one frame stands for both.
+    if (lens === 'sewered') continue;
     await camera(view.x + 4, view.z - 1, 130, Math.PI, PITCH);
     await shot(`lens-${lens}`, 2200);
   }

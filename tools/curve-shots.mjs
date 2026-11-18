@@ -407,8 +407,6 @@ try {
   // (1) The bend from above: every house square to its street, drives to the kerb.
   await look('1-bend-from-above', bendCentre.x, bendCentre.z, 260, 0, OVERHEAD_PITCH);
   await shot('1-bend-from-above', 2000);
-  await look('1b-bend-three-quarter', bendCentre.x, bendCentre.z, 160, 0.6, 0.9);
-  await shot('1b-bend-three-quarter', 2000);
 
   // (2) Close on one drive at the bend: the framed home nearest the S's middle.
   const nearest = framed
@@ -430,8 +428,6 @@ try {
     // Looking along the drive from over the road: the camera yaw faces the parcel's inward direction.
     await look('2-drive-at-the-bend', front.x, front.z, 45, f.heading + Math.PI / 2, STREET_PITCH);
     await shot('2-drive-at-the-bend', 2500);
-    await look('2b-drive-at-the-bend-above', front.x, front.z, 45, f.heading + Math.PI / 2, OVERHEAD_PITCH);
-    await shot('2b-drive-at-the-bend-above', 2500);
     await restore();
   }
 
@@ -570,8 +566,6 @@ try {
   await setTool('select');
 
   // (4) The grid street beside the bend: its lots exactly as before.
-  await look('4-grid-street-beside-the-bend', X + 8, GRID_Z + 1, 120, 0, STREET_PITCH);
-  await shot('4-grid-street-beside-the-bend', 2000);
   await look('4b-grid-street-above', X + 8, GRID_Z + 1, 140, 0, OVERHEAD_PITCH);
   await shot('4b-grid-street-above', 2000);
 
@@ -607,8 +601,6 @@ try {
     const front = frontOf(shop);
     console.log('shop', shop.catalogId, 'frame', JSON.stringify(shop.frame));
     const restore = await closeUp(page, 2);
-    await look('6-shop-car-park-at-the-bend', front.x, front.z, 55, front.yaw, STREET_PITCH);
-    await shot('6-shop-car-park-at-the-bend', 2500);
     await look('6a-shop-car-park-above', front.x, front.z, 60, front.yaw, OVERHEAD_PITCH);
     await shot('6a-shop-car-park-above', 2500);
     await restore();
@@ -671,8 +663,6 @@ try {
     );
     const restore = await closeUp(page, 2);
     const at = { x: (cut.x + pole.x) / 2 / T - 0.5, z: (cut.z + pole.z) / 2 / T - 0.5 };
-    await look('9-lamp-beside-framed-drive', at.x, at.z, 35, bl.frame.heading + Math.PI / 2, STREET_PITCH);
-    await shot('9-lamp-beside-framed-drive', 2500);
     await look('9b-lamp-beside-framed-drive-above', at.x, at.z, 40, 0, Math.PI / 2);
     await shot('9b-lamp-beside-framed-drive-above', 2500);
     await restore();

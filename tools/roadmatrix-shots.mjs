@@ -547,14 +547,22 @@ for (const { kase, tag, measured, junctions, end } of plan) {
     }
   }
 
-  const restore = await closeUp(page, 1.6);
-  for (const [suffix, at] of [
-    ['', focus],
+  // Alley and gravel carry no paint and no kerb to look at: a straight run and
+  // a crossing show everything they have. A viaduct is judged from the side
+  // (the deck's piers show nowhere else), and its end cap is the straight
+  // run's cap, so only the cited highway viaduct end is kept.
+  const plainTier = kase.name === 'alley' || kase.name === 'gravel';
+  if (plainTier && !['straight', 'cross'].includes(kase.scenario)) continue;
+  const viaduct = kase.scenario === 'viaduct';
+  const frames = [
+    ...(viaduct ? [] : [['', focus]]),
     // The cap, which no measurement here holds to a rule: the only way it gets
     // checked is by being looked at. Only a scenario with a free end of its own
     // has one; a junction's arms end in the same cap the straight run shows.
-    ...(end ? [['-end', end]] : []),
-  ]) {
+    ...(end && (!viaduct || kase.name === 'highway') ? [['-end', end]] : []),
+  ];
+  const restore = await closeUp(page, 1.6);
+  for (const [suffix, at] of frames) {
     await cam(at.x, at.z + AIM_LIFT_TILES, 64, 0, 1.5);
     await page.waitForTimeout(600);
     // Daylight is pinned on every shot: the sim keeps running between them, so
@@ -562,13 +570,14 @@ for (const { kase, tag, measured, junctions, end } of plan) {
     await call(() => window.__slimcity.setDayT(0.5));
     await page.waitForTimeout(150);
     await cleanShot(page, `${out}/${tag}${suffix}.png`);
-    // Straight down no height can be judged: a deck's piers, parapets and the
-    // ground under a dead end only show from the side.
-    if (kase.scenario === 'viaduct') {
-      await cam(at.x, at.z + AIM_LIFT_TILES, 64, 0, 0.6);
-      await page.waitForTimeout(600);
-      await cleanShot(page, `${out}/${tag}${suffix}-oblique.png`);
-    }
+  }
+  // Straight down no height can be judged: a deck's piers and parapets only
+  // show from the side, so a viaduct gets the oblique view instead of the plan.
+  if (viaduct) {
+    await cam(focus.x, focus.z + AIM_LIFT_TILES, 64, 0, 0.6);
+    await page.waitForTimeout(600);
+    await call(() => window.__slimcity.setDayT(0.5));
+    await cleanShot(page, `${out}/${tag}-oblique.png`);
   }
   await restore();
 }

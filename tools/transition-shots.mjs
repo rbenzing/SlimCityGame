@@ -26,7 +26,6 @@ const CASES = [
   ['avenue-to-twolane', TIER.Avenue, TIER.TwoLane],
   ['fourlane-to-twolane', TIER.FourLane, TIER.TwoLane],
   ['fourlane-to-avenue', TIER.FourLane, TIER.Avenue],
-  ['avenue-to-oneway', TIER.Avenue, TIER.OneWay],
   ['twolane-to-gravel', TIER.TwoLane, TIER.Gravel],
 ];
 
@@ -127,14 +126,11 @@ for (const { name, x } of placed) {
 }
 
 for (const { name, x } of placed) {
-  // The seam itself, and the whole length the change is spread over — a taper
-  // that reads fine tile by tile can still be a staircase seen end to end.
-  await cam(X + x, Z + SEAM - 0.5, 40, 0, 1.5);
-  await page.waitForTimeout(600);
-  await cleanShot(page, `${out}/${name}.png`);
+  // The whole length the change is spread over: a taper that reads fine tile by
+  // tile can still be a staircase seen end to end.
   await cam(X + x, Z + SEAM - 2, 72, 0, 1.5);
   await page.waitForTimeout(600);
-  await cleanShot(page, `${out}/${name}-run.png`);
+  await cleanShot(page, `${out}/${name}.png`);
   console.log('shot', name);
 }
 
