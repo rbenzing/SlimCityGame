@@ -312,10 +312,19 @@ try {
     0.8,
   );
   await frame('close-fuel', boxOf([find('fuel', 'com-fuel-2')]), 0.9, 0.4, 0.8);
+  // A strip's front door close: the walk, the bed, the bench and bin beside the door, and the lot's lights.
+  const stripDoor = () => {
+    const s = find('strip', 'com-strip-1-lot5x2') ?? find('strip', 'com-strip-2');
+    return { x: s.x + s.w * 0.55, z: s.z + s.d - 0.9, w: 6, d: 2, h: 4 };
+  };
+  await frame('close-front-door', stripDoor(), 0.3, 0.5, 0.9);
   await restore();
 
   await setPhase(0.96);
   await views('-night')();
+  const restoreNight = await closeUp(page, 2);
+  await frame('close-front-door-night', stripDoor(), 0.3, 0.5, 0.9);
+  await restoreNight();
 
   await setPhase(LINEUP_NIGHT);
   await shootLineup('-night');
