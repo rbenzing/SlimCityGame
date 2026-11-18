@@ -4046,8 +4046,8 @@ describe('roadTileVertices — a crossing is the crossing road’s footway carri
       thin: Math.min(b.x1 - b.x0, b.z1 - b.z0),
       long: Math.max(b.x1 - b.x0, b.z1 - b.z0),
     }));
-  /** A zebra bar: 0.45 m across and as deep as the crossing. */
-  const isBar = (b: Painted): boolean => Math.abs(b.thin - 0.45) < 0.02 && b.long < 4;
+  /** One of a crossing's two transverse lines: 0.3 m deep and long across the carriageway. */
+  const isCrossingLine = (b: Painted): boolean => Math.abs(b.thin - 0.3) < 0.02 && b.long > 3;
   /** A stop line: 0.4 m deep and long across the lanes. */
   const isStopLine = (b: Painted): boolean => Math.abs(b.thin - 0.4) < 0.02 && b.long > 3;
   const overlap = (a: Box, b: Box): boolean =>
@@ -4076,13 +4076,34 @@ describe('roadTileVertices — a crossing is the crossing road’s footway carri
       control,
     );
 
-  const barsOf = (v: ReturnType<typeof junction>, arm: 'n' | 's' | 'e' | 'w'): Painted[] =>
+  /** The lines of the crossing over an arm, lying across it. */
+  const linesOf = (v: ReturnType<typeof junction>, arm: 'n' | 's' | 'e' | 'w'): Painted[] =>
     whiteBoxes(v).filter(
       (b) =>
-        isBar(b) &&
+        isCrossingLine(b) &&
         (arm === 'n' ? b.z1 < 0 : arm === 's' ? b.z0 > 0 : arm === 'e' ? b.x0 > 0 : b.x1 < 0) &&
-        (arm === 'n' || arm === 's' ? b.z1 - b.z0 > b.x1 - b.x0 : b.x1 - b.x0 > b.z1 - b.z0),
+        (arm === 'n' || arm === 's' ? b.x1 - b.x0 > b.z1 - b.z0 : b.z1 - b.z0 > b.x1 - b.x0),
     );
+  /** How far from the junction's centre a box lies along an arm: its nearer and further edge. */
+  const alongArm = (b: Box, arm: 'n' | 's' | 'e' | 'w'): [number, number] =>
+    arm === 'n'
+      ? [-b.z1, -b.z0]
+      : arm === 's'
+        ? [b.z0, b.z1]
+        : arm === 'e'
+          ? [b.x0, b.x1]
+          : [-b.x1, -b.x0];
+  /** Where a crossing's lines lie along its arm: the nearer edge of the first, the further of the last. */
+  const crossingSpan = (
+    v: ReturnType<typeof junction>,
+    arm: 'n' | 's' | 'e' | 'w',
+  ): { near: number; far: number } => {
+    const edges = linesOf(v, arm).map((b) => alongArm(b, arm));
+    return {
+      near: Math.min(...edges.map(([n]) => n)),
+      far: Math.max(...edges.map(([, f]) => f)),
+    };
+  };
 
   const cases: Array<[string, RoadTier, RoadTier, RoadTier]> = [
     ['four-lane x four-lane', RoadTier.FourLane, RoadTier.FourLane, RoadTier.FourLane],
@@ -4106,54 +4127,56 @@ describe('roadTileVertices — a crossing is the crossing road’s footway carri
       const depth = (side: 'n' | 'e' | 's' | 'w') =>
         Math.max(footway(tile), 1.8) + 0 * crossHalf[side];
 
-      it('puts every crossing outside the box, from the crossing road’s kerb line outward', () => {
+      const tangentOf = (side: 'n' | 'e' | 's' | 'w'): number =>
+        crossHalf[side] +
+        cornerReturnRadius(
+          cornerRadiusOf(presetProfileForTier(tile)),
+          TILE_METERS / 2 - half(arm[side]),
+          TILE_METERS / 2 - crossHalf[side],
+        );
+
+      it('puts every crossing outside the box, two lines as far apart as the footway is deep', () => {
         for (const side of ['n', 'e', 's', 'w'] as const) {
-          const bars = barsOf(v, side);
-          expect(bars.length, `${side} arm has a crossing`).toBeGreaterThan(2);
-          for (const b of bars) {
-            const near = side === 'n' ? -b.z1 : side === 's' ? b.z0 : side === 'e' ? b.x0 : -b.x1;
-            const far = side === 'n' ? -b.z0 : side === 's' ? b.z1 : side === 'e' ? b.x1 : -b.x0;
-            expect(near, `${side} bar starts on the kerb line`).toBeGreaterThanOrEqual(
-              crossHalf[side] - 1e-6,
-            );
-            expect(far - near).toBeCloseTo(depth(side), 6);
-          }
+          expect(linesOf(v, side).length, `${side} arm has two lines`).toBe(2);
+          const { near, far } = crossingSpan(v, side);
+          expect(near, `${side} crossing starts outside the box`).toBeGreaterThanOrEqual(
+            crossHalf[side] - 1e-6,
+          );
+          expect(far - near).toBeCloseTo(depth(side), 6);
         }
+      });
+
+      it('paints the lines of a controlled crossing and no zebra bar along the traffic’s path', () => {
+        const bars = boxes.filter((b) => Math.abs(b.thin - 0.45) < 0.02 && b.long < 4);
+        expect(bars).toEqual([]);
+        expect(boxes.filter(isCrossingLine)).toHaveLength(8);
       });
 
       it('starts every crossing where the kerb return ends, so both ends land on straight kerb', () => {
         for (const side of ['n', 'e', 's', 'w'] as const) {
-          const tangent =
-            crossHalf[side] +
-            cornerReturnRadius(
-              cornerRadiusOf(presetProfileForTier(tile)),
-              TILE_METERS / 2 - half(arm[side]),
-              TILE_METERS / 2 - crossHalf[side],
-            );
-          for (const b of barsOf(v, side)) {
-            const near = side === 'n' ? -b.z1 : side === 's' ? b.z0 : side === 'e' ? b.x0 : -b.x1;
-            expect(near, `${side} crossing`).toBeCloseTo(tangent, 6);
-          }
+          expect(crossingSpan(v, side).near, `${side} crossing`).toBeCloseTo(tangentOf(side), 6);
         }
       });
 
-      it('lays every bar wholly on the arm’s carriageway', () => {
+      it('runs each line kerb to kerb across the carriageway, clear road between', () => {
         for (const side of ['n', 'e', 's', 'w'] as const) {
-          const reach = half(arm[side]) + 4;
-          for (const b of barsOf(v, side)) {
-            const across = side === 'n' || side === 's' ? [b.x0, b.x1] : [b.z0, b.z1];
-            // Never past the arm's kerb by more than its kerb return bulges.
-            for (const a of across) expect(Math.abs(a)).toBeLessThanOrEqual(reach);
+          const lines = linesOf(v, side);
+          for (const b of lines) {
+            const [lo, hi] = side === 'n' || side === 's' ? [b.x0, b.x1] : [b.z0, b.z1];
+            // The kerb is straight where the crossing is, so it ends on the
+            // arm's own kerb line, a hand short of it only where it would
+            // meet the crossing across the corner.
+            expect(-lo - half(arm[side])).toBeLessThanOrEqual(1e-6);
+            expect(hi - half(arm[side])).toBeLessThanOrEqual(1e-6);
+            expect(-lo - half(arm[side])).toBeGreaterThan(-0.31);
+            expect(hi - half(arm[side])).toBeGreaterThan(-0.31);
+            expect(b.thin).toBeCloseTo(0.3, 6);
           }
-          const bars = barsOf(v, side);
-          const lo = Math.min(...bars.map((b) => (side === 'n' || side === 's' ? b.x0 : b.z0)));
-          const hi = Math.max(...bars.map((b) => (side === 'n' || side === 's' ? b.x1 : b.z1)));
-          // The crossing reaches the kerb at both ends, stopping a hand short of
-          // it only where it would meet the crossing across the corner.
-          expect(Math.abs(lo) - half(arm[side])).toBeGreaterThan(-0.31);
-          expect(Math.abs(hi) - half(arm[side])).toBeGreaterThan(-0.31);
-          expect(Math.abs(lo) - half(arm[side])).toBeLessThan(1.5);
-          expect(Math.abs(hi) - half(arm[side])).toBeLessThan(1.5);
+          const [first, second] = lines.map((b) => alongArm(b, side)).sort(([a], [b]) => a - b) as [
+            [number, number],
+            [number, number],
+          ];
+          expect(second[0] - first[1], `${side} road between the lines`).toBeGreaterThan(0.5);
         }
       });
 
@@ -4166,10 +4189,11 @@ describe('roadTileVertices — a crossing is the crossing road’s footway carri
             b.z1 < half(ew) - 0.05,
         );
         expect(inBox).toEqual([]);
-        const bars = boxes.filter(isBar);
-        for (let i = 0; i < bars.length; i++) {
-          for (let j = i + 1; j < bars.length; j++) {
-            expect(overlap(bars[i]!, bars[j]!)).toBe(false);
+        const lines = boxes.filter(isCrossingLine);
+        expect(lines.length).toBe(8);
+        for (let i = 0; i < lines.length; i++) {
+          for (let j = i + 1; j < lines.length; j++) {
+            expect(overlap(lines[i]!, lines[j]!)).toBe(false);
           }
         }
       });
@@ -4178,9 +4202,9 @@ describe('roadTileVertices — a crossing is the crossing road’s footway carri
         for (const b of boxes.filter(isStopLine)) {
           const vertical = b.x1 - b.x0 > b.z1 - b.z0;
           const side = vertical ? (b.z1 < 0 ? 'n' : 's') : b.x1 < 0 ? 'w' : 'e';
-          const crossFar = crossHalf[side] + depth(side);
+          const crossFar = tangentOf(side) + depth(side);
           const near = side === 'n' ? -b.z1 : side === 's' ? b.z0 : side === 'e' ? b.x0 : -b.x1;
-          expect(near - crossFar).toBeGreaterThanOrEqual(1.2 - 1e-6);
+          expect(near - crossFar).toBeCloseTo(1.2, 6);
         }
         expect(boxes.filter(isStopLine).length).toBeGreaterThan(0);
       });
@@ -4215,9 +4239,7 @@ describe('roadTileVertices — a crossing is the crossing road’s footway carri
 
   it('starts a two-lane crossroads’ crossings at the tangent point of the kerb return, no nearer', () => {
     const v = junction(RoadTier.TwoLane, RoadTier.TwoLane, RoadTier.TwoLane);
-    const bars = barsOf(v, 'n');
-    const near = Math.min(...bars.map((b) => -b.z1));
-    expect(near).toBeCloseTo(
+    expect(crossingSpan(v, 'n').near).toBeCloseTo(
       half(RoadTier.TwoLane) + cornerRadiusOf(presetProfileForTier(RoadTier.TwoLane)),
       6,
     );
@@ -4225,14 +4247,12 @@ describe('roadTileVertices — a crossing is the crossing road’s footway carri
 
   it('paints a T on its three arms only, each crossing off the road it crosses', () => {
     const v = junction(RoadTier.TwoLane, RoadTier.TwoLane, RoadTier.FourLane, N | E | W);
-    expect(barsOf(v, 's')).toEqual([]);
+    expect(linesOf(v, 's')).toEqual([]);
     for (const side of ['n', 'e', 'w'] as const) {
-      expect(barsOf(v, side).length, `${side} crossing`).toBeGreaterThan(2);
+      expect(linesOf(v, side).length, `${side} crossing`).toBe(2);
     }
     // The north arm's crossing lies outside the four-lane road across it.
-    expect(Math.min(...barsOf(v, 'n').map((b) => -b.z1))).toBeGreaterThanOrEqual(
-      half(RoadTier.FourLane) - 1e-6,
-    );
+    expect(crossingSpan(v, 'n').near).toBeGreaterThanOrEqual(half(RoadTier.FourLane) - 1e-6);
   });
 });
 
@@ -4337,21 +4357,24 @@ describe('roadTileVertices — a street crossing a divided road is one intersect
     const v = west('e');
     const bars = boxes(v, cxWest);
     // Across the partner arm (east) a stop line is thin along x and long along
-    // z, and a crossing is a row of bars thin along z. Neither is there: the
-    // only paint east of the half's carriageway is the crossing over the
-    // arms north and south, whose bars are long along z.
+    // z, and so is each line of a crossing. Neither is there: the only paint
+    // east of the half's carriageway is the crossing over the arms north and
+    // south, whose lines are long along x.
     const east = bars.filter((b) => b.x0 > 0);
     expect(east.filter((b) => b.x1 - b.x0 < 0.5 && b.z1 - b.z0 > 3)).toEqual([]);
     expect(
-      east.filter((b) => b.x1 - b.x0 > b.z1 - b.z0 && Math.abs(b.z1 - b.z0 - 0.45) < 0.02),
+      bars.filter((b) => b.x1 > 0 && Math.abs(b.x1 - b.x0 - 0.3) < 0.02 && b.z1 - b.z0 > 3),
     ).toEqual([]);
     expect(east.length).toBeGreaterThan(0);
   });
 
   it('keeps the street’s own arm painted as any junction arm is', () => {
     const bars = boxes(west('e'), cxWest).filter((b) => b.x1 < 0);
-    expect(bars.some((b) => b.x1 - b.x0 < 0.5 && b.z1 - b.z0 > 3)).toBe(true);
-    expect(bars.filter((b) => b.x1 - b.x0 > b.z1 - b.z0).length).toBeGreaterThan(2);
+    // A stop line and the two lines of the crossing, each long across the arm.
+    expect(bars.some((b) => Math.abs(b.x1 - b.x0 - 0.4) < 0.02 && b.z1 - b.z0 > 3)).toBe(true);
+    expect(bars.filter((b) => Math.abs(b.x1 - b.x0 - 0.3) < 0.02 && b.z1 - b.z0 > 3).length).toBe(
+      2,
+    );
   });
 
   it('paints the opening differently from a street that meets one half only', () => {
@@ -4363,17 +4386,22 @@ describe('roadTileVertices — a street crossing a divided road is one intersect
     const far = boxes(east('w'), cxEast)
       .filter((b) => b.z1 < 0 && b.z0 > -TILE_METERS)
       .map((b) => ({ ...b, x0: b.x0 + TILE_METERS, x1: b.x1 + TILE_METERS }));
-    const bars = [...near, ...far].filter((b) => b.z1 - b.z0 > b.x1 - b.x0 && b.z1 - b.z0 < 4);
-    expect(bars.length).toBeGreaterThan(8);
-    const sorted = bars.sort((a, b) => a.x0 - b.x0);
-    for (let i = 1; i < sorted.length; i++) {
-      const gap = sorted[i]!.x0 - sorted[i - 1]!.x1;
-      expect(gap, 'no bar overlaps the next').toBeGreaterThanOrEqual(-1e-6);
-      expect(gap, 'no break wider than a bar gap or two').toBeLessThan(1.5);
+    const lines = [...near, ...far].filter(
+      (b) => Math.abs(b.z1 - b.z0 - 0.3) < 0.02 && b.x1 - b.x0 > 3,
+    );
+    // Two lines, each laid in a piece by either half.
+    expect(lines.length).toBe(4);
+    const levels = [...new Set(lines.map((b) => b.z0.toFixed(4)))];
+    expect(levels.length).toBe(2);
+    for (const level of levels) {
+      const sorted = lines.filter((b) => b.z0.toFixed(4) === level).sort((a, b) => a.x0 - b.x0);
+      expect(sorted.length).toBe(2);
+      // The halves' pieces meet with no break and no overlap.
+      expect(sorted[1]!.x0 - sorted[0]!.x1).toBeCloseTo(0, 6);
+      // And the line spans both halves: from the west kerb to the east kerb.
+      expect(sorted[0]!.x0).toBeLessThan(-halfOfCorridor + 1.5);
+      expect(sorted[1]!.x1).toBeGreaterThan(TILE_METERS + halfOfCorridor - 1.5);
     }
-    // And it spans both halves: from the west kerb to the east kerb.
-    expect(sorted[0]!.x0).toBeLessThan(-halfOfCorridor + 1.5);
-    expect(sorted[sorted.length - 1]!.x1).toBeGreaterThan(TILE_METERS + halfOfCorridor - 1.5);
   });
 
   describe('with a narrow street on one side and a wide one on the other', () => {
@@ -4385,7 +4413,7 @@ describe('roadTileVertices — a street crossing a divided road is one intersect
     const northBars = (v: Parameters<typeof boxes>[0], cx: number) =>
       boxes(v, cx).filter(
         (b) =>
-          b.z1 < 0 && b.z0 > -TILE_METERS && Math.abs(b.x1 - b.x0 - 0.45) < 0.02 && b.z1 - b.z0 > 1,
+          b.z1 < 0 && b.z0 > -TILE_METERS && Math.abs(b.z1 - b.z0 - 0.3) < 0.02 && b.x1 - b.x0 > 3,
       );
 
     it('puts the crossing over both halves on one line, past the tangent of the furthest kerb return', () => {
@@ -4401,22 +4429,23 @@ describe('roadTileVertices — a street crossing a divided road is one intersect
         ),
       );
       for (const v of [northBars(w(), cxWest), northBars(e(), cxEast)]) {
-        expect(v.length).toBeGreaterThan(4);
+        expect(v.length).toBe(2);
         expect(Math.max(...v.map((b) => -b.z0))).toBeCloseTo(tangent + depth, 6);
         expect(Math.min(...v.map((b) => -b.z1))).toBeCloseTo(tangent, 6);
       }
     });
 
-    it('keeps the bar rhythm even across the centre line', () => {
+    it('meets the two halves’ lines at the middle of the gap between them', () => {
       const near = northBars(w(), cxWest);
       const far = northBars(e(), cxEast).map((b) => ({
         ...b,
         x0: b.x0 + TILE_METERS,
         x1: b.x1 + TILE_METERS,
       }));
-      const centres = [...near, ...far].map((b) => (b.x0 + b.x1) / 2).sort((a, b) => a - b);
-      const pitches = centres.slice(1).map((c, i) => c - centres[i]!);
-      for (const pitch of pitches) expect(pitch).toBeCloseTo(pitches[0]!, 6);
+      for (const line of near) {
+        const mate = far.find((b) => Math.abs(b.z0 - line.z0) < 1e-6)!;
+        expect(mate.x0).toBeCloseTo(line.x1, 6);
+      }
     });
 
     it('lays no kerb in the opening of either half, however the streets differ', () => {
@@ -4698,27 +4727,35 @@ describe('RoadMeshRenderer — a T onto a corridor nothing divides', () => {
   };
   const seam = COLS / 2;
 
+  /** The consecutive rows holding a long white run over the shared edge, one group per line laid across it. */
+  const linesOverTheSeam = (): number => {
+    const rows = paint()
+      .map(runs)
+      .map((r) => r.some(([s, len]) => len >= 16 && s < seam && s + len > seam));
+    return rows.filter((over, i) => over && !rows[i - 1]).length;
+  };
+
   it('stops the stop line at the edge the halves share', () => {
-    const rows = paint().map(runs);
-    const lines = rows.flat().filter(([, len]) => len >= 16);
-    expect(lines.length).toBeGreaterThan(0);
-    for (const [start, len] of lines) {
-      expect(start < seam && start + len > seam, `a line over cells ${start}..${start + len}`).toBe(
-        false,
-      );
-    }
+    const lines = paint()
+      .map(runs)
+      .flat()
+      .filter(([, len]) => len >= 16);
+    // The stop line is the one long run that ends at the edge; the two lines
+    // of the crossing are the only ones that carry over it.
+    expect(lines.some(([s, len]) => s < seam && s + len <= seam)).toBe(true);
+    expect(linesOverTheSeam()).toBe(2);
   });
 
-  it('lays one crosswalk over both halves, its bars on an even pitch across the shared edge', () => {
-    const bars = paint()
-      .map(runs)
-      .find((r) => r.length >= 8);
-    expect(bars).toBeDefined();
-    expect(bars!.some(([s]) => s < seam)).toBe(true);
-    expect(bars!.some(([s]) => s >= seam)).toBe(true);
-    const pitches = bars!.slice(1).map(([s], i) => s - bars![i]![0]);
-    // A cell is a quarter metre and the pitch is not a whole number of them.
-    expect(Math.max(...pitches) - Math.min(...pitches)).toBeLessThanOrEqual(1);
+  it('lays the crossing’s two lines over both halves as one run across the shared edge', () => {
+    expect(linesOverTheSeam()).toBe(2);
+    for (const row of paint().map(runs)) {
+      const over = row.filter(([s, len]) => len >= 16 && s < seam && s + len > seam);
+      for (const [s, len] of over) {
+        // Kerb to kerb: it starts in the left half and ends in the right.
+        expect(s).toBeLessThan(seam - 4);
+        expect(s + len).toBeGreaterThan(seam + 4);
+      }
+    }
   });
 });
 

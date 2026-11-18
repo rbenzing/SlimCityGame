@@ -253,7 +253,11 @@ describe('a block face’s accessible stalls on the ground', () => {
     // No paint across the lane inside the zone.
     const sign = Math.sign(outer - inner);
     for (const d of [1, 3, 5]) {
-      const white = runsAlong(r, inner + sign * d, zoneFrom + 0.2, zoneTo - 0.2, WHITE);
+      // A crossing's two 0.3 m lines run kerb to kerb across the lane; stall
+      // marks are thinner, and none of them lies in the zone.
+      const white = runsAlong(r, inner + sign * d, zoneFrom + 0.2, zoneTo - 0.2, WHITE).filter(
+        ([a, b]) => b - a < 0.25,
+      );
       expect(white, `${d} m into the lane`).toEqual([]);
     }
   });

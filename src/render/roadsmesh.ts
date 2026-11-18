@@ -2616,38 +2616,26 @@ export function crosswalkBarCentres(lo: number, hi: number): number[] {
  */
 const CROSSING_CORNER_CLEAR_M = 0.3;
 
-/** Bar centres at a whole pitch either side of `mid`, every bar wholly within [lo, hi]. */
-function anchoredBarCentres(lo: number, hi: number, mid: number): number[] {
-  const pitch = CROSSWALK_BAR_WIDTH_M + CROSSWALK_BAR_GAP_M;
-  const edge = CROSSWALK_BAR_WIDTH_M / 2;
-  const first = Math.ceil((lo + edge - mid) / pitch - 1e-9);
-  const last = Math.floor((hi - edge - mid) / pitch + 1e-9);
-  const centres: number[] = [];
-  for (let k = first; k <= last; k++) centres.push(mid + k * pitch);
-  return centres;
-}
+/** Each transverse line of a crossing a control holds: 0.3 m (12 in), inside the 6 to 24 in the standard allows. */
+const CROSSING_LINE_WIDTH_M = 0.3;
 
-/** What a crossing spans across the arm, and which of its bars this tile paints. */
+/** What a crossing spans across the arm, and which stretch of its lines this tile paints. */
 export interface CrossingSpan {
   /** Where the crossing meets the kerb on each side, in the tile's local coordinates across the arm. */
   lo: number;
   hi: number;
   /**
-   * A crossing that carries on across a median opening is one run of bars
-   * shared by both halves: the half whose centre bars lie within `own` paints
-   * them. Absent, the tile paints every bar.
+   * A crossing that carries on across a median opening or an undivided
+   * corridor's shared edge is one run of lines shared by both halves: each
+   * half paints the stretch of them within `own`. Absent, the tile paints
+   * the whole run.
    */
   own?: { lo: number; hi: number };
-  /**
-   * Where the bars of a shared crossing are anchored: one on this line and
-   * the rest at a whole pitch either side, so both halves lay the same
-   * rhythm whatever their outer kerbs reach.
-   */
-  mid?: number;
 }
 
 /**
- * Emits one arm's stop line + zebra crosswalk. `dAt(d)` maps a distance from
+ * Emits one arm's stop line + crossing: two transverse lines kerb to kerb at
+ * the crossing's near and far edges. `dAt(d)` maps a distance from
  * the junction's centre, along the arm, to a LOCAL coordinate (relative to
  * tile centre) on that axis — the caller supplies the correct
  * direction/origin per side (N/E/S/W).
@@ -2722,50 +2710,41 @@ function emitJunctionArmMarkings(
     );
   }
 
-  // Zebra crosswalk: bars spaced across the carriageway, each spanning
-  // [crosswalkNear, crosswalkFar] along the travel axis. A road with no
-  // footway has nobody to cross, so it paints none.
+  // Crossing: a line at each of its edges, kerb to kerb across the carriageway
+  // and clear road between. Every crossing a junction paints lies over an arm
+  // a signal, a stop or a give-way holds. A road with no footway has nobody to
+  // cross, so it paints none.
   if (!hasFootways) return;
-  const crossLo = Math.min(dAt(layout.crosswalkNear), dAt(layout.crosswalkFar));
-  const crossHi = Math.max(dAt(layout.crosswalkNear), dAt(layout.crosswalkFar));
-  if (crossHi <= crossLo) return;
   const own = span.own;
-  const centres =
-    span.mid === undefined
-      ? crosswalkBarCentres(span.lo, span.hi)
-      : anchoredBarCentres(span.lo, span.hi, span.mid);
-  for (const offset of centres) {
-    if (own && (offset < own.lo || offset > own.hi)) continue;
-    const barLo = offset - CROSSWALK_BAR_WIDTH_M / 2;
-    const barHi = offset + CROSSWALK_BAR_WIDTH_M / 2;
-    if (vertical)
-      pushLocalRect(
-        positions,
-        colors,
-        centerX,
-        centerZ,
-        barLo,
-        barHi,
-        crossLo,
-        crossHi,
-        MARK_Y_OFFSET,
-        MARKING_COLOR,
-        hAt,
-      );
-    else
-      pushLocalRect(
-        positions,
-        colors,
-        centerX,
-        centerZ,
-        crossLo,
-        crossHi,
-        barLo,
-        barHi,
-        MARK_Y_OFFSET,
-        MARKING_COLOR,
-        hAt,
-      );
+  const across0 = Math.max(span.lo, own?.lo ?? -Infinity);
+  const across1 = Math.min(span.hi, own?.hi ?? Infinity);
+  if (across1 <= across0) return;
+  const nearEdge = dAt(layout.crosswalkNear);
+  const farEdge = dAt(layout.crosswalkFar);
+  const toward = Math.sign(farEdge - nearEdge);
+  if (toward === 0) return;
+  const lines: ReadonlyArray<readonly [number, number]> = [
+    [nearEdge, nearEdge + toward * CROSSING_LINE_WIDTH_M],
+    [farEdge - toward * CROSSING_LINE_WIDTH_M, farEdge],
+  ];
+  for (const [from, to] of lines) {
+    const along0 = Math.min(from, to);
+    const along1 = Math.max(from, to);
+    const [xLo, xHi] = vertical ? [across0, across1] : [along0, along1];
+    const [zLo, zHi] = vertical ? [along0, along1] : [across0, across1];
+    pushLocalRect(
+      positions,
+      colors,
+      centerX,
+      centerZ,
+      xLo,
+      xHi,
+      zLo,
+      zHi,
+      MARK_Y_OFFSET,
+      MARKING_COLOR,
+      hAt,
+    );
   }
 }
 
@@ -7452,14 +7431,12 @@ function roadTileSurfaces(
               ? {
                   lo: -outer,
                   hi: seamLocal + outer,
-                  own: { lo: -Infinity, hi: seamLocal + 1e-6 },
-                  mid: seamLocal,
+                  own: { lo: -Infinity, hi: seamLocal },
                 }
               : {
                   lo: seamLocal - outer,
                   hi: outer,
-                  own: { lo: seamLocal - 1e-6, hi: Infinity },
-                  mid: seamLocal,
+                  own: { lo: seamLocal, hi: Infinity },
                 };
         } else if (toward === 0) {
           span = {
@@ -7477,14 +7454,12 @@ function roadTileSurfaces(
               ? {
                   lo: -(reach - 2 * TILE_HALF),
                   hi: reach,
-                  own: { lo: -Infinity, hi: TILE_HALF + 1e-6 },
-                  mid: TILE_HALF,
+                  own: { lo: -Infinity, hi: TILE_HALF },
                 }
               : {
                   lo: -reach,
                   hi: reach - 2 * TILE_HALF,
-                  own: { lo: -TILE_HALF + 1e-6, hi: Infinity },
-                  mid: -TILE_HALF,
+                  own: { lo: -TILE_HALF, hi: Infinity },
                 };
         }
         emitJunctionArmMarkings(
