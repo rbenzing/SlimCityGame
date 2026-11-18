@@ -379,6 +379,32 @@ describe('LampRenderer', () => {
     expect(renderer.lensInstanceCount()).toBe(5);
   });
 
+  it('centres each ground pool under its own lens, well inside the arm reach, on every lamp', () => {
+    const scene = new THREE.Scene();
+    const renderer = new LampRenderer(scene, flatHeightAt);
+    renderer.rebuild(strip(0, 0, 12, 'ew'));
+    const lens = scene.children.find(
+      (c): c is THREE.InstancedMesh =>
+        c instanceof THREE.InstancedMesh && c.geometry.type === 'SphereGeometry',
+    )!;
+    const pool = scene.children.find(
+      (c): c is THREE.Mesh => c instanceof THREE.Mesh && !(c instanceof THREE.InstancedMesh),
+    )!;
+    const position = pool.geometry.getAttribute('position');
+    const at = new THREE.Vector3();
+    const matrix = new THREE.Matrix4();
+    expect(renderer.lampCount()).toBeGreaterThan(1);
+    for (let i = 0; i < renderer.lampCount(); i++) {
+      lens.getMatrixAt(i, matrix);
+      at.setFromMatrixPosition(matrix);
+      const core = i * POOL_VERTICES_PER_LAMP;
+      const gap = Math.hypot(position.getX(core) - at.x, position.getZ(core) - at.z);
+      // The cowl's tilt carries the lens a few decimetres off the arm end; the
+      // arm itself reaches 2.4 m, so a pool off by that much would sit off its lamp.
+      expect(gap).toBeLessThan(0.5);
+    }
+  });
+
   it('adds exactly one InstancedMesh per layer (pole/arm/housing/lens) to the scene', () => {
     const scene = new THREE.Scene();
     const renderer = new LampRenderer(scene, flatHeightAt);

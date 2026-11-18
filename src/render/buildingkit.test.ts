@@ -1406,6 +1406,9 @@ describe('the storefront and industrial kits on the map', () => {
       expect(material === lit, part).toBe(LIT_PARTS.has(part));
     }
     for (const part of LIT_PARTS) expect(r.instanceCount(part), part).toBeGreaterThan(0);
+    // The office corner is a wall: it stands on the tinted body material, not the lit one.
+    expect(r.instanceCount('officeCorner')).toBeGreaterThan(0);
+    expect(r.materialOf('officeCorner')).not.toBe(lit);
   });
 
   it('glows the lit parts at a daytime floor, rising to full at night, and only them', () => {
@@ -1666,7 +1669,7 @@ describe('a warehouse and a food plant', () => {
     }
   });
 
-  it('carries an office corner 8 × 8 m, two storeys, on the lit material, with a canopy over its door', () => {
+  it('carries an office corner 8 × 8 m, two storeys, as a night-tinted wall that never glows, with a canopy over its door', () => {
     const withOffice = docked.filter(({ plan }) => only(plan, 'officeCorner').length > 0);
     expect(withOffice.length).toBeGreaterThan(0);
     for (const { e, plan } of withOffice) {
@@ -1676,7 +1679,8 @@ describe('a warehouse and a food plant', () => {
       expect(corner!.size[1]).toBeGreaterThan(6);
       expect(only(plan, 'officeCanopy')).toHaveLength(1);
     }
-    expect(LIT_PARTS.has('officeCorner')).toBe(true);
+    // A solid block of wall, not glazing: lit, it would stand at its day colour all night.
+    expect(LIT_PARTS.has('officeCorner')).toBe(false);
   });
 
   it('draws panel reveals every 8 m and a parapet band on a distribution centre, and two to four condensers 6 × 3.6 × 2.4 m on a food plant’s roof by level', () => {

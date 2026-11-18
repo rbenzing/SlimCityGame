@@ -148,7 +148,7 @@ const PART_COLOR: Readonly<Record<BuildingPart, number>> = {
   dockShelter: KIT_DARK,
   dockBumper: KIT_DARK,
   dockLight: litHex('whiteBrick'), // the wall-pack over a door: lit, so its day colour is its glow's
-  officeCorner: litHex('whiteBrick'),
+  officeCorner: materialHex('whiteBrick'),
   officeCanopy: materialHex('whiteBrick'),
   panelReveal: KIT_DARK,
   parapetBand: KIT_DARK,
@@ -249,9 +249,8 @@ const GLAZING_BLUE: RGB = (() => {
 
 /**
  * The parts that glow: sign bands, the pylon and price-sign faces, the
- * supermarket tower's glazing, the office lobby portal, a distribution
- * centre's glazed office corner, a metal building's glazed office front, a
- * factory's clerestory and the flare's tip. They share the kit's emissive
+ * supermarket tower's glazing, the office lobby portal, a metal building's
+ * glazed office front, a factory's clerestory and the flare's tip. They share the kit's emissive
  * material, which follows the night factor as a window does.
  */
 export const LIT_PARTS: ReadonlySet<BuildingPart> = new Set<BuildingPart>([
@@ -260,7 +259,6 @@ export const LIT_PARTS: ReadonlySet<BuildingPart> = new Set<BuildingPart>([
   'priceSign',
   'towerGlazing',
   'lobbyPortal',
-  'officeCorner',
   'clerestory',
   'storefrontBand',
   'dockLight',
@@ -626,7 +624,7 @@ export const BUMPER_SIZE_M: readonly [number, number, number] = [0.3, 0.25, 0.11
 const BUMPER_OFFSET_M = 0.9;
 const DOCK_LIGHT_SIZE_M: readonly [number, number, number] = [0.25, 0.2, 0.4];
 const DOCK_LIGHT_ABOVE_M = 0.45;
-/** The glazed office corner of a distribution centre: two storeys, 8 × 8 m, standing half out of the street face. */
+/** The office corner of a distribution centre: a wall block, two storeys, 8 × 8 m, standing half out of the street face. */
 export const OFFICE_CORNER_M = 8;
 export const OFFICE_CORNER_HEIGHT_M = 7.3;
 export const OFFICE_CORNER_PROUD_M = 4;
