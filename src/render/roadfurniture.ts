@@ -24,6 +24,7 @@ import { TILE_METERS, tileToWorld } from '../shared/constants';
 import {
   carriagewayHalfWidthMeters,
   curbWidthMeters,
+  isArrowTile,
   ROAD_Y_OFFSET,
   CURB_Y_OFFSET,
 } from './roadsmesh';
@@ -34,6 +35,7 @@ import {
   hasFootway,
   isOneWayProfile,
   isParkingLane,
+  isServiceClass,
   kerbWidthOf,
   parkingSides,
   plainLaneCentres,
@@ -657,7 +659,14 @@ export function joins(
   nx: number,
   nz: number,
 ): boolean {
-  if (!tileSet.has(tileKey(nx, nz))) return false;
+  const there = tileSet.get(tileKey(nx, nz));
+  if (!there) return false;
+  // A service access is no leg of the street it meets: that street does not turn
+  // or become a junction for it, exactly as the carriageway is drawn.
+  const here = tileSet.get(tileKey(x, z));
+  if (here && !isServiceClass(profileOf(here).class) && isServiceClass(profileOf(there).class)) {
+    return false;
+  }
   return !isSeparateRoad(x, z, nx - x, nz - z, surroundingsOf(tileSet));
 }
 
@@ -924,12 +933,15 @@ export function computeManholePlacements(
     if (!periodHits(tile.x, tile.z, MANHOLE_PERIOD_TILES)) continue;
     const profile = profileOf(tile);
     if (profile.pieces.some((p) => p.bay === true)) continue; // a junction's approach is all paint
+    const axis = lateralAxis(tileSet, tile.x, tile.z);
+    // A one-way road paints an arrow down every lane of every third tile along its run.
+    if (tile.tier === RoadTier.OneWay && isArrowTile(axis === 'x' ? tile.z : tile.x)) continue;
     const lane = plainLaneCentres(profile)[0];
     if (lane === undefined) continue; // no plain lane to lie in
     out.push({
       x: tile.x,
       z: tile.z,
-      axis: lateralAxis(tileSet, tile.x, tile.z),
+      axis,
       // The lane's middle, from the tile's middle: half of a corridor's
       // carriageway is pushed against the edge it shares.
       lateral: lane + carriagewayShiftOf(profile),

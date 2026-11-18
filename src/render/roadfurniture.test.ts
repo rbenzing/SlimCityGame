@@ -21,7 +21,12 @@ import type { SignPlacement } from './roadfurniture';
 import { tileToWorld } from '../shared/constants';
 import { RoadFlow, RoadTier, stepForFlow, storedFlow } from '../shared/types';
 import type { JunctionControl, RoadProfile } from '../shared/types';
-import { carriagewayHalfWidthMeters, ROAD_Y_OFFSET, SIDEWALK_WIDTH_M } from './roadsmesh';
+import {
+  carriagewayHalfWidthMeters,
+  isArrowTile,
+  ROAD_Y_OFFSET,
+  SIDEWALK_WIDTH_M,
+} from './roadsmesh';
 import { SIGNAL_CYCLE_S } from '../shared/junction';
 import {
   carriagewayHalfWidthOf,
@@ -220,6 +225,16 @@ describe('road-furniture placement (pure)', () => {
     const a = new Set(computeManholePlacements(ordered).map(key));
     const b = new Set(computeManholePlacements(shuffled).map(key));
     expect(a).toEqual(b);
+  });
+
+  it('lays no manhole on a tile that carries a one-way lane arrow, on either axis', () => {
+    for (const orientation of ['ew', 'ns'] as const) {
+      // Row 0 puts every cover tile on an arrow tile; row 1 keeps some off one.
+      expect(computeManholePlacements(strip(0, 0, 60, orientation, RoadTier.OneWay))).toEqual([]);
+      const placed = computeManholePlacements(strip(1, 0, 60, orientation, RoadTier.OneWay));
+      expect(placed.length).toBeGreaterThan(0);
+      for (const p of placed) expect(isArrowTile(orientation === 'ew' ? p.x : p.z)).toBe(false);
+    }
   });
 
   it('places no manholes on gravel', () => {
@@ -1791,5 +1806,28 @@ describe('a street tramway is hung from contact poles at the kerb', () => {
       meshes.find((m) => m.userData.furnitureKind === 'tramPole'),
     ]);
     expect(meshes.every((m) => m.visible && m.count > 0)).toBe(true);
+  });
+});
+
+describe('a service access is not a leg of the road it meets', () => {
+  it('a road that ends beside an alley gets no bend board and no junction control', () => {
+    const tiles: FurnitureRoadTile[] = [
+      ...Array.from({ length: 5 }, (_, k) => ({ x: 10, z: 2 + k, tier: RoadTier.TwoLane })),
+      ...Array.from({ length: 8 }, (_, k) => ({ x: 2 + k, z: 6, tier: RoadTier.Alley })),
+    ];
+    const signs = computeSignPlacements(tiles);
+    const atEnd = signs.filter((s) => s.x === 10 && s.z === 6);
+    expect(atEnd.some((s) => s.type === 'bend')).toBe(false);
+    // Whatever stands there stands behind the kerb of the 7.5 m carriageway, never in it.
+    for (const s of atEnd) expect(Math.abs(s.lateralOffset)).toBeGreaterThan(3.75);
+  });
+
+  it('two streets that meet still bend and still take the board', () => {
+    const tiles: FurnitureRoadTile[] = [
+      ...Array.from({ length: 5 }, (_, k) => ({ x: 10, z: 2 + k, tier: RoadTier.TwoLane })),
+      ...Array.from({ length: 8 }, (_, k) => ({ x: 2 + k, z: 6, tier: RoadTier.TwoLane })),
+    ];
+    const signs = computeSignPlacements(tiles);
+    expect(signs.some((s) => s.x === 10 && s.z === 6 && s.type === 'bend')).toBe(true);
   });
 });
