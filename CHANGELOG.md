@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.89.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.88.3...slimcity-v1.89.0) (2026-11-18)
+
+
+### Features
+
+* **airports:** draw the three airports from their layout, painted to the marking circular ([4fda141](https://github.com/rbenzing/SlimCityGame/commit/4fda14154c9e6c60ab2e1be659a552cd8eec3b7f))
+* **airports:** three airports' layout, catalog entries and placement ([c1304b4](https://github.com/rbenzing/SlimCityGame/commit/c1304b42d32d748a7a0276bf991959722b9fba8b))
+
+
+### Bug Fixes
+
+* **render:** a part thinner than one shadow texel casts no shadow ([769ce87](https://github.com/rbenzing/SlimCityGame/commit/769ce87fc79509ef6f4434af2c6cd93af40a6a1b))
+* **roads:** a kerb face under every footway edge, and lane symbols and tram track on free roads ([07c70e9](https://github.com/rbenzing/SlimCityGame/commit/07c70e94653ed2e5aca6a86955aba5733884b91c))
+
 ## [1.88.3](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.88.2...slimcity-v1.88.3) (2026-11-17)
 
 
