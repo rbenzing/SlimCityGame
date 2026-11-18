@@ -11,8 +11,13 @@
  * lights and terminal window band. No flight/passenger simulation of any
  * kind lives here, or ever will.
  *
+ * The three airports (airfield, regional-airport, international-airport) are
+ * not drawn with that kit: each gets one merged ground plate with its paint
+ * and a set of instanced parts (buildings, panes, aircraft) from the shared
+ * layout, built in airportkit.ts and drawn from pools every airport shares.
+ *
  * LandmarkRenderer acts ONLY on catalog ids in its internal registry
- * (LANDMARK_CATALOG_IDS, initially just 'airport'); every other catalog id is
+ * (LANDMARK_CATALOG_IDS); every other catalog id is
  * ignored entirely — BuildingInstancer still renders that instance's base
  * slab, this file simply has nothing to add on top of it.
  *
@@ -47,10 +52,31 @@ import { uniform } from 'three/tsl';
 import { BuildingCatalogEntry, BuildingDelta, BuildingInstance } from '../shared/types';
 import { nightBodyMaterial } from './nightlook';
 import { TILE_METERS } from '../shared/constants';
-import { AIRPORT_IDS } from '../shared/airportlayout';
+import { AIRPORT_IDS, AirportId, AirportLayout, airportLayout } from '../shared/airportlayout';
 import { footprintForRotation } from '../shared/footprint';
 import { InstancedSlotPool } from './massing';
 import { materialHex, materialUnit } from './palette';
+import {
+  AIRCRAFT_POOL_BY_STAND,
+  AircraftPoolKind,
+  AirportBuildingKind,
+  HANGAR_BODY_COLOR,
+  HANGAR_ROOF_COLOR,
+  PILOTS_BODY_COLOR,
+  PILOTS_ROOF_COLOR,
+  ROOF_OVERHANG_M,
+  ROOF_THICKNESS_M,
+  TERMINAL_BODY_COLOR,
+  TERMINAL_ROOF_COLOR,
+  aircraftGeometry,
+  aircraftPlacements,
+  airportBuildings,
+  airportPlateGeometry,
+  buildingPanes,
+  GRASS_Y,
+  PAVEMENT_Y,
+  PLATE_LAYER_Y,
+} from './airportkit';
 
 // ---------------------------------------------------------------------------
 // Registry ("acts ONLY on catalog ids in its landmark registry"). Fixed today
@@ -657,6 +683,13 @@ const PLANE_COLOR = 0xe4e6e8;
 const JETBRIDGE_COLOR = 0x9a9c9f;
 
 const INITIAL_KIT_CAPACITY = 4;
+const INITIAL_AIRPORT_CAPACITY = 24;
+/** Depth bias a layer step, in the units of the renderer's polygon offset. */
+const PLATE_DEPTH_BIAS = 2;
+
+function isAirportId(id: string): id is AirportId {
+  return (AIRPORT_IDS as readonly string[]).includes(id);
+}
 const INITIAL_APRON_LIGHT_CAPACITY = 32;
 
 interface LandmarkKit {
@@ -665,6 +698,30 @@ interface LandmarkKit {
   beaconMaterial: THREE.MeshLambertMaterial;
   apronLightMaterial: THREE.MeshLambertMaterial;
   windowBandMaterial: THREE.MeshLambertMaterial;
+}
+
+/** The pools every airport's instanced parts share, whatever the rung. */
+export type AirportPartKind = 'body' | 'roof' | 'pane' | AircraftPoolKind;
+
+const ALL_AIRPORT_PART_KINDS: readonly AirportPartKind[] = [
+  'body',
+  'roof',
+  'pane',
+  'aircraftTieDown',
+  'aircraftNarrow',
+  'aircraftWide',
+];
+
+const AIRPORT_BODY_COLORS: Record<AirportBuildingKind, { body: number; roof: number }> = {
+  terminal: { body: materialHex(TERMINAL_BODY_COLOR), roof: materialHex(TERMINAL_ROOF_COLOR) },
+  hangar: { body: materialHex(HANGAR_BODY_COLOR), roof: materialHex(HANGAR_ROOF_COLOR) },
+  pilots: { body: materialHex(PILOTS_BODY_COLOR), roof: materialHex(PILOTS_ROOF_COLOR) },
+};
+const AIRPORT_GLASS_COLOR = materialHex('tintedGlass');
+
+interface AirportPools {
+  pools: Record<AirportPartKind, InstancedSlotPool>;
+  paneMaterial: THREE.MeshLambertMaterial;
 }
 
 interface InstanceSlots {
@@ -692,10 +749,24 @@ export class LandmarkRenderer {
   private readonly instanceSlots = new Map<number, InstanceSlots>();
   private readonly apronSurfaces = new Map<number, THREE.Mesh>();
   private readonly apronSurfaceMaterial = new THREE.MeshBasicMaterial({ vertexColors: true });
+  /** The three airports: their catalog entries, the one set of pools they share, and what each placed airport owns. */
+  private readonly airportEntries = new Map<string, BuildingCatalogEntry>();
+  private readonly airportPools: AirportPools | null;
+  private readonly airportSlots = new Map<number, Record<AirportPartKind, number[]>>();
+  private readonly airportPlates = new Map<number, THREE.Mesh>();
+  private readonly plateGeometries = new Map<string, THREE.BufferGeometry>();
 
   private nightFactorValue = 0;
   /** The same value, as the uniform the structure materials shade by. */
   private readonly nightFactorUniform = uniform(0);
+  /** One material a plate layer, each biased nearer than the one below so no layer loses to the pad or the terrain at a distance. */
+  private readonly plateMaterials = PLATE_LAYER_Y.map((_, layer) => {
+    const material = nightBodyMaterial(this.nightFactorUniform, { vertexColors: true });
+    material.polygonOffset = true;
+    material.polygonOffsetFactor = -(layer + 1) * PLATE_DEPTH_BIAS;
+    material.polygonOffsetUnits = -(layer + 1) * PLATE_DEPTH_BIAS;
+    return material;
+  });
   private lastTMs = 0;
 
   constructor(
@@ -707,8 +778,11 @@ export class LandmarkRenderer {
     this.heightAt = heightAt;
     this.landmarkIds = new Set(LANDMARK_CATALOG_IDS);
     for (const entry of catalog) {
-      if (this.landmarkIds.has(entry.id)) this.kits.set(entry.id, this.buildKit(entry));
+      if (!this.landmarkIds.has(entry.id)) continue;
+      if (isAirportId(entry.id)) this.airportEntries.set(entry.id, entry);
+      else this.kits.set(entry.id, this.buildKit(entry));
     }
+    this.airportPools = this.airportEntries.size > 0 ? this.buildAirportPools() : null;
   }
 
   /** Consumes one BuildingDelta: non-registry catalog ids are ignored entirely (BuildingInstancer still draws their base slab). */
@@ -720,12 +794,16 @@ export class LandmarkRenderer {
     for (const kit of this.kits.values()) {
       for (const kind of ALL_LANDMARK_PART_KINDS) kit.pools[kind].commit();
     }
+    if (this.airportPools) {
+      for (const kind of ALL_AIRPORT_PART_KINDS) this.airportPools.pools[kind].commit();
+    }
   }
 
   /** 0 (day) .. 1 (night): drives the apron lights' + window band's steady glow, and gates the beacon pulse. */
   setNightFactor(nightFactor: number): void {
     this.nightFactorValue = Math.min(1, Math.max(0, nightFactor));
     this.nightFactorUniform.value = this.nightFactorValue;
+    if (this.airportPools) this.airportPools.paneMaterial.emissiveIntensity = this.nightFactorValue;
     for (const kit of this.kits.values()) {
       kit.apronLightMaterial.emissiveIntensity = this.nightFactorValue;
       kit.windowBandMaterial.emissiveIntensity = this.nightFactorValue;
@@ -747,7 +825,28 @@ export class LandmarkRenderer {
   }
 
   hasInstance(buildingId: number): boolean {
-    return this.instanceSlots.has(buildingId);
+    return this.instanceSlots.has(buildingId) || this.airportSlots.has(buildingId);
+  }
+
+  /** The plate an airport instance owns, or undefined for any other building. */
+  airportPlate(buildingId: number): THREE.Mesh | undefined {
+    return this.airportPlates.get(buildingId);
+  }
+
+  /** The world matrices of one shared part an airport instance owns, in the order they were placed. */
+  airportPartMatrices(buildingId: number, kind: AirportPartKind): THREE.Matrix4[] {
+    const slots = this.airportSlots.get(buildingId)?.[kind] ?? [];
+    const pool = this.airportPools?.pools[kind];
+    return slots.map((slot) => {
+      const m = new THREE.Matrix4();
+      pool?.getMatrixAt(slot, m);
+      return m;
+    });
+  }
+
+  /** The glow of every airport pane: the night factor, 0 by day. */
+  airportPaneIntensity(): number {
+    return this.airportPools?.paneMaterial.emissiveIntensity ?? 0;
   }
 
   /** Slot indices of one kit-part kind currently owned by a landmark instance (empty if it has none / is unknown). */
@@ -894,6 +993,126 @@ export class LandmarkRenderer {
     return { entry, pools, beaconMaterial, apronLightMaterial, windowBandMaterial };
   }
 
+  /** The pools every airport shares: building bodies and roofs (coloured by instance), lit panes, and one aircraft pool per stand kind. */
+  private buildAirportPools(): AirportPools {
+    const unitBox = (): THREE.BufferGeometry => new THREE.BoxGeometry(1, 1, 1).translate(0, 0.5, 0);
+    const body = nightBodyMaterial(this.nightFactorUniform);
+    const aircraft = nightBodyMaterial(this.nightFactorUniform, { vertexColors: true });
+    const paneMaterial = new THREE.MeshLambertMaterial({
+      color: AIRPORT_GLASS_COLOR,
+      emissive: WINDOW_BAND_COLOR,
+      emissiveIntensity: 0,
+    });
+    const pool = (geometry: THREE.BufferGeometry, material: THREE.Material): InstancedSlotPool =>
+      new InstancedSlotPool(this.scene, geometry, material, INITIAL_AIRPORT_CAPACITY);
+    return {
+      paneMaterial,
+      pools: {
+        body: pool(unitBox(), body),
+        roof: pool(unitBox(), body),
+        pane: pool(unitBox(), paneMaterial),
+        aircraftTieDown: pool(aircraftGeometry('tie-down'), aircraft),
+        aircraftNarrow: pool(aircraftGeometry('narrow'), aircraft),
+        aircraftWide: pool(aircraftGeometry('wide'), aircraft),
+      },
+    };
+  }
+
+  private plateGeometry(id: AirportId, rotation: 0 | 1 | 2 | 3): THREE.BufferGeometry {
+    const key = `${id}:${rotation}`;
+    let geometry = this.plateGeometries.get(key);
+    if (!geometry) {
+      geometry = airportPlateGeometry(id, rotation);
+      this.plateGeometries.set(key, geometry);
+    }
+    return geometry;
+  }
+
+  private applyAirport(building: BuildingInstance, id: AirportId): void {
+    const entry = this.airportEntries.get(id);
+    const shared = this.airportPools;
+    if (!entry || !shared) return;
+    const layout: AirportLayout = airportLayout(id);
+    const rotation = building.rotation;
+    const lot = footprintForRotation(entry, rotation);
+    const centerX = (building.x + lot.w / 2) * TILE_METERS;
+    const centerZ = (building.z + lot.d / 2) * TILE_METERS;
+    const groundY = this.heightAt(centerX, centerZ);
+    const halfW = layout.plot.w / 2;
+    const halfD = layout.plot.d / 2;
+    const quaternion = new THREE.Quaternion().setFromAxisAngle(_yAxis, rotation * (Math.PI / 2));
+    const slots: Record<AirportPartKind, number[]> = {
+      body: [],
+      roof: [],
+      pane: [],
+      aircraftTieDown: [],
+      aircraftNarrow: [],
+      aircraftWide: [],
+    };
+    const color = new THREE.Color();
+
+    // A layout-frame point turned onto the map.
+    const world = (lx: number, lz: number): Vec2 => {
+      const r = rotateLocalXZ(lx - halfW, lz - halfD, rotation);
+      return { x: centerX + r.x, z: centerZ + r.z };
+    };
+    const place = (
+      kind: AirportPartKind,
+      lx: number,
+      lz: number,
+      y: number,
+      scale: THREE.Vector3,
+      tint?: number,
+    ): void => {
+      const p = world(lx, lz);
+      const pool = shared.pools[kind];
+      const slot = pool.allocate();
+      _matrix.compose(_position.set(p.x, groundY + y, p.z), quaternion, scale);
+      pool.setMatrixAt(slot, _matrix);
+      if (tint !== undefined) pool.setColorAt(slot, color.setHex(tint));
+      slots[kind].push(slot);
+    };
+
+    for (const box of airportBuildings(layout, entry.height)) {
+      const { rect, height } = box;
+      const colors = AIRPORT_BODY_COLORS[box.kind];
+      const cx = rect.x + rect.w / 2;
+      const cz = rect.z + rect.d / 2;
+      place('body', cx, cz, GRASS_Y, new THREE.Vector3(rect.w, height, rect.d), colors.body);
+      place(
+        'roof',
+        cx,
+        cz,
+        GRASS_Y + height,
+        new THREE.Vector3(
+          rect.w + 2 * ROOF_OVERHANG_M,
+          ROOF_THICKNESS_M,
+          rect.d + 2 * ROOF_OVERHANG_M,
+        ),
+        colors.roof,
+      );
+      for (const pane of buildingPanes(box)) {
+        place(
+          'pane',
+          pane.cx,
+          pane.cz,
+          GRASS_Y + pane.y,
+          new THREE.Vector3(pane.w, pane.h, pane.d),
+        );
+      }
+    }
+    for (const plane of aircraftPlacements(layout)) {
+      place(AIRCRAFT_POOL_BY_STAND[plane.kind], plane.x, plane.z, PAVEMENT_Y, _unitScale);
+    }
+    this.airportSlots.set(building.id, slots);
+
+    const plate = new THREE.Mesh(this.plateGeometry(id, rotation), this.plateMaterials);
+    plate.position.set(centerX, groundY, centerZ);
+    plate.rotation.y = rotation * (Math.PI / 2);
+    this.scene.add(plate);
+    this.airportPlates.set(building.id, plate);
+  }
+
   private placeAt(
     pool: InstancedSlotPool,
     x: number,
@@ -913,6 +1132,10 @@ export class LandmarkRenderer {
     if (!this.landmarkIds.has(building.catalogId)) return; // registry filter: every other catalog id is ignored
     this.freeInstance(building.id);
 
+    if (isAirportId(building.catalogId)) {
+      this.applyAirport(building, building.catalogId);
+      return;
+    }
     const kit = this.kits.get(building.catalogId);
     if (!kit) return; // registry says landmark, but no matching catalog entry was provided — nothing to build
 
@@ -1021,6 +1244,19 @@ export class LandmarkRenderer {
         for (const s of slots.jetBridges) kit.pools.jetBridge.free(s);
       }
       this.instanceSlots.delete(buildingId);
+    }
+
+    const airport = this.airportSlots.get(buildingId);
+    if (airport && this.airportPools) {
+      for (const kind of ALL_AIRPORT_PART_KINDS) {
+        for (const slot of airport[kind]) this.airportPools.pools[kind].free(slot);
+      }
+      this.airportSlots.delete(buildingId);
+    }
+    const plate = this.airportPlates.get(buildingId);
+    if (plate) {
+      this.scene.remove(plate);
+      this.airportPlates.delete(buildingId);
     }
 
     const apron = this.apronSurfaces.get(buildingId);

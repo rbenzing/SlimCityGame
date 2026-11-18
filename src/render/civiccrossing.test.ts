@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
 import catalogData from '../data/catalog.json';
+import { AIRPORT_IDS } from '../shared/airportlayout';
 import {
   CIVIC_ACCESS_BY_ID,
   CIVIC_DRIVE_WIDTH_M,
@@ -49,7 +50,7 @@ import {
 
 const catalog = (catalogData as { buildings: BuildingCatalogEntry[] }).buildings;
 const byId = (id: string): BuildingCatalogEntry => catalog.find((e) => e.id === id)!;
-const CIVIC_IDS = [...UTILITY_KIT_CATALOG_IDS, 'airport'];
+const CIVIC_IDS = [...UTILITY_KIT_CATALOG_IDS, 'airport', ...AIRPORT_IDS];
 
 const flat = (): number => 0;
 const VERGE_M = 2.5;
