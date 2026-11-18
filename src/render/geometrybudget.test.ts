@@ -14,6 +14,15 @@ import { MassingRenderer } from './massing';
 import { RoofPropRenderer } from './props';
 import { FarmRenderer } from './farms';
 import { LotRenderer } from './lots';
+import {
+  buildGroundsBoxGeometry,
+  buildGroundsFlatGeometry,
+  buildHedgeGeometry,
+  buildFenceFabricGeometry,
+  buildFencePostGeometry,
+  LotGroundsRenderer,
+} from './lotgrounds';
+import { lotLayoutFor } from '../shared/lotparking';
 import { UTILITY_KIT_CATALOG_IDS, UtilityKitRenderer, cemeteryPlots } from './utilitykits';
 import { isHouseEntry, isWalkUpEntry } from './archetypes';
 import { streetLookupOf } from './frontage';
@@ -41,6 +50,8 @@ const COMMERCIAL_KIT_CEILING = 500;
 const NORMAL_LOT_HOME_CEILING = 1300;
 const ACRE_HOME_CEILING = 1800;
 const SOLAR_FARM_CEILING = 2000;
+/** The triangles a shop's or works' lot furniture adds: poles, signs, hedges, seats, walls and fences. */
+const LOT_FURNITURE_CEILING = 600;
 
 const ORIGIN = { x: 10, z: 10 };
 const HOME_IDS = 16;
@@ -272,6 +283,38 @@ describe('geometry budget: triangles per building, every part', () => {
   });
 });
 
+describe('geometry budget: the furniture of a shop or works lot', () => {
+  const lots = CATALOG.filter((e) => e.category === 'com' || e.category === 'ind').filter(
+    (e) => lotLayoutFor(e, 0, true) !== null,
+  );
+  const broadleaf = buildBroadleafGeometry();
+  const broadleafTriangles = (broadleaf.index?.count ?? 0) / 3;
+  const rows = lots.map((entry) => {
+    const roadAt = southStreet(entry);
+    const delta: BuildingDelta = { added: [instanceOf(entry, 1)], updated: [], removed: [] };
+    let trees = 0;
+    const drawn = drawnBy((s) => {
+      const grounds = new LotGroundsRenderer(s, flat, CATALOG, roadAt);
+      grounds.apply(delta);
+      trees = grounds.instancesOf(1).tree;
+    });
+    // The frontage trees are the car park's island tree, whose cost is its own tier; the ceiling is for the rest.
+    const triangles = drawn - trees * broadleafTriangles;
+    return { entry, triangles };
+  });
+
+  it('draws furniture on the lots', () => {
+    expect(rows.some((r) => r.triangles > 0)).toBe(true);
+  });
+
+  it.each(rows.map((r) => [r.entry.id, r.triangles] as const))(
+    'lot %s keeps its furniture under the lot ceiling',
+    (_id, triangles) => {
+      expect(triangles).toBeLessThanOrEqual(LOT_FURNITURE_CEILING);
+    },
+  );
+});
+
 describe('geometry budget: triangles per tree species and yard part', () => {
   const triangles = (geometry: THREE.BufferGeometry): number =>
     (geometry.index?.count ?? geometry.getAttribute('position').count) / 3;
@@ -283,6 +326,11 @@ describe('geometry budget: triangles per tree species and yard part', () => {
     ['shrub', buildShrubGeometry, 30],
     ['pool', buildPoolGeometry, 60],
     ['trampoline', buildTrampolineGeometry, 110],
+    ['lot furniture box', buildGroundsBoxGeometry, 10],
+    ['lot hedge run', buildHedgeGeometry, 8],
+    ['lot flat square', buildGroundsFlatGeometry, 2],
+    ['lot fence fabric', buildFenceFabricGeometry, 4],
+    ['lot fence post', buildFencePostGeometry, 2],
   ] as const;
 
   it.each(species)('%s stays within its ceiling', (_name, build, ceiling) => {

@@ -36,6 +36,7 @@ import {
   type LotRect,
 } from '../shared/lotlayout';
 import { lotYardsFor } from '../shared/lotparking';
+import { droppedTrees } from '../shared/lotgrounds';
 import { garageFor } from '../shared/garage';
 import { hasPart } from './archetypes';
 import type { EdgeFrame } from './frontage';
@@ -470,7 +471,10 @@ describe('the car park as drawn', () => {
         expect(car[across]).toBeGreaterThan(Math.min(a[across], b[across]));
         expect(car[across]).toBeLessThan(Math.max(a[across], b[across]));
       });
-      expect(renderer.treePositionsFor(1), id).toHaveLength(plan.layout.trees.length);
+      // An island a walk runs through is paved, and its tree is not planted.
+      expect(renderer.treePositionsFor(1), id).toHaveLength(
+        plan.layout.trees.length - droppedTrees(plan.layout).length,
+      );
     }
   });
 

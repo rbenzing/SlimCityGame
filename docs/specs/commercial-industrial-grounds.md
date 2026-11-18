@@ -34,16 +34,21 @@
 | Bench / litter bin | 1.8 by 0.6 / 0.6 across, beside the door, off the walk | m | dial |
 | `BIKE_SPACE_M` | 0.6 by 1.8, two a lot, 1.5 to manoeuvre | m | Portland OR |
 | `REFUSE_ENCLOSURE_M` | 2.4 by 3.7 inside, walls 1.8, gate 3.7, apron 2.4 | m | Brooklyn Park MN, Selma CA, Edmonds WA |
-| Works' yard fence | 2.4 chain link, a 7.3 gate at the drive | m | dial |
+| Works' yard fence | 2.4 chain link, posts 3.05 (10 ft) apart at most, a gate the aisle's width and 7.3 at most | m | dial; every industrial kind but flex |
+| Monument sign's body / pylon's cabinet | 2.0 by 0.4 / 4.0 tall | m | dial |
+| Refuse enclosure, outside | 4.1 by 2.6 | m | the inside plus its walls |
+| Bicycle rack | two spaces in a row, 3.6 by 0.6 | m | Portland OR |
+| Bench and bin from a door | 0.2 beyond its 3 m clear | m | dial |
+| Lot furniture ceiling | 600 a lot, its trees not counted | triangles | `geometrybudget.test.ts` |
 | Entrance bed | 1.2 deep along the front wall, clear of doors | m | dial |
 | Roomy lot, building over lot | 0.28 retail, 0.32 industry, 0.64 office, at most | ratio | Metropolitan Council medians |
 | Compaction starts | Small City (8,000 residents), land value 224 and over | — | dial: the dense kinds' own unlock |
 
-**Code:** to be built. `src/shared/lotgrounds.ts` the plan (pure, beside `lotlayout.ts`); `src/render/lotgrounds.ts` the pools; `src/sim/growth.ts` the lot choice; `src/data/catalog.json` the ladders and kinds.
+**Code:** the furniture is built: `src/shared/lotgrounds.ts` `planLotGrounds` the plan (pure, beside `lotlayout.ts`); `src/render/lotplan.ts` `groundsFactsFor` which sides face homes; `src/render/lotgrounds.ts` `LotGroundsRenderer` the pools. To be built: `src/sim/growth.ts` the lot choice; `src/data/catalog.json` the ladders and kinds.
 
-**Tests:** to be built: the plan's keep-outs for every catalog kind and lot; the order of omission; the lot chosen either side of Small City; each ladder's first roomy rung.
+**Tests:** `src/shared/lotgrounds.test.ts`, `src/render/lotgroundsplan.test.ts` every catalog lot's keep-outs, the order of omission, short poles beside homes; `src/render/lotgrounds.test.ts` the pools; `src/render/geometrybudget.test.ts` the ceiling. To be built: the lot chosen either side of Small City; each ladder's first roomy rung.
 
-**Open:** the new kinds' jobs, utilities and draw weights are not derived yet; a bank's and a medical office's site sizes were not found; no light level is modelled.
+**Open:** the roomy lots and the new kinds are not built; the kinds' jobs, utilities and draw weights are not derived; a bank's and a medical office's site sizes were not found; no light level is modelled. A lot is planned when it is drawn, so homes zoned beside it later do not shorten its poles. A tight strip or shop has no room for a refuse enclosure.
 
 ## Why the rules are what they are
 
@@ -58,7 +63,8 @@ One plan lays it, in `src/shared`, from the lot's layout: the body, the stalls, 
 - **Lights** stand in the car park's islands first, then its perimeter strip, four mounting heights apart. Within 30 m of homes the pole is the short one.
 - **The sign** stands in the frontage strip beside the drive, on the side traffic arrives from. A long strip, a market and a filling station carry a pylon; the rest a monument.
 - **Planting.** Shrubs fill the perimeter strip; trees stand along the street frontage; a bed runs along the front wall between doors. A side facing homes gets the deeper buffer and a tree row.
-- **The walk** runs from the street's footway to the main door, straight where it can, and crosses an aisle at right angles on a painted crossing.
+- **The walk** runs from the street's footway to the main door, straight where it can, and crosses an aisle at right angles on a painted crossing. Where a row of stalls closes the frontage it passes through the row's planted island nearest the door, which is paved for it and loses its tree.
+- **A kit's own pieces count.** Where a kind's kit already stands a sign, a refuse enclosure or a cart corral, the plan lays no second one and keeps clear of it.
 - **Bench, bin and bicycles** stand beside the main door, off the walk's clear width.
 - **Refuse** goes behind or beside the building, never on a street face, its gate on an aisle or the truck court.
 - **A works' yard** is fenced on its lot line behind the building's front, with a gate at its drive. Its staff car park stays outside the fence where the lot allows.

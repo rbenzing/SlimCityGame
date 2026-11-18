@@ -410,6 +410,15 @@ try {
   ]) {
     await frame(label, boxOf([find(street, id)]), 0.3, DEFAULT_PITCH, 0.7);
   }
+  // A fenced works' gate: the fence across the front beside the body, the gate at the drive, the sign and the lights.
+  const gate = find('warehouse', 'ind-warehouse-2');
+  await frame(
+    'close-works-gate',
+    { x: gate.x + 0.45, z: gate.z + gate.d - 0.5, w: 5, d: 3, h: 3 },
+    0.3,
+    0.5,
+    0.9,
+  );
   if (farmsFit) {
     for (const f of farmSpans.slice(0, 3)) {
       await frame(`close-${f.id}`, farmstead(f), Math.PI + 0.3, DEFAULT_PITCH, 0.7);
