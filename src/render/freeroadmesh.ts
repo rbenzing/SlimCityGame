@@ -76,10 +76,10 @@ import {
   ROAD_Y_OFFSET,
   SIDEWALK_COLOR,
   YELLOW_MARKING_COLOR,
-  DASH_GAP_LENGTH_M,
-  DASH_PAINT_LENGTH_M,
   DASH_PERIOD_M,
   LANE_GLYPH_PERIOD_TILES,
+  bendDashes,
+  type DashPhase,
   dashSegments,
   noPassingRuns,
   laneGlyphPaint,
@@ -841,101 +841,7 @@ function drawBend(
   drawSweep(soup, swept, stations(samples, 0, length), isPaved(lay.profile) ? dashesOf : () => []);
 }
 
-/** Where a broken line's pattern lies: the metre of the pattern at a point, and which way it grows along the line. */
-interface DashPhase {
-  origin: number;
-  sign: 1 | -1;
-}
-
-/**
- * The dashes of the broken line through a bend `length` metres along it, given
- * the pattern of the run before it (its phase at the bend's start) and of the
- * run after it (its phase at the bend's end). The line is one line: its dashes
- * stay 3.05 m and its gaps stretch or shrink evenly between the last dash of the
- * run before and the first of the run after, so that the pattern leaves the bend
- * exactly in the phase the next run starts with. The number of dashes between
- * is the one that changes the gap least. Two dashes closer than half the
- * standard gap are one dash.
- */
-export function bendDashes(
-  near: DashPhase,
-  far: DashPhase,
-  length: number,
-): Array<[number, number]> {
-  /** Every dash of a pattern, as metres along the line, that touches `lo..hi`; `shift` puts the pattern's own origin there. */
-  const dashesOf = (
-    phase: DashPhase,
-    shift: number,
-    lo: number,
-    hi: number,
-  ): [number, number][] => {
-    const a = lo - shift;
-    const b = hi - shift;
-    const [from, to] =
-      phase.sign > 0 ? [phase.origin + a, phase.origin + b] : [phase.origin - b, phase.origin - a];
-    const out: [number, number][] = [];
-    for (
-      let k = Math.floor(from / DASH_PERIOD_M) - 1;
-      k <= Math.ceil(to / DASH_PERIOD_M) + 1;
-      k++
-    ) {
-      const start = k * DASH_PERIOD_M;
-      const end = start + DASH_PAINT_LENGTH_M;
-      out.push(
-        phase.sign > 0
-          ? [start - phase.origin + shift, end - phase.origin + shift]
-          : [phase.origin - end + shift, phase.origin - start + shift],
-      );
-    }
-    return out.sort((p, q) => p[0] - q[0]);
-  };
-  // The last dash of the run before that starts at or before the bend, and the
-  // first dash of the run after that ends at or past it: the bend carries on
-  // from the one and runs up to the other.
-  const before = dashesOf(near, 0, -DASH_PERIOD_M, length + DASH_PERIOD_M)
-    .filter(([start]) => start <= 1e-9)
-    .at(-1);
-  const after = dashesOf(far, length, -DASH_PERIOD_M, length + DASH_PERIOD_M).find(
-    ([, end]) => end >= length - 1e-9,
-  );
-  if (!before || !after) return [];
-  const clip = (lo: number, hi: number): [number, number] | null =>
-    Math.min(length, hi) - Math.max(0, lo) > 1e-9 ? [Math.max(0, lo), Math.min(length, hi)] : null;
-  const minGap = DASH_GAP_LENGTH_M / 2;
-  // What lies between the two dashes, from the end of one to the start of the next.
-  const open = after[0] - before[1];
-  const dashes: ([number, number] | null)[] = [];
-  if (open < minGap - 1e-9) {
-    // Too close for a gap: the two are one dash.
-    dashes.push(clip(before[0], after[1]));
-  } else {
-    // The dashes between keep their length and lie whole inside the bend, so none is cut
-    // short by it; their gaps stretch or shrink evenly where that leaves room, and the
-    // number of them is the one that changes the gaps least.
-    const latest = length - DASH_PAINT_LENGTH_M;
-    let best: { starts: number[]; worst: number } | null = null;
-    for (let n = 0; n <= Math.floor((open - minGap) / (DASH_PAINT_LENGTH_M + minGap)); n++) {
-      if (n > 0 && latest < 0) break;
-      const gap = (open - n * DASH_PAINT_LENGTH_M) / (n + 1);
-      const starts = Array.from({ length: n }, (_, k) =>
-        Math.min(
-          Math.max(before[1] + (k + 1) * gap + k * DASH_PAINT_LENGTH_M, 0),
-          Math.max(latest, 0),
-        ),
-      );
-      const gaps = [...starts, after[0]].map(
-        (start, k) => start - (k === 0 ? before[1] : starts[k - 1]! + DASH_PAINT_LENGTH_M),
-      );
-      if (gaps.some((g) => g < minGap - 1e-9)) continue;
-      const worst = Math.max(...gaps.map((g) => Math.abs(g - DASH_GAP_LENGTH_M)));
-      if (!best || worst < best.worst) best = { starts, worst };
-    }
-    dashes.push(clip(before[0], before[1]));
-    for (const start of best?.starts ?? []) dashes.push(clip(start, start + DASH_PAINT_LENGTH_M));
-    dashes.push(clip(after[0], after[1]));
-  }
-  return dashes.filter((d): d is [number, number] => d !== null);
-}
+export { bendDashes };
 
 /**
  * The pattern phase of the run on one side of a bend where it meets the bend: the

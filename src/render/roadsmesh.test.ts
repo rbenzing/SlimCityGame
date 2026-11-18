@@ -7373,3 +7373,85 @@ describe('a tram street keeps its rails unbroken across the seam where a turn ba
     }
   });
 });
+
+describe('roadTileVertices — one arrow set per tile, edge lines on a cap, bend dash phase', () => {
+  const isWhite = (colors: readonly number[], i: number): boolean =>
+    colors[i]! > 0.9 && colors[i + 1]! > 0.9 && colors[i + 2]! > 0.9;
+
+  /** White paint inside the one-way lanes' arrow zone, a tile's middle third (lane centres at 8.1 and 11.9). */
+  const runArrowPaint = (x: number, z: number, toward: boolean): number => {
+    const { positions, colors } = roadTileVertices(
+      x,
+      z,
+      RoadTier.OneWay,
+      N | S,
+      flatHeightAt,
+      undefined,
+      undefined,
+      undefined,
+      RoadFlow.South,
+      undefined,
+      toward
+        ? {
+            toward: RoadFlow.South,
+            allowed: DEFAULT_ALLOWED,
+            openness: 1,
+            laneAllowed: 0,
+            distance: 0,
+            pocket: false,
+          }
+        : undefined,
+    );
+    let n = 0;
+    for (let i = 0; i < colors.length; i += 3) {
+      const lx = positions[i]! - x * TILE_METERS;
+      const lz = positions[i + 2]! - z * TILE_METERS;
+      if (isWhite(colors, i) && Math.abs(lz - 10) < 2.5 && Math.abs(Math.abs(lx - 10) - 1.9) < 0.7)
+        n++;
+    }
+    return n;
+  };
+
+  it('lays no run arrow on a one-way approach tile, where the junction arrows stand', () => {
+    expect(isArrowTile(3)).toBe(true);
+    expect(runArrowPaint(3, 3, false)).toBeGreaterThan(0);
+    expect(runArrowPaint(3, 3, true)).toBe(0);
+  });
+
+  it('wraps a symmetric road end with its edge lines but stops a motorway pair square at the cap', () => {
+    const farthest = (tier: RoadTier): number => {
+      const { positions, colors } = roadTileVertices(0, 0, tier, N, flatHeightAt);
+      let max = -Infinity;
+      for (let i = 0; i < colors.length; i += 3) {
+        const white = isWhite(colors, i);
+        const yellow =
+          colors[i]! > 0.85 &&
+          colors[i + 1]! > 0.6 &&
+          colors[i + 1]! < 0.85 &&
+          colors[i + 2]! < 0.35;
+        if (white || yellow) max = Math.max(max, positions[i + 2]!);
+      }
+      return max;
+    };
+    expect(farthest(RoadTier.Avenue)).toBeGreaterThan(TILE_METERS);
+    for (const tier of [RoadTier.Highway, RoadTier.Ramp]) {
+      expect(farthest(tier)).toBeLessThan(TILE_METERS);
+    }
+  });
+
+  it('starts a grid turn tile white lane dashes in the phase of the run before it, not on a fresh dash', () => {
+    // Tile (4,4) joined north and east: its arc leaves the north edge at world z=80, 6.8 m into a 12.2 m
+    // pattern, which is a gap, so the lane line holds no paint at the edge.
+    const { positions, colors } = roadTileVertices(4, 4, RoadTier.FourLane, N | E, flatHeightAt);
+    const arcStarts: number[] = [];
+    for (let i = 0; i < colors.length; i += 3) {
+      if (!isWhite(colors, i)) continue;
+      const lx = positions[i]! - 4.5 * TILE_METERS;
+      const lz = positions[i + 2]! - 4.5 * TILE_METERS;
+      const r = Math.hypot(lx - 10, lz + 10);
+      if (r > 4 && r < 8) arcStarts.push(r * Math.atan2(lz + 10, 10 - lx));
+    }
+    expect(arcStarts.length).toBeGreaterThan(0);
+    expect(Math.min(...arcStarts)).toBeGreaterThan(3);
+  });
+});
