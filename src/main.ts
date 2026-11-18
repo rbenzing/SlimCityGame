@@ -58,6 +58,7 @@ import {
 } from './shared/types';
 import { footprintForRotation } from './shared/footprint';
 import { PLATTED_ZONES } from './shared/lots';
+import { kerbRampBox } from './shared/kerbramps';
 import {
   carriagewayHalfWidthOf,
   carriagewayWidth,
@@ -184,6 +185,7 @@ import {
   Standing,
   TREE_FROM_CONTROL_M,
   TREE_FROM_LAMP_M,
+  TREE_FROM_RAMP_M,
   TREE_FROM_STOP_M,
   type Roadside,
   type Spot,
@@ -1447,6 +1449,10 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       ...lamps.standSpots().map((s) => ({ ...s, radius: TREE_FROM_LAMP_M })),
       ...roadsideControl.map((s) => ({ ...s, radius: TREE_FROM_CONTROL_M })),
       ...busStops.padSpots().map((s) => ({ ...s, radius: TREE_FROM_STOP_M })),
+      ...roadsMesh.kerbRamps().map((r) => {
+        const box = kerbRampBox(r);
+        return { x: (box.x0 + box.x1) / 2, z: (box.z0 + box.z1) / 2, radius: TREE_FROM_RAMP_M };
+      }),
     ]);
   };
   /** Draws the stops on the roads as they stand now. */
@@ -1595,14 +1601,16 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       freeJunctionTiles.size > 0 || stationTiles.size > 0
         ? new Set([...drivewayTiles, ...freeJunctionTiles, ...stationTiles])
         : drivewayTiles;
+    const ramps = roadsMesh.kerbRamps();
     const clear = keepClearOf(
       drivewayTiles,
       latestStops,
       STOP_CLEAR_HALF_M,
       (tx, tz) => lateralAxis(latestRoadTileSet, tx, tz),
       tileKey,
+      ramps,
     );
-    const control = controlSignSpots(latestRoadTiles, freeJunctionTiles);
+    const control = controlSignSpots(latestRoadTiles, freeJunctionTiles, clear);
     roadsideControl = control;
     // A bus stop's sign post is held like a mast: nothing stands within reach of it.
     const held = [
@@ -1646,7 +1654,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
         },
         roadSurfaceAt,
       );
-    lamps.rebuild(latestRoadTiles, keepOff, free, poles, latestStops, held, settle);
+    lamps.rebuild(latestRoadTiles, keepOff, free, poles, latestStops, held, settle, ramps);
     const upper = ahead.clone().addAll(lamps.standSpots());
     roadsideUpper = { clear, taken: upper };
     // A pole is laid again only where something it keeps clear of has moved.

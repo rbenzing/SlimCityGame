@@ -225,6 +225,15 @@ import {
   type TileDriveCut,
 } from '../shared/kerblayout';
 import { corridorPartnerTile } from '../shared/corridor';
+import {
+  CROSSING_LINE_WIDTH_M,
+  KERB_HEIGHT_M,
+  crossingRamps,
+  kerbRampBox,
+  warningPadOf,
+  type KerbRamp,
+} from '../shared/kerbramps';
+import { cutKerbRamps } from './kerbrampmesh';
 
 /**
  * Where a tile's planned lines sit at ONE end of its run, parallel to the
@@ -277,7 +286,7 @@ export function roadNightTint(nightFactor: number): [number, number, number] {
 /** Lane markings sit a hair above the road surface to avoid z-fighting. */
 export const MARK_Y_OFFSET = 0.16;
 /** Sidewalk/shoulder curbs stand physically proud of the road surface. */
-const CURB_RAISE = 0.08;
+const CURB_RAISE = KERB_HEIGHT_M;
 export const CURB_Y_OFFSET = ROAD_Y_OFFSET + CURB_RAISE;
 
 const TILE_HALF = TILE_METERS / 2;
@@ -2615,9 +2624,6 @@ export function crosswalkBarCentres(lo: number, hi: number): number[] {
  * with it, so the two never touch.
  */
 const CROSSING_CORNER_CLEAR_M = 0.3;
-
-/** Each transverse line of a crossing a control holds: 0.3 m (12 in), inside the 6 to 24 in the standard allows. */
-const CROSSING_LINE_WIDTH_M = 0.3;
 
 /** What a crossing spans across the arm, and which stretch of its lines this tile paints. */
 export interface CrossingSpan {
@@ -5383,6 +5389,11 @@ export interface NeighborHalves {
    */
   reach?: { n: number; e: number; s: number; w: number };
   /**
+   * The kerb ramps of the junctions beside this tile whose crossings spill
+   * onto it, which are cut into its footway. Omitted, none.
+   */
+  spillRamps?: readonly KerbRamp[];
+  /**
    * How far back from each side's edge a reserved lane's colour stops, for the
    * lane on each side of the road. Omitted, it stops at `reach`.
    */
@@ -5589,14 +5600,16 @@ function roadTileSurfaces(
    * and its junctions; omitted, a parking lane paints its lane line alone.
    */
   kerbFaces?: TileKerbFaces,
-): { positions: number[]; colors: number[] } {
+): { positions: number[]; colors: number[]; ramps: KerbRamp[] } {
   if (!Number.isInteger(mask) || mask < 0 || mask > 15) {
     throw new RangeError(`roadTileVertices: mask ${mask} out of the 4-bit range 0..15`);
   }
 
   const positions: number[] = [];
   const colors: number[] = [];
-  if (tier === RoadTier.None) return { positions, colors };
+  /** The kerb ramps at the ends of the crossings this junction paints. */
+  const ramps: KerbRamp[] = [];
+  if (tier === RoadTier.None) return { positions, colors, ramps };
 
   // The cross-section this tile carries: its own, plus the turn pocket it may
   // have gained for the junction ahead, less the lanes it may be closing for a
@@ -5779,7 +5792,7 @@ function roadTileSurfaces(
       plateColor,
       hAt,
     );
-    return { positions, colors };
+    return { positions, colors, ramps };
   }
   // A roundabout always breaks them: there is an island where the centre line
   // would run, and no road runs THROUGH a roundabout.
@@ -7462,6 +7475,24 @@ function roadTileSurfaces(
                   own: { lo: -TILE_HALF, hi: Infinity },
                 };
         }
+        // Where the crossing meets this arm's own kerb it ends in a kerb ramp;
+        // an end at a median opening or an undivided corridor's shared edge is
+        // the other half's to ramp.
+        if (paint.crossed) {
+          const kerb = paintedHalf[side];
+          const kerbs = [span.lo, span.hi].filter((end) => Math.abs(Math.abs(end) - kerb) < 1e-6);
+          ramps.push(
+            ...crossingRamps({
+              vertical,
+              armSign,
+              centre: { x: centerX, z: centerZ },
+              near: layout.crosswalkNear,
+              far: layout.crosswalkFar,
+              kerbs,
+              footwayWidth: footwayAcross,
+            }),
+          );
+        }
         emitJunctionArmMarkings(
           positions,
           colors,
@@ -7906,7 +7937,7 @@ function roadTileSurfaces(
     if (hasW && neighbors.w === RoadTier.Gravel) seam(-1, false);
   }
 
-  return { positions, colors };
+  return { positions, colors, ramps };
 }
 
 /** The kerb face, a shade darker than the footway it holds up. */
@@ -8016,6 +8047,23 @@ export function roadTileVertices(
 ): ReturnType<typeof roadTileSurfaces> {
   const mesh = roadTileSurfaces(...args);
   addKerbFaces(mesh.positions, mesh.colors, args[0], args[1], args[4]);
+  // The ramps cut into the footway are this junction's own and those of a
+  // junction beside it whose crossing spills onto the tile.
+  const cut = [...mesh.ramps, ...(args[7]?.spillRamps ?? [])];
+  if (cut.length > 0) {
+    cutKerbRamps(
+      mesh.positions,
+      mesh.colors,
+      cut,
+      {
+        footway: SIDEWALK_COLOR,
+        kerbFace: KERB_FACE_COLOR,
+        footwayY: CURB_Y_OFFSET,
+        roadY: ROAD_Y_OFFSET,
+      },
+      args[4],
+    );
+  }
   return mesh;
 }
 
@@ -8156,6 +8204,8 @@ function bandsFromCoverage(
 interface ChunkEntry {
   tiles: Map<number, RoadTileDelta>;
   mesh: THREE.Mesh | null;
+  /** The kerb ramps at the ends of the crossings the chunk's junctions paint. */
+  ramps: KerbRamp[];
 }
 
 function chunkKeyOf(x: number, z: number): number {
@@ -8203,6 +8253,16 @@ const MEDIAN_TREE_TRUNK_RADIUS_BOTTOM = 0.14;
 const MEDIAN_TREE_CANOPY_RADIUS = 0.55;
 const MEDIAN_TREE_TRUNK_COLOR = 0x6b4a2f;
 const MEDIAN_TREE_CANOPY_COLOR = 0x2f6b3a;
+
+/** A warning pad's thickness, and how far it stands clear of the ramp under it. */
+const KERB_PAD_THICKNESS_M = 0.02;
+const KERB_PAD_CLEARANCE_M = 0.005;
+const _padMatrix = new THREE.Matrix4();
+const _padPosition = new THREE.Vector3();
+const _padQuat = new THREE.Quaternion();
+const _padScale = new THREE.Vector3(1, 1, 1);
+const _xAxis = new THREE.Vector3(1, 0, 0);
+const _zAxis = new THREE.Vector3(0, 0, 1);
 
 const _treeMatrix = new THREE.Matrix4();
 const _treePosition = new THREE.Vector3();
@@ -8253,6 +8313,13 @@ export class RoadMeshRenderer {
   });
   private treeTrunkMesh: THREE.InstancedMesh | null = null;
   private treeCanopyMesh: THREE.InstancedMesh | null = null;
+  // Detectable warning pads: one InstancedMesh of thin slabs, one per kerb
+  // ramp, laid along the ramp's slope.
+  private readonly padGeometry = new THREE.BoxGeometry(1, 1, 1);
+  private readonly padMaterial = new THREE.MeshLambertMaterial({
+    color: new THREE.Color().setRGB(...YELLOW_MARKING_COLOR, THREE.LinearSRGBColorSpace),
+  });
+  private padMesh: THREE.InstancedMesh | null = null;
   /**
    * Resolves a profile id to its cross-section, so a composed road draws its
    * own width and kerbs. Without one every tile draws as its tier's preset —
@@ -8292,7 +8359,26 @@ export class RoadMeshRenderer {
    * its full lit color.
    */
   setNightFactor(nightFactor: number): void {
-    this.material.color.setRGB(...roadNightTint(nightFactor));
+    const tint = roadNightTint(nightFactor);
+    this.material.color.setRGB(...tint);
+    this.padMaterial.color.setRGB(
+      YELLOW_MARKING_COLOR[0] * tint[0],
+      YELLOW_MARKING_COLOR[1] * tint[1],
+      YELLOW_MARKING_COLOR[2] * tint[2],
+      THREE.LinearSRGBColorSpace,
+    );
+  }
+
+  /** Every kerb ramp the roads' junctions lay, in world metres. */
+  kerbRamps(): KerbRamp[] {
+    const ramps: KerbRamp[] = [];
+    for (const chunk of this.chunks.values()) for (const ramp of chunk.ramps) ramps.push(ramp);
+    return ramps;
+  }
+
+  /** How many warning pads stand on the ramps. */
+  padCount(): number {
+    return this.padMesh ? this.padMesh.count : 0;
   }
 
   /** Adds to `dirty` every chunk with road in it that tile (x, z) can change the drawing of. */
@@ -8343,7 +8429,7 @@ export class RoadMeshRenderer {
       const key = chunkKeyOf(delta.x, delta.z);
       let chunk = this.chunks.get(key);
       if (!chunk) {
-        chunk = { tiles: new Map(), mesh: null };
+        chunk = { tiles: new Map(), mesh: null, ramps: [] };
         this.chunks.set(key, chunk);
       }
       const tileKey = localTileKeyOf(delta.x, delta.z);
@@ -8365,7 +8451,7 @@ export class RoadMeshRenderer {
     }
 
     for (const key of dirty) this.rebuildChunk(key);
-    if (dirty.size > 0) this.rebuildMedianTrees();
+    if (dirty.size > 0) this.rebuildInstancedParts();
     return dirty;
   }
 
@@ -8418,7 +8504,7 @@ export class RoadMeshRenderer {
     if (dirty.size > 0) this.kerbFaces.clear();
 
     for (const key of dirty) this.rebuildChunk(key);
-    if (dirty.size > 0) this.rebuildMedianTrees();
+    if (dirty.size > 0) this.rebuildInstancedParts();
     return dirty;
   }
 
@@ -8457,7 +8543,7 @@ export class RoadMeshRenderer {
         rebuilt = true;
       }
     }
-    if (rebuilt) this.rebuildMedianTrees();
+    if (rebuilt) this.rebuildInstancedParts();
   }
 
   /**
@@ -8543,7 +8629,7 @@ export class RoadMeshRenderer {
     this.roundabouts = next;
     if (dirty.size > 0) this.kerbFaces.clear();
     for (const key of dirty) this.rebuildChunk(key);
-    if (dirty.size > 0) this.rebuildMedianTrees();
+    if (dirty.size > 0) this.rebuildInstancedParts();
   }
 
   /** Each cul-de-sac, by the tile index of each of its four tiles. */
@@ -8577,7 +8663,7 @@ export class RoadMeshRenderer {
     this.culDeSacs = next;
     if (dirty.size > 0) this.kerbFaces.clear();
     for (const key of dirty) this.rebuildChunk(key);
-    if (dirty.size > 0) this.rebuildMedianTrees();
+    if (dirty.size > 0) this.rebuildInstancedParts();
     return [...dirty];
   }
 
@@ -9315,6 +9401,7 @@ export class RoadMeshRenderer {
       chunk.mesh.geometry.dispose();
       chunk.mesh = null;
     }
+    chunk.ramps = [];
     if (chunk.tiles.size === 0) return;
 
     const positions: number[] = [];
@@ -9527,6 +9614,7 @@ export class RoadMeshRenderer {
               )
             : 0,
           reach,
+          spillRamps: ends ? [...(ends.lo?.ramps ?? []), ...(ends.hi?.ramps ?? [])] : undefined,
           open: this.openBeyond(tile),
           laneReach,
           n: this.halfAlong(tile.x, tile.z - 1, 'z'),
@@ -9581,6 +9669,7 @@ export class RoadMeshRenderer {
       );
       for (const n of vertices.positions) positions.push(n);
       for (const n of vertices.colors) colors.push(n);
+      for (const ramp of vertices.ramps) chunk.ramps.push(ramp);
       const over = overTileOf(tile);
       if (over) {
         const drawn = this.overpassVertices(over);
@@ -9600,6 +9689,65 @@ export class RoadMeshRenderer {
     mesh.userData['underground'] = 'road';
     chunk.mesh = mesh;
     this.scene.add(mesh);
+  }
+
+  /** Re-lays the instanced parts the roads carry: the median trees and the warning pads. */
+  private rebuildInstancedParts(): void {
+    this.rebuildMedianTrees();
+    this.rebuildKerbPads();
+  }
+
+  /**
+   * Recomputes the warning pad instances from every kerb ramp: a slab as wide
+   * as the ramp and 0.61 m deep from the kerb, tilted to lie on the ramp.
+   */
+  private rebuildKerbPads(): void {
+    const ramps = this.kerbRamps();
+    if (ramps.length === 0) {
+      if (this.padMesh) setInstanceCount(this.padMesh, 0);
+      return;
+    }
+    if (!this.padMesh || ramps.length > this.padMesh.instanceMatrix.count) {
+      let capacity = Math.max(MIN_INSTANCE_CAPACITY, this.padMesh?.instanceMatrix.count ?? 0);
+      while (capacity < ramps.length) capacity *= 2;
+      if (this.padMesh) {
+        this.scene.remove(this.padMesh);
+        this.padMesh.dispose();
+      }
+      this.padMesh = new THREE.InstancedMesh(this.padGeometry, this.padMaterial, capacity);
+      this.padMesh.receiveShadow = true;
+      this.padMesh.userData['underground'] = 'road';
+      this.scene.add(this.padMesh);
+    }
+    const mesh = this.padMesh;
+    setInstanceCount(mesh, ramps.length);
+    mesh.boundingSphere = null;
+    for (let i = 0; i < ramps.length; i++) {
+      const ramp = ramps[i]!;
+      const pad = warningPadOf(ramp);
+      const box = kerbRampBox(pad);
+      const x = (box.x0 + box.x1) / 2;
+      const z = (box.z0 + box.z1) / 2;
+      const depth = Math.abs(pad.back - pad.kerb);
+      const run = Math.abs(ramp.back - ramp.kerb);
+      // The slab is turned about the axis along the kerb to lie on the ramp's
+      // slope, and lifted to stand clear of its surface.
+      const slope = Math.atan2(CURB_RAISE, run);
+      const rise = (CURB_RAISE * depth) / (2 * run);
+      const lift = KERB_PAD_THICKNESS_M / 2 + KERB_PAD_CLEARANCE_M;
+      const towardBack = Math.sign(pad.back - pad.kerb);
+      _padPosition.set(x, this.heightAt(x, z) + ROAD_Y_OFFSET + rise + lift, z);
+      if (pad.axis === 'x') {
+        _padQuat.setFromAxisAngle(_zAxis, towardBack * slope);
+        _padScale.set(depth, KERB_PAD_THICKNESS_M, box.z1 - box.z0);
+      } else {
+        _padQuat.setFromAxisAngle(_xAxis, -towardBack * slope);
+        _padScale.set(box.x1 - box.x0, KERB_PAD_THICKNESS_M, depth);
+      }
+      _padMatrix.compose(_padPosition, _padQuat, _padScale);
+      mesh.setMatrixAt(i, _padMatrix);
+    }
+    mesh.instanceMatrix.needsUpdate = true;
   }
 
   /**

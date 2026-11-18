@@ -1876,7 +1876,9 @@ describe('roadTileVertices — vertex count sanity per tile kind', () => {
     const rounded = JUNCTION_CORNER_SEGMENTS * 12 + 12;
     const { positions, colors } = controlledJunction(5, 5, RoadTier.TwoLane, N | E | S);
     const markingVerts = countWhere(colors, isPaint);
-    expect(vertexCount(positions, colors)).toBe(30 + 2 * rounded + markingVerts);
+    // Its six kerb ramps cut the footway round them and lay a slope in each
+    // cut: 204 vertices in all (33 each, six more where two cuts share a strip).
+    expect(vertexCount(positions, colors)).toBe(30 + 2 * rounded + markingVerts + 204);
     expect(markingVerts).toBeGreaterThan(0); // v2: junctions now carry arm markings
   });
 
@@ -1886,7 +1888,9 @@ describe('roadTileVertices — vertex count sanity per tile kind', () => {
     const rounded = JUNCTION_CORNER_SEGMENTS * 12 + 12;
     const { positions, colors } = controlledJunction(5, 5, RoadTier.TwoLane, 15);
     const markingVerts = countWhere(colors, isMarkingWhite);
-    expect(vertexCount(positions, colors)).toBe(30 + 4 * rounded + markingVerts);
+    // Each of its eight kerb ramps adds 33 vertices: the footway cut round it
+    // and the slope laid in the cut.
+    expect(vertexCount(positions, colors)).toBe(30 + 4 * rounded + markingVerts + 8 * 33);
     expect(markingVerts).toBeGreaterThan(0); // v2: junctions now carry arm markings on every side
   });
 });
