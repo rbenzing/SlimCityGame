@@ -30,9 +30,10 @@ import {
   type HomeSide,
   type LotGroundsPlan,
 } from '../shared/lotgrounds';
-import { materialHex, type MaterialName } from './palette';
+import { materialHex, materialUnit, type MaterialName } from './palette';
 import { InstancedSlotPool } from './massing';
-import { mergeGeometryParts, paintVertexColor } from './trees';
+import { buildBroadleafGeometry } from './trees';
+import { LOT_TREE_SCALE } from './parked';
 import {
   groundsFactsFor,
   lotPlanAt,
@@ -47,17 +48,24 @@ const HOME_PROBE_STEP_M = TILE_METERS / 2;
 /** The ground a piece stands on: the lot pad's offset from the terrain. */
 const GROUND_Y_OFFSET = 0.1;
 /** A frontage tree is planted young, as the car park's island trees are. */
-const FRONTAGE_TREE_SCALE = 0.5;
 const INITIAL_CAPACITY = 64;
 
 /** A walk lies this far over the drive's paving. */
 const WALK_Y_M = 0.01;
+/** A walk over a planted island lies above the island's kerb and grass. */
+const WALK_OVER_ISLAND_Y_M = 0.06;
+const walkY = (piece: GroundsPiece): number => (piece.raised ? WALK_OVER_ISLAND_Y_M : WALK_Y_M);
 const CROSSING_BAR_M = 0.4;
-const CROSSING_PITCH_M = 0.8;
+const CROSSING_PITCH_M = 1.2;
 const POLE_WIDTH_M = 0.14;
 const LIGHT_HEAD_M = { along: 0.7, height: 0.12, across: 0.35 } as const;
-const FENCE_THICKNESS_M = 0.05;
+/** Line posts stand at most 10 ft apart; the top rail is this fraction of the fence's height. */
+const FENCE_POST_SPACING_M = 3.05;
 const FENCE_POST_M = 0.12;
+const FENCE_RAIL_FRACTION = 0.04;
+/** The mesh's lowest edge above the ground, as the airport fence's. */
+const FENCE_LIFT_M = 0.05;
+const FABRIC_COLOR = materialUnit('whiteBrick');
 const SIGN_FACE_HEIGHT_M = 1.15;
 const PYLON_POLE_M = 0.4;
 const DUMPSTER_M = { across: 1.8, depth: 1.8, height: 1.4 } as const;
@@ -89,9 +97,15 @@ const BED_PLANTING_COLOR: MaterialName = 'brightVegetation';
 const LIGHT_HEAD_COLOR = 0xfff1c4;
 
 /** The pools a lot's grounds are drawn from. */
-export type GroundsPool = 'box' | 'flat' | 'head' | 'hedge' | 'tree';
+export type GroundsPool = 'box' | 'flat' | 'head' | 'hedge' | 'tree' | 'fabric' | 'post';
+
+/** A gate's posts stand this much above the fence, and its header is this deep. */
+const GATE_POST_RISE_M = 0.6;
+const GATE_HEADER_M = 0.3;
 
 const emptyCounts = (): Record<GroundsPool, number> => ({
+  fabric: 0,
+  post: 0,
   box: 0,
   flat: 0,
   head: 0,
@@ -144,24 +158,36 @@ export function buildHedgeGeometry(): THREE.BufferGeometry {
   return hedge;
 }
 
-const TREE_TRUNK_HEIGHT_M = 1.8;
-const TREE_TRUNK_COLOR = 0x6b4a2f;
-const TREE_CANOPY_COLOR = 0x2f6b3a;
-const TREE_CANOPY_RADIUS_M = 1.3;
-
-/** A frontage tree in sixteen triangles: a four-sided trunk under one faceted crown. */
-export function buildLotTreeGeometry(): THREE.BufferGeometry {
-  const trunk = new THREE.CylinderGeometry(0.12, 0.16, TREE_TRUNK_HEIGHT_M, 4, 1, true);
-  trunk.translate(0, TREE_TRUNK_HEIGHT_M / 2, 0);
-  paintVertexColor(trunk, TREE_TRUNK_COLOR);
-  const crown = new THREE.OctahedronGeometry(TREE_CANOPY_RADIUS_M, 0);
-  crown.translate(0, TREE_TRUNK_HEIGHT_M + TREE_CANOPY_RADIUS_M * 0.8, 0);
-  paintVertexColor(crown, TREE_CANOPY_COLOR);
-  return mergeGeometryParts([trunk, crown]);
+/** The thin fabric of a fence run: a lower mesh panel under a top rail, one sheet facing +z. */
+export function buildFenceFabricGeometry(): THREE.BufferGeometry {
+  const rail = FENCE_RAIL_FRACTION;
+  const mesh = FABRIC_COLOR;
+  const bar = materialUnit('metalPlates');
+  const positions: number[] = [];
+  const colors: number[] = [];
+  const quad = (y0: number, y1: number, color: readonly number[]): void => {
+    positions.push(-0.5, y0, 0, 0.5, y0, 0, 0.5, y1, 0, -0.5, y1, 0);
+    for (let i = 0; i < 4; i++) colors.push(...color);
+  };
+  quad(0, 1 - rail, mesh);
+  quad(1 - rail, 1, bar);
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  g.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+  g.setAttribute(
+    'normal',
+    new THREE.Float32BufferAttribute(Array.from({ length: 8 }, () => [0, 0, 1]).flat(), 3),
+  );
+  g.setIndex([0, 1, 2, 0, 2, 3, 4, 5, 6, 4, 6, 7]);
+  return g;
 }
 
-/** A tree's world scale for its footprint: the frontage tree is the island tree's size. */
-export const GROUNDS_TREE_SCALE = FRONTAGE_TREE_SCALE;
+/** A fence post: one upright sheet facing +z, drawn from both sides. */
+export function buildFencePostGeometry(): THREE.BufferGeometry {
+  const sheet = new THREE.PlaneGeometry(1, 1);
+  sheet.translate(0, 0.5, 0);
+  return sheet;
+}
 
 /** Which pieces one lot is drawn from, by pool, for a plan: what a renderer will instance. */
 export function groundsInstanceCounts(plan: LotGroundsPlan): Record<GroundsPool, number> {
@@ -186,6 +212,8 @@ interface Part {
   h: number;
   d: number;
   color: number;
+  /** The side a fence sheet or post faces. */
+  facing?: GroundsFacing;
 }
 
 const hex = (name: MaterialName): number => materialHex(name);
@@ -261,8 +289,21 @@ function partsOfPiece(piece: GroundsPiece): Part[] {
   switch (piece.kind) {
     case 'light': {
       const head = { u: c.u, v: c.v };
+      // The pole is two crossed upright ribbons, seen from either side.
+      const ribbon = (facing: GroundsFacing): Part => ({
+        pool: 'post',
+        u: c.u,
+        v: c.v,
+        y: 0,
+        w: POLE_WIDTH_M,
+        h: piece.height,
+        d: 1,
+        color: hex(BOX_COLOR.pole),
+        facing,
+      });
       return [
-        box(c.u, c.v, 0, POLE_WIDTH_M, piece.height, POLE_WIDTH_M, 'pole'),
+        ribbon('v-'),
+        ribbon('u+'),
         {
           pool: 'head',
           u: head.u,
@@ -302,9 +343,9 @@ function partsOfPiece(piece: GroundsPiece): Part[] {
           u: c.u,
           v: c.v,
           y: 0,
-          w: FRONTAGE_TREE_SCALE,
-          h: FRONTAGE_TREE_SCALE,
-          d: FRONTAGE_TREE_SCALE,
+          w: LOT_TREE_SCALE,
+          h: LOT_TREE_SCALE,
+          d: LOT_TREE_SCALE,
           color: 0xffffff,
         },
       ];
@@ -336,13 +377,13 @@ function partsOfPiece(piece: GroundsPiece): Part[] {
         },
       ];
     case 'walk':
-      return piece.laid ? [] : [flat(c.u, c.v, WALK_Y_M, c.w, c.d, 'walk')];
+      return piece.laid ? [] : [flat(c.u, c.v, walkY(piece), c.w, c.d, 'walk')];
     case 'crossing': {
       const bars = Math.max(1, Math.floor(c.d / CROSSING_PITCH_M));
       const out: Part[] = [];
       for (let i = 0; i < bars; i++) {
         const v = piece.rect.v0 + ((i + 0.5) * c.d) / bars;
-        out.push(flat(c.u, v, WALK_Y_M + 0.02, c.w, CROSSING_BAR_M, 'stripe'));
+        out.push(flat(c.u, v, walkY(piece) + 0.02, c.w, CROSSING_BAR_M, 'stripe'));
       }
       return out;
     }
@@ -387,38 +428,66 @@ function partsOfPiece(piece: GroundsPiece): Part[] {
     case 'fence': {
       const length = Math.max(c.w, c.d);
       const alongU = c.w >= c.d;
-      return [
-        box(
-          c.u,
-          c.v,
-          0,
-          alongU ? length : FENCE_THICKNESS_M,
-          piece.height,
-          alongU ? FENCE_THICKNESS_M : length,
-          'fence',
-        ),
+      const posts = Math.ceil(length / FENCE_POST_SPACING_M - 1e-9);
+      const out: Part[] = [
+        fencePart('fabric', c, piece, 0, length, FENCE_LIFT_M, piece.height - FENCE_LIFT_M),
       ];
+      for (let i = 0; i <= posts; i++) {
+        const along = -length / 2 + (length * i) / Math.max(1, posts);
+        out.push(fencePart('post', c, piece, along, FENCE_POST_M, 0, piece.height));
+      }
+      void alongU;
+      return out;
     }
     case 'gate': {
-      const alongU = c.w >= c.d;
       const length = Math.max(c.w, c.d);
-      const post = (du: number, dv: number): Part =>
-        box(c.u + du, c.v + dv, 0, FENCE_POST_M, piece.height, FENCE_POST_M, 'gate');
       return [
-        post(alongU ? -length / 2 : 0, alongU ? 0 : -length / 2),
-        post(alongU ? length / 2 : 0, alongU ? 0 : length / 2),
-        box(
-          c.u,
-          c.v,
-          piece.height - FENCE_POST_M,
-          alongU ? length : FENCE_POST_M,
-          FENCE_POST_M,
-          alongU ? FENCE_POST_M : length,
-          'gate',
+        fencePart(
+          'post',
+          c,
+          piece,
+          -length / 2,
+          FENCE_POST_M * 2,
+          0,
+          piece.height + GATE_POST_RISE_M,
         ),
+        fencePart(
+          'post',
+          c,
+          piece,
+          length / 2,
+          FENCE_POST_M * 2,
+          0,
+          piece.height + GATE_POST_RISE_M,
+        ),
+        fencePart('fabric', c, piece, 0, length, piece.height - GATE_HEADER_M, GATE_HEADER_M),
       ];
     }
   }
+}
+
+/** A fence sheet or post on the run's line, `along` the line from its middle, facing the piece's outward side. */
+function fencePart(
+  pool: 'fabric' | 'post',
+  c: { u: number; v: number; w: number; d: number },
+  piece: GroundsPiece,
+  along: number,
+  width: number,
+  y: number,
+  height: number,
+): Part {
+  const alongU = c.w >= c.d;
+  return {
+    pool,
+    u: c.u + (alongU ? along : 0),
+    v: c.v + (alongU ? 0 : along),
+    y,
+    w: width,
+    h: height,
+    d: 1,
+    color: hex(BOX_COLOR.fence),
+    facing: piece.facing,
+  };
 }
 
 /** Neighbouring shrubs along a line are one hedge run, a single instance as long as the row. */
@@ -520,8 +589,20 @@ export class LotGroundsRenderer {
       hedge: new InstancedSlotPool(this.scene, buildHedgeGeometry(), lit(), INITIAL_CAPACITY),
       tree: new InstancedSlotPool(
         this.scene,
-        buildLotTreeGeometry(),
+        buildBroadleafGeometry(),
         nightBodyMaterial(this.nightFactorUniform, { vertexColors: true, flatShading: true }),
+        INITIAL_CAPACITY,
+      ),
+      fabric: new InstancedSlotPool(
+        this.scene,
+        buildFenceFabricGeometry(),
+        nightBodyMaterial(this.nightFactorUniform, { vertexColors: true }),
+        INITIAL_CAPACITY,
+      ),
+      post: new InstancedSlotPool(
+        this.scene,
+        buildFencePostGeometry(),
+        nightBodyMaterial(this.nightFactorUniform, { side: THREE.DoubleSide }),
         INITIAL_CAPACITY,
       ),
       // A pole light's head is the one lit thing here: night does not tint it.
@@ -606,6 +687,12 @@ export class LotGroundsRenderer {
     _position.set(at.x, this.heightAt(at.x, at.z) + GROUND_Y_OFFSET + part.y, at.z);
     if (part.pool === 'tree') {
       _scale.setScalar(part.w);
+    } else if (part.pool === 'fabric' || part.pool === 'post') {
+      // The sheet faces +z: turn that onto the side it faces, its width along the line.
+      const f = FACING[part.facing ?? 'v-'];
+      const out = lotPointToWorld(lot.frame, part.u + f.u, part.v + f.v);
+      _quaternion.setFromAxisAngle(_up, Math.atan2(out.x - at.x, out.z - at.z));
+      _scale.set(part.w, part.h, 1);
     } else if (part.pool === 'hedge') {
       // The hedge profile is across x and runs along z.
       const alongV = part.d > part.w;
@@ -618,7 +705,8 @@ export class LotGroundsRenderer {
     const pool = this.pools[part.pool];
     const slot = pool.allocate();
     pool.setMatrixAt(slot, _matrix);
-    if (part.pool !== 'tree') pool.setColorAt(slot, _color.setHex(part.color));
+    if (part.pool !== 'tree' && part.pool !== 'fabric')
+      pool.setColorAt(slot, _color.setHex(part.color));
     return { pool: part.pool, slot };
   }
 

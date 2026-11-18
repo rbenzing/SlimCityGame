@@ -85,6 +85,39 @@ describe('signs', () => {
   });
 });
 
+describe("the kit's own enclosure, sign and corrals", () => {
+  it('keeps planting off the ring beside and behind the body where the kit stands a dumpster enclosure', () => {
+    const id = 'com-restaurant-3-lot6x2';
+    const layout = layoutOf(id);
+    const b = layout.body;
+    const ring = 0.8 + 3.66;
+    const plan = planLotGrounds(layout, factsOf(id, { kitRefuse: true, kitSign: true }));
+    const planting = plan.pieces.filter((p) => p.kind === 'shrub' || p.kind === 'tree');
+    expect(planting.length).toBeGreaterThan(0);
+    for (const p of planting) {
+      const inRing =
+        p.rect.u0 < b.u1 + ring &&
+        p.rect.u1 > b.u0 - ring &&
+        p.rect.v1 > b.v0 &&
+        p.rect.v0 < b.v1 + ring;
+      expect(inRing, `${p.kind} at ${p.rect.u0},${p.rect.v0}`).toBe(false);
+    }
+  });
+
+  it('lays no light in an island where the kit stands cart corrals', () => {
+    const id = 'com-market-2';
+    const layout = layoutOf(id);
+    const plan = planLotGrounds(layout, factsOf(id, { kitIslandFurniture: true }));
+    for (const l of plan.pieces.filter((p) => p.kind === 'light')) {
+      expect(
+        layout.islands.some(
+          (i) => l.rect.u0 < i.u1 && l.rect.u1 > i.u0 && l.rect.v0 < i.v1 && l.rect.v1 > i.v0,
+        ),
+      ).toBe(false);
+    }
+  });
+});
+
 describe('a side that abuts homes', () => {
   it('plants the deeper buffer and shortens the poles', () => {
     const id = 'ind-warehouse-2';

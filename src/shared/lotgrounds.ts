@@ -53,6 +53,10 @@ const PYLON_KINDS: ReadonlySet<BuildingKind> = new Set(['strip', 'supermarket', 
 /** The ground each side of the drive mouth a sign on a pole takes where the kit lays its own. */
 const KIT_SIGN_WIDTH_M = 3.66;
 const KIT_SIGN_GAP_M = 0.5;
+/** The kit's dumpster enclosure stands 0.8 m off the body, 3.66 m long at most, with room to open. */
+const KIT_REFUSE_GAP_M = 0.8;
+const KIT_REFUSE_LENGTH_M = 3.66;
+const KIT_REFUSE_MARGIN_M = 0.5;
 const KIT_SIGN_DEPTH_M = MONUMENT_SIGN.setback + MONUMENT_SIGN.depth;
 /** A sign stands this far off the drive's edge. */
 const SIGN_DRIVE_GAP_M = 1;
@@ -124,6 +128,8 @@ export interface GroundsPiece {
   short?: boolean;
   /** A walk the layout already paves; the renderer does not lay it again. */
   laid?: boolean;
+  /** A walk over a planted island, drawn above its kerb. */
+  raised?: boolean;
 }
 
 /** What the plan needs to know beyond the layout. */
@@ -136,6 +142,8 @@ export interface LotGroundsFacts {
   kitSign: boolean;
   /** The kit already stands a refuse enclosure on this lot. */
   kitRefuse: boolean;
+  /** The kit stands its own furniture (cart corrals) in the car park's islands. */
+  kitIslandFurniture?: boolean;
   /** The side of the drive a sign is set on first: the side traffic arrives from. */
   signSide?: 'u-' | 'u+';
 }
@@ -265,14 +273,21 @@ const homeDistance = (side: HomeSide, p: LotPoint, lot: LotRect): number =>
 
 /** The walk from the footway to the door: the layout's own where it has one, else a straight run that no stall or island crosses. */
 function planWalk(ctx: Ctx): void {
-  const { layout } = ctx;
+  for (const piece of walkPieces(ctx.layout)) put(ctx, piece);
+}
+
+/**
+ * The walk's pieces from the layout alone. Where no straight route is free of
+ * the car park's islands, the walk runs through the planted island nearest the
+ * entrance, which it paves, and its tree is dropped (`droppedTrees`).
+ */
+export function walkPieces(layout: LotLayout): GroundsPiece[] {
   if (layout.entranceWalk) {
-    put(ctx, { kind: 'walk', rect: layout.entranceWalk, facing: 'v+', height: 0, laid: true });
-    return;
+    return [{ kind: 'walk', rect: layout.entranceWalk, facing: 'v+', height: 0, laid: true }];
   }
   const front = layout.frontWalk;
   const end = front ? front.v0 : layout.body.v0;
-  if (end <= EPS) return;
+  if (end <= EPS) return [];
   const half = LOT_WALK_WIDTH_M / 2;
   const lo = front ? front.u0 + half : layout.entrance.u;
   const hi = front ? front.u1 - half : layout.entrance.u;
@@ -280,7 +295,6 @@ function planWalk(ctx: Ctx): void {
     layout.body,
     ...layout.stalls.map((s) => s.rect),
     ...layout.accessAisles,
-    ...layout.islands,
     ...layout.berths,
     ...layout.trailerStalls,
     ...(layout.forecourt ? [layout.forecourt] : []),
@@ -288,20 +302,47 @@ function planWalk(ctx: Ctx): void {
     ...(layout.driveThrough?.rects ?? []),
   ];
   const e = layout.entrance.u;
+  const free = (u: number, islands: boolean): LotRect | null => {
+    if (u < lo - EPS || u > hi + EPS) return null;
+    const walk: LotRect = { u0: u - half, u1: u + half, v0: 0, v1: end };
+    if (!within(walk, layout.lot) || solid.some((s) => overlaps(s, walk))) return null;
+    if (!islands && layout.islands.some((i) => overlaps(i, walk))) return null;
+    return walk;
+  };
   for (let step = 0; e - step >= lo - EPS || e + step <= hi + EPS; step += 0.5) {
     for (const u of step === 0 ? [e] : [e - step, e + step]) {
-      if (u < lo - EPS || u > hi + EPS) continue;
-      const walk: LotRect = { u0: u - half, u1: u + half, v0: 0, v1: end };
-      if (!within(walk, ctx.lot) || solid.some((s) => overlaps(s, walk))) continue;
-      layWalk(ctx, walk);
-      return;
+      const walk = free(u, false);
+      if (walk) return layWalk(layout, walk);
     }
   }
+  // No clear gap: through a planted island, the nearest the entrance, as wide as the walk.
+  const through = layout.islands
+    .filter((i) => i.u1 - i.u0 >= LOT_WALK_WIDTH_M - EPS)
+    .map((i) => Math.min(Math.max(e, i.u0 + half), i.u1 - half))
+    .sort((a, b) => Math.abs(a - e) - Math.abs(b - e));
+  for (const u of through) {
+    const walk = free(u, true);
+    if (walk) return layWalk(layout, walk);
+  }
+  return [];
 }
 
-/** Lays a straight walk as concrete, painted where it crosses a driven aisle. */
-function layWalk(ctx: Ctx, walk: LotRect): void {
-  const crossings = drivenGround(ctx.layout)
+/** The island trees a walk through an island takes the place of. */
+export function droppedTrees(layout: LotLayout): LotPoint[] {
+  const walks = walkPieces(layout).map((p) => p.rect);
+  return layout.trees.filter((t) =>
+    walks.some((w) => t.u > w.u0 && t.u < w.u1 && t.v > w.v0 && t.v < w.v1),
+  );
+}
+
+/** A straight walk as concrete, painted where it crosses a driven aisle; raised where it crosses an island. */
+function layWalk(layout: LotLayout, walk: LotRect): GroundsPiece[] {
+  const out: GroundsPiece[] = [];
+  const put = (kind: 'walk' | 'crossing', rect: LotRect): void => {
+    const raised = layout.islands.some((i) => overlaps(i, rect));
+    out.push({ kind, rect, facing: 'v+', height: 0, ...(raised ? { raised: true } : {}) });
+  };
+  const crossings = drivenGround(layout)
     .filter((a) => a.u0 < walk.u1 - EPS && walk.u0 < a.u1 - EPS && a.v0 < walk.v1 && walk.v0 < a.v1)
     .map((a) => ({ v0: Math.max(a.v0, walk.v0), v1: Math.min(a.v1, walk.v1) }))
     .sort((a, b) => a.v0 - b.v0);
@@ -313,15 +354,12 @@ function layWalk(ctx: Ctx, walk: LotRect): void {
   }
   let v = walk.v0;
   for (const c of merged) {
-    if (c.v0 - v > EPS) {
-      put(ctx, { kind: 'walk', rect: { ...walk, v0: v, v1: c.v0 }, facing: 'v+', height: 0 });
-    }
-    put(ctx, { kind: 'crossing', rect: { ...walk, v0: c.v0, v1: c.v1 }, facing: 'v+', height: 0 });
+    if (c.v0 - v > EPS) put('walk', { ...walk, v0: v, v1: c.v0 });
+    put('crossing', { ...walk, v0: c.v0, v1: c.v1 });
     v = c.v1;
   }
-  if (walk.v1 - v > EPS) {
-    put(ctx, { kind: 'walk', rect: { ...walk, v0: v }, facing: 'v+', height: 0 });
-  }
+  if (walk.v1 - v > EPS) put('walk', { ...walk, v0: v });
+  return out;
 }
 
 // ---------------------------------------------------------------------------
@@ -410,7 +448,7 @@ function bandPoints(band: { side: string; rect: LotRect }, spacing: number, from
 function planLights(ctx: Ctx): void {
   const { layout, facts, lot } = ctx;
   const candidates: LotPoint[] = [];
-  for (const island of layout.islands) {
+  for (const island of facts.kitIslandFurniture ? [] : layout.islands) {
     const cu = (island.u0 + island.u1) / 2;
     const cv = (island.v0 + island.v1) / 2;
     const longV = island.v1 - island.v0 >= island.u1 - island.u0;
@@ -440,7 +478,7 @@ function planLights(ctx: Ctx): void {
     )
       continue;
     const rect = around(p.u, p.v, LOT_LIGHT_POLE_M, LOT_LIGHT_POLE_M);
-    if (!clear(ctx, rect, true)) continue;
+    if (!clear(ctx, rect, !facts.kitIslandFurniture)) continue;
     lights.push({ p, h });
     put(ctx, { kind: 'light', rect, facing: 'v-', height: h, ...(short ? { short: true } : {}) });
   }
@@ -471,7 +509,17 @@ function planPlanting(ctx: Ctx): void {
 /** An enclosure beside or behind the building, its gate on an aisle, a berth's court or a trailer stall. */
 function planRefuse(ctx: Ctx): void {
   const { layout, facts, lot } = ctx;
-  if (facts.kitRefuse) return;
+  if (facts.kitRefuse) {
+    // The kit stands its own enclosure behind or beside the body, a gap and an enclosure off it: keep that ring clear.
+    const reach = KIT_REFUSE_GAP_M + KIT_REFUSE_LENGTH_M + KIT_REFUSE_MARGIN_M;
+    const b = layout.body;
+    ctx.taken.push(
+      { u0: b.u0 - reach, u1: b.u0, v0: b.v0, v1: b.v1 + reach },
+      { u0: b.u1, u1: b.u1 + reach, v0: b.v0, v1: b.v1 + reach },
+      { u0: b.u0, u1: b.u1, v0: b.v1, v1: b.v1 + reach },
+    );
+    return;
+  }
   const { across, depth } = REFUSE_ENCLOSURE_M.inside;
   const t = REFUSE_ENCLOSURE_M.wall;
   const outerAcross = across + 2 * t;
@@ -626,7 +674,14 @@ function crossings(
 }
 
 /** One fence line from a0 to a1: gated where vehicles cross it, cut where a stall or the body lies across it. */
-function fenceLine(ctx: Ctx, axis: 'u' | 'v', at: number, a0: number, a1: number): void {
+function fenceLine(
+  ctx: Ctx,
+  axis: 'u' | 'v',
+  at: number,
+  a0: number,
+  a1: number,
+  outward: GroundsFacing,
+): void {
   const { layout } = ctx;
   if (a1 - a0 <= EPS) return;
   const gates = crossings(drivenGround(layout), axis, at, a0, a1);
@@ -645,7 +700,7 @@ function fenceLine(ctx: Ctx, axis: 'u' | 'v', at: number, a0: number, a1: number
     if (g.a - from > EPS)
       put(
         ctx,
-        { kind: 'fence', rect: line(from, g.a), facing: 'v-', height: YARD_FENCE_HEIGHT_M },
+        { kind: 'fence', rect: line(from, g.a), facing: outward, height: YARD_FENCE_HEIGHT_M },
         false,
       );
     if (g.gate) {
@@ -668,7 +723,7 @@ function fenceLine(ctx: Ctx, axis: 'u' | 'v', at: number, a0: number, a1: number
           {
             kind: 'fence',
             rect: line(g.a, mid - width / 2),
-            facing: 'v-',
+            facing: outward,
             height: YARD_FENCE_HEIGHT_M,
           },
           false,
@@ -678,7 +733,7 @@ function fenceLine(ctx: Ctx, axis: 'u' | 'v', at: number, a0: number, a1: number
           {
             kind: 'fence',
             rect: line(mid + width / 2, g.b),
-            facing: 'v-',
+            facing: outward,
             height: YARD_FENCE_HEIGHT_M,
           },
           false,
@@ -690,7 +745,7 @@ function fenceLine(ctx: Ctx, axis: 'u' | 'v', at: number, a0: number, a1: number
   if (a1 - from > EPS)
     put(
       ctx,
-      { kind: 'fence', rect: line(from, a1), facing: 'v-', height: YARD_FENCE_HEIGHT_M },
+      { kind: 'fence', rect: line(from, a1), facing: outward, height: YARD_FENCE_HEIGHT_M },
       false,
     );
 }
@@ -700,11 +755,11 @@ function planFence(ctx: Ctx): void {
   const { layout, lot, facts } = ctx;
   if (!isFencedWorks(facts)) return;
   const front = layout.body.v0;
-  fenceLine(ctx, 'u', lot.u0, front, lot.v1);
-  fenceLine(ctx, 'u', lot.u1, front, lot.v1);
-  fenceLine(ctx, 'v', lot.v1, lot.u0, lot.u1);
-  fenceLine(ctx, 'v', front, lot.u0, layout.body.u0);
-  fenceLine(ctx, 'v', front, layout.body.u1, lot.u1);
+  fenceLine(ctx, 'u', lot.u0, front, lot.v1, 'u-');
+  fenceLine(ctx, 'u', lot.u1, front, lot.v1, 'u+');
+  fenceLine(ctx, 'v', lot.v1, lot.u0, lot.u1, 'v+');
+  fenceLine(ctx, 'v', front, lot.u0, layout.body.u0, 'v-');
+  fenceLine(ctx, 'v', front, layout.body.u1, lot.u1, 'v-');
 }
 
 /**

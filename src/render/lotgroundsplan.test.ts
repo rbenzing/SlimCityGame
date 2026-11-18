@@ -12,6 +12,7 @@ import { MIN_FRONT_WALK_M } from '../shared/parkingcode';
 import type { LotLayout, LotRect } from '../shared/lotlayout';
 import {
   doorClearances,
+  droppedTrees,
   FRONTAGE_TREE_SPACING_M,
   LOT_HOME_BUFFER_M,
   LOT_LIGHT_HEIGHT_M,
@@ -242,6 +243,38 @@ describe('the pieces a lot has room for', () => {
     }
   });
 
+  it('walks every strip, workshop, warehouse, factory and plant lot, through an island where no gap is clear', () => {
+    const faults: string[] = [];
+    for (const { v, plan } of plans) {
+      const k = v.entry.kind;
+      const must =
+        k === 'strip' ||
+        (v.entry.category === 'ind' && k !== 'flex') ||
+        v.entry.id.startsWith('com-shop') ||
+        v.entry.id === 'com-low-1';
+      if (must && count(plan, 'walk') + count(plan, 'crossing') === 0) faults.push(v.label);
+    }
+    expect(faults).toEqual([]);
+  });
+
+  it('paves an island a walk runs through, above its kerb, and drops its tree', () => {
+    let through = 0;
+    for (const { v, plan } of plans) {
+      const raised = plan.pieces.filter((p) => p.raised);
+      if (raised.length === 0) continue;
+      through += 1;
+      const dropped = droppedTrees(v.layout);
+      for (const t of dropped) expect(v.layout.trees).toContain(t);
+      for (const t of v.layout.trees) {
+        const inWalk = raised.some(
+          (p) => t.u > p.rect.u0 && t.u < p.rect.u1 && t.v > p.rect.v0 && t.v < p.rect.v1,
+        );
+        if (inWalk) expect(dropped).toContain(t);
+      }
+    }
+    expect(through).toBeGreaterThan(10);
+  });
+
   it('keeps a bin at the door of every lot whose front walk leaves a clear lane for it', () => {
     for (const { v, plan } of plans) {
       const front = v.layout.frontWalk;
@@ -256,6 +289,8 @@ describe('the pieces a lot has room for', () => {
   it('lights every lot with a planted island or a perimeter strip', () => {
     for (const { v, plan } of plans) {
       if (v.layout.islands.length === 0 && v.layout.provided < 10) continue;
+      // Cart corrals fill a market's islands, and homes on every side leave no strip for a pole.
+      if (groundsFactsFor(v.entry).kitIslandFurniture && v.homes.length > 0) continue;
       expect(count(plan, 'light'), v.label).toBeGreaterThanOrEqual(1);
     }
   });

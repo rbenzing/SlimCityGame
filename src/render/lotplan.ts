@@ -163,6 +163,7 @@ export function groundsFactsFor(
     homeSides,
     kitSign: hasPart(entry, 'pylon') || hasPart(entry, 'signPole') || hasPart(entry, 'priceSign'),
     kitRefuse: hasPart(entry, 'dumpsterEnclosure'),
+    kitIslandFurniture: hasPart(entry, 'cartCorral'),
   };
 }
 

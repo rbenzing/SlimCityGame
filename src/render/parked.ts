@@ -48,6 +48,7 @@ import { nightBodyMaterial } from './nightlook';
 import { buildBroadleafGeometry } from './trees';
 import { parkingLaneOffset } from '../shared/roadprofile';
 import { isDenseLotEntry } from '../shared/parkingcode';
+import { droppedTrees } from '../shared/lotgrounds';
 import { isFarmEntry, isHouseEntry, isWalkUpEntry } from './archetypes';
 import {
   edgeFrameFor,
@@ -1587,7 +1588,10 @@ export class ParkedCarRenderer {
   /** One tree in each island the code plants, standing on the island's grass. */
   private plantTrees(building: BuildingInstance, plan: LotPlan): void {
     const slots: number[] = [];
+    // An island a walk runs through is paved, so its tree is not planted.
+    const dropped = new Set(droppedTrees(plan.layout));
     for (const tree of plan.layout.trees) {
+      if (dropped.has(tree)) continue;
       const at = lotPointToWorld(plan.frame, tree.u, tree.v);
       const slot = this.treePool.allocate();
       _position.set(at.x, this.heightAt(at.x, at.z) + ISLAND_GRASS_Y_OFFSET, at.z);
