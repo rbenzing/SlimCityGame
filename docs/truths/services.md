@@ -272,7 +272,10 @@ Back to [the index](../GROUND-TRUTHS.md).
 - [R-services-039] A powered street shows what carries its power: a pole line by default, a
   buried cable with its boxes where the player paid to bury it. A pole stands
   behind the kerb and outside the footway, never in a carriageway, a median,
-  a junction tile or a drive. A line or a cable the player lays starts at a
+  a junction tile or a drive. Every wire of a street's pole line stays
+  inside the road's own tile, 2.3 m (NESC 7.5 ft) or more from the edge a
+  lot starts at; a pole standing too far out for that carries its wires on
+  an arm reaching over the road. A line or a cable the player lays starts at a
   power station, a substation or a line already live; a cable costs more to
   build and less to keep. Power never passes from a street into a line or a
   cable laid to this rule; a line an older save holds stays live as it was.

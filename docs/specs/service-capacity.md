@@ -23,7 +23,7 @@
 | Fire station capacity | 14,000 (4 firefighters × 4.5 = 18 per engine, 1.30 per 1,000) | people | [fire](../sources/service-capacity.md#fire-station-14000-people) |
 | Clinic capacity | 8,000 (4 physicians × 2,000 panel) | people | [clinic](../sources/service-capacity.md#clinic-8000-people) |
 | School capacity | 7,000 (456 pupils, 64 per 1,000) | people | [school](../sources/service-capacity.md#school-7000-people) |
-| Park capacity | none, uncapped | people | dial |
+| Park capacity | by park type, 32 for a pocket park | people | [parks](parks-and-recreation.md) |
 | Funding | 0 to 1.5, scales range, capacity and upkeep | × | dial |
 | Police / fire reach | 48 tiles along the road network (police) | tiles | dial |
 | Clamp | strength 0..255 | | dial `clamp255` |
@@ -35,7 +35,7 @@
 
 - `src/shared/types.ts` `ServiceSpec.capacity?`, `SimSnapshot.serviceLoad?` (`ServiceLoad`: `load`, `worst`, `capped`), `SelectionInfo.serviceLoad?`.
 - `src/sim/services.ts` `ServiceSim.tick`: gather phase then resolve phase; `roadBfsDistances` (injectable), `radiateWeighted`, `applyCoverage`.
-- `src/data/catalog.json`: `capacity` on the four service entries, none on parks.
+- `src/data/catalog.json`: `capacity` on the four service entries and on every park.
 - `src/sim/worker.entry.ts`: per-kind load onto the snapshot, per-facility load onto the held selection.
 - `src/ui/ServicesPanel.tsx`: a row per kind, funding slider and load gauge, worst district.
 - `src/ui/store.ts`: mirrors `serviceLoad`, clamps and dispatches `setServiceFunding`.

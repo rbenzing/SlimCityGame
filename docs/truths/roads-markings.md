@@ -80,14 +80,16 @@ Back to [the index](../GROUND-TRUTHS.md).
   arrow is the _Standard Highway Signs_ size the MUTCD points to (§3B.20 ¶05):
   a through arrow 2.90 m, a turn arrow 2.44 m, turn and through 3.89 m, stems
   0.30 m, never wider than its lane. A one-way road's flow arrow is the
-  through arrow, one centred in each lane, never on a line (3B.23). Gore
+  through arrow, one centred in each lane, never on a line (3B.23) and never
+  on an approach's stop-line tile, which carries its lane-use arrows only. Gore
   hatching slants away from the adjacent traffic (MUTCD 3B.25 ¶08–09). —
   [road-model.md](../world-sim/road-model/README.md)
 - [R-roads-087] A reserved lane's colour follows its lane: round a bend and a dead end's cap
   on the road's arc, and past a junction side with no arm, never inside a
   crosswalk (MUTCD 3H.06 ¶03). A bike lane crosses an arm's mouth between
   two dotted lines, green only between each pair of marks (9E.03 ¶07, ¶10;
-  3H.06 ¶04). A bus lane's red lies only where general traffic may not go:
+  3H.06 ¶04). It follows a kerb return only where both arms carry one;
+  otherwise it ends square at the mouth, full width. A bus lane's red lies only where general traffic may not go:
   none in a kerb return's wedge or across a mouth (3H.07 ¶03). A stop line
   crosses every arriving lane, reserved ones too. A free road lays the
   grid's lane symbols every 60 m along its arc. — [markings.md](../world-sim/road-model/markings.md);
@@ -104,9 +106,13 @@ Back to [the index](../GROUND-TRUTHS.md).
   through it, on a free bend and a grid turn tile alike (MUTCD 3B.03 ¶03),
   centred on the road, and the pair runs out to the next whole dash: no gap,
   no single solid line, and a dash under half a dash beside it becomes pair.
-  White lane lines stay broken and keep one rhythm through the bend. — [markings.md](../world-sim/road-model/markings.md);
+  White lane lines stay broken and keep one rhythm through the bend, a grid
+  turn tile's in phase with the tiles on both of its sides. — [markings.md](../world-sim/road-model/markings.md);
   `bendIsNoPassing` in `src/shared/roadprofile.ts`
 - [R-roads-091] A road's end cap carries its edge line only: no centre line, lane line or
-  dash wraps the cap. Two bike lanes' dotted extensions stop at each other's
+  dash wraps the cap. An edge line wraps only where its pair sits at the
+  same offset on the other side of the tile's axis; on a carriageway that is
+  off the axis (a highway, a ramp) both stop square where the cap begins.
+  Two bike lanes' dotted extensions stop at each other's
   footprint where they cross. — [markings.md](../world-sim/road-model/markings.md);
   `emitEndCapMarkings` in `src/render/roadsmesh.ts`

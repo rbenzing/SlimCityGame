@@ -67,6 +67,10 @@
 | canopy post spacing | 6.5 | m | dial |
 | stair width | 1.5 | m | dial |
 | stair slope | 32 | degrees | dial |
+| stair riser / tread / handrail | 0.178 most / 0.285 / 0.914 | m | IBC 1011 (7 in riser), 1014 (36 in rail) |
+| stair landing at the platform | 1.5 | m | dial |
+| car flank to platform edge | 0.07 clear (3.13 against 3.2) | m | from the beam offset |
+| car roof under the canopy | 0.25 clear (2.45 against 2.7) | m | from the car's height |
 | stair run | about 12 | m | from 7.67 m up |
 | lift tower | 2.4 | m square | dial |
 

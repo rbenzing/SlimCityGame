@@ -28,6 +28,9 @@
 | Open-ground and gravel-road span | 80 | m | rural 250 to 300 ft, [same](../sources/power-distribution.md#the-pole) |
 | Pole behind the kerb face | 0.6 | m, least | [Hawaii DOT rule](../sources/power-distribution.md#where-a-pole-stands) |
 | Wire over a road | 4.7 | m, least | NESC 15.5 ft, [clearances](../sources/power-distribution.md#clearances) |
+| Wire from the tile's edge, where a lot starts | 2.3 | m, least | NESC 7.5 ft from a wall, to 22 kV; `WALL_CLEARANCE_M` |
+| Source-end pole outside the substation's lot | 3.5 | m | its 4 m guy anchors 1 m outside the fence; `SOURCE_POLE_SETBACK_M` |
+| Buried cable's lead to a riser's foot | 1.5 | tiles, most | dial; `cableQuads` in `src/render/cables.ts` |
 | Cross-country pole, above ground | 21 | m | 69 kV, 70 to 80 ft, [sub-transmission](../sources/power-distribution.md#the-cross-country-line) |
 | Cross-country span | 100 | m | 300 to 400 ft, [same](../sources/power-distribution.md#the-cross-country-line) |
 | Substation footprint | 2 × 2 | tiles | 25 MVA on half an acre, [substation](../sources/power-distribution.md#the-substation) |
@@ -51,7 +54,7 @@
 
 **Tests:** `src/render/powerpoles.test.ts` pole placement by road class, the side kept, spans, guys and the wire's height over a road; `tests/interaction/powerlinerefusal.test.ts` a line along a sealed street refused, a crossing accepted, an older save's line kept; `src/sim/network.test.ts`, `tests/interaction/powerlinesource.test.ts` the source-end rule, its refusal, undo and redo of mixed lines, a line whose source is gone; `src/world/grid.test.ts` both values saved and an older save's lines kept; `src/render/substationkit.test.ts` the kit; `tests/interaction/powercable.test.ts`, `src/sim/economy.test.ts` the cable's price, refund and upkeep, a buried street's upkeep, undo and redo, the saved value; `src/render/powerpoles.test.ts`, `src/render/cableboxes.test.ts` no pole on a buried street, risers at its ends, boxes at a cable's ends and branches, the underground overlay clear of the pipes.
 
-**Open:** a line whose source is removed stays and delivers nothing; only the Power lens and the advisor say so. At a junction or a bend the cable underground keeps the tile's centre and lies on the sewer's strip. A cable end whose four neighbouring tiles are all road or built has no box, and a buried stretch that ends at a junction beside a drive has no riser. The riser's guard is thin. Alley pole practice, homes per transformer and manhole spacing have no citable figure and are dials. A pole sees only its own tile's strip when it keeps 1.5 m from a lamp or a mast; a curved street's wires end guyed at each node; a wire is drawn 0.1 m thick so it reads from afar.
+**Open:** a line whose source is removed stays and delivers nothing; only the Power lens and the advisor say so. A line's last span stops at its end pole and does not drop to the substation's gantry. At a junction or a bend the cable underground keeps the tile's centre and lies on the sewer's strip. A cable end whose four neighbouring tiles are all road or built has no box, and a buried stretch that ends at a junction beside a drive has no riser. The riser's guard is thin. Alley pole practice, homes per transformer and manhole spacing have no citable figure and are dials. A pole sees only its own tile's strip when it keeps 1.5 m from a lamp or a mast; a curved street's wires end guyed at each node; a wire is drawn 0.1 m thick so it reads from afar.
 
 ## Why the rules are what they are
 

@@ -208,7 +208,8 @@ Back to [the index](../GROUND-TRUTHS.md).
   `src/render/plotground.ts`, `src/render/utilitykits.ts`,
   `src/render/buildings.ts`
 - [R-render-035] A fence stands on its own lot's boundary and nowhere else. It never
-  crosses onto another lot, a road, a drive or another fence, and where two
+  crosses onto another lot, a road, a drive, another fence, or a building's
+  body or roof, its own lot's or a neighbour's, and where two
   lots share a line one fence stands on it. A lot turned to a curved street
   is fenced to its own outline, cut back where a neighbour's outline meets
   it; a lot that cannot be fenced without crossing has no fence. A turned
@@ -284,14 +285,17 @@ Back to [the index](../GROUND-TRUTHS.md).
   (the player's rule: rounded, not sharp). —
   [paved-corners.md](../specs/paved-corners.md); `src/shared/roundedoutline.ts`
 - [R-render-046] A surface takes the night tint through the shared night factor node,
-  never by changing a shared material's colour: roads, free roads and
-  bridge decks included. One road chunk kept its day colour at night when
+  never by changing a shared material's colour: roads, free roads, bridge
+  decks, street furniture, lamp poles, pole lines, sound walls, bus stops
+  and the landfill included; a lamp's head and a lit sign stay lit. One road chunk kept its day colour at night when
   the material's colour was set each frame. —
   [lighting.md](../visual-render/lighting.md); `nightBodyMaterial` in
   `src/render/nightlook.ts`
 - [R-render-047] No wild tree's or shrub's crown reaches over a road tile, a deck, a
   kerb ramp or a dead end's rounded cap, which bulges past its last tile;
-  a tree the street kit plants is the kit's. —
+  a tree the street kit plants is the kit's. A median is planted only at
+  grade and only where it is 1.8 m (6 ft) wide or more, so the preset
+  avenue's 1.2 m median carries no trees. —
   [street-furniture.md](../specs/street-furniture.md); `clearBeside` and
   `clearEndCaps` in `src/render/trees.ts`
 
