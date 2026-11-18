@@ -72,7 +72,13 @@ describe('busStopPlacement', () => {
         const p = busStopPlacement(stopOn(side), RoadTier.Gravel, gravel, 0, lateral);
         const edge = carriagewayHalfWidthOf(gravel) + SIGN_NO_KERB_M - BUS_STOP_POLE_FROM_KERB_M;
         expect(p.kerbOut).toBeCloseTo(edge, 9);
-        expect(p.pad.out0).toBeCloseTo(edge, 9);
+        // The pad adjoins the roadway's edge and runs back past the pole.
+        const roadEdge = carriagewayHalfWidthOf(gravel);
+        expect(p.pad.out0).toBeCloseTo(roadEdge, 9);
+        expect(p.pad.out1).toBeCloseTo(edge + BUS_STOP_PAD.out, 9);
+        expect(p.pad.out1 - p.pad.out0).toBeGreaterThanOrEqual(BUS_STOP_PAD.out);
+        expect(p.pad.along).toBeGreaterThanOrEqual(1.52);
+        expect(outOf(p.pad, side, lateral)).toBeCloseTo((p.pad.out0 + p.pad.out1) / 2, 9);
         expect(outOf(p.pole, side, lateral) - edge).toBeCloseTo(BUS_STOP_POLE_FROM_KERB_M, 9);
         expect(p.shelter!.frontOut - edge).toBeCloseTo(BUS_STOP_SHELTER_FRONT_M, 9);
       });
@@ -229,16 +235,20 @@ describe('a stop turned to its kerb', () => {
         }));
         const edge = carriagewayHalfWidthOf(gravel);
         let nearest = Infinity;
+        let padNearest = Infinity;
         for (const part of ['pad', 'pole', 'shelter', 'bin'] as const) {
           const m = new THREE.Matrix4();
           renderer.getMatrix(part, 0, m);
           for (const v of vertices(renderer.partGeometry(part), m)) {
-            const out = outOf(v, side, lateral);
-            nearest = Math.min(nearest, out - edge);
+            const out = outOf(v, side, lateral) - edge;
+            if (part === 'pad') padNearest = Math.min(padNearest, out);
+            else nearest = Math.min(nearest, out);
           }
         }
-        // The pole is the sign: 3.7 m out. Nothing, roof included, stands nearer than the clear zone.
+        // The pole is the sign: 3.7 m out. Nothing but the pad, roof included, stands nearer than the clear zone.
         expect(nearest, `${lateral} ${side}`).toBeGreaterThanOrEqual(3.0 - 1e-6);
+        // The pad starts at the roadway's edge, never on it.
+        expect(padNearest, `${lateral} ${side}`).toBeCloseTo(0, 4);
         const p = busStopPlacement(stopOn(side), RoadTier.Gravel, gravel, 0, lateral);
         expect(outOf(p.pole, side, lateral) - edge).toBeCloseTo(SIGN_NO_KERB_M, 6);
       }

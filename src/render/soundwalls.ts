@@ -6,6 +6,8 @@
  * up it the way a real one does.
  */
 import * as THREE from 'three';
+import { uniform } from 'three/tsl';
+import { nightBodyMaterial } from './nightlook';
 import { TILE_METERS } from '../shared/constants';
 import {
   SOUND_WALL_BASE_HEIGHT_M,
@@ -134,13 +136,14 @@ export class SoundWallRenderer {
   private readonly postGeometry = slabGeometry(POST_SIZE_M, POST_SIZE_M);
   // Precast panels are pale, and a wall is a vertical face lit mostly from
   // the side: the palette's darker concretes read as black on it.
-  private readonly baseMaterial = new THREE.MeshLambertMaterial({
+  private readonly nightFactorUniform = uniform(0);
+  private readonly baseMaterial = nightBodyMaterial(this.nightFactorUniform, {
     color: materialHex('whitePlaster'),
   });
-  private readonly panelMaterial = new THREE.MeshLambertMaterial({
+  private readonly panelMaterial = nightBodyMaterial(this.nightFactorUniform, {
     color: materialHex('whiteBrick'),
   });
-  private readonly postMaterial = new THREE.MeshLambertMaterial({
+  private readonly postMaterial = nightBodyMaterial(this.nightFactorUniform, {
     color: materialHex('metalPlates'),
   });
   private meshes: THREE.InstancedMesh[] = [];
@@ -208,6 +211,11 @@ export class SoundWallRenderer {
       () => 0,
       (p) => p.height + POST_CAP_M,
     );
+  }
+
+  /** 0 (day) .. 1 (night): how far the walls' colour is carried toward the night tint. */
+  setNightFactor(nightFactor: number): void {
+    this.nightFactorUniform.value = Math.min(1, Math.max(0, nightFactor));
   }
 
   /** How many of each part the last rebuild drew, for the dev hook. */

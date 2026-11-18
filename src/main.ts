@@ -2370,6 +2370,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
     trees.clearAt(clientGrid.occupiedTiles());
     trees.clearBeside(clientGrid.roadTilePoints());
     trees.clearEndCaps(endCapsOf(clientGrid.roadTiles()));
+    trees.clearAt(landfillRenderer.memberTilePoints());
   };
 
   // --- worker messages -----------------------------------------------------------
@@ -2516,6 +2517,11 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
     utilityKits.setNightFactor(nightFactor);
     buildingKit.setNightFactor(nightFactor);
     tramStations.setNightFactor(nightFactor);
+    busStops.setNightFactor(nightFactor);
+    soundWalls.setNightFactor(nightFactor);
+    powerLines.setNightFactor(nightFactor);
+    roadFurniture.setNightFactor(nightFactor);
+    lamps.setNightFactor(nightFactor);
     farms.setNightFactor(nightFactor);
     farms.setDayFraction(dayT); // the farm truck works sunrise to sunset
     transitRenderer.setDayHour(dayT * 24); // the lines run 05:00 to 23:00; their buses are in the depot otherwise
@@ -2911,6 +2917,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
     // Garbage: landfill-area tint + trash piles, and feed the 'trash' coverage lens.
     if (snap.garbage) {
       landfillRenderer.apply(snap.garbage);
+      if (snap.garbage.landfill?.length) keepTreesOffOccupied();
       if (snap.garbage.trash) overlays.setCoverage('trash', snap.garbage.trash);
     }
     // Service load: publish the per-kind gauges the Services panel reads. Absent

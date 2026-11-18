@@ -57,6 +57,15 @@ export const STATION_POST_SPACING_M = 6.5;
 export const STATION_STAIR_WIDTH_M = 1.5;
 export const STATION_STAIR_ANGLE = (32 * Math.PI) / 180;
 export const STATION_STAIR_DEPTH_M = 0.3;
+/** One stringer's width, a tread's thickness, and the stair's top riser at most (7 in). */
+export const STATION_STRINGER_M = 0.12;
+export const STATION_TREAD_M = 0.04;
+export const STATION_RISER_MAX_M = 0.178;
+/** A handrail's square section and its height over the treads (36 in). */
+export const STATION_RAIL_M = 0.05;
+export const STATION_RAIL_HEIGHT_M = 0.914;
+/** The level landing between the platform's end and the stair's head, as long as the stair is wide. */
+export const STATION_STAIR_LANDING_M = STATION_STAIR_WIDTH_M;
 /** The lift tower, square in plan. */
 export const STATION_TOWER_M = 2.4;
 /** The tower's glazed pane: its width, its thickness, its sill over the footway and its head under the canopy. */
@@ -116,7 +125,12 @@ export interface TramStation {
   aprons: StationBox[];
   canopies: StationBox[];
   posts: StationBox[];
+  /** Each stair's run (its centre line, pitch, head and foot); drawn as its stringers, treads and rails. */
   stairs: StationStair[];
+  /** The two stringers and two handrails of each stair, pitched with its run. */
+  stringers: StationStair[];
+  /** The flat treads of each stair. */
+  treads: StationBox[];
   towers: StationBox[];
   panes: StationBox[];
   signs: StationSign[];
@@ -313,25 +327,33 @@ function buildStation(
     const kerb = kerbLine(towerTile, alongX, side);
     const towerFace = side > 0 ? Math.max(kerb, outer) : Math.min(kerb, outer);
     const towerCentre = towerFace + side * (STATION_TOWER_M / 2);
-    const head = point(endAlong, towerCentre, top);
+    // The stair is centred on the footway where that is narrower than the
+    // tower, so its whole width stands on the paving.
+    const walk = footwayWidth(towerTile, side);
+    const stairAcross = walk > 0 && walk < STATION_TOWER_M ? kerb + side * (walk / 2) : towerCentre;
+    // The stair's head is a landing's length past the platform's end.
+    const headAlong = endAlong + e * STATION_STAIR_LANDING_M;
+    const head = point(headAlong, stairAcross, top);
     const ground = (along: number): number =>
-      lowestGround(along, towerCentre, 0, STATION_STAIR_WIDTH_M);
+      lowestGround(along, stairAcross, 0, STATION_STAIR_WIDTH_M);
     // The foot stands where the run, which depends on the ground, ends on it.
-    let footAlong = endAlong;
+    let footAlong = headAlong;
     let footY = ground(footAlong);
     for (let i = 0; i < 24; i++) {
-      footAlong = endAlong + e * ((top - footY) / tan);
+      footAlong = headAlong + e * ((top - footY) / tan);
       footY = ground(footAlong);
     }
-    footAlong = endAlong + e * ((top - footY) / tan);
+    footAlong = headAlong + e * ((top - footY) / tan);
     return {
       endAlong,
+      headAlong,
       towerAlong,
       towerTile,
       outer,
       kerb,
       towerFace,
       towerCentre,
+      stairAcross,
       head,
       footAlong,
       footY,
@@ -345,7 +367,7 @@ function buildStation(
   const blocked = (e: 1 | -1): boolean =>
     ([-1, 1] as const).some((side) => {
       const l = landingAt(e, side);
-      const inner = l.towerCentre - side * (STATION_STAIR_WIDTH_M / 2);
+      const inner = l.stairAcross - side * (STATION_STAIR_WIDTH_M / 2);
       const from = Math.min(l.endAlong, l.footAlong);
       const to = Math.max(l.endAlong, l.footAlong);
       for (let t = worldToTile(from); t <= worldToTile(to - 1e-6); t++) {
@@ -370,6 +392,8 @@ function buildStation(
     canopies: [],
     posts: [],
     stairs: [],
+    stringers: [],
+    treads: [],
     towers: [],
     panes: [],
     signs: [],
@@ -434,6 +458,8 @@ function buildStation(
       kerb,
       towerFace,
       towerCentre,
+      stairAcross,
+      headAlong,
       head,
       footAlong,
       footY,
@@ -483,7 +509,7 @@ function buildStation(
     // follows the ground it lands on.
     const height = top - footY;
     const run = height / tan;
-    const foot = point(footAlong, towerCentre, footY);
+    const foot = point(footAlong, stairAcross, footY);
     const footTile = tileAtAlong(footAlong);
     if (!footTile || footwayWidth(footTile, side) === 0) {
       const reach = footTile ? kerbLine(footTile, alongX, side) : kerb;
@@ -492,27 +518,88 @@ function buildStation(
           footAlong + (end * STATION_APRON_LENGTH_M) / 4,
           STATION_APRON_LENGTH_M,
           reach,
-          towerCentre,
+          stairAcross,
           side,
           footY,
         ),
       );
     }
+    // A level landing carries the platform out to the stair's head.
+    const stairNear = Math.min(
+      outer * side,
+      (stairAcross - (side * STATION_STAIR_WIDTH_M) / 2) * side,
+    );
+    const stairFar = Math.max(
+      outer * side,
+      (stairAcross + (side * STATION_STAIR_WIDTH_M) / 2) * side,
+    );
+    station.landings.push(
+      box(
+        (endAlong + headAlong) / 2,
+        (side * (stairNear + stairFar)) / 2,
+        top - STATION_PLATFORM_DEPTH_M / 2,
+        STATION_STAIR_LANDING_M,
+        STATION_PLATFORM_DEPTH_M,
+        stairFar - stairNear,
+      ),
+    );
     const slope = Math.hypot(run, height);
-    station.stairs.push({
+    const pitch = -end * Math.atan2(height, run);
+    const slopedBox = (across: number, lift: number, sizeY: number, sizeAcross: number) => ({
       ...box(
-        (endAlong + footAlong) / 2,
-        towerCentre,
-        (top + footY) / 2 - STATION_STAIR_DEPTH_M / 2,
+        (headAlong + footAlong) / 2,
+        across,
+        (top + footY) / 2 + lift,
         slope,
-        STATION_STAIR_DEPTH_M,
-        STATION_STAIR_WIDTH_M,
+        sizeY,
+        sizeAcross,
       ),
       alongX,
-      pitch: -end * Math.atan2(height, run),
+      pitch,
       head,
       foot,
     });
+    station.stairs.push(
+      slopedBox(
+        stairAcross,
+        -STATION_STAIR_DEPTH_M / 2,
+        STATION_STAIR_DEPTH_M,
+        STATION_STAIR_WIDTH_M,
+      ),
+    );
+    const edge = STATION_STAIR_WIDTH_M / 2;
+    for (const s of [-1, 1]) {
+      station.stringers.push(
+        slopedBox(
+          stairAcross + s * (edge - STATION_STRINGER_M / 2),
+          -STATION_STAIR_DEPTH_M / 2,
+          STATION_STAIR_DEPTH_M,
+          STATION_STRINGER_M,
+        ),
+        slopedBox(
+          stairAcross + s * (edge - STATION_RAIL_M / 2),
+          STATION_RAIL_HEIGHT_M,
+          STATION_RAIL_M,
+          STATION_RAIL_M,
+        ),
+      );
+    }
+    // Treads between the stringers, one riser apart, the top one level with the landing.
+    const steps = Math.max(1, Math.ceil(height / STATION_RISER_MAX_M - 1e-9));
+    const riser = height / steps;
+    const goes = run / steps;
+    for (let i = 1; i < steps; i++) {
+      station.treads.push(
+        box(
+          headAlong + end * (steps - i + 0.5) * goes,
+          stairAcross,
+          footY + i * riser - STATION_TREAD_M / 2,
+          goes,
+          STATION_TREAD_M,
+          STATION_STAIR_WIDTH_M - 2 * STATION_STRINGER_M,
+        ),
+      );
+    }
     const landingTile = worldToTile(footAlong);
     const landingKey = alongX ? tileKey(landingTile, road.z) : tileKey(road.x, landingTile);
     if (!station.tiles.includes(landingKey)) station.tiles.push(landingKey);
@@ -598,7 +685,7 @@ export class TramStationRenderer {
       this.roof,
       flat((s) => s.posts),
     );
-    const stairs = flat((s) => s.stairs);
+    const stairs = flat((s) => s.stringers);
     if (stairs.length > 0) {
       const mesh = this.addMesh(this.concrete, stairs.length);
       stairs.forEach((stair, i) => {
@@ -612,6 +699,10 @@ export class TramStationRenderer {
       });
       mesh.instanceMatrix.needsUpdate = true;
     }
+    this.addBoxes(
+      this.concrete,
+      flat((s) => s.treads),
+    );
     this.addBoxes(
       this.concrete,
       flat((s) => s.towers),
@@ -651,7 +742,7 @@ export class TramStationRenderer {
     return this.current.stations;
   }
 
-  /** The instanced meshes in part order: platforms, canopies, posts, stairs, towers, panes, signs; a part with nothing to draw has none. */
+  /** The instanced meshes in part order: platforms, canopies, posts, stringers and rails, treads, towers, panes, signs; a part with nothing to draw has none. */
   meshList(): readonly THREE.InstancedMesh[] {
     return this.meshes;
   }

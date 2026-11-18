@@ -27,6 +27,7 @@ const CASES = [
   ['fourlane-to-twolane', TIER.FourLane, TIER.TwoLane],
   ['fourlane-to-avenue', TIER.FourLane, TIER.Avenue],
   ['twolane-to-gravel', TIER.TwoLane, TIER.Gravel],
+  ['avenue-to-oneway', TIER.Avenue, TIER.OneWay],
 ];
 
 const b = await chromium.launch({ headless: true, args: ['--use-angle=default'] });
@@ -125,6 +126,15 @@ for (const { name, x } of placed) {
   );
 }
 
+if (process.env.PAINT) {
+  const bands = (px, pz) => call(([a, c]) => window.__slimcity.readPaint(a, c), [px, pz]);
+  for (const { name, x } of placed.filter((p) => p.name === process.env.PAINT)) {
+    for (const dz of [-2, -1, 0, 1]) {
+      console.log(name, 'z', dz, JSON.stringify(await bands(X + x, Z + SEAM + dz)));
+    }
+  }
+}
+
 for (const { name, x } of placed) {
   // The whole length the change is spread over: a taper that reads fine tile by
   // tile can still be a staircase seen end to end.
@@ -132,6 +142,9 @@ for (const { name, x } of placed) {
   await page.waitForTimeout(600);
   await cleanShot(page, `${out}/${name}.png`);
   console.log('shot', name);
+  await cam(X + x, Z + SEAM - 1, 30, 0, 1.5);
+  await page.waitForTimeout(600);
+  await cleanShot(page, `${out}/${name}-close.png`);
 }
 
 await b.close();

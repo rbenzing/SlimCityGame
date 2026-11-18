@@ -239,13 +239,51 @@ describe('the Bike Lane street, footways and all, into a T', () => {
       rowAlongX(r, z, 4 * TILE_METERS, 5 * TILE_METERS).filter((s) => s.colour === GREEN).length;
     // Half a metre into the junction tile the lane is still there, both sides.
     expect(greenAt(3 * TILE_METERS - 0.5)).toBeGreaterThan(40);
-    // Past the corner's tangent the kerb has turned away and the lane follows it
-    // round the return: it stays against the kerb and never crosses the box.
-    const round = rowAlongX(r, 3 * TILE_METERS - 4, 4 * TILE_METERS, 5 * TILE_METERS).filter(
-      (s) => s.colour === GREEN,
-    );
-    expect(round.length).toBeGreaterThan(0);
-    for (const s of round) expect(Math.abs(s.at - centre)).toBeGreaterThan(HALF - 1.7);
+    // The through road has no bike lane to meet, so the lane does not thin out
+    // round the kerb return: it ends square with nothing green past the mouth.
+    expect(greenAt(3 * TILE_METERS - 4)).toBe(0);
+  });
+});
+
+describe('a gravel road into a paved T', () => {
+  it('meets the junction box at a straight joint, with no blend band inside the box', () => {
+    const r = layRoads([
+      ...Array.from({ length: 9 }, (_, x) => ({ x, z: 2, tier: RoadTier.TwoLane })),
+      ...Array.from({ length: 6 }, (_, k) => ({ x: 4, z: 3 + k, tier: RoadTier.Gravel })),
+    ]);
+    const colours = (z: number): Set<string | null> =>
+      new Set(rowAlongX(r, z, 4 * TILE_METERS + 8, 5 * TILE_METERS - 8).map((s) => s.colour));
+    // Just inside the junction tile's edge the mouth is box asphalt only.
+    const inBox = colours(3 * TILE_METERS - 0.5);
+    expect([...inBox], 'inBox').toHaveLength(1);
+    // Just outside, on the gravel tile, it is a single (gravel) colour too.
+    const onGravel = colours(3 * TILE_METERS + 0.5);
+    expect(onGravel.size).toBe(1);
+    expect([...inBox][0]).not.toBe([...onGravel][0]);
+  });
+
+  it('ends the footway square at the gravel edge, on the kerb return, with none standing in the gravel', () => {
+    const r = layRoads([
+      ...Array.from({ length: 9 }, (_, x) => ({ x, z: 2, tier: RoadTier.TwoLane })),
+      ...Array.from({ length: 6 }, (_, k) => ({ x: 4, z: 3 + k, tier: RoadTier.Gravel })),
+    ]);
+    const walkExtent = (z: number): { lo: number; hi: number } | null => {
+      const xs = rowAlongX(r, z, 4 * TILE_METERS, 4.5 * TILE_METERS, 400)
+        .filter((s) => s.colour === KERB)
+        .map((s) => s.at);
+      return xs.length ? { lo: Math.min(...xs), hi: Math.max(...xs) } : null;
+    };
+    const edge = 3 * TILE_METERS;
+    // Nothing of the footway stands on the gravel tile.
+    expect(walkExtent(edge + 0.3)).toBeNull();
+    // It runs straight, the same width and place, over the last metres to the edge:
+    // the return has finished turning and the end is cut square across.
+    const a = walkExtent(edge - 1.5)!;
+    const b = walkExtent(edge - 0.3)!;
+    expect(a.lo).toBeCloseTo(b.lo, 1);
+    expect(a.hi).toBeCloseTo(b.hi, 1);
+    // Its inner edge is the gravel's own edge, so the carriageway stays one width.
+    expect(b.hi - b.lo).toBeGreaterThan(1.5);
   });
 });
 

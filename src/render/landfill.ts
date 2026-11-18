@@ -315,9 +315,17 @@ export class LandfillRenderer {
   private readonly roadAt: RoadSampler;
 
   private readonly tintMaterial: THREE.MeshBasicMaterial;
-  private readonly pileMaterial: THREE.MeshLambertMaterial;
-  private readonly officeMaterial: THREE.MeshLambertMaterial;
   private readonly nightFactorUniform = uniform(0);
+  /** The heaped waste carries the night tint like the ground it lies on. */
+  private readonly pileMaterial = nightBodyMaterial(this.nightFactorUniform, {
+    vertexColors: true,
+    flatShading: true,
+  });
+  /** Yard pad, gatehouse and light pole carry the same tint. */
+  private readonly officeMaterial = nightBodyMaterial(this.nightFactorUniform, {
+    vertexColors: true,
+    flatShading: true,
+  });
   /** The bay paint carries the same night tint as the pavement it lies on. */
   private readonly markMaterial = nightBodyMaterial(this.nightFactorUniform, {
     vertexColors: true,
@@ -356,8 +364,6 @@ export class LandfillRenderer {
     });
     this.tintMaterial.color.setHex(TINT_COLOR);
 
-    this.pileMaterial = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
-    this.officeMaterial = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
     this.lampMaterial = new THREE.MeshBasicMaterial({ vertexColors: true });
 
     this.pileMesh = new THREE.Mesh(new THREE.BufferGeometry(), this.pileMaterial);
@@ -446,6 +452,15 @@ export class LandfillRenderer {
   /** Current shared pile height in meters (landfillFill * LANDFILL_MAX_PILE_METERS). */
   pileHeight(): number {
     return this.fill * LANDFILL_MAX_PILE_METERS;
+  }
+
+  /** Every landfill tile, the office tile included, for keeping scatter off the fill. */
+  memberTilePoints(): TilePoint[] {
+    const out: TilePoint[] = [];
+    for (let z = 0; z < MAP_SIZE; z++) {
+      for (let x = 0; x < MAP_SIZE; x++) if (this.memberAt(x, z) !== 0) out.push({ x, z });
+    }
+    return out;
   }
 
   /** The entrance/office tile of each street-connected landfill area, in area order. */

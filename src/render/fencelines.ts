@@ -36,8 +36,10 @@ export interface FenceLot {
   /** Whether the lot's own fence stands (a home going up draws none). */
   draws: boolean;
   outline: Pt[];
-  /** The house and drives a neighbour's fence keeps out of, grown by the clearance. */
+  /** The house, its roof and drives a neighbour's fence keeps out of, grown by the clearance. */
   blocks: Pt[][];
+  /** The house and its roof as they stand, which no fence of the lot itself may cross either. */
+  own: Pt[][];
   /** The planned runs, in the lot's frame. */
   runs: readonly FenceRun[];
   toWorld: (u: number, v: number) => Pt;
@@ -57,9 +59,11 @@ function corners(toWorld: (u: number, v: number) => Pt, r: LotRect, grow = 0): P
 export function fenceLotOf(id: number, plan: HouseLotPlan, draws: boolean): FenceLot {
   const toWorld = (u: number, v: number): Pt => lotToWorld(plan.frame, u, v);
   const outline = corners(toWorld, { u0: 0, u1: plan.edgeLenM, v0: 0, v1: plan.lotDepthM });
-  const blocks = [plan.body, ...driveFootprints(plan.drives)].map((r) =>
+  const roof = plan.kit.roof.rect;
+  const blocks = [plan.body, roof, ...driveFootprints(plan.drives)].map((r) =>
     corners(toWorld, r, KEEP_CLEAR_M),
   );
+  const own = [plan.body, roof].map((r) => corners(toWorld, r));
   const xs = outline.map((p) => p.x);
   const zs = outline.map((p) => p.z);
   return {
@@ -67,6 +71,7 @@ export function fenceLotOf(id: number, plan: HouseLotPlan, draws: boolean): Fenc
     draws: draws && plan.yard.fence.length > 0,
     outline,
     blocks,
+    own,
     runs: plan.yard.fence,
     toWorld,
     bounds: { x0: Math.min(...xs), z0: Math.min(...zs), x1: Math.max(...xs), z1: Math.max(...zs) },
@@ -169,6 +174,10 @@ export function trimFence(
     const own = insideConvex(p, d, len, lot.outline);
     if (!own) continue;
     cuts.push([-1, own[0]], [own[1], len + 1]);
+    for (const house of lot.own) {
+      const hit = insideConvex(p, d, len, house);
+      if (hit) cuts.push(hit);
+    }
     for (let t = ROAD_STEP_M / 2; t < len; t += ROAD_STEP_M) {
       const s = at(t);
       if (roadAt(s.x, s.z)) cuts.push([t - ROAD_STEP_M / 2, t + ROAD_STEP_M / 2]);

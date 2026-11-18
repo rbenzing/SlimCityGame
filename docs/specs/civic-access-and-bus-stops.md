@@ -91,7 +91,7 @@ On a street with a footway the whole stop stands at the outer edge of the footwa
 
 The pole stands at the pad's road-side edge at its leading end in the road's flow direction. The shelter stands along the back of the pad facing the road, and the bin at the pad's trailing end.
 
-On a street with no footway, a dirt or gravel road or a lane without kerbs, the stop stands back from the travelled way: its pole 3.7 m out, the unkerbed set-back every roadside post takes, held inside the tile. The pad, shelter and bin stand behind it the same way, and nothing of a shelter is over the road. Set at the kerb reserve instead, a shelter's roof hung over gravel. A sign standing in grass is the one thing a transit agency will not build.
+On a street with no footway, a dirt or gravel road or a lane without kerbs, the stop stands back from the travelled way: its pole 3.7 m out, the unkerbed set-back every roadside post takes, held inside the tile. The shelter and bin stand behind it the same way, and nothing of a shelter is over the road. Set at the kerb reserve instead, a shelter's roof hung over gravel. The pad reaches from the travelled way's edge back past the pole: a boarding area adjoins the roadway and joins the street (ADA 810.2.2, 810.2.3), at least 2.44 m deep from the road's edge and 1.52 m along it. A pad that is an island in grass is the one thing a transit agency will not build.
 
 A shelter opens to the road on every side of every street: its facing comes from which kerb the stop is on. Seen from behind, on the far side of a street, its glazed back is what shows.
 

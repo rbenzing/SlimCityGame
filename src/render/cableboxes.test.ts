@@ -2,7 +2,8 @@ import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
 import { MIN_INSTANCE_CAPACITY } from './groundquad';
 import { PowerLineRenderer } from './powerlines';
-import { CableOverlayRenderer, cableStrips, placedCableStrip } from './cables';
+import { CABLE_STRIP_WIDTH_M, CableOverlayRenderer, cableQuads, placedCableStrip } from './cables';
+import type { CablePlace } from './cables';
 import { PIPE_STRIP_OFFSET_M, PIPE_STRIP_WIDTH_M, pipeStrips } from './pipes';
 import { carriagewayHalfWidthOf, kerbWidthOf, presetProfileForTier } from '../shared/roadprofile';
 import { RoadTier } from '../shared/types';
@@ -202,8 +203,72 @@ describe('the cable underground', () => {
     }
   });
 
-  it('joins a straight run in one strip, never a run of cross ticks', () => {
-    expect(cableStrips({ east: true, west: true, south: false, north: false })).toHaveLength(3);
-    expect(cableStrips({ east: false, west: false, south: false, north: false })).toHaveLength(2);
+  describe('one unbroken run', () => {
+    const half = CABLE_STRIP_WIDTH_M / 2;
+    type Quad = readonly [number, number, number, number];
+    /** Whether two rectangles touch or overlap. */
+    const touch = (a: Quad, b: Quad): boolean =>
+      a[0] <= b[2] + 1e-6 && b[0] <= a[2] + 1e-6 && a[1] <= b[3] + 1e-6 && b[1] <= a[3] + 1e-6;
+    /** Whether every quad is reachable from the first through touching quads. */
+    const connected = (quads: readonly Quad[]): boolean => {
+      const seen = new Set<number>([0]);
+      const queue = [0];
+      while (queue.length > 0) {
+        const i = queue.pop()!;
+        quads.forEach((q, j) => {
+          if (!seen.has(j) && touch(quads[i]!, q)) {
+            seen.add(j);
+            queue.push(j);
+          }
+        });
+      }
+      return seen.size === quads.length;
+    };
+    const row = (x0: number, x1: number, z: number): { x: number; z: number }[] =>
+      Array.from({ length: x1 - x0 + 1 }, (_, i) => ({ x: x0 + i, z }));
+
+    it('joins a street run to the open-ground tiles either side though they lie on the centre line', () => {
+      const cables = row(3, 9, 5);
+      const placed = (x: number): CablePlace | null =>
+        x >= 5 && x <= 7 ? { alongX: true, offset: 7 } : null;
+      const quads = cableQuads(cables, placed, []);
+      expect(connected(quads)).toBe(true);
+    });
+
+    it('joins two street tiles whose strips lie at different offsets', () => {
+      const cables = row(3, 6, 5);
+      const placed = (x: number): CablePlace => ({ alongX: true, offset: x < 5 ? 7 : -7 });
+      expect(connected(cableQuads(cables, placed, []))).toBe(true);
+    });
+
+    it('runs a cable to the foot of a riser that stands beyond its end', () => {
+      const cables = row(5, 8, 5);
+      const placed = (): CablePlace => ({ alongX: true, offset: 6.4 });
+      // The riser stands on the tile before the run, further from the street's middle.
+      const foot = { x: 4 * 20 + 10 + 3, z: 5 * 20 + 10 + 8.5 };
+      const quads = cableQuads(cables, placed, [foot]);
+      expect(connected(quads)).toBe(true);
+      const reachesFoot = quads.some(
+        (q) =>
+          foot.x >= q[0] - half &&
+          foot.x <= q[2] + half &&
+          foot.z >= q[1] - half &&
+          foot.z <= q[3] + half,
+      );
+      expect(reachesFoot).toBe(true);
+    });
+
+    it('leaves a foot alone that stands far from any cable', () => {
+      const cables = row(5, 6, 5);
+      const quads = cableQuads(cables, () => null, [{ x: 900, z: 900 }]);
+      expect(quads.every((q) => q[0] < 300)).toBe(true);
+    });
+  });
+
+  it('draws a lone tile as a hub and a straight run as a hub and its arms', () => {
+    expect(cableQuads([{ x: 5, z: 5 }], () => null, [])).toHaveLength(2);
+    const run = [4, 5, 6].map((x) => ({ x, z: 5 }));
+    // Ends have a hub and one arm each, the middle a hub and two arms.
+    expect(cableQuads(run, () => null, [])).toHaveLength(2 + 3 + 2);
   });
 });

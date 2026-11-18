@@ -21,6 +21,8 @@
  * Cheap instanced geometry, not per-pixel lighting.
  */
 import * as THREE from 'three';
+import { uniform } from 'three/tsl';
+import { nightBodyMaterial } from './nightlook';
 import { RoadFlow, RoadTier } from '../shared/types';
 import { RING_OUTER_RADIUS_M, ringCentre, type RoundaboutBlock } from '../shared/roundabout';
 import {
@@ -873,7 +875,8 @@ export class LampRenderer {
     POLE_HEIGHT,
     POLE_RADIAL_SEGMENTS,
   );
-  private readonly poleMaterial = new THREE.MeshLambertMaterial({ color: POLE_COLOR });
+  private readonly nightFactorUniform = uniform(0);
+  private readonly poleMaterial = nightBodyMaterial(this.nightFactorUniform, { color: POLE_COLOR });
 
   /** Curved/angled cantilever bracket (neck + reach), mount at local origin. */
   private readonly armGeometry = buildArmGeometry();
@@ -1003,6 +1006,11 @@ export class LampRenderer {
     armMesh.instanceMatrix.needsUpdate = true;
     housingMesh.instanceMatrix.needsUpdate = true;
     lensMesh.instanceMatrix.needsUpdate = true;
+  }
+
+  /** 0 (day) .. 1 (night): the poles and arms take the night tint; the heads stay lit. */
+  setNightFactor(nightFactor: number): void {
+    this.nightFactorUniform.value = Math.min(1, Math.max(0, nightFactor));
   }
 
   /**

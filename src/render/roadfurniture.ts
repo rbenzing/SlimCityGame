@@ -10,6 +10,8 @@
  * exactly as the street-lamp placer does.
  */
 import * as THREE from 'three';
+import { uniform } from 'three/tsl';
+import { nightBodyMaterial } from './nightlook';
 import {
   corridorHalfOf,
   flowDirection,
@@ -2577,18 +2579,26 @@ export class RoadFurnitureRenderer {
   private readonly scene: THREE.Scene;
   private readonly heightAt: (x: number, z: number) => number;
 
+  private readonly nightFactorUniform = uniform(0);
+
   private readonly manholeGeometry = buildManholeGeometry();
-  private readonly manholeMaterial = new THREE.MeshLambertMaterial({ vertexColors: true });
+  private readonly manholeMaterial = nightBodyMaterial(this.nightFactorUniform, {
+    vertexColors: true,
+  });
 
   private readonly boxGeometry = buildBoxGeometry();
   private readonly pedestalGeometry = buildPedestalGeometry();
-  private readonly boxMaterial = new THREE.MeshLambertMaterial({ vertexColors: true });
+  private readonly boxMaterial = nightBodyMaterial(this.nightFactorUniform, { vertexColors: true });
 
   private readonly meterGeometry = buildMeterGeometry();
-  private readonly meterMaterial = new THREE.MeshLambertMaterial({ vertexColors: true });
+  private readonly meterMaterial = nightBodyMaterial(this.nightFactorUniform, {
+    vertexColors: true,
+  });
 
   private readonly signGeometries = buildSignGeometries();
-  private readonly signMaterial = new THREE.MeshLambertMaterial({ vertexColors: true });
+  private readonly signMaterial = nightBodyMaterial(this.nightFactorUniform, {
+    vertexColors: true,
+  });
   /** The signal's mast and arm, apart from its head so each is judged for a shadow on its own size. */
   private readonly signalFrameGeometry = buildSignalFrame();
   private readonly signalFrameLayer: KeptInstances;
@@ -2624,7 +2634,9 @@ export class RoadFurnitureRenderer {
     TRAM_POLE_ARM_THICKNESS_M,
     TRAM_POLE_ARM_THICKNESS_M,
   ).translate(TRAM_POLE_ARM_LENGTH_M / 2, TRAM_POLE_ARM_HEIGHT_M, 0);
-  private readonly tramPoleMaterial = new THREE.MeshLambertMaterial({ color: TRAM_POLE_COLOR });
+  private readonly tramPoleMaterial = nightBodyMaterial(this.nightFactorUniform, {
+    color: TRAM_POLE_COLOR,
+  });
   private readonly tramPoleLayer: KeptInstances;
   private readonly tramArmLayer: KeptInstances;
   private tramPoles: readonly TramPoleStand[] = [];
@@ -3023,6 +3035,11 @@ export class RoadFurnitureRenderer {
     const stretch = p.span === undefined ? 1 : p.span / gantryModelReach();
     _matrix.compose(_position, _quat, _stretch.set(stretch, 1, 1));
     mesh.setMatrixAt(slot, _matrix);
+  }
+
+  /** 0 (day) .. 1 (night): how far the furniture's colour is carried toward the night tint; signal lamps stay lit. */
+  setNightFactor(nightFactor: number): void {
+    this.nightFactorUniform.value = Math.min(1, Math.max(0, nightFactor));
   }
 
   /** Removes every layer from the scene and frees the shared geometries/materials. */

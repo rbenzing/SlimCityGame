@@ -11,6 +11,7 @@ import {
   crosswalkBarCentres,
   isAvenueMedianEligible,
   hasMedianTree,
+  MEDIAN_TREE_MIN_STRIP_M,
   isArrowTile,
   ARROW_PERIOD_TILES,
   DASH_PAINT_LENGTH_M,
@@ -3280,9 +3281,20 @@ describe('RoadMeshRenderer', () => {
     }
   });
 
+  // The preset avenue's median (1.2 m) is too narrow to plant; these trees stand in a 1.8 m one.
+  const preset = presetProfileForTier(RoadTier.Avenue);
+  const plantableAvenue: RoadProfile = {
+    ...preset,
+    pieces: preset.pieces.map((p) =>
+      p.kind === 'median' ? { ...p, width: MEDIAN_TREE_MIN_STRIP_M } : p,
+    ),
+  };
+  const plantableLookup = (id: number): RoadProfile | null =>
+    id === RoadTier.Avenue ? plantableAvenue : null;
+
   it('places median-tree instances for eligible, hash-selected avenue tiles and none for the rest', () => {
     const scene = new THREE.Scene();
-    const renderer = new RoadMeshRenderer(scene, flatHeightAt);
+    const renderer = new RoadMeshRenderer(scene, flatHeightAt, plantableLookup);
     const deltas: RoadTileDelta[] = [];
     for (let z = 0; z < 20; z++) deltas.push(makeDelta(0, z, RoadTier.Avenue, N | S));
     renderer.apply(deltas);
@@ -3317,6 +3329,44 @@ describe('RoadMeshRenderer', () => {
     expect(renderer.medianTreeCount()).toBe(0);
   });
 
+  it('plants no tree in the preset avenue’s 1.2 m median, and trees a 1.8 m one', () => {
+    const preset = presetProfileForTier(RoadTier.Avenue);
+    const withMedian = (width: number): RoadProfile => ({
+      ...preset,
+      pieces: preset.pieces.map((p) => (p.kind === 'median' ? { ...p, width } : p)),
+    });
+    expect(preset.pieces.find((p) => p.kind === 'median')?.width).toBeCloseTo(1.2, 6);
+    const profiles: Record<number, RoadProfile> = {
+      41: preset,
+      42: withMedian(MEDIAN_TREE_MIN_STRIP_M),
+    };
+    const countFor = (id: number): number => {
+      const renderer = new RoadMeshRenderer(
+        new THREE.Scene(),
+        flatHeightAt,
+        (p) => profiles[p] ?? null,
+      );
+      const deltas: RoadTileDelta[] = [];
+      for (let z = 0; z < 20; z++)
+        deltas.push({ ...makeDelta(0, z, RoadTier.Avenue, N | S), profile: id });
+      renderer.apply(deltas);
+      return renderer.medianTreeCount();
+    };
+    expect(countFor(41)).toBe(0);
+    expect(countFor(42)).toBeGreaterThan(0);
+  });
+
+  it('plants no median tree on a deck, a ramp or a bridge', () => {
+    const renderer = new RoadMeshRenderer(new THREE.Scene(), flatHeightAt);
+    const deltas: RoadTileDelta[] = [];
+    for (let z = 0; z < 20; z++) {
+      deltas.push({ ...makeDelta(0, z, RoadTier.Avenue, N | S), elevation: z === 0 ? 0 : 6 });
+    }
+    renderer.apply(deltas);
+    expect(renderer.medianTreeCount()).toBeLessThanOrEqual(1);
+    expect(renderer.medianTreeCount()).toBe(hasMedianTree(0, 0) ? 1 : 0);
+  });
+
   it('removing every avenue tile drops the median-tree mesh back to zero', () => {
     const scene = new THREE.Scene();
     const renderer = new RoadMeshRenderer(scene, flatHeightAt);
@@ -3333,7 +3383,7 @@ describe('RoadMeshRenderer', () => {
 
   it('keeps the same two median-tree meshes across repeated edits and disposes a replaced one', () => {
     const scene = new THREE.Scene();
-    const renderer = new RoadMeshRenderer(scene, flatHeightAt);
+    const renderer = new RoadMeshRenderer(scene, flatHeightAt, plantableLookup);
     const avenue = (from: number, to: number): RoadTileDelta[] => {
       const out: RoadTileDelta[] = [];
       for (let z = from; z < to; z++) out.push(makeDelta(0, z, RoadTier.Avenue, N | S));
@@ -7371,5 +7421,87 @@ describe('a tram street keeps its rails unbroken across the seam where a turn ba
       expect(arriving!.length).toBe(leaving!.length);
       leaving!.forEach((at, i) => expect(Math.abs(at - arriving![i]!)).toBeLessThan(0.05));
     }
+  });
+});
+
+describe('roadTileVertices — one arrow set per tile, edge lines on a cap, bend dash phase', () => {
+  const isWhite = (colors: readonly number[], i: number): boolean =>
+    colors[i]! > 0.9 && colors[i + 1]! > 0.9 && colors[i + 2]! > 0.9;
+
+  /** White paint inside the one-way lanes' arrow zone, a tile's middle third (lane centres at 8.1 and 11.9). */
+  const runArrowPaint = (x: number, z: number, toward: boolean): number => {
+    const { positions, colors } = roadTileVertices(
+      x,
+      z,
+      RoadTier.OneWay,
+      N | S,
+      flatHeightAt,
+      undefined,
+      undefined,
+      undefined,
+      RoadFlow.South,
+      undefined,
+      toward
+        ? {
+            toward: RoadFlow.South,
+            allowed: DEFAULT_ALLOWED,
+            openness: 1,
+            laneAllowed: 0,
+            distance: 0,
+            pocket: false,
+          }
+        : undefined,
+    );
+    let n = 0;
+    for (let i = 0; i < colors.length; i += 3) {
+      const lx = positions[i]! - x * TILE_METERS;
+      const lz = positions[i + 2]! - z * TILE_METERS;
+      if (isWhite(colors, i) && Math.abs(lz - 10) < 2.5 && Math.abs(Math.abs(lx - 10) - 1.9) < 0.7)
+        n++;
+    }
+    return n;
+  };
+
+  it('lays no run arrow on a one-way approach tile, where the junction arrows stand', () => {
+    expect(isArrowTile(3)).toBe(true);
+    expect(runArrowPaint(3, 3, false)).toBeGreaterThan(0);
+    expect(runArrowPaint(3, 3, true)).toBe(0);
+  });
+
+  it('wraps a symmetric road end with its edge lines but stops a motorway pair square at the cap', () => {
+    const farthest = (tier: RoadTier): number => {
+      const { positions, colors } = roadTileVertices(0, 0, tier, N, flatHeightAt);
+      let max = -Infinity;
+      for (let i = 0; i < colors.length; i += 3) {
+        const white = isWhite(colors, i);
+        const yellow =
+          colors[i]! > 0.85 &&
+          colors[i + 1]! > 0.6 &&
+          colors[i + 1]! < 0.85 &&
+          colors[i + 2]! < 0.35;
+        if (white || yellow) max = Math.max(max, positions[i + 2]!);
+      }
+      return max;
+    };
+    expect(farthest(RoadTier.Avenue)).toBeGreaterThan(TILE_METERS);
+    for (const tier of [RoadTier.Highway, RoadTier.Ramp]) {
+      expect(farthest(tier)).toBeLessThan(TILE_METERS);
+    }
+  });
+
+  it('starts a grid turn tile white lane dashes in the phase of the run before it, not on a fresh dash', () => {
+    // Tile (4,4) joined north and east: its arc leaves the north edge at world z=80, 6.8 m into a 12.2 m
+    // pattern, which is a gap, so the lane line holds no paint at the edge.
+    const { positions, colors } = roadTileVertices(4, 4, RoadTier.FourLane, N | E, flatHeightAt);
+    const arcStarts: number[] = [];
+    for (let i = 0; i < colors.length; i += 3) {
+      if (!isWhite(colors, i)) continue;
+      const lx = positions[i]! - 4.5 * TILE_METERS;
+      const lz = positions[i + 2]! - 4.5 * TILE_METERS;
+      const r = Math.hypot(lx - 10, lz + 10);
+      if (r > 4 && r < 8) arcStarts.push(r * Math.atan2(lz + 10, 10 - lx));
+    }
+    expect(arcStarts.length).toBeGreaterThan(0);
+    expect(Math.min(...arcStarts)).toBeGreaterThan(3);
   });
 });

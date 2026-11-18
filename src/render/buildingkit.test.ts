@@ -997,6 +997,28 @@ describe('rooftop units', () => {
   });
 });
 
+describe('a restaurant’s wall and sign band', () => {
+  it('stand on the body’s own wall, the flat band 0.16 m proud and the dark wall 0.1 m, never off it', () => {
+    for (const id of ['com-restaurant-1', 'com-restaurant-2', 'com-restaurant-3']) {
+      const plan = kitOf(byId(id), 0, 'S');
+      const half = plan.baseBox.w / 2;
+      const halfD = plan.baseBox.d / 2;
+      for (const p of plan.placements.filter(
+        (q) => q.part === 'featureWall' || (q.part === 'signageBand' && q.pitch === undefined),
+      )) {
+        const b = placementBounds(p);
+        const gap = Math.min(
+          Math.abs(b.x0 + half),
+          Math.abs(b.x1 - half),
+          Math.abs(b.z0 + halfD),
+          Math.abs(b.z1 - halfD),
+        );
+        expect(gap, `${id} ${p.part}`).toBeLessThanOrEqual(0.2 + 1e-6);
+      }
+    }
+  });
+});
+
 describe('a filling station', () => {
   const station = southern(byId('com-fuel-1'));
 
@@ -1055,6 +1077,28 @@ describe('a filling station', () => {
     expect(topOf(pole!)).toBeCloseTo(6.1 - 1.5, 9);
     expect(LIT_PARTS.has('priceSign')).toBe(true);
     expect(only(station, 'awning')).toHaveLength(1);
+  });
+
+  it('stands every island and dispenser wholly under the canopy slab, and the price pole on no laid ground or drive mouth', () => {
+    for (const id of ['com-fuel-1', 'com-fuel-2', 'com-fuel-3']) {
+      const plan = kitOf(byId(id), 0, 'S');
+      const slab = plan.placements.find((p) => p.part === 'fuelCanopy' && p.size[1] === 0.5)!;
+      const under = placementBounds(slab);
+      for (const p of plan.placements.filter(
+        (q) => q.part === 'fuelIsland' || q.part === 'dispenser',
+      )) {
+        const b = placementBounds(p);
+        expect(
+          b.x0 >= under.x0 && b.x1 <= under.x1 && b.z0 >= under.z0 && b.z1 <= under.z1,
+          `${id} ${p.part}`,
+        ).toBe(true);
+      }
+      const pole = plan.placements.find((p) => p.part === 'signPole')!;
+      const pb = placementBounds(pole);
+      for (const t of [...plan.lot!.taken, plan.lot!.curbCut]) {
+        expect(overlap(pb, t), `${id} pole on laid ground`).toBe(false);
+      }
+    }
   });
 });
 
@@ -1353,11 +1397,15 @@ describe('a restaurant’s drive-through', () => {
         expect(m.color).toBeUndefined();
       }
     }
-    // The sign hangs on the mansard, proud of its run.
+    // The sign lies on the mansard's slope, at its pitch, inside the slab's run: no gap behind it.
     for (const { e, plan } of plans.filter((p) => p.rotation === 0 && p.side === 'S')) {
       if ((e.level ?? 1) >= 2) continue;
       const [band] = only(plan, 'signageBand');
-      expect(placementBounds(band!).z0, e.id).toBeGreaterThan(plan.baseBox.d / 2 + 0.5);
+      const wall = plan.baseBox.d / 2;
+      expect(band!.pitch, e.id).toBeLessThan(0);
+      const b = placementBounds(band!);
+      expect(b.z0, e.id).toBeGreaterThanOrEqual(wall - 1e-6);
+      expect(b.z1, e.id).toBeLessThanOrEqual(wall + 0.85);
     }
   });
 
@@ -2310,7 +2358,7 @@ describe('the apartment kit: where every part stands', () => {
     }
     // The galleries the upper flights start from are longer than the slot; the slot's landings are its width.
     const landings = ofKind(parts, 'landing').filter((l) => l.size[0] === BREEZEWAY_WIDTH_M);
-    const guards = ofKind(parts, 'landingGuard');
+    const guards = ofKind(parts, 'landingGuard').filter((g) => g.size[0] === BREEZEWAY_WIDTH_M);
     expect(landings).toHaveLength(2 * (rows - 1));
     expect(guards).toHaveLength(2 * (rows - 1));
     const floors = landings.map(bottom).sort((a, b) => a - b);

@@ -585,6 +585,25 @@ export function seamOffsets(
   };
   const landing = here.map((_, i) => seamAt(i, new Set([i])));
   keepOrder(here, partner, landing, thereHalf);
+  // Where traffic both ways meets one way, the centre yellow ends and the
+  // one-way's yellow edge begins: neither drifts across the pavement to meet
+  // the other.
+  if (flowChanges(here, there)) {
+    here.forEach((l, i) => {
+      if (l.color === 'yellow') landing[i] = l.at;
+    });
+    // A white line that would now cross a held yellow runs to its own kerb.
+    here.forEach((l, i) => {
+      if (l.color === 'yellow' || thereHalf <= 0) return;
+      const crosses = here.some(
+        (o, j) => o.color === 'yellow' && (o.at - l.at) * (landing[j]! - landing[i]!) < 0,
+      );
+      if (!crosses) return;
+      const kerbLines = there.filter((t) => t.color === 'white' && t.at * l.at > 0);
+      const kerb = kerbLines.reduce((m, t) => (Math.abs(t.at) > Math.abs(m) ? t.at : m), 0);
+      landing[i] = kerb !== 0 ? kerb : Math.sign(l.at) * thereHalf;
+    });
+  }
   return landing;
 }
 
@@ -652,6 +671,18 @@ function carryingPartners(
     partner[k] = matched[i]!;
   });
   return partner;
+}
+
+/** Whether one road has opposing yellows (a centre pair) and the other a lone yellow edge. */
+function flowChanges(a: readonly MarkingLine[], b: readonly MarkingLine[]): boolean {
+  const opposing = (lines: readonly MarkingLine[]): boolean =>
+    lines.some((l) => l.color === 'yellow' && l.at < 0) &&
+    lines.some((l) => l.color === 'yellow' && l.at > 0);
+  const lone = (lines: readonly MarkingLine[]): boolean => {
+    const y = lines.filter((l) => l.color === 'yellow');
+    return y.length === 1 && Math.abs(y[0]!.at) > 0;
+  };
+  return (opposing(a) && lone(b)) || (opposing(b) && lone(a));
 }
 
 /** The line next to line `i` across the road, toward the low offsets or the high, or -1. */

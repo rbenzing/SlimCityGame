@@ -270,6 +270,19 @@ describe('LandfillRenderer office kit', () => {
     expect(vertexCount(officeMarks)).toBeGreaterThan(0); // bay stripes + light glow
   });
 
+  it('lists every landfill tile, the office tile included, so no wild tree stands on the fill or the gatehouse', () => {
+    const scene = new THREE.Scene();
+    const renderer = new LandfillRenderer(scene, flatHeightAt, roadRow0);
+    paintBlock(renderer);
+    const tiles = renderer.memberTilePoints();
+    expect(tiles).toHaveLength(renderer.tileCount());
+    expect(tiles).toContainEqual({ x: 1, z: 1 });
+    expect(tiles).toContainEqual({ x: 2, z: 2 });
+    expect(new Set(tiles.map((t) => `${t.x},${t.z}`)).size).toBe(4);
+    renderer.apply({ landfill: [patch(1, 1, 2, 2, [0, 0, 0, 0])] });
+    expect(renderer.memberTilePoints()).toEqual([]);
+  });
+
   it('paints the bay stripes with the night-tinted body material, and keeps the lamp head glowing', () => {
     const scene = new THREE.Scene();
     const renderer = new LandfillRenderer(scene, flatHeightAt, roadRow0);

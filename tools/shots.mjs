@@ -22,11 +22,11 @@ const FALLBACK_SECONDS = 120;
 /** Last known duration in seconds (the order tools are started in), and a timeout
  * in seconds where a tool needs longer than the default. */
 const KNOWN = {
-  roadclip: { seconds: 900 },
-  deadend: { seconds: 900 },
-  tramway: { seconds: 680 },
-  roadmatrix: { seconds: 613 },
-  playthrough: { seconds: 576 },
+  roadclip: { seconds: 900, timeout: 1400 },
+  deadend: { seconds: 900, timeout: 1400 },
+  tramway: { seconds: 680, timeout: 1000 },
+  roadmatrix: { seconds: 613, timeout: 950 },
+  playthrough: { seconds: 576, timeout: 900 },
   roadconformity: { seconds: 288 },
   curve: { seconds: 287 },
   construction: { seconds: 287 },

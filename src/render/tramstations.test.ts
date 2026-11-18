@@ -10,12 +10,22 @@ import {
   STATION_PLATFORM_LENGTH_M,
   STATION_PLATFORM_WIDTH_M,
   STATION_POST_SPACING_M,
+  STATION_RISER_MAX_M,
   STATION_STAIR_ANGLE,
+  STATION_STAIR_LANDING_M,
+  STATION_STRINGER_M,
+  STATION_TREAD_M,
   STATION_STAIR_WIDTH_M,
   STATION_TOWER_M,
   TramStationRenderer,
 } from './tramstations';
-import { computeGuideway, GUIDEWAY_BEAM_TOP_M, TRAM_FLOOR_ABOVE_BEAM_M } from './guideway';
+import {
+  computeGuideway,
+  GUIDEWAY_BEAM_OFFSET_M,
+  GUIDEWAY_BEAM_TOP_M,
+  TRAM_FLOOR_ABOVE_BEAM_M,
+} from './guideway';
+import { TRAM_CAR_SIZE, TRAM_FLOOR_M } from './railcars';
 import { tileKey } from './roadfurniture';
 import type { FurnitureRoadTile } from './roadfurniture';
 import { markingPlan } from './roadmarkings';
@@ -116,13 +126,16 @@ describe('computeTramStations — a stop mid-run on a full-height guideway', () 
   it('runs a stair down from the low end at 32° to the footway, landing on the tile past the end', () => {
     expect(station.stairs).toHaveLength(2);
     for (const s of station.stairs) {
-      expect(s.head.x).toBeCloseTo(lo, 9);
+      expect(s.head.x).toBeCloseTo(lo - STATION_STAIR_LANDING_M, 9);
       expect(s.head.y).toBeCloseTo(top, 9);
       expect(s.foot.y).toBe(0);
-      expect(s.foot.x).toBeCloseTo(lo - top / Math.tan(STATION_STAIR_ANGLE), 9);
+      expect(s.foot.x).toBeCloseTo(
+        lo - STATION_STAIR_LANDING_M - top / Math.tan(STATION_STAIR_ANGLE),
+        9,
+      );
       expect(s.pitch).toBeCloseTo(STATION_STAIR_ANGLE, 9);
       expect(s.sz).toBeCloseTo(STATION_STAIR_WIDTH_M, 9);
-      expect(s.sx).toBeCloseTo(Math.hypot(lo - s.foot.x, top), 9);
+      expect(s.sx).toBeCloseTo(Math.hypot(s.head.x - s.foot.x, top), 9);
       // Beside the road, never in its lanes.
       expect(Math.abs(s.z - tileToWorld(ROW))).toBeGreaterThan(
         carriagewayHalfWidthOf(reservedProfile),
@@ -165,6 +178,67 @@ describe('computeTramStations — a stop mid-run on a full-height guideway', () 
   it('occupies the stop tile and the landing tile, and is a station on the stop tile only', () => {
     expect([...stopTiles]).toEqual([tileKey(STOP, ROW)]);
     expect([...tiles].sort()).toEqual([tileKey(STOP - 1, ROW), tileKey(STOP, ROW)].sort());
+  });
+});
+
+describe('computeTramStations — the stair is open and stands on the footway', () => {
+  const { stations } = stationsOver(row(0, 14, reserved), [{ x: 7, z: ROW }]);
+  const station = stations[0]!;
+  const top = GUIDEWAY_BEAM_TOP_M + TRAM_FLOOR_ABOVE_BEAM_M;
+  const footway = reservedProfile.pieces[0]!.width;
+
+  it('lands the whole stair width on the footway, between its kerb and its back edge', () => {
+    for (const s of station.stairs) {
+      const side = s.z > centreZ ? 1 : -1;
+      const near = Math.abs(s.z - tileToWorld(ROW)) - STATION_STAIR_WIDTH_M / 2;
+      const kerb = carriagewayHalfWidthOf(reservedProfile);
+      expect(near).toBeGreaterThanOrEqual(kerb - 1e-9);
+      expect(near + STATION_STAIR_WIDTH_M).toBeLessThanOrEqual(kerb + footway + 1e-9);
+      expect(side * (s.z - centreZ)).toBeGreaterThan(0);
+    }
+  });
+
+  it('is two stringers, two rails and treads with no riser over 7 in, no solid block', () => {
+    expect(station.stringers).toHaveLength(8);
+    expect(station.treads.length).toBeGreaterThan(30);
+    const ys = station.treads.filter((t) => t.z === station.treads[0]!.z).map((t) => t.y);
+    const sorted = [...ys].sort((a, b) => a - b);
+    for (let i = 1; i < sorted.length; i++) {
+      expect(sorted[i]! - sorted[i - 1]!).toBeLessThanOrEqual(STATION_RISER_MAX_M + 1e-9);
+    }
+    // The top tread is one riser under the landing; the stringers are narrow.
+    expect(top - (Math.max(...ys) + STATION_TREAD_M / 2)).toBeLessThanOrEqual(
+      STATION_RISER_MAX_M + 1e-9,
+    );
+    for (const t of station.treads) {
+      expect(t.sz).toBeCloseTo(STATION_STAIR_WIDTH_M - 2 * STATION_STRINGER_M, 9);
+    }
+    for (const s of station.stringers) expect(s.sz).toBeLessThanOrEqual(STATION_STRINGER_M);
+  });
+
+  it('carries the platform out to the stair head on a level landing at the platform’s height', () => {
+    for (const s of station.stairs) {
+      const landing = station.landings.find(
+        (l) =>
+          Math.abs(
+            l.x -
+              (s.head.x +
+                ((s.head.x < station.platforms[0]!.lo ? 1 : -1) * STATION_STAIR_LANDING_M) / 2),
+          ) < 1e-6,
+      );
+      expect(landing).toBeDefined();
+      expect(landing!.y + landing!.sy / 2).toBeCloseTo(top, 9);
+    }
+  });
+});
+
+describe('computeTramStations — a tram clears the canopy and the platform edge', () => {
+  it('keeps the car’s roof gear under the canopy and its flank off the platform', () => {
+    const roofGear = TRAM_CAR_SIZE[1] - 0.3 + 0.3 - TRAM_FLOOR_M;
+    expect(roofGear).toBeLessThan(STATION_CANOPY_CLEAR_M);
+    expect(GUIDEWAY_BEAM_OFFSET_M + TRAM_CAR_SIZE[0] / 2).toBeLessThanOrEqual(
+      STATION_PLATFORM_CLEARANCE_M,
+    );
   });
 });
 
@@ -254,16 +328,18 @@ describe('computeTramStations — which end the stair and lift land at', () => {
     expect(hi).toBeCloseTo(tileToWorld(STOP) + STATION_PLATFORM_LENGTH_M / 2, 9);
     expect(station.stairs).toHaveLength(2);
     for (const s of station.stairs) {
-      expect(s.head.x).toBeCloseTo(hi, 9);
-      expect(s.foot.x).toBeCloseTo(hi + run, 9);
+      expect(s.head.x).toBeCloseTo(hi + STATION_STAIR_LANDING_M, 9);
+      expect(s.foot.x).toBeCloseTo(hi + STATION_STAIR_LANDING_M + run, 9);
       expect(s.foot.x).toBeGreaterThan(hi);
       expect(Math.abs(s.pitch)).toBeCloseTo(STATION_STAIR_ANGLE, 9);
-      expect(s.x).toBeCloseTo((hi + s.foot.x) / 2, 9);
+      expect(s.x).toBeCloseTo((s.head.x + s.foot.x) / 2, 9);
     }
     // The tower, its pane and the landing move with it, mirrored at the high end.
     for (const t of station.towers) expect(t.x + STATION_TOWER_M / 2).toBeCloseTo(hi, 9);
     for (const p of station.panes) expect(p.x).toBeCloseTo(hi - STATION_TOWER_M / 2, 9);
-    for (const l of station.landings) expect(l.x).toBeCloseTo(hi - STATION_TOWER_M / 2, 9);
+    for (const l of station.landings.filter((b) => b.sx === STATION_TOWER_M)) {
+      expect(l.x).toBeCloseTo(hi - STATION_TOWER_M / 2, 9);
+    }
     // The landing tile is past the high end, never the junction.
     expect(occupied.has(tileKey(STOP + 1, ROW))).toBe(true);
     expect(occupied.has(tileKey(STOP - 1, ROW))).toBe(false);
@@ -277,8 +353,8 @@ describe('computeTramStations — which end the stair and lift land at', () => {
     const { lo } = station.platforms[0]!;
     expect(lo).toBeCloseTo(STOP * TILE_METERS, 9);
     for (const s of station.stairs) {
-      expect(s.head.x).toBeCloseTo(lo, 9);
-      expect(s.foot.x).toBeCloseTo(lo - run, 9);
+      expect(s.head.x).toBeCloseTo(lo - STATION_STAIR_LANDING_M, 9);
+      expect(s.foot.x).toBeCloseTo(lo - STATION_STAIR_LANDING_M - run, 9);
       expect(s.pitch).toBeCloseTo(STATION_STAIR_ANGLE, 9);
     }
     for (const t of station.towers) expect(t.x - STATION_TOWER_M / 2).toBeCloseTo(lo, 9);
@@ -397,8 +473,8 @@ describe('computeTramStations — a stair never lands across a carriageway', () 
     const { lo, hi } = station.platforms[0]!;
     expect(lo).toBeCloseTo(FIRST * TILE_METERS, 9);
     for (const s of station.stairs) {
-      expect(s.head.x).toBeCloseTo(hi, 9);
-      expect(s.foot.x).toBeCloseTo(hi + run, 9);
+      expect(s.head.x).toBeCloseTo(hi + STATION_STAIR_LANDING_M, 9);
+      expect(s.foot.x).toBeCloseTo(hi + STATION_STAIR_LANDING_M + run, 9);
       // Outside the widest kerb it passes: the stair's inner edge, not its centre.
       expect(Math.abs(s.z - tileToWorld(ROW)) - STATION_STAIR_WIDTH_M / 2).toBeGreaterThanOrEqual(
         half(reservedProfile) - 1e-9,
@@ -427,7 +503,7 @@ describe('computeTramStations — a stair never lands across a carriageway', () 
     const tiles = [...ramped([FIRST - 1]), street(FIRST + 1, ROW - 1), street(FIRST + 1, ROW + 1)];
     const station = stationsOver(tiles, [{ x: FIRST, z: ROW }]).stations[0]!;
     const { lo } = station.platforms[0]!;
-    for (const s of station.stairs) expect(s.head.x).toBeCloseTo(lo, 9);
+    for (const s of station.stairs) expect(s.head.x).toBeCloseTo(lo - STATION_STAIR_LANDING_M, 9);
   });
 });
 
@@ -457,8 +533,8 @@ describe('TramStationRenderer', () => {
     const run = row(0, 14, reserved);
     renderer.rebuild([tramLine([{ x: 7, z: ROW }])], run, computeGuideway(run, flat));
     const meshes = renderer.meshList();
-    // Platforms, canopies, posts, stairs, towers, panes, signs.
-    expect(meshes).toHaveLength(7);
+    // Platforms, canopies, posts, stringers and rails, treads, towers, panes, signs.
+    expect(meshes).toHaveLength(8);
     expect(meshes.every((m) => m instanceof THREE.InstancedMesh)).toBe(true);
     expect(meshes.every((m) => m.userData['underground'] === 'road')).toBe(true);
     expect(renderer.stationCount()).toBe(1);
@@ -467,7 +543,7 @@ describe('TramStationRenderer', () => {
     expect(renderer.tiles().has(tileKey(6, ROW))).toBe(true);
 
     // The sign pool carries the line's colour per instance.
-    const signs = meshes[6]!;
+    const signs = meshes[7]!;
     const c = new THREE.Color();
     signs.getColorAt(0, c);
     expect(c.getHex()).toBe(0x42a5f5);

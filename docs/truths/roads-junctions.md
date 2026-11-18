@@ -113,7 +113,9 @@ Back to [the index](../GROUND-TRUTHS.md).
   road, the pieces that end close over the taper
   and the pieces that carry on keep their width: a lane drop never squeezes
   the lanes that remain. The paint follows the pavement: lines and coloured
-  lanes bend with the edge across a tile and never step at a seam. —
+  lanes bend with the edge across a tile and never step at a seam. Where a
+  two-way road meets a one-way, a yellow line holds its place: it never
+  drifts across the pavement to meet another yellow. —
   [road-model.md](../world-sim/road-model/README.md); `narrowingAhead` in
   `src/shared/approachzone.ts`, `taperedCrossSection` in `src/shared/taper.ts`
 - [R-roads-066] A sign faces the traffic it serves (MUTCD §2A.17 ¶01), and its facing comes

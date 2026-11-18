@@ -27,8 +27,8 @@ export const SUBSTATION_PARTS: readonly SubstationPart[] = [
 export const SUBSTATION_LOT_M = 2 * TILE_METERS;
 const HALF = SUBSTATION_LOT_M / 2;
 /** How far inside the lot's edge the fence stands. */
-const FENCE_INSET_M = 1.5;
-const FENCE = HALF - FENCE_INSET_M;
+export const SUBSTATION_FENCE_INSET_M = 1.5;
+const FENCE = HALF - SUBSTATION_FENCE_INSET_M;
 const FENCE_HEIGHT_M = 2.4;
 const FOOTING_M = 8;
 

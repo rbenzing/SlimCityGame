@@ -45,42 +45,6 @@ const ORTHOGONAL: ReadonlyArray<readonly [number, number]> = [
 ];
 
 /**
- * The strips a cable tile draws, in tile-local metres as (x0, z0, x1, z1): a
- * hub at the centre and an arm out to each edge whose neighbour carries cable.
- * Pure and exported for tests.
- */
-export function cableStrips(joins: {
-  east: boolean;
-  west: boolean;
-  south: boolean;
-  north: boolean;
-}): Array<readonly [number, number, number, number]> {
-  const mid = TILE_METERS / 2;
-  const half = CABLE_STRIP_WIDTH_M / 2;
-  const alongX = (x0: number, x1: number): readonly [number, number, number, number] => [
-    x0,
-    mid - half,
-    x1,
-    mid + half,
-  ];
-  const alongZ = (z0: number, z1: number): readonly [number, number, number, number] => [
-    mid - half,
-    z0,
-    mid + half,
-    z1,
-  ];
-  const out: Array<readonly [number, number, number, number]> = [];
-  const alone = !joins.east && !joins.west && !joins.south && !joins.north;
-  if (alone || joins.east || joins.west) out.push(alongX(mid - HUB_HALF_M, mid + HUB_HALF_M));
-  if (alone || joins.south || joins.north) out.push(alongZ(mid - HUB_HALF_M, mid + HUB_HALF_M));
-  if (joins.east) out.push(alongX(mid, TILE_METERS));
-  if (joins.west) out.push(alongX(0, mid));
-  if (joins.south) out.push(alongZ(mid, TILE_METERS));
-  if (joins.north) out.push(alongZ(0, mid));
-  return out;
-}
-
-/**
  * Where a cable under a street lies across it: `offset` metres from the
  * street's centre line, toward the side its pole line stood (under the footway
  * or the verge), along the street's run (`alongX` true when it runs east-west).
@@ -104,6 +68,137 @@ export function placedCableStrip({
   return alongX
     ? [0, mid + offset - half, TILE_METERS, mid + offset + half]
     : [mid + offset - half, 0, mid + offset + half, TILE_METERS];
+}
+
+type Quad = readonly [number, number, number, number];
+
+/** A foot further than this from every strip belongs to no run here, so no lead is drawn to it, metres. */
+const FOOT_LEAD_REACH_M = TILE_METERS * 1.5;
+
+/** Where a tile's strip meets the edge it shares with a neighbour along `dx, dz`: the offset from the tile's centre line, across that edge. */
+function edgeOffset(place: CablePlace | null, dx: number): number {
+  if (!place) return 0;
+  return place.alongX === (dx !== 0) ? place.offset : 0;
+}
+
+const rectOf = (x0: number, z0: number, x1: number, z1: number): Quad => [
+  Math.min(x0, x1),
+  Math.min(z0, z1),
+  Math.max(x0, x1),
+  Math.max(z0, z1),
+];
+
+/**
+ * Every rectangle of the buried cable in world metres as (x0, z0, x1, z1): a
+ * street's strip along the footway side, a hub and arms on the centre line of
+ * open ground, a jog across wherever two neighbours lie at different offsets
+ * so the run is one unbroken line, and a lead from each foot to the nearest
+ * cable so a riser stands at the end of what it carries. Pure and exported
+ * for tests.
+ */
+export function cableQuads(
+  cables: readonly TilePoint[],
+  placeAt: (x: number, z: number) => CablePlace | null,
+  feet: readonly { x: number; z: number }[],
+): Quad[] {
+  const has = new Set(cables.map((t) => t.x * 100_000 + t.z));
+  const places = new Map<number, CablePlace | null>();
+  const placeOf = (x: number, z: number): CablePlace | null => {
+    const key = x * 100_000 + z;
+    if (!places.has(key)) places.set(key, placeAt(x, z));
+    return places.get(key) ?? null;
+  };
+  const mid = TILE_METERS / 2;
+  const half = CABLE_STRIP_WIDTH_M / 2;
+  const out: Quad[] = [];
+  const add = (x: number, z: number, [x0, z0, x1, z1]: Quad): void => {
+    out.push([
+      x * TILE_METERS + x0,
+      z * TILE_METERS + z0,
+      x * TILE_METERS + x1,
+      z * TILE_METERS + z1,
+    ]);
+  };
+  for (const { x, z } of cables) {
+    const place = placeOf(x, z);
+    const joined = ORTHOGONAL.filter(([dx, dz]) => has.has((x + dx) * 100_000 + (z + dz)));
+    if (place) {
+      add(x, z, placedCableStrip(place));
+      for (const [dx, dz] of joined) {
+        const neighbour = placeOf(x + dx, z + dz);
+        const across = place.alongX === (dx !== 0);
+        if (!across) {
+          // An arm off the run's side to the edge, along the centre line.
+          const edge = dx > 0 || dz > 0 ? TILE_METERS : 0;
+          add(
+            x,
+            z,
+            dx !== 0
+              ? rectOf(mid + place.offset, mid - half, edge, mid + half)
+              : rectOf(mid - half, mid + place.offset, mid + half, edge),
+          );
+          continue;
+        }
+        // Along the run: where the two strips lie at different offsets, a jog
+        // across the shared edge, drawn once by the tile it is east or south of.
+        const there = edgeOffset(neighbour, dx);
+        if ((dx > 0 || dz > 0) && there !== place.offset && neighbour?.alongX === place.alongX) {
+          const lo = mid + Math.min(place.offset, there) - half;
+          const hi = mid + Math.max(place.offset, there) + half;
+          add(
+            x,
+            z,
+            place.alongX
+              ? rectOf(TILE_METERS - half, lo, TILE_METERS + half, hi)
+              : rectOf(lo, TILE_METERS - half, hi, TILE_METERS + half),
+          );
+        }
+      }
+      continue;
+    }
+    // A hub on each axis the tile joins on, both where it stands alone.
+    if (joined.length === 0 || joined.some(([dx]) => dx !== 0)) {
+      add(x, z, rectOf(mid - HUB_HALF_M, mid - half, mid + HUB_HALF_M, mid + half));
+    }
+    if (joined.length === 0 || joined.some(([, dz]) => dz !== 0)) {
+      add(x, z, rectOf(mid - half, mid - HUB_HALF_M, mid + half, mid + HUB_HALF_M));
+    }
+    for (const [dx, dz] of joined) {
+      const lateral = edgeOffset(placeOf(x + dx, z + dz), dx);
+      const edge = dx > 0 || dz > 0 ? TILE_METERS : 0;
+      if (dx !== 0) {
+        add(x, z, rectOf(mid, mid + lateral - half, edge, mid + lateral + half));
+      } else {
+        add(x, z, rectOf(mid + lateral - half, mid, mid + lateral + half, edge));
+      }
+      if (lateral !== 0) {
+        // Across from the centre line to where the neighbour's strip meets the edge.
+        add(
+          x,
+          z,
+          dx !== 0
+            ? rectOf(mid - half, mid, mid + half, mid + lateral)
+            : rectOf(mid, mid - half, mid + lateral, mid + half),
+        );
+      }
+    }
+  }
+  const runs = out.length;
+  for (const f of feet) {
+    let best: { x: number; z: number; d: number } | null = null;
+    for (let i = 0; i < runs; i++) {
+      const [x0, z0, x1, z1] = out[i]!;
+      const px = Math.min(Math.max(f.x, x0), x1);
+      const pz = Math.min(Math.max(f.z, z0), z1);
+      const d = Math.hypot(f.x - px, f.z - pz);
+      if (d <= FOOT_LEAD_REACH_M && (!best || d < best.d)) best = { x: px, z: pz, d };
+    }
+    if (!best || best.d < half) continue;
+    // Out along the run from the foot, then across to the strip's end.
+    out.push(rectOf(f.x, f.z - half, best.x, f.z + half));
+    out.push(rectOf(best.x - half, f.z, best.x + half, best.z));
+  }
+  return out;
 }
 
 export class CableOverlayRenderer {
@@ -136,29 +231,12 @@ export class CableOverlayRenderer {
     feet: readonly { x: number; z: number }[],
     placeAt: (x: number, z: number) => CablePlace | null = () => null,
   ): void {
-    const has = new Set(cables.map((t) => t.x * 100_000 + t.z));
     const positions: number[] = [];
     const colors: number[] = [];
     const cableColor = new THREE.Color(CABLE_RGB);
     const footColor = new THREE.Color(FOOT_RGB);
-    for (const { x, z } of cables) {
-      const [east, west, south, north] = ORTHOGONAL.map(([dx, dz]) =>
-        has.has((x + dx) * 100_000 + (z + dz)),
-      ) as [boolean, boolean, boolean, boolean];
-      const place = placeAt(x, z);
-      const strips = place ? [placedCableStrip(place)] : cableStrips({ east, west, south, north });
-      for (const [x0, z0, x1, z1] of strips) {
-        this.pushQuad(
-          positions,
-          colors,
-          x * TILE_METERS + x0,
-          z * TILE_METERS + z0,
-          x * TILE_METERS + x1,
-          z * TILE_METERS + z1,
-          CABLE_Y_OFFSET,
-          cableColor,
-        );
-      }
+    for (const [x0, z0, x1, z1] of cableQuads(cables, placeAt, feet)) {
+      this.pushQuad(positions, colors, x0, z0, x1, z1, CABLE_Y_OFFSET, cableColor);
     }
     const half = CABLE_FOOT_M / 2;
     for (const f of feet) {
