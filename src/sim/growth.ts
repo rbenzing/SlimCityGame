@@ -16,6 +16,7 @@
 import {
   ROAD_CHECK_RADIUS,
   SEWER_MILESTONE,
+  SMALL_CITY_MILESTONE,
   TICKS_PER_YEAR,
   TILE_METERS,
   inBounds,
@@ -29,6 +30,7 @@ import { kerbCreditAlongFrame } from '../world/kerbcredit';
 import { claimedTiles, frameCorners } from '../shared/lotframe';
 import { holdsLotParkingAt, lotLayoutFor } from '../shared/lotparking';
 import { drawsLotParking, isDenseLotKind } from '../shared/parkingcode';
+import { roomyLotOf } from '../shared/roomylots';
 import { missingSchooling, type EducationRung } from '../shared/schooling';
 import { SoilGrade, isFarmable } from '../shared/soil';
 import type {
@@ -450,11 +452,14 @@ export function spawnCandidates(
  * building, smallest first (ties in catalog order). A level-1 office, hotel,
  * mixed-use block or mid-rise tries its car-park lots first and keeps its own
  * footprint last, where it parks at the kerb: a car park is never a reason
- * for a dense zone to stop growing.
+ * for a dense zone to stop growing. With `roomiest`, a kind that has a roomy lot
+ * is tried from that lot down to its compact one, and any lot larger than the
+ * roomy one comes last.
  */
 export function footprintsOf(
   catalog: readonly BuildingCatalogEntry[],
   entry: BuildingCatalogEntry,
+  roomiest = false,
 ): BuildingCatalogEntry[] {
   const area = (e: BuildingCatalogEntry): number => e.footprint.w * e.footprint.d;
   const lots =
@@ -470,7 +475,20 @@ export function footprintsOf(
         );
   const bySize = lots.sort((a, b) => area(a) - area(b));
   if (entry.level === 1 && isDenseLotKind(entry.kind)) return [...bySize, entry];
-  return [entry, ...bySize].sort((a, b) => area(a) - area(b));
+  const smallestFirst = [entry, ...bySize].sort((a, b) => area(a) - area(b));
+  const roomy = roomiest ? roomyLotOf(entry) : undefined;
+  if (!roomy) return smallestFirst;
+  const within = smallestFirst.filter((e) => area(e) <= roomy.w * roomy.d).reverse();
+  return [...within, ...smallestFirst.filter((e) => area(e) > roomy.w * roomy.d)];
+}
+
+/**
+ * Whether a new shop or works takes the roomiest lot of its kind: below Small
+ * City wherever it stands, from Small City only on land under the best
+ * standing, where it takes the compact lot and parks by its kerb or a garage.
+ */
+export function growsRoomy(milestoneLevel: number, landValue: number): boolean {
+  return milestoneLevel < SMALL_CITY_MILESTONE || landValue < LOT_STANDING_FLOOR.acre;
 }
 
 /** Whether a building may stand at (x, z) turned `rotation` and meet its parking code there. */
@@ -1453,6 +1471,7 @@ export class GrowthSystem {
       // A kind that parks to code stands on the smallest of its footprints
       // whose lot meets its code there, the kerb's stalls along it counted.
       const frontageZone = PLATTED_ZONES.includes(zone) && platReaches(plat, x, z);
+      const roomiest = growsRoomy(milestoneLevel, fieldAt(g, FieldId.LandValue, flat));
       const placements = new Map<
         BuildingCatalogEntry,
         { entry: BuildingCatalogEntry } & Placement
@@ -1462,7 +1481,7 @@ export class GrowthSystem {
         zone,
         this.unlockLevel(milestoneLevel),
         (kind) => {
-          for (const e of footprintsOf(this.catalog, kind)) {
+          for (const e of footprintsOf(this.catalog, kind, roomiest)) {
             const at =
               frontageZone && e.lot === undefined
                 ? frontagePlacement(plat, e, x, z)
@@ -1605,12 +1624,17 @@ export class GrowthSystem {
       return { entry: e, frame: run.frame, tiles };
     };
     const sites = new Map<BuildingCatalogEntry, FramedSite>();
+    const first = parcel.tiles[0]!;
+    const roomiest = growsRoomy(
+      milestoneLevel,
+      fieldAt(g, FieldId.LandValue, tileIndex(first.x, first.z)),
+    );
     const fitting = spawnCandidates(
       this.catalog,
       zone,
       this.unlockLevel(milestoneLevel),
       (kind) => {
-        for (const e of footprintsOf(this.catalog, kind)) {
+        for (const e of footprintsOf(this.catalog, kind, roomiest)) {
           const site = siteFor(e);
           if (site === null) continue;
           sites.set(kind, site);

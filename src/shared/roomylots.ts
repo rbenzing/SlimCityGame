@@ -19,7 +19,7 @@ export const ROOMY_LOT_TILES: Readonly<Partial<Record<BuildingKind, readonly [Lo
     { w: 4, d: 2 },
   ],
   restaurant: [
-    { w: 1, d: 3 },
+    { w: 2, d: 2 },
     { w: 3, d: 2 },
     { w: 6, d: 2 },
   ],
@@ -49,7 +49,7 @@ export const ROOMY_LOT_TILES: Readonly<Partial<Record<BuildingKind, readonly [Lo
     { w: 6, d: 3 },
   ],
   flex: [
-    { w: 2, d: 3 },
+    { w: 4, d: 2 },
     { w: 4, d: 2 },
     { w: 5, d: 3 },
   ],

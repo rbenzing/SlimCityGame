@@ -11,7 +11,6 @@ const catalog = (catalogData as { buildings: BuildingCatalogEntry[] }).buildings
 const ADDED_IDS = [
   'com-low-1-lot1x2',
   'com-low-2-lot4x2',
-  'com-restaurant-1-lot1x3',
   'com-strip-2-lot7x2',
   'com-strip-3-lot9x2',
   'com-market-2-lot7x3',
@@ -25,7 +24,7 @@ const ADDED_IDS = [
   'ind-factory-1-lot3x3',
   'ind-2-lot5x3',
   'ind-factory-3-lot6x3',
-  'ind-flex-1-lot2x3',
+  'ind-flex-1-lot4x2',
   'ind-3-lot5x3',
   'heavy-food-1-lot5x3',
   'heavy-food-2-lot6x3',

@@ -3395,19 +3395,42 @@ describe('a suburban lot meets its parking code, the kerb’s stalls counted', (
     registry = new BuildingRegistry(cat),
     rng: Rng = constantRng(0.99),
     passes = 32,
+    milestone = 1,
   ): BuildingRegistry => {
     const growth = new GrowthSystem(cat, rng, onComLow);
     for (let pass = 0; pass < passes; pass++) {
-      growth.tick(g, registry, wantsShops, 1, pass * 10, UNMETERED_SUPPLY, UNLIMITED_ROOM, kerb);
+      growth.tick(
+        g,
+        registry,
+        wantsShops,
+        milestone,
+        pass * 10,
+        UNMETERED_SUPPLY,
+        UNLIMITED_ROOM,
+        kerb,
+      );
     }
     return registry;
   };
 
-  it('stands a strip on a smaller lot on a street painting parallel parking than on one painting none', () => {
-    const area = (id: string): number => byId(id).footprint.w * byId(id).footprint.d;
+  it('stands a strip on its roomy lot below Small City, with a kerb painting parking or none', () => {
     const grownOn = (profile: RoadProfile | null): string[] => {
       const { g, kerb } = parkedBlock(profile, 12);
       return growOnce(g, kerb, withLots('com-strip-1'))
+        .all()
+        .map((b) => b.catalogId);
+    };
+    for (const grown of [grownOn(null), grownOn(parkedProfile('parallel', 'both'))]) {
+      expect(grown.length).toBeGreaterThan(0);
+      for (const id of grown) expect(id).toBe('com-strip-1-lot5x2');
+    }
+  });
+
+  it('stands a strip on a smaller lot on a street painting parallel parking than on one painting none, from Small City on land of the best standing', () => {
+    const area = (id: string): number => byId(id).footprint.w * byId(id).footprint.d;
+    const grownOn = (profile: RoadProfile | null): string[] => {
+      const { g, kerb } = parkedBlock(profile, 12);
+      return growOnce(g, kerb, withLots('com-strip-1'), undefined, undefined, undefined, 4)
         .all()
         .map((b) => b.catalogId);
     };
