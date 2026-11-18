@@ -293,7 +293,8 @@ Back to [the index](../GROUND-TRUTHS.md).
   `src/render/nightlook.ts`
 - [R-render-047] No wild tree's or shrub's crown reaches over a road tile, a deck, a
   kerb ramp or a dead end's rounded cap, which bulges past its last tile;
-  a tree the street kit plants is the kit's. A median is planted only at
+  a tree the street kit plants is the kit's. None stands on a landfill's
+  tiles, its office's included. A median is planted only at
   grade and only where it is 1.8 m (6 ft) wide or more, so the preset
   avenue's 1.2 m median carries no trees. —
   [street-furniture.md](../specs/street-furniture.md); `clearBeside` and
