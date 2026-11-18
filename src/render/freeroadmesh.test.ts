@@ -349,7 +349,7 @@ describe('freeRoadSoup', () => {
 
   it('rounds a dead end off inside the road’s own length, the way a grid road’s end rounds', () => {
     const g = world();
-    lay(g, { a: at(200, 200), b: at(300, 200) });
+    lay(g, { a: at(200, 200), b: at(400, 200) });
     const kerb = kerbWidthOf(twoLane);
     const pivot = 200 + HALF + kerb;
     const asphalt = surfaceColor(twoLane);
@@ -1240,5 +1240,91 @@ describe('a free road that carries trams', () => {
   it('draws no track on a road whose lanes carry no trams', () => {
     const { soup } = build(base, [[at(100, 200), at(260, 200)]]);
     expect(centroids(soup, TRAM_RAIL_COLOR, TRAM_RAIL_Y_OFFSET)).toEqual([]);
+  });
+
+  const tee: [CmPoint, CmPoint][] = [
+    [at(100, 200), at(200, 200)],
+    [at(200, 200), at(300, 200)],
+    [at(200, 200), at(200, 300)],
+  ];
+  const inBox = (rails: MPoint[]): MPoint[] =>
+    rails.filter((r) => Math.hypot(r.x - 200, r.z - 200) < 5);
+
+  it('carries the rails through a junction of tram roads, straight on and round each turn', () => {
+    const { soup } = build(mixed, tee);
+    const rails = inBox(centroids(soup, TRAM_RAIL_COLOR, TRAM_RAIL_Y_OFFSET));
+    expect(rails.length).toBeGreaterThan(0);
+    // Straight along the main road, and a turn into the side road from each end of it.
+    expect(rails.some((r) => Math.abs(r.z - 200) < 2.5 && Math.abs(r.x - 200) < 1)).toBe(true);
+    expect(rails.some((r) => r.x > 201 && r.z > 202)).toBe(true);
+    expect(rails.some((r) => r.x < 199 && r.z > 202)).toBe(true);
+    expect(inBox(centroids(soup, TRAM_SLAB_COLOR, ROAD_Y_OFFSET + 0.004)).length).toBeGreaterThan(
+      0,
+    );
+  });
+
+  it('lays no track in a junction of roads that carry no trams', () => {
+    const { soup } = build(base, tee);
+    expect(centroids(soup, TRAM_RAIL_COLOR, TRAM_RAIL_Y_OFFSET)).toEqual([]);
+  });
+
+  it('lays no track at grade through a junction of reservations', () => {
+    const { soup } = build(reserved, tee);
+    expect(centroids(soup, TRAM_RAIL_COLOR, TRAM_RAIL_Y_OFFSET)).toEqual([]);
+  });
+});
+
+describe('a free road’s reserved lane symbols', () => {
+  /** A straight free road of a preset tier along z = 200, 100 m to 300 m. */
+  function straight(tier: Tier): RoadSoup {
+    const g = world();
+    lay(g, { tier, a: at(100, 200), b: at(400, 200) });
+    return freeRoadSoup(g.roads!, noCustom, flat);
+  }
+
+  /** The x centre of each run of white marks lying mid-lane in a reserved lane: one per symbol. */
+  function symbolCentres(soup: RoadSoup, tier: Tier, kind: 'bus' | 'bike'): number[] {
+    const mids = markingPlan(presetProfileForTier(tier))
+      .bands.filter((b) => b.kind === kind)
+      .map((b) => (b.from + b.to) / 2);
+    const xs: number[] = [];
+    for (let i = 0; i < soup.positions.length; i += 9) {
+      const p = soup.positions;
+      if (!sameColor(soup.colors.slice(i, i + 3), MARKING_COLOR)) continue;
+      if (Math.abs(p[i + 1]! - MARK_Y_OFFSET) > 1e-6) continue;
+      const z = (p[i + 2]! + p[i + 5]! + p[i + 8]!) / 3 - 200;
+      // Clear of the lane's own edge lines.
+      if (!mids.some((m) => Math.abs(z - m) < 0.9)) continue;
+      xs.push((p[i]! + p[i + 3]! + p[i + 6]!) / 3);
+    }
+    xs.sort((a, b) => a - b);
+    const runs: number[][] = [];
+    for (const x of xs) {
+      const last = runs.at(-1);
+      if (last && x - last.at(-1)! < 3) last.push(x);
+      else runs.push([x]);
+    }
+    return runs.map((r) => (r[0]! + r.at(-1)!) / 2);
+  }
+
+  it.each([
+    [RoadTier.BusLane, 'bus'],
+    [RoadTier.BikeLane, 'bike'],
+  ] as const)('lays a tier %i symbol along each lane at the grid spacing', (tier, kind) => {
+    const centres = symbolCentres(straight(tier), tier, kind);
+    const lanes = markingPlan(presetProfileForTier(tier)).bands.filter((b) => b.kind === kind);
+    expect(lanes.length).toBeGreaterThan(0);
+    // 200 m of road at one symbol every 3 tiles: three or more along it.
+    expect(centres.length).toBeGreaterThanOrEqual(3);
+    const spacing = TILE_METERS * 3;
+    const distinct = centres.filter((c, k) => k === 0 || Math.abs(c - centres[k - 1]!) > 1);
+    for (let k = 1; k < distinct.length; k++) {
+      const gap = distinct[k]! - distinct[k - 1]!;
+      expect(Math.abs(gap - spacing)).toBeLessThan(1);
+    }
+  });
+
+  it('lays no symbol on a road with no reserved lane', () => {
+    expect(symbolCentres(straight(RoadTier.TwoLane), RoadTier.BusLane, 'bus')).toEqual([]);
   });
 });

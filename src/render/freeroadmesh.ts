@@ -27,6 +27,7 @@ import {
   bendIsNoPassing,
   bendRadiusOf,
   carriagewayHalfWidthOf,
+  carriesGuideway,
   hasKerbs,
   isPaved,
   kerbReturnRadiusOf,
@@ -69,8 +70,10 @@ import {
   DASH_GAP_LENGTH_M,
   DASH_PAINT_LENGTH_M,
   DASH_PERIOD_M,
+  LANE_GLYPH_PERIOD_TILES,
   dashSegments,
   joinedRuns,
+  laneGlyphPaint,
   medianHalfWidthOf,
   roadNightTint,
   streetTrackStrips,
@@ -228,6 +231,22 @@ function stations(samples: readonly Sample[], from: number, to: number, flip = f
   return out;
 }
 
+/** Half the length of the longest reserved-lane symbol, the bicycle: hub to wheel's far edge, metres. */
+const LANE_GLYPH_HALF_LENGTH_M = 1.1;
+
+/** The station `s` metres along a run of stations that spans it. */
+function stationAt(st: readonly Station[], s: number): Station {
+  let k = 1;
+  while (k < st.length - 1 && st[k]!.s < s) k++;
+  const p = st[k - 1]!;
+  const q = st[k]!;
+  const f = q.s === p.s ? 0 : Math.min(1, Math.max(0, (s - p.s) / (q.s - p.s)));
+  const nx = p.nx + (q.nx - p.nx) * f;
+  const nz = p.nz + (q.nz - p.nz) * f;
+  const nl = Math.hypot(nx, nz) || 1;
+  return { x: p.x + (q.x - p.x) * f, z: p.z + (q.z - p.z) * f, s, nx: nx / nl, nz: nz / nl };
+}
+
 /** Writes triangles, wound so that a flat one faces up. */
 class Soup implements RoadSoup {
   readonly positions: number[] = [];
@@ -276,6 +295,36 @@ class Soup implements RoadSoup {
           this.vertex(q.x + q.nx * qv, q.z + q.nz * qv, lift),
           this.vertex(q.x + q.nx * qu, q.z + q.nz * qu, lift),
           color,
+        );
+      }
+    }
+  }
+
+  /**
+   * A reserved lane's symbol every LANE_GLYPH_PERIOD_TILES tiles along the
+   * stations, the first a half tile in as on the grid, each standing on the
+   * lane's middle `offset` across the road and square to it.
+   */
+  laneGlyphs(st: readonly Station[], offset: number, kind: 'bus' | 'bike'): void {
+    if (st.length < 2) return;
+    const paint = laneGlyphPaint(kind, offset);
+    const period = LANE_GLYPH_PERIOD_TILES * TILE_METERS;
+    const first = st[0]!.s;
+    const last = st[st.length - 1]!.s;
+    // A symbol keeps its whole length inside the stretch, clear of a junction's edge.
+    const clear = LANE_GLYPH_HALF_LENGTH_M;
+    let s = Math.ceil((first + clear - TILE_METERS / 2) / period) * period + TILE_METERS / 2;
+    for (; s + clear <= last; s += period) {
+      const at = stationAt(st, s);
+      const world = (x: number, z: number): [number, number, number] =>
+        this.vertex(at.x + at.nx * x + at.nz * z, at.z + at.nz * x - at.nx * z, MARK_Y_OFFSET);
+      for (let i = 0; i < paint.positions.length; i += 9) {
+        const p = paint.positions;
+        this.tri(
+          world(p[i]!, p[i + 2]!),
+          world(p[i + 3]!, p[i + 5]!),
+          world(p[i + 6]!, p[i + 8]!),
+          MARKING_COLOR,
         );
       }
     }
@@ -345,6 +394,12 @@ interface Arm {
   /** The edge line on the side a quarter turn toward increasing angle, and on the other side. */
   edgeAhead: MarkingLine | null;
   edgeBehind: MarkingLine | null;
+  /**
+   * The centre of each lane the trams share, a quarter turn toward increasing
+   * angle off the centre line; none where the road carries none, or gives its
+   * trams a reservation above the street.
+   */
+  tram: readonly number[];
   /**
    * Where the junction ends on the road's centre line, and the way the road
    * heads there, away from the node. A curve has already turned by then, and
@@ -422,6 +477,12 @@ function armsAt(net: RoadNet, node: number, lookup: ProfileFor): { arms: Arm[]; 
       angle: Math.atan2(dir.z, dir.x),
       edgeAhead: edges ? edges[high ? 1 : 0] : null,
       edgeBehind: edges ? edges[high ? 0 : 1] : null,
+      tram:
+        isPaved(lay.profile) && !carriesGuideway(lay.profile)
+          ? lay.plan.bands
+              .filter((b) => b.kind === 'tram')
+              .map((b) => ((b.from + b.to) / 2) * (high ? 1 : -1))
+          : [],
       end: centre,
       endDir: dir,
     };
@@ -554,6 +615,60 @@ function drawJunction(
     const p = outline[k]!;
     const q = outline[(k + 1) % outline.length]!;
     soup.tri(hub, soup.vertex(p.x, p.z, lift), soup.vertex(q.x, q.z, lift), color);
+  }
+  drawJunctionTrack(soup, arms);
+}
+
+/** How many pieces a track through a junction is drawn in. */
+const TRACK_STEPS = 16;
+/** A lane on one arm meets the lane on another when they lie this near the same side, metres. */
+const TRACK_LANE_MATCH_M = 0.5;
+
+/**
+ * The centre line of a track from arm `i`'s lane `u` to arm `j`'s lane `w`
+ * through their junction: a cubic leaving one arm square to its end and
+ * arriving square to the other's, so it meets each road's own track.
+ */
+function trackLine(i: Arm, u: number, j: Arm, w: number): MPoint[] {
+  const ni = turn(i.endDir);
+  const nj = turn(j.endDir);
+  const p0 = { x: i.end.x + ni.x * u, z: i.end.z + ni.z * u };
+  const p3 = { x: j.end.x + nj.x * w, z: j.end.z + nj.z * w };
+  const reach = Math.hypot(p3.x - p0.x, p3.z - p0.z) * 0.4;
+  const p1 = { x: p0.x - i.endDir.x * reach, z: p0.z - i.endDir.z * reach };
+  const p2 = { x: p3.x - j.endDir.x * reach, z: p3.z - j.endDir.z * reach };
+  const out: MPoint[] = [];
+  for (let k = 0; k <= TRACK_STEPS; k++) {
+    const t = k / TRACK_STEPS;
+    const v = 1 - t;
+    const [a, b, c, d] = [v * v * v, 3 * v * v * t, 3 * v * t * t, t * t * t];
+    out.push({
+      x: a * p0.x + b * p1.x + c * p2.x + d * p3.x,
+      z: a * p0.z + b * p1.z + c * p2.z + d * p3.z,
+    });
+  }
+  return out;
+}
+
+/**
+ * Street track through a junction of roads that share their lanes with
+ * trams: a track from every such road to every other, each lane onto the lane
+ * on the same side of the way a tram travels, as the grid lays the movements
+ * between a tile's track arms.
+ */
+function drawJunctionTrack(soup: Soup, arms: readonly Arm[]): void {
+  for (let a = 0; a < arms.length; a++) {
+    for (let b = a + 1; b < arms.length; b++) {
+      const i = arms[a]!;
+      const j = arms[b]!;
+      for (const u of i.tram) {
+        // Entering one arm and leaving by the other keeps a tram on the same side of its way.
+        const w = j.tram.find((o) => Math.abs(o + u) < TRACK_LANE_MATCH_M);
+        if (w === undefined) continue;
+        const line = lineStations(trackLine(i, u, j, w));
+        for (const s of streetTrackStrips(0)) soup.ribbon(line, s.from, s.to, s.yOff, s.color);
+      }
+    }
   }
 }
 
@@ -845,10 +960,18 @@ function drawSweep(
 
   if (!isPaved(profile)) return;
   for (const band of plan.bands) {
-    if (band.kind === 'bus')
-      soup.ribbon(st, band.from, band.to, BAND_Y_OFFSET, BUS_LANE_PAINT_COLOR);
-    if (band.kind === 'bike')
-      soup.ribbon(st, band.from, band.to, BAND_Y_OFFSET, BIKE_LANE_PAINT_COLOR);
+    if (band.kind === 'bus' || band.kind === 'bike') {
+      const bus = band.kind === 'bus';
+      soup.ribbon(
+        st,
+        band.from,
+        band.to,
+        BAND_Y_OFFSET,
+        bus ? BUS_LANE_PAINT_COLOR : BIKE_LANE_PAINT_COLOR,
+      );
+      // A grid road's symbols belong to its tiles, which this carries only across a junction.
+      if (!lay.axis) soup.laneGlyphs(st, (band.from + band.to) / 2, band.kind);
+    }
     // Trams share the lane: its track is laid down it, as on the grid. A
     // reservation's trams run on the guideway above it, so it lays none.
     if (band.kind === 'tram' && !reservation) {

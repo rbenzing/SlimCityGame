@@ -1704,6 +1704,24 @@ function emitBicycleGlyph(
 }
 
 /**
+ * A reserved lane's symbol on its own, as the tile renderer lays it: upright
+ * on flat ground with travel along +z and `across` the lane's centre offset
+ * along +x, relative to the symbol's own origin. A road off the grid lays the
+ * same triangles at its own stations.
+ */
+export function laneGlyphPaint(
+  kind: 'bus' | 'bike',
+  across: number,
+): { positions: number[]; colors: number[] } {
+  const positions: number[] = [];
+  const colors: number[] = [];
+  const flatGround = (): number => 0;
+  if (kind === 'bus') emitTransitDiamond(positions, colors, 0, 0, true, across, flatGround);
+  else emitBicycleGlyph(positions, colors, 0, 0, true, across, flatGround);
+  return { positions, colors };
+}
+
+/**
  * Paints the colored transit-lane band(s) + periodic glyph for a Bus Lane or
  * Bike Lane straight run along one travel axis. A band hugs each carriageway
  * edge (bus: the full curbside lane, terracotta; bike: a narrow edge strip,
@@ -5534,7 +5552,7 @@ function corridorIslandHalf(section: RoadProfile): number {
   return TILE_HALF - (Math.abs(medianOffsetOf(section)) - (piece?.width ?? 0) / 2);
 }
 
-export function roadTileVertices(
+function roadTileSurfaces(
   x: number,
   z: number,
   tier: RoadTier,
@@ -7855,6 +7873,116 @@ export function roadTileVertices(
   }
 
   return { positions, colors };
+}
+
+/** The kerb face, a shade darker than the footway it holds up. */
+export const KERB_FACE_COLOR: readonly [number, number, number] = [
+  SIDEWALK_COLOR[0] * 0.8,
+  SIDEWALK_COLOR[1] * 0.8,
+  SIDEWALK_COLOR[2] * 0.8,
+];
+
+/**
+ * Closes the step from the carriageway up to the footway: a vertical face
+ * under every free edge of a footway triangle, from the footway's height down
+ * to the carriageway's. An edge another footway triangle shares is no free
+ * edge, and an edge lying on the tile's own boundary is where the next tile's
+ * footway takes over. Without it the footway floats over open ground and the
+ * terrain shows through the gap at a low angle.
+ */
+function addKerbFaces(
+  positions: number[],
+  colors: number[],
+  tileX: number,
+  tileZ: number,
+  hAt: (x: number, z: number) => number,
+): void {
+  const key = (x: number, z: number): string => `${Math.round(x * 1000)},${Math.round(z * 1000)}`;
+  const isFootway = (i: number): boolean => {
+    for (let k = 0; k < 3; k++) {
+      const v = (i + k) * 3;
+      if (
+        Math.abs(colors[v]! - SIDEWALK_COLOR[0]) > 1e-6 ||
+        Math.abs(colors[v + 1]! - SIDEWALK_COLOR[1]) > 1e-6 ||
+        Math.abs(colors[v + 2]! - SIDEWALK_COLOR[2]) > 1e-6 ||
+        Math.abs(positions[v + 1]! - hAt(positions[v]!, positions[v + 2]!) - CURB_Y_OFFSET) > 1e-6
+      ) {
+        return false;
+      }
+    }
+    return true;
+  };
+  const tris: number[] = [];
+  const edges = new Set<string>();
+  for (let i = 0; i + 2 < positions.length / 3; i += 3) {
+    if (!isFootway(i)) continue;
+    tris.push(i);
+    for (let k = 0; k < 3; k++) {
+      const a = (i + k) * 3;
+      const b = (i + ((k + 1) % 3)) * 3;
+      edges.add(
+        `${key(positions[a]!, positions[a + 2]!)}>${key(positions[b]!, positions[b + 2]!)}`,
+      );
+    }
+  }
+  const x0 = tileX * TILE_METERS;
+  const z0 = tileZ * TILE_METERS;
+  const onBoundary = (ax: number, az: number, bx: number, bz: number): boolean =>
+    [x0, x0 + TILE_METERS].some((e) => Math.abs(ax - e) < 1e-6 && Math.abs(bx - e) < 1e-6) ||
+    [z0, z0 + TILE_METERS].some((e) => Math.abs(az - e) < 1e-6 && Math.abs(bz - e) < 1e-6);
+  for (const i of tris) {
+    for (let k = 0; k < 3; k++) {
+      const a = (i + k) * 3;
+      const b = (i + ((k + 1) % 3)) * 3;
+      const c = (i + ((k + 2) % 3)) * 3;
+      const [ax, az, bx, bz] = [positions[a]!, positions[a + 2]!, positions[b]!, positions[b + 2]!];
+      if (edges.has(`${key(bx, bz)}>${key(ax, az)}`) || onBoundary(ax, az, bx, bz)) continue;
+      const length = Math.hypot(bx - ax, bz - az);
+      if (length < 1e-6) continue;
+      // Outward is the edge's normal away from the triangle's third corner.
+      let nx = -(bz - az) / length;
+      let nz = (bx - ax) / length;
+      if (nx * (positions[c]! - ax) + nz * (positions[c + 2]! - az) > 0) {
+        nx = -nx;
+        nz = -nz;
+      }
+      const foot = (px: number, pz: number): [number, number, number] => [
+        px,
+        hAt(px, pz) + ROAD_Y_OFFSET,
+        pz,
+      ];
+      const corners: Array<[number, number, number]> = [
+        [ax, positions[a + 1]!, az],
+        foot(ax, az),
+        foot(bx, bz),
+        [bx, positions[b + 1]!, bz],
+      ];
+      for (const [p, q, r] of [
+        [corners[0]!, corners[1]!, corners[2]!],
+        [corners[0]!, corners[2]!, corners[3]!],
+      ] as const) {
+        // Wound so the face's front points outward.
+        const facing =
+          ((q[1] - p[1]) * (r[2] - p[2]) - (q[2] - p[2]) * (r[1] - p[1])) * nx +
+          ((q[0] - p[0]) * (r[1] - p[1]) - (q[1] - p[1]) * (r[0] - p[0])) * nz;
+        for (const v of facing >= 0 ? [p, q, r] : [p, r, q]) {
+          pushVertex(positions, colors, v[0], v[1], v[2], KERB_FACE_COLOR);
+        }
+      }
+    }
+  }
+}
+
+/**
+ * One tile's road surface as triangles: its carriageway, footways, markings
+ * and everything laid on them, and the kerb face that closes each footway's edge.
+ */
+export function roadTileVertices(
+  ...args: Parameters<typeof roadTileSurfaces>
+): ReturnType<typeof roadTileSurfaces> {
+  const mesh = roadTileSurfaces(...args);
+  addKerbFaces(mesh.positions, mesh.colors, args[0], args[1], args[4]);
+  return mesh;
 }
 
 /**
