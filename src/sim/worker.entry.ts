@@ -175,6 +175,7 @@ import {
   removeRoad,
   roadTileOf,
   settleArms,
+  settleRailArms,
 } from '../world/roads';
 import { RoadNetwork, tramShape } from '../world/roadgraph';
 import { gridRingReader, roundaboutGroundOf } from '../world/roundabouts';
@@ -3557,7 +3558,8 @@ class SimWorld implements WorkerSim {
       holdArmsApart(g, laid, arms.apart);
     } else {
       const drag = new Set([...valid.map((t) => tileIndex(t.x, t.z)), ...crossings.keys()]);
-      settleArms(g, laid, drag, arms.join ?? true);
+      if (isRailTier(tier)) settleRailArms(g, laid, drag, tiles);
+      else settleArms(g, laid, drag, arms.join ?? true);
     }
 
     // The roads passing over go down first, so the masks the ground road

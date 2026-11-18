@@ -356,6 +356,57 @@ export function settleArms(
   }
 }
 
+/**
+ * Decides the arms of the tiles a stroke of track lays, before it lays them.
+ * Track joins track only where the player intersects it: along the stroke, on
+ * an arm that was joined already (a crossing or an overlap), and head-on where
+ * the first or last tile of `stroke` points at track one step beyond it. Any
+ * other arm to track outside the drag is held apart, however the stroke was
+ * drawn. A one-tile stroke joins every track beside it.
+ */
+export function settleRailArms(
+  g: GridState,
+  laid: Iterable<number>,
+  drag: ReadonlySet<number>,
+  stroke: readonly TilePoint[],
+): void {
+  const headOn = new Set<number>();
+  const first = stroke[0];
+  const last = stroke[stroke.length - 1];
+  if (first && last && stroke.length > 1) {
+    const second = stroke[1]!;
+    const before = stroke[stroke.length - 2]!;
+    const ends = [
+      { x: first.x, z: first.z, dx: first.x - second.x, dz: first.z - second.z },
+      { x: last.x, z: last.z, dx: last.x - before.x, dz: last.z - before.z },
+    ];
+    for (const e of ends) {
+      const bx = e.x + e.dx;
+      const bz = e.z + e.dz;
+      if (!inBoundsOf(g.size, bx, bz) || !isRailTier(tierAt(g, bx, bz))) continue;
+      headOn.add(
+        indexOf(g.size, e.x, e.z) * 4 + DIRS.findIndex((d) => d.dx === e.dx && d.dz === e.dz),
+      );
+    }
+  }
+  const single = stroke.length === 1;
+  for (const idx of laid) {
+    const x = idx % g.size;
+    const z = (idx - x) / g.size;
+    DIRS.forEach((d, di) => {
+      if (!inBoundsOf(g.size, x + d.dx, z + d.dz)) return;
+      const next = indexOf(g.size, x + d.dx, z + d.dz);
+      const apart =
+        isRailTier(tierAtIdx(g, next)) &&
+        !single &&
+        !drag.has(next) &&
+        ((g.roadMask[idx] ?? 0) & d.bit) === 0 &&
+        !headOn.has(idx * 4 + di);
+      setArmApart(g, idx, d, apart);
+    });
+  }
+}
+
 /** Holds exactly the arms `apart` names apart on the tiles in `laid`, and joins their others. */
 export function holdArmsApart(
   g: GridState,

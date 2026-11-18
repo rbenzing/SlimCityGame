@@ -11,6 +11,7 @@ import {
   removeRoad,
   roadStep,
   settleArms,
+  settleRailArms,
 } from './roads';
 import { RoadNetwork } from './roadgraph';
 import { createGrid } from './grid';
@@ -68,19 +69,94 @@ describe('a road laid as its own road', () => {
     expect(Array.from(joined.roadSeparate).every((a) => a === 0)).toBe(true);
   });
 
-  it('keeps a track laid beside another a track of its own, and joins it into a ladder otherwise', () => {
-    const track = (join: boolean): GridState => {
+  describe('track', () => {
+    const R = RoadTier.RailTrack;
+    /** Lays a stroke of track as the worker does: rail arms settled by the stroke's order. */
+    function layRail(g: GridState, tiles: TilePoint[]): void {
+      settleRailArms(g, keys(tiles), new Set(keys(tiles)), tiles);
+      applyRoad(g, tiles, R);
+    }
+    const mask = (g: GridState, x: number, z: number): number => g.roadMask[idx(SIZE, x, z)] ?? 0;
+
+    it('stays two plain tracks beside another, never a ladder', () => {
       const g = makeGrid(SIZE);
-      applyRoad(g, row(5, 2, 10), RoadTier.RailTrack);
-      lay(g, row(6, 2, 10), join, RoadTier.RailTrack);
-      return g;
-    };
-    const apart = track(false);
-    expect(masks(apart, row(5, 3, 9))).toEqual(Array<number>(7).fill(2 | 8));
-    expect(masks(apart, row(6, 3, 9))).toEqual(Array<number>(7).fill(2 | 8));
-    // Joined, every tile of the pair is a junction with its neighbour, which is
-    // what draws a ring between two parallel tracks.
-    expect(masks(track(true), row(5, 3, 9))).toEqual(Array<number>(7).fill(2 | 4 | 8));
+      applyRoad(g, row(5, 2, 10), R);
+      layRail(g, row(6, 2, 10));
+      expect(masks(g, row(5, 3, 9))).toEqual(Array<number>(7).fill(2 | 8));
+      expect(masks(g, row(6, 3, 9))).toEqual(Array<number>(7).fill(2 | 8));
+    });
+
+    it('makes a T where a stroke ends head-on into the side of a track', () => {
+      const g = makeGrid(SIZE);
+      applyRoad(g, row(5, 2, 10), R);
+      layRail(g, column(6, 1, 4));
+      expect(mask(g, 6, 4)).toBe(1 | 4);
+      expect(mask(g, 6, 5)).toBe(1 | 2 | 8);
+    });
+
+    it('extends a track where a stroke ends in line with its end', () => {
+      const g = makeGrid(SIZE);
+      applyRoad(g, row(5, 2, 5), R);
+      layRail(g, row(5, 6, 9));
+      expect(mask(g, 5, 5)).toBe(2 | 8);
+      expect(mask(g, 6, 5)).toBe(2 | 8);
+    });
+
+    it('extends a track from a stroke drawn toward it, first tile first', () => {
+      const g = makeGrid(SIZE);
+      applyRoad(g, row(5, 2, 5), R);
+      layRail(g, [...row(5, 6, 9)].reverse());
+      expect(mask(g, 5, 5)).toBe(2 | 8);
+      expect(mask(g, 6, 5)).toBe(2 | 8);
+    });
+
+    it('makes a junction on the tile a stroke crosses', () => {
+      const g = makeGrid(SIZE);
+      applyRoad(g, row(5, 2, 10), R);
+      layRail(g, column(6, 2, 9));
+      expect(mask(g, 6, 5)).toBe(1 | 2 | 4 | 8);
+      expect(mask(g, 5, 5)).toBe(2 | 8);
+      expect(mask(g, 6, 4)).toBe(1 | 4);
+    });
+
+    it('holds apart a stroke that only brushes the side of a track while ending short', () => {
+      const g = makeGrid(SIZE);
+      applyRoad(g, row(5, 2, 10), R);
+      layRail(g, column(6, 1, 3));
+      expect(mask(g, 6, 3)).toBe(1);
+      expect(mask(g, 6, 5)).toBe(2 | 8);
+    });
+
+    it('links both tracks a one-tile stroke sits between', () => {
+      const g = makeGrid(SIZE);
+      applyRoad(g, row(4, 2, 10), R);
+      applyRoad(g, row(6, 2, 10), R);
+      layRail(g, [{ x: 6, z: 5 }]);
+      expect(mask(g, 6, 5)).toBe(1 | 4);
+      expect(mask(g, 6, 4)).toBe(2 | 4 | 8);
+      expect(mask(g, 6, 6)).toBe(1 | 2 | 8);
+    });
+
+    it('puts back exactly what was held apart on undo and redo', () => {
+      const g = makeGrid(SIZE);
+      applyRoad(g, row(5, 2, 10), R);
+      const tiles = row(6, 2, 10);
+      const laid = keys(tiles);
+      const apartBefore = armsApartOn(g, tiles);
+      layRail(g, tiles);
+      const apartAfter = armsApartOn(g, tiles);
+      const masksAfter = masks(g, row(5, 2, 10));
+      expect(apartAfter).toHaveLength(9);
+
+      removeRoad(g, tiles);
+      holdArmsApart(g, laid, apartBefore);
+      expect(Array.from(g.roadSeparate).every((a) => a === 0)).toBe(true);
+
+      holdArmsApart(g, laid, apartAfter);
+      applyRoad(g, tiles, R);
+      expect(armsApartOn(g, tiles)).toEqual(apartAfter);
+      expect(masks(g, row(5, 2, 10))).toEqual(masksAfter);
+    });
   });
 
   it('stays a dead end where it ends a tile short of another road in line with it', () => {
