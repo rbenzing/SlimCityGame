@@ -14,6 +14,8 @@ import type { KerbSurroundings } from '../shared/kerblayout';
 import type { LotLayout } from '../shared/lotlayout';
 import { lotLayoutFor, lotParkingAt } from '../shared/lotparking';
 import { garageFor, type Garage } from '../shared/garage';
+import type { HomeSide, LotGroundsFacts } from '../shared/lotgrounds';
+import { hasPart } from './archetypes';
 import {
   edgeFrameFor,
   edgeFrameOfParcel,
@@ -144,6 +146,24 @@ export function garagePlanAt(
   const edge = findRoadFacingEdge(site.x, site.z, lot.w, lot.d, roadAt);
   if (!edge) return null;
   return { edge, frame: edgeFrameFor(edge.side, site.x, site.z, lot.w, lot.d), garage };
+}
+
+/**
+ * What the grounds plan needs to know of a building beyond its layout: its
+ * kind, whether the kit already stands a pole sign or a refuse enclosure, and
+ * the sides of the lot that abut a residential zone.
+ */
+export function groundsFactsFor(
+  entry: BuildingCatalogEntry,
+  homeSides: readonly HomeSide[] = [],
+): LotGroundsFacts {
+  return {
+    kind: entry.kind,
+    category: entry.category === 'ind' ? 'ind' : 'com',
+    homeSides,
+    kitSign: hasPart(entry, 'pylon') || hasPart(entry, 'signPole') || hasPart(entry, 'priceSign'),
+    kitRefuse: hasPart(entry, 'dumpsterEnclosure'),
+  };
 }
 
 /** A lot point in world metres. */
