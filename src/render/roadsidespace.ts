@@ -128,7 +128,14 @@ export interface StopSite {
   side: 0 | 1;
 }
 
-/** What a place may not be: a drive's tile, a bus stop's span, or a kerb ramp. */
+/** A round patch of ground, world metres, held clear: where a framed home's drive opens on the street. */
+export interface KeepClearDisc {
+  x: number;
+  z: number;
+  r: number;
+}
+
+/** What a place may not be: a drive's tile or mouth, a bus stop's span, or a kerb ramp. */
 export interface KeepClear {
   /** Whether the world point is on a drive, inside a stop's span (widened by `margin` metres along it) or on a kerb ramp. */
   blocks(x: number, z: number, margin?: number): boolean;
@@ -166,8 +173,14 @@ export function keepClearOf(
   axisOf: (tx: number, tz: number) => 'x' | 'z',
   tileKeyOf: (tx: number, tz: number) => number,
   ramps: readonly KerbRamp[] = [],
+  discs: readonly KeepClearDisc[] = [],
 ): KeepClear {
-  if ((!drives || drives.size === 0) && stops.length === 0 && ramps.length === 0) {
+  if (
+    (!drives || drives.size === 0) &&
+    stops.length === 0 &&
+    ramps.length === 0 &&
+    discs.length === 0
+  ) {
     return KEEP_CLEAR_NONE;
   }
   const rampTiles = rampsByTile(ramps);
@@ -192,6 +205,7 @@ export function keepClearOf(
   return {
     onRamp,
     blocks(x, z, margin = 0) {
+      if (discs.some((d) => Math.hypot(d.x - x, d.z - z) <= d.r)) return true;
       const tx = worldToTile(x);
       const tz = worldToTile(z);
       const key = tileKeyOf(tx, tz);

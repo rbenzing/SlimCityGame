@@ -1051,6 +1051,18 @@ export class ClientGridMirror {
     return tiles;
   }
 
+  /** Every tile a road, or a road off the grid, covers. */
+  roadTilePoints(): TilePoint[] {
+    const tiles: TilePoint[] = [];
+    for (let z = 0; z < this.size; z++) {
+      for (let x = 0; x < this.size; x++) {
+        const i = this.idx(x, z);
+        if (this.roadTier[i] !== RoadTier.None || this.roadFootprint[i] !== 0) tiles.push({ x, z });
+      }
+    }
+    return tiles;
+  }
+
   private isOccupied(i: number): boolean {
     return (
       this.roadTier[i] !== RoadTier.None || this.roadFootprint[i] !== 0 || this.buildingId[i] !== 0

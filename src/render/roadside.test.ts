@@ -834,3 +834,23 @@ describe('the shared module is pure and deterministic', () => {
     expect(copy.isFree(9, 9)).toBe(false);
   });
 });
+
+describe('a drive mouth’s keep-out disc', () => {
+  const none = (): 'x' | 'z' => 'x';
+  const clear = keepClearOf(
+    undefined,
+    [],
+    STOP_CLEAR_HALF_M,
+    none,
+    tileKey,
+    [],
+    [{ x: 105, z: 207, r: 2.5 }],
+  );
+
+  it('blocks a place within its radius, edge included, and nothing beyond', () => {
+    expect(clear.blocks(105, 207)).toBe(true);
+    expect(clear.blocks(107.5, 207)).toBe(true);
+    expect(clear.blocks(107.6, 207)).toBe(false);
+    expect(clear.blocks(105, 209.6)).toBe(false);
+  });
+});
