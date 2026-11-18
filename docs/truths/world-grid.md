@@ -219,3 +219,8 @@ Back to [the index](../GROUND-TRUTHS.md).
   under the 7 to 1 surface from the runway's primary surface; the tower
   alone rises above it. — [airport-facilities.md](../specs/airport-facilities.md);
   `src/shared/airportlayout.ts`
+- [R-world-054] A vehicle whose road is removed leaves the world on the next tick: none
+  drives or stands on a tile with no road. Vehicles kept the route baked at
+  spawn and drove on over bare grass. —
+  [traffic](../engineering/systems/traffic/the-model.md);
+  `dropVehiclesOffRoad` in `src/sim/traffic.ts`

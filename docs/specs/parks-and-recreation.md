@@ -31,7 +31,8 @@
 | Sports Ground | 6×4, 2.4 ac, capacity 120, `range` 58, 1,200 m, ¢1,400 / ¢120, strength 50, bonus 40, 5% premium, M2, 3.2 m pavilion, level | | same |
 | Walk radiated by coverage | 2 | tiles | [range](../sources/parks-and-recreation.md#walking-distance-converted-to-range) |
 | Walking speed | 1.33 (1,200 m in 15 min) | m/s | same |
-| Pitch | 105 × 68, 3 m run-off, 111 × 74 | m | [FIFA, The FA](../sources/parks-and-recreation.md#sizes-from-ground-rather-than-floor-area) |
+| Pitch | 105 × 64, 3 m run-off, 111 × 70; 64 is the least width of the laws' 64 to 75 | m | [FIFA, The FA](../sources/parks-and-recreation.md#sizes-from-ground-rather-than-floor-area) |
+| Walk behind the stand; pavilion from a path | 3; 1.5 | m | dials |
 | Pavilion | 36 occupants × 4.6 m², 0.65 efficiency, 255 m², 51 × 5 m along the street side, behind the run-off | | same |
 | Run-off beyond touchlines and goal lines | 3 (10 ft, the US high-school rule book's recommendation) | m | same |
 | Street-side setback of furnishings | 1 | m | dial |
@@ -71,7 +72,7 @@
 
 - The pocket park's 0.2 kL water draw is a dial.
 - The sports ground's stand (`sportsStand`: four rows of 0.9 m tread and 0.4 m rise under a roof on posts) and a park's shelter (`parkShelter`: a gable on six posts over two tables) take the game's own row count and heights. The district park keeps `pavilionBlock` and has no furniture beyond its pond and paths.
-- The sports ground's rear run-off reaches its back lot line: 3 m all round and a 1 m street setback do not both fit four tiles.
+- The pitch is 64 m wide, not the 68 m most grounds use: 68 m left the stand 1 m from the lot's edge, its roof over the street's footway.
 - A pond follows a slope's ground, so its water tilts with it.
 
 ## Why the rules are what they are

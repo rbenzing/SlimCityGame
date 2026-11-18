@@ -283,4 +283,15 @@ Back to [the index](../GROUND-TRUTHS.md).
   carrying on, or at the street's edge. Rounding never changes a stall count
   (the player's rule: rounded, not sharp). —
   [paved-corners.md](../specs/paved-corners.md); `src/shared/roundedoutline.ts`
+- [R-render-046] A surface takes the night tint through the shared night factor node,
+  never by changing a shared material's colour: roads, free roads and
+  bridge decks included. One road chunk kept its day colour at night when
+  the material's colour was set each frame. —
+  [lighting.md](../visual-render/lighting.md); `nightBodyMaterial` in
+  `src/render/nightlook.ts`
+- [R-render-047] No wild tree's or shrub's crown reaches over a road tile, a deck, a
+  kerb ramp or a dead end's rounded cap, which bulges past its last tile;
+  a tree the street kit plants is the kit's. —
+  [street-furniture.md](../specs/street-furniture.md); `clearBeside` and
+  `clearEndCaps` in `src/render/trees.ts`
 

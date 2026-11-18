@@ -61,6 +61,15 @@ a colour that stands out from the walk, yellow here (PROWAG R305.1.3,
 R305.1.4, R305.2.1). The pad is the mark at each end of a crossing: where
 the walk stops and the road starts.
 
+The tangent point is the corner's drawn radius from the crossing road's
+kerb line: the class's kerb return, cut to the room the tile leaves beside
+each road. Past a wide road it lies in the arm's own tile, so the ramp is
+cut into that tile's footway. No lamp, sign, mast, pole or tree stands
+within 0.3 m of a ramp; a signal's mast slides along the kerb to clear one.
+A crossing over a corridor's seam or at a ramp's node keeps the box's edge,
+and a ramp is laid only where the crossing meets the arm's own kerb, so a
+median's opening has none.
+
 The stop line stays 1.2 m (4 ft, §3B.19) before the crossing, so it moves
 back with it. A crossing is not as deep as the strip of
 tile the footway sits in: the strip is the room available and runs opposite to
