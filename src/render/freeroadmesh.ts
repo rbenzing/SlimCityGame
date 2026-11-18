@@ -31,6 +31,7 @@ import {
   hasKerbs,
   isPaved,
   kerbReturnRadiusOf,
+  kerblessCornerRadiusOf,
   kerbWidthOf,
   presetProfileForTier,
   worldOrderedProfile,
@@ -386,6 +387,8 @@ interface Arm {
   /** Width of the footway or kerb strip outside the carriageway, metres. */
   kerb: number;
   kerbReturn: number;
+  /** The radius a road with no kerb turns its edge on where it meets another such road; 0 for any other. */
+  kerbless: number;
   /** How far along it the junction ends, metres. */
   setback: number;
   /** The most setback it has room for. */
@@ -449,7 +452,12 @@ function setbackBetween(i: Arm, j: Arm): number {
   const sin = Math.sqrt(Math.max(0, 1 - cos * cos));
   if (sin < STRAIGHT_ON_SIN) return 0;
   const meet = (j.half + i.half * cos) / sin;
-  return Math.max(0, meet + (i.kerbReturn * (1 + cos)) / sin);
+  return Math.max(0, meet + (cornerRadiusBetween(i, j) * (1 + cos)) / sin);
+}
+
+/** The radius the corner between two arms turns on: the pair's own where neither has a kerb, else the first arm's kerb return. */
+function cornerRadiusBetween(i: Arm, j: Arm): number {
+  return i.kerbless > 0 && j.kerbless > 0 ? Math.min(i.kerbless, j.kerbless) : i.kerbReturn;
 }
 
 /** The roads leaving a node, in order of angle, with their setbacks solved. */
@@ -472,6 +480,7 @@ function armsAt(net: RoadNet, node: number, lookup: ProfileFor): { arms: Arm[]; 
       half: carriagewayHalfWidthOf(lay.profile),
       kerb: kerbWidthOf(lay.profile),
       kerbReturn: hasKerbs(lay.profile) ? kerbReturnRadiusOf(lay.profile) : 0,
+      kerbless: kerblessCornerRadiusOf(lay.profile),
       setback: 0,
       maxSetback: isFreeSegment(net, seg) ? length * MAX_SETBACK_SHARE : GRID_ARM_REACH,
       angle: Math.atan2(dir.z, dir.x),
@@ -515,6 +524,8 @@ function crossing(p: MPoint, u: MPoint, q: MPoint, v: MPoint): MPoint | null {
   return { x: p.x + u.x * t, z: p.z + u.z * t };
 }
 
+const dotDirs = (i: Arm, j: Arm): number => i.endDir.x * j.endDir.x + i.endDir.z * j.endDir.z;
+
 /**
  * The line a kerb takes from arm `i` round to the next arm `j` counter to the
  * clock, at `out` metres beyond each carriageway edge (`outJ` beyond `j`'s,
@@ -532,13 +543,22 @@ function cornerLine(i: Arm, j: Arm, out: number, outJ = out): MPoint[] {
   const reflex = i.dir.x * j.dir.z - i.dir.z * j.dir.x <= 0;
   const control = reflex ? null : crossing(p, i.endDir, q, j.endDir);
   const c = control ?? { x: (p.x + q.x) / 2, z: (p.z + q.z) / 2 };
+  // Between two kerbless roads the corner is a true circular arc: the control
+  // point is weighted by the cosine of half the turn, which makes the
+  // rational curve exact. Every other corner keeps its plain quadratic curve.
+  const circular = control !== null && i.kerbless > 0 && j.kerbless > 0;
+  const w = circular ? Math.sqrt(Math.max(0, (1 - dotDirs(i, j)) / 2)) : 1;
   const out2: MPoint[] = [];
   for (let k = 0; k <= CORNER_STEPS; k++) {
     const t = k / CORNER_STEPS;
     const u = 1 - t;
+    const bp = u * u;
+    const bc = 2 * w * u * t;
+    const bq = t * t;
+    const sum = bp + bc + bq;
     out2.push({
-      x: u * u * p.x + 2 * u * t * c.x + t * t * q.x,
-      z: u * u * p.z + 2 * u * t * c.z + t * t * q.z,
+      x: (bp * p.x + bc * c.x + bq * q.x) / sum,
+      z: (bp * p.z + bc * c.z + bq * q.z) / sum,
     });
   }
   return out2;

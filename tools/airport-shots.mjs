@@ -10,6 +10,8 @@
  *                     and terminal are the subjects)
  *   <id>-runway-end   the low end from the approach: numerals, threshold stripes
  *   <id>-apron        the apron, aircraft on their stands and the buildings
+ *   <id>-landside     the terminal's kerb, the loop and the parking or garages, from the street
+ *   <id>-support      the hangar, fuel, tower, cargo and the fence from the taxiway side
  *   <id>-night        the apron at night
  * Then the former airport: airport-overview, airport-above, terminal-close,
  * apron-close, airport-night.
@@ -241,6 +243,53 @@ async function shootRung(rung) {
       [apron.x + apron.w - 4, apron.z + apron.d / 2],
     ];
     await shoot('apron', apronTarget, apronDistance, Math.PI, 0.6, apronSubjects);
+
+    // The terminal's kerb, the loop and the parking (or garages), from the street side.
+    const kerb = L.kerbRoad;
+    const landsideTarget = [terminal.x + terminal.w / 2, kerb.z + (L.plot.d - kerb.z) / 2];
+    const landsideDistance = L.garages.length > 0 ? 320 : L.loopRoad ? 280 : 70;
+    await shoot('landside', landsideTarget, landsideDistance, 0, 0.7, [
+      [terminal.x + terminal.w / 2, terminal.z + terminal.d],
+      [L.drive.x, L.drive.z - 1],
+    ]);
+
+    // The first guide gantry from the traffic's side, and a car park end with its islands.
+    if (L.signs.gantries.length > 0) {
+      const g = L.signs.gantries[0];
+      await shoot('gantry', [g.x, g.z], 45, -Math.PI / 2, 0.35, [[g.x, g.z, 4]]);
+    }
+    if (L.carPark && L.loopRoad) {
+      const cp = L.carPark;
+      await shoot('parking', [cp.x + cp.w - 25, cp.z + cp.d / 2], 70, 0, 0.9, [
+        [cp.x + cp.w - 25, cp.z + cp.d / 2],
+      ]);
+    }
+
+    // The support buildings along the building line: hangar, fuel, tower and cargo, with the fence.
+    const support = [
+      L.maintenance.hangar,
+      ...(L.tower ? [L.tower.base] : []),
+      ...L.cargo.map((c) => c.building),
+    ];
+    const lo = Math.min(...support.map((r) => r.x), L.fuel.tanks[0].footprint.x);
+    const hi = Math.max(...support.map((r) => r.x + r.w));
+    await shoot(
+      'support',
+      [(lo + hi) / 2, L.maintenance.hangar.z + L.maintenance.hangar.d / 2],
+      Math.max(110, (hi - lo) * 0.95),
+      Math.PI,
+      0.55,
+      [
+        [
+          L.maintenance.hangar.x + L.maintenance.hangar.w / 2,
+          L.maintenance.hangar.z + L.maintenance.hangar.d / 2,
+        ],
+        ...(L.tower
+          ? [[L.tower.base.x + L.tower.base.w / 2, L.tower.base.z + L.tower.base.d / 2]]
+          : []),
+        ...L.cargo.map((c) => [c.building.x + c.building.w / 2, c.building.z + c.building.d / 2]),
+      ],
+    );
     await restore();
 
     await setClock(page, NIGHT_HOUR);

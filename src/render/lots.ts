@@ -29,10 +29,13 @@ import type { BuildingCatalogEntry, BuildingDelta, BuildingInstance } from '../s
 import { CHUNK_TILES, CHUNKS_PER_SIDE, TILE_METERS } from '../shared/constants';
 import { footprintForRotation } from '../shared/footprint';
 import {
+  pushConformingPolygon,
   pushConformingQuad,
   pushConformingTurnedQuad,
   conformingQuadVertexCount,
 } from './groundquad';
+import { carParkShape } from '../shared/carparkshape';
+import { roundedRect, type Pt } from '../shared/roundedoutline';
 import { materialUnit, type MaterialName } from './palette';
 import { LOT_Y_OFFSET } from './plotground';
 import { massingLifecycleTint } from './massing';
@@ -54,7 +57,12 @@ import {
   type LotRect,
 } from './houselot';
 import { bulbClearRuns, bulbFanToWorld, bulbReachM } from './bulbfront';
-import { NEAR_WHITE_STRIPE_COLOR, STRIPE_LINE_HALF_WIDTH_M, STRIPE_LINE_Y_OFFSET } from './parked';
+import {
+  LOT_CAR_BODY,
+  NEAR_WHITE_STRIPE_COLOR,
+  STRIPE_LINE_HALF_WIDTH_M,
+  STRIPE_LINE_Y_OFFSET,
+} from './parked';
 import type { KerbSurroundings } from '../shared/kerblayout';
 import { lotPaving } from '../shared/lotlayout';
 import { garageEntranceWalk } from '../shared/garage';
@@ -361,8 +369,14 @@ export class LotRenderer {
         carPark || isWalkUpEntry(entry) ? 'mownLawn' : surface,
       );
       if (carPark) {
-        this.layCarPark(carPark, entry, surface, lay, (r) =>
-          layColor(r, STRIPE_LINE_Y_OFFSET, NEAR_WHITE_STRIPE_COLOR),
+        this.layCarPark(
+          carPark,
+          entry,
+          surface,
+          lay,
+          (r) => layColor(r, STRIPE_LINE_Y_OFFSET, NEAR_WHITE_STRIPE_COLOR),
+          (poly, y, name) =>
+            pushConformingPolygon(positions, colors, poly, toWorld, y, tinted(name), this.heightAt),
         );
       }
       this.store(building, positions, colors);
@@ -406,8 +420,22 @@ export class LotRenderer {
         );
       };
       const lay = (r: LotRect, y: number, name: MaterialName): void => layColor(r, y, tinted(name));
-      this.layCarPark(carPark, entry, surface, lay, (r) =>
-        layColor(r, STRIPE_LINE_Y_OFFSET, NEAR_WHITE_STRIPE_COLOR),
+      this.layCarPark(
+        carPark,
+        entry,
+        surface,
+        lay,
+        (r) => layColor(r, STRIPE_LINE_Y_OFFSET, NEAR_WHITE_STRIPE_COLOR),
+        (poly, y, name) =>
+          pushConformingPolygon(
+            positions,
+            colors,
+            poly,
+            (u, v) => lotPointToWorld(carPark.frame, u, v),
+            y,
+            tinted(name),
+            this.heightAt,
+          ),
       );
       this.layVergeCrossing(carPark, surface, lay, (run, y, name) =>
         pushBulbFan(positions, colors, carPark.frame, run, y, tinted(name), this.heightAt),
@@ -627,14 +655,24 @@ export class LotRenderer {
     surface: MaterialName,
     lay: (rect: LotRect, y: number, name: MaterialName) => void,
     stripe: (rect: LotRect) => void,
+    layPoly: (poly: readonly Pt[], y: number, name: MaterialName) => void,
   ): void {
     const { layout } = plan;
     const paving = lotPaving(layout);
     // A walk-up's rear yard is the lawn its balconies open onto, never paved.
-    const yard = isWalkUpEntry(entry)
-      ? paving.yard.filter((r) => r !== layout.rearYard)
-      : paving.yard;
-    for (const r of yard) lay(r, DRIVE_Y_OFFSET, surface);
+    const walkUp = isWalkUpEntry(entry);
+    const yard = walkUp ? paving.yard.filter((r) => r !== layout.rearYard) : paving.yard;
+    const shape = carParkShape(layout, !walkUp, LOT_CAR_BODY);
+    for (const r of yard) {
+      const radii = shape.rounded.get(r);
+      if (radii) {
+        const outline = roundedRect({ x: r.u0, z: r.v0, w: r.u1 - r.u0, d: r.v1 - r.v0 }, radii);
+        layPoly(outline, DRIVE_Y_OFFSET, surface);
+      } else {
+        lay(r, DRIVE_Y_OFFSET, surface);
+      }
+    }
+    for (const piece of shape.fills) layPoly(piece, DRIVE_Y_OFFSET, surface);
     for (const r of paving.concrete) lay(r, WALK_Y_OFFSET, 'cleanConcrete');
     for (const r of paving.lane) lay(r, LANE_Y_OFFSET, 'darkAsphalt');
     for (const r of trailerStripes(layout.trailerStalls)) stripe(r);

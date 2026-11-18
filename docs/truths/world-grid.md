@@ -210,7 +210,8 @@ Back to [the index](../GROUND-TRUTHS.md).
   free area, each sized from its FAA design group and none shrunk to fit.
   Nothing above ground stands in the two clear areas, though a taxiway's
   pavement may lie in the object free area (the player's rule: real sizing
-  and structure). — [airports.md](../specs/airports.md);
+  and structure). The far side's fence alone stands on that area's edge,
+  one post's width inside it, since the plot ends there. — [airports.md](../specs/airports.md);
   `src/shared/airportlayout.ts`
 - [R-world-053] A fence closes an airport's airside on every side, with a gate at each
   road through it; buildings on its line are part of it. Every support

@@ -65,7 +65,9 @@ import { kerbSideFacing, type KerbSide, type Side } from '../shared/roadedge';
 import { lotDriveCuts, type KerbSurroundings, type TileDriveCut } from '../shared/kerblayout';
 import { sizeForKind, variantScaleForKind, VehicleKitPool, VEHICLE_PALETTE_HEX } from './vehicles';
 import { materialUnit } from './palette';
-import { pushConformingQuad, pushConformingTurnedQuad } from './groundquad';
+import { pushConformingPolygon, pushConformingQuad, pushConformingTurnedQuad } from './groundquad';
+import { carParkShape, type CarBody } from '../shared/carparkshape';
+import { roundedRect, type CornerRadii } from '../shared/roundedoutline';
 
 // ---------------------------------------------------------------------------
 // Tunables
@@ -337,6 +339,19 @@ function vehicleDims(
   const variant = variantScaleForKind(kind, stallVariantIndex(buildingId, index, kind));
   return [size[0] * variant[0], size[1] * variant[1], size[2] * variant[2]];
 }
+
+/** The widest and longest car body a lot's stall can hold, over the kit's variants, and the yaw it may wander. */
+export const LOT_CAR_BODY: CarBody = (() => {
+  const size = sizeForKind(VehicleKind.Car);
+  let width = 0;
+  let length = 0;
+  for (let i = 0; i < 3; i++) {
+    const variant = variantScaleForKind(VehicleKind.Car, i);
+    width = Math.max(width, size[0] * variant[0]);
+    length = Math.max(length, size[2] * variant[2]);
+  }
+  return { width, length, yawJitter: YAW_JITTER_MAX };
+})();
 
 // ---------------------------------------------------------------------------
 // Lot occupancy over the day (pure)
@@ -1181,7 +1196,7 @@ export class ParkedCarRenderer {
     this.applyOccupancy(building.id, lot);
     for (const pool of touchedPools) pool.finalize();
 
-    this.rebuildStripes(building, plan);
+    this.rebuildStripes(building, entry, plan);
     this.plantTrees(building, plan);
   }
 
@@ -1413,7 +1428,11 @@ export class ParkedCarRenderer {
    * stall lines, each accessible space's symbol and hatched aisle, the
    * loading berths' outlines, and the planted islands with their kerbs.
    */
-  private rebuildStripes(building: BuildingInstance, plan: LotPlan): void {
+  private rebuildStripes(
+    building: BuildingInstance,
+    entry: BuildingCatalogEntry,
+    plan: LotPlan,
+  ): void {
     const { frame, layout } = plan;
     const positions: number[] = [];
     const colors: number[] = [];
@@ -1439,6 +1458,7 @@ export class ParkedCarRenderer {
 
     // Stall lines down both long sides of every space, each line drawn once.
     const drawn = new Set<string>();
+    const shape = carParkShape(layout, !isWalkUpEntry(entry), LOT_CAR_BODY);
     const sideLines = (r: LotRect, alongU: boolean): void => {
       const sides = alongU
         ? [
@@ -1469,12 +1489,28 @@ export class ParkedCarRenderer {
               v1: r.v1,
             },
           ];
-      for (const s of sides) {
-        const key = [s.u0, s.u1, s.v0, s.v1].map((n) => n.toFixed(2)).join(',');
-        if (drawn.has(key)) continue;
+      // A line ends where the arc of a cut corner leaves the edge: paint lies on paving only.
+      const cut = shape.rounded.get(r) ?? [0, 0, 0, 0];
+      const trims = alongU
+        ? [
+            [cut[0], cut[1]],
+            [cut[3], cut[2]],
+          ]
+        : [
+            [cut[0], cut[3]],
+            [cut[1], cut[2]],
+          ];
+      sides.forEach((side, i) => {
+        const key = [side.u0, side.u1, side.v0, side.v1].map((n) => n.toFixed(2)).join(',');
+        if (drawn.has(key)) return;
         drawn.add(key);
-        line(s);
-      }
+        const [from, to] = trims[i]!;
+        line(
+          alongU
+            ? { ...side, u0: side.u0 + from!, u1: side.u1 - to! }
+            : { ...side, v0: side.v0 + from!, v1: side.v1 - to! },
+        );
+      });
     };
     for (const stall of layout.stalls) sideLines(stall.rect, stall.nose[0] === 'u');
 
@@ -1505,15 +1541,38 @@ export class ParkedCarRenderer {
     }
 
     // Planted islands: a concrete kerb round a bed of grass.
-    for (const island of layout.islands) {
-      rect(island, ISLAND_KERB_Y_OFFSET, ISLAND_KERB_COLOR);
-      const k = ISLAND_KERB_M;
-      rect(
+    // An end that meets an aisle or open ground is a round nose.
+    const k = ISLAND_KERB_M;
+    const toWorld = (u: number, v: number): { x: number; z: number } =>
+      lotPointToWorld(frame, u, v);
+    const outlined = (
+      r: LotRect,
+      radii: CornerRadii,
+      y: number,
+      color: readonly [number, number, number],
+    ): void => {
+      if (radii.every((n) => n === 0)) {
+        rect(r, y, color);
+        return;
+      }
+      const outline = roundedRect({ x: r.u0, z: r.v0, w: r.u1 - r.u0, d: r.v1 - r.v0 }, radii);
+      pushConformingPolygon(positions, colors, outline, toWorld, y, color, this.heightAt);
+    };
+    layout.islands.forEach((island, i) => {
+      const radii = shape.islands[i]!.kerbRadii;
+      outlined(island, radii, ISLAND_KERB_Y_OFFSET, ISLAND_KERB_COLOR);
+      outlined(
         { u0: island.u0 + k, u1: island.u1 - k, v0: island.v0 + k, v1: island.v1 - k },
+        [
+          Math.max(0, radii[0] - k),
+          Math.max(0, radii[1] - k),
+          Math.max(0, radii[2] - k),
+          Math.max(0, radii[3] - k),
+        ],
         ISLAND_GRASS_Y_OFFSET,
         ISLAND_GRASS_COLOR,
       );
-    }
+    });
 
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));

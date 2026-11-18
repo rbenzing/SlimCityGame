@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { CONFORM_MAX_CELL_M, conformingQuadVertexCount, pushConformingQuad } from './groundquad';
+import {
+  CONFORM_MAX_CELL_M,
+  conformingQuadVertexCount,
+  pushConformingPolygon,
+  pushConformingQuad,
+} from './groundquad';
 
 const WHITE: readonly [number, number, number] = [1, 1, 1];
 
@@ -91,5 +96,73 @@ describe('pushConformingQuad', () => {
     };
     build(0, 0, 16, 16, 0, h);
     expect(calls).toContain('8,8'); // an interior sample the rect corners never see
+  });
+});
+
+describe('pushConformingPolygon', () => {
+  const square = [
+    { x: 0, z: 0 },
+    { x: 7, z: 0 },
+    { x: 7, z: 7 },
+    { x: 0, z: 7 },
+  ];
+  const lay = (
+    poly: { x: number; z: number }[],
+    toWorld: (u: number, v: number) => { x: number; z: number },
+  ) => {
+    const positions: number[] = [];
+    const colors: number[] = [];
+    pushConformingPolygon(positions, colors, poly, toWorld, 0.1, [1, 1, 1], () => 0);
+    return { positions, colors };
+  };
+  const triangles = (positions: number[]): number[][] => {
+    const out: number[][] = [];
+    for (let i = 0; i < positions.length; i += 9) out.push(positions.slice(i, i + 9));
+    return out;
+  };
+
+  it('covers the polygon exactly, every triangle facing up, in either winding of the frame', () => {
+    for (const flip of [1, -1]) {
+      const { positions, colors } = lay(square, (u, v) => ({ x: u * flip, z: v }));
+      let area = 0;
+      for (const t of triangles(positions)) {
+        const facing = (t[5]! - t[2]!) * (t[6]! - t[0]!) - (t[3]! - t[0]!) * (t[8]! - t[2]!);
+        expect(facing).toBeGreaterThan(0);
+        area += facing / 2;
+      }
+      expect(area).toBeCloseTo(49, 6);
+      expect(colors).toHaveLength(positions.length);
+    }
+  });
+
+  it('cuts a polygon to the same grid as a quad, so heights are sampled inside it', () => {
+    const calls: string[] = [];
+    pushConformingPolygon(
+      [],
+      [],
+      square,
+      (u, v) => ({ x: u, z: v }),
+      0,
+      [0, 0, 0],
+      (x, z) => {
+        calls.push(`${x},${z}`);
+        return 0;
+      },
+    );
+    expect(calls).toContain('3.5,3.5');
+  });
+
+  it('keeps a cut corner out of the ground', () => {
+    const cut = [
+      { x: 0, z: 0 },
+      { x: 7, z: 0 },
+      { x: 7, z: 5 },
+      { x: 5, z: 7 },
+      { x: 0, z: 7 },
+    ];
+    const { positions } = lay(cut, (u, v) => ({ x: u, z: v }));
+    for (let i = 0; i < positions.length; i += 3) {
+      expect(positions[i]! + positions[i + 2]!).toBeLessThanOrEqual(12 + 1e-9);
+    }
   });
 });

@@ -108,6 +108,7 @@ import {
   bendIsNoPassing,
   carriagewayHalfWidthOf,
   carriagewayShiftOf,
+  cornerRadiusOf,
   kerbReturnRadiusOf,
   carriagewayWidth,
   worldOrderedProfile,
@@ -5690,8 +5691,14 @@ function roadTileSurfaces(
   // alley, and a road that ends beside one has still ended. So a service arm
   // still takes asphalt and still connects, but it does not make a junction,
   // does not turn the road and does not stop it being a dead end.
+  // An alley meeting an alley is the one exception: two accesses joining each
+  // other do turn, bend and fork like any other roads.
+  const ownIsService = isServiceClass(own.class);
   const serviceArm = (has: boolean, nTier: RoadTier): boolean =>
-    has && nTier !== RoadTier.None && isServiceClass(presetProfileForTier(nTier).class);
+    has &&
+    !ownIsService &&
+    nTier !== RoadTier.None &&
+    isServiceClass(presetProfileForTier(nTier).class);
   const serviceN = serviceArm(hasN, neighbors.n);
   const serviceS = serviceArm(hasS, neighbors.s);
   const serviceE = serviceArm(hasE, neighbors.e);
@@ -5903,7 +5910,7 @@ function roadTileSurfaces(
   // The radius a corner between two arms can actually turn through, in the
   // quadrant (signX, signZ).
   const cornerRadius = (halfX: number, halfZ: number, signX: 1 | -1, signZ: 1 | -1): number =>
-    kerbReturnFor(own, Math.min(edgeX(signX) - halfX, edgeZ(signZ) - halfZ));
+    Math.max(0, Math.min(cornerRadiusOf(own), edgeX(signX) - halfX, edgeZ(signZ) - halfZ));
   /** The plan the arm on each side paints: its own where it has one. */
   const armPlan = (has: boolean, neighbour: MarkingPlan | null | undefined): MarkingPlan | null =>
     has ? (neighbour ?? plan) : null;

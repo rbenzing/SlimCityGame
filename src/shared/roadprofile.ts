@@ -28,6 +28,7 @@ import {
   SOUND_WALL_HEIGHTS_M,
   soundWallPrice,
 } from './soundwall';
+import { ALLEY_CORNER_RADIUS_M } from './roundedoutline';
 
 const data = roadsData as { classes: RoadClassSpec[]; specs: RoadSpec[] };
 
@@ -436,13 +437,33 @@ export function kerbReturnRadiusOf(profile: RoadProfile): number {
   return roadClass(profile.class).kerbReturnM;
 }
 
+/** The radius a road with no kerb turns its paved edge on, by class; a track takes the alley's. */
+const KERBLESS_CORNER_RADIUS_M: Partial<Record<RoadClassId, number>> = {
+  alley: ALLEY_CORNER_RADIUS_M,
+  dirt: ALLEY_CORNER_RADIUS_M,
+};
+
+/** The corner radius of a road that has no kerb and turns its edge on an arc; 0 for any other road. */
+export function kerblessCornerRadiusOf(profile: RoadProfile): number {
+  return hasKerbs(profile) ? 0 : (KERBLESS_CORNER_RADIUS_M[profile.class] ?? 0);
+}
+
+/**
+ * The radius the paved edge turns through at a bend or where two roads of the
+ * same kind meet, metres: the class's corner radius where the road has no
+ * kerb, and the kerb return otherwise.
+ */
+export function cornerRadiusOf(profile: RoadProfile): number {
+  return kerblessCornerRadiusOf(profile) || kerbReturnRadiusOf(profile);
+}
+
 /**
  * The radius a bend in this road turns its centre line on, metres: the inner
- * edge of the carriageway takes the class's kerb return, so the bend holds
+ * edge of the carriageway takes the road's corner radius, so the bend holds
  * the ground a corner of the same road would.
  */
 export function bendRadiusOf(profile: RoadProfile): number {
-  return carriagewayHalfWidthOf(profile) + kerbReturnRadiusOf(profile);
+  return carriagewayHalfWidthOf(profile) + cornerRadiusOf(profile);
 }
 
 /**

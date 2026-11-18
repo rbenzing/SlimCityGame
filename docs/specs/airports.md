@@ -2,13 +2,13 @@
 
 - **Status:** Built
 
-**Owns:** the three airports' plots, runways, safety areas, taxiways, aprons, terminals, paint, prices and unlocks.
+**Owns:** the three airports' plots, runways, safety areas, taxiways, aprons, terminals, paint, prices and unlocks. The fence, tower, hangars, cargo, fuel, garages and roads are in [airport-facilities.md](airport-facilities.md).
 
 **Rules:**
 
 - Size every airport from its FAA design group. The runway, its safety area and its object free area all lie inside the plot; never shrink one to fit. `[R-world-052]`
-- Lay the plot in strips parallel to the runway: object free area, runway, taxiway, apron, buildings, car park. The car park's edge fronts the street. `[R-world-050]`
-- Keep the safety area and the object free area clear of everything above ground: no building, tree, fence, lamp or parked aircraft. Pavement may lie in the object free area (13B ¶3.12.1).
+- Lay the plot in strips parallel to the runway: object free area, runway, taxiway, apron, buildings, roads and parking. The parking side fronts the street. `[R-world-050]`
+- Keep the safety area and the object free area clear of everything above ground: no building, tree, lamp or parked aircraft. Pavement may lie in the object free area (13B ¶3.12.1), and the far side's fence stands on its edge ([airport-facilities.md](airport-facilities.md)).
 - Paint a runway white and a taxiway yellow, with the markings its approach category requires and no more. `[R-render-044]`
 - Park aircraft on stands and tie-downs only, nose to the building line, clear of every taxiway's object line.
 - Level the whole plot to one height, and refuse it where a tile is steep or wet, as any building is refused. `[R-world-051]`
@@ -61,7 +61,7 @@
 | Aircraft positions                  | 20 tie-downs | 4 stands      | 2 wide and 4 narrow stands | [sources](../sources/airports.md#aircraft-positions)    |
 | Terminal, long × deep; floors       | 15 × 10; 1   | 145 × 40; 2   | 320 × 60; 2                | dial, from the floor area                               |
 | Hangars                             | 4 of 15 × 15 | none          | none                       | dial                                                    |
-| Kerb road                           | 7.32         | 7.32          | 7.32                       | one 24 ft aisle, [parking to code](parking-to-code.md)  |
+| Kerb road                           | 7.32         | the loop      | the loop                   | one 24 ft aisle; [airport facilities](airport-facilities.md) |
 | Power kW; water kL                  | 1.5; 0.5     | 120; 52       | 400; 175                   | [municipal services](../sources/municipal-services.md)  |
 | Noise; pollution                    | 60; 5        | 120; 15       | 160; 30                    | dial; the last is the old airport's                     |
 
@@ -109,7 +109,7 @@ Numerals come from the runway's heading on the map with north up: 9 and 27 east 
 
 The international keeps the terminal the old airport was given: 38,800 m² for four million passengers a year, on two floors. The regional takes the terminal that figure was derived from, 11,600 m² for 1.2 million. The airfield has a pilots' building and no airline.
 
-A car park holds 2,000 spaces for each million passengers who start their journey here, the low end of the surveyed range.
+A car park holds 2,000 spaces for each million passengers who start their journey here, the low end of the surveyed range. The international's are in two garages.
 
 ### Why the price counts the terminal only
 

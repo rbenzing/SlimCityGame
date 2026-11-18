@@ -20,10 +20,13 @@ import {
   STAND_CLEARANCE_M,
   StandKind,
   CAR_PARK_SPACES,
+  carParkRowStalls,
+  carParkRowZs,
   airportLayout,
 } from '../shared/airportlayout';
-import { AISLE_WIDTH_M, STALL_LENGTH_M, STALL_WIDTH_M, stallsInRow } from '../shared/parkingcode';
+import { ISLAND_WIDTH_M, STALL_LENGTH_M, STALL_WIDTH_M } from '../shared/parkingcode';
 import { materialUnit, saturatedUnit } from './palette';
+import { facilityPlatePolys } from './airportfacilities';
 import { PLOT_YARD_TOP } from './plotground';
 import { MARKING_COLOR, YELLOW_MARKING_COLOR } from './roadsmesh';
 import { mergeGeometryParts } from './trees';
@@ -338,21 +341,23 @@ function holdingPosition(line: Line): PlateQuad[] {
 function carParkStalls(layout: AirportLayout): PlateQuad[] {
   const cp = layout.carPark;
   const out: PlateQuad[] = [];
-  const perRow = stallsInRow(cp.w);
+  if (!cp) return out;
+  const perRow = carParkRowStalls(layout);
+  // Rows start after the island at each end where the loop gives it one.
+  const x0 = layout.loopRoad ? cp.x + ISLAND_WIDTH_M : cp.x;
   let remaining = CAR_PARK_SPACES[layout.id];
-  let z = cp.z;
-  for (let row = 0; remaining > 0 && z + STALL_LENGTH_M <= cp.z + cp.d + 1e-6; row++) {
+  // Two rows back to back, then an aisle; the first row's aisle is the kerb road.
+  for (const rowZ of carParkRowZs(cp.d)) {
+    if (remaining <= 0) break;
+    const z = cp.z + rowZ;
     const stalls = Math.min(perRow, remaining);
     for (let i = 0; i <= stalls; i++) {
-      const x = cp.x + i * STALL_WIDTH_M;
+      const x = x0 + i * STALL_WIDTH_M;
       const xa = Math.max(cp.x, x - STALL_LINE_M / 2);
       const xb = Math.min(cp.x + cp.w, x + STALL_LINE_M / 2);
       out.push(span(xa, z, xb, z + STALL_LENGTH_M, PAINT_Y, WHITE_PAINT));
     }
     remaining -= stalls;
-    z += STALL_LENGTH_M;
-    // Two rows back to back, then an aisle; the first row's aisle is the kerb road.
-    if (row % 2 === 1) z += AISLE_WIDTH_M;
   }
   return out;
 }
@@ -385,8 +390,6 @@ export function airportPlateQuads(id: AirportId, rotation: 0 | 1 | 2 | 3): Plate
     },
     APRON_COLOR,
   );
-  pave(layout.kerbRoad, RUNWAY_COLOR);
-  pave(layout.carPark, APRON_COLOR);
 
   quads.push(...runwayPaint(layout, rotation));
 
@@ -435,58 +438,77 @@ export function airportPlateGeometry(id: AirportId, rotation: 0 | 1 | 2 | 3): TH
   const layout = airportLayout(id);
   const cx = layout.plot.w / 2;
   const cz = layout.plot.d / 2;
-  const quads = airportPlateQuads(id, rotation);
-  const positions = new Float32Array(quads.length * 12);
-  const normals = new Float32Array(quads.length * 12);
-  const colors = new Float32Array(quads.length * 12);
-  const indices = new Uint32Array(quads.length * 6);
-  quads.forEach((q, i) => {
-    const corners: [number, number][] = [
-      [q.x0, q.z0],
-      [q.x0, q.z1],
-      [q.x1, q.z1],
-      [q.x1, q.z0],
-    ];
-    corners.forEach(([x, z], k) => {
-      const v = (i * 4 + k) * 3;
-      positions[v] = x - cx;
-      positions[v + 1] = q.y;
-      positions[v + 2] = z - cz;
-      normals[v + 1] = 1;
-      colors[v] = q.color[0];
-      colors[v + 1] = q.color[1];
-      colors[v + 2] = q.color[2];
+  const shapes: PlateShape[] = airportPlateQuads(id, rotation).map((q) => ({
+    points: [
+      { x: q.x0, z: q.z0 },
+      { x: q.x0, z: q.z1 },
+      { x: q.x1, z: q.z1 },
+      { x: q.x1, z: q.z0 },
+    ],
+    y: q.y,
+    color: q.color,
+  }));
+  for (const poly of facilityPlatePolys(layout)) {
+    shapes.push({
+      points: poly.points,
+      triangles: poly.triangles,
+      y: poly.layer === 'pavement' ? PAVEMENT_Y : PAINT_Y,
+      color: poly.color,
     });
-    indices.set([i * 4, i * 4 + 1, i * 4 + 2, i * 4, i * 4 + 2, i * 4 + 3], i * 6);
-  });
+  }
+
+  const positions: number[] = [];
+  const normals: number[] = [];
+  const colors: number[] = [];
+  const indices: number[] = [];
   const geometry = new THREE.BufferGeometry();
-  geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-  geometry.setAttribute('normal', new THREE.BufferAttribute(normals, 3));
-  geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-  geometry.setIndex(new THREE.BufferAttribute(indices, 1));
   // One group a layer (grass, pavement, paint), in draw order, so each layer
   // can take its own depth bias: a centimetre of height does not separate
   // surfaces at the camera's far distances.
   let start = 0;
   for (let layer = 0; layer < PLATE_LAYER_Y.length; layer++) {
-    let count = 0;
-    while (
-      start / 6 + count < quads.length &&
-      quads[start / 6 + count]?.y === PLATE_LAYER_Y[layer]
-    ) {
-      count++;
+    for (const shape of shapes) {
+      if (shape.y !== PLATE_LAYER_Y[layer]) continue;
+      const base = positions.length / 3;
+      for (const p of shape.points) {
+        positions.push(p.x - cx, shape.y, p.z - cz);
+        normals.push(0, 1, 0);
+        colors.push(...shape.color);
+      }
+      // A fan from the first point unless the shape brings its own triangles; wound to face up.
+      const triangles =
+        shape.triangles ??
+        Array.from({ length: Math.max(0, shape.points.length - 2) }, (_, i) => [0, i + 1, i + 2]);
+      for (const [i, j, k] of triangles as [number, number, number][]) {
+        const a = shape.points[i]!;
+        const b = shape.points[j]!;
+        const c = shape.points[k]!;
+        const facingUp = (b.z - a.z) * (c.x - a.x) - (b.x - a.x) * (c.z - a.z) > 0;
+        indices.push(base + i, ...(facingUp ? [base + j, base + k] : [base + k, base + j]));
+      }
     }
-    geometry.addGroup(start, count * 6, layer);
-    start += count * 6;
+    geometry.addGroup(start, indices.length - start, layer);
+    start = indices.length;
   }
+  geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(positions), 3));
+  geometry.setAttribute('normal', new THREE.BufferAttribute(new Float32Array(normals), 3));
+  geometry.setAttribute('color', new THREE.BufferAttribute(new Float32Array(colors), 3));
+  geometry.setIndex(new THREE.BufferAttribute(new Uint32Array(indices), 1));
   return geometry;
+}
+
+interface PlateShape {
+  points: { x: number; z: number }[];
+  triangles?: number[][];
+  y: number;
+  color: RGB;
 }
 
 // ---------------------------------------------------------------------------
 // Buildings and panes
 // ---------------------------------------------------------------------------
 
-export type AirportBuildingKind = 'terminal' | 'hangar' | 'pilots';
+export type AirportBuildingKind = 'terminal' | 'hangar' | 'pilots' | 'cargo';
 
 export interface AirportBox {
   kind: AirportBuildingKind;
@@ -510,6 +532,8 @@ export function airportBuildings(layout: AirportLayout, entryHeight: number): Ai
   if (layout.pilotsBuilding) {
     out.push({ kind: 'pilots', rect: layout.pilotsBuilding, height: PILOTS_BUILDING_HEIGHT_M });
   }
+  out.push({ kind: 'hangar', rect: layout.maintenance.hangar, height: layout.maintenance.height });
+  for (const c of layout.cargo) out.push({ kind: 'cargo', rect: c.building, height: c.height });
   return out;
 }
 
@@ -545,7 +569,7 @@ export function buildingPanes(box: AirportBox): PaneBox[] {
     }
   } else if (box.kind === 'hangar') {
     out.push({ cx, cz: rect.z, y: 0, w: rect.w * 0.8, h: height * 0.7, d: PANE_DEPTH_M });
-  } else {
+  } else if (box.kind === 'pilots') {
     for (const cz of faces) {
       for (const dx of [-0.25, 0.25]) {
         out.push({ cx: cx + dx * rect.w, cz, y: 1.0, w: rect.w * 0.3, h: 1.4, d: PANE_DEPTH_M });
@@ -561,6 +585,8 @@ export const HANGAR_BODY_COLOR = 'ribbedWhite';
 export const HANGAR_ROOF_COLOR = 'metalPlates';
 export const PILOTS_BODY_COLOR = 'sidingOffWhite';
 export const PILOTS_ROOF_COLOR = 'slateRoof';
+export const CARGO_BODY_COLOR = 'cleanConcrete';
+export const CARGO_ROOF_COLOR = 'metalPlates';
 
 // ---------------------------------------------------------------------------
 // Aircraft: one geometry per stand kind, nose at the origin, tail toward -z,
@@ -770,9 +796,18 @@ export interface AircraftPlacement {
 
 /** One aircraft per stand, nose a clearance short of the building line, centred across the stand. */
 export function aircraftPlacements(layout: AirportLayout): AircraftPlacement[] {
-  return layout.stands.map((s) => ({
+  const terminalStands = layout.stands.map((s) => ({
     kind: s.kind,
     x: s.x + s.w / 2,
     z: s.z + s.d - STAND_CLEARANCE_M[layout.id],
   }));
+  // A cargo aircraft stands nose to its building, a clearance short of the wall.
+  const cargoStands = layout.cargo.flatMap((c) =>
+    c.stands.map((s) => ({
+      kind: s.kind,
+      x: s.x + s.w / 2,
+      z: c.building.z - STAND_CLEARANCE_M[layout.id],
+    })),
+  );
+  return [...terminalStands, ...cargoStands];
 }

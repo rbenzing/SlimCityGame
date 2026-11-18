@@ -279,8 +279,8 @@ Back to [the index](../GROUND-TRUTHS.md).
   2-1). — [airports.md](../specs/airports.md); `src/render/airportkit.ts`
 - [R-render-045] A paved edge turns on an arc wherever it turns against open ground or a
   kerb: car parks, islands, plot roads, airport paving. A corner stays
-  square only against a wall, against paving that carries on, or on a
-  boundary paved on both sides. Rounding never changes a stall count
+  square only against a wall or a walk, against the same plot's paving
+  carrying on, or at the street's edge. Rounding never changes a stall count
   (the player's rule: rounded, not sharp). —
   [paved-corners.md](../specs/paved-corners.md); `src/shared/roundedoutline.ts`
 
