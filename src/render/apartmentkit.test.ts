@@ -100,6 +100,20 @@ describe('a garden walk-up’s open stair', () => {
     }
   });
 
+  it('stands the mail kiosk beside the street walk, 0.5 m clear of its edge, leaving the walk’s full width open to the breezeway', () => {
+    for (const e of byKind('garden')) {
+      const plan = planOf(e);
+      const [kiosk] = ofKind(plan.placements, 'mailKiosk');
+      const walk = plan.lot!.walk!;
+      expect(kiosk, e.id).toBeDefined();
+      const b = placementBounds(kiosk!);
+      const gap = Math.max(walk.x0 - b.x1, b.x0 - walk.x1);
+      expect(gap, `${e.id} kiosk clear of the walk`).toBeGreaterThanOrEqual(0.5 - 1e-6);
+      // The walk is wider than the breezeway slot, and nothing stands within its width.
+      expect(walk.x1 - walk.x0, e.id).toBeGreaterThanOrEqual(1.8);
+    }
+  });
+
   it('keeps the mail kiosk off every laid walk but the one at the wall', () => {
     for (const e of byKind('garden')) {
       const plan = planOf(e);
