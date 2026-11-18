@@ -47,6 +47,7 @@ import { uniform } from 'three/tsl';
 import { BuildingCatalogEntry, BuildingDelta, BuildingInstance } from '../shared/types';
 import { nightBodyMaterial } from './nightlook';
 import { TILE_METERS } from '../shared/constants';
+import { AIRPORT_IDS } from '../shared/airportlayout';
 import { footprintForRotation } from '../shared/footprint';
 import { InstancedSlotPool } from './massing';
 import { materialHex, materialUnit } from './palette';
@@ -57,7 +58,13 @@ import { materialHex, materialUnit } from './palette';
 // list and each gets its own LandmarkKit below.
 // ---------------------------------------------------------------------------
 
-export const LANDMARK_CATALOG_IDS: readonly string[] = ['airport'];
+export const LANDMARK_CATALOG_IDS: readonly string[] = ['airport', ...AIRPORT_IDS];
+
+/**
+ * The landmark ids the instancer draws as a flat pad under the kit: every
+ * landmark but the former airport, which keeps its full slab.
+ */
+export const LANDMARK_PAD_IDS: readonly string[] = AIRPORT_IDS;
 
 // ---------------------------------------------------------------------------
 // Shared geometry helpers

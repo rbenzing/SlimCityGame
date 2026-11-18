@@ -473,7 +473,17 @@ export function townSteps(): TownStep[] {
     },
     {
       label: 'an airfield',
-      commands: [place('airport', t.airport, 1)],
+      // The former airport is no longer sold, so it stands as a saved one does.
+      commands: [
+        {
+          kind: 'placeBuilding',
+          catalogId: 'airport',
+          x: t.airport.x,
+          z: t.airport.z,
+          rotation: 1,
+          restore: true,
+        },
+      ],
     },
     {
       label:

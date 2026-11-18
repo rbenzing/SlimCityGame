@@ -5,6 +5,7 @@ import {
   BEACON_MIN_INTENSITY,
   BEACON_PULSE_PERIOD_MS,
   LANDMARK_CATALOG_IDS,
+  LANDMARK_PAD_IDS,
   LandmarkPartKind,
   LandmarkRenderer,
   MAX_PLANES,
@@ -29,6 +30,8 @@ import {
   ZoneType,
 } from '../shared/types';
 import { TILE_METERS } from '../shared/constants';
+import catalogData from '../data/catalog.json';
+import { BuildingInstancer } from './buildings';
 
 const flatHeightAt = (): number => 0;
 
@@ -123,8 +126,40 @@ function decomposePosition(m: THREE.Matrix4): THREE.Vector3 {
 // ---------------------------------------------------------------------------
 
 describe('LANDMARK_CATALOG_IDS', () => {
-  it('is exactly the airport, today (UI-SPEC §6.10: "initially [\'airport\']")', () => {
-    expect(LANDMARK_CATALOG_IDS).toEqual(['airport']);
+  it('is the former airport and the three airports', () => {
+    expect(LANDMARK_CATALOG_IDS).toEqual([
+      'airport',
+      'airfield',
+      'regional-airport',
+      'international-airport',
+    ]);
+  });
+
+  it('pads the three airports and leaves the former airport its full slab', () => {
+    expect(LANDMARK_PAD_IDS).toEqual(['airfield', 'regional-airport', 'international-airport']);
+  });
+
+  it('draws one of each, kit and flat pad, without throwing', () => {
+    const scene = new THREE.Scene();
+    const catalog = (catalogData as { buildings: BuildingCatalogEntry[] }).buildings.filter((e) =>
+      LANDMARK_CATALOG_IDS.includes(e.id),
+    );
+    expect(catalog).toHaveLength(4);
+    const renderer = new LandmarkRenderer(scene, flatHeightAt, catalog);
+    const instancer = new BuildingInstancer(
+      scene,
+      catalog,
+      flatHeightAt,
+      new Set(LANDMARK_PAD_IDS),
+    );
+    const added = catalog.map((entry, i) =>
+      makeInstance(i + 1, { catalogId: entry.id, x: 10, z: 10 + i * 40 }),
+    );
+    expect(() => {
+      instancer.apply(deltaAdd(...added));
+      renderer.apply(deltaAdd(...added));
+    }).not.toThrow();
+    for (const b of added) expect(renderer.hasInstance(b.id)).toBe(true);
   });
 });
 

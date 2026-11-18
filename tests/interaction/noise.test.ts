@@ -38,10 +38,21 @@ const HOMESTEADS: Command[] = [
 
 describe('landmark noise: the airport is heard around it', () => {
   const airport = catalog.find((e) => e.id === 'airport')!;
+  // The former airport is no longer sold, so it stands as a saved one does.
+  const SAVED_AIRPORT: Command = {
+    kind: 'placeBuilding',
+    catalogId: 'airport',
+    x: 100,
+    z: 100,
+    rotation: 0,
+    restore: true,
+  };
 
-  it('rejects the airport as locked below milestone 5', () => {
+  it('rejects an airport as locked below its milestone', () => {
     const h = initialized();
-    send(h, 1, [{ kind: 'placeBuilding', catalogId: 'airport', x: 100, z: 100, rotation: 0 }]);
+    send(h, 1, [
+      { kind: 'placeBuilding', catalogId: 'regional-airport', x: 100, z: 100, rotation: 0 },
+    ]);
     h.ticks(1);
     const ack = h.ackFor(1)!;
     expect(ack.ok).toBe(false);
@@ -59,7 +70,7 @@ describe('landmark noise: the airport is heard around it', () => {
     expect(before!.every((v) => v === 0)).toBe(true);
 
     send(h, 0, [streetNorthOf(100, 100, 2)]);
-    send(h, 1, [{ kind: 'placeBuilding', catalogId: 'airport', x: 100, z: 100, rotation: 0 }]);
+    send(h, 1, [SAVED_AIRPORT]);
     // 8 ticks cover the %4==3 emission slot (twice) and the Noise field's own
     // %4==1 diffusion slot, so neighbors have received spill-over too.
     h.ticks(8);
@@ -87,7 +98,7 @@ describe('landmark noise: the airport is heard around it', () => {
   it('stops emitting once the airport is bulldozed (Noise decays back toward zero)', () => {
     const h = initializedAtMilestone5();
     send(h, 0, [streetNorthOf(100, 100, 2)]);
-    send(h, 1, [{ kind: 'placeBuilding', catalogId: 'airport', x: 100, z: 100, rotation: 0 }]);
+    send(h, 1, [SAVED_AIRPORT]);
     h.ticks(8);
     h.sim.handleMessage({ type: 'requestField', field: FieldId.Noise });
     const withAirport = latestNoiseField(h)![tileIndex(100, 100)]!;

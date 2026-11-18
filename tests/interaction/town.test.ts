@@ -1,4 +1,5 @@
 import { beforeAll, describe, expect, it } from 'vitest';
+import { AIRPORT_IDS, type AirportId } from '../../src/shared/airportlayout';
 import { tileIndex } from '../../src/shared/constants';
 import { BuildingState, Problem, RoadTier, ZoneType } from '../../src/shared/types';
 import type { BuildingInstance, GridState, TransitMode } from '../../src/shared/types';
@@ -182,8 +183,17 @@ describe('a small town, built and grown, as the regression for everything togeth
     const standingIds = new Set(placed().map((b) => b.catalogId));
     // A bus stop stands on a street as road furniture, not as a building.
     const asStops = new Set(['bus-stop', 'bus-stop-sign']);
+    // The three airports' plots (49x9 to 183x33 tiles) are wider than the town's
+    // 101 tiles; airports.test.ts places each of them on its own map.
+    const tooLargeForTheTown = new Set(AIRPORT_IDS);
     const missing = catalog
-      .filter((e) => e.zone === undefined && !asStops.has(e.id) && !standingIds.has(e.id))
+      .filter(
+        (e) =>
+          e.zone === undefined &&
+          !asStops.has(e.id) &&
+          !tooLargeForTheTown.has(e.id as AirportId) &&
+          !standingIds.has(e.id),
+      )
       .map((e) => e.id);
     expect(missing).toEqual([]);
   });

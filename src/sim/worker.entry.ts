@@ -4115,6 +4115,8 @@ class SimWorld implements WorkerSim {
     if (catalogId === 'bus-stop' || catalogId === 'bus-stop-sign') {
       return { ok: false, cost: 0, inverse: [], reason: BUS_STOP_NOT_A_BUILDING };
     }
+    // A retired entry is no new purchase; a demolition's undo still stands it back.
+    if (entry.retired && !restore) return refused(PLACEMENT_REFUSALS.retired);
     if (!this.sandbox && entry.unlockMilestone > this.stats.milestoneLevel) {
       return { ok: false, cost: 0, inverse: [], reason: 'locked' };
     }

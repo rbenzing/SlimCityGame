@@ -7,6 +7,7 @@ import {
   subTabsFor,
 } from './categories';
 import { LANDFILL_PAINT_COST_PER_TILE } from '../shared/constants';
+import { AIRPORT_IDS } from '../shared/airportlayout';
 
 describe('CATEGORY_DEFS', () => {
   it('lists the eleven UI-SPEC §2 categories plus §6.11 Landscaping and the §11/§13 Transit + Districts categories, in order', () => {
@@ -224,7 +225,9 @@ describe('subTabsFor', () => {
       'plop.district-park',
       'plop.sports-ground',
     ]);
-    expect(subTabsFor('transit')[0]?.cards.map((c) => c.id)).toContain('plop.airport');
+    const transit = subTabsFor('transit').flatMap((t) => t.cards.map((c) => c.id));
+    expect(transit).toEqual(expect.arrayContaining(AIRPORT_IDS.map((id) => `plop.${id}`)));
+    expect(transit).not.toContain('plop.airport');
   });
 
   it('every card carries a real cost + unlockMilestone sourced from the data files', () => {
@@ -234,16 +237,19 @@ describe('subTabsFor', () => {
     expect(avenue).toEqual({ id: 'road.avenue', name: 'Avenue', cost: 45, unlockMilestone: 1 });
   });
 
-  it('the §6.10 airport card sits in the Transit drawer, carries the landmark price and stays milestone-5 locked', () => {
-    const airport = subTabsFor('transit')
-      .flatMap((t) => t.cards)
-      .find((c) => c.id === 'plop.airport');
-    expect(airport).toEqual({
-      id: 'plop.airport',
-      name: 'International Airport',
-      cost: 60000,
-      unlockMilestone: 5,
-    });
+  it('the three airport cards sit in the Transit drawer with their price and unlock, and the former airport does not', () => {
+    const cards = subTabsFor('transit').flatMap((t) => t.cards);
+    expect(cards.filter((c) => AIRPORT_IDS.some((id) => c.id === `plop.${id}`))).toEqual([
+      { id: 'plop.airfield', name: 'Airfield', cost: 2400, unlockMilestone: 2 },
+      { id: 'plop.regional-airport', name: 'Regional Airport', cost: 18000, unlockMilestone: 4 },
+      {
+        id: 'plop.international-airport',
+        name: 'International Airport',
+        cost: 60000,
+        unlockMilestone: 6,
+      },
+    ]);
+    expect(cards.find((c) => c.id === 'plop.airport')).toBeUndefined();
   });
 
   it('Landscaping (UI-SPEC §6.11) is a single flat group of the four terraform tools', () => {

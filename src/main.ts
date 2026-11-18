@@ -129,7 +129,7 @@ import {
 import { LotRenderer } from './render/lots';
 import { GarageRenderer } from './render/garages';
 import { BuildingKitRenderer } from './render/buildingkit';
-import { LandmarkRenderer } from './render/landmarks';
+import { LANDMARK_PAD_IDS, LandmarkRenderer } from './render/landmarks';
 import { chunksOver, RoadMeshRenderer } from './render/roadsmesh';
 import { FreeRoadRenderer, freeRoadLampStands, freeRoadPoleLay } from './render/freeroadmesh';
 import type { BandSpan } from './render/roadsmesh';
@@ -404,7 +404,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
     world.scene,
     catalog,
     heightAt,
-    utilityKits.kitIds(),
+    new Set([...utilityKits.kitIds(), ...LANDMARK_PAD_IDS]),
     roadAt,
     street,
     dirtAt,
