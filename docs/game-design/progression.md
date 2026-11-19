@@ -27,9 +27,15 @@ Representative examples: townhouses, factories and the water pumping station
 unlock at Small Town; medium apartments, the Heavy Industrial zone, the
 water drain pipe and the sewage treatment works at Busy Township; mixed-use,
 flex and R&D buildings, the incinerator and the rail station at Big Town;
-high-rise residential and commercial at Small City; the airport at Grand
-City. A zone's tier unlocks with its first building, and a lot grows only
-the kinds the town has unlocked.
+the first mid-rise, office block and hotels at Small City; taller blocks,
+the office tower and the first residential tower at Grand City; the
+tallest towers at Metropolis. A zone's tier unlocks with its first
+building, and a lot grows only the kinds the town has unlocked.
+
+A building's height follows the town's size `[R-world-057]`: four storeys
+at Big Town, six at Small City, twelve at Grand City, no ceiling at
+Metropolis. A works' hall is exempt, and nothing standing is torn down for
+a ceiling.
 
 The two testing options each lift one gate and nothing else. **Sandbox**
 (unlock all build items) unlocks every card and every kind a lot can grow,
