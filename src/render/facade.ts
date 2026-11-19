@@ -313,6 +313,7 @@ const COMMERCIAL_BODY_PALETTES: Readonly<Record<CommercialKind, readonly Materia
   bank: ['eifsTan', 'redBrick'],
   medicaloffice: ['eifsCream', 'whiteBrick'],
   quicklube: ['whitePlaster', 'eifsBeige'],
+  carwash: ['whitePlaster', 'eifsCream'],
 };
 const OFFICE_TOWER_BODY_PALETTE: readonly MaterialName[] = ['curtainWall'];
 
@@ -330,6 +331,7 @@ const COMMERCIAL_ROOF_PALETTES: Readonly<Record<CommercialKind, readonly Materia
   bank: ['greyMembrane'],
   medicaloffice: ['greyMembrane'],
   quicklube: ['whiteMembrane'],
+  carwash: ['whiteMembrane'],
 };
 
 /** An office's ribbons are tinted glass; the tower's cells are its curtain wall's vision glass. */
@@ -562,12 +564,14 @@ const WINDOWLESS_COMMERCIAL_KINDS: ReadonlySet<string> = new Set([
   'autorepair',
   'pharmacy',
   'quicklube',
+  'carwash',
 ]);
 
 /** The kinds whose wall is drawn plain, in the body's own colour, rather than as a dark frame round panes: a repair shop's and a lube's bay walls, a bank's masonry between its windows. */
 const PLAIN_WALL_KINDS: ReadonlySet<string> = new Set([
   'autorepair',
   'quicklube',
+  'carwash',
   'bank',
   'medicaloffice',
 ]);

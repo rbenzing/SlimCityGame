@@ -5,7 +5,8 @@
  * body covers no more than the median built share of a site (0.28 retail,
  * 0.32 industry), the layout keeps a walk to the door and the yards the kind
  * needs; a pharmacy's lot also holds its drive-through lane, a bank's its two drive-up lanes,
- * a quick lube's its lane and a full court behind its bays, and every lot
+ * a quick lube's its lane and a full court behind its bays, a car wash's its lane and a court
+ * deep enough for the cars in line at each bay or tunnel, and every lot
  * lays both the front walk and the walk in from the street. Lots in tiles, frontage by depth, per level. A filling station and a
  * chemical works already stand under that share on their compact lots and
  * keep them.
@@ -99,6 +100,11 @@ export const ROOMY_LOT_TILES: Readonly<Partial<Record<BuildingKind, readonly [Lo
     { w: 2, d: 3 },
     { w: 3, d: 3 },
     { w: 4, d: 3 },
+  ],
+  carwash: [
+    { w: 2, d: 3 },
+    { w: 2, d: 4 },
+    { w: 3, d: 4 },
   ],
   metals: [
     { w: 4, d: 4 },

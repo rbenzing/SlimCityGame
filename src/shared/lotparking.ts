@@ -9,11 +9,12 @@ import { TILE_METERS } from './constants';
 import { footprintForRotation } from './footprint';
 import { bodyMetresFor } from './floorarea';
 import { kerbCreditFor, lotDriveCuts, withDriveCuts, type KerbSurroundings } from './kerblayout';
-import { layoutLot, type LotLayout } from './lotlayout';
+import { DRIVE_THROUGH_STACK_SPACE_M, layoutLot, type LotLayout } from './lotlayout';
 import { LOT_PERIMETER_STRIP_M } from './lotgrounds';
 import { isWalkUpKind } from './buildingkind';
 import { GARAGE_FRONT_PROJECTION_M, hasPodium, PODIUM_OVERHANG_M } from './garage';
 import {
+  carwashQueueCars,
   drawsLotParking,
   isDenseLotEntry,
   isRoomyLotEntry,
@@ -90,7 +91,7 @@ export function lotYardsFor(entry: BuildingCatalogEntry): {
     ...(denseFront > 0 ? { frontSetback: denseFront } : {}),
     ...(isDenseLotEntry(entry) && hasPodium(entry) ? { bodyMargin: PODIUM_OVERHANG_M } : {}),
     ...(kind === 'medicaloffice' ? { bodyMargin: HIP_EAVE_OVERHANG_M } : {}),
-    ...(kind === 'quicklube' ? { bodyMargin: BAY_DOOR_PROUD_M } : {}),
+    ...(kind === 'quicklube' || kind === 'carwash' ? { bodyMargin: BAY_DOOR_PROUD_M } : {}),
     ...(kind && TANK_FARM_KINDS.has(kind) ? { rearYard: TANK_GAP_M + TANK_DIAMETER_M } : {}),
     ...(kind === 'multiplex' || kind === 'garden' ? { rearYard: WALK_UP_REAR_YARD_M[kind] } : {}),
     ...(kind && HARDSTANDING_M[kind] ? { hardstanding: HARDSTANDING_M[kind] } : {}),
@@ -132,6 +133,12 @@ export function lotLayoutFor(
       ? { driveThrough: true, sideWindow: true, driveUpLanes: BANK_LANE_CARS }
       : {}),
     ...(entry.kind === 'quicklube' ? { quickLube: true } : {}),
+    ...(entry.kind === 'carwash'
+      ? {
+          quickLube: true,
+          courtDepth: carwashQueueCars(entry.level) * DRIVE_THROUGH_STACK_SPACE_M,
+        }
+      : {}),
     ...(entry.kind === 'autorepair' ? { entranceAtEnd: true } : {}),
     ...(entry.kind && TRUCK_COURT_KINDS.has(entry.kind) ? { trailerCourt: true } : {}),
     ...(planVariant &&
@@ -140,13 +147,15 @@ export function lotLayoutFor(
       ? { planVariant }
       : {}),
   });
-  // A repair shop's or a lube's bay doors fill its street face; the grounds keep that ground clear.
+  // A repair shop's, a lube's or a car wash's doors and portals fill its street face; the grounds keep that ground clear.
   const bays =
     entry.kind === 'autorepair'
       ? repairBays(bodyAlong)
       : entry.kind === 'quicklube'
         ? lubeBays(bodyAlong)
-        : 0;
+        : entry.kind === 'carwash'
+          ? 1
+          : 0;
   if (bays > 0) layout.bayDoors = { u0: layout.body.u0, u1: layout.body.u1 };
   return layout;
 }
