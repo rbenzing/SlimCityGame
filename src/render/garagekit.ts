@@ -31,19 +31,19 @@ import { mergeGeometryParts, paintVertexColor } from './trees';
 
 type RGB = readonly [number, number, number];
 
-const SLAB_RGB: RGB = [0.5, 0.5, 0.48];
+export const SLAB_RGB: RGB = [0.5, 0.5, 0.48];
 const GROUND_SLAB_RGB: RGB = [0.42, 0.43, 0.44];
-const SPANDREL_RGB: RGB = [0.72, 0.71, 0.67];
-const COLUMN_RGB: RGB = [0.58, 0.58, 0.56];
-const RAMP_RGB: RGB = [0.62, 0.62, 0.6];
+export const SPANDREL_RGB: RGB = [0.72, 0.71, 0.67];
+export const COLUMN_RGB: RGB = [0.58, 0.58, 0.56];
+export const RAMP_RGB: RGB = [0.62, 0.62, 0.6];
 const STAIR_RGB: RGB = [0.6, 0.62, 0.65];
 const GLASS_RGB: RGB = [0.18, 0.26, 0.33];
 const LINE_RGB: RGB = [0.93, 0.93, 0.9];
 const BAR_RGB: RGB = [0.92, 0.74, 0.1];
 const ARM_RGB: RGB = [0.85, 0.15, 0.1];
-const POST_RGB: RGB = [0.42, 0.44, 0.46];
-const SIGN_RGB: RGB = [0.04, 0.24, 0.62];
-const LETTER_RGB: RGB = [0.96, 0.96, 0.96];
+export const POST_RGB: RGB = [0.42, 0.44, 0.46];
+export const SIGN_RGB: RGB = [0.04, 0.24, 0.62];
+export const LETTER_RGB: RGB = [0.96, 0.96, 0.96];
 const LAMP_RGB: RGB = [0.3, 0.32, 0.34];
 
 /** How far below the ground the deck's footing runs, so a slope never shows a gap under it. */
