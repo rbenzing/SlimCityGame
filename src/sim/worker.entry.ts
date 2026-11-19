@@ -1323,7 +1323,7 @@ class SimWorld implements WorkerSim {
     }
 
     this.refreshNoiseWalls();
-    this.fieldSim.tick(g, t);
+    this.fieldSim.tick(g, t, this.services.lotReachOn(g));
 
     const econ = this.economy.tick({
       g,

@@ -39,6 +39,15 @@ import { FieldId, type GraphEdge, type GridState } from '../shared/types';
 import { MAP_SIZE, MAP_TILES, inBounds, tileIndex } from '../shared/constants';
 import { OPEN_EDGE, type NoiseWalls } from '../shared/soundwall';
 
+/**
+ * The lots a school and a police station reach, one byte a tile (non-zero is
+ * reached), derived by the service pass and never saved.
+ */
+export interface LotReach {
+  readonly school: Uint8Array;
+  readonly police: Uint8Array;
+}
+
 // --- shared blend weights (numerator / 256) ---------------------------------
 const SELF_NUM = 154;
 const NEI_NUM = 102;
@@ -141,11 +150,11 @@ export class FieldSim {
    * Advances the fields by one tick. Only the fields/happiness pass whose
    * stagger slot matches `tickNo` actually run (see DIFFUSING_FIELDS above).
    */
-  tick(g: GridState, tickNo: number): void {
+  tick(g: GridState, tickNo: number, reach: LotReach | null = null): void {
     for (const sched of DIFFUSING_FIELDS) {
       if (tickNo % sched.period !== sched.offset) continue;
       if (sched.field === FieldId.LandValue) {
-        this.applyLandValueDecay(g, sched.decayNum);
+        this.applyLandValueDecay(g, sched.decayNum, reach);
       } else if (sched.field === FieldId.Noise && this.noiseWalls) {
         this.applyWalledDecay(g.fields[sched.field]!, sched.decayNum, this.noiseWalls);
       } else {
@@ -250,6 +259,8 @@ export class FieldSim {
    *   gain = (255 - pollution) >> 5      : rewards low ambient pollution, max +7
    *        + 6 if any of the 4 neighbor tiles is water
    *        + trees >> 4                  : tree density / 16, max +15
+   *        + 1 where `reach.school` marks a lot an elementary school reaches
+   *        + 1 where `reach.police` marks a lot a police station reaches
    *   loss = pollution >> 3              : -pollution/8
    *        + floor(noise / 12)           : -noise/12
    *        + floor(crime / 10)           : -crime/10
@@ -258,7 +269,7 @@ export class FieldSim {
    * DIFFUSING_FIELDS ordering note above), so this pass never observes a
    * partially-updated neighbor field.
    */
-  private applyLandValueDecay(g: GridState, decayNum: number): void {
+  private applyLandValueDecay(g: GridState, decayNum: number, reach: LotReach | null): void {
     const lv = g.fields[FieldId.LandValue]!;
     this.diffuseIntoScratch(lv, decayNum);
     const scratch = this.scratch;
@@ -277,7 +288,12 @@ export class FieldSim {
           (z < MAP_SIZE - 1 && water[tileIndex(x, z + 1)] === 1);
 
         const p = pollution[i]!;
-        const gain = ((255 - p) >> 5) + (adjacentWater ? 6 : 0) + (trees[i]! >> 4);
+        const gain =
+          ((255 - p) >> 5) +
+          (adjacentWater ? 6 : 0) +
+          (trees[i]! >> 4) +
+          (reach !== null && reach.school[i] !== 0 ? 1 : 0) +
+          (reach !== null && reach.police[i] !== 0 ? 1 : 0);
         const loss = (p >> 3) + ((noise[i]! / 12) | 0) + ((crime[i]! / 10) | 0);
         lv[i] = clampByte(scratch[i]! + gain - loss);
       }
