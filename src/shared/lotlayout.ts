@@ -89,6 +89,8 @@ export interface LotLayoutInput {
    * spaces with the strip is laid without it.
    */
   perimeterStrip?: number;
+  /** The way in is at the end of the street face beside the drive, not its middle: a face that is all service doors. */
+  entranceAtEnd?: boolean;
   /** Refuse a berth that stands on a module aisle: laid for a larger lot of the same building, whose frontage may be short. */
   clearBerths?: boolean;
   /** Set where a roomy lot reserves its hardstanding: ground behind the body this deep that no stall or berth takes. */
@@ -514,8 +516,8 @@ function build(input: LotLayoutInput, c: Candidate): Built {
   const [route] = shopfrontRoute;
   const door = route
     ? toPQ(o, {
-        u0: doorWalkU0(c.body, input.along),
-        u1: doorWalkU0(c.body, input.along) + ENTRANCE_WALK_M,
+        u0: doorWalkU0(input.along, entranceUOf(c.body, curbCut, input)),
+        u1: doorWalkU0(input.along, entranceUOf(c.body, curbCut, input)) + ENTRANCE_WALK_M,
         v0: Math.max(0, route.v0 - L),
         v1: route.v0,
       })
@@ -534,9 +536,25 @@ function build(input: LotLayoutInput, c: Candidate): Built {
 }
 
 /** Where the walk in to a body's door starts along the street, kept inside the lot. */
-function doorWalkU0(body: LotRect, along: number): number {
+function doorWalkU0(along: number, at: number): number {
+  return Math.max(0, Math.min(at - ENTRANCE_WALK_M / 2, along - ENTRANCE_WALK_M));
+}
+
+/** How far in from the body's end a door at the end stands, the middle of the walk to it. */
+const END_DOOR_IN_M = 1.5;
+
+/**
+ * Where along the street face people go in: the middle, or for a kind whose
+ * face is all service doors, the end beside the drive, by the door round the corner.
+ */
+function entranceUOf(
+  body: LotRect,
+  curbCut: { u0: number; u1: number },
+  input: Pick<LotLayoutInput, 'entranceAtEnd'>,
+): number {
   const mid = (body.u0 + body.u1) / 2;
-  return Math.max(0, Math.min(mid - ENTRANCE_WALK_M / 2, along - ENTRANCE_WALK_M));
+  if (!input.entranceAtEnd) return mid;
+  return (curbCut.u0 + curbCut.u1) / 2 < mid ? body.u0 + END_DOOR_IN_M : body.u1 - END_DOOR_IN_M;
 }
 
 /** A run with the stretch that crosses `clear` taken out: one or two runs, or none. */
@@ -860,6 +878,7 @@ function computeLotLayout0(
   for (const { c } of candidates) {
     for (const trial of tries) {
       const built = build(trial, c);
+      // The stalls are chosen by the middle of the face, whichever end the way in is at.
       const entrance = { u: (c.body.u0 + c.body.u1) / 2, v: c.body.v0 };
       const filled = fill(c.rowsAlong, built, entrance, input.spaces);
       const fits = trial === input && built.berthsOk && filled.provided >= input.spaces;
@@ -878,8 +897,8 @@ function computeLotLayout0(
   }
   const { c, built, filled, fits } = best!;
   const berths = built.berthsOk ? built.berths : [];
-  const entrance = { u: (c.body.u0 + c.body.u1) / 2, v: c.body.v0 };
-  const walks = walksFor(c.body, along, built.forecourt, filled.aisles, [
+  const entrance = { u: entranceUOf(c.body, built.curbCut, input), v: c.body.v0 };
+  const walks = walksFor(c.body, along, entrance.u, built.forecourt, filled.aisles, [
     ...filled.stalls.map((s) => s.rect),
     ...filled.accessAisles,
     ...filled.islands,
@@ -1196,6 +1215,7 @@ const inside = (r: LotRect, lot: LotRect): boolean =>
 function walksFor(
   body: LotRect,
   along: number,
+  entranceU: number,
   forecourt: LotRect | null,
   aisles: readonly LotRect[],
   parked: readonly LotRect[],
@@ -1211,7 +1231,7 @@ function walksFor(
   }
   const frontWalk = body.v0 - front > EPS ? { ...body, v0: front, v1: body.v0 } : null;
   const reachTo = frontWalk ? frontWalk.v0 : body.v0;
-  const u0 = doorWalkU0(body, along);
+  const u0 = doorWalkU0(along, entranceU);
   // From the street where nothing parked stands across the line; else from the nearest aisle that line crosses.
   const across = { u0, u1: u0 + ENTRANCE_WALK_M };
   const starts = [

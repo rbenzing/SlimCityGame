@@ -250,10 +250,14 @@ describe('every suburban commercial and industrial lot, laid out to code', () =>
     '%s: the accessible spaces are the ones nearest the entrance',
     (_, e) => {
       const layout = onStreet(e);
+      // Stalls are ordered from the middle of the street face, which is the way in except for a face of bay doors.
+      const door = layout.bayDoors
+        ? { u: (layout.body.u0 + layout.body.u1) / 2, v: layout.entrance.v }
+        : layout.entrance;
       const dist = (r: LotRect): number =>
         Math.hypot(
-          Math.max(r.u0 - layout.entrance.u, 0, layout.entrance.u - r.u1),
-          Math.max(r.v0 - layout.entrance.v, 0, layout.entrance.v - r.v1),
+          Math.max(r.u0 - door.u, 0, door.u - r.u1),
+          Math.max(r.v0 - door.v, 0, door.v - r.v1),
         );
       const accessible = layout.stalls.filter((s) => s.accessible).map((s) => dist(s.rect));
       if (accessible.length === 0) return;

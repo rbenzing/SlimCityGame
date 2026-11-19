@@ -157,6 +157,7 @@ export type BuildingPart =
   | 'stackPlinth'
   | 'tyreRack'
   | 'oilTank'
+  | 'bayGlass'
   | 'iceLocker'
   | 'propaneCage';
 

@@ -284,8 +284,19 @@ describe('the pieces a lot has room for', () => {
       const front = v.layout.frontWalk;
       if (!front || v.layout.forecourt || front.v1 - front.v0 < 0.6 + MIN_FRONT_WALK_M + EPS)
         continue;
-      // A repair shop's bay doors fill its street face: no bin stands across them.
-      if (v.layout.bayDoors) continue;
+      // A repair shop's bay doors fill its street face: its bin stands by the office door in its end wall.
+      if (v.layout.bayDoors) {
+        // A compact lot that cannot hold its code has no ground beside the body for one.
+        if (!v.layout.fits) continue;
+        const bins = plan.pieces.filter((p) => p.kind === 'bin');
+        const { body, entrance } = v.layout;
+        const wallU = entrance.u < (body.u0 + body.u1) / 2 ? body.u0 : body.u1;
+        expect(bins.length, v.label).toBeLessThanOrEqual(1);
+        if (bins.length === 0) continue;
+        const r = bins[0]!.rect;
+        expect(Math.abs((wallU === body.u0 ? r.u1 : r.u0) - wallU), v.label).toBeLessThan(1e-6);
+        continue;
+      }
       const door = doorClearances(v.layout)[0]!;
       if (v.layout.body.u1 - (door.u1 + 0.2) < 0.6) continue;
       expect(count(plan, 'bin'), v.label).toBe(1);

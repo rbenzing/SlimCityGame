@@ -32,7 +32,7 @@ import {
 } from './massing';
 import { TILE_METERS } from '../shared/constants';
 import { footprintForRotation } from '../shared/footprint';
-import { WALL_LOCKER_ZONE_M } from '../shared/lotgrounds';
+import { REPAIR_OFFICE_M, WALL_LOCKER_ZONE_M } from '../shared/lotgrounds';
 import { REPAIR_BAY_M, repairBays } from '../shared/parkingcode';
 import { maxHeightUnderBody } from './footprint';
 import {
@@ -216,6 +216,7 @@ const PART_COLOR: Readonly<Record<BuildingPart, number>> = {
   // The repair shop's rack of tyres is black rubber; the store's ice locker is white and its propane cage galvanised mesh.
   tyreRack: KIT_DARK,
   oilTank: materialHex('galvanised'),
+  bayGlass: litHex('tintedGlass'),
   iceLocker: materialHex('whitePlaster'),
   propaneCage: materialHex('galvanised'),
 };
@@ -270,6 +271,7 @@ export const LIT_PARTS: ReadonlySet<BuildingPart> = new Set<BuildingPart>([
   'storefrontBand',
   'dockLight',
   'glassFront',
+  'bayGlass',
   'flareTip',
 ]);
 
@@ -633,11 +635,17 @@ export { REPAIR_BAY_M };
 export const REPAIR_DOOR_HEIGHT_M = SHOP_DOOR_M;
 const REPAIR_PIER_M = 0.3;
 export const REPAIR_SIGN_CENTRE_Y_M = REPAIR_DOOR_HEIGHT_M + 0.5 + SIGN_HEIGHT_M / 2;
-export const REPAIR_OFFICE_GLASS_M = 3;
-export const REPAIR_OFFICE_CORNER_M = 0.6;
+export const REPAIR_OFFICE_GLASS_M = REPAIR_OFFICE_M.glass;
+export const REPAIR_OFFICE_CORNER_M = REPAIR_OFFICE_M.corner;
 const REPAIR_OFFICE_GLASS_HEIGHT_M = 2.1;
 const REPAIR_OFFICE_SILL_M = 0.6;
-const REPAIR_OFFICE_DOOR_GAP_M = 0.2;
+const REPAIR_OFFICE_DOOR_GAP_M = REPAIR_OFFICE_M.doorGap;
+/** A bay door is a pale sectional door with one dark glazed strip across it at two thirds of its height, over a dark pier row. */
+const BAY_GLASS_HEIGHT_M = 0.45;
+const BAY_GLASS_AT = 2 / 3;
+const BAY_GLASS_INSET_M = 0.3;
+const BAY_GLASS_PROUD_M = 0.04;
+const BAY_PIER_DEPTH_M = 0.06;
 export const TYRE_RACK_SIZE_M: readonly [number, number, number] = [2.4, 1.8, 0.9];
 /** A 1,000 gallon waste-oil tank: 1.2 m across and 2.4 m tall. */
 export const OIL_TANK_SIZE_M: readonly [number, number, number] = [1.2, 2.4, 1.2];
@@ -2569,31 +2577,70 @@ function repairBayDoors(box: SetbackBox, side: Side): PartPlacement[] {
   const span = facadeSpan(box, side);
   const count = repairBays(span);
   const width = Math.min(REPAIR_BAY_M, span / Math.max(1, count) - REPAIR_PIER_M);
-  const out: PartPlacement[] = [];
+  const door = materialUnit('ribbedWhite');
+  const out: PartPlacement[] = [
+    // A dark pier row behind the doors, so the pale doors read apart.
+    againstFacade(
+      'panelReveal',
+      box,
+      side,
+      span,
+      BAY_PIER_DEPTH_M,
+      REPAIR_DOOR_HEIGHT_M,
+      REPAIR_DOOR_HEIGHT_M / 2,
+    ),
+  ];
   for (let i = 0; i < count; i += 1) {
+    const along = bayCentre(span, count, i);
     out.push(
+      {
+        ...againstFacade(
+          'rollUpDoors',
+          box,
+          side,
+          width,
+          DOOR_THICKNESS_M,
+          REPAIR_DOOR_HEIGHT_M,
+          REPAIR_DOOR_HEIGHT_M / 2,
+          along,
+        ),
+        color: door,
+      },
       againstFacade(
-        'rollUpDoors',
+        'bayGlass',
         box,
         side,
-        width,
-        DOOR_THICKNESS_M,
-        REPAIR_DOOR_HEIGHT_M,
-        REPAIR_DOOR_HEIGHT_M / 2,
-        bayCentre(span, count, i),
+        width - 2 * BAY_GLASS_INSET_M,
+        DOOR_THICKNESS_M + BAY_GLASS_PROUD_M,
+        BAY_GLASS_HEIGHT_M,
+        REPAIR_DOOR_HEIGHT_M * BAY_GLASS_AT,
+        along,
       ),
     );
   }
   return out;
 }
 
-/** A repair shop's glazed office and its door, in the end wall beside the lot's drive at the street corner. */
+/**
+ * The end wall a repair shop's office stands in: the one its walk to the door
+ * lands at, else the one beside the lot's drive.
+ */
+function repairOfficeWall(side: Side, lot: KitLot | null): Side {
+  if (lot?.walk) {
+    const c = isAlongX(side) ? (lot.walk.x0 + lot.walk.x1) / 2 : (lot.walk.z0 + lot.walk.z1) / 2;
+    if (isAlongX(side)) return c < 0 ? 'W' : 'E';
+    return c < 0 ? 'N' : 'S';
+  }
+  return oppositeSide(farEnd(side, lot));
+}
+
+/** A repair shop's glazed office and its door, in the end wall its walk lands at, at the street corner. */
 function repairOffice(
   box: SetbackBox,
   side: Side,
   lot: KitLot | null,
 ): { glass: PartPlacement; door: PartPlacement; light: PartPlacement } {
-  const wall = oppositeSide(farEnd(side, lot));
+  const wall = repairOfficeWall(side, lot);
   const glassIn = REPAIR_OFFICE_CORNER_M + REPAIR_OFFICE_GLASS_M / 2;
   const doorIn =
     REPAIR_OFFICE_CORNER_M +
@@ -2638,7 +2685,7 @@ function repairOffice(
 
 /** A repair shop's tyre rack and waste-oil tank against the end wall away from the drive, each where the lot leaves the ground free. */
 function repairYard(box: SetbackBox, side: Side, lot: KitLot | null): PartPlacement[] {
-  const wall = farEnd(side, lot);
+  const wall = oppositeSide(repairOfficeWall(side, lot));
   const [rw, rh, rd] = TYRE_RACK_SIZE_M;
   const [tw, th, td] = OIL_TANK_SIZE_M;
   const rackIn = 1.5 + rw / 2;

@@ -92,13 +92,13 @@ const STREETS = [
     name: 'lineup',
     lineup: true,
     ids: [
+      'com-autorepair-1-lot2x2',
+      'com-convenience-1-lot3x2',
       'com-low-1',
       'com-strip-1',
       'com-market-1',
       'com-restaurant-1-lot2x2',
       'com-fuel-1',
-      'com-autorepair-1-lot2x2',
-      'com-convenience-1-lot3x2',
       'com-high-1',
       'com-hotel-1',
     ],
@@ -270,7 +270,11 @@ try {
     spans[STREETS.findIndex((s) => s.name === street)].filter((b) => b.id === id)[nth];
   const rowBox = (s) => boxOf(spans[s]);
   const lineup = STREETS.findIndex((s) => s.lineup);
-  const shootLineup = (suffix) => frame(`lineup${suffix}`, rowBox(lineup), 0.2);
+  // The whole line-up, then its first three kinds (the repair shop, the store, the corner shop) close enough to tell apart.
+  const shootLineup = async (suffix) => {
+    await frame(`lineup${suffix}`, rowBox(lineup), 0.2);
+    await frame(`lineup-new${suffix}`, boxOf(spans[lineup].slice(0, 3)), 0.2, DEFAULT_PITCH, 0.85);
+  };
 
   const views = (suffix) => async () => {
     // At night the first street, the pylon and the fuel canopy stand for the kit; the rest repeat the day frames.

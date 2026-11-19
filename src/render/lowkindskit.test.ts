@@ -16,6 +16,7 @@ import {
   type PartPlacement,
 } from './buildingkit';
 import { tierCountOf } from './massing';
+import { storefrontCut, windowlessBody } from './facade';
 
 const catalog = (catalogData as { buildings: BuildingCatalogEntry[] }).buildings;
 const repairs = catalog.filter((e) => e.kind === 'autorepair');
@@ -241,6 +242,41 @@ describe('the lot’s furniture leaves a store’s lockers their ground', () => 
   it('reserves both end zones of the front wall for the kit', () => {
     for (const e of stores) {
       expect(hasPart(e, 'iceLocker'), e.id).toBe(true);
+    }
+  });
+});
+
+describe('a repair shop reads as one storey of pale walls and doors', () => {
+  it('draws a pale door and a dark glazed strip at two thirds of its height for every bay, over a dark pier row', () => {
+    for (const e of repairs) {
+      const plan = kitOf(e, 0, 'S');
+      const doors = only(plan, 'rollUpDoors');
+      const strips = only(plan, 'bayGlass');
+      expect(strips, e.id).toHaveLength(doors.length);
+      for (const d of doors) {
+        const lum = (d.color![0]! + d.color![1]! + d.color![2]!) / 3;
+        expect(lum, e.id).toBeGreaterThan(0.45);
+        const strip = strips.find((s) => Math.abs(s.offset[0] - d.offset[0]) < 1e-6)!;
+        expect(strip.offset[1] / REPAIR_DOOR_HEIGHT_M, e.id).toBeCloseTo(2 / 3, 5);
+        expect(strip.size[0], e.id).toBeLessThan(d.size[0]);
+      }
+      expect(only(plan, 'panelReveal'), e.id).toHaveLength(1);
+    }
+  });
+
+  it('puts the office in the end wall its walk to the door lands at', () => {
+    for (const e of repairs.filter((r) => r.bodyFootprint !== undefined)) {
+      const plan = kitOf(e, 0, 'S');
+      const walk = plan.lot!.walk!;
+      const [glass] = only(plan, 'glassFront');
+      expect(Math.sign(glass!.offset[0]), e.id).toBe(Math.sign((walk.x0 + walk.x1) / 2));
+    }
+  });
+
+  it('draws no window on any wall of the body', () => {
+    for (const e of repairs) {
+      expect(windowlessBody(e), e.id).toBe(true);
+      expect(storefrontCut(e, e.height), e.id).toBeNull();
     }
   });
 });

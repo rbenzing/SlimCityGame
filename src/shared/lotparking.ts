@@ -108,6 +108,7 @@ export function lotLayoutFor(
     ...(isRoomyLotEntry(entry) ? { perimeterStrip: LOT_PERIMETER_STRIP_M } : {}),
     ...(entry.category === 'com' && !isDenseLotEntry(entry) ? { shopfrontWalk: true } : {}),
     ...(entry.kind === 'restaurant' ? { driveThrough: true } : {}),
+    ...(entry.kind === 'autorepair' ? { entranceAtEnd: true } : {}),
     ...(entry.kind && TRUCK_COURT_KINDS.has(entry.kind) ? { trailerCourt: true } : {}),
   });
   // A repair shop's bay doors fill its street face; the grounds keep that ground clear.
