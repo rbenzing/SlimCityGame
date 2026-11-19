@@ -19,6 +19,7 @@ import {
   GrowthSystem,
   UNLIMITED_ROOM,
   UNMETERED_SUPPLY,
+  ABANDONED_CLEAR_DEMAND,
   drawKind,
   farmKindFor,
   footprintsOf,
@@ -613,7 +614,8 @@ describe('GrowthSystem', () => {
       }
     });
 
-    it('despawns an abandoned building after 10 further passes without recovery', () => {
+    /** An unpowered home abandoned after three passes at the given demand. */
+    function abandonedHome(demand: DemandLevels) {
       const g = makeGrid();
       const registry = new BuildingRegistry(growthCatalog);
       const inst = registry.place(g, resL1, 3, 3, 0, BuildingState.Active)!;
@@ -621,28 +623,48 @@ describe('GrowthSystem', () => {
       g.watered[idx] = 1;
       g.sewered[idx] = 1;
       g.roadTier[idx] = RoadTier.TwoLane;
-      g.power[idx] = 0; // persistently unpowered, never restored
+      g.power[idx] = 0;
       const growth = new GrowthSystem(growthCatalog, constantRng(0), alwaysTrue);
-
-      // 3 passes to abandon (tickNo 0, 10, 20).
-      growth.tick(g, registry, neutralDemand, 0, 0);
-      growth.tick(g, registry, neutralDemand, 0, 10);
-      growth.tick(g, registry, neutralDemand, 0, 20);
+      for (let tickNo = 0; tickNo <= 20; tickNo += 10) growth.tick(g, registry, demand, 0, tickNo);
       expect(registry.get(inst.id)!.state).toBe(BuildingState.Abandoned);
+      return { g, registry, inst, idx, growth };
+    }
+    const lowDemand: DemandLevels = { res: ABANDONED_CLEAR_DEMAND - 0.1, com: 0, ind: 0 };
+    const highDemand: DemandLevels = { res: ABANDONED_CLEAR_DEMAND, com: 0, ind: 0 };
 
-      // 9 more passes (30..110): still abandoned, not yet despawned.
-      growth.tick(g, registry, neutralDemand, 0, 30);
-      for (let tickNo = 40; tickNo <= 110; tickNo += 10) {
-        const lastDelta = growth.tick(g, registry, neutralDemand, 0, tickNo);
-        expect(registry.get(inst.id)).toBeDefined();
-        expect(lastDelta.removed).toEqual([]);
+    it('leaves an abandoned building standing for as long as its zone’s demand is low', () => {
+      const { g, registry, inst, idx, growth } = abandonedHome(lowDemand);
+
+      for (let pass = 0; pass < 50; pass++) {
+        const delta = growth.tick(g, registry, lowDemand, 0, 30 + pass * 10);
+        expect(delta.removed).toEqual([]);
       }
+      expect(registry.get(inst.id)!.state).toBe(BuildingState.Abandoned);
+      expect(g.buildingId[idx]).toBe(inst.id);
+    });
 
-      // 10th pass since abandonment (tickNo 120): despawns.
-      const despawnDelta = growth.tick(g, registry, neutralDemand, 0, 120);
-      expect(despawnDelta.removed).toEqual([inst.id]);
+    it('demolishes an abandoned building in the next pass once its zone’s demand reaches the threshold', () => {
+      const { g, registry, inst, idx, growth } = abandonedHome(lowDemand);
+      growth.tick(g, registry, lowDemand, 0, 30);
+
+      const delta = growth.tick(g, registry, highDemand, 0, 40);
+
+      expect(delta.removed).toEqual([inst.id]);
       expect(registry.get(inst.id)).toBeUndefined();
       expect(g.buildingId[idx]).toBe(0);
+    });
+
+    it.each([
+      ['low', lowDemand],
+      ['high', highDemand],
+    ])('reopens an abandoned building when power returns, at %s demand', (_name, demand) => {
+      const { g, registry, inst, idx, growth } = abandonedHome(lowDemand);
+      g.power[idx] = 1;
+
+      const delta = growth.tick(g, registry, demand, 0, 30);
+
+      expect(delta.removed).toEqual([]);
+      expect(registry.get(inst.id)!.state).toBe(BuildingState.Active);
     });
   });
 

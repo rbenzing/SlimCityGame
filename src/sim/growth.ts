@@ -100,7 +100,8 @@ const CONVERSION_PER_YEAR = 0.02;
 export const CONVERSION_CHANCE_PER_PASS =
   1 - (1 - CONVERSION_PER_YEAR) ** (GROWTH_INTERVAL / TICKS_PER_YEAR);
 const ABANDON_BLOCKER_STREAK = 3;
-const DESPAWN_ABANDONED_PASSES = 10;
+/** Sector demand (-1..1) at which an abandoned building is cleared: 0 is a half-full demand bar. */
+export const ABANDONED_CLEAR_DEMAND = 0;
 /** Number of GROWTH_INTERVAL passes needed to sweep the whole map once. */
 const SCAN_STRIDE = 32;
 const LEVEL_2_LAND_VALUE = 140;
@@ -661,8 +662,6 @@ export class GrowthSystem {
   private readonly constructing = new Map<number, number>();
   /** Building id -> consecutive passes with a NoPower/NoWater/NoRoad blocker while Active. */
   private readonly blockerStreak = new Map<number, number>();
-  /** Building id -> passes elapsed since becoming Abandoned. */
-  private readonly abandonedPasses = new Map<number, number>();
   /**
    * Lots (by tile index) and buildings (by negated id) held back for want of
    * power or water. Each visit forgets the wait and the supply check records
@@ -985,7 +984,6 @@ export class GrowthSystem {
             this.blockerStreak.delete(inst.id);
             inst.problems = newProblems;
             inst.state = BuildingState.Abandoned;
-            this.abandonedPasses.set(inst.id, 0);
             updated.push(inst);
             continue;
           }
@@ -1001,18 +999,14 @@ export class GrowthSystem {
         if (!hasBlocker) {
           inst.state = BuildingState.Active;
           inst.problems = newProblems;
-          this.abandonedPasses.delete(inst.id);
           updated.push(inst);
           continue;
         }
-        const passes = (this.abandonedPasses.get(inst.id) ?? 0) + 1;
-        if (passes >= DESPAWN_ABANDONED_PASSES) {
-          this.abandonedPasses.delete(inst.id);
+        if (sector && demandForSector >= ABANDONED_CLEAR_DEMAND) {
           registry.remove(g, inst.id);
           removed.push(inst.id);
           continue;
         }
-        this.abandonedPasses.set(inst.id, passes);
         if (inst.problems !== newProblems) {
           inst.problems = newProblems;
           updated.push(inst);
