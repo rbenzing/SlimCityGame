@@ -186,6 +186,40 @@ The pace. About a quarter of the most at-risk Vancouver houses over some thirtee
 years is about 2% a year, so each such house converts with a 2% chance a year (a
 game year is 72,000 ticks).
 
+## What raises a home's value
+
+What was found on public services and house prices, and how the land-value
+field uses it. A figure marked _summary_ was read as a search result's
+summary, not on the page.
+
+- **Schools.** A 5% rise in a school's test scores goes with a 2.1% rise in
+  the price of the homes it serves, measured across attendance boundaries
+  ([Black, _Do Better Schools Matter?_, QJE 1999](https://www.bristol.ac.uk/cmpo/publications/publicservices/choice/education/educarticles/black99.html));
+  later studies find under 4% for one standard deviation (Nguyen-Hoang and
+  Yinger, _Journal of Housing Economics_ 2011; _summary_).
+- **Safety.** House prices move against crime with an elasticity of −0.15
+  to −0.35, and the zip codes whose crime fell most in the 1990s gained 7
+  to 19% (Pope and Pope, _Regional Science and Urban Economics_ 2012;
+  _summary_). One registered offender lowers homes within a tenth of a mile
+  by about 4% ([Linden and Rockoff, AER 2008](https://www.nber.org/digest/jun06/megans-law-hits-local-property-prices)).
+  No estimate was found for a police station as such.
+- **Fire.** No study was found that prices fire protection into homes; a
+  listing analysis puts homes within a tenth of a mile of a station 1.8%
+  lower (_summary_, not peer-reviewed).
+- **Health.** The sign depends on distance and kind; a listing analysis
+  puts homes within half a mile of an emergency room 7.6% lower (_summary_,
+  not peer-reviewed).
+- **Parks**, for scale: 8 to 10% for a home fronting a passive park, up to
+  20% in older reviews (Crompton, _Journal of Leisure Research_ 2001;
+  Crompton and Nicholls 2019; _summary_).
+
+So a school and a police station each add to land value, a fire station and
+a clinic do not, and a park stays worth more than either. The size of the
+step is the field's own: one point of gain, about 20 at the equilibrium.
+Two points is a third more than bare ground, above what the studies find
+for schools and safety together; it is the least that crosses the level-2
+line, and a dial.
+
 ## The acre lot
 
 Estate districts run from half an acre to an acre and more: Boise's R-1A at
