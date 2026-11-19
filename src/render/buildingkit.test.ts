@@ -1198,23 +1198,29 @@ describe('an office and a hotel', () => {
   });
 
   it('puts rooftop units on levels one and two and a screened cooling tower on the tower', () => {
-    for (const id of ['com-high-1', 'com-office-2']) {
-      const plan = southern(byId(id));
-      expect(only(plan, 'rooftopUnit').length, id).toBeGreaterThan(0);
-      expect(only(plan, 'roofScreen')).toEqual([]);
-    }
+    // The 16 m office is under the modern ceiling and keeps its bare roof; the 25.6 m one is modern and screens its units.
+    const low = southern(byId('com-high-1'));
+    expect(only(low, 'rooftopUnit').length).toBeGreaterThan(0);
+    expect(only(low, 'roofScreen')).toEqual([]);
+    const mid = southern(byId('com-office-2'));
+    expect(only(mid, 'rooftopUnit').length).toBeGreaterThan(0);
+    expect(only(mid, 'roofScreen')).toHaveLength(4);
     const tower = southern(byId('com-high-2'));
     expect(only(tower, 'rooftopUnit')).toEqual([]);
-    const [screen] = only(tower, 'roofScreen');
+    const screens = only(tower, 'roofScreen');
     const [cooling] = only(tower, 'coolingTower');
     const roofY = tower.topBox.yOffset + tower.topBox.h;
-    expect(screen!.size[1]).toBeCloseTo(3, 9);
-    expect(bottomOf(screen!)).toBeCloseTo(roofY, 9);
-    // Inset 2 m from the top tier's street edge, with the cooling tower behind it.
-    expect(tower.topBox.d / 2 - placementBounds(screen!).z1).toBeCloseTo(2, 9);
+    // A wall on each side, 3 m tall, whose inner faces stand 2 m in from the top tier's edge, the cooling tower inside.
+    expect(screens).toHaveLength(4);
+    for (const screen of screens) {
+      expect(screen.size[1]).toBeCloseTo(3, 9);
+      expect(bottomOf(screen)).toBeCloseTo(roofY, 9);
+    }
+    const streetWall = screens.find((s) => s.offset[2] > 0 && s.size[0] > s.size[2])!;
+    expect(tower.topBox.d / 2 - placementBounds(streetWall).z0).toBeCloseTo(2, 9);
     expect([...cooling!.size].sort((a, b) => a - b)).toEqual([3, 3, 6]);
     expect(cooling!.size[1]).toBeCloseTo(3, 9);
-    expect(placementBounds(cooling!).z1).toBeLessThanOrEqual(placementBounds(screen!).z0 + 1e-9);
+    expect(placementBounds(cooling!).z1).toBeLessThanOrEqual(placementBounds(streetWall).z0 + 1e-9);
   });
 
   it('has a porte-cochere on four 0.4 m columns, a 0.6 m slab 6.1 × 6 m with its underside at 4.27 m', () => {

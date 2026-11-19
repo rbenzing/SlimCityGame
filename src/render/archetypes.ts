@@ -12,6 +12,7 @@
  */
 import { ZoneType, type BuildingCatalogEntry } from '../shared/types';
 import { isApartmentKind, isHouseKind, isWalkUpKind } from '../shared/buildingkind';
+import { isModernTall } from '../shared/modernlook';
 
 export type BuildingArchetype =
   /** Small industrial units: a low shed with roller doors at grade and no dock. */
@@ -592,7 +593,27 @@ const OFFICE_TOWER_PARTS: readonly BuildingPart[] = [
   'roofHatch',
 ];
 
+/** What stands on a roof as plant: a modern building's crown screens it. */
+const ROOF_PLANT_PARTS: readonly BuildingPart[] = [
+  'rooftopUnit',
+  'coolingTower',
+  'penthouse',
+  'elevatorBulkhead',
+];
+
+/**
+ * The parts a building is built of. A modern building (over the Small City
+ * ceiling) carries rooftop plant, units where its kind has none, and a screen
+ * round it; every other building keeps its kind's parts.
+ */
 export function partsFor(entry: BuildingCatalogEntry): readonly BuildingPart[] {
+  const base = kindPartsFor(entry);
+  if (!isModernTall(entry)) return base;
+  const plant = base.some((p) => ROOF_PLANT_PARTS.includes(p)) ? base : [...base, 'rooftopUnit'];
+  return plant.includes('roofScreen') ? plant : [...plant, 'roofScreen'];
+}
+
+function kindPartsFor(entry: BuildingCatalogEntry): readonly BuildingPart[] {
   const archetype = archetypeFor(entry);
   if (archetype === 'storefront') {
     const parts = STOREFRONT_PARTS[entry.kind ?? ''] ?? PARTS.storefront;
