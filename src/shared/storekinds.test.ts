@@ -6,7 +6,7 @@ import { ROOMY_LOT_TILES } from './roomylots';
 import { bodyPlateM2, grossFloorM2, grossFloorSqFt } from './floorarea';
 import { TILE_METERS } from './constants';
 import { lotLayoutFor } from './lotparking';
-import { LOT_PERIMETER_STRIP_M } from './lotgrounds';
+import { LOT_PERIMETER_STRIP_M, planLotGrounds } from './lotgrounds';
 import { carwashQueueCars, lotParkingRequirement, storageUnits } from './parkingcode';
 import {
   DRIVE_THROUGH_LANE_M,
@@ -420,7 +420,8 @@ describe('the pharmacy, the machine shop and self-storage', () => {
     );
     const cover = bodyPlateM2(compact) / (lot.w * lot.d * TILE_METERS * TILE_METERS);
     const lane = keepsItsGround(compact, l, l.lot.v1 - s);
-    const walks = l.frontWalk !== null && l.entranceWalk !== null;
+    // A car wash has no public door: it lays no walk to its portals.
+    const walks = compact.kind === 'carwash' || (l.frontWalk !== null && l.entranceWalk !== null);
     return l.fits && inside && cover <= SHARE[compact.kind!]! && lane && walks;
   };
 
@@ -663,6 +664,37 @@ describe('the pharmacy, the machine shop and self-storage', () => {
         for (const ground of [apron, lane!, court!]) {
           for (const o of others)
             expect(apart(ground, o), `${e.id} meets ${JSON.stringify(o)}`).toBe(true);
+        }
+      }
+    }
+  });
+
+  it('a car wash lays no walk to its portals: no walk, bed, bench, bin or rack stands on its apron or in 3 m before a portal', () => {
+    const roomy = catalog.filter((c) => c.kind === 'carwash' && c.bodyFootprint !== undefined);
+    for (const e of roomy) {
+      for (const [rotation, alongX] of ROTATIONS) {
+        const l = lotLayoutFor(e, rotation, alongX)!;
+        expect(l.frontWalk, e.id).toBeNull();
+        expect(l.entranceWalk, e.id).toBeNull();
+        const { apron } = l.lube!;
+        const approach: LotRect[] = [
+          apron,
+          { ...l.body, v0: l.body.v0 - 3, v1: l.body.v0 },
+          { ...l.body, v0: l.body.v1, v1: l.body.v1 + 3 },
+        ];
+        const pieces = planLotGrounds(l, {
+          kind: e.kind,
+          category: 'com',
+          homeSides: [],
+          kitSign: false,
+          kitRefuse: false,
+        }).pieces;
+        for (const p of pieces) {
+          for (const a of approach) {
+            expect(apart(p.rect, a), `${e.id} r${rotation} ${p.kind} on ${JSON.stringify(a)}`).toBe(
+              true,
+            );
+          }
         }
       }
     }

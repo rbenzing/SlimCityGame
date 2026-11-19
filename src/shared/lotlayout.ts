@@ -88,6 +88,8 @@ export interface LotLayoutInput {
   driveUpLanes?: readonly number[];
   /** A drive-through service bay: the body stands on the front of its lot behind an apron, with a lane along one wall to a court behind. */
   quickLube?: boolean;
+  /** The body has no door the public walks to: no walk is laid to its street face. */
+  noPublicDoor?: boolean;
   /** With `quickLube`: how deep the court behind the body is, where it is not the lube's three cars a bay (m). */
   courtDepth?: number;
   /** Stripe trailer stalls in the truck court before the wall the berths lie beside, on the ground left over. */
@@ -200,6 +202,8 @@ export interface LotLayout {
   driveThrough: DriveThrough | null;
   /** A drive-through service bay's apron, lane and court; null for any other building. */
   lube: LubeGrounds | null;
+  /** The body has no public door: the lot lays no walk to it. */
+  noPublicDoor?: boolean;
   /** The wall of the body the loading berths lie beside, for a kind that docks trucks; the dock stands on it. */
   loadingWall: LoadingWall | null;
   /** Trailer stalls striped in the truck court before the loading wall, on ground the car park left over. */
@@ -1037,12 +1041,14 @@ function computeLotLayout0(
   const { c, built, filled, fits } = best!;
   const berths = built.berthsOk ? built.berths : [];
   const entrance = { u: entranceUOf(c.body, built.curbCut, input), v: c.body.v0 };
-  const walks = walksFor(c.body, along, entrance.u, built.forecourt, filled.aisles, [
-    ...filled.stalls.map((s) => s.rect),
-    ...filled.accessAisles,
-    ...filled.islands,
-    ...berths,
-  ]);
+  const walks = input.noPublicDoor
+    ? { frontWalk: null, entranceWalk: null }
+    : walksFor(c.body, along, entrance.u, built.forecourt, filled.aisles, [
+        ...filled.stalls.map((s) => s.rect),
+        ...filled.accessAisles,
+        ...filled.islands,
+        ...berths,
+      ]);
   const layout: LotLayout = {
     lot: { u0: 0, u1: along, v0: 0, v1: depth },
     body: c.body,
@@ -1060,6 +1066,7 @@ function computeLotLayout0(
     throat: filled.aisles.length > 0 ? built.throat : null,
     driveThrough: null,
     lube: null,
+    ...(input.noPublicDoor ? { noPublicDoor: true } : {}),
     loadingWall: null,
     trailerStalls: [],
     required: input.spaces,

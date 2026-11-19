@@ -18,6 +18,8 @@ const catalog = (catalogData as { buildings: BuildingCatalogEntry[] }).buildings
 const commercial = catalog.filter(
   (e) => e.category === 'com' && lotParkingRequirement(e) !== null && !isDenseLotEntry(e),
 );
+/** A car wash has no shopfront and no public door: it lays no front walk. */
+const shopfronts = commercial.filter((e) => e.kind !== 'carwash');
 const ROTATIONS = [0, 1, 2, 3] as const;
 const EPS = 0.01;
 
@@ -46,7 +48,7 @@ describe('a commercial car park, at every level', () => {
   });
 
   it('lays the front walk clear of every stall and reaches the footway or an aisle from it', () => {
-    for (const e of commercial) {
+    for (const e of shopfronts) {
       for (const rot of ROTATIONS) {
         const layout = lotLayoutFor(e, rot, rot % 2 === 0, 0)!;
         const walk = layout.frontWalk;
@@ -69,7 +71,7 @@ describe('a commercial car park, at every level', () => {
   });
 
   it('draws a front walk at least 36 in deep across the whole shopfront', () => {
-    for (const e of commercial) {
+    for (const e of shopfronts) {
       for (const rot of ROTATIONS) {
         const layout = lotLayoutFor(e, rot, rot % 2 === 0, 0)!;
         const walk = layout.frontWalk!;

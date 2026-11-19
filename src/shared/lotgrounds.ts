@@ -305,6 +305,7 @@ function planWalk(ctx: Ctx): void {
  * entrance, which it paves, and its tree is dropped (`droppedTrees`).
  */
 export function walkPieces(layout: LotLayout): GroundsPiece[] {
+  if (layout.noPublicDoor) return [];
   if (layout.entranceWalk) {
     return [{ kind: 'walk', rect: layout.entranceWalk, facing: 'v+', height: 0, laid: true }];
   }

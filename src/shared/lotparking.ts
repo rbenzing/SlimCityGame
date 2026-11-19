@@ -136,6 +136,7 @@ export function lotLayoutFor(
     ...(entry.kind === 'carwash'
       ? {
           quickLube: true,
+          noPublicDoor: true,
           courtDepth: carwashQueueCars(entry.level) * DRIVE_THROUGH_STACK_SPACE_M,
         }
       : {}),
