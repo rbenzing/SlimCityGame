@@ -7,6 +7,10 @@
    Until the town is a Grand City, shops and works take roomy lots with a
    car park, planting and a yard, so give them more land than their
    buildings alone would need; a block with no room still grows tight.
+   How tall a town builds follows its size: nothing over four storeys before
+   Small City, six storeys there, twelve at Grand City, and the tallest
+   towers only at Metropolis. Nothing standing is torn down for being too
+   tall.
 3. **Power and water flow through roads.** Connect a generator and a water source
    to the road network and the whole connected network is served.
 4. **Watch it grow, then read it.** Buildings construct, upgrade, and occasionally
