@@ -609,7 +609,9 @@ const ROOF_PLANT_PARTS: readonly BuildingPart[] = [
 export function partsFor(entry: BuildingCatalogEntry): readonly BuildingPart[] {
   const base = kindPartsFor(entry);
   if (!isModernTall(entry)) return base;
-  const plant = base.some((p) => ROOF_PLANT_PARTS.includes(p)) ? base : [...base, 'rooftopUnit'];
+  const plant: readonly BuildingPart[] = base.some((p) => ROOF_PLANT_PARTS.includes(p))
+    ? base
+    : [...base, 'rooftopUnit'];
   return plant.includes('roofScreen') ? plant : [...plant, 'roofScreen'];
 }
 
