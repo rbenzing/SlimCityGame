@@ -95,13 +95,10 @@ import {
   hospitalAccessibleSpaces,
   hospitalDeckSpaces,
   computeHospitalFacade,
-  findOxygenPad,
-  hospitalOxygenPad,
   HOSPITAL_ROOMS,
   HOSPITAL_TOWER,
   HOSPITAL_LOUVRE,
-  HOSPITAL_SERVICE_DOORS,
-  OXYGEN_PAD,
+  HOSPITAL_SIGN,
   type FacadeItem,
   type HospitalFace,
   type Rect,
@@ -2877,7 +2874,13 @@ describe('the hospital’s four faces', () => {
           expect(w.sill).toBeCloseTo(storey * HOSPITAL_STOREY_M + HOSPITAL_WINDOW.sill, 9);
           expect(w.height).toBeCloseTo(HOSPITAL_WINDOW.h, 9);
         }
-        row.slice(1).forEach((w, i) => expect(w.along - row[i]!.along).toBeCloseTo(4, 9));
+        // On the 4 m grid: a room is missing only where the red-cross panel stands.
+        const bayGap = row.slice(1).filter((w, i) => w.along - row[i]!.along > 4 + 1e-9);
+        expect(bayGap).toHaveLength(face === 'street' && storey === 2 ? 1 : 0);
+        row.slice(1).forEach((w, i) => {
+          const cells = (w.along - row[i]!.along) / 4;
+          expect(cells).toBeCloseTo(Math.round(cells), 9);
+        });
         // A pier at each end, equal, at least the minimum, and too short for one more room.
         const pierW = row[0]!.along - row[0]!.width / 2 - blockRect.x0;
         const pierE = blockRect.x1 - (row[row.length - 1]!.along + row[0]!.width / 2);
@@ -2899,16 +2902,12 @@ describe('the hospital’s four faces', () => {
       expect(proud).toBeLessThanOrEqual(HOSPITAL_TOWER.proud + 1e-9);
       expect(inside(t.rect, { x0: -halfW, x1: halfW, z0: -halfD, z1: halfD })).toBe(true);
       expect(overlaps(t.rect, layout.deck)).toBe(false);
-      // Its face carries a door at grade and a narrow window at each landing, nothing else.
+      // Its face carries a narrow window at each landing, nothing else: no door.
       const own = itemsOf(t.face).filter((i) => i.out > 0);
-      const doors = own.filter((i) => i.kind === 'towerDoor');
-      expect(doors).toHaveLength(1);
-      expect([doors[0]!.width, doors[0]!.height]).toEqual([1.0, 2.1]);
-      expect(doors[0]!.storey).toBe(0);
       const landings = own.filter((i) => i.kind === 'landingWindow');
       expect(landings.map((i) => i.storey)).toEqual(NURSING);
       for (const l of landings) expect([l.width, l.height]).toEqual([0.6, 1.5]);
-      expect(own).toHaveLength(1 + landings.length);
+      expect(own).toHaveLength(landings.length);
       expect(own.every((i) => Math.abs(i.out - proud) < 1e-9)).toBe(true);
     }
   });
@@ -2938,21 +2937,29 @@ describe('the hospital’s four faces', () => {
     }
   });
 
-  it('puts two service doors, 2.7 × 3.0 m, on the rear face and no door but the stair doors elsewhere', () => {
-    const doors = itemsOf('rear', 'serviceDoor');
-    expect(doors).toHaveLength(HOSPITAL_SERVICE_DOORS.count);
-    for (const d of doors) {
-      expect([d.width, d.height]).toEqual([2.7, 3.0]);
-      expect(d.storey).toBe(0);
+  it('hangs no door on the rear, the west or the east face: the ground storey there is wall and louvre only', () => {
+    // The yard behind is 1.0 m, at the west end 1.0 m, at the east end 0.52 m: nothing reaches a door.
+    expect(blockRect.z0 - -halfD).toBeCloseTo(1, 9);
+    expect(blockRect.x0 - -halfW).toBeCloseTo(1, 9);
+    expect(layout.deck.x0 - blockRect.x1).toBeLessThan(1);
+    for (const face of ['rear', 'west', 'east'] as const) {
+      const ground = itemsOf(face).filter((i) => i.storey === 0);
+      expect(ground.every((i) => i.kind === 'louvre')).toBe(true);
     }
-    expect(
-      facade.items.filter((i) => i.kind === 'serviceDoor').every((i) => i.face === 'rear'),
-    ).toBe(true);
-    // The louvre does not run behind a door.
-    for (const l of itemsOf('rear', 'louvre')) {
-      for (const d of doors) {
-        const apart = Math.abs(l.along - d.along) >= (l.width + d.width) / 2 - 1e-9;
-        expect(apart).toBe(true);
+    // And the geometry: nothing of the block stands on the rear plane below the louvre's sill, nor on a tower's face below the first landing.
+    const block = positionsOf('hospitalBlock');
+    const p = HOSPITAL_WINDOW.proud;
+    const louvreSill = HOSPITAL_LOUVRE.head - HOSPITAL_LOUVRE.h;
+    const towerFaces = facade.towers.map((t) => (t.face === 'west' ? t.rect.x0 : t.rect.x1));
+    for (let i = 0; i < block.count; i++) {
+      const y = block.getY(i);
+      if (Math.abs(block.getZ(i) - (blockRect.z0 - p)) < 1e-6) {
+        expect(y).toBeGreaterThanOrEqual(louvreSill - 1e-6);
+      }
+      for (const x of towerFaces) {
+        if (Math.abs(Math.abs(block.getX(i) - x) - p) < 1e-6 && block.getZ(i) < blockRect.z0 + 6) {
+          expect(y).toBeGreaterThanOrEqual(HOSPITAL_STOREY_M);
+        }
       }
     }
   });
@@ -2970,7 +2977,7 @@ describe('the hospital’s four faces', () => {
     expect(new Set(signatures).size).toBe(faces.length);
   });
 
-  it('draws the lit glass on no ground-storey wall but the street’s lobby, the stair doors’ landings and the emergency leaves', () => {
+  it('draws the lit glass on no ground-storey wall but the street’s lobby, the stair towers’ landings and the emergency leaves', () => {
     const lit = positionsOf('hospitalLit');
     const p = HOSPITAL_WINDOW.proud;
     const rearPlane = blockRect.z0 - p;
@@ -2990,54 +2997,28 @@ describe('the hospital’s four faces', () => {
     }
   });
 
-  it('keeps the dark louvre and the service doors out of the lit pool and the lit glass out of the block pool', () => {
+  it('keeps the dark louvre out of the lit pool and the lit glass out of the block pool', () => {
     const renderer = new UtilityKitRenderer(new THREE.Scene(), flatHeightAt, [HOSPITAL]);
     renderer.setNightFactor(1);
     expect(renderer.partEmissiveHex('hospital', 'hospitalLit')).not.toBe(0);
     expect(renderer.partEmissiveHex('hospital', 'hospitalBlock')).toBe(0);
   });
 
-  describe('the bulk oxygen tank', () => {
-    const lot: Rect = { x0: -100, x1: 100, z0: -100, z1: 100 };
-    const building: Rect = { x0: -29, x1: 29, z0: -24, z1: 24 };
-    const gap = (a: Rect, b: Rect): number =>
-      Math.hypot(Math.max(a.x0 - b.x1, b.x0 - a.x1, 0), Math.max(a.z0 - b.z1, b.z0 - a.z1, 0));
-
-    it('stands no tank on the real plot, where the rear yard is a metre deep and the front is stalls and canopies', () => {
-      expect(blockRect.z0 - -halfD).toBeCloseTo(1, 9);
-      expect(hospitalOxygenPad(HOSPITAL.footprint)).toBeNull();
-    });
-
-    it('finds a pad 5 × 5 m that keeps every clearance where the plot has room', () => {
-      const stall: Rect = { x0: 40, x1: 45.5, z0: -3, z1: -0.3 };
-      const pad = findOxygenPad(lot, building, [stall])!;
-      expect(pad).not.toBeNull();
-      expect(pad.x1 - pad.x0).toBeCloseTo(OXYGEN_PAD.size, 9);
-      expect(pad.z1 - pad.z0).toBeCloseTo(OXYGEN_PAD.size, 9);
-      expect(gap(pad, building)).toBeGreaterThanOrEqual(OXYGEN_PAD.fromBuilding - 1e-9);
-      expect(gap(pad, stall)).toBeGreaterThanOrEqual(OXYGEN_PAD.fromTraffic - 1e-9);
-      expect(pad.x0 - lot.x0).toBeGreaterThanOrEqual(OXYGEN_PAD.fromLotLine - 1e-9);
-      expect(lot.x1 - pad.x1).toBeGreaterThanOrEqual(OXYGEN_PAD.fromLotLine - 1e-9);
-      expect(pad.z0 - lot.z0).toBeGreaterThanOrEqual(OXYGEN_PAD.fromLotLine - 1e-9);
-      expect(lot.z1 - pad.z1).toBeGreaterThanOrEqual(OXYGEN_PAD.fromLotLine - 1e-9);
-    });
-
-    it('lays none when the building is too near, a stall too close or the lot line too near', () => {
-      // A lot that leaves 7.5 m beyond the building, the pad and its line margin has no spot.
-      const margin = OXYGEN_PAD.fromBuilding - 0.1 + OXYGEN_PAD.size + OXYGEN_PAD.fromLotLine;
-      const tight: Rect = {
-        x0: building.x0 - margin,
-        x1: building.x1 + margin,
-        z0: building.z0,
-        z1: building.z1,
-      };
-      expect(findOxygenPad(tight, building, [])).toBeNull();
-      // Traffic everywhere.
-      expect(findOxygenPad(lot, building, [lot])).toBeNull();
-      // A lot too small for the pad inside its line margin.
-      const small: Rect = { x0: 0, x1: 7, z0: 0, z1: 7 };
-      expect(findOxygenPad(small, { x0: 100, x1: 101, z0: 100, z1: 101 }, [])).toBeNull();
-    });
+  it('lays no window behind the red-cross panel, with a pier of clearance either side of it', () => {
+    const bayX = (layout.ambulanceCanopy.x0 + layout.ambulanceCanopy.x1) / 2;
+    const signX0 = bayX - HOSPITAL_SIGN.w / 2;
+    const signX1 = bayX + HOSPITAL_SIGN.w / 2;
+    const signY0 =
+      RECYCLING_YARD_HEIGHT + AMBULANCE_CANOPY.clear + AMBULANCE_CANOPY.slab + HOSPITAL_SIGN.lift;
+    const signY1 = signY0 + HOSPITAL_SIGN.h;
+    const street = itemsOf('street', 'window');
+    // Some window stands level with the panel on a neighbouring bay, so the test bites.
+    expect(street.some((w) => w.sill < signY1 && w.sill + w.height > signY0)).toBe(true);
+    for (const w of street) {
+      const apartInY = w.sill >= signY1 || w.sill + w.height <= signY0;
+      const gapX = Math.max(signX0 - (w.along + w.width / 2), w.along - w.width / 2 - signX1);
+      expect(apartInY || gapX >= HOSPITAL_ROOMS.pier - 1e-9).toBe(true);
+    }
   });
 });
 
