@@ -227,10 +227,94 @@ describe('layoutSite', () => {
     expect(heap(0.5)).toBe(0);
   });
 
+  it('rails the edge of every built deck of an open frame at 1.07 m above it', () => {
+    const tall = body(6);
+    const plan = siteStage(0.65, 6);
+    const rails = layoutSite(tall, 1, 0.65).filter(
+      (b) => b.part === 'rail' && Math.max(b.w, b.d) > 1,
+    );
+    const decks = plan.storeysBuilt - 1;
+    expect(decks).toBeGreaterThan(0);
+    const tops = new Set(rails.map((b) => +(b.y + b.h / 2).toFixed(4)));
+    expect(tops.size).toBe(decks);
+    for (let k = 1; k <= decks; k++) {
+      expect(tops.has(+(k * FLOOR_HEIGHT_METERS + 1.07).toFixed(4))).toBe(true);
+    }
+    // Four sides a deck, each as long as the tier's side.
+    expect(rails).toHaveLength(decks * 4);
+    expect(layoutSite(body(1), 1, 0.65).filter((b) => b.part === 'rail')).toHaveLength(0);
+  });
+
+  it('rails the outer edge of every scaffold platform at 1.07 m', () => {
+    const rails = layoutSite(body(5), 1, 0.9).filter((b) => b.part === 'rail');
+    const tops = new Set(rails.map((b) => +(b.y + b.h / 2).toFixed(4)));
+    for (let k = 1; k <= 5; k++) {
+      expect(tops.has(+(k * FLOOR_HEIGHT_METERS + 1.07).toFixed(4))).toBe(true);
+    }
+    expect(rails).toHaveLength(5);
+    expect(layoutSite(body(2), 1, 0.9).filter((b) => b.part === 'rail')).toHaveLength(0);
+  });
+
+  it('cuts one dark opening a bay a storey in each sheathed wall, and a door at grade on the street face', () => {
+    // 10 m by 8 m in 3 m timber bays: 4 bays along x, 3 along z, on each of two faces.
+    const openings = layoutSite(body(3), 1, 0.9).filter((b) => b.part === 'opening');
+    expect(openings).toHaveLength(3 * (2 * 4 + 2 * 3));
+    const doors = openings.filter((b) => Math.abs(b.h - 2.1) < 1e-9);
+    expect(doors).toHaveLength(1);
+    // The street face looks along +z at yaw 0; the door stands on it, on the slab.
+    expect(doors[0]!.z).toBeGreaterThan(10 + 4);
+    expect(doors[0]!.y - doors[0]!.h / 2).toBeCloseTo(0.3, 5);
+    const windows = openings.filter((b) => Math.abs(b.h - 1.2) < 1e-9);
+    expect(windows).toHaveLength(openings.length - 1);
+    // Sill 0.9 m above a floor (the ground floor stands on the 0.3 m slab), head 2.1 m.
+    const sills = new Set(windows.map((w) => +(w.y - w.h / 2).toFixed(4)));
+    expect([...sills].sort((a, b) => a - b)).toEqual([
+      +(0.3 + 0.9).toFixed(4),
+      +(FLOOR_HEIGHT_METERS + 0.9).toFixed(4),
+      +(2 * FLOOR_HEIGHT_METERS + 0.9).toFixed(4),
+    ]);
+  });
+
+  it('keeps an opening a flat dark panel a few centimetres proud of the wall, unlit', () => {
+    const [wall] = layoutSite(body(3), 1, 0.9).filter((b) => b.part === 'wall');
+    const openings = layoutSite(body(3), 1, 0.9).filter((b) => b.part === 'opening');
+    for (const o of openings) {
+      const thin = Math.min(o.w, o.d);
+      expect(thin).toBeLessThanOrEqual(0.1);
+      const outside =
+        Math.abs(o.x - wall!.x) > wall!.w / 2 || Math.abs(o.z - wall!.z) > wall!.d / 2;
+      expect(outside).toBe(true);
+      expect(Math.max(...o.color)).toBeLessThan(Math.min(...wall!.color) / 2);
+    }
+  });
+
+  it('hangs a hoist on the face opposite the scaffold, only on a body that gets a crane', () => {
+    const hoist = (storeys: number, p = 0.9): ReturnType<typeof layoutSite> =>
+      layoutSite(body(storeys), 1, p).filter((b) => b.part === 'hoist');
+    expect(hoist(CRANE_ABOVE_STOREYS)).toHaveLength(0);
+    expect(hoist(CRANE_ABOVE_STOREYS + 1).length).toBeGreaterThan(0);
+    expect(hoist(CRANE_ABOVE_STOREYS + 1, 0.1)).toHaveLength(0);
+    const tower = layoutSite(body(12), 1, 0.9);
+    const car = tower.find((b) => b.part === 'hoist' && b.w * b.d > 3)!;
+    expect(Math.max(car.w, car.d)).toBeCloseTo(3.2, 5);
+    expect(Math.min(car.w, car.d)).toBeCloseTo(1.5, 5);
+    expect(car.h).toBeCloseTo(2.3, 5);
+    expect(car.y).toBeCloseTo((12 * FLOOR_HEIGHT_METERS) / 2, 5);
+    // The scaffold deck and the hoist car lie on opposite sides of the body's centre.
+    const deck = tower.find((b) => b.part === 'scaffold' && b.h < 0.2)!;
+    const side = (b: { x: number; z: number }): [number, number] => [
+      Math.sign(b.x - 10) * (Math.abs(b.x - 10) > 5 ? 1 : 0) + 0,
+      Math.sign(b.z - 10) * (Math.abs(b.z - 10) > 4 ? 1 : 0) + 0,
+    ];
+    const [dx, dz] = side(deck);
+    const [cx, cz] = side(car);
+    expect([cx, cz]).toEqual([-dx + 0, -dz + 0]);
+  });
+
   it('keeps a handful of boxes a site', () => {
     for (const storeys of [1, 3, 12, 20]) {
       for (let p = 0; p < 1; p += 0.05) {
-        expect(layoutSite(body(storeys), 7, p).length).toBeLessThan(100);
+        expect(layoutSite(body(storeys), 7, p).length).toBeLessThan(500);
       }
     }
   });
