@@ -6157,6 +6157,7 @@ export function kitLotOf(
       ...(layout.entranceWalk ? [rect(layout.entranceWalk)] : []),
       ...laneRects,
       ...lubeGround,
+      ...(layout.driveThrough?.links ?? []).map(rect),
     ],
     farm: rearYard && !rearYardFree ? rearYard : null,
   };

@@ -149,6 +149,8 @@ export interface DriveThrough {
   pickup: { at: LotPoint; face: PickupFace };
   /** Lanes laid side by side: the ground between them, which carries the service points. */
   island?: LotRect;
+  /** The paving that joins the lanes to the drive: across their start, and across their head, where cars leave. */
+  links?: LotRect[];
   /** The cars each of `rects` holds in a line, where it is a line of several. */
   stacks?: number[];
 }
@@ -490,7 +492,11 @@ function build(input: LotLayoutInput, c: Candidate): Built {
           input.driveUpLanes[1]!,
         ])
       : null;
-  if (lanes) fixed.push(...lanes.rects, lanes.island!);
+  if (lanes) {
+    // The links stand on the lot or are not laid.
+    lanes.links = lanes.links!.filter((r) => r.v0 >= -EPS && r.v1 <= input.depth + EPS);
+    fixed.push(...lanes.rects, lanes.island!, ...lanes.links);
+  }
   const apron: LotRect[] =
     input.quickLube && !lube && c.body.v0 > EPS ? [{ ...c.body, v0: 0, v1: c.body.v0 }] : [];
   const obstacles = [...fixed, ...shopfrontRoute, ...berths, ...paving, ...apron].map((r) =>
@@ -884,6 +890,7 @@ function insetLayout(inner: LotLayout, strip: number, along: number, depth: numb
       path: inner.driveThrough.path.map(pt),
       pickup: { ...inner.driveThrough.pickup, at: pt(inner.driveThrough.pickup.at) },
       ...(inner.driveThrough.island ? { island: mv(inner.driveThrough.island) } : {}),
+      ...(inner.driveThrough.links ? { links: inner.driveThrough.links.map(mv) } : {}),
     },
     lube: inner.lube && {
       apron: toStreet(inner.lube.apron),
@@ -1354,7 +1361,7 @@ function driveUpLanesFor(layout: LotLayout, stacks: readonly number[]): DriveThr
     const v0 = Math.max(...beside.map((d) => d.v1));
     const lanes = driveUpLanesAt(high, edge, v0, [first, second]);
     if (![...lanes.rects, lanes.island!].every(clear)) continue;
-    return lanes;
+    return { ...lanes, links: lanes.links!.filter(clear) };
   }
   return null;
 }
@@ -1387,6 +1394,13 @@ function driveUpLanesAt(
     v1: Math.max(near.v1, far.v1),
   };
   const midU = (near.u0 + near.u1) / 2;
+  // A car turns into the wall lane across a link ahead of the lanes and leaves across one at their head,
+  // so neither lane is a dead end: both links run the lanes' whole width, to the drive beside them.
+  const across = { u0: Math.min(near.u0, far.u0), u1: Math.max(near.u1, far.u1) };
+  const links: LotRect[] = [
+    { ...across, v0: v0 - W, v1: v0 },
+    { ...across, v0: island.v1, v1: island.v1 + W },
+  ];
   return {
     rects: [near, far],
     path: [
@@ -1400,6 +1414,7 @@ function driveUpLanesAt(
     },
     island,
     stacks: [...stacks],
+    links,
   };
 }
 
@@ -1537,7 +1552,11 @@ export function lotPaving(layout: LotLayout): LotPaving {
       ...(layout.entranceWalk ? [layout.entranceWalk] : []),
       ...(layout.driveThrough?.island ? [layout.driveThrough.island] : []),
     ],
-    lane: [...(layout.driveThrough?.rects ?? []), ...(layout.lube?.lane ? [layout.lube.lane] : [])],
+    lane: [
+      ...(layout.driveThrough?.rects ?? []),
+      ...(layout.driveThrough?.links ?? []),
+      ...(layout.lube?.lane ? [layout.lube.lane] : []),
+    ],
   };
 }
 

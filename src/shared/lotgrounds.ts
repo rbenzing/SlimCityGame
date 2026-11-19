@@ -234,6 +234,7 @@ function solidGround(layout: LotLayout): LotRect[] {
     ...(layout.rearYard ? [layout.rearYard] : []),
     ...(layout.driveThrough?.rects ?? []),
     ...(layout.driveThrough?.island ? [layout.driveThrough.island] : []),
+    ...(layout.driveThrough?.links ?? []),
     ...(layout.lube
       ? [layout.lube.apron, layout.lube.lane, layout.lube.court].filter((r) => r !== null)
       : []),

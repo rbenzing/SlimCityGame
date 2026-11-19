@@ -475,7 +475,7 @@ const ART_TABLE_BODIES: Readonly<Record<CommercialKind, readonly MaterialName[]>
   pharmacy: ['eifsBeige', 'whiteBrick'],
   bank: ['stoneBrick', 'paintedMasonry'],
   medicaloffice: ['eifsCream', 'whiteBrick'],
-  quicklube: ['whitePlaster', 'whiteBrick'],
+  quicklube: ['whitePlaster', 'eifsBeige'],
 };
 const ART_TABLE_ROOFS: Readonly<Record<CommercialKind, MaterialName>> = {
   shop: 'brightBitumen',

@@ -42,7 +42,7 @@ const STREET_ROWS = 8;
 const FLAT_TOLERANCE_M = 14;
 /** Tiles of road beyond each end of a street's buildings. */
 const MARGIN = 2;
-const LONGEST = 24;
+const LONGEST = 28;
 /** The line-up's night: 22:00. */
 const LINEUP_NIGHT = 22 / 24;
 
@@ -93,6 +93,8 @@ const STREETS = [
   // The bank and the lube share a street: together they are 18 tiles, under the longest street.
   {
     name: 'bank',
+    // A tile of ground between the lots: side by side, a lot's lanes and court touch its neighbour's and the sim refuses it.
+    gap: 1,
     ids: [
       'com-bank-1-lot2x3',
       'com-bank-2-lot3x3',
@@ -193,12 +195,13 @@ try {
     return street.ids.map((id) => {
       const fp = footprint(id);
       const placed = { id, x: at, z: 0, w: fp.w, d: fp.d };
-      at += fp.w;
+      at += fp.w + (street.gap ?? 0);
       return placed;
     });
   });
   for (const [s, placed] of spans.entries()) {
-    const length = placed.reduce((sum, b) => sum + b.w, 0) + 2 * MARGIN;
+    const last = placed[placed.length - 1];
+    const length = last.x + last.w - X + 2 * MARGIN;
     await send('Street', [
       {
         kind: 'buildRoad',
@@ -290,6 +293,36 @@ try {
   };
   const find = (street, id, nth = 0) =>
     spans[STREETS.findIndex((s) => s.name === street)].filter((b) => b.id === id)[nth];
+  /**
+   * The ground a bank's lanes or a lube's loop cover, with its body: metres from the lot's
+   * north-west corner (a street along its south edge), as the lot layout lays them out.
+   * A bank's lanes stand on the body's low-x side; a lube's lane, apron and court round it.
+   */
+  const COMPLEX_M = {
+    'com-bank-1-lot2x3': { cx: 25.5, cz: 40, w: 22.4, d: 27.2 },
+    'com-bank-2-lot3x3': { cx: 32.3, cz: 40, w: 36, d: 27.2 },
+    'com-bank-3-lot4x3': { cx: 39.1, cz: 40, w: 49.6, d: 27.2 },
+    'com-lube-1-lot2x3': { cx: 22.9, cz: 39.6, w: 17.3, d: 40.7 },
+    'com-lube-2-lot3x3': { cx: 29.7, cz: 39.6, w: 30.9, d: 40.7 },
+    'com-lube-3-lot4x3': { cx: 36.5, cz: 39.6, w: 44.5, d: 40.7 },
+  };
+  const standingNow = await page.evaluate(() => window.__slimcity.readBuildings());
+  /** The placed building's own working ground as a box, found by its catalog id. */
+  const complexBox = (id) => {
+    const b = find('bank', id);
+    const c = COMPLEX_M[id];
+    const real = standingNow.find((s) => s.catalogId === id);
+    console.log(
+      'complex',
+      id,
+      JSON.stringify(b),
+      'T',
+      T,
+      'standing',
+      real && [real.x, real.z, real.rotation],
+    );
+    return { x: b.x + c.cx / T, z: b.z + c.cz / T, w: c.w / T, d: c.d / T, h: heightOf(id) };
+  };
   const rowBox = (s) => boxOf(spans[s]);
   const lineup = STREETS.findIndex((s) => s.lineup);
   // The whole line-up, then its first three kinds (the repair shop, the store, the corner shop) close enough to tell apart.
@@ -398,10 +431,19 @@ try {
     [2, 'com-bank-2-lot3x3'],
     [3, 'com-bank-3-lot4x3'],
   ]) {
-    await frame(`close-bank-${n}`, boxOf([find('bank', id)]), 0.3, 0.5, 0.9);
+    await frame(`close-bank-${n}`, complexBox(id), 0.3, 0.5, 0.9);
   }
-  await frame('close-bank-lanes', boxOf([find('bank', 'com-bank-2-lot3x3')]), 1.0, 0.45, 0.8);
-  await frame('close-bank-above', boxOf([find('bank', 'com-bank-2-lot3x3')]), 0.3, 1.45, 0.8);
+  // The lanes stand on the body's west side: from low on that side the canopy, kiosk and pedestal read; and from above, the whole working ground.
+  await frame('close-bank-lanes', complexBox('com-bank-2-lot3x3'), -1.2, 0.3, 0.85);
+  await frame('close-bank-lanes-east', complexBox('com-bank-2-lot3x3'), 1.2, 0.3, 0.85);
+  await frame('close-bank-above', complexBox('com-bank-2-lot3x3'), 0.0, 1.5, 0.45);
+  // The canopy, island, teller kiosk and cash machine, from the street end of the lanes and from their head.
+  const bankLanes = () => {
+    const b = find('bank', 'com-bank-2-lot3x3');
+    return { x: b.x + 18.7 / T, z: b.z + 35.3 / T, w: 10 / T, d: 14 / T, h: 3 };
+  };
+  await frame('close-bank-canopy', bankLanes(), -0.6, 0.5, 0.9);
+  await frame('close-bank-canopy-head', bankLanes(), 2.6, 0.5, 0.9);
   for (const [n, id] of [
     [1, 'com-medical-1-lot4x2'],
     [2, 'com-medical-2-lot5x2'],
@@ -414,10 +456,12 @@ try {
     [2, 'com-lube-2-lot3x3'],
     [3, 'com-lube-3-lot4x3'],
   ]) {
-    await frame(`close-lube-${n}`, boxOf([find('bank', id)]), 0.3, 0.5, 0.9);
+    await frame(`close-lube-${n}`, complexBox(id), 0.3, 0.5, 0.9);
   }
-  await frame('close-lube-above', boxOf([find('bank', 'com-lube-2-lot3x3')]), 0.3, 1.45, 0.8);
-  await frame('close-lube-back', boxOf([find('bank', 'com-lube-2-lot3x3')]), 3.4, 0.5, 0.8);
+  // The front apron from low; the whole loop from above; and from behind and above, the lane, the court and the rear bay doors.
+  await frame('close-lube-apron', complexBox('com-lube-2-lot3x3'), 0.3, 0.3, 0.9);
+  await frame('close-lube-above', complexBox('com-lube-2-lot3x3'), 0.0, 1.5, 0.9);
+  await frame('close-lube-back', complexBox('com-lube-2-lot3x3'), 3.14, 0.9, 0.9);
   // A strip's front door close: the walk, the bed, the bench and bin beside the door, and the lot's lights.
   const stripDoor = () => {
     const s = find('strip', 'com-strip-1-lot5x2') ?? find('strip', 'com-strip-2');
@@ -451,8 +495,8 @@ try {
     0.5,
     0.9,
   );
-  await frame('close-bank-night', boxOf([find('bank', 'com-bank-2-lot3x3')]), 1.0, 0.45, 0.8);
-  await frame('close-lube-night', boxOf([find('bank', 'com-lube-2-lot3x3')]), 0.3, 0.5, 0.9);
+  await frame('close-bank-night', complexBox('com-bank-2-lot3x3'), -1.2, 0.3, 0.85);
+  await frame('close-lube-night', complexBox('com-lube-2-lot3x3'), 0.3, 0.5, 0.9);
   await restoreNight();
 
   await setPhase(LINEUP_NIGHT);

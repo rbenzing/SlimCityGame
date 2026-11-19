@@ -487,7 +487,25 @@ describe('the pharmacy, the machine shop and self-storage', () => {
           ...l.islands,
           ...l.berths,
         ];
-        for (const lane of [teller, cash, island]) {
+        // Links across the lanes' start and head join them to the drive, so neither lane is a dead end.
+        expect(lanes.links, e.id).toHaveLength(2);
+        const side = [...l.aisles, ...(l.throat ? [l.throat] : [])];
+        for (const link of lanes.links!) {
+          expect(
+            side.some(
+              (d) =>
+                Math.abs(d.u1 - link.u0) < 0.01 && d.v0 < link.v1 - 0.01 && link.v0 < d.v1 - 0.01,
+            ),
+            `${e.id} link meets the drive`,
+          ).toBe(true);
+          expect(link.u1 - link.u0, e.id).toBeCloseTo(
+            2 * DRIVE_THROUGH_LANE_M + DRIVE_UP_ISLAND_M,
+            6,
+          );
+        }
+        expect(lanes.links![0]!.v1, e.id).toBeCloseTo(teller.v0, 6);
+        expect(lanes.links![1]!.v0, e.id).toBeCloseTo(island.v1, 6);
+        for (const lane of [teller, cash, island, ...lanes.links!]) {
           for (const o of others)
             expect(apart(lane, o), `${e.id} meets ${JSON.stringify(o)}`).toBe(true);
           expect(lane.u0).toBeGreaterThanOrEqual(l.lot.u0);

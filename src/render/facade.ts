@@ -202,8 +202,9 @@ export function storefrontCut(
   tierHeight: number,
 ): StorefrontCut | null {
   if (entry.category !== 'com' || !(tierHeight > 0)) return null;
-  // Its ground floor is bay doors, not shopfront glass.
-  if (entry.kind === 'autorepair') return null;
+  // Its ground floor is bay doors, not shopfront glass; a bank's glass is its entrance and a lube's its waiting room, kit parts, on masonry walls.
+  if (entry.kind === 'autorepair' || entry.kind === 'bank' || entry.kind === 'quicklube')
+    return null;
   const body = bodyMetresFor(entry);
   const faceM = (body.w + body.d) / 2;
   const bays = Math.max(1, Math.round(faceM / STOREFRONT_BAY_M));
@@ -312,7 +313,7 @@ const COMMERCIAL_BODY_PALETTES: Readonly<Record<CommercialKind, readonly Materia
   pharmacy: ['eifsBeige', 'whiteBrick'],
   bank: ['stoneBrick', 'paintedMasonry'],
   medicaloffice: ['eifsCream', 'whiteBrick'],
-  quicklube: ['whitePlaster', 'whiteBrick'],
+  quicklube: ['whitePlaster', 'eifsBeige'],
 };
 const OFFICE_TOWER_BODY_PALETTE: readonly MaterialName[] = ['curtainWall'];
 
