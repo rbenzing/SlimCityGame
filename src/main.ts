@@ -85,7 +85,7 @@ import { bridgeRefusalText, solveElevationProfile } from './world/bridges';
 import { isRoadBuildable } from './world/grid';
 import { alongStreetRefusal, feedsLines, sourceEndRefusal } from './world/powerline';
 import { roundaboutGroundOf } from './world/roundabouts';
-import { platOf, platSourceOf, type Parcel, type PlatSource } from './world/plat';
+import { platOf, platSourceOf, type Parcel, type Plat, type PlatSource } from './world/plat';
 import { parcelWithYard, yardRowsBehind, yardTilesOf } from './world/yard';
 import { buildRoadCells, type RoadCells } from './world/roadnet';
 import { ROUNDABOUT_CODE } from './shared/roundabout';
@@ -500,8 +500,23 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       clientGrid.profileById(id),
     );
   };
+  // The low-density plat the yards behind lots are read from, cut once until the world it reads changes.
+  let yardWorld: { src: PlatSource; plat: Plat } | null = null;
+  const dropYardWorld = (): void => {
+    yardWorld = null;
+  };
+  const yardWorldNow = (): { src: PlatSource; plat: Plat } => {
+    if (!yardWorld) {
+      const src = platSourceNow();
+      yardWorld = { src, plat: platOf(src, ZoneType.ResLow) };
+    }
+    return yardWorld;
+  };
   // The zoned rows behind a home's lot, which its garden runs over.
-  const yardRowsOf: YardLookup = (lot) => yardRowsBehind(platSourceNow(), lot);
+  const yardRowsOf: YardLookup = (lot) => {
+    const world = yardWorldNow();
+    return yardRowsBehind(world.src, world.plat, lot);
+  };
   const rebuildPlat = (): void => {
     const zones = plattedZonesFor(store.getState().selectedTool);
     if (zones.length === 0 || !zoneGrid.isVisible()) {
@@ -514,7 +529,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
     for (const zone of zones) {
       const plat = platOf(src, zone);
       // A lot is drawn with its yard, the rows behind it that no other lot can reach.
-      parcels.push(...plat.parcels.map((p) => parcelWithYard(src, p)));
+      parcels.push(...plat.parcels.map((p) => parcelWithYard(src, plat, p)));
       framed.push(...plat.framed);
     }
     zoneGrid.setParcels(parcels, framed);
@@ -2425,7 +2440,8 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
    * garden's ground is kept clear of wild trees as the lot's own is.
    */
   const refreshYards = (): void => {
-    const src = platSourceNow();
+    dropYardWorld();
+    const { src, plat } = yardWorldNow();
     const moved: BuildingInstance[] = [];
     const cleared: TilePoint[] = [];
     const standing = new Set<number>();
@@ -2434,7 +2450,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       const lot = entry && isHouseEntry(entry) ? homeLotOf(b, entry, street) : null;
       if (!lot) continue;
       standing.add(b.id);
-      const tiles = yardTilesOf(src, lot);
+      const tiles = yardTilesOf(src, plat, lot);
       cleared.push(...tiles);
       const seen = yardSeen.get(b.id);
       yardSeen.set(b.id, tiles.length);
@@ -2741,6 +2757,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       }
     }
     // The yards behind a new home's lot read the zone, so it lands before the homes do.
+    if (snap.zones || snap.roads || snap.roadNet || snap.buildings) dropYardWorld();
     if (snap.zones) {
       zoneGrid.applyZonePatches(snap.zones);
       clientGrid.applyZonePatches(snap.zones);
@@ -3041,6 +3058,8 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
         if (msg.field === FieldId.LandValue) {
           latestLandValue = msg.data;
           rebuildPlat();
+          // The plat the yards are read from moves with the land's standing.
+          refreshYards();
         }
         break;
       case 'save':

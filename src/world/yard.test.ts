@@ -2,7 +2,13 @@ import { describe, expect, it } from 'vitest';
 import { MAP_SIZE, tileIndex } from '../shared/constants';
 import { ZoneType } from '../shared/types';
 import { platOf, type Parcel, type PlatSource } from './plat';
-import { parcelWithYard, yardRowsBehind, yardTilesOf, type YardSource } from './yard';
+import {
+  parcelWithYard as yardParcel,
+  yardRowsBehind as yardRows,
+  yardTilesOf as yardTiles,
+  type YardLot,
+  type YardSource,
+} from './yard';
 
 const ZONE = ZoneType.ResLow;
 
@@ -36,6 +42,14 @@ const block = (x0: number, z0: number, w: number, d: number): Array<[number, num
 };
 
 const key = (t: { x: number; z: number }): string => `${t.x},${t.z}`;
+
+// The yards as the plat of the world as it stands reads them.
+const yardRowsBehind = (src: PlatSource, lot: YardLot): number =>
+  yardRows(src, platOf(src, ZONE), lot);
+const yardTilesOf = (src: PlatSource, lot: YardLot): ReturnType<typeof yardTiles> =>
+  yardTiles(src, platOf(src, ZONE), lot);
+const parcelWithYard = (src: PlatSource, lot: Parcel): Parcel =>
+  yardParcel(src, platOf(src, ZONE), lot);
 
 /** A street along z = 10 and ResLow zoned three deep south of it, at land worth `value`. */
 const southOfStreet = (value: number): PlatSource =>
@@ -117,12 +131,26 @@ describe('the yard behind a platted lot', () => {
     expect(yardTilesOf(src, lot)).toEqual([]);
   });
 
-  it('never takes a tile another street reaches', () => {
-    // Two streets four rows apart: rows 11..13 are zoned between them, and the far street's lots
-    // reach back two tiles from row 13.
+  it('gives the middle row between two streets to the lot whose street is first in map order on a tie', () => {
+    // Two streets four rows apart: the lots take rows 11 and 13, and row 12 is two from both streets.
     const streets = [...block(10, 10, 12, 1), ...block(10, 14, 12, 1)];
     const src = world({ streets, zoned: block(10, 11, 12, 3), value: 10 });
-    for (const p of platOf(src, ZONE).parcels) expect(yardTilesOf(src, p)).toEqual([]);
+    const parcels = platOf(src, ZONE).parcels;
+    const north = parcels.find((p) => p.front === 'N' && p.x === 14)!;
+    const south = parcels.find((p) => p.front === 'S' && p.x === 14)!;
+    expect(yardTilesOf(src, north).map(key)).toEqual(['14,12']);
+    expect(yardTilesOf(src, south)).toEqual([]);
+  });
+
+  it('gives a tile to the lot whose street is nearer', () => {
+    // Five rows between the streets: row 13 is three from the north street and two from the south.
+    const streets = [...block(10, 10, 12, 1), ...block(10, 15, 12, 1)];
+    const src = world({ streets, zoned: block(10, 11, 12, 4), value: 10 });
+    const parcels = platOf(src, ZONE).parcels;
+    const north = parcels.find((p) => p.front === 'N' && p.x === 14)!;
+    const south = parcels.find((p) => p.front === 'S' && p.x === 14)!;
+    expect(yardTilesOf(src, north).map(key)).toEqual(['14,12']);
+    expect(yardTilesOf(src, south).map(key)).toEqual(['14,13']);
   });
 
   it('keeps a back-to-back block to the rows only one street reaches', () => {
@@ -135,17 +163,34 @@ describe('the yard behind a platted lot', () => {
     expect(yardTilesOf(src, far).map(key)).toEqual(['14,15', '14,14']);
   });
 
-  it('is not taken beside a cross street, the tile both streets could claim', () => {
+  it('leaves a tile a cross street’s lot will grow on to that lot, and yards only what no lot starts on', () => {
     const streets = [...block(10, 10, 12, 1), ...block(14, 11, 1, 6)];
     const src = world({
       streets,
       zoned: [...block(10, 11, 4, 3), ...block(15, 11, 6, 3)],
       value: 10,
     });
-    const lot = (x: number): Parcel =>
-      platOf(src, ZONE).parcels.find((p) => p.x === x && p.z === 11)!;
-    expect(yardTilesOf(src, lot(11)).map(key)).toEqual([]);
+    const plat = platOf(src, ZONE);
+    const lot = (x: number): Parcel => plat.parcels.find((p) => p.x === x && p.z === 11)!;
+    // Beside the cross street the lots along it cover (13,12) and (13,13); the tiles west of them are the yard.
+    expect(plat.parcelAt[tileIndex(13, 12)]).toBeGreaterThanOrEqual(0);
+    expect(yardTilesOf(src, lot(11)).map(key)).toEqual(['11,12', '11,13']);
+    expect(yardTilesOf(src, lot(13)).map(key)).toEqual([]);
     expect(yardTilesOf(src, lot(20)).map(key)).toEqual(['20,12', '20,13']);
+  });
+
+  it('shrinks when the plat later claims a yard tile for a new parcel', () => {
+    const src = world({ streets: block(10, 10, 12, 1), zoned: block(10, 11, 12, 3), value: 10 });
+    const lot = platOf(src, ZONE).parcels.find((p) => p.x === 14)!;
+    expect(yardRowsBehind(src, lot)).toBe(2);
+    // A cross street cut beside the lot's column puts parcels on row 12 and 13 tiles.
+    const cut = world({
+      streets: [...block(10, 10, 12, 1), ...block(15, 11, 1, 3)],
+      zoned: block(10, 11, 12, 3),
+      value: 10,
+    });
+    const next = platOf(cut, ZONE).parcels.find((p) => p.x === 14 && p.z === 11)!;
+    expect(yardRowsBehind(cut, next)).toBe(0);
   });
 
   it('is never in two yards and never in a parcel of the plat', () => {
@@ -168,6 +213,53 @@ describe('the yard behind a platted lot', () => {
         }
       });
     }
+  });
+});
+
+describe('a 7 by 7 block with a street on each side', () => {
+  // Streets at 10 and 18 both ways, zoned within three tiles of a street, on land that plats normal lots.
+  const streets = [
+    ...block(10, 10, 9, 1),
+    ...block(10, 18, 9, 1),
+    ...block(10, 10, 1, 9),
+    ...block(18, 10, 1, 9),
+  ];
+  const zoned = block(11, 11, 7, 7).filter(
+    ([x, z]) => Math.min(x - 10, 18 - x, z - 10, 18 - z) <= 3,
+  );
+
+  it('leaves no zoned tile that is in no home, no parcel and no yard', () => {
+    const src = world({ streets, zoned, value: 119 });
+    const plat = platOf(src, ZONE);
+    const yards = new Set(plat.parcels.flatMap((p) => yardTilesOf(src, p)).map(key));
+    const dead = zoned.filter(
+      ([x, z]) => plat.parcelAt[tileIndex(x, z)] === -1 && !yards.has(`${x},${z}`),
+    );
+    expect(zoned).toHaveLength(48);
+    expect(dead).toEqual([]);
+    expect(yards.size).toBe(8);
+  });
+
+  it('leaves none dead with every lot built either', () => {
+    const empty = world({ streets, zoned, value: 119 });
+    const lots = platOf(empty, ZONE).parcels;
+    const built = world({
+      streets,
+      zoned,
+      value: 119,
+      built: lots.flatMap((p, n) =>
+        block(p.x, p.z, p.w, p.d).map(([x, z]): [number, number, number] => [x, z, n + 1]),
+      ),
+    });
+    const plat = platOf(built, ZONE);
+    const yards = new Set(lots.flatMap((p) => yardTilesOf(built, p)).map(key));
+    const dead = zoned.filter(
+      ([x, z]) =>
+        !built.buildingId[tileIndex(x, z)] &&
+        plat.parcelAt[tileIndex(x, z)] === -1 &&
+        !yards.has(`${x},${z}`),
+    );
+    expect(dead).toEqual([]);
   });
 });
 

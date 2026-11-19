@@ -495,6 +495,27 @@ describe('planHouseLot — the yard behind the lot', () => {
     }
   });
 
+  it('keeps every amenity on the sourced lot: a yard adds lawn, fence and garden trees only', () => {
+    const lotOnly = (entries: BuildingCatalogEntry): HouseLotPlan[] => homes(entries, 0);
+    for (const e of [half, small]) {
+      const bare = lotOnly(e);
+      for (const rows of [1, 2]) {
+        homes(e, rows).forEach((plan, i) => {
+          const base = bare[i]!.yard;
+          expect(plan.yard.patios).toEqual(base.patios);
+          expect(plan.yard.grills).toEqual(base.grills);
+          expect(plan.yard.pool).toEqual(base.pool);
+          expect(plan.yard.trampoline).toEqual(base.trampoline);
+          expect(plan.yard.bushes).toEqual(base.bushes);
+          expect(plan.yard.trees.slice(0, base.trees.length)).toEqual(base.trees);
+          for (const t of plan.yard.trees.slice(base.trees.length)) {
+            expect(t.v).toBeGreaterThanOrEqual(plan.lotDepthM - plan.yardDepthM);
+          }
+        });
+      }
+    }
+  });
+
   it('plants more of the back garden as the yard deepens', () => {
     const trees = (rows: number): number =>
       homes(half, rows).reduce((n, p) => n + p.yard.trees.length, 0);

@@ -1207,11 +1207,19 @@ export function driveFootprints(drives: readonly HomeDrive[]): LotRect[] {
   return drives.flatMap((d) => (d.coverRect ? [d.rect, d.coverRect] : [d.rect]));
 }
 
+/**
+ * A detached home's garden. Every amenity (patio, grill, pool, trampoline,
+ * the lot's own trees) is laid on the sourced lot's depth, `lotDepthM` less
+ * `yardDepthM`, exactly as it is for a lot with no yard; the yard beyond it
+ * carries only lawn, the fence on its rear and side lines, and garden trees at
+ * the density the lot's planting uses.
+ */
 function detachedYard(
   building: BuildingInstance,
   body: LotRect,
   edgeLenM: number,
   lotDepthM: number,
+  yardDepthM: number,
   drives: readonly HomeDrive[],
   doors: readonly LotPoint[],
   entries: readonly LotRect[],
@@ -1219,6 +1227,7 @@ function detachedYard(
   const id = building.id;
   const lotU1 = edgeLenM - FENCE_INSET_M;
   const backV = lotDepthM - FENCE_INSET_M;
+  const sourcedDepthM = lotDepthM - yardDepthM;
   const driven = driveFootprints(drives);
 
   const fence =
@@ -1239,7 +1248,7 @@ function detachedYard(
   const bodyUc = (body.u0 + body.u1) / 2;
   const patioW = Math.min(PATIO_MAX_WIDTH_M, bodyW - 1);
   const patio =
-    roll(id, SLOT_PATIO) < 0.7 && patioW > 1 && body.v1 + PATIO_DEPTH_M < lotDepthM - 1
+    roll(id, SLOT_PATIO) < 0.7 && patioW > 1 && body.v1 + PATIO_DEPTH_M < sourcedDepthM - 1
       ? {
           u0: bodyUc - patioW / 2,
           u1: bodyUc + patioW / 2,
@@ -1250,7 +1259,7 @@ function detachedYard(
   const grill =
     patio && roll(id, SLOT_GRILL) < 0.6 ? { u: patio.u1 - 0.6, v: patio.v1 - 0.6 } : null;
 
-  const yardArea = { u0: 0, u1: edgeLenM, v0: body.v1, v1: lotDepthM };
+  const yardArea = { u0: 0, u1: edgeLenM, v0: body.v1, v1: sourcedDepthM };
   const obstacles: LotRect[] = [
     { ...body, v1: body.v1 + YARD_CLEARANCE_M },
     ...driven,
@@ -1265,13 +1274,23 @@ function detachedYard(
   const pool = place(POOL_RADIUS_M, SLOT_POOL, 0.35);
   const trampoline = place(TRAMPOLINE_RADIUS_M, SLOT_TRAMPOLINE, 0.3);
   const treeRoll = roll(id, SLOT_TREES);
-  const backYardM2 = edgeLenM * (lotDepthM - body.v1);
+  const backYardM2 = edgeLenM * (sourcedDepthM - body.v1);
   const treeCount =
     (treeRoll < 0.35 ? 2 : treeRoll < 0.7 ? 1 : 0) + Math.floor(backYardM2 / BACK_YARD_M2_PER_TREE);
   const trees: (LotPoint & { scale: number })[] = [];
   for (let t = 0; t < treeCount; t++) {
     const p = place(TREE_RADIUS_M, SLOT_TREES + 20 + t, 1);
     if (p) trees.push({ ...p, scale: 0.9 + 0.4 * roll(id, SLOT_TREES + 40 + t) });
+  }
+  // Garden trees in the yard at the same density, after everything the lot lays.
+  const gardenTrees = Math.floor((edgeLenM * yardDepthM) / BACK_YARD_M2_PER_TREE);
+  const gardenArea = { u0: 0, u1: edgeLenM, v0: sourcedDepthM, v1: lotDepthM };
+  for (let t = 0; t < gardenTrees; t++) {
+    const p = freeSpot(gardenArea, TREE_RADIUS_M, obstacles, roll(id, SLOT_TREES + 60 + t));
+    if (p) {
+      obstacles.push(around(p, TREE_RADIUS_M));
+      trees.push({ ...p, scale: 0.9 + 0.4 * roll(id, SLOT_TREES + 80 + t) });
+    }
   }
 
   return {
@@ -1383,7 +1402,16 @@ export function planHouseLot(
   const yard =
     homes > 1
       ? rowYard(building, body, edgeLenM, lotDepthM, homes, drives, doors, kit.entries)
-      : detachedYard(building, body, edgeLenM, lotDepthM, drives, doors, kit.entries);
+      : detachedYard(
+          building,
+          body,
+          edgeLenM,
+          lotDepthM,
+          ground.yardDepthM,
+          drives,
+          doors,
+          kit.entries,
+        );
   return { ...ground, yard, kit };
 }
 

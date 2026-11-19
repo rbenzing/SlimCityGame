@@ -62,14 +62,14 @@ describe('growth beside a yard', () => {
     const g = street();
     const plat = platOf(platSourceOf(g, null, g.fields[FieldId.LandValue]), ZoneType.ResLow);
     const src = platSourceOf(g, null, g.fields[FieldId.LandValue]);
-    const yards = plat.parcels.flatMap((p) => yardTilesOf(src, p));
+    const yards = plat.parcels.flatMap((p) => yardTilesOf(src, plat, p));
     expect(yards.length).toBeGreaterThan(0);
     const before = standing(grow(g));
     expect(before.length).toBeGreaterThan(0);
     for (const t of yards) expect(g.buildingId[tileIndex(t.x, t.z)], `${t.x},${t.z}`).toBe(0);
     // The same street grown again, with the yards read from the finished town in between, builds the same homes.
     const again = street();
-    yardTilesOf(platSourceOf(again, null, again.fields[FieldId.LandValue]), plat.parcels[0]!);
+    yardTilesOf(platSourceOf(again, null, again.fields[FieldId.LandValue]), plat, plat.parcels[0]!);
     expect(standing(grow(again))).toEqual(before);
   });
 });
