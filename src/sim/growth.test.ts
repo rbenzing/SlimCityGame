@@ -2661,6 +2661,25 @@ describe('a business opens where the town has room for its jobs', () => {
       expect(grown.x).toBe(0);
     });
 
+    it('stays Active when the deeper lot puts its min corner four tiles from the street', () => {
+      const deep3 = business('fuel-3', 'fuel', ZoneType.ComLow, 3, 3, 4, 30);
+      const cat = [fuel2, deep3];
+      const g = fronting('S', 4);
+      const registry = new BuildingRegistry(cat);
+      expect(registry.place(g, fuel2, 0, 3, 0, BuildingState.Active)).not.toBeNull();
+      g.fields[FieldId.MiddleEducation]!.fill(255);
+      g.fields[FieldId.HighEducation]!.fill(255);
+      const growth = new GrowthSystem(cat, constantRng(0), onZoned(ZoneType.ComLow));
+      for (let t = 0; t < 500; t++) {
+        growth.tick(g, registry, wantsShops, 1, t, UNMETERED_SUPPLY, UNLIMITED_ROOM);
+      }
+      const grown = registry.all().filter((b) => b.catalogId === 'fuel-3');
+      expect(grown).toHaveLength(1);
+      expect(grown[0]!.z).toBe(1);
+      expect(grown[0]!.state).toBe(BuildingState.Active);
+      expect(grown[0]!.problems & Problem.NoRoad).toBe(0);
+    });
+
     it('keeps the north edge and the anchor on a north front', () => {
       const g = fronting('S', 3);
       for (let x = 0; x < 8; x++) {

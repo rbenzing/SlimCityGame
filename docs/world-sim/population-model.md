@@ -83,7 +83,10 @@ small enough to read as smooth growth on the stats panel:
 - An Active building goes three consecutive growth passes
   (`ABANDON_BLOCKER_STREAK = 3`, each pass `GROWTH_INTERVAL = 10` ticks
   apart) with no power, no water, or no road, and becomes `Abandoned` — its
-  full figure is removed in that instant.
+  full figure is removed in that instant. A building has a road when a
+  street lies within `ROAD_CHECK_RADIUS = 3` tiles of any tile of its
+  footprint, the same reach its lot was grown by `[R-world-060]`; judged
+  from one corner, a lot four tiles deep was built and then abandoned.
 - An Abandoned building stands at least `ABANDONED_MIN_PASSES = 10` passes
   and then until demand for its zone reaches `ABANDONED_CLEAR_DEMAND`, when
   it is removed `[R-world-059]`, or returns

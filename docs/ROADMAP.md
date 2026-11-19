@@ -25,7 +25,7 @@ current behavior only and carry no dates of their own._
 
 ## Status (2026-09-29)
 
-**Test suite:** 11,196 tests passing across 308 test files, run 2026-11-19.
+**Test suite:** 11,227 tests passing across 311 test files, run 2026-11-19.
 This is the only test count in the documentation set. When the suite changes
 again, update the figure here and nowhere else.
 

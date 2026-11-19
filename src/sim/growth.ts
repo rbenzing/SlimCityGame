@@ -239,6 +239,11 @@ function hasNearbyRoad(g: GridState, x: number, z: number, radius: number): bool
   return false;
 }
 
+/** Any street within `ROAD_CHECK_RADIUS` of any of `tiles`? Stops at the first tile that has one. */
+function roadWithinReachOf(g: GridState, tiles: readonly TilePoint[]): boolean {
+  return tiles.some((t) => hasNearbyRoad(g, t.x, t.z, ROAD_CHECK_RADIUS));
+}
+
 /** True only if every tile of the w*d footprint at (x, z) is in bounds and unstamped. */
 function footprintFree(g: GridState, x: number, z: number, w: number, d: number): boolean {
   for (let dz = 0; dz < d; dz++) {
@@ -373,9 +378,7 @@ function computeProblems(
   const idx = tileIndex(x, z);
   const sector = entry.zone === undefined ? null : zoneSector(entry.zone);
   const reached =
-    farmKindOf(entry) !== null
-      ? dirtRoadWithinReachOf(g, tiles)
-      : hasNearbyRoad(g, x, z, ROAD_CHECK_RADIUS);
+    farmKindOf(entry) !== null ? dirtRoadWithinReachOf(g, tiles) : roadWithinReachOf(g, tiles);
   let problems = 0;
   if (!footprintServed(g.power, tiles)) problems |= Problem.NoPower;
   if (cityWaterUse(g, entry, tiles) > 0 && !footprintServed(g.watered, tiles)) {
@@ -1415,6 +1418,11 @@ export class GrowthSystem {
           takesFrontageLots(plat, ax, az, newFootprint.w, newFootprint.d, f, front !== undefined),
         )) &&
       this.canPlace(g, ax, az, newFootprint.w, newFootprint.d) &&
+      (farm !== null ||
+        roadWithinReachOf(
+          g,
+          standingTiles(g.size, ax, az, newFootprint.w, newFootprint.d, undefined),
+        )) &&
       footprintFree(g, ax, az, newFootprint.w, newFootprint.d) &&
       (farm === null
         ? isZonedLot(g, zone, ax, az, newFootprint.w, newFootprint.d)
@@ -1568,9 +1576,10 @@ export class GrowthSystem {
       // side of the building the street happens to sit (see footprintServed).
       // Once the town is off septic tanks, a lot a drain does not reach grows
       // nothing: its sewage would have nowhere to go.
-      if (
-        !this.servedOn(g, entry, standingTiles(g.size, ax, az, w, d, undefined), milestoneLevel)
-      ) {
+      const lotTilesAt = standingTiles(g.size, ax, az, w, d, undefined);
+      // A lot is built only where the next pass will find a street within reach of it.
+      if (!roadWithinReachOf(g, lotTilesAt)) continue;
+      if (!this.servedOn(g, entry, lotTilesAt, milestoneLevel)) {
         continue;
       }
 

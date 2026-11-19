@@ -358,3 +358,7 @@ Back to [the index](../GROUND-TRUTHS.md).
   moment its power, water and road return. —
   [redevelopment.md](../specs/redevelopment.md);
   `ABANDONED_CLEAR_DEMAND` in `src/sim/growth.ts`
+- [R-world-060] A building's road is judged from its whole footprint, as its power and
+  water are: never from one corner. Growth never builds, levels up or
+  moves a building onto a lot the next pass would flag `NoRoad`. —
+  [population-model.md](../world-sim/population-model.md)
