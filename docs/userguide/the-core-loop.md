@@ -10,7 +10,10 @@
 3. **Power and water flow through roads.** Connect a generator and a water source
    to the road network and the whole connected network is served.
 4. **Watch it grow, then read it.** Buildings construct, upgrade, and occasionally
-   abandon on their own. Use the infoview lenses and stats to see why.
+   abandon on their own. Use the infoview lenses and stats to see why. An
+   abandoned building reopens when its power, water and road return;
+   otherwise it stands boarded up until its zone is in demand again, or
+   until you bulldoze it.
 5. **Hit milestones.** Growth earns milestone progress, which unlocks denser
    zones, bigger roads, and more services.
 

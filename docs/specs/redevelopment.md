@@ -25,16 +25,17 @@
 | Ceiling, Grand City (20,000) | 12 storeys (38.4) | m | dial |
 | Ceiling, Metropolis (50,000) | none | — | dial |
 | Works and plants | no ceiling: a hall is one tall storey | — | — |
-| `ABANDONED_CLEAR_DEMAND` | the zone's demand bar at half or over | — | dial: the player's "high enough" |
+| `ABANDONED_CLEAR_DEMAND` | 0: the zone's demand bar at half or over | −1 to 1 | dial: the player's "high enough" |
+| `ABANDONED_MIN_PASSES` | 10 growth passes (100 ticks) abandoned before it may be cleared | passes | the old wait, now a floor |
 | Levels below ground | 2 at most | levels | dial |
 | A built-in space | 30 (325 sq ft) | m² | the garage's own figure |
 | A parking level, floor to floor | 3.35 (11 ft) | m | the garage's own figure |
 | Garage portal | 6.1 wide (20 ft, two-way), 2.5 clear | m | Evanston IL, Alhambra CA; van clearance |
 | Ramp to a level below | 1 in 8 (12.5%), no stall on it | slope | parking design guidance |
 
-**Code:** to be built. Ceilings: `unlockMilestone` on each entry of `src/data/catalog.json`, read where growth already reads it (`src/sim/growth.ts` `tryLevelUp`, the spawn pass). Rebuild order: `tryLevelUp`, `footprintsOf`, `levelUpSite`. Built-in parking: `src/shared/garage.ts` `parksInGarage`, `garageRequirement`; `src/render/massing.ts` the podium.
+**Code:** what falls is built: `src/sim/growth.ts` the problems pass, `ABANDONED_MIN_PASSES`, `ABANDONED_CLEAR_DEMAND`; `cmdBulldoze` in `src/sim/worker.entry.ts` clears a derelict as it clears any building. The rest is to be built. Ceilings: `unlockMilestone` on each entry of `src/data/catalog.json`, read where growth already reads it (`src/sim/growth.ts` `tryLevelUp`, the spawn pass). Rebuild order: `tryLevelUp`, `footprintsOf`, `levelUpSite`. Built-in parking: `src/shared/garage.ts` `parksInGarage`, `garageRequirement`; `src/render/massing.ts` the podium.
 
-**Tests:** to be written with each slice: no entry above its milestone's ceiling; a standing building over a ceiling is kept; the rebuild order on a free block, a full block and a roomy lot; spaces built in equal spaces owed; the first-town guards unedited.
+**Tests:** `src/sim/growth.test.ts` a derelict stands at low demand, stands its minimum at high demand, is then cleared, and reopens when its power returns; `src/sim/abandonedbulldoze.test.ts` the bulldozer clears one. To be written with each later slice: no entry above its milestone's ceiling; a standing building over a ceiling is kept; the rebuild order on a free block, a full block and a roomy lot; spaces built in equal spaces owed; the first-town guards unedited.
 
 **Open:** no vacancy is modelled, so a building is abandoned only for want of power, water or a road, never for want of people. A lot on a curve never changes its footprint.
 
@@ -67,7 +68,9 @@ Roomy lots are the room to grow into. A shop on a lot twice its size is rebuilt 
 
 A building left without power, water or a road is abandoned and boarded up. It used to vanish after a fixed wait, which left a hole nobody chose. Now it stands, as a derelict does, until the land is wanted: when demand for its zone is at half or over, it is demolished and the lot is free to grow again. It still reopens the moment its services return.
 
-The player can clear it sooner with the bulldozer. A town that shrinks therefore keeps its empty buildings until it grows back or the player clears them.
+It stands at least as long as it used to before demand may clear it. Without that floor a brownout in a growing town would demolish a building the pass after it went dark, and the lot would rebuild and go dark again.
+
+The player can clear it sooner with the bulldozer, which takes the zone's paint with the building as it always has; the lot regrows once it is zoned again. A town that shrinks keeps its empty buildings until it grows back or the player clears them.
 
 ### Cars go under, then in
 

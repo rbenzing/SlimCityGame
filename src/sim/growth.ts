@@ -100,7 +100,10 @@ const CONVERSION_PER_YEAR = 0.02;
 export const CONVERSION_CHANCE_PER_PASS =
   1 - (1 - CONVERSION_PER_YEAR) ** (GROWTH_INTERVAL / TICKS_PER_YEAR);
 const ABANDON_BLOCKER_STREAK = 3;
-const DESPAWN_ABANDONED_PASSES = 10;
+/** Sector demand (-1..1) at which an abandoned building is cleared: 0 is a half-full demand bar. */
+export const ABANDONED_CLEAR_DEMAND = 0;
+/** Problems passes an abandoned building stands before demand may clear it, so a brownout never churns lots. */
+export const ABANDONED_MIN_PASSES = 10;
 /** Number of GROWTH_INTERVAL passes needed to sweep the whole map once. */
 const SCAN_STRIDE = 32;
 const LEVEL_2_LAND_VALUE = 140;
@@ -661,7 +664,7 @@ export class GrowthSystem {
   private readonly constructing = new Map<number, number>();
   /** Building id -> consecutive passes with a NoPower/NoWater/NoRoad blocker while Active. */
   private readonly blockerStreak = new Map<number, number>();
-  /** Building id -> passes elapsed since becoming Abandoned. */
+  /** Building id -> problems passes spent Abandoned. */
   private readonly abandonedPasses = new Map<number, number>();
   /**
    * Lots (by tile index) and buildings (by negated id) held back for want of
@@ -985,7 +988,6 @@ export class GrowthSystem {
             this.blockerStreak.delete(inst.id);
             inst.problems = newProblems;
             inst.state = BuildingState.Abandoned;
-            this.abandonedPasses.set(inst.id, 0);
             updated.push(inst);
             continue;
           }
@@ -1006,7 +1008,7 @@ export class GrowthSystem {
           continue;
         }
         const passes = (this.abandonedPasses.get(inst.id) ?? 0) + 1;
-        if (passes >= DESPAWN_ABANDONED_PASSES) {
+        if (passes >= ABANDONED_MIN_PASSES && sector && demandForSector >= ABANDONED_CLEAR_DEMAND) {
           this.abandonedPasses.delete(inst.id);
           registry.remove(g, inst.id);
           removed.push(inst.id);
