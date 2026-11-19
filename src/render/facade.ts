@@ -313,7 +313,7 @@ const COMMERCIAL_BODY_PALETTES: Readonly<Record<CommercialKind, readonly Materia
   bank: ['eifsTan', 'redBrick'],
   medicaloffice: ['eifsCream', 'whiteBrick'],
   quicklube: ['whitePlaster', 'eifsBeige'],
-  carwash: ['whitePlaster', 'eifsCream'],
+  carwash: ['whitePlaster', 'whiteBrick'],
 };
 const OFFICE_TOWER_BODY_PALETTE: readonly MaterialName[] = ['curtainWall'];
 

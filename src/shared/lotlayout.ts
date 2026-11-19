@@ -486,7 +486,9 @@ function build(input: LotLayoutInput, c: Candidate): Built {
       ]
     : [];
   // A service bay's apron holds no stall; where its lane and court are not reserved the drive may still cross it.
-  const lube = c.pin === 'lube' ? lubeReserveFor(c.body, curbCut, input.depth, input.courtDepth ?? LUBE_COURT_M)
+  const lube =
+    c.pin === 'lube'
+      ? lubeReserveFor(c.body, curbCut, input.depth, input.courtDepth ?? LUBE_COURT_M)
       : null;
   if (lube)
     fixed.push(lube.apron, ...(lube.lane ? [lube.lane] : []), ...(lube.court ? [lube.court] : []));
@@ -1077,7 +1079,8 @@ function computeLotLayout0(
         ? driveUpLanesFor(layout, input.driveUpLanes)
         : driveThroughFor(layout, input.sideWindow === true));
   }
-  if (input.quickLube) layout.lube = built.lube ?? lubeLeftoverFor(layout, input.courtDepth ?? LUBE_COURT_M);
+  if (input.quickLube)
+    layout.lube = built.lube ?? lubeLeftoverFor(layout, input.courtDepth ?? LUBE_COURT_M);
   if (input.trailerCourt) layout.loadingWall = loadingWallFor(layout);
   // On a roomy lot the paving comes first, behind the body, and the truck court takes what it leaves;
   // a lot whose docks stand on the back wall keeps that ground for its court and lays no yard.

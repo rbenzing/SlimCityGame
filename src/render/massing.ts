@@ -133,7 +133,7 @@ export function podiumHeightOf(entry: BuildingCatalogEntry): number | null {
   return null;
 }
 
-/** The kinds drawn as one volume at every level: a repair shop, a convenience store, a pharmacy, a machine shop, self-storage's rows, a bank, a medical office and a quick lube. */
+/** The kinds drawn as one volume at every level: a repair shop, a convenience store, a pharmacy, a machine shop, self-storage's rows, a bank, a medical office, a quick lube and a car wash. */
 const ONE_VOLUME_KINDS: ReadonlySet<string> = new Set([
   'autorepair',
   'convenience',
@@ -143,6 +143,7 @@ const ONE_VOLUME_KINDS: ReadonlySet<string> = new Set([
   'bank',
   'medicaloffice',
   'quicklube',
+  'carwash',
 ]);
 
 /**

@@ -33,7 +33,7 @@ import {
 import { TILE_METERS } from '../shared/constants';
 import { footprintForRotation } from '../shared/footprint';
 import { REPAIR_OFFICE_M, WALL_LOCKER_ZONE_M, YARD_FENCE_HEIGHT_M } from '../shared/lotgrounds';
-import { lubeBays, REPAIR_BAY_M, repairBays } from '../shared/parkingcode';
+import { carwashBays, lubeBays, REPAIR_BAY_M, repairBays } from '../shared/parkingcode';
 import { maxHeightUnderBody } from './footprint';
 import {
   edgeFrameOfParcel,
@@ -723,6 +723,14 @@ export const LUBE_DOOR_M = { w: 3.4, h: 3.05 } as const;
 export const LUBE_SIGN_M = 10;
 export const LUBE_DOOR_RGB: RGB = [0.07, 0.08, 0.1];
 export const LUBE_WAITING_GLASS_M = { across: 3.2, height: 2.4 } as const;
+/** A car wash: an open portal 3.6 m wide and 3.2 m tall at each end of a bay or tunnel, under a 5 m sign band; a pay kiosk beside the lane; a canopy 3 m clear over a run of up to four vacuum stalls, on posts this far beyond the stalls' heads. */
+export const CARWASH_PORTAL_M = { w: 3.6, h: 3.2 } as const;
+export const CARWASH_SIGN_M = 5;
+export const CARWASH_KIOSK_M = { across: 1.2, along: 1.6, height: 2.4 } as const;
+export const CARWASH_CANOPY_M = { clear: 3, thick: 0.25, post: 0.25 } as const;
+const CARWASH_CANOPY_STALLS = 4;
+const CANOPY_POST_GAP_M = 0.05;
+const KIOSK_LANE_GAP_M = 0.3;
 /** A machine shop's short sign, its exhaust fan on the roof (1.2 m across, this far in from the back edge) and its scrap bin, a roll-off of 3.7 by 1.8 m, 1.5 m tall. */
 export const MACHINE_SIGN_M = 4;
 export const EXHAUST_FAN_M = 1.2;
@@ -1031,6 +1039,8 @@ export interface KitLot {
   loadingFacing: LocalPoint | null;
   /** Trailer stalls striped in the truck court before the loading wall. */
   trailers: LocalRect[];
+  /** The car park's stalls, each its own rectangle. */
+  stalls: LocalRect[];
   /** Ground a car, a truck or a trailer stands on: stalls, aisles, berths, trailer stalls and the planted islands, but no walk. */
   hard: LocalRect[];
   lane: KitLane | null;
@@ -3616,6 +3626,148 @@ function quickLubeKit(box: SetbackBox, side: Side, lot: KitLot | null, sign: RGB
   return out;
 }
 
+/**
+ * A car wash's dressing: an open portal, a dark opening with no door leaf, at
+ * each end of every bay or tunnel under a bright sign band; a pay kiosk on the
+ * ground beside the lane; and a canopy on posts over a run of the vacuum
+ * stalls, its posts on ground that is neither stall, aisle nor walk.
+ */
+function carWashKit(
+  entry: BuildingCatalogEntry,
+  box: SetbackBox,
+  side: Side,
+  lot: KitLot | null,
+  sign: RGB,
+): PartPlacement[] {
+  const span = facadeSpan(box, side);
+  const bays = carwashBays(entry.level);
+  const out: PartPlacement[] = [];
+  for (const face of [side, oppositeSide(side)]) {
+    for (let i = 0; i < bays; i += 1) {
+      const along = bayCentre(span, bays, i);
+      out.push(
+        {
+          ...againstFacade(
+            'rollUpDoors',
+            box,
+            face,
+            CARWASH_PORTAL_M.w,
+            DOOR_THICKNESS_M,
+            CARWASH_PORTAL_M.h,
+            CARWASH_PORTAL_M.h / 2,
+            along,
+          ),
+          color: LUBE_DOOR_RGB,
+        },
+        {
+          ...againstFacade(
+            'signageBand',
+            box,
+            face,
+            CARWASH_SIGN_M,
+            SIGN_THICKNESS_M,
+            SIGN_HEIGHT_M,
+            CARWASH_PORTAL_M.h + 0.4 + SIGN_HEIGHT_M / 2,
+            along,
+          ),
+          color: sign,
+        },
+      );
+    }
+  }
+  if (!lot) return out;
+  const free = (b: LocalRect): boolean =>
+    rectInside(b, lot.lot) && !lot.taken.some((t) => rectsOverlap(t, b));
+
+  // The kiosk stands past the lane's outer edge, the first place along the lane where the ground is clear.
+  const lane = lot.lube?.lane;
+  if (lane) {
+    const long = lane.z1 - lane.z0 > lane.x1 - lane.x0 ? 'z' : 'x';
+    const { across, along: length, height } = CARWASH_KIOSK_M;
+    const [lo, hi] = long === 'z' ? [lane.z0, lane.z1] : [lane.x0, lane.x1];
+    const outward = Math.sign(long === 'z' ? lane.x0 + lane.x1 : lane.z0 + lane.z1) || 1;
+    const edge = long === 'z' ? (outward > 0 ? lane.x1 : lane.x0) : outward > 0 ? lane.z1 : lane.z0;
+    const standAt = outward * (across / 2 + KIOSK_LANE_GAP_M) + edge;
+    for (let k = 1; k <= 9; k += 1) {
+      const at = lo + ((hi - lo) * k) / 10;
+      const [w, d] = long === 'z' ? [across, length] : [length, across];
+      const [x, z] = long === 'z' ? [standAt, at] : [at, standAt];
+      const b = { x0: x - w / 2, x1: x + w / 2, z0: z - d / 2, z1: z + d / 2 };
+      if (!free(b)) continue;
+      out.push(atPoint('guardBooth', x, z, w, d, height, height / 2));
+      break;
+    }
+  }
+
+  // The canopy covers a run of stalls from posts beyond their heads, so no post stands on a stall or an aisle.
+  const { clear, thick, post } = CARWASH_CANOPY_M;
+  const runs = new Map<string, LocalRect[]>();
+  for (const s of lot.stalls) {
+    const longX = s.x1 - s.x0 > s.z1 - s.z0;
+    const key = longX
+      ? `x:${s.x0.toFixed(2)}:${s.x1.toFixed(2)}`
+      : `z:${s.z0.toFixed(2)}:${s.z1.toFixed(2)}`;
+    runs.set(key, [...(runs.get(key) ?? []), s]);
+  }
+  for (let count = CARWASH_CANOPY_STALLS; count >= 2; count -= 1) {
+    for (const [key, row] of runs) {
+      const longX = key.startsWith('x');
+      const sorted = [...row].sort((a, b) => (longX ? a.z0 - b.z0 : a.x0 - b.x0));
+      for (let start = 0; start + count <= sorted.length; start += 1) {
+        const run = sorted.slice(start, start + count);
+        const touching = run.every(
+          (s, i) =>
+            i === 0 || Math.abs(longX ? s.z0 - run[i - 1]!.z1 : s.x0 - run[i - 1]!.x1) < 0.05,
+        );
+        if (!touching) continue;
+        const cover = boundsUnion(run);
+        // In the row's own frame: `h` runs along the stalls' length, `r` along the row.
+        const [h0, h1, r0, r1] = longX
+          ? [cover.x0, cover.x1, cover.z0, cover.z1]
+          : [cover.z0, cover.z1, cover.x0, cover.x1];
+        const rectOf = (ha: number, hb: number, ra: number, rb: number): LocalRect =>
+          longX ? { x0: ha, x1: hb, z0: ra, z1: rb } : { x0: ra, x1: rb, z0: ha, z1: hb };
+        for (const head of [-1, 1] as const) {
+          const postH: [number, number] =
+            head > 0
+              ? [h1 + CANOPY_POST_GAP_M, h1 + CANOPY_POST_GAP_M + post]
+              : [h0 - CANOPY_POST_GAP_M - post, h0 - CANOPY_POST_GAP_M];
+          const posts = [
+            rectOf(postH[0], postH[1], r0, r0 + post),
+            rectOf(postH[0], postH[1], r1 - post, r1),
+          ];
+          if (!posts.every(free)) continue;
+          const roof = rectOf(Math.min(h0, postH[0]), Math.max(h1, postH[1]), r0, r1);
+          out.push(
+            atPoint(
+              'pickupCanopy',
+              (roof.x0 + roof.x1) / 2,
+              (roof.z0 + roof.z1) / 2,
+              roof.x1 - roof.x0,
+              roof.z1 - roof.z0,
+              thick,
+              clear + thick / 2,
+            ),
+            ...posts.map((b) =>
+              atPoint(
+                'signPole',
+                (b.x0 + b.x1) / 2,
+                (b.z0 + b.z1) / 2,
+                post,
+                post,
+                clear,
+                clear / 2,
+              ),
+            ),
+          );
+          return out;
+        }
+      }
+    }
+  }
+  return out;
+}
+
 /** A point in the street frame as the footprint's x and z: `along` the street face from its middle, `out` toward the street from the footprint's centre. */
 function streetFramePoint(side: Side, along: number, out: number): { x: number; z: number } {
   const { nx, nz } = sideNormal(side);
@@ -3659,6 +3811,13 @@ const OWN_PARTS: Readonly<Record<string, ReadonlySet<BuildingPart>>> = {
     'signageBand',
   ]),
   quicklube: new Set<BuildingPart>(['rollUpDoors', 'glassFront', 'walkDoor', 'signageBand']),
+  carwash: new Set<BuildingPart>([
+    'rollUpDoors',
+    'signageBand',
+    'guardBooth',
+    'pickupCanopy',
+    'signPole',
+  ]),
   storage: new Set<BuildingPart>([
     'storageRow',
     'storageRoof',
@@ -4595,6 +4754,8 @@ export function computePartPlacements(
         );
       } else if (entry.kind === 'quicklube') {
         ownParts = quickLubeKit(baseBox, side, lot, accent(0));
+      } else if (entry.kind === 'carwash') {
+        ownParts = carWashKit(entry, baseBox, side, lot, accent(0));
       } else ownParts = storageKit(entry, baseBox, side, lot, id, accent(0));
     }
     return ownParts.filter((p) => p.part === part);
@@ -6128,6 +6289,7 @@ export function kitLotOf(
     dock,
     loadingFacing,
     trailers,
+    stalls: layout.stalls.map((s) => rect(s.rect)),
     hard: [
       ...layout.stalls.map((s) => rect(s.rect)),
       ...layout.accessAisles.map(rect),

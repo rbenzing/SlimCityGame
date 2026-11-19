@@ -369,7 +369,7 @@ describe('self-storage as rows', () => {
   }
 });
 
-const NEW_KINDS = ['bank', 'medicaloffice', 'quicklube'] as const;
+const NEW_KINDS = ['bank', 'medicaloffice', 'quicklube', 'carwash'] as const;
 const everyLot = (kind: string): BuildingCatalogEntry[] => [
   ...ofKind(kind, false),
   ...ofKind(kind, true),
@@ -380,7 +380,7 @@ describe('a bank, a medical office and a quick lube', () => {
     for (const kind of NEW_KINDS) {
       for (const e of catalog.filter((c) => c.kind === kind)) {
         expect(tierCountOf(e), e.id).toBe(1);
-        expect(windowlessBody(e), e.id).toBe(kind === 'quicklube');
+        expect(windowlessBody(e), e.id).toBe(kind === 'quicklube' || kind === 'carwash');
         // A bank's masonry and a lube's plaster are drawn plain, not as the near-black storefront frame.
         expect(plainWalledBody(e), e.id).toBe(true);
       }
@@ -399,6 +399,8 @@ describe('a bank, a medical office and a quick lube', () => {
             if (p.part === 'hipRoofBlock') continue;
             expect(inside(b, plan.lot.lot), `${e.id} ${side} ${p.part} on the lot`).toBe(true);
             if (!groundParts.includes(p.part)) continue;
+            // A car wash's canopy covers its vacuum stalls by design: its posts are checked on their own.
+            if (kind === 'carwash' && p.part === 'pickupCanopy') continue;
             // A canopy is overhead, and the lane's own island is not ground a car stands on.
             if (p.part === 'pickupCanopy' || p.part === 'entryCanopy') {
               for (const h of plan.lot.hard) {
@@ -588,6 +590,71 @@ describe('a quick lube', () => {
         );
         expect(street, e.id).toBeDefined();
         for (const d of doors) expect(overlap(d, placementBounds(street!)), e.id).toBe(false);
+      });
+    }
+  }
+});
+
+describe('a car wash', () => {
+  const BAYS = [2, 1, 2];
+  for (const side of SIDES) {
+    for (const e of everyLot('carwash')) {
+      const plan = kitOf(e, TURN[side], side);
+      const local = plan.side!;
+      const alongX = local === 'N' || local === 'S';
+      const bays = BAYS[e.level! - 1]!;
+      const across = (p: PartPlacement): number => (alongX ? p.offset[2] : p.offset[0]);
+      const along = (p: PartPlacement): number => (alongX ? p.offset[0] : p.offset[2]);
+
+      it(`${e.id} (${side}) has an open dark portal under a bright sign band at each end of each bay or tunnel, and no shopfront glass`, () => {
+        const portals = only(plan, 'rollUpDoors');
+        expect(portals, e.id).toHaveLength(2 * bays);
+        const faces = [portals.filter((p) => across(p) > 0), portals.filter((p) => across(p) < 0)];
+        for (const face of faces) {
+          expect(face, e.id).toHaveLength(bays);
+          for (const p of face) {
+            expect(p.size[alongX ? 0 : 2], e.id).toBeCloseTo(3.6, 5);
+            // Dark opening, no leaf: its colour is far below the pale wall's.
+            expect(Math.max(...p.color!), e.id).toBeLessThan(0.2);
+          }
+        }
+        // Each portal stands in the middle of its module, one face straight across from the other.
+        expect(faces[0]!.map(along).sort((a, b) => a - b)).toEqual(
+          faces[1]!.map(along).sort((a, b) => a - b),
+        );
+        const bands = only(plan, 'signageBand');
+        expect(bands, e.id).toHaveLength(2 * bays);
+        for (const b of bands) expect(b.offset[1] - b.size[1] / 2, e.id).toBeGreaterThan(3.2);
+        expect(only(plan, 'glassFront'), e.id).toHaveLength(0);
+      });
+    }
+  }
+
+  for (const side of SIDES) {
+    for (const e of ofKind('carwash', true)) {
+      it(`${e.id} (${side}) has a pay kiosk beside the lane and a canopy on two posts over its vacuum stalls, the posts off every stall and aisle`, () => {
+        const plan = kitOf(e, TURN[side], side);
+        const lot = plan.lot!;
+        const [kiosk] = only(plan, 'guardBooth');
+        expect(kiosk, e.id).toBeDefined();
+        const lane = lot.lube!.lane!;
+        const k = placementBounds(kiosk!);
+        const gapX = Math.max(lane.x0 - k.x1, k.x0 - lane.x1, 0);
+        const gapZ = Math.max(lane.z0 - k.z1, k.z0 - lane.z1, 0);
+        expect(Math.hypot(gapX, gapZ), e.id).toBeLessThan(1);
+        const [canopy] = only(plan, 'pickupCanopy');
+        expect(canopy, e.id).toBeDefined();
+        const posts = only(plan, 'signPole');
+        expect(posts, e.id).toHaveLength(2);
+        const over = lot.stalls.filter((s) => overlap(s, placementBounds(canopy!)));
+        expect(over.length, e.id).toBeGreaterThanOrEqual(2);
+        for (const p of posts) {
+          const b = placementBounds(p);
+          expect(inside(b, lot.lot), e.id).toBe(true);
+          for (const s of lot.stalls) expect(overlap(s, b), `${e.id} post on a stall`).toBe(false);
+          for (const t of lot.taken)
+            expect(overlap(t, b), `${e.id} post on ${JSON.stringify(t)}`).toBe(false);
+        }
       });
     }
   }

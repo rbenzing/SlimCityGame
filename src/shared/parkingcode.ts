@@ -280,6 +280,10 @@ export function lubeBays(frontageM: number): number {
 
 /** A car wash owes 2 spaces for every 3 employees: the vacuum stalls under its canopy. */
 export const CARWASH_SPACES_PER_EMPLOYEE = 2 / 3;
+/** The bays or tunnels a car wash has: two self-service bays, one conveyor tunnel, two tunnels. */
+export function carwashBays(level: number | undefined): number {
+  return level === 2 ? 1 : 2;
+}
 /** The cars a car wash keeps in line: 3 at each self-service bay, 6 at each conveyor tunnel. */
 export function carwashQueueCars(level: number | undefined): number {
   return level === 1 ? 3 : 6;
