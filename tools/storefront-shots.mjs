@@ -448,7 +448,8 @@ try {
   await frame('stacked-fin', boxOf([find('stacked', 'com-restaurant-3-lot4x2')]), 0.9, 0.5, 0.9);
   // The street faces of the same two shops, straight on and low.
   await frame('stacked-front-shop', boxOf([shop]), 0.0, 0.3, 0.9);
-  await frame('stacked-front-shop4', boxOf([shop4]), 0.0, 0.3, 0.9);
+  // Four storeys are taller than the camera's floor distance frames: aim low so the ground floor stands clear of the bottom bar.
+  await frame('stacked-front-shop4', { ...boxOf([shop4]), h: 6 }, 0.0, 0.3, 0.9);
   await frame('close-shop', boxOf([find('main', 'com-low-1')]), 0.3);
   // The pylon and shopfronts from the other side, lower, so these are not the street-level frames again.
   await frame('close-strip', boxOf([find('strip', 'com-strip-2')]), -0.7, 0.45, 0.8);

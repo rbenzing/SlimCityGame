@@ -83,6 +83,7 @@ import {
   PORTE_COCHERE_UNDERSIDE_M,
   RIBBON_BAND_M,
   SIGN_HEIGHT_M,
+  AWNING_UNDERSIDE_M,
   SPANDREL_BAND_M,
   STRIP_CANOPY_FASCIA_M,
   TOWER_OVER_PARAPET_M,
@@ -117,6 +118,7 @@ import {
 } from './buildingkit';
 import { computeSetbacks, type SetbackBox } from './massing';
 import { bodyMetresFor } from '../shared/floorarea';
+import { MULLION_MARGIN_PUNCHED } from './facade';
 import { WALK_UP_REAR_YARD_M } from '../shared/parkingcode';
 import {
   deriveFacadeParams,
@@ -1001,6 +1003,23 @@ describe('rooftop units', () => {
   it('gives a shop and a filling station’s kiosk one unit each, by the same rule', () => {
     expect(only(southern(byId('com-low-1')), 'rooftopUnit')).toHaveLength(1);
     expect(only(southern(byId('com-fuel-1')), 'rooftopUnit')).toHaveLength(1);
+  });
+});
+
+describe('a built-in form’s sign band', () => {
+  it('stands on the ground floor, above the awning and under the first upper windows’ sills', () => {
+    let seen = 0;
+    for (const e of commercial.filter((c) => c.stacked && c.kind !== 'hotel')) {
+      const plan = kitOf(e, 0, 'S');
+      for (const sign of only(plan, 'signageBand').filter((p) => p.pitch === undefined)) {
+        seen += 1;
+        expect(bottomOf(sign), e.id).toBeGreaterThanOrEqual(AWNING_UNDERSIDE_M);
+        expect(topOf(sign), e.id).toBeLessThanOrEqual(
+          FLOOR_HEIGHT_METERS * (1 + MULLION_MARGIN_PUNCHED),
+        );
+      }
+    }
+    expect(seen).toBeGreaterThan(0);
   });
 });
 

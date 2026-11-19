@@ -434,6 +434,8 @@ const CANOPY_FRONTAGE_FRACTION = 0.82;
 
 /** A lit sign band: 1.2 m tall, 60% of its tenant's frontage, sized to read at 40 m. */
 export const SIGN_HEIGHT_M = 1.2;
+/** A built-in form's sign band: the 0.9 m the ground floor leaves between the awning and the first upper windows' sills. */
+const BUILT_IN_SIGN_HEIGHT_M = 0.8;
 const SIGN_THICKNESS_M = 0.16;
 export const SIGN_FRONTAGE_FRACTION = 0.6;
 /** The band sits just above the shopfront, under the cornice. */
@@ -4989,6 +4991,10 @@ export function computePartPlacements(
           }
           break;
         }
+        // On a built-in form the band is shorter, its foot where it was, so it stays under the first upper windows' sills.
+        const built = entry.stacked !== undefined && !strip && !hotel;
+        const signHeight = built ? BUILT_IN_SIGN_HEIGHT_M : SIGN_HEIGHT_M;
+        const signCentre = centreY - (SIGN_HEIGHT_M - signHeight) / 2;
         tenants.forEach((t, i) => {
           out.push({
             ...onSide(
@@ -4998,8 +5004,8 @@ export function computePartPlacements(
               halfDepthTo(box, side) + SIGN_THICKNESS_M / 2,
               t.width * SIGN_FRONTAGE_FRACTION,
               SIGN_THICKNESS_M,
-              SIGN_HEIGHT_M,
-              centreY,
+              signHeight,
+              signCentre,
             ),
             color: accent(strip ? i : 0),
           });
