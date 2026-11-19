@@ -1441,7 +1441,8 @@ export type CommercialKind =
   | 'office'
   | 'hotel'
   | 'autorepair'
-  | 'convenience';
+  | 'convenience'
+  | 'pharmacy';
 
 /**
  * The kinds of works an industrial zone grows: light industry by what the
@@ -1449,7 +1450,16 @@ export type CommercialKind =
  * industry they belong to.
  */
 export type IndustrialKind =
-  'workshop' | 'warehouse' | 'factory' | 'flex' | 'foodplant' | 'chemical' | 'metals' | 'paper';
+  | 'workshop'
+  | 'warehouse'
+  | 'factory'
+  | 'flex'
+  | 'foodplant'
+  | 'chemical'
+  | 'metals'
+  | 'paper'
+  | 'machineshop'
+  | 'storage';
 
 /**
  * What a zoned building IS. A lot draws one of its zone's kinds when it grows

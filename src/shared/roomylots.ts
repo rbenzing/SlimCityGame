@@ -4,7 +4,7 @@
  * car park is laid with a 1.5 m planted strip free inside every lot line, the
  * body covers no more than the median built share of a site (0.28 retail,
  * 0.32 industry), the layout keeps a walk to the door and the yards the kind
- * needs. Lots in tiles, frontage by depth, per level. A filling station and a
+ * needs; a pharmacy's lot also holds its drive-through lane. Lots in tiles, frontage by depth, per level. A filling station and a
  * chemical works already stand under that share on their compact lots and
  * keep them.
  */
@@ -67,6 +67,21 @@ export const ROOMY_LOT_TILES: Readonly<Partial<Record<BuildingKind, readonly [Lo
     { w: 3, d: 2 },
     { w: 4, d: 2 },
     { w: 5, d: 2 },
+  ],
+  pharmacy: [
+    { w: 7, d: 2 },
+    { w: 6, d: 3 },
+    { w: 7, d: 3 },
+  ],
+  machineshop: [
+    { w: 1, d: 3 },
+    { w: 3, d: 2 },
+    { w: 3, d: 3 },
+  ],
+  storage: [
+    { w: 5, d: 3 },
+    { w: 6, d: 4 },
+    { w: 8, d: 4 },
   ],
   metals: [
     { w: 4, d: 4 },

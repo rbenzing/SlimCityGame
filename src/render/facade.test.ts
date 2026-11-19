@@ -472,6 +472,7 @@ const ART_TABLE_BODIES: Readonly<Record<CommercialKind, readonly MaterialName[]>
   hotel: ['eifsBeige'],
   autorepair: ['whitePlaster', 'eifsCream'],
   convenience: ['eifsCream', 'redBrick', 'eifsTan'],
+  pharmacy: ['eifsBeige', 'whiteBrick'],
 };
 const ART_TABLE_ROOFS: Readonly<Record<CommercialKind, MaterialName>> = {
   shop: 'brightBitumen',
@@ -483,6 +484,7 @@ const ART_TABLE_ROOFS: Readonly<Record<CommercialKind, MaterialName>> = {
   hotel: 'greyMembrane',
   autorepair: 'greyMembrane',
   convenience: 'whiteMembrane',
+  pharmacy: 'whiteMembrane',
 };
 const COMMERCIAL_KINDS = Object.keys(ART_TABLE_BODIES) as CommercialKind[];
 const OTHER_KINDS: (BuildingKind | undefined)[] = [
@@ -746,6 +748,8 @@ const INDUSTRIAL_ART_BODIES: Readonly<Record<IndustrialKind, readonly MaterialNa
   chemical: ['insulatedWhite', 'concreteBlock'],
   metals: ['oxideRed', 'darkPanel'],
   paper: ['ribbedAsh', 'insulatedWhite'],
+  machineshop: ['ribbedStone', 'ribbedWhite'],
+  storage: ['ribbedAsh', 'ribbedWhite'],
 };
 const INDUSTRIAL_ART_ROOFS: Readonly<Record<IndustrialKind, MaterialName>> = {
   workshop: 'galvanised',
@@ -756,11 +760,13 @@ const INDUSTRIAL_ART_ROOFS: Readonly<Record<IndustrialKind, MaterialName>> = {
   chemical: 'greyMembrane',
   metals: 'darkPanel',
   paper: 'greyMembrane',
+  machineshop: 'galvanised',
+  storage: 'galvanised',
 };
 const INDUSTRIAL_KINDS = Object.keys(INDUSTRIAL_ART_BODIES) as IndustrialKind[];
 /** The sheds keep the facade's accent stripe; a warehouse's band is a kit part and the heavy plants carry none. */
 const STRIPED_KINDS: readonly IndustrialKind[] = ['workshop', 'factory', 'flex'];
-const WINDOWLESS_KINDS: readonly IndustrialKind[] = ['foodplant'];
+const WINDOWLESS_KINDS: readonly IndustrialKind[] = ['foodplant', 'machineshop', 'storage'];
 
 function industrialEntry(kind: IndustrialKind, level = 1): BuildingCatalogEntry {
   const heavy =
@@ -902,7 +908,7 @@ describe('deriveFacadeParams: an industrial body takes its kind palette by id ha
     expect(industrialAccentStripe(entry({ category: 'service' }))).toBe(false);
   });
 
-  it('leaves only the food plant windowless; every other body keeps its grid', () => {
+  it('leaves only the food plant, the machine shop and self-storage windowless; every other body keeps its grid', () => {
     for (const kind of INDUSTRIAL_KINDS) {
       for (const level of [1, 2, 3]) {
         expect(windowlessBody(industrialEntry(kind, level)), `${kind} L${level}`).toBe(
@@ -910,12 +916,14 @@ describe('deriveFacadeParams: an industrial body takes its kind palette by id ha
         );
       }
     }
-    expect(WINDOWLESS_KINDS).toEqual(['foodplant']);
+    expect(WINDOWLESS_KINDS).toEqual(['foodplant', 'machineshop', 'storage']);
     const foodplant = industrialEntry('foodplant');
     expect(windowGrid(foodplant, 8).cols).toBeGreaterThanOrEqual(2); // the kit still cuts its bays
-    // A repair shop's walls are blank: its glass is the kit's office.
+    // A repair shop's and a pharmacy's walls are blank: their glass is the kit's.
     for (const kind of COMMERCIAL_KINDS) {
-      expect(windowlessBody(commercialEntry(kind)), kind).toBe(kind === 'autorepair');
+      expect(windowlessBody(commercialEntry(kind)), kind).toBe(
+        kind === 'autorepair' || kind === 'pharmacy',
+      );
     }
     for (const kind of OTHER_KINDS) expect(windowlessBody(entry({ kind }))).toBe(false);
   });

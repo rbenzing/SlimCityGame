@@ -78,6 +78,8 @@ export interface LotLayoutInput {
   hardstanding?: number;
   /** Lay a drive-through lane round the body, where the ground left over holds one. */
   driveThrough?: boolean;
+  /** The window is on a side wall: the lane runs along that wall alone, from the edge of the drive, standing on no aisle. */
+  sideWindow?: boolean;
   /** Stripe trailer stalls in the truck court before the wall the berths lie beside, on the ground left over. */
   trailerCourt?: boolean;
   /** Keep a walk between the body's street face and the stall heads, the stalls giving way for it. */
@@ -932,7 +934,7 @@ function computeLotLayout0(
     shortfall: Math.max(0, input.spaces - filled.provided),
   };
   // Laid last, on ground the car park left over, so the code's count never moves for it.
-  if (input.driveThrough) layout.driveThrough = driveThroughFor(layout);
+  if (input.driveThrough) layout.driveThrough = driveThroughFor(layout, input.sideWindow === true);
   if (input.trailerCourt) layout.loadingWall = loadingWallFor(layout);
   // On a roomy lot the paving comes first, behind the body, and the truck court takes what it leaves;
   // a lot whose docks stand on the back wall keeps that ground for its court and lays no yard.
@@ -1124,9 +1126,10 @@ const rectsTouch = (a: LotRect, b: LotRect): boolean =>
  * side alone. It takes only ground no stall, berth, island, walk, yard or the
  * body stands on, starts where it meets the drive, and stays inside the lot.
  */
-function driveThroughFor(layout: LotLayout): DriveThrough | null {
+function driveThroughFor(layout: LotLayout, sideWindow: boolean): DriveThrough | null {
   const W = DRIVE_THROUGH_LANE_M;
   const b = layout.body;
+  const drive: LotRect[] = [...layout.aisles, ...(layout.throat ? [layout.throat] : [])];
   const taken: LotRect[] = [
     b,
     ...layout.stalls.map((s) => s.rect),
@@ -1137,13 +1140,23 @@ function driveThroughFor(layout: LotLayout): DriveThrough | null {
     ...(layout.rearYard ? [layout.rearYard] : []),
     ...(layout.frontWalk ? [layout.frontWalk] : []),
     ...(layout.entranceWalk ? [layout.entranceWalk] : []),
+    // A side window's cars queue on lane alone, so the lane never stands on a drive.
+    ...(sideWindow ? drive : []),
   ];
-  const drive: LotRect[] = [...layout.aisles, ...(layout.throat ? [layout.throat] : [])];
   const clear = (r: LotRect): boolean =>
     inside(r, layout.lot) && !taken.some((t) => rectsOverlap(t, r));
 
   /** The side piece pulled toward the street until it meets the drive, or null if something stands in the way first. */
   const joined = (side: LotRect): LotRect | null => {
+    if (sideWindow) {
+      // It starts at the far edge of the nearest drive piece beside it, and runs clear to the wall's end.
+      const beside = drive.filter(
+        (d) => d.u0 < side.u1 - EPS && side.u0 < d.u1 - EPS && d.v1 <= side.v1 + EPS,
+      );
+      if (beside.length === 0) return null;
+      const piece = { ...side, v0: Math.max(...beside.map((d) => d.v1)) };
+      return clear(piece) ? piece : null;
+    }
     for (let v0 = side.v0; ; v0 = Math.max(0, v0 - 0.5)) {
       const piece = { ...side, v0 };
       if (!clear(piece)) return null;
@@ -1153,7 +1166,7 @@ function driveThroughFor(layout: LotLayout): DriveThrough | null {
   };
 
   const farHigh = (layout.curbCut.u0 + layout.curbCut.u1) / 2 < (b.u0 + b.u1) / 2;
-  for (const round of [true, false]) {
+  for (const round of sideWindow ? [false] : [true, false]) {
     for (const high of farHigh ? [true, false] : [false, true]) {
       const edge = high ? b.u1 : b.u0;
       const sideU = high ? { u0: edge, u1: edge + W } : { u0: edge - W, u1: edge };

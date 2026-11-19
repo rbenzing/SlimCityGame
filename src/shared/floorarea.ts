@@ -102,17 +102,21 @@ export function bodyPlateM2(entry: BuildingCatalogEntry): number {
  * How many floors of the plate a building has. A commercial or office-like
  * building counts one per 3.2 m storey; a works is one high-bay floor however
  * tall its clear height, except flex space, which is offices over the bays; a
- * repair shop's bays are one floor under its 6.1 m roof.
+ * repair shop's bays and a pharmacy's sales floor are one floor under their 6 m roofs.
  */
 export function storeysOf(entry: BuildingCatalogEntry): number {
   if (entry.category === 'ind' && entry.kind !== 'flex') return 1;
-  if (entry.kind === 'autorepair') return 1;
+  if (entry.kind === 'autorepair' || entry.kind === 'pharmacy') return 1;
   return Math.max(1, Math.round(entry.height / FLOOR_HEIGHT_METERS));
 }
 
-/** Gross floor area in m²: the plate times its storeys. */
+/** Self-storage stands in rows about 9 m wide with drives between them: the rows roof this share of its plate. */
+export const STORAGE_ROW_COVER = 0.6;
+
+/** Gross floor area in m²: the plate times its storeys; self-storage's is the rows' share of its plate. */
 export function grossFloorM2(entry: BuildingCatalogEntry): number {
-  return bodyPlateM2(entry) * storeysOf(entry);
+  const rows = entry.kind === 'storage' ? STORAGE_ROW_COVER : 1;
+  return bodyPlateM2(entry) * storeysOf(entry) * rows;
 }
 
 /** Gross floor area in square feet, as the codes state their ratios. */

@@ -25,8 +25,10 @@ export const SPACES_PER_1000_SQ_FT: Readonly<Partial<Record<BuildingKind, number
   fuel: 5,
   restaurant: 10,
   convenience: 5,
+  pharmacy: 5,
   office: 3,
   workshop: 1,
+  machineshop: 1,
   factory: 1,
   foodplant: 1,
   chemical: 1,
@@ -263,6 +265,18 @@ export function repairBays(frontageM: number): number {
   return Math.max(0, Math.floor(frontageM / REPAIR_BAY_M + 1e-9));
 }
 
+/** Self-storage: three quarters of its floor is rentable, in units of 108 sq ft (a 9 by 12 ft unit). */
+export const STORAGE_RENTABLE_SHARE = 0.75;
+export const STORAGE_UNIT_SQ_FT = 108;
+/** Self-storage owes 2 spaces for every 100 units and 2 for its office. */
+export const STORAGE_SPACES_PER_UNIT = 2 / 100;
+export const STORAGE_OFFICE_SPACES = 2;
+
+/** The rentable units of a self-storage building's floor, rounded up. */
+export function storageUnits(grossSqFt: number): number {
+  return Math.ceil((grossSqFt * STORAGE_RENTABLE_SHARE) / STORAGE_UNIT_SQ_FT - 1e-9);
+}
+
 /**
  * The requirement a building's floor sets, or null for one that parks at the
  * kerb or nowhere. A repair shop's is set by its bays, which the street face
@@ -276,6 +290,16 @@ export function lotParkingRequirement(
   if (isDenseLotEntry(entry)) return denseLotRequirement(entry);
   const category = entry.category === 'ind' ? 'ind' : 'com';
   const grossSqFt = grossFloorSqFt(entry);
+  if (entry.kind === 'storage') {
+    // Customers load at their own unit's door: no dock, so no berth.
+    return {
+      grossSqFt,
+      spaces: Math.ceil(
+        STORAGE_SPACES_PER_UNIT * storageUnits(grossSqFt) + STORAGE_OFFICE_SPACES - 1e-9,
+      ),
+      berths: 0,
+    };
+  }
   return {
     grossSqFt,
     spaces:
