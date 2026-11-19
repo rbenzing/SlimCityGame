@@ -71,6 +71,10 @@ A shopfront block's shops add the draw of a retail floor: a mercantile building 
 | Supermarket       | Low commercial   | M1   | 46     | 3×3 / 4×3 / 5×4          | 1 / 1 / 1   | 76 / 101 / 169   |
 | Office            | High commercial  | M4   | 970    | 2×2 / 3×3 / 3×3          | 5 / 8 / 16  | 228 / 820 / 1,639 |
 | Hotel             | High commercial  | M4   | 107    | 2×2 / 2×2 / 3×3          | 4 / 6 / 8   | 11 / 28 / 128    |
+| Auto repair shop  | Low commercial   | M1   | 85     | 1×2 / 2×2 / 3×2          | 1 / 1 / 1   | 5 / 10 / 14      |
+| Convenience store | Low commercial   | M1   | 37     | 1×2 / 2×2 / 3×2          | 1 / 1 / 1   | 17 / 34 / 51     |
+
+The last two are derived in [the grounds sources](commercial-industrial-grounds.md#the-auto-repair-shop-and-the-convenience-store-in-the-catalog).
 
 ### Where the kinds come from
 
