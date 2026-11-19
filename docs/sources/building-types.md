@@ -74,8 +74,11 @@ A shopfront block's shops add the draw of a retail floor: a mercantile building 
 | Auto repair shop  | Low commercial   | M1   | 85     | 1×2 / 2×2 / 3×2          | 1 / 1 / 1   | 5 / 10 / 14      |
 | Convenience store | Low commercial   | M1   | 37     | 1×2 / 2×2 / 3×2          | 1 / 1 / 1   | 17 / 34 / 51     |
 | Pharmacy          | Low commercial   | M1   | 42     | 3×2 / 3×3 / 4×3          | 1 / 1 / 1   | 51 / 76 / 101    |
+| Bank branch       | Low commercial   | M1   | 76     | 1×2 / 2×2 / 3×2          | 1 / 1 / 1   | 8 / 16 / 24      |
+| Medical office    | Low commercial   | M1   | 129    | 2×2 / 3×2 / 3×3          | 1 / 1 / 1   | 14 / 21 / 31     |
+| Quick lube        | Low commercial   | M1   | 9      | 1×2 / 2×2 / 3×2          | 1 / 1 / 1   | 4 / 9 / 13       |
 
-The last three are derived in the grounds sources: [the repair shop and the store](commercial-industrial-grounds.md#the-auto-repair-shop-and-the-convenience-store-in-the-catalog), [the pharmacy](commercial-industrial-grounds.md#the-pharmacy-the-machine-shop-and-self-storage-in-the-catalog).
+The last six are derived in the grounds sources: [the repair shop and the store](commercial-industrial-grounds.md#the-auto-repair-shop-and-the-convenience-store-in-the-catalog), [the pharmacy](commercial-industrial-grounds.md#the-pharmacy-the-machine-shop-and-self-storage-in-the-catalog), [the bank, the medical office and the quick lube](commercial-industrial-grounds.md#the-bank-the-medical-office-and-the-quick-lube-in-the-catalog).
 
 ### Where the kinds come from
 
