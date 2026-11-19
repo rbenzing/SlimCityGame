@@ -305,6 +305,8 @@ const COMMERCIAL_BODY_PALETTES: Readonly<Record<CommercialKind, readonly Materia
   fuel: ['paintedMasonry', 'whiteBrick'],
   office: ['precastGrey', 'precastBuff'],
   hotel: ['eifsBeige'],
+  autorepair: ['concreteBlock', 'paintedMasonry', 'whiteBrick'],
+  convenience: ['eifsCream', 'redBrick', 'eifsTan'],
 };
 const OFFICE_TOWER_BODY_PALETTE: readonly MaterialName[] = ['curtainWall'];
 
@@ -316,6 +318,8 @@ const COMMERCIAL_ROOF_PALETTES: Readonly<Record<CommercialKind, readonly Materia
   fuel: ['whiteMembrane'],
   office: ['greyMembrane'],
   hotel: ['greyMembrane'],
+  autorepair: ['greyMembrane'],
+  convenience: ['whiteMembrane'],
 };
 
 /** An office's ribbons are tinted glass; the tower's cells are its curtain wall's vision glass. */

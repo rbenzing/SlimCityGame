@@ -676,6 +676,8 @@ describe('a larger lot for a kind is the same building on more car park', () => 
         'foodplant',
         'metals',
         'paper',
+        'autorepair',
+        'convenience',
         'office',
         'hotel',
         'mixed',

@@ -1433,7 +1433,15 @@ export type ResidentialKind =
 
 /** The kinds of business a commercial zone grows: shop formats, then offices and hotels. */
 export type CommercialKind =
-  'shop' | 'strip' | 'supermarket' | 'restaurant' | 'fuel' | 'office' | 'hotel';
+  | 'shop'
+  | 'strip'
+  | 'supermarket'
+  | 'restaurant'
+  | 'fuel'
+  | 'office'
+  | 'hotel'
+  | 'autorepair'
+  | 'convenience';
 
 /**
  * The kinds of works an industrial zone grows: light industry by what the

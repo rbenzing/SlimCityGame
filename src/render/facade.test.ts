@@ -470,6 +470,8 @@ const ART_TABLE_BODIES: Readonly<Record<CommercialKind, readonly MaterialName[]>
   fuel: ['paintedMasonry', 'whiteBrick'],
   office: ['precastGrey', 'precastBuff'],
   hotel: ['eifsBeige'],
+  autorepair: ['concreteBlock', 'paintedMasonry', 'whiteBrick'],
+  convenience: ['eifsCream', 'redBrick', 'eifsTan'],
 };
 const ART_TABLE_ROOFS: Readonly<Record<CommercialKind, MaterialName>> = {
   shop: 'brightBitumen',
@@ -479,6 +481,8 @@ const ART_TABLE_ROOFS: Readonly<Record<CommercialKind, MaterialName>> = {
   fuel: 'whiteMembrane',
   office: 'greyMembrane',
   hotel: 'greyMembrane',
+  autorepair: 'greyMembrane',
+  convenience: 'whiteMembrane',
 };
 const COMMERCIAL_KINDS = Object.keys(ART_TABLE_BODIES) as CommercialKind[];
 const OTHER_KINDS: (BuildingKind | undefined)[] = [
