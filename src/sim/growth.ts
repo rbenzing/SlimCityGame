@@ -1355,7 +1355,7 @@ export class GrowthSystem {
     if (noRoom && held !== 'allowed') {
       // Everything but the room allows it: note it, and leave it standing.
       if (inst.frame === undefined) writeStamp(g, x, z, oldFootprint.w, oldFootprint.d, inst.id);
-      if (sector !== 'res') held.push({ inst, entry, sector, jobsAdded });
+      held.push({ inst, entry, sector, jobsAdded });
       return false;
     }
 
