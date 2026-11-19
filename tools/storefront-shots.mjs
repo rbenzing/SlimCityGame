@@ -85,6 +85,10 @@ const STREETS = [
     ],
   },
   {
+    name: 'pharmacy',
+    ids: ['com-pharmacy-1-lot7x2', 'com-pharmacy-2-lot5x4', 'com-pharmacy-3-lot8x3'],
+  },
+  {
     name: 'downtown',
     ids: ['com-high-1', 'com-office-2', 'com-high-2', 'com-hotel-1', 'com-hotel-2', 'com-hotel-3'],
   },
@@ -348,6 +352,28 @@ try {
     0.8,
   );
   await frame('close-store', boxOf([find('main', 'com-convenience-2-lot4x2')]), 0.3, 0.5, 0.9);
+  // The pharmacy's corner tower and sign bands from the street, and its drive-up window and lane from either side.
+  for (const [n, id] of [
+    [1, 'com-pharmacy-1-lot7x2'],
+    [2, 'com-pharmacy-2-lot5x4'],
+    [3, 'com-pharmacy-3-lot8x3'],
+  ]) {
+    await frame(`close-pharmacy-${n}`, boxOf([find('pharmacy', id)]), 0.3, 0.5, 0.9);
+  }
+  await frame(
+    'close-pharmacy-side',
+    boxOf([find('pharmacy', 'com-pharmacy-2-lot5x4')]),
+    1.0,
+    0.45,
+    0.8,
+  );
+  await frame(
+    'close-pharmacy-far-side',
+    boxOf([find('pharmacy', 'com-pharmacy-2-lot5x4')]),
+    -1.0,
+    0.45,
+    0.8,
+  );
   // A strip's front door close: the walk, the bed, the bench and bin beside the door, and the lot's lights.
   const stripDoor = () => {
     const s = find('strip', 'com-strip-1-lot5x2') ?? find('strip', 'com-strip-2');
@@ -370,6 +396,13 @@ try {
   await frame(
     'close-store-night',
     boxOf([find('main', 'com-convenience-2-lot4x2')]),
+    0.3,
+    0.5,
+    0.9,
+  );
+  await frame(
+    'close-pharmacy-night',
+    boxOf([find('pharmacy', 'com-pharmacy-2-lot5x4')]),
     0.3,
     0.5,
     0.9,
