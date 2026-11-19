@@ -133,6 +133,15 @@ export function podiumHeightOf(entry: BuildingCatalogEntry): number | null {
   return null;
 }
 
+/** The kinds drawn as one volume at every level: a repair shop, a convenience store, a pharmacy, a machine shop and self-storage's rows. */
+const ONE_VOLUME_KINDS: ReadonlySet<string> = new Set([
+  'autorepair',
+  'convenience',
+  'pharmacy',
+  'machineshop',
+  'storage',
+]);
+
 /**
  * How many stacked tiers a building's body is drawn as: its level, 1 to 3,
  * for a flat-roofed grown building; one for a ploppable, which has no level,
@@ -142,8 +151,8 @@ export function podiumHeightOf(entry: BuildingCatalogEntry): number | null {
  */
 export function tierCountOf(entry: BuildingCatalogEntry): number {
   if (isHouseEntry(entry) || isFarmEntry(entry) || isApartmentEntry(entry)) return 1;
-  // A repair shop and a convenience store are one volume at every level: a wider plate, not a taller stack.
-  if (entry.kind === 'autorepair' || entry.kind === 'convenience') return 1;
+  // These low kinds are one volume at every level: a wider plate, not a taller stack.
+  if (ONE_VOLUME_KINDS.has(entry.kind ?? '')) return 1;
   return Math.min(3, Math.max(1, Math.round(entry.level ?? 1)));
 }
 

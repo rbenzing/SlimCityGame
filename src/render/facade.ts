@@ -309,6 +309,7 @@ const COMMERCIAL_BODY_PALETTES: Readonly<Record<CommercialKind, readonly Materia
   hotel: ['eifsBeige'],
   autorepair: ['whitePlaster', 'eifsCream'],
   convenience: ['eifsCream', 'redBrick', 'eifsTan'],
+  pharmacy: ['eifsBeige', 'whiteBrick'],
 };
 const OFFICE_TOWER_BODY_PALETTE: readonly MaterialName[] = ['curtainWall'];
 
@@ -322,6 +323,7 @@ const COMMERCIAL_ROOF_PALETTES: Readonly<Record<CommercialKind, readonly Materia
   hotel: ['greyMembrane'],
   autorepair: ['greyMembrane'],
   convenience: ['whiteMembrane'],
+  pharmacy: ['whiteMembrane'],
 };
 
 /** An office's ribbons are tinted glass; the tower's cells are its curtain wall's vision glass. */
@@ -340,6 +342,8 @@ const INDUSTRIAL_BODY_PALETTES: Readonly<Record<IndustrialKind, readonly Materia
   chemical: ['insulatedWhite', 'concreteBlock'],
   metals: ['oxideRed', 'darkPanel'],
   paper: ['ribbedAsh', 'insulatedWhite'],
+  machineshop: ['ribbedStone', 'ribbedWhite'],
+  storage: ['ribbedAsh', 'ribbedWhite'],
 };
 
 const INDUSTRIAL_ROOF_PALETTES: Readonly<Record<IndustrialKind, readonly MaterialName[]>> = {
@@ -351,6 +355,8 @@ const INDUSTRIAL_ROOF_PALETTES: Readonly<Record<IndustrialKind, readonly Materia
   chemical: ['greyMembrane'],
   metals: ['darkPanel'],
   paper: ['greyMembrane'],
+  machineshop: ['galvanised'],
+  storage: ['galvanised'],
 };
 
 // ---------------------------------------------------------------------------
@@ -491,6 +497,8 @@ const INDUSTRIAL_ACCENT_STRIPE: Readonly<Record<IndustrialKind, boolean>> = {
   chemical: false,
   metals: false,
   paper: false,
+  machineshop: false,
+  storage: false,
 };
 
 /** The industrial kinds whose body is a flat insulated panel with no window at all. */
@@ -503,6 +511,8 @@ const INDUSTRIAL_WINDOWLESS: Readonly<Record<IndustrialKind, boolean>> = {
   chemical: false,
   metals: false,
   paper: false,
+  machineshop: true,
+  storage: true,
 };
 
 function commercialKindOf(kind: BuildingKind | undefined): CommercialKind | null {
@@ -544,8 +554,8 @@ export function industrialAccentStripe(entry: BuildingCatalogEntry): boolean {
 
 /** Does this entry's body show no window at all? The material drops every pane; the grid itself still cuts the kit's storeys and bays. */
 export function windowlessBody(entry: BuildingCatalogEntry): boolean {
-  // A repair shop's walls are blank: its glass is the office's, a kit part.
-  if (entry.kind === 'autorepair') return true;
+  // A repair shop's walls are blank: its glass is the office's, a kit part. A pharmacy's one storey of blank wall holds its glass in the entrance tower.
+  if (entry.kind === 'autorepair' || entry.kind === 'pharmacy') return true;
   const industrial = industrialKindOf(entry.kind);
   return industrial !== null && INDUSTRIAL_WINDOWLESS[industrial];
 }

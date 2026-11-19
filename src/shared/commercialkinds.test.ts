@@ -167,7 +167,7 @@ describe('the auto repair shop and the convenience store', () => {
   });
 
   it('the six entries are the last of the catalog, compacts then variants', () => {
-    const tail = catalog.slice(-12).map((e) => e.id);
+    const tail = catalog.slice(-30, -18).map((e) => e.id);
     expect(tail).toEqual([
       'com-autorepair-1',
       'com-autorepair-2',

@@ -534,6 +534,8 @@ export class RoofPropRenderer {
     // and an apartment block's roof is its kit's: a hip, or units, a bulkhead
     // or a penthouse placed by the kit.
     if (isHouseEntry(entry) || isFarmEntry(entry) || isApartmentEntry(entry)) return;
+    // Self-storage is rows its kit draws, each with its own roof: the plate under them has none.
+    if (entry.kind === 'storage') return;
     // A building going up has no roof to carry anything yet.
     if (building.state === BuildingState.Constructing) return;
 

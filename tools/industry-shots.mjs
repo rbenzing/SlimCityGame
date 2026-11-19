@@ -62,6 +62,14 @@ const STREETS = [
   { name: 'steel', ids: ['heavy-metals-1', 'heavy-metals-2', 'heavy-metals-3'] },
   { name: 'paper', ids: ['heavy-paper-1', 'heavy-paper-2', 'heavy-paper-3'] },
   {
+    name: 'machine',
+    ids: ['ind-machineshop-1-lot2x2', 'ind-machineshop-2-lot3x2', 'ind-machineshop-3-lot5x2'],
+  },
+  {
+    name: 'storage',
+    ids: ['ind-storage-1-lot5x3', 'ind-storage-2-lot6x4', 'ind-storage-3-lot8x4'],
+  },
+  {
     name: 'lineup',
     lineup: true,
     ids: [
@@ -127,7 +135,7 @@ try {
   let layout = null;
   for (const slope of [6, 9, 12]) {
     for (const [columns, perColumn] of [
-      [3, 3],
+      [4, 3],
       [5, 2],
     ]) {
       const rows = perColumn * STREET_ROWS + STREET_ROWS;
@@ -361,11 +369,13 @@ try {
       ['chem', 'heavy-chem-2'],
       ['steel', 'heavy-metals-2'],
       ['paper', 'heavy-paper-2'],
+      ['machine', 'ind-machineshop-2-lot3x2'],
+      ['storage', 'ind-storage-2-lot6x4'],
     ];
-    // At night one light and one heavy plant stand for the kit; the rest only repeat the day frames.
+    // At night one light and one heavy plant stand for the kit, with the machine shop and the storage rows; the rest only repeat the day frames.
     const night = suffix === '-night';
     for (const [street, id] of subjects) {
-      if (night && street !== 'factory' && street !== 'chem') continue;
+      if (night && !['factory', 'chem', 'machine', 'storage'].includes(street)) continue;
       await frame(`${street}${suffix}`, boxOf([find(street, id)]), 0.3);
     }
     if (night) return;
@@ -410,6 +420,22 @@ try {
   ]) {
     await frame(label, boxOf([find(street, id)]), 0.3, DEFAULT_PITCH, 0.7);
   }
+  // The machine shop's doors, sign, fan and bin at each level, and the storage rows at each level, from the street and from above.
+  for (const [n, id] of [
+    [1, 'ind-machineshop-1-lot2x2'],
+    [2, 'ind-machineshop-2-lot3x2'],
+    [3, 'ind-machineshop-3-lot5x2'],
+  ]) {
+    await frame(`close-machine-${n}`, boxOf([find('machine', id)]), 0.3, 0.5, 0.9);
+  }
+  for (const [n, id] of [
+    [1, 'ind-storage-1-lot5x3'],
+    [2, 'ind-storage-2-lot6x4'],
+    [3, 'ind-storage-3-lot8x4'],
+  ]) {
+    await frame(`close-storage-${n}`, boxOf([find('storage', id)]), 0.3, 0.5, 0.9);
+    await frame(`close-storage-${n}-above`, boxOf([find('storage', id)]), 0.3, 1.1, 0.8);
+  }
   // A fenced works' gate: the fence across the front beside the body, the gate at the drive, the sign and the lights.
   const gate = find('warehouse', 'ind-warehouse-2');
   await frame(
@@ -429,6 +455,22 @@ try {
 
   await setPhase(0.96);
   await views('-night')();
+  const restoreNight = await closeUp(page, 2);
+  await frame(
+    'close-machine-night',
+    boxOf([find('machine', 'ind-machineshop-2-lot3x2')]),
+    0.3,
+    0.5,
+    0.9,
+  );
+  await frame(
+    'close-storage-night',
+    boxOf([find('storage', 'ind-storage-2-lot6x4')]),
+    0.3,
+    0.5,
+    0.9,
+  );
+  await restoreNight();
   await setPhase(LINEUP_NIGHT);
   await shootLineup('-night');
 } finally {

@@ -162,3 +162,33 @@ Both are low commercial and follow [the method the existing kinds use](building-
 - **Roomy lots.** Measured as every other kind's: the repair shop 2×2, 4×2 and 5×2; the store 3×2, 4×2 and 5×2. The repair shop's compact lots do not hold its code, so it stands on a roomy one or parks by its kerb credit.
 - **Weights.** Establishments in thousands, as the other low commercial weights are building counts in thousands: auto repair 85, convenience store 37.
 - **From.** Small Town (400 residents) for both, so that a first town's draw is what it was.
+
+## The pharmacy, the machine shop and self-storage in the catalog
+
+By the same method. All three are from Small Town on.
+
+| Kind | Zone | Level | Lot | Floor | Jobs | Power (MW) | Water (kL a day) | Pollution | Noise |
+| ---- | ---- | ----- | --- | ----- | ---- | ---------- | ---------------- | --------- | ----- |
+| Pharmacy | low commercial | 1 | 3×2 | 1,110 m² (11,950 sq ft) | 51 | 0.0228 | 5.3 | 0 | 0 |
+| | | 2 | 3×3 | 1,665 m² (17,920 sq ft) | 76 | 0.0342 | 7.9 | 0 | 0 |
+| | | 3 | 4×3 | 2,220 m² (23,900 sq ft) | 101 | 0.0456 | 10.5 | 0 | 0 |
+| Machine shop | industry | 1 | 1×2 | 370 m² (3,980 sq ft) | 10 | 0.0284 | 27.9 | 1 | 38 |
+| | | 2 | 2×2 | 740 m² (7,960 sq ft) | 21 | 0.0597 | 58.7 | 2 | 38 |
+| | | 3 | 3×2 | 1,110 m² (11,950 sq ft) | 31 | 0.0881 | 86.6 | 3 | 38 |
+| Self-storage | industry | 1 | 3×3 | 832 m² (8,960 sq ft) in rows | 2 | 0.0059 | 0.2 | 0 | 0 |
+| | | 2 | 4×4 | 1,480 m² (15,930 sq ft) in rows | 2 | 0.0105 | 0.2 | 0 | 0 |
+| | | 3 | 5×4 | 1,850 m² (19,910 sq ft) in rows | 3 | 0.0132 | 0.3 | 0 | 0 |
+
+- **Pharmacy.** A store is 13,800 to 16,300 sq ft, between levels 1 and 2; level 3 is a dial. Jobs are the density guide's 17.5 m² of net floor, as every shop's; the census counts 16.5 employees a store, a third of that, as it does for every shop here. Power is the Mercantile figure, 16.7 kWh a square foot. It parks at the shop's 5 per 1,000 sq ft (60, 90 and 120 spaces) and holds 3 cars in line at its window ([Durham NC UDO §10.5.1.A](https://udo.durhamnc.gov/udo/10_05_Vehicle%20Stacking.htm)). Weight 42, its establishments in thousands.
+- **Machine shop.** A fabricated-metal works at the general industrial 36 m² a job, so every figure is the factory's at the same jobs: 24,900 kWh and 738 gallons an employee, its level-3 the factory's level-1. It parks at manufacturing's 1 per 1,000 sq ft. Weight 2: machine shops are 17,156 of 284,452 manufacturing establishments (County Business Patterns, above), 6% of manufacturing's 30.
+- **Self-storage, form.** One-storey rows of roll-up doors with drives between them, a fence and a keypad gate, an office at the front. A drive between rows is 7.3 m (24 ft, El Centro CA; [Atwater CA 17.49.060](https://www.zoneomics.com/code/atwater-CA/chapter_29) asks 20 ft one way and 30 ft round the edge). As drawn, three, four and five rows 7.8 to 8.7 m wide stand behind a 7.3 m cross drive and cover 0.52, 0.52 and 0.49 of the plate; the floor above is taken at half (`STORAGE_ROW_COVER`). Doors are 2.4 m wide at 3 m: 60, 120 and 150 of them.
+- **Self-storage, size.** The average facility is 45,705 sq ft of rentable space ([Self-Storage Almanac 2025](https://digital.modernstoragemedia.com/almanac/self-storage-almanac-2025ok/section-1-industry-data)); the largest lot the zone holds is under half of that. Three quarters of the floor is rentable, at 108 sq ft a unit: 63, 111 and 139 units.
+- **Self-storage, the rest.** Two or three staff: the census counts 2.61 an establishment. Power is the Warehouse figure, 5.8 kWh a square foot. It parks 2 spaces per 100 units and 2 for the office ([Prince George County VA §90-862.2](https://www.zoneomics.com/code/prince-george-county-unincorporated-VA/chapter_20)): 4, 5 and 5. It owes no loading berth, a design choice: a tenant loads at the unit's door from the drive.
+- **Roomy lots.** Measured as every other kind's: the pharmacy 7×2, 5×4 and 8×3, each the smallest that also holds its lane; the machine shop 2×2, 3×2 and 5×2; self-storage 5×3, 6×4 and 8×4, its cover counted on the whole yard. Weight 8: its 2,650 million sq ft is 15% of the building survey's 17,483 million of warehouse and storage ([CBECS 2018, table B1](https://www.eia.gov/consumption/commercial/data/2018/bc/html/b1.php)), the class it is counted in, against the warehouse's 55.
+
+## Read for the kinds still to come
+
+- **Bank.** 3 spaces per 1,000 sq ft (Prince George County VA) or 1 per 250 sq ft (El Centro CA); 4 or 5 cars in line a lane (Durham NC 4).
+- **Medical office.** 1 space per 200 to 250 sq ft (El Centro CA, Lancaster PA). The building survey counts 129 thousand outpatient buildings of 13,640 sq ft on average (table B1, above).
+- **Quick lube.** 3 cars in line a bay; 20 to 39 cars a day is the commonest band ([NOLN 2025 survey](https://www.noln.net/running-a-shop/news/55361049/counting-cars)).
+- **Car wash.** 10 cars in line for a conveyor ([Stacy MN §153.120](https://www.zoneomics.com/code/stacy-MN/chapter_6)); no first-hand figure for cars a day was found, and its water depends on it.

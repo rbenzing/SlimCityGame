@@ -159,7 +159,13 @@ export type BuildingPart =
   | 'oilTank'
   | 'bayGlass'
   | 'iceLocker'
-  | 'propaneCage';
+  | 'propaneCage'
+  | 'storageRow'
+  | 'storageRoof'
+  | 'storageDoor'
+  | 'storageGate'
+  | 'exhaustFan'
+  | 'scrapBin';
 
 /**
  * Whether an industrial building is the CLEAN kind, taken from whether it
@@ -228,6 +234,10 @@ export function archetypeFor(entry: BuildingCatalogEntry): BuildingArchetype {
         return 'steelworks';
       case 'paper':
         return 'paperMill';
+      case 'machineshop':
+        return 'workshop';
+      case 'storage':
+        return 'warehouse';
       default:
         if (isCleanIndustry(entry)) return 'greenWorks';
         return (entry.level ?? 1) >= 2 ? 'factory' : 'warehouse';
@@ -247,6 +257,7 @@ export function archetypeFor(entry: BuildingCatalogEntry): BuildingArchetype {
       case 'restaurant':
       case 'autorepair':
       case 'convenience':
+      case 'pharmacy':
         return 'storefront';
       default:
         return (entry.level ?? 1) >= 2 ? 'retailBlock' : 'storefront';
@@ -363,6 +374,19 @@ const STOREFRONT_PARTS: Readonly<Record<string, readonly BuildingPart[]>> = {
     'rooftopUnit',
     'roofHatch',
   ],
+  /** A pharmacy: its entrance in a taller corner tower, a sign band on two faces, a glazed front beside the tower, and a window under a small canopy at the head of its drive-through lane. */
+  pharmacy: [
+    'entryTower',
+    'towerGlazing',
+    'glassFront',
+    'walkDoor',
+    'signageBand',
+    'pickupCanopy',
+    'bayGlass',
+    'signPole',
+    'rooftopUnit',
+    'roofHatch',
+  ],
 };
 
 /** The old form's brown mansard dresses a restaurant at this level only; the levels above it have a flat parapet. */
@@ -455,6 +479,19 @@ const INDUSTRY_PARTS: Readonly<Record<string, readonly BuildingPart[]>> = {
     'stackBand',
     'stackRing',
     'stackPlinth',
+  ],
+  /** A machine shop: one grade door and an office door on the street face under a short sign, an exhaust fan on the roof, a scrap bin in the yard. */
+  machineshop: ['rollUpDoors', 'walkDoor', 'signageBand', 'exhaustFan', 'scrapBin'],
+  /** Self-storage: rows of one-storey ranges with roll-up doors down both long walls, a glazed office at the street end of the first row, a fence and a gate across the drives. */
+  storage: [
+    'storageRow',
+    'storageRoof',
+    'storageDoor',
+    'glassFront',
+    'walkDoor',
+    'signageBand',
+    'yardFence',
+    'storageGate',
   ],
 };
 
