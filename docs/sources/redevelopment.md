@@ -56,3 +56,11 @@ No current annual rate was found, so no rate is set: a building is rebuilt when 
 - **The street face.** Codes that allow ground-floor parking ask for other uses between it and the street: New York wraps it 30 ft deep, Cleveland 15 ft, Columbus 12 ft (_summary_). The game's rule that a garage's street face is a shopfront or a lobby is the same idea.
 
 Not found: the building code's own text for ramps and clear height; how many levels below ground are typical; any rule for when a town's first tower appears.
+
+## The modern tower
+
+- **Module.** Unitized curtain wall units are one storey high and 1,200 to 1,500 mm wide ([BRANZ, curtain wall cladding](https://www.branz.co.nz/design-build/articles/curtain-wall-cladding)); a 50-storey New York office tower is costed with units 5 ft wide ([Enclos, Insight 04 ch. 14](https://enclos.com/wp-content/uploads/2020/08/ENCLOS_INSIGHT_04_Ch14_The-Significance-of-the-Wireframe-A-Discussion-of-Cost-Drivers-for-Modular-Curtainwall-Construction.pdf)). The game's module is 1.5 m.
+- **Spandrel.** The International Building Code asks 36 in of rated spandrel between openings on adjacent storeys (section 705.8.5; _summary_, the code's own page did not open). The game's band is 0.9 m.
+- **Roof screen.** Rooftop equipment is screened to a "minimum height equal to the height of the mechanical equipment", by a parapet, a mansard or a penthouse ([Columbia IL 17.58.060](https://columbiail.gov/municode/Title_17/58/060.html)). The game's rooftop units stand 1.43 m and its cooling tower 3 m, behind a 3 m screen; a lift bulkhead or a penthouse stands 4.1 m, and the screen round one is 4.1 m.
+
+Not found: a first-hand split of vision glass and spandrel by floor height; a typical screen height; how far a screen is set in from the roof edge, so the 2 m inset is a dial; a mullion's face width, so 0.06 m is a dial; where on the floor line the band sits, so it is centred there.

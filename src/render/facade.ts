@@ -23,6 +23,7 @@ import {
 import { TILE_METERS } from '../shared/constants';
 import { bodyMetresFor, FLOOR_HEIGHT_METERS } from '../shared/floorarea';
 import { isApartmentKind, isHouseKind } from '../shared/buildingkind';
+import { isModernTall } from '../shared/modernlook';
 import { MaterialName, materialUnit, saturatedUnit } from './palette';
 
 // ---------------------------------------------------------------------------
@@ -717,6 +718,7 @@ const FAMILY_FLAGS: Record<FacadeFamily, { windowInset: boolean; spandrel: boole
  * and wall treatment on top of that, keyed off entry.category directly.
  */
 function deriveFamily(entry: BuildingCatalogEntry): FacadeFamily {
+  if (isModernTall(entry)) return 'glass';
   if (entry.category === 'res') {
     if (entry.zone === ZoneType.ResLow) return 'plaster';
     return (entry.level ?? 1) >= 3 ? 'glass' : 'masonry';

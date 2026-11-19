@@ -32,6 +32,7 @@ import {
 } from './massing';
 import { TILE_METERS } from '../shared/constants';
 import { footprintForRotation } from '../shared/footprint';
+import { isModernTall } from '../shared/modernlook';
 import { REPAIR_OFFICE_M, WALL_LOCKER_ZONE_M, YARD_FENCE_HEIGHT_M } from '../shared/lotgrounds';
 import { carwashBays, lubeBays, REPAIR_BAY_M, repairBays } from '../shared/parkingcode';
 import { maxHeightUnderBody } from './footprint';
@@ -1262,6 +1263,48 @@ export function roofEquipment(
   const backZ = back.nz * (topBox.d / 2 - ROOF_INSET_M - hd / 2) + back.nx * aside;
   out.push({ part: 'roofHatch', size: [hw, hh, hd], offset: [backX, roofY + hh / 2, backZ] });
   return out;
+}
+
+/** What stands on a roof that a crown screens, by the part. */
+const CROWNED_PLANT = new Set<BuildingPart>([
+  'rooftopUnit',
+  'roofHatch',
+  'coolingTower',
+  'penthouse',
+  'elevatorBulkhead',
+]);
+
+/**
+ * The screen round a modern roof's plant: four walls of SCREEN_THICKNESS_M
+ * whose inner faces stand ROOF_INSET_M in from the roof edge, so every unit,
+ * tower and penthouse stands inside. It is SCREEN_HEIGHT_M tall, or as tall
+ * as the tallest plant in `placed` where that is higher. Nothing where
+ * there is no plant, or the roof is too small to hold the ring.
+ */
+function crownScreen(
+  topBox: SetbackBox,
+  roofY: number,
+  placed: readonly PartPlacement[],
+): PartPlacement[] {
+  const hx = topBox.w / 2 - ROOF_INSET_M + SCREEN_THICKNESS_M;
+  const hz = topBox.d / 2 - ROOF_INSET_M + SCREEN_THICKNESS_M;
+  if (hx <= SCREEN_THICKNESS_M || hz <= SCREEN_THICKNESS_M) return [];
+  const plant = placed.filter((p) => CROWNED_PLANT.has(p.part)).map((p) => p.size[1]);
+  if (plant.length === 0) return [];
+  const height = Math.max(SCREEN_HEIGHT_M, ...plant);
+  const t = SCREEN_THICKNESS_M;
+  const y = roofY + height / 2;
+  const screen = (size: [number, number, number], x: number, z: number): PartPlacement => ({
+    part: 'roofScreen',
+    size,
+    offset: [x, y, z],
+  });
+  return [
+    screen([2 * hx, height, t], 0, hz - t / 2),
+    screen([2 * hx, height, t], 0, -hz + t / 2),
+    screen([t, height, 2 * hz - 2 * t], hx - t / 2, 0),
+    screen([t, height, 2 * hz - 2 * t], -hx + t / 2, 0),
+  ];
 }
 
 /**
@@ -4708,6 +4751,7 @@ export function computePartPlacements(
   };
   if (isApartmentEntry(entry)) {
     for (const part of parts) out.push(...blockOf(part));
+    if (parts.includes('roofScreen')) out.push(...crownScreen(topBox, roofY, out));
     return lot
       ? out.filter((p) => !LOT_BOUND_PARTS.has(p.part) || rectInside(placementBounds(p), lot.lot))
       : out;
@@ -5573,6 +5617,8 @@ export function computePartPlacements(
           out.push(...yardOf(part));
           break;
         }
+        // A modern building's screen is the crown round its plant, placed once the plant is.
+        if (part === 'roofScreen' && isModernTall(entry)) break;
         // The mechanical screen stands 2 m in from the street edge of the top tier, the cooling tower behind it.
         const roofSide = side ?? 'S';
         const halfOut = (isAlongX(roofSide) ? topBox.d : topBox.w) / 2;
@@ -6035,6 +6081,9 @@ export function computePartPlacements(
         out.push(...yardOf(part));
         break;
     }
+  }
+  if (parts.includes('roofScreen') && isModernTall(entry)) {
+    out.push(...crownScreen(topBox, roofY, out));
   }
   // What wraps the walls is proud of them, so a wall on the lot line leaves it off.
   if (!lot) return out;

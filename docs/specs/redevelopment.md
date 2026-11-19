@@ -1,6 +1,6 @@
 # Buildings rise with the town
 
-- **Status:** Agreed
+- **Status:** Built
 
 **Owns:** how tall a zoned building may be for the town's size, how a standing building is replaced by a larger one, where its cars go when it builds up instead of out, and what a built-up building looks like. Lot choice for a new building is [the grounds](commercial-industrial-grounds.md); garages are [structured-parking.md](structured-parking.md); level-up conditions are [building-types.md](building-types.md).
 
@@ -14,6 +14,8 @@
 - Make no built-in form over the tallest in the catalog, and none with more parking storeys above ground than working storeys; that building waits for ground. `[R-services-044]`
 - Park a built-up building below ground first, then on storeys over its ground floor; show it by one garage portal in a side wall, at the head of the lot's own drive. `[R-services-044]`
 - Count every built-in space; a level parked above ground adds a storey to the building, and no floor is cut for it. `[R-services-044]` `[R-services-040]`
+- Draw a zoned building taller than the Small City ceiling as a modern one: a curtain wall with a darker band at each floor, and a screen round its rooftop plant. `[R-render-049]`
+- Leave a lower building its punched windows; never glaze a works for its height. `[R-render-049]`
 - Leave an abandoned building standing, boarded, for as long as demand for its zone is low; no clock removes it. `[R-world-059]`
 - Demolish an abandoned building when demand for its zone is high enough, or when the player bulldozes it; the cleared lot regrows as any lot does. `[R-world-059]`
 
@@ -44,12 +46,18 @@
 | Portal from the rear corner, `PORTAL_REAR_WALL_M` | 1 | m | dial |
 | Portal behind the street face, `PORTAL_DOOR_CLEAR_M` | 3 at least | m | dial |
 | Sign band of a built-in shop, `BUILT_IN_SIGN_HEIGHT_M` | 0.8 | m | dial: fits between the awning and the first upper sills |
+| Modern look from | over 19.2, the Small City ceiling | m | dial: what only a Grand City raises |
+| Curtain wall module | 1.5 (5 ft) | m | unitized units of 1.2 to 1.5 m, 5 ft on a tower |
+| Spandrel band at each floor | 0.9 (36 in) | m | the building code's fire separation at a floor line |
+| Roof screen | 3, and 4.1 round a penthouse or a lift bulkhead | m | cities ask a screen as tall as the equipment |
+| Roof screen set in from the roof edge | 2 | m | dial |
+| Mullion | 0.06 | m | dial |
 
-**Code:** what falls is built: `src/sim/growth.ts` the problems pass, `ABANDONED_MIN_PASSES`, `ABANDONED_CLEAR_DEMAND`; `cmdBulldoze` in `src/sim/worker.entry.ts` clears a derelict as it clears any building. The ceilings are built: `src/shared/constants.ts` `STOREY_CEILING_M` the table, `ceilingMilestone`; `unlockMilestone` on each entry of `src/data/catalog.json`, read where growth already reads it (`src/sim/growth.ts` `tryLevelUp`, the spawn pass). Going up is built: `src/shared/stacking.ts` `stackedFormsOf` makes the forms the catalog holds, each marked `stacked`; `src/shared/garage.ts` `builtInParking`; `src/sim/growth.ts` `tryLevelUp`, `builtInFormOf`; `src/shared/builtinportal.ts` the lot, its drive and the portal; `src/render/builtinkit.ts` and `src/render/builtins.ts` the portal and the garage band; `src/render/massing.ts` `tierCountOf` the one straight body. To be built: the tower look.
+**Code:** what falls is built: `src/sim/growth.ts` the problems pass, `ABANDONED_MIN_PASSES`, `ABANDONED_CLEAR_DEMAND`; `cmdBulldoze` in `src/sim/worker.entry.ts` clears a derelict as it clears any building. The ceilings are built: `src/shared/constants.ts` `STOREY_CEILING_M` the table, `ceilingMilestone`; `unlockMilestone` on each entry of `src/data/catalog.json`, read where growth already reads it (`src/sim/growth.ts` `tryLevelUp`, the spawn pass). Going up is built: `src/shared/stacking.ts` `stackedFormsOf` makes the forms the catalog holds, each marked `stacked`; `src/shared/garage.ts` `builtInParking`; `src/sim/growth.ts` `tryLevelUp`, `builtInFormOf`; `src/shared/builtinportal.ts` the lot, its drive and the portal; `src/render/builtinkit.ts` and `src/render/builtins.ts` the portal and the garage band; `src/render/massing.ts` `tierCountOf` the one straight body. The modern look is built: `src/shared/modernlook.ts` `isModernTall`; `src/render/curtainwall.ts` the modules and the band, drawn by the wall material in `src/render/buildings.ts`; `crownScreen` in `src/render/buildingkit.ts`.
 
-**Tests:** `src/sim/growth.test.ts` a derelict stands at low demand, stands its minimum at high demand, is then cleared, and reopens when its power returns; `src/sim/abandonedbulldoze.test.ts` the bulldozer clears one. `src/shared/storeyceiling.test.ts` no entry above its milestone's ceiling, and none later than its ceiling asks; `src/sim/ceilinggrowth.test.ts` a level-up over the ceiling is refused and a standing building over a ceiling is kept. `src/shared/stacking.test.ts` every form recomputed from its bases, and spaces built in no fewer than spaces owed; `src/sim/goingup.test.ts` the rebuild order on a full block, a free block, a roomy lot and below Big Town; `src/shared/builtinportal.test.ts`, `src/render/builtinkit.test.ts` and `src/render/builtinbody.test.ts` the lot, the portal and the body.
+**Tests:** `src/sim/growth.test.ts` a derelict stands at low demand, stands its minimum at high demand, is then cleared, and reopens when its power returns; `src/sim/abandonedbulldoze.test.ts` the bulldozer clears one. `src/shared/storeyceiling.test.ts` no entry above its milestone's ceiling, and none later than its ceiling asks; `src/sim/ceilinggrowth.test.ts` a level-up over the ceiling is refused and a standing building over a ceiling is kept. `src/shared/stacking.test.ts` every form recomputed from its bases, and spaces built in no fewer than spaces owed; `src/sim/goingup.test.ts` the rebuild order on a full block, a free block, a roomy lot and below Big Town; `src/shared/builtinportal.test.ts`, `src/render/builtinkit.test.ts` and `src/render/builtinbody.test.ts` the lot, the portal and the body. `src/shared/modernlook.test.ts` and `src/render/modernfamily.test.ts` which entries are modern, and every other entry's wall unchanged; `src/render/curtainwall.test.ts` module and band; `src/render/crown.test.ts` a screen no lower than its plant.
 
-**Open:** no vacancy is modelled, so a building is abandoned only for want of power, water or a road, never for want of people. A lot on a curve never changes its footprint. The building panel says nothing of where any building parks, so the spaces built in are counted and not shown.
+**Open:** no vacancy is modelled, so a building is abandoned only for want of power, water or a road, never for want of people. A lot on a curve never changes its footprint. The building panel says nothing of where any building parks, so the spaces built in are counted and not shown. A modern block's balconies and bays keep the older, wider grid and do not sit on its glass modules.
 
 ## Why the rules are what they are
 
@@ -120,7 +128,13 @@ A built-in shop or restaurant is one straight-walled body, a row of windows to e
 
 ### What a built-up building looks like
 
-A tower raised from Grand City on is a glazed slab over a podium: a curtain wall of floor-to-ceiling glass in a regular grid, a darker band at each floor, the podium's shopfront and garage portal at the street, and a screened crown that hides its plant. An older block keeps its punched windows. The parts are [building detail](building-detail.md)'s.
+A building raised from Grand City on is a glazed slab: a curtain wall of floor-to-ceiling glass in a regular grid, a darker band at each floor, its shopfront or lobby and its garage portal at the street, and a screened crown that hides its plant. An older block keeps its punched windows. The parts are [building detail](building-detail.md)'s.
+
+What marks a building modern is its height, not its kind: anything over the Small City ceiling of six storeys, which only a Grand City or a Metropolis raises. So the taller mid-rises, mixed blocks, hotels and offices are glazed with the towers, and a building gone up past six storeys is glazed where its spread form is not. A tower and a mid-rise keep their podium and balconies; the glass is the wall behind them.
+
+The wall is cut into equal modules as near 1.5 m as its length allows, never under 1.2 or over 1.8, with one row to each floor and the band centred on the floor line. Only the vision glass lights at night. The 24 catalog entries over six storeys are modern; every other entry's wall is as it was.
+
+The screen stands on all four sides of the roof's plant: units, a cooling tower, a lift bulkhead or a penthouse. A modern building that had no plant drawn gains rooftop units to screen; a roof with none gets no screen.
 
 ## Decided
 

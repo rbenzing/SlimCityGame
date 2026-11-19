@@ -31,6 +31,7 @@ What three reviews of every screenshot the shot tools write found wrong in the g
 - A street's parking lane stands empty beside homes: a home's cars stand only on its drive `[R-render-026]`. — `shots-parking/kerb-both-1`
 - Angled and head-in stalls keep one rhythm for the whole street, so a driveway leaves up to a stall's width unmarked beside it; parallel stalls are laid run by run.
 - Seen in the player's own screenshot and not reproduced on any road the tools build: a darker, drive-wide patch on the parking lane at a home's drive.
+- A modern block's balconies and bays keep the older 6.8 m grid, so they do not sit on its 1.5 m glass modules, and a mid-rise's piers and bays hide most of its glass. — `shots-apartments/modern-row`
 - A building on a curved parcel keeps a 2 m water and sewer lead, short of its wall. — `frontWallSetbackM` in `src/render/massing.ts`
 
 ## Reported by the third review, not yet measured

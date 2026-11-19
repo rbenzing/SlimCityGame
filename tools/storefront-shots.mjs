@@ -565,6 +565,8 @@ try {
 
   await setPhase(0.96);
   await views('-night')();
+  // The modern offices at night: lit panes on the vision glass between the bands, the built-in pair too.
+  await frame('office-built-in-night', boxOf(officeRow), 0.3, 0.6, 0.4);
   const restoreNight = await closeUp(page, 2);
   await frame('close-front-door-night', stripDoor(), 0.3, 0.5, 0.9);
   await frame(

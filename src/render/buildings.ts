@@ -17,6 +17,7 @@ import {
   hash,
   hue,
   mix,
+  mod,
   normalGeometry,
   normalLocal,
   saturation,
@@ -51,7 +52,9 @@ import { framedBodyPlacement } from './houselot';
 import type { KerbCreditOf } from './lotplan';
 import type { KerbSurroundings } from '../shared/kerblayout';
 import { maxHeightOverRect, maxHeightUnderBody, minHeightOverRect } from './footprint';
+import { isModernTall } from '../shared/modernlook';
 import { isFarmEntry } from './archetypes';
+import { CURTAIN_MODULE_M, CURTAIN_MULLION_M, curtainBays, curtainWallCut } from './curtainwall';
 import { nightTintNode } from './nightlook';
 import { BARN_EAVE_SHARE, planFarm, type FarmRect } from './farmlot';
 import {
@@ -129,6 +132,10 @@ const ONE_BOX: SetbackBox = { w: 1, d: 1, h: 1, yOffset: 0 };
 
 /** Reserved seed slot (never a real grid cell — facade.ts clamps every grid below this) used to derive a building's own lit fraction. */
 const WINDOW_FRACTION_SLOT = WINDOW_SEED_SLOTS - 1;
+/** What a curtain-wall module's column, floor and tier are multiplied by before the index wraps into the window seed slots. */
+const CURTAIN_SEED_COLUMN = 31;
+const CURTAIN_SEED_ROW = 53;
+const CURTAIN_SEED_TIER = 89;
 /** Fraction of a building's windows that are the occasional cool tone rather than warm. */
 const WINDOW_COOL_PROBABILITY = 0.18;
 export const WARM_WINDOW_COLOR = 0xffd9a0;
@@ -250,6 +257,7 @@ const DOOR_COLOR: RGB = [0.1, 0.08, 0.07];
 const ENTRANCE_HALF_WIDTH = 0.12; // fraction of the entrance face's width
 const ENTRANCE_HEIGHT_FRACTION = 0.85; // fraction of the ground-floor band height
 
+const CURTAIN_BAND_DARKEN = 0.3; // curtain-wall band: the glass tint taken down to an opaque panel
 const SPANDREL_DARKEN = 0.6; // masonry spandrel band: a darkened wall color
 const SPANDREL_BAND_FRACTION = 0.14; // fraction of one floor's height, at each row edge
 
@@ -396,6 +404,8 @@ interface Bucket {
   windowActive: THREE.InstancedBufferAttribute;
   /** Per-instance tier index, 0 for the base: the ground floor and entrance are its alone, and each tier's windows are its own. */
   tier: THREE.InstancedBufferAttribute;
+  /** Per-instance curtain-wall modules across the box's local x and z faces (two floats), read by a modern building's facade. */
+  bays: THREE.InstancedBufferAttribute;
 }
 
 interface BucketMesh {
@@ -403,6 +413,7 @@ interface BucketMesh {
   windowSeed: THREE.InstancedBufferAttribute;
   windowActive: THREE.InstancedBufferAttribute;
   tier: THREE.InstancedBufferAttribute;
+  bays: THREE.InstancedBufferAttribute;
 }
 
 // Reused scratch objects: apply()/copySlot() run synchronously and never
@@ -486,6 +497,7 @@ export class BuildingInstancer {
       bucket.windowSeed.needsUpdate = true;
       bucket.windowActive.needsUpdate = true;
       bucket.tier.needsUpdate = true;
+      bucket.bays.needsUpdate = true;
       // Invalidate the frustum-culling sphere so three.js recomputes it from
       // the new instance set on the next cull pass (it caches the sphere the
       // first time it's null — a bucket first rendered empty would otherwise
@@ -553,7 +565,10 @@ export class BuildingInstancer {
       this.plinthIds.has(entry.id) || isFarmEntry(entry)
         ? this.createPlinthMaterial(entry)
         : this.createMaterial(entry);
-    const { mesh, windowSeed, windowActive, tier } = this.createMesh(material, INITIAL_CAPACITY);
+    const { mesh, windowSeed, windowActive, tier, bays } = this.createMesh(
+      material,
+      INITIAL_CAPACITY,
+    );
     this.scene.add(mesh);
     return {
       entry,
@@ -567,6 +582,7 @@ export class BuildingInstancer {
       windowSeed,
       windowActive,
       tier,
+      bays,
     };
   }
 
@@ -608,14 +624,36 @@ export class BuildingInstancer {
     const tierAttr = attribute<'float'>('aTier', 'float');
     const isBaseTier = tierAttr.lessThan(0.5);
 
+    // A modern building is clad in a curtain wall: modules of about 1.5 m
+    // across each face (a per-instance count, since a face's length is the
+    // box's own), and a floor to a row. `normalGeometry` is the unrotated
+    // vertex normal, so a face whose normal runs along local x spans z.
+    const curtain = isModernTall(entry) ? curtainWallCut(entry) : null;
+    const gridRows = curtain ? curtain.rows : rows;
+    const baysAttr = attribute<'vec2'>('aBays', 'vec2');
+    const gridCols: Node<'float'> = curtain
+      ? select(abs(normalGeometry.x).greaterThan(0.5), baysAttr.y, baysAttr.x)
+      : float(cols);
+
     const uvNode = uv();
-    const col = floor(uvNode.x.mul(cols));
-    const row = floor(uvNode.y.mul(rows));
+    const col = floor(uvNode.x.mul(gridCols));
+    const row = floor(uvNode.y.mul(gridRows));
     // Windows are numbered on up the stack, so a tier's lit pattern is its own.
-    const windowIndex = row
-      .mul(cols)
-      .add(col)
-      .add(tierAttr.mul(cols * rows));
+    // A curtain wall has more modules than the seed slot holds, so its index
+    // wraps below the reserved fraction slot, spread by primes so the wrap
+    // leaves no visible stripe.
+    const windowIndex = curtain
+      ? mod(
+          col
+            .mul(CURTAIN_SEED_COLUMN)
+            .add(row.mul(CURTAIN_SEED_ROW))
+            .add(tierAttr.mul(CURTAIN_SEED_TIER)),
+          WINDOW_FRACTION_SLOT,
+        )
+      : row
+          .mul(cols)
+          .add(col)
+          .add(tierAttr.mul(cols * rows));
     const windowSeed = buildingIdAttr.mul(WINDOW_SEED_SLOTS).add(windowIndex);
 
     const litThreshold = hash(windowSeed);
@@ -647,14 +685,17 @@ export class BuildingInstancer {
       ? bool(false)
       : uvNode.y.lessThan(groundBandThreshold).and(isBaseTier);
     // An apartment block's cell holds a row of windows, each its own pane.
-    const blockPane = blockPaneCut(entry, tierHeight);
-    const cellU = fract(uvNode.x.mul(cols * (blockPane?.subCols ?? 1)));
-    const cellV = fract(uvNode.y.mul(rows));
+    // A curtain wall's module is the whole pane, so it takes no sub-cut.
+    const blockPane = curtain ? null : blockPaneCut(entry, tierHeight);
+    const cellU = fract(uvNode.x.mul(curtain ? gridCols : cols * (blockPane?.subCols ?? 1)));
+    const cellV = fract(uvNode.y.mul(gridRows));
     const baseMargin = isIndustrial
       ? MULLION_MARGIN_INDUSTRIAL
-      : windowInset
-        ? MULLION_MARGIN_PUNCHED
-        : MULLION_MARGIN_CURTAIN;
+      : curtain
+        ? CURTAIN_MULLION_M / 2 / CURTAIN_MODULE_M
+        : windowInset
+          ? MULLION_MARGIN_PUNCHED
+          : MULLION_MARGIN_CURTAIN;
     const margin = select(isGroundFloor, float(MULLION_MARGIN_GROUND_FLOOR), float(baseMargin));
     const marginX = housePane
       ? float(housePane.x)
@@ -667,7 +708,16 @@ export class BuildingInstancer {
         ? float(blockPane.y)
         : margin;
     const insidePaneX = cellU.greaterThan(marginX).and(cellU.lessThan(float(1).sub(marginX)));
-    const insidePaneY = cellV.greaterThan(marginY).and(cellV.lessThan(float(1).sub(marginY)));
+    const insideMarginY = cellV.greaterThan(marginY).and(cellV.lessThan(float(1).sub(marginY)));
+    // Over the ground floor a curtain wall's vision glass is the floor between
+    // its bands, a band straddling each floor line; the shopfront keeps its own cut.
+    const insidePaneY = curtain
+      ? select(
+          isGroundFloor,
+          insideMarginY,
+          cellV.greaterThan(curtain.bandHalf).and(cellV.lessThan(1 - curtain.bandHalf)),
+        )
+      : insideMarginY;
     // A windowless body (a food plant's insulated panel) shows no pane at
     // all, by day or lit at night; the grid still cuts its storeys.
     let isPane: Node<'bool'> = windowlessBody(entry) ? bool(false) : insidePaneX.and(insidePaneY);
@@ -739,9 +789,20 @@ export class BuildingInstancer {
       mix(GLASS_REFLECTANCE_MIN, GLASS_REFLECTANCE_MAX, reflectance),
     );
     // A repair shop's, a lube's and a bank's walls are plain, not a darkened frame round panes: the ground floor's frame is near black.
-    const frameColor = plainWalledBody(entry)
-      ? solidWall
-      : select(isGroundFloor, vec3(...DARK_STOREFRONT_FRAME), solidWall.mul(FRAME_DARKEN));
+    // A curtain wall's frame is its thin mullion, and its band is the glass
+    // tint taken down to an opaque spandrel panel.
+    const curtainFrame = curtain
+      ? select(
+          cellV.lessThanEqual(curtain.bandHalf).or(cellV.greaterThanEqual(1 - curtain.bandHalf)),
+          vec3(...glassBase).mul(CURTAIN_BAND_DARKEN),
+          solidWall.mul(FRAME_DARKEN),
+        )
+      : null;
+    const frameColor = curtainFrame
+      ? select(isGroundFloor, vec3(...DARK_STOREFRONT_FRAME), curtainFrame)
+      : plainWalledBody(entry)
+        ? solidWall
+        : select(isGroundFloor, vec3(...DARK_STOREFRONT_FRAME), solidWall.mul(FRAME_DARKEN));
 
     // Boarded/plain look for Constructing/Abandoned instances reuses the
     // EXISTING aActive attribute (no new per-instance data): glazing only
@@ -843,6 +904,8 @@ export class BuildingInstancer {
     geometry.setAttribute('aBuildingId', windowSeed);
     geometry.setAttribute('aActive', windowActive);
     geometry.setAttribute('aTier', tier);
+    const bays = new THREE.InstancedBufferAttribute(new Float32Array(capacity * 2), 2);
+    geometry.setAttribute('aBays', bays);
 
     const mesh = new THREE.InstancedMesh(geometry, material, capacity);
     mesh.count = 0;
@@ -854,7 +917,7 @@ export class BuildingInstancer {
     mesh.receiveShadow = true;
     const colorArray = new Float32Array(capacity * 3).fill(1);
     mesh.instanceColor = new THREE.InstancedBufferAttribute(colorArray, 3);
-    return { mesh, windowSeed, windowActive, tier };
+    return { mesh, windowSeed, windowActive, tier, bays };
   }
 
   private grow(bucket: Bucket): void {
@@ -865,6 +928,7 @@ export class BuildingInstancer {
       windowSeed: newWindowSeed,
       windowActive: newWindowActive,
       tier: newTier,
+      bays: newBays,
     } = this.createMesh(bucket.material, newCapacity);
 
     newMesh.instanceMatrix.array.set(bucket.mesh.instanceMatrix.array);
@@ -874,6 +938,7 @@ export class BuildingInstancer {
     newWindowSeed.array.set(bucket.windowSeed.array);
     newWindowActive.array.set(bucket.windowActive.array);
     newTier.array.set(bucket.tier.array);
+    newBays.array.set(bucket.bays.array);
     newMesh.count = bucket.mesh.count;
     newMesh.visible = bucket.mesh.visible;
 
@@ -886,6 +951,7 @@ export class BuildingInstancer {
     bucket.windowSeed = newWindowSeed;
     bucket.windowActive = newWindowActive;
     bucket.tier = newTier;
+    bucket.bays = newBays;
     bucket.capacity = newCapacity;
 
     bucket.slotToId.length = newCapacity;
@@ -1053,6 +1119,8 @@ export class BuildingInstancer {
     bucket.windowSeed.array[to] = bucket.windowSeed.array[from] ?? 0;
     bucket.windowActive.array[to] = bucket.windowActive.array[from] ?? 0;
     bucket.tier.array[to] = bucket.tier.array[from] ?? 0;
+    bucket.bays.array[to * 2] = bucket.bays.array[from * 2] ?? 0;
+    bucket.bays.array[to * 2 + 1] = bucket.bays.array[from * 2 + 1] ?? 0;
   }
 
   private writeInstance(
@@ -1173,6 +1241,8 @@ export class BuildingInstancer {
     _matrix.compose(_position, _quaternion, _scale);
     bucket.mesh.setMatrixAt(slot, _matrix);
     this.writeIdentity(bucket, slot, instance, tier);
+    bucket.bays.array[slot * 2] = curtainBays(box.w);
+    bucket.bays.array[slot * 2 + 1] = curtainBays(box.d);
   }
 
   /**

@@ -306,4 +306,9 @@ Back to [the index](../GROUND-TRUTHS.md).
   aisle, a drive, a walk, a berth, a door or the street's footway; the
   building and its stalls never move for one. —
   [commercial-industrial-grounds.md](../specs/commercial-industrial-grounds.md)
+- [R-render-049] A zoned building taller than the Small City ceiling is drawn modern: a
+  curtain wall in a regular grid with a darker band at each floor, and a
+  screen as tall as the rooftop plant it hides. A lower building keeps
+  its punched windows, and a works is never glazed for its height. —
+  [redevelopment.md](../specs/redevelopment.md)
 

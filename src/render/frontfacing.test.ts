@@ -15,7 +15,13 @@ import type { StreetLookup } from './frontage';
 const catalog = (catalogData as { buildings: BuildingCatalogEntry[] }).buildings;
 const byId = (id: string): BuildingCatalogEntry => catalog.find((e) => e.id === id)!;
 /** A residential block of no known kind: the bare windowed box, which no kit dresses. */
-const MIXED: BuildingCatalogEntry = { ...byId('mixed-2'), id: 'plain-block', kind: undefined };
+// Under the modern ceiling: a taller kindless block carries a crown, so it is no longer a plain body.
+const MIXED: BuildingCatalogEntry = {
+  ...byId('mixed-2'),
+  id: 'plain-block',
+  kind: undefined,
+  height: 12.8,
+};
 const CATALOG_BY_ID = new Map([...catalog, MIXED].map((e) => [e.id, e]));
 const STREET_TILE = { vergeM: 2.5, sidewalkM: 3 };
 
