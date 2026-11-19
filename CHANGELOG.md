@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.96.1](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.96.0...slimcity-v1.96.1) (2026-11-19)
+
+
+### Bug Fixes
+
+* **render:** type the modern roof plant parts ([df6bc24](https://github.com/rbenzing/SlimCityGame/commit/df6bc24e7316f0fbf6501d5f2fc3a24d64c529f8))
+
 ## [1.96.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.95.0...slimcity-v1.96.0) (2026-11-19)
 
 
