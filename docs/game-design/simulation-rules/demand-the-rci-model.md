@@ -46,8 +46,8 @@ basic jobs wanted less those open or going up — are the **room** the economy
 has for each sector's jobs, and the spawner reads them: a business opens
 only where its jobs fit the room, so a sector may overshoot what it supports
 by at most the smallest building that fits a lot, the one that fills its
-last gap. A level-up reads the same room, with one small step a pass
-allowed past it while demand is up `[R-world-061]`. A mixed-use block is
+last gap. A level-up reads the same room; in commerce one small step a
+pass is allowed past it while demand is up `[R-world-061]`. A mixed-use block is
 homes over shops, so it answers to both: demand for homes, and commerce's
 room for its shop jobs `[R-world-062]`. Left unchecked, a town of 8,000
 held 2,060 commercial jobs where its industry supported 1,530, most of

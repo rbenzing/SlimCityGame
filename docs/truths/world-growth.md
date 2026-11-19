@@ -254,11 +254,13 @@ Back to [the index](../GROUND-TRUTHS.md).
   moves a building onto a lot the next pass would flag `NoRoad`. —
   [population-model.md](../world-sim/population-model.md)
 - [R-world-061] A level-up is held to job room as a new business is. Where the jobs
-  do not fit, one level-up a pass in each sector still goes ahead while
-  that sector's demand is above the middle: of the businesses that pass
+  do not fit, one commercial level-up a pass still goes ahead while
+  commerce's demand is above the middle: of the businesses that pass
   every other test, the one adding the fewest jobs, and never more than
-  `LEVEL_UP_FLOOR_JOBS` (34, a level-3 shop; a dial). Growth never stalls
-  at a gap smaller than a step, and never jumps the cap by a tower. —
+  `LEVEL_UP_FLOOR_JOBS` (34, a level-3 shop; a dial). Commerce never
+  stalls at a gap smaller than a step, and never jumps the cap by a tower.
+  A works never levels past industry's room: with no workforce yet, that
+  allowance took a new town's works to level 3 before a worker arrived. —
   [building-types.md](../specs/building-types.md); `runLevelUps` in
   `src/sim/growth.ts`
 - [R-world-062] A mixed-use block is a business as well as homes. It is built, and it
