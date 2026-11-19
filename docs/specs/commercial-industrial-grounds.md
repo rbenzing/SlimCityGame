@@ -2,7 +2,7 @@
 
 - **Status:** Agreed
 
-**Owns:** what stands on a shop's, an office's and a works' lot besides the building and its car park: lights, signs, planting, walks, furniture, refuse and fences; how roomy that lot is before and after the town is a city; and the purpose-built kinds added with it. The car park is [parking-to-code.md](parking-to-code.md); the kits are [rci-kits.md](rci-kits.md).
+**Owns:** what stands on a shop's, an office's and a works' lot besides the building and its car park: lights, signs, planting, walks, furniture, refuse and fences; and how roomy that lot is before and after the town is a city. The kinds added with it are [purpose-built-kinds.md](purpose-built-kinds.md); the car park is [parking-to-code.md](parking-to-code.md); the kits are [rci-kits.md](rci-kits.md).
 
 **Rules:**
 
@@ -12,7 +12,6 @@
 - Below Small City, grow a commercial or industrial kind on the first lot of its ladder that holds its building, its code car park and its grounds. `[R-world-055]`
 - From Small City on, a dense kind, and any kind on land of the best standing, takes its compact lot; a building already standing keeps its lot. `[R-world-055]`
 - A lot too small for the roomy form still grows the compact one: grounds are never a prerequisite for growth. `[R-world-055]`
-- Add a kind only with its real size, site and marks from [the sources](../sources/commercial-industrial-grounds.md#the-new-kinds-as-they-stand-on-the-ground), and its jobs and draw by the catalog's method. `[R-world-043]`
 
 **Numbers:** each is derived in [the sources](../sources/commercial-industrial-grounds.md).
 
@@ -44,11 +43,9 @@
 | Roomy lot, building over lot | 0.28 retail, 0.32 industry, 0.64 office, at most | ratio | Metropolitan Council medians |
 | Compaction starts | Small City (8,000 residents), land value 224 and over | — | dial: the dense kinds' own unlock |
 
-**Code:** the furniture is built: `src/shared/lotgrounds.ts` `planLotGrounds` the plan (pure, beside `lotlayout.ts`); `src/render/lotplan.ts` `groundsFactsFor` which sides face homes; `src/render/lotgrounds.ts` `LotGroundsRenderer` the pools. The roomy lots are built: `src/shared/roomylots.ts` `ROOMY_LOT_TILES` each kind's roomy lot; `src/data/catalog.json` the lot variants, appended; `src/shared/lotlayout.ts` the strip inside the lot lines; `src/sim/growth.ts` `growsRoomy`, `footprintsOf` the lot choice. Eight kinds are built, the auto repair shop, the convenience store, the pharmacy, the machine shop, self-storage, the bank branch, the medical office and the quick lube: `src/data/catalog.json`; `src/shared/parkingcode.ts` bays, a storage yard's units and each kind's spaces; `src/shared/floorarea.ts` `STORAGE_ROW_COVER` the floor in rows, `depthCapM` the lube's body; `src/shared/lotlayout.ts` `sideWindow` the lanes, the lube's court; `src/render/buildingkit.ts`, `src/render/archetypes.ts` their kits. Not added: the car wash and the contractor's yard.
-
-**Tests:** `src/shared/lotgrounds.test.ts`, `src/render/lotgroundsplan.test.ts` every catalog lot's keep-outs, the order of omission, short poles beside homes; `src/render/lotgrounds.test.ts` the pools; `src/render/geometrybudget.test.ts` the ceiling. `src/shared/roomylots.test.ts`, `src/shared/roomylayout.test.ts` every roomy lot laid to code with its strip; `src/sim/roomygrowth.test.ts` the lot chosen either side of Small City and the fall back to the compact lot; `src/sim/catalogsave.test.ts` an old save loads unchanged on the longer catalog. `src/shared/commercialkinds.test.ts`, `src/shared/storekinds.test.ts` each new kind's catalog figures against the sources; `src/render/lowkindskit.test.ts`, `src/render/morekindskit.test.ts` their kits clear of stalls, aisles and lot lines.
-
-**Open:** the car wash and the contractor's yard are not added: a car wash's cars a day and a yard's draw weight were not found; a lube's or a bank's compact lot has no room for its lane, so no car circulates there; a repair shop's accessible spaces are counted from the middle of its street face, not its office door, and its bay glass glows only faintly at night; a storage yard's roomy lot is mostly lawn, where a real one fills its site with rows, and its gate has no keypad post; a pharmacy's lane is paved like its car park and carries no marking; a works that levels up on a full block builds up on the lot it has and loses its grounds; a bank's and a medical office's site sizes were not found; no light level is modelled. A lot is planned when it is drawn, so homes zoned beside it later do not shorten its poles. A tight strip or shop has no room for a refuse enclosure.
+**Code:** the furniture is built: `src/shared/lotgrounds.ts` `planLotGrounds` the plan (pure, beside `lotlayout.ts`); `src/render/lotplan.ts` `groundsFactsFor` which sides face homes; `src/render/lotgrounds.ts` `LotGroundsRenderer` the pools. The roomy lots are built: `src/shared/roomylots.ts` `ROOMY_LOT_TILES` each kind's roomy lot; `src/data/catalog.json` the lot variants, appended; `src/shared/lotlayout.ts` the strip inside the lot lines; `src/sim/growth.ts` `growsRoomy`, `footprintsOf` the lot choice.
+**Tests:** `src/shared/lotgrounds.test.ts`, `src/render/lotgroundsplan.test.ts` every catalog lot's keep-outs, the order of omission, short poles beside homes; `src/render/lotgrounds.test.ts` the pools; `src/render/geometrybudget.test.ts` the ceiling. `src/shared/roomylots.test.ts`, `src/shared/roomylayout.test.ts` every roomy lot laid to code with its strip; `src/sim/roomygrowth.test.ts` the lot chosen either side of Small City and the fall back to the compact lot; `src/sim/catalogsave.test.ts` an old save loads unchanged on the longer catalog.
+**Open:** a works that levels up on a full block builds up on the lot it has and loses its grounds; no light level is modelled. A lot is planned when it is drawn, so homes zoned beside it later do not shorten its poles. A tight strip or shop has no room for a refuse enclosure.
 
 ## Why the rules are what they are
 
@@ -91,32 +88,7 @@ Roomy lots hold fewer jobs a tile: a zone keeps about three fifths of what it he
 
 ### More kinds
 
-Ten kinds are named in [the sources](../sources/commercial-industrial-grounds.md#the-new-kinds-as-they-stand-on-the-ground) with their real size, site and marks: the auto repair shop, the quick lube, the car wash, the convenience store, the pharmacy, the bank branch, the medical office, self-storage, the contractor's yard and the machine shop. The first seven are low commercial; the last three are industry.
-
-Each enters the catalog as existing kinds did: jobs from floor area per worker, utilities and noise from the same surveys, a draw weight from establishment counts. A kind with no derivation is not added.
-
-The first two are derived in [the sources](../sources/commercial-industrial-grounds.md#the-auto-repair-shop-and-the-convenience-store-in-the-catalog), three levels each, from Small Town on so that a first town draws what it did:
-
-- **The auto repair shop** is a row of roll-up bay doors 3.7 m wide on its street face, three to eleven of them, with a glazed office and its door at one end, a sign band over the bays, a tyre rack and a waste-oil tank on the side wall, and customers' cars on the lot. It has no shopfront canopy.
-- **The convenience store** is a glazed front the width of the building under a bright canopy band, an ice locker and a propane cage against the front wall, bollards along the front walk, and condensers on the roof.
-
-Three more are [derived the same way](../sources/commercial-industrial-grounds.md#the-pharmacy-the-machine-shop-and-self-storage-in-the-catalog):
-
-- **The pharmacy** is a large one-storey shop with its entrance in a taller corner tower, a sign band on two faces, and on one side wall a drive-through window under a canopy on two posts, over a lane that starts at the edge of the lot's drive and holds three cars clear of the car park's aisles.
-- **The machine shop** is a small metal-sided works with no windows: grade-level roll-up doors and an office door on the street face, a short sign, an exhaust fan on the roof, a scrap bin in its fenced yard.
-- **Self-storage** is not one building but rows on a paved yard: one-storey ranges about 8 m wide, each long wall a run of roll-up doors 3 m apart, with 7.3 m drives between them and a 7.3 m cross drive along the street end that every row drive opens onto. A small office is the street end of the first row; one fence runs along the yard's street face with one gate, a drive wide, beside the office. It owes no loading berth: a tenant loads at the unit's own door.
-
-And three more, [derived the same way](../sources/commercial-industrial-grounds.md#the-bank-the-medical-office-and-the-quick-lube-in-the-catalog):
-
-- **The bank branch** is a small masonry building with a glazed entrance under a sign band, and beside it one canopy over two drive-up lanes: a teller lane that holds four cars and a cash-machine lane that holds three, an island between them.
-- **The medical office** is a low building under a hipped roof with a regular row of windows, an entrance canopy on two posts over the walk to its door, and a sign with a cross.
-- **The quick lube** is a body one tile deep on the front of its lot, a bay door in each 6.8 m of both long faces so a car drives through, a waiting room's door and glass between two bays, a lane along one side wall, and a paved court behind where three cars wait for each bay.
-
-The car wash and the contractor's yard are [not added](../sources/commercial-industrial-grounds.md#the-two-kinds-not-added): one figure each could not be derived.
-
-Their roomy lots are measured and checked as every other kind's; a pharmacy's or a bank's must hold its lanes too, and a lube's its court. A repair shop is one storey with no window above its doors, its walls light so the doors read; the walk, the bench and the bin go to its office door, since the bay row is a door from end to end.
-
-A kind also varies in plan, not only in colour: the building at the street or behind its car park, a strip in a line or an L, storage in rows, a shop with a detached canopy. The variant comes from the lot's id, as the palette does.
+The kinds added with the grounds, and how a lot's plan varies, are [purpose-built-kinds.md](purpose-built-kinds.md). Their roomy lots are measured and checked as every other kind's; a pharmacy's or a bank's must hold its lanes too, and a lube's its court.
 
 ## Decided
 

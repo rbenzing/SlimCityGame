@@ -311,3 +311,9 @@ Back to [the index](../GROUND-TRUTHS.md).
   — [power-distribution.md](../specs/power-distribution.md);
   `src/render/wireclearance.ts`
 
+- [R-services-043] A drive-up lane, a drive-through lane or a queue court stands on no stall
+  and no aisle, and joins the lot's drive at its start and at its head: a
+  car that enters leaves without reversing. A lot with no room for the
+  lane lays none. —
+  [purpose-built-kinds.md](../specs/purpose-built-kinds.md); `sideWindow`
+  in `src/shared/lotlayout.ts`

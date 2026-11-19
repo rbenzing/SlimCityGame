@@ -28,6 +28,7 @@ import {
   STALL_WIDTH_M,
   treesFor,
 } from './parkingcode';
+import { STREET_PLAN_SETBACK_M, type PlanVariant } from './planvariant';
 
 export interface LotRect {
   u0: number;
@@ -104,6 +105,8 @@ export interface LotLayoutInput {
   clearBerths?: boolean;
   /** Set where a roomy lot reserves its hardstanding: ground behind the body this deep that no stall or berth takes. */
   pavingBehind?: number;
+  /** 'street' stands the body at the street where the lot fits it there; any other keeps the body where the least slide puts it. */
+  planVariant?: PlanVariant;
 }
 
 /** A drive-through lane is 12 ft (3.66 m) wide. */
@@ -841,15 +844,37 @@ export function layoutLot(input: LotLayoutInput): LotLayout {
 
 /** The layout itself, uncached; `layoutLot` is what callers use. */
 export function computeLotLayout(input: LotLayoutInput): LotLayout {
+  const usual = computeLotLayoutOf({ ...input, planVariant: undefined });
+  if (input.planVariant !== 'street' || !usual.fits || bodyIsPinned(input)) return usual;
+  // The street plan is taken only where it meets the code as the usual one does, so a lot never fits or falls short by its variant.
+  const atStreet = computeLotLayoutOf(input);
+  return atStreet.fits && atStreet.body.v0 < usual.body.v0 - EPS ? atStreet : usual;
+}
+
+/** Whether the kind's own ground fixes where its body stands: a lane, a court, a forecourt, an apron or a yard. */
+function bodyIsPinned(input: LotLayoutInput): boolean {
+  return (
+    input.quickLube === true ||
+    input.driveThrough === true ||
+    input.entranceAtEnd === true ||
+    input.trailerCourt === true ||
+    input.forecourtDepth !== undefined ||
+    input.rearYard !== undefined ||
+    input.hardstanding !== undefined
+  );
+}
+
+function computeLotLayoutOf(input: LotLayoutInput): LotLayout {
   const { perimeterStrip: strip = 0, ...plain } = input;
   if (strip > 0 && plain.along > 2 * strip && plain.depth > 2 * strip) {
     const inner = computeLotLayout0(
       { ...plain, along: plain.along - 2 * strip, depth: plain.depth - 2 * strip },
       true,
+      strip,
     );
     if (inner.fits) return insetLayout(inner, strip, plain.along, plain.depth);
   }
-  return computeLotLayout0(plain, false);
+  return computeLotLayout0(plain, false, 0);
 }
 
 /** An inner layout moved in by `strip` on every side of a lot `along` by `depth`, its street-side ground run out to the street. */
@@ -910,13 +935,17 @@ function insetLayout(inner: LotLayout, strip: number, along: number, depth: numb
 function computeLotLayout0(
   base: Omit<LotLayoutInput, 'perimeterStrip'>,
   reserveHardstanding: boolean,
+  keptClear: number,
 ): LotLayout {
   const { along, depth, bodyAlong, bodyDepth } = base;
   const rear = base.rearYard ?? 0;
   const margin = base.bodyMargin ?? 0;
+  const atStreet = base.planVariant === 'street';
+  // A building at the street still stands back far enough that its awnings stay on its lot.
+  const streetSetback = atStreet ? Math.max(0, STREET_PLAN_SETBACK_M - keptClear) : 0;
   const front =
     base.forecourtDepth ??
-    Math.max(margin, base.frontSetback ?? 0, base.quickLube ? LUBE_APRON_M : 0);
+    Math.max(margin, base.frontSetback ?? 0, streetSetback, base.quickLube ? LUBE_APRON_M : 0);
   const behind = base.hardstanding ?? 0;
   const reserve =
     reserveHardstanding && front + bodyDepth + behind <= depth - rear - margin ? behind : 0;
@@ -925,9 +954,14 @@ function computeLotLayout0(
   const centreV = (depth - reserve - bodyDepth) / 2;
   const us = slides(bodyAlong, margin, along - margin);
   // A service bay's body stands on the front of its lot, behind its apron.
+  const vHigh = depth - reserve - rear - margin;
   const vs = base.quickLube
     ? [Math.max(margin, Math.min(front, depth - bodyDepth - margin))]
-    : slides(bodyDepth, front, depth - reserve - rear - margin);
+    : slides(bodyDepth, front, vHigh);
+  // A building at the street stands first at its front edge, and is tried before any set further back.
+  if (atStreet && front + bodyDepth <= vHigh + EPS && !vs.some((v) => Math.abs(v - front) < EPS)) {
+    vs.push(front);
+  }
 
   const candidates: { c: Candidate; cost: number; order: number }[] = [];
   for (const u0 of us) {
@@ -936,7 +970,7 @@ function computeLotLayout0(
       ORDER.forEach((o, order) => {
         candidates.push({
           c: { ...o, body },
-          cost: Math.abs(u0 - centreU) + Math.abs(v0 - centreV),
+          cost: Math.abs(u0 - centreU) + Math.abs(v0 - centreV) + (atStreet ? v0 * 1000 : 0),
           order,
         });
       });

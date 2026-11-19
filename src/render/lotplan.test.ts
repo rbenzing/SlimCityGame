@@ -682,7 +682,8 @@ describe('the lot’s paved ground', () => {
       const offSlab = tris.filter((t) => at(t, WALK_Y_OFFSET) && !slab.some((r) => within(t, r)));
       expect(offSlab).toEqual([]);
       expect(layout.frontWalk).not.toBeNull();
-      expect(layout.entranceWalk).not.toBeNull();
+      // A shop at the street line has its front walk on the footway, so it needs no walk in from it.
+      if (layout.frontWalk!.v0 > 1e-9) expect(layout.entranceWalk).not.toBeNull();
     }
   });
 

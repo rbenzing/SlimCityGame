@@ -334,3 +334,9 @@ Back to [the index](../GROUND-TRUTHS.md).
   lot does not fit, the compact one grows: grounds are never a
   prerequisite for growth. —
   [commercial-industrial-grounds.md](../specs/commercial-industrial-grounds.md)
+- [R-world-056] Where a commercial lot's layout fits both with its building at the street
+  and with it behind its car park, the lot's place picks one, by one
+  shared function the simulation and the renderer both call. The pick
+  never changes whether the lot fits or how many spaces it holds, and
+  nothing of it is saved. —
+  [purpose-built-kinds.md](../specs/purpose-built-kinds.md)

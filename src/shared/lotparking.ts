@@ -24,6 +24,7 @@ import {
   WALK_UP_REAR_YARD_M,
   WALK_UP_SIDE_YARD_M,
 } from './parkingcode';
+import { planVariantAt, type PlanVariant } from './planvariant';
 import { findRoadFacingEdge, type RoadFacingEdge } from './roadedge';
 import type { BuildingCatalogEntry, BuildingKind } from './types';
 
@@ -59,6 +60,12 @@ const HARDSTANDING_M: Readonly<Partial<Record<BuildingKind, number>>> = {
   foodplant: 6,
   metals: 14,
 };
+/** The kinds whose kit stands a pylon beside the drive mouth, a canopy over a walk or a tower proud of the wall before the door: they keep the ground in front and have one plan. */
+const FRONT_GROUND_KINDS: ReadonlySet<BuildingKind> = new Set([
+  'strip',
+  'medicaloffice',
+  'supermarket',
+]);
 /** The kinds that dock trailers at a bank of doors and keep a truck court before it. */
 const TRUCK_COURT_KINDS: ReadonlySet<BuildingKind> = new Set(['warehouse', 'foodplant']);
 
@@ -100,6 +107,7 @@ export function lotLayoutFor(
   alongX: boolean,
   kerbCredit = 0,
   carPark = true,
+  planVariant?: PlanVariant,
 ): LotLayout | null {
   const lot = footprintForRotation(entry, rotation);
   const body = bodyMetresFor(entry);
@@ -126,6 +134,11 @@ export function lotLayoutFor(
     ...(entry.kind === 'quicklube' ? { quickLube: true } : {}),
     ...(entry.kind === 'autorepair' ? { entranceAtEnd: true } : {}),
     ...(entry.kind && TRUCK_COURT_KINDS.has(entry.kind) ? { trailerCourt: true } : {}),
+    ...(planVariant &&
+    entry.category === 'com' &&
+    !(entry.kind && FRONT_GROUND_KINDS.has(entry.kind))
+      ? { planVariant }
+      : {}),
   });
   // A repair shop's or a lube's bay doors fill its street face; the grounds keep that ground clear.
   const bays =
@@ -166,7 +179,8 @@ export function lotParkingAt(
   const tiles = { x, z, w: lot.w, d: lot.d };
   const alongX = edge.side === 'N' || edge.side === 'S';
   let kerbCredit = kerb ? kerbCreditFor(kerb, tiles, edge.side) : 0;
-  let layout = lotLayoutFor(entry, rotation, alongX, kerbCredit)!;
+  const variant = planVariantAt(x, z);
+  let layout = lotLayoutFor(entry, rotation, alongX, kerbCredit, true, variant)!;
   if (kerb && layout.aisles.length > 0) {
     // The lot's own drive is a no-parking zone on the kerb it earns credit
     // from: a stall it blocks is no space, so the credit is counted again with
@@ -176,12 +190,12 @@ export function lotParkingAt(
     const counted = kerbCreditFor(own, tiles, edge.side);
     if (counted !== kerbCredit) {
       kerbCredit = counted;
-      layout = lotLayoutFor(entry, rotation, alongX, kerbCredit)!;
+      layout = lotLayoutFor(entry, rotation, alongX, kerbCredit, true, variant)!;
     }
   }
   if (isWalkUpKind(entry.kind) && !clearOfSideLines(layout, WALK_UP_SIDE_YARD_M)) {
     // No room for a car park beside the body: the lot keeps its lawn and its walk to the door, and parks at the kerb.
-    layout = lotLayoutFor(entry, rotation, alongX, kerbCredit, false)!;
+    layout = lotLayoutFor(entry, rotation, alongX, kerbCredit, false, variant)!;
   }
   return { edge, kerbCredit, layout };
 }

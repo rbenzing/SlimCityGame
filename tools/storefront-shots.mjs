@@ -112,6 +112,23 @@ const STREETS = [
     name: 'downtown',
     ids: ['com-high-1', 'com-office-2', 'com-high-2', 'com-hotel-1', 'com-hotel-2', 'com-hotel-3'],
   },
+  // Eleven shops in a row: a lot's tile picks whether its building stands at the street or behind its car park, so both plans show.
+  {
+    name: 'variants',
+    ids: [
+      'com-shop-2-lot2x2',
+      'com-shop-2-lot2x2',
+      'com-convenience-1-lot3x2',
+      'com-shop-2-lot2x2',
+      'com-low-2-lot3x2',
+      'com-shop-2-lot2x2',
+      'com-convenience-1-lot3x2',
+      'com-low-2-lot3x2',
+      'com-shop-2-lot2x2',
+      'com-low-2-lot3x2',
+      'com-convenience-1-lot3x2',
+    ],
+  },
   {
     name: 'lineup',
     lineup: true,
@@ -335,7 +352,7 @@ try {
     // At night the first street, the pylon and the fuel canopy stand for the kit; the rest repeat the day frames.
     const night = suffix === '-night';
     for (const [s, street] of STREETS.entries()) {
-      if (street.lineup) continue;
+      if (street.lineup || street.name === 'variants') continue;
       if (night && s !== 0) continue;
       await frame(`${street.name}${suffix}`, rowBox(s), 0.3);
     }
@@ -366,6 +383,14 @@ try {
 
   // The close shots, at twice the pixels over the camera's floor distance.
   const restore = await closeUp(page, 2);
+  // The variants street in two halves, oblique and from above: each shop's building stands at the street or behind its car park.
+  const variantsRow = spans[STREETS.findIndex((s) => s.name === 'variants')];
+  const halves = [variantsRow.slice(0, 6), variantsRow.slice(6)];
+  for (const [n, half] of halves.entries()) {
+    const tag = n === 0 ? '' : `-${n + 1}`;
+    await frame(`variants${tag}`, boxOf(half), 0.3, 0.6, 0.9);
+    await frame(`variants${tag}-above`, boxOf(half), 0.0, 1.45, 0.9);
+  }
   await frame('close-shop', boxOf([find('main', 'com-low-1')]), 0.3);
   // The pylon and shopfronts from the other side, lower, so these are not the street-level frames again.
   await frame('close-strip', boxOf([find('strip', 'com-strip-2')]), -0.7, 0.45, 0.8);

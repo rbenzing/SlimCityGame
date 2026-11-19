@@ -427,7 +427,7 @@ const ARRAY_HEIGHT_M = 0.25;
 const ARRAY_INSET_FRACTION = 0.72;
 
 /** The flat canopy of a storefront of no kind. */
-const CANOPY_DEPTH_M = 1.9;
+export const CANOPY_DEPTH_M = 1.9;
 const CANOPY_THICKNESS_M = 0.22;
 const CANOPY_HEIGHT_M = 3.1;
 const CANOPY_FRONTAGE_FRACTION = 0.82;
