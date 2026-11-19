@@ -130,6 +130,7 @@ import {
 } from './render/houselot';
 import { LotRenderer } from './render/lots';
 import { LotGroundsRenderer } from './render/lotgrounds';
+import { BuiltInRenderer } from './render/builtins';
 import { GarageRenderer } from './render/garages';
 import { BuildingKitRenderer } from './render/buildingkit';
 import { LANDMARK_PAD_IDS, LandmarkRenderer } from './render/landmarks';
@@ -551,6 +552,8 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
   );
   // The garage a dense block parks in on its own lot, behind the body.
   const garages = new GarageRenderer(world.scene, heightAt, catalog, roadAt);
+  // The portal, ramp and garage band of a building that has gone up and parks in itself.
+  const builtIns = new BuiltInRenderer(world.scene, heightAt, catalog, roadAt, kerb, kerbCreditOf);
   const parkedCars = new ParkedCarRenderer(
     world.scene,
     heightAt,
@@ -2531,6 +2534,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
     roofProps.setNightFactor(nightFactor);
     houseRoofs.setNightFactor(nightFactor);
     garages.setNightFactor(nightFactor);
+    builtIns.setNightFactor(nightFactor);
     roadsMesh.setNightFactor(nightFactor); // dim the unlit road so lamp pools stay the bright spots
     freeRoads.setNightFactor(nightFactor);
     bridges.setNightFactor(nightFactor);
@@ -2699,6 +2703,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       buildingKit.apply(faced);
       houseRoofs.apply(snap.buildings);
       garages.apply(snap.buildings);
+      builtIns.apply(snap.buildings);
       parkedCars.apply(snap.buildings);
       lotGrounds.apply(snap.buildings);
       landmarks.apply(snap.buildings);
@@ -2817,6 +2822,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
         buildingKit.apply(relaidFaced);
         houseRoofs.apply(relaid);
         garages.apply(relaid);
+        builtIns.apply(relaid);
         parkedCars.apply(relaid);
         lotGrounds.apply(relaid);
         pedestrianRenderer.apply({ stops: latestStopPoints, buildings: relaid });

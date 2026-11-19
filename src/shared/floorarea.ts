@@ -118,8 +118,11 @@ const ONE_FLOOR_KINDS: ReadonlySet<BuildingKind> = new Set([
  * building counts one per 3.2 m storey; a works is one high-bay floor however
  * tall its clear height, except flex space, which is offices over the bays; a
  * repair shop, a pharmacy, a bank, a surgery and a lube bay are one floor under their roofs.
+ * A building that parks in itself counts its working storeys only, never the
+ * parking storeys above ground that add to its height.
  */
 export function storeysOf(entry: BuildingCatalogEntry): number {
+  if (entry.stacked) return entry.stacked.workingStoreys;
   if (entry.category === 'ind' && entry.kind !== 'flex') return 1;
   if (entry.kind && ONE_FLOOR_KINDS.has(entry.kind)) return 1;
   return Math.max(1, Math.round(entry.height / FLOOR_HEIGHT_METERS));

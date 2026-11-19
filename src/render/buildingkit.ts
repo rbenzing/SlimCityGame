@@ -434,6 +434,8 @@ const CANOPY_FRONTAGE_FRACTION = 0.82;
 
 /** A lit sign band: 1.2 m tall, 60% of its tenant's frontage, sized to read at 40 m. */
 export const SIGN_HEIGHT_M = 1.2;
+/** A built-in form's sign band: the 0.9 m the ground floor leaves between the awning and the first upper windows' sills. */
+const BUILT_IN_SIGN_HEIGHT_M = 0.8;
 const SIGN_THICKNESS_M = 0.16;
 export const SIGN_FRONTAGE_FRACTION = 0.6;
 /** The band sits just above the shopfront, under the cornice. */
@@ -588,6 +590,8 @@ export const LOBBY_CANOPY_UNDERSIDE_M = 2.6;
 export const RIBBON_BAND_M = 1.2;
 export const SPANDREL_BAND_M = 1;
 export const RIBBON_BAND_PROUD_M = 0.1;
+/** How far inside a wall on the lot line a ribbon band's face stands, so the wall hides it. */
+const RIBBON_BAND_HIDDEN_M = 0.02;
 export const PORTE_COCHERE_WIDTH_M = 6.1;
 export const PORTE_COCHERE_DEPTH_M = 6;
 export const PORTE_COCHERE_THICKNESS_M = 0.6;
@@ -4987,6 +4991,10 @@ export function computePartPlacements(
           }
           break;
         }
+        // On a built-in form the band is shorter, its foot where it was, so it stays under the first upper windows' sills.
+        const built = entry.stacked !== undefined && !strip && !hotel;
+        const signHeight = built ? BUILT_IN_SIGN_HEIGHT_M : SIGN_HEIGHT_M;
+        const signCentre = centreY - (SIGN_HEIGHT_M - signHeight) / 2;
         tenants.forEach((t, i) => {
           out.push({
             ...onSide(
@@ -4996,8 +5004,8 @@ export function computePartPlacements(
               halfDepthTo(box, side) + SIGN_THICKNESS_M / 2,
               t.width * SIGN_FRONTAGE_FRACTION,
               SIGN_THICKNESS_M,
-              SIGN_HEIGHT_M,
-              centreY,
+              signHeight,
+              signCentre,
             ),
             color: accent(strip ? i : 0),
           });
@@ -5280,23 +5288,28 @@ export function computePartPlacements(
         break;
       }
       case 'featureWall': {
-        if (!side) break;
+        // A built-in form has no drive-through end: its walls keep their windows.
+        if (!side || entry.stacked) break;
         // The drive-through end of the body, the whole body's height, as one dark
-        // slab; the other end where that one stands on the lot line, and neither
-        // where the body fills its lot's width.
+        // slab a tier, each on its own tier's wall so a stepped body's upper tiers
+        // are not left with a slab standing clear of them; the other end where
+        // that one stands on the lot line, and neither where the body fills its
+        // lot's width.
         const end = lot?.lane ? sideOfFacing(lot.lane.pickupFacing) : farEnd(side, lot);
         for (const wall of [end, oppositeSide(end)]) {
-          const slab = againstFacade(
-            part,
-            baseBox,
-            wall,
-            facadeSpan(baseBox, wall),
-            FEATURE_WALL_PROUD_M,
-            roofY,
-            roofY / 2,
+          const slabs = tierBoxes.map((box) =>
+            againstFacade(
+              part,
+              box,
+              wall,
+              facadeSpan(box, wall),
+              FEATURE_WALL_PROUD_M,
+              box.h,
+              box.yOffset + box.h / 2,
+            ),
           );
-          if (lot && !rectInside(placementBounds(slab), lot.lot)) continue;
-          out.push(slab);
+          if (lot && !rectInside(placementBounds(slabs[0]!), lot.lot)) continue;
+          out.push(...slabs);
           break;
         }
         break;
@@ -5361,11 +5374,21 @@ export function computePartPlacements(
         const color = materialUnit(tower ? 'spandrelDark' : pick(PRECAST, id));
         for (const box of tierBoxes) {
           const { rows, pitch } = storeysOf(entry, box);
+          // Where a wall stands on the lot line the band stops inside the wall, so nothing of it passes the line.
+          const span = (half: number, lotLo: number | undefined, lotHi: number | undefined) => {
+            const lo = lotLo !== undefined && -half - RIBBON_BAND_PROUD_M < lotLo - 1e-9;
+            const hi = lotHi !== undefined && half + RIBBON_BAND_PROUD_M > lotHi + 1e-9;
+            const a = lo ? -half + RIBBON_BAND_HIDDEN_M : -half - RIBBON_BAND_PROUD_M;
+            const b = hi ? half - RIBBON_BAND_HIDDEN_M : half + RIBBON_BAND_PROUD_M;
+            return { size: b - a, mid: (a + b) / 2 };
+          };
+          const across = span(box.w / 2, lot?.lot.x0, lot?.lot.x1);
+          const deep = span(box.d / 2, lot?.lot.z0, lot?.lot.z1);
           for (let k = 1; k <= rows; k += 1) {
             out.push({
               part,
-              size: [box.w + 2 * RIBBON_BAND_PROUD_M, height, box.d + 2 * RIBBON_BAND_PROUD_M],
-              offset: [0, box.yOffset + k * pitch - height / 2, 0],
+              size: [across.size, height, deep.size],
+              offset: [across.mid, box.yOffset + k * pitch - height / 2, deep.mid],
               color,
             });
           }

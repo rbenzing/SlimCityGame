@@ -1008,7 +1008,8 @@ describe('a high-density block houses the homes its catalog plates were counted 
   const APARTMENT_M2 = 93;
   const STEP_INSET = (MIN_SETBACK_INSET + MAX_SETBACK_INSET) / 2;
   const blocks = (catalogData as { buildings: BuildingCatalogEntry[] }).buildings.filter(
-    (e) => e.kind === 'midrise' || e.kind === 'tower' || e.kind === 'mixed',
+    (e) =>
+      e.stacked === undefined && (e.kind === 'midrise' || e.kind === 'tower' || e.kind === 'mixed'),
   );
 
   // Homes in the stacked body the figures were worked out on: equal storeys
@@ -1059,6 +1060,13 @@ describe('a tower stands on a podium', () => {
     expect(podium!.h).toBeCloseTo(2 * floor, 9);
     expect(podium!.yOffset).toBe(0);
     expect(podium!.w).toBeGreaterThan(boxes[0]!.w);
+  });
+
+  it('gives a built-in form a podium no wider than its slab: its wall stands on the lot line', () => {
+    const builtIn = { ...tower(1), stacked: { workingStoreys: 2 } } as BuildingCatalogEntry;
+    const { boxes, podium } = computeSetbacks(builtIn, 7);
+    expect(podium!.w).toBeCloseTo(boxes[0]!.w, 9);
+    expect(podium!.d).toBeCloseTo(boxes[0]!.d, 9);
   });
 
   it('keeps the podium out of the bay row the slab keeps out of', () => {

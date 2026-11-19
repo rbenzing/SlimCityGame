@@ -64,6 +64,22 @@ const STREETS = [
       'com-convenience-3-lot5x2',
     ],
   },
+  // Each spread shop and restaurant beside its built-in form, which stands the same level taller on a smaller lot with its parking below.
+  {
+    name: 'stacked',
+    gap: 1,
+    ids: [
+      'com-shop-2',
+      'com-shop-2-up1x2',
+      'com-low-2',
+      'com-low-2-up1x2',
+      'com-low-2-up1x1',
+      'com-restaurant-2',
+      'com-restaurant-2-up1x2',
+      'com-restaurant-3-lot4x2',
+      'com-restaurant-3-up2x2',
+    ],
+  },
   { name: 'strip', ids: ['com-strip-2', 'com-strip-3', 'com-strip-1'] },
   { name: 'market', ids: ['com-market-2', 'com-market-1', 'com-market-3'] },
   {
@@ -118,6 +134,8 @@ const STREETS = [
     name: 'downtown',
     ids: ['com-high-1', 'com-office-2', 'com-high-2', 'com-hotel-1', 'com-hotel-2', 'com-hotel-3'],
   },
+  // The spread office beside its built-in form, whose parking stands above ground behind a shopfront.
+  { name: 'officeup', gap: 1, ids: ['com-office-2', 'com-office-2-up2x2'] },
   // Eleven shops in a row: a lot's tile picks whether its building stands at the street or behind its car park, so both plans show.
   {
     name: 'variants',
@@ -362,7 +380,7 @@ try {
     // At night the first street, the pylon and the fuel canopy stand for the kit; the rest repeat the day frames.
     const night = suffix === '-night';
     for (const [s, street] of STREETS.entries()) {
-      if (street.lineup || street.name === 'variants') continue;
+      if (street.lineup || street.name === 'variants' || street.name === 'stacked') continue;
       if (night && s !== 0) continue;
       await frame(`${street.name}${suffix}`, rowBox(s), 0.3);
     }
@@ -391,6 +409,12 @@ try {
   await views('')();
   await shootLineup('');
 
+  // The built-in office with parking above ground beside its spread form: from the street, from the side its portal is on, and from above. A tall pair, so the camera's own distance.
+  const officeRow = spans[STREETS.findIndex((s) => s.name === 'officeup')];
+  await frame('office-built-in', boxOf(officeRow), 0.3, 0.6, 0.4);
+  await frame('office-built-in-side', boxOf(officeRow), 1.2, 0.5, 0.4);
+  await frame('office-built-in-above', boxOf(officeRow), 0.0, 1.45, 0.4);
+
   // The close shots, at twice the pixels over the camera's floor distance.
   const restore = await closeUp(page, 2);
   // The variants street in two halves, oblique and from above: each shop's building stands at the street or behind its car park.
@@ -401,6 +425,31 @@ try {
     await frame(`variants${tag}`, boxOf(half), 0.3, 0.6, 0.9);
     await frame(`variants${tag}-above`, boxOf(half), 0.0, 1.45, 0.9);
   }
+  // The built-in shops and restaurants beside their spread forms, in two halves, oblique and from above.
+  const stackedRow = spans[STREETS.findIndex((s) => s.name === 'stacked')];
+  for (const [n, half] of [stackedRow.slice(0, 5), stackedRow.slice(5)].entries()) {
+    const tag = n === 0 ? '' : `-${n + 1}`;
+    await frame(`stacked${tag}`, boxOf(half), 0.3, 0.6, 0.9);
+    await frame(`stacked${tag}-above`, boxOf(half), 0.0, 1.45, 0.9);
+  }
+  // The garage portal stands on a built-in body's high-x wall near its rear: the eye stands east of it, low and oblique, with the portal centred.
+  const PORTAL_YAW = 1.3;
+  const portalBox = (b, h) => ({ x: b.x + b.w - 0.6, z: b.z + 0.2, w: 1, d: 2, h });
+  const shop = find('stacked', 'com-shop-2-up1x2');
+  const shop4 = find('stacked', 'com-low-2-up1x1');
+  const restaurant = find('stacked', 'com-restaurant-3-up2x2');
+  await frame('stacked-portal-shop', portalBox(shop, 5), PORTAL_YAW, 0.35, 0.9);
+  await frame('stacked-portal-shop4', portalBox(shop4, 5), PORTAL_YAW, 0.35, 0.9);
+  await frame('stacked-portal-restaurant', portalBox(restaurant, 5), PORTAL_YAW, 0.35, 0.9);
+  // The office: the portal and the garage band over the ground floor in one frame.
+  const officeBuiltIn = find('officeup', 'com-office-2-up2x2');
+  await frame('office-built-in-portal', portalBox(officeBuiltIn, 20), PORTAL_YAW, 0.3, 0.5);
+  // The spread restaurant's front corner and the built-in's, from the street at an angle.
+  await frame('stacked-fin', boxOf([find('stacked', 'com-restaurant-3-lot4x2')]), 0.9, 0.5, 0.9);
+  // The street faces of the same two shops, straight on and low.
+  await frame('stacked-front-shop', boxOf([shop]), 0.0, 0.3, 0.9);
+  // Four storeys are taller than the camera's floor distance frames: aim low so the ground floor stands clear of the bottom bar.
+  await frame('stacked-front-shop4', { ...boxOf([shop4]), h: 6 }, 0.0, 0.3, 0.9);
   await frame('close-shop', boxOf([find('main', 'com-low-1')]), 0.3);
   // The pylon and shopfronts from the other side, lower, so these are not the street-level frames again.
   await frame('close-strip', boxOf([find('strip', 'com-strip-2')]), -0.7, 0.45, 0.8);

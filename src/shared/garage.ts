@@ -7,13 +7,21 @@
  * street line into the lot. Pure.
  */
 import { TILE_METERS } from './constants';
-import { bodyMetresFor, grossFloorM2, SQ_FT_PER_M2, storeysOf } from './floorarea';
+import {
+  bodyMetresFor,
+  bodyPlateM2,
+  grossFloorM2,
+  grossFloorSqFt,
+  SQ_FT_PER_M2,
+  storeysOf,
+} from './floorarea';
 import type { LotRect } from './lotlayout';
 import {
   AISLE_WIDTH_M,
   ENTRANCE_WALK_M,
   FOOT_M,
   HOTEL_ROOM_M2,
+  requiredSpaces,
   STALL_LENGTH_M,
   STALL_WIDTH_M,
   stallsInRow,
@@ -115,6 +123,7 @@ export interface Garage {
 
 /** Whether a kind parks in a garage: a tower always, the other dense kinds from level 2. */
 export function parksInGarage(entry: BuildingCatalogEntry): boolean {
+  if (entry.stacked) return false;
   switch (entry.kind) {
     case 'tower':
       return true;
@@ -158,6 +167,45 @@ export function garageRequirement(entry: BuildingCatalogEntry): number {
       spaces = homes;
   }
   return Math.max(0, Math.ceil(spaces - 1e-9));
+}
+
+/** The levels a building parks below ground at most. */
+export const BUILT_IN_LEVELS_BELOW = 2;
+/** The floor one built-in space takes with its share of the aisle, 325 sq ft. */
+export const BUILT_IN_SPACE_M2 = 30;
+
+/** The parking a building that parks in itself carries, in spaces and levels. */
+export interface BuiltInParking {
+  /** Spaces its floor owes by the code its kind parks to. */
+  owed: number;
+  belowLevels: number;
+  belowSpaces: number;
+  /** Parking storeys above ground, each one added to the building's storeys and height. */
+  aboveStoreys: number;
+  aboveSpaces: number;
+}
+
+/**
+ * The parking a building that stands its floor in storeys on its own lot
+ * carries inside itself: below ground first, a level holding its lot's whole
+ * area, two levels at most; what is left, on the ground floor and above, a
+ * storey holding its plate. Pure.
+ */
+export function builtInParking(entry: BuildingCatalogEntry): BuiltInParking {
+  const owed =
+    entry.kind === 'shop' || entry.kind === 'restaurant'
+      ? requiredSpaces(entry.kind, grossFloorSqFt(entry))
+      : garageRequirement(entry);
+  const lotM2 = entry.footprint.w * entry.footprint.d * TILE_METERS * TILE_METERS;
+  const perLevel = Math.floor(lotM2 / BUILT_IN_SPACE_M2);
+  const belowLevels = Math.min(
+    BUILT_IN_LEVELS_BELOW,
+    Math.max(0, Math.ceil(owed / perLevel - 1e-9)),
+  );
+  const belowSpaces = belowLevels * perLevel;
+  const perStorey = Math.floor(bodyPlateM2(entry) / BUILT_IN_SPACE_M2);
+  const aboveStoreys = Math.max(0, Math.ceil((owed - belowSpaces) / perStorey - 1e-9));
+  return { owed, belowLevels, belowSpaces, aboveStoreys, aboveSpaces: aboveStoreys * perStorey };
 }
 
 /** The tiers a requirement asks for at `perTier` stalls a tier, at least one and at most the kit's six. */

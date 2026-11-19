@@ -49,6 +49,8 @@ const STREETS = [
   { name: 'garden', ids: ['res-medium-1', 'res-medium-2', 'res-medium-3'] },
   { name: 'midrise', ids: ['res-high-1', 'res-high-2', 'res-high-3'] },
   { name: 'tower', ids: ['res-tower-1', 'res-tower-2', 'res-tower-3'] },
+  // The level-2 mid-rise beside its built-in form, which stands the same floor on a 1x2 lot in sixteen storeys with its parking below.
+  { name: 'builtin', ids: ['res-high-2', 'res-high-2-up1x2'] },
 ];
 
 const browser = await chromium.launch({ headless: true, args: ['--use-angle=default'] });
@@ -255,6 +257,15 @@ try {
   await frame('close-tower-podium', tower, 0.2, 0.5, 0.7);
   await frame('close-multiplex', multiplex, 0.3, 0.55, 0.7);
   await frame('close-midrise', midrise, 0.25, 0.5, 0.7);
+  // The built-in mid-rise's garage portal stands on its high-x wall near the rear: the eye east of it, low and oblique.
+  const builtIn = find('builtin', 'res-high-2-up1x2');
+  await frame(
+    'builtin-portal',
+    { x: builtIn.x + builtIn.w - 0.6, z: builtIn.z + 1.2, w: 1, d: 2, h: 5 },
+    1.3,
+    0.35,
+    0.9,
+  );
   // The walk-ups' hips from higher up, where the four pitches meeting at the apex show.
   await frame('roof-garden', garden, 0.4, 1.1, 0.7, true);
   await frame('roof-multiplex', multiplex, 0.4, 1.1, 0.7, true);

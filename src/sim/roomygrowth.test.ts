@@ -26,7 +26,11 @@ function constantRng(value: number): Rng {
 
 describe('the lots a kind is tried on, roomiest first', () => {
   const compacts = catalog.filter(
-    (e) => e.bodyFootprint === undefined && e.kind !== undefined && roomyLotOf(e) !== undefined,
+    (e) =>
+      e.bodyFootprint === undefined &&
+      e.stacked === undefined &&
+      e.kind !== undefined &&
+      roomyLotOf(e) !== undefined,
   );
 
   it('starts at the roomy lot of the table and steps down to the compact lot, for every kind and level', () => {

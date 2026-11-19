@@ -18,7 +18,9 @@ import {
 import { lubeBays } from './parkingcode';
 import { bodyMetresFor } from './floorarea';
 
-const catalog = (catalogData as { buildings: BuildingCatalogEntry[] }).buildings;
+const catalog = (catalogData as { buildings: BuildingCatalogEntry[] }).buildings.filter(
+  (e) => e.stacked === undefined,
+);
 
 interface Row {
   kind: BuildingKind;

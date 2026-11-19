@@ -5,6 +5,7 @@
  * sim asks it whether a footprint fits; the renderer draws what it lays out.
  * Pure.
  */
+import { withBuiltInDrive } from './builtinportal';
 import { TILE_METERS } from './constants';
 import { footprintForRotation } from './footprint';
 import { bodyMetresFor } from './floorarea';
@@ -83,7 +84,8 @@ export function lotYardsFor(entry: BuildingCatalogEntry): {
   hardstanding?: number;
 } {
   const kind = entry.kind;
-  const denseFront = isDenseLotEntry(entry) ? (GARAGE_FRONT_PROJECTION_M[kind ?? ''] ?? 0) : 0;
+  const denseFront =
+    isDenseLotEntry(entry) || entry.stacked ? (GARAGE_FRONT_PROJECTION_M[kind ?? ''] ?? 0) : 0;
   return {
     ...(kind && FORECOURT_KINDS.has(kind)
       ? { forecourtDepth: FUEL_CANOPY_GAP_M + FUEL_CANOPY_DEPTH_M }
@@ -121,17 +123,18 @@ export function lotLayoutFor(
     depth: (alongX ? lot.d : lot.w) * TILE_METERS,
     bodyAlong,
     bodyDepth: alongX ? world.d : world.w,
-    spaces: carPark ? onSiteSpaces(requirement.spaces, kerbCredit) : 0,
+    spaces: carPark && !entry.stacked ? onSiteSpaces(requirement.spaces, kerbCredit) : 0,
     berths: requirement.berths,
     ...lotYardsFor(entry),
     ...(entry.bodyFootprint !== undefined ? { clearBerths: true } : {}),
     ...(isRoomyLotEntry(entry) ? { perimeterStrip: LOT_PERIMETER_STRIP_M } : {}),
     ...(entry.category === 'com' && !isDenseLotEntry(entry) ? { shopfrontWalk: true } : {}),
-    ...(entry.kind === 'restaurant' ? { driveThrough: true } : {}),
+    ...(entry.kind === 'restaurant' && !entry.stacked ? { driveThrough: true } : {}),
     ...(entry.kind === 'pharmacy' ? { driveThrough: true, sideWindow: true } : {}),
     ...(entry.kind === 'bank'
       ? { driveThrough: true, sideWindow: true, driveUpLanes: BANK_LANE_CARS }
       : {}),
+    ...(entry.stacked ? { sideDrive: true } : {}),
     ...(entry.kind === 'quicklube' ? { quickLube: true } : {}),
     ...(entry.kind === 'carwash'
       ? {
@@ -158,7 +161,7 @@ export function lotLayoutFor(
           ? 1
           : 0;
   if (bays > 0) layout.bayDoors = { u0: layout.body.u0, u1: layout.body.u1 };
-  return layout;
+  return entry.stacked ? withBuiltInDrive(layout) : layout;
 }
 
 /** A building's car park where it stands: the edge it opens onto, its kerb credit and its layout. */

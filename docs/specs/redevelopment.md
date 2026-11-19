@@ -10,7 +10,9 @@
 - Leave a building that stands above a lowered ceiling as it is; never tear one down for the ceiling. `[R-world-057]`
 - Rebuild a standing building at its next level in this order: on the lot it has, where the larger building and its code car park fit; on a larger lot, where the ground beside it is free; on the lot it has with its parking built in. `[R-world-058]`
 - A rebuild is never refused for want of grounds, and never asked of a first town. `[R-world-058]` `[R-world-014]`
-- Park a built-up building below ground first, then on its ground floor behind a shopfront or a lobby; show each by a ramp and a portal on a side or rear face. `[R-services-044]`
+- Give each kind that stacks one built-in form for every lot a building of the level below stands on; build none before Big Town. `[R-world-058]`
+- Make no built-in form over the tallest in the catalog, and none with more parking storeys above ground than working storeys; that building waits for ground. `[R-services-044]`
+- Park a built-up building below ground first, then on storeys over its ground floor; show it by one garage portal in a side wall, at the head of the lot's own drive. `[R-services-044]`
 - Count every built-in space; a level parked above ground adds a storey to the building, and no floor is cut for it. `[R-services-044]` `[R-services-040]`
 - Leave an abandoned building standing, boarded, for as long as demand for its zone is low; no clock removes it. `[R-world-059]`
 - Demolish an abandoned building when demand for its zone is high enough, or when the player bulldozes it; the cleared lot regrows as any lot does. `[R-world-059]`
@@ -27,17 +29,27 @@
 | Works and plants | no ceiling: a hall is one tall storey | — | — |
 | `ABANDONED_CLEAR_DEMAND` | 0: the zone's demand bar at half or over | −1 to 1 | dial: the player's "high enough" |
 | `ABANDONED_MIN_PASSES` | 10 growth passes (100 ticks) abandoned before it may be cleared | passes | the old wait, now a floor |
+| Storeys of a building gone up | the next level's floor over this lot's plate, rounded up | storeys | the same floor, stacked |
+| A storey of a building gone up | 3.2, working or parking | m | `FLOOR_HEIGHT_METERS` |
+| Tallest a rebuild goes | 80 (25 storeys), the catalog's tallest | m | dial |
+| `BUILT_IN_PARKING_MILESTONE` | Big Town (3,500): the earliest a building parks in itself | — | dial: where the first garages already appear |
 | Levels below ground | 2 at most | levels | dial |
+| Parking storeys above ground | no more than the working storeys | storeys | dial: no building is more garage than building |
 | A built-in space | 30 (325 sq ft) | m² | the garage's own figure |
+| A level below ground holds | the lot's area over 30, rounded down | spaces | — |
+| A storey above ground holds | the building's plate over 30, rounded down | spaces | — |
 | A parking level, floor to floor | 3.35 (11 ft) | m | the garage's own figure |
-| Garage portal | 6.1 wide (20 ft, two-way), 2.5 clear | m | Evanston IL, Alhambra CA; van clearance |
-| Ramp to a level below | 1 in 8 (12.5%), no stall on it | slope | parking design guidance |
+| Garage portal, `PORTAL_WIDTH_M`, `PORTAL_CLEAR_M` | 6.1 wide (20 ft, two-way), 2.5 clear | m | Evanston IL, Alhambra CA; van clearance |
+| Drive and kerb cut of a built-in lot | 6.1 wide, free corner turned at 1.5 | m | the portal's width; the car park's corner |
+| Portal from the rear corner, `PORTAL_REAR_WALL_M` | 1 | m | dial |
+| Portal behind the street face, `PORTAL_DOOR_CLEAR_M` | 3 at least | m | dial |
+| Sign band of a built-in shop, `BUILT_IN_SIGN_HEIGHT_M` | 0.8 | m | dial: fits between the awning and the first upper sills |
 
-**Code:** what falls is built: `src/sim/growth.ts` the problems pass, `ABANDONED_MIN_PASSES`, `ABANDONED_CLEAR_DEMAND`; `cmdBulldoze` in `src/sim/worker.entry.ts` clears a derelict as it clears any building. The ceilings are built: `src/shared/constants.ts` `STOREY_CEILING_M` the table, `ceilingMilestone`; `unlockMilestone` on each entry of `src/data/catalog.json`, read where growth already reads it (`src/sim/growth.ts` `tryLevelUp`, the spawn pass). To be built: the rebuild order (`tryLevelUp`, `footprintsOf`, `levelUpSite`); built-in parking (`src/shared/garage.ts` `parksInGarage`, `garageRequirement`; `src/render/massing.ts` the podium); the tower look.
+**Code:** what falls is built: `src/sim/growth.ts` the problems pass, `ABANDONED_MIN_PASSES`, `ABANDONED_CLEAR_DEMAND`; `cmdBulldoze` in `src/sim/worker.entry.ts` clears a derelict as it clears any building. The ceilings are built: `src/shared/constants.ts` `STOREY_CEILING_M` the table, `ceilingMilestone`; `unlockMilestone` on each entry of `src/data/catalog.json`, read where growth already reads it (`src/sim/growth.ts` `tryLevelUp`, the spawn pass). Going up is built: `src/shared/stacking.ts` `stackedFormsOf` makes the forms the catalog holds, each marked `stacked`; `src/shared/garage.ts` `builtInParking`; `src/sim/growth.ts` `tryLevelUp`, `builtInFormOf`; `src/shared/builtinportal.ts` the lot, its drive and the portal; `src/render/builtinkit.ts` and `src/render/builtins.ts` the portal and the garage band; `src/render/massing.ts` `tierCountOf` the one straight body. To be built: the tower look.
 
-**Tests:** `src/sim/growth.test.ts` a derelict stands at low demand, stands its minimum at high demand, is then cleared, and reopens when its power returns; `src/sim/abandonedbulldoze.test.ts` the bulldozer clears one. `src/shared/storeyceiling.test.ts` no entry above its milestone's ceiling, and none later than its ceiling asks; `src/sim/ceilinggrowth.test.ts` a level-up over the ceiling is refused and a standing building over a ceiling is kept. To be written with each later slice: the rebuild order on a free block, a full block and a roomy lot; spaces built in equal spaces owed.
+**Tests:** `src/sim/growth.test.ts` a derelict stands at low demand, stands its minimum at high demand, is then cleared, and reopens when its power returns; `src/sim/abandonedbulldoze.test.ts` the bulldozer clears one. `src/shared/storeyceiling.test.ts` no entry above its milestone's ceiling, and none later than its ceiling asks; `src/sim/ceilinggrowth.test.ts` a level-up over the ceiling is refused and a standing building over a ceiling is kept. `src/shared/stacking.test.ts` every form recomputed from its bases, and spaces built in no fewer than spaces owed; `src/sim/goingup.test.ts` the rebuild order on a full block, a free block, a roomy lot and below Big Town; `src/shared/builtinportal.test.ts`, `src/render/builtinkit.test.ts` and `src/render/builtinbody.test.ts` the lot, the portal and the body.
 
-**Open:** no vacancy is modelled, so a building is abandoned only for want of power, water or a road, never for want of people. A lot on a curve never changes its footprint.
+**Open:** no vacancy is modelled, so a building is abandoned only for want of power, water or a road, never for want of people. A lot on a curve never changes its footprint. The building panel says nothing of where any building parks, so the spaces built in are counted and not shown.
 
 ## Why the rules are what they are
 
@@ -64,6 +76,30 @@ A level-up already demolishes and rebuilds: the old building goes, a site stands
 
 Roomy lots are the room to grow into. A shop on a lot twice its size is rebuilt larger on that lot before it asks for a neighbour's ground, so a town thickens where it stands. Where the larger building's car park no longer fits on the ground, and no ground is free beside it, the building goes up and takes its cars with it.
 
+Of the catalog's level-ups, 57 of 84 need a larger lot than the building's compact one. A roomy lot is often as large as the next level's compact lot, but that lot's car park does not fit on it without kerb stalls: measured, a level-1 shop on its roomy lot with no free ground beside it never rebuilt at all. So the way up is needed at the first rebuild, not only the second.
+
+### Going up
+
+A kind that stacks goes up: the shop, the restaurant, the office, the hotel, the mid-rise, the mixed block and the tower. The building it becomes holds the next level's floor, jobs and homes on the lot it already has, in as many storeys as that floor needs, with its parking built in. A shop that would have spread over four tiles stands two storeys on two; on a lot already large enough it keeps one storey and only its cars go below.
+
+No town below Big Town builds one: an underground garage in a village is wrong, and a first town grows as it always has.
+
+A kind that cannot stack waits for ground: a filling station, a strip, a supermarket, a works, and the purpose-built kinds are one storey by their trade.
+
+The taller form answers to the ceiling like any building, so in a town too small for it the building stays as it is. No rebuild goes over the tallest building the catalog holds.
+
+The catalog holds 24 built-in forms, named for the level they hold and the lot they stand on (`com-shop-2-up1x2`); a save names a building by its catalog entry, so each form is one. Three of them:
+
+| Form | Storeys | Owes | Below ground | Above ground | Unlocks |
+| ---- | ------- | ---- | ------------ | ------------ | ------- |
+| Level-2 shop on 2 tiles | 1 | 5 spaces | 26 on one level | — | Big Town |
+| Level-3 restaurant on 4 tiles | 2 | 95 | 106 on two levels | — | Big Town |
+| Level-2 office on 4 tiles | 18 + 2 of parking, 64 m | 144 | 106 on two levels | 48 on two storeys | Metropolis |
+
+Five forms are not made, and those buildings wait for ground. Four would pass 80 m: the level-3 mid-rise and mixed block on two tiles, the level-3 tower and the level-2 corporate tower on four. A level-3 restaurant on two tiles would stand six storeys of parking over four of restaurant.
+
+A built-in building levels up again by the same order from its own lot: it spreads where ground has come free, and goes up again where none has.
+
 ### What falls
 
 A building left without power, water or a road is abandoned and boarded up. It used to vanish after a fixed wait, which left a hole nobody chose. Now it stands, as a derelict does, until the land is wanted: when demand for its zone is at half or over, it is demolished and the lot is free to grow again. It still reopens the moment its services return.
@@ -74,9 +110,13 @@ The player can clear it sooner with the bulldozer, which takes the zone's paint 
 
 ### Cars go under, then in
 
-A building that builds up parks below ground first: nothing shows but a ramp and a portal, and the lot keeps its front. What two levels below cannot hold goes on the ground floor, behind the street face's shopfront or lobby, and the building stands one storey taller for it. A mid-rise's and a tower's podium is that ground-floor garage already.
+A building that builds up parks below ground first: nothing shows but a portal, and the lot keeps its front. What two levels below cannot hold goes on storeys just over the ground floor, drawn as a band of open garage decks, and the building stands a storey taller for each. The street face keeps its shopfront or lobby.
 
-The portal is on a side or rear face where the lot has one clear of the door, and on the street face beside the lobby where it has not. Its drive is the lot's own kerb cut.
+The body stands on one side line of its lot. A drive runs down the other side from the lot's kerb cut to a portal in the side wall near the rear; every lot the catalog holds leaves 6.4 m or more beside the body, so no portal opens on the street face. The lot has no stalls and no aisle: the rest is the walk to the door and the kind's planted ground.
+
+The ramp down is inside the building and is not drawn: the ground is never cut, and a ramp outside would have to fall across the drive.
+
+A built-in shop or restaurant is one straight-walled body, a row of windows to each working storey over the kind's own ground floor. Its sign band is lower than the kit's, to clear the first upper windows; a built-in restaurant has no drive-through and no dark end wall. A built-in block or tower stands a podium no wider than its slab, so the side drive stays clear, and no part of any built-in form passes its lot line.
 
 ### What a built-up building looks like
 

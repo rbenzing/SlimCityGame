@@ -157,6 +157,8 @@ export function tierCountOf(entry: BuildingCatalogEntry): number {
   if (isHouseEntry(entry) || isFarmEntry(entry) || isApartmentEntry(entry)) return 1;
   // These low kinds are one volume at every level: a wider plate, not a taller stack.
   if (ONE_VOLUME_KINDS.has(entry.kind ?? '')) return 1;
+  // A shop or restaurant that has gone up is one straight-walled body of its working storeys.
+  if (entry.stacked && (entry.kind === 'shop' || entry.kind === 'restaurant')) return 1;
   return Math.min(3, Math.max(1, Math.round(entry.level ?? 1)));
 }
 
@@ -400,13 +402,19 @@ export function computeSetbacks(
   // The podium fills the lot to the ceiling every body keeps, less the same
   // frontage span the slab gives up. A block that parks in a garage or a car
   // park on its lot keeps a podium a hand wider than its slab instead: the lot's rear is the parking's.
+  // A built-in form's wall stands on its lot line, so its podium is no wider than its slab.
   const garaged = parksInGarage(entry) || isDenseLotEntry(entry);
-  const podiumW = garaged
-    ? body.w + 2 * PODIUM_OVERHANG_M
-    : entry.footprint.w * TILE_METERS * MAX_FOOTPRINT_FILL;
-  const podiumD = garaged
-    ? body.d + 2 * PODIUM_OVERHANG_M
-    : entry.footprint.d * TILE_METERS * MAX_FOOTPRINT_FILL;
+  const builtIn = entry.stacked !== undefined;
+  const podiumW = builtIn
+    ? body.w
+    : garaged
+      ? body.w + 2 * PODIUM_OVERHANG_M
+      : entry.footprint.w * TILE_METERS * MAX_FOOTPRINT_FILL;
+  const podiumD = builtIn
+    ? body.d
+    : garaged
+      ? body.d + 2 * PODIUM_OVERHANG_M
+      : entry.footprint.d * TILE_METERS * MAX_FOOTPRINT_FILL;
   const podium: SetbackBox = {
     w: podiumW - (frontage?.spanXM ?? 0),
     d: podiumD - (frontage?.spanZM ?? 0),

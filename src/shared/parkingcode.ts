@@ -148,6 +148,7 @@ export function isRoomyLotEntry(entry: BuildingCatalogEntry): boolean {
 
 /** Whether a building parks on its own lot to code: suburban commerce and industry and a dense kind on its larger lot, never a farm. */
 export function drawsLotParking(entry: BuildingCatalogEntry): boolean {
+  if (entry.stacked) return false;
   if (isDenseLotEntry(entry)) return true;
   if (entry.category !== 'com' && entry.category !== 'ind') return false;
   if (entry.zone === ZoneType.Agriculture) return false;
@@ -382,10 +383,11 @@ export const WALK_UP_REAR_YARD_M: Readonly<Record<'multiplex' | 'garden', number
  */
 export const WALK_UP_SIDE_YARD_M = 0.45;
 
-/** What a lot lays its car park for: the code's requirement for commerce and industry, a walk-up's homes, null for the rest. */
+/** What a lot lays its car park for: the code's requirement for commerce and industry, a walk-up's homes, none at all for a built-in form (its cars are inside), null for the rest. */
 export function lotSpacesFor(
   entry: BuildingCatalogEntry,
   frontageM?: number,
 ): ParkingRequirement | null {
+  if (entry.stacked) return { grossSqFt: grossFloorSqFt(entry), spaces: 0, berths: 0 };
   return lotParkingRequirement(entry, frontageM) ?? walkUpParkingRequirement(entry);
 }

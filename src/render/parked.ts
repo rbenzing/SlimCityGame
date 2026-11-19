@@ -127,7 +127,7 @@ export function curbCutTileFor(
   kerb: KerbSurroundings | null = null,
   kerbCreditOf: KerbCreditOf | null = null,
 ): { x: number; z: number } | null {
-  const plan = parkingPlanFor(entry, site, roadAt, kerb, kerbCreditOf);
+  const plan = drivePlanFor(entry, site, roadAt, kerb, kerbCreditOf);
   if (!plan) return null;
   const { edge, frame, layout } = plan;
   // The road tile across the edge from the middle of the driveway: half a tile out from it.
@@ -151,11 +151,27 @@ export function curbCutsFor(
   kerbCreditOf: KerbCreditOf | null = null,
 ): TileDriveCut[] {
   if (site.frame) return [];
-  const plan = parkingPlanFor(entry, site, roadAt, kerb, kerbCreditOf);
+  const plan = drivePlanFor(entry, site, roadAt, kerb, kerbCreditOf);
   if (!plan || plan.layout.aisles.length === 0) return [];
   const lot = footprintForRotation(entry, site.rotation);
   const { u0, u1 } = plan.layout.curbCut;
   return lotDriveCuts({ x: site.x, z: site.z, w: lot.w, d: lot.d }, plan.edge.side, u0, u1);
+}
+
+/**
+ * The plan of the lot whose drive cuts the kerb: a car park's lot, or a built-in
+ * form's, whose one drive to its garage portal draws no stall.
+ */
+function drivePlanFor(
+  entry: BuildingCatalogEntry,
+  site: LotSite,
+  roadAt: (tileX: number, tileZ: number) => boolean,
+  kerb: KerbSurroundings | null,
+  kerbCreditOf: KerbCreditOf | null,
+): LotPlan | null {
+  if (!entry.stacked) return parkingPlanFor(entry, site, roadAt, kerb, kerbCreditOf);
+  const plan = lotPlanAt(entry, site, roadAt, kerb, kerbCreditOf);
+  return plan?.layout.portal ? plan : null;
 }
 
 /** The buildings that lay a car park on their lot: suburban commerce and industry, the two walk-ups, and a dense kind on its larger lot. */

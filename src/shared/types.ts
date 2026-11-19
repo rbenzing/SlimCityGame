@@ -1497,6 +1497,13 @@ export interface BuildingCatalogEntry {
    * level, never drawn for on its own. Absent, the body is sized on `footprint`.
    */
   bodyFootprint?: { w: number; d: number };
+  /**
+   * Set for a building that stands the next level's floor on the lot it has,
+   * in storeys, and parks in itself: this many storeys of work, with the
+   * parking levels above ground (if any) added to `height` on top. Absent for
+   * every spread building.
+   */
+  stacked?: { workingStoreys: number };
   height: number; // meters, for the box mesh
   color: number; // hex, flat color until stage-2 facade atlases
   residents?: number;

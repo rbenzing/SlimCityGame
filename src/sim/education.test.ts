@@ -682,6 +682,7 @@ describe('the education ladder in the catalog', () => {
         e.residents > 0 &&
         e.zone !== undefined &&
         e.zone !== ZoneType.Agriculture &&
+        e.stacked === undefined &&
         e.bodyFootprint === undefined,
     );
     const density =

@@ -244,6 +244,11 @@ export function ceilingMilestone(heightM: number): number {
  * public works. One source for every rule that cuts over there.
  */
 export const BIG_TOWN_MILESTONE = MILESTONES.findIndex((m) => m.name === 'Big Town');
+/**
+ * The milestone from which a building may be rebuilt taller on the lot it has,
+ * with its parking built in. Below it a town grows as it always has.
+ */
+export const BUILT_IN_PARKING_MILESTONE = BIG_TOWN_MILESTONE;
 /** The index of Grand City, 20,000 people: the rung from which a new shop or works may take the compact lot. */
 export const GRAND_CITY_MILESTONE = MILESTONES.findIndex((m) => m.name === 'Grand City');
 /**

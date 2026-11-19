@@ -1220,6 +1220,7 @@ export class GrowthSystem {
         e.kind === entry.kind &&
         e.lot === entry.lot &&
         e.bodyFootprint === undefined &&
+        e.stacked === undefined &&
         (e.lot === undefined ||
           (e.footprint.w === entry.footprint.w && e.footprint.d === entry.footprint.d)),
     );
@@ -1270,6 +1271,15 @@ export class GrowthSystem {
         if (at) {
           chosen = { next, ...at };
           break;
+        }
+      }
+      // Failing those, a kind that stacks is rebuilt taller on the lot it has,
+      // its parking built in, once the town allows such a building.
+      if (chosen === null) {
+        const builtIn = this.builtInFormOf(entry, targetLevel);
+        if (builtIn && builtIn.unlockMilestone <= this.unlockLevel(milestoneLevel)) {
+          const at = this.levelUpSite(g, plats, parks, inst, entry, builtIn, zone, farm);
+          if (at) chosen = { next: builtIn, ...at };
         }
       }
       if (chosen === null) {
@@ -1324,6 +1334,22 @@ export class GrowthSystem {
     removed.push(inst.id);
     added.push(placed);
     return true;
+  }
+
+  /** The form of `level` that stands on the lot `entry` stands on with its parking built in, or undefined for a kind that does not stack. */
+  private builtInFormOf(
+    entry: BuildingCatalogEntry,
+    level: number,
+  ): BuildingCatalogEntry | undefined {
+    return this.catalog.find(
+      (e) =>
+        e.stacked !== undefined &&
+        e.zone === entry.zone &&
+        e.kind === entry.kind &&
+        e.level === level &&
+        e.footprint.w === entry.footprint.w &&
+        e.footprint.d === entry.footprint.d,
+    );
   }
 
   /**

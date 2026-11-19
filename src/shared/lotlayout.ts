@@ -28,6 +28,7 @@ import {
   STALL_WIDTH_M,
   treesFor,
 } from './parkingcode';
+import type { BuiltInPortal } from './builtinportal';
 import { STREET_PLAN_SETBACK_M, type PlanVariant } from './planvariant';
 
 export interface LotRect {
@@ -111,6 +112,8 @@ export interface LotLayoutInput {
   pavingBehind?: number;
   /** 'street' stands the body at the street where the lot fits it there; any other keeps the body where the least slide puts it. */
   planVariant?: PlanVariant;
+  /** The body stands on the lot's low-u side line, leaving the whole ground on its high-u side for a drive along its wall. */
+  sideDrive?: boolean;
 }
 
 /** A drive-through lane is 12 ft (3.66 m) wide. */
@@ -217,6 +220,8 @@ export interface LotLayout {
   berthsRequired: number;
   fits: boolean;
   shortfall: number;
+  /** The garage a built-in form carries: its portal, its ramp and the drive to it (also the layout's only aisle). */
+  portal?: BuiltInPortal;
 }
 
 /** Measurements to the centimetre: a module that misses by a millimetre still fits. */
@@ -961,7 +966,7 @@ function computeLotLayout0(
   const input = reserve > 0 ? { ...base, pavingBehind: reserve } : base;
   const centreU = (along - bodyAlong) / 2;
   const centreV = (depth - reserve - bodyDepth) / 2;
-  const us = slides(bodyAlong, margin, along - margin);
+  const us = base.sideDrive ? [margin] : slides(bodyAlong, margin, along - margin);
   // A service bay's body stands on the front of its lot, behind its apron.
   const vHigh = depth - reserve - rear - margin;
   const vs = base.quickLube
