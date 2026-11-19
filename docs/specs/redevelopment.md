@@ -27,6 +27,8 @@
 | Works and plants | no ceiling: a hall is one tall storey | — | — |
 | `ABANDONED_CLEAR_DEMAND` | 0: the zone's demand bar at half or over | −1 to 1 | dial: the player's "high enough" |
 | `ABANDONED_MIN_PASSES` | 10 growth passes (100 ticks) abandoned before it may be cleared | passes | the old wait, now a floor |
+| Storeys of a building gone up | the next level's floor over this lot's plate, rounded up | storeys | the same floor, stacked |
+| Tallest a rebuild goes | 80 (25 storeys), the catalog's tallest | m | dial |
 | Levels below ground | 2 at most | levels | dial |
 | A built-in space | 30 (325 sq ft) | m² | the garage's own figure |
 | A parking level, floor to floor | 3.35 (11 ft) | m | the garage's own figure |
@@ -63,6 +65,16 @@ A building already standing above a ceiling stays. Saves made before the ceiling
 A level-up already demolishes and rebuilds: the old building goes, a site stands for the build, the new one opens. What it lacked was an order of preference and a way up when the block is full.
 
 Roomy lots are the room to grow into. A shop on a lot twice its size is rebuilt larger on that lot before it asks for a neighbour's ground, so a town thickens where it stands. Where the larger building's car park no longer fits on the ground, and no ground is free beside it, the building goes up and takes its cars with it.
+
+Of the catalog's level-ups, 57 of 84 need a larger lot than the building's compact one. For most of them the roomy lot is that larger lot, so the first rebuild is free; it is the second that meets the neighbours.
+
+### Going up
+
+A kind that stacks goes up: the shop, the restaurant, the office, the hotel, the mid-rise, the mixed block and the tower. The building it becomes holds the next level's floor, jobs and homes on the lot it already has, in as many storeys as that floor needs. A shop that would have spread over four tiles stands two storeys on two.
+
+A kind that cannot stack waits for ground: a filling station, a strip, a supermarket, a works, and the purpose-built kinds are one storey by their trade.
+
+The taller form answers to the ceiling like any building, so in a town too small for it the building stays as it is. No rebuild goes over the tallest building the catalog holds.
 
 ### What falls
 
