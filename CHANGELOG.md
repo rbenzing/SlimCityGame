@@ -1,5 +1,25 @@
 # Changelog
 
+## [1.96.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.95.0...slimcity-v1.96.0) (2026-11-19)
+
+
+### Features
+
+* **render:** a built-in form shows its garage: portal, ramp, and a garage band where cars stand above ground ([734fef8](https://github.com/rbenzing/SlimCityGame/commit/734fef8163bbd8aa2277617493977de4e42726ae))
+* **sim:** a standing building that cannot spread is rebuilt taller on its lot ([3a8d9eb](https://github.com/rbenzing/SlimCityGame/commit/3a8d9eb9b5d53dd880c00f333da257288ca4ee48))
+* **world:** a built-in form gets a real lot: walk, lawn, one drive to its garage portal ([296f9f9](https://github.com/rbenzing/SlimCityGame/commit/296f9f954cb2c869c1b9b0169b691805f63977d8))
+* **world:** built-in forms of the stacking kinds, with their parking built in ([b331933](https://github.com/rbenzing/SlimCityGame/commit/b3319334a790c66c94fbb646bad8cd943db041fd))
+* **world:** skip built-in forms that are more garage than building ([bc96d74](https://github.com/rbenzing/SlimCityGame/commit/bc96d74169669cd6d4f27cc910a31e320e8d007a))
+
+
+### Bug Fixes
+
+* **render:** a built-in form's portal stands at grade, full 6.1 m by 2.5 m, with no ramp drawn outside ([375d163](https://github.com/rbenzing/SlimCityGame/commit/375d163380ca3c8927c5556d068cd3c7cd0ef872))
+* **render:** a built-in shop or restaurant is one straight-walled body, one window row a storey ([ae46c95](https://github.com/rbenzing/SlimCityGame/commit/ae46c95fc3dcab536c69eae40c06607850dfa696))
+* **render:** a built-in shop's sign band stays on the ground floor, clear of the first upper windows ([aed8e31](https://github.com/rbenzing/SlimCityGame/commit/aed8e31fad43d08123a5b8fde282f4d6db391ddf))
+* **render:** a restaurant's dark end wall stands on each tier's own wall, not as one slab clear of a stepped body ([d712f40](https://github.com/rbenzing/SlimCityGame/commit/d712f40e695a3dec710598bff1298961110a5057))
+* **render:** built-in forms keep inside their lot line and their side walls keep their windows ([7f363f5](https://github.com/rbenzing/SlimCityGame/commit/7f363f5eac6922f8938897e19169c78277f3f336))
+
 ## [1.95.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.94.0...slimcity-v1.95.0) (2026-11-19)
 
 
