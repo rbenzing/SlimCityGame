@@ -65,10 +65,17 @@ export function stackedFormOf(
   };
 }
 
-/** The forms the generator left out for height, by id. */
+/** Why a form is left out: over the tallest a rebuild goes, or more garage than building. Null when it stands. */
+function skipReason(form: BuildingCatalogEntry): 'height' | 'garage' | null {
+  if (form.height > MAX_STACKED_HEIGHT_M) return 'height';
+  if (builtInParking(form).aboveStoreys > form.stacked!.workingStoreys) return 'garage';
+  return null;
+}
+
+/** The forms the generator left out, by id, with the reason. */
 export interface StackedForms {
   entries: BuildingCatalogEntry[];
-  skipped: { id: string; heightM: number }[];
+  skipped: { id: string; heightM: number; reason: 'height' | 'garage' }[];
 }
 
 /**
@@ -100,8 +107,8 @@ export function stackedFormsOf(catalog: readonly BuildingCatalogEntry[]): Stacke
       const formed: BuildingCatalogEntry[] = [];
       for (const lot of [...lots.values()].sort((a, b) => area(a) - area(b) || a.w - b.w)) {
         const form = stackedFormOf(next, lot);
-        if (form.height > MAX_STACKED_HEIGHT_M)
-          result.skipped.push({ id: form.id, heightM: form.height });
+        const reason = skipReason(form);
+        if (reason) result.skipped.push({ id: form.id, heightM: form.height, reason });
         else formed.push(form);
       }
       result.entries.push(...formed);

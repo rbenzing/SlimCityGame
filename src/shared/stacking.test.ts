@@ -31,7 +31,27 @@ describe('the built-in forms', () => {
     }
     const { skipped } = stackedFormsOf(spread);
     expect(skipped.length).toBeGreaterThan(0);
-    for (const s of skipped) expect(s.heightM, s.id).toBeGreaterThan(MAX_STACKED_HEIGHT_M);
+    for (const s of skipped) {
+      if (s.reason === 'height') expect(s.heightM, s.id).toBeGreaterThan(MAX_STACKED_HEIGHT_M);
+    }
+    expect(skipped.map((s) => s.id)).toContain('com-restaurant-3-up1x2');
+    expect(skipped.some((s) => s.reason === 'height')).toBe(true);
+  });
+
+  it('are never more garage than building: no more parking storeys above ground than working ones', () => {
+    for (const e of built) {
+      expect(builtInParking(e).aboveStoreys, e.id).toBeLessThanOrEqual(e.stacked!.workingStoreys);
+    }
+  });
+
+  it('hold at least the next level’s floor, and its people, power and water exactly', () => {
+    for (const e of built) {
+      const next = baseOf(e);
+      expect(grossFloorM2(e), e.id).toBeGreaterThanOrEqual(grossFloorM2(next) - 1e-6);
+      for (const key of ['jobs', 'residents', 'units', 'powerUse', 'waterUse'] as const) {
+        expect(e[key], `${e.id} ${key}`).toBe(next[key]);
+      }
+    }
   });
 
   it('have one form for each lot a building of the level below stands on', () => {
@@ -130,12 +150,12 @@ describe('the parking a built-in form carries', () => {
   });
 
   it('puts what two levels below cannot hold on storeys above ground', () => {
-    const restaurant = built.find((e) => e.id === 'com-restaurant-3-up1x2')!;
-    const p = builtInParking(restaurant);
+    const office = built.find((e) => e.id === 'com-office-2-up2x2')!;
+    const p = builtInParking(office);
     expect(p.belowLevels).toBe(BUILT_IN_LEVELS_BELOW);
     expect(p.aboveStoreys).toBeGreaterThan(0);
-    expect(restaurant.height).toBeCloseTo(
-      (restaurant.stacked!.workingStoreys + p.aboveStoreys) * FLOOR_HEIGHT_METERS,
+    expect(office.height).toBeCloseTo(
+      (office.stacked!.workingStoreys + p.aboveStoreys) * FLOOR_HEIGHT_METERS,
       1,
     );
   });
