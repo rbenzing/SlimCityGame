@@ -64,14 +64,23 @@ interface Town {
   pass: (demand: DemandLevels, room: JobsBySector) => void;
 }
 
-/** A town of `zone` with the given buildings standing active at (x, 1), and a growth system over the whole catalog. */
-function town(zone: ZoneType, standing: [string, number][]): Town {
+/** A town of `zone` with the given buildings standing active at (x, 1), and a growth system over the whole catalog; with `beyond`, the blocks from x = 7 on are of that zone. */
+function town(zone: ZoneType, standing: [string, number][], beyond?: ZoneType): Town {
   const g = block(zone, 12, 4);
+  if (beyond !== undefined) {
+    for (let z = 1; z <= 4; z++) for (let x = 7; x <= 12; x++) g.zone[tileIndex(x, z)] = beyond;
+  }
   const registry = new BuildingRegistry(catalog);
   const ids = standing.map(
     ([id, x]) => registry.place(g, byId(id), x, 1, 0, BuildingState.Active)!.id,
   );
-  const growth = new GrowthSystem(catalog, constantRng(0), onZone(zone));
+  const here = onZone(zone);
+  const there = onZone(beyond ?? zone);
+  const growth = new GrowthSystem(
+    catalog,
+    constantRng(0),
+    (gg, x, z, w, d) => here(gg, x, z, w, d) || there(gg, x, z, w, d),
+  );
   let tickNo = 0;
   return {
     g,
@@ -224,6 +233,91 @@ describe('a level-up is held to job room, with one small step a pass past it', (
         ['com-low-1', 9],
       ]);
       for (let i = 0; i < 6; i++) t.pass(wants(0.2), { com: -20, ind: 0 });
+      return JSON.stringify(t.registry.all());
+    };
+    expect(run()).toBe(run());
+  });
+});
+
+describe('a mixed block carries commerce jobs and is held to commerce room', () => {
+  const homesWanted = (com: number): DemandLevels => ({ res: 0.5, com, ind: 0 });
+  const mixedCount = (t: Town): number =>
+    t.registry.all().filter((b) => byId(b.catalogId).kind === 'mixed').length;
+
+  it('builds none in 200 passes with no room and commerce demand below zero', () => {
+    const t = town(ZoneType.Mixed, []);
+    for (let i = 0; i < 200; i++) t.pass(homesWanted(-0.2), { com: -100, ind: 0 });
+    expect(mixedCount(t)).toBe(0);
+  });
+
+  /** Passes over the whole map, the room being what `base` leaves after the mixed blocks standing, as the economy hands it out. */
+  const sweep = (t: Town, demand: DemandLevels, base: number): void => {
+    for (let i = 0; i < 40; i++) {
+      const used = t.registry
+        .all()
+        .reduce(
+          (sum, b) =>
+            sum + (byId(b.catalogId).kind === 'mixed' ? (byId(b.catalogId).jobs ?? 0) : 0),
+          0,
+        );
+      t.pass(demand, { com: base - used, ind: 0 });
+    }
+  };
+
+  it('builds as many as the commerce room holds, and counts the room down as it builds', () => {
+    const one = town(ZoneType.Mixed, []);
+    sweep(one, homesWanted(-0.2), 17);
+    expect(mixedCount(one)).toBe(1);
+    const two = town(ZoneType.Mixed, []);
+    sweep(two, homesWanted(-0.2), 34);
+    expect(mixedCount(two)).toBe(2);
+  });
+
+  it('lets the floor build one where shops are wanted and there is no room', () => {
+    const t = town(ZoneType.Mixed, []);
+    sweep(t, homesWanted(0.2), 0);
+    expect(mixedCount(t)).toBeGreaterThan(0);
+  });
+
+  it('holds a level-1 block to the room for its 17 jobs, and counts it down', () => {
+    const none = town(ZoneType.Mixed, [['mixed-1', 1]]);
+    none.pass(homesWanted(-0.1), { com: -5, ind: 0 });
+    expect(none.registry.get(none.ids[0]!)).toBeDefined();
+    const roomy = town(ZoneType.Mixed, [
+      ['mixed-1', 1],
+      ['mixed-1', 5],
+    ]);
+    roomy.pass(homesWanted(-0.1), { com: 20, ind: 0 });
+    const levelled = roomy.registry.all().filter((b) => b.level === 2);
+    expect(levelled).toHaveLength(1);
+  });
+
+  it('levels by the allowance where shops are wanted, one a pass shared with shops', () => {
+    const lone = town(ZoneType.Mixed, [['mixed-1', 1]]);
+    lone.pass(homesWanted(0.2), { com: -5, ind: 0 });
+    expect(lone.registry.get(lone.ids[0]!)).toBeUndefined();
+    expect(lone.registry.all().some((b) => b.level === 2)).toBe(true);
+
+    const both = town(ZoneType.ComLow, [['com-low-1', 1]], ZoneType.Mixed);
+    const mixedId = both.registry.place(both.g, byId('mixed-1'), 8, 1, 0, BuildingState.Active)!.id;
+    both.pass(homesWanted(0.2), { com: -5, ind: 0 });
+    // The shop adds fewer jobs (+9 against +17), so it goes this pass and the block waits.
+    expect(countAt(both, 'shop', 2)).toBe(1);
+    expect(levelOf(both, mixedId)).toBe(1);
+    both.pass(homesWanted(0.2), { com: -5, ind: 0 });
+    expect(levelOf(both, mixedId)).toBeUndefined();
+  });
+
+  it('leaves a home with no jobs alone whatever the commerce room', () => {
+    const t = town(ZoneType.ResHigh, []);
+    for (let i = 0; i < 40; i++) t.pass(homesWanted(-0.5), { com: -100, ind: -100 });
+    expect(t.registry.all().length).toBeGreaterThan(0);
+  });
+
+  it('gives the same result for the same start', () => {
+    const run = (): string => {
+      const t = town(ZoneType.Mixed, [['mixed-1', 1]]);
+      for (let i = 0; i < 40; i++) t.pass(homesWanted(0.2), { com: -5, ind: 0 });
       return JSON.stringify(t.registry.all());
     };
     expect(run()).toBe(run());

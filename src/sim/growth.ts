@@ -369,6 +369,29 @@ export function withinRoom(
   return candidates.filter((e) => (e.jobs ?? 0) <= limit);
 }
 
+/**
+ * The kinds of a lot's `sector` that may open: a business by `withinRoom`; in
+ * a residential-demand zone the homes untouched, and the kinds that carry jobs
+ * only where they fit the commerce room, or where shops are wanted and it is
+ * the fewest-jobs of them, so growth never stalls at a gap smaller than any.
+ */
+function withinJobRoom(
+  candidates: readonly BuildingCatalogEntry[],
+  sector: Sector,
+  demand: DemandLevels,
+  room: JobsBySector,
+): BuildingCatalogEntry[] {
+  if (sector !== 'res') return withinRoom(candidates, sector, room);
+  const homes = candidates.filter((e) => jobRoomSector(e) === null);
+  if (homes.length === candidates.length) return homes;
+  const jobbed = candidates.filter((e) => jobRoomSector(e) !== null);
+  const open =
+    demand.com > 0
+      ? withinRoom(jobbed, 'com', room)
+      : jobbed.filter((e) => (e.jobs ?? 0) <= room.com);
+  return [...homes, ...open];
+}
+
 /** Something growth would build or level up but for the supply: the pass it last asked in, and what it wanted, in utility units. */
 interface Waiting {
   pass: number;
@@ -1625,7 +1648,7 @@ export class GrowthSystem {
               e.lot === undefined ||
               takesWholeParcels(plat, x, z, e.footprint.w, e.footprint.d, e.lot),
           );
-      const candidates = withinRoom(platted, sector, room);
+      const candidates = withinJobRoom(platted, sector, demand, room);
       if (candidates.length === 0) continue;
       const kind = drawKind(candidates, candidates.length > 1 ? this.rng.next() : 0);
 
@@ -1757,7 +1780,7 @@ export class GrowthSystem {
         return false;
       },
     );
-    const candidates = withinRoom(fitting, sector, room);
+    const candidates = withinJobRoom(fitting, sector, demand, room);
     if (candidates.length === 0) return;
     const kind = drawKind(candidates, candidates.length > 1 ? this.rng.next() : 0);
     const { entry, frame, tiles } = sites.get(kind)!;
@@ -1891,8 +1914,8 @@ export class GrowthSystem {
     spare.power -= power;
     spare.water -= water;
     spare.sewer -= sewer;
-    const sector = entry.zone === undefined ? null : zoneSector(entry.zone);
-    if (sector && sector !== 'res') room[sector] -= entry.jobs ?? 0;
+    const jobSector = jobRoomSector(entry);
+    if (jobSector !== null) room[jobSector] -= entry.jobs ?? 0;
     this.constructing.set(placed.id, CONSTRUCTION_TICKS);
     added.push(placed);
   }
