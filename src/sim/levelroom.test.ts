@@ -161,13 +161,13 @@ describe('a level-up is held to job room, with one small step a pass past it', (
     expect(levelOf(t, t.ids[0]!)).toBe(1);
   });
 
-  it('levels a works (+8) past a negative industry room only while industry is wanted', () => {
+  it('never lets a works (+8) past the industry room, wanted or not', () => {
     const t = town(ZoneType.Industrial, [['ind-1', 1]]);
     t.pass(wants(0, 0.5), { com: 0, ind: -5 });
-    expect(countAt(t, 'workshop', 2)).toBe(1);
-    const idle = town(ZoneType.Industrial, [['ind-1', 1]]);
-    idle.pass(wants(0, 0), { com: 0, ind: -5 });
-    expect(levelOf(idle, idle.ids[0]!)).toBe(1);
+    expect(levelOf(t, t.ids[0]!)).toBe(1);
+    const roomy = town(ZoneType.Industrial, [['ind-1', 1]]);
+    roomy.pass(wants(0, 0.5), { com: 0, ind: 100 });
+    expect(countAt(roomy, 'workshop', 2)).toBe(1);
   });
 
   it('keeps the sectors apart: a commerce step does not spend the industry allowance', () => {

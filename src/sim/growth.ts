@@ -139,6 +139,18 @@ function zoneSector(zone: ZoneType): Sector | null {
   }
 }
 
+/**
+ * The sector whose job room a building's jobs are held to: a shop's or a
+ * works' own, commerce for jobs carried in a residential-demand zone (a mixed
+ * block's shopfronts), none for a home or a farm.
+ */
+function jobRoomSector(entry: BuildingCatalogEntry): 'com' | 'ind' | null {
+  if (farmKindOf(entry) !== null || entry.zone === undefined) return null;
+  const sector = zoneSector(entry.zone);
+  if (sector === 'res') return (entry.jobs ?? 0) > 0 ? 'com' : null;
+  return sector;
+}
+
 /** The soil a farm kind needs under its land: crops the best, pasture anything farmable. */
 const FARM_GRADE: Readonly<Record<FarmKind, SoilGrade>> = {
   crops: SoilGrade.Prime,
@@ -331,11 +343,10 @@ interface Spare {
   sewer: number;
 }
 
-/** A business level-up that passed every test but the job room: who, in which sector, and the jobs it would add. */
+/** A commercial level-up that passed every test but the job room: who, and the jobs it would add. */
 interface HeldForRoom {
   inst: BuildingInstance;
   entry: BuildingCatalogEntry;
-  sector: Sector;
   jobsAdded: number;
 }
 
@@ -1103,35 +1114,31 @@ export class GrowthSystem {
       if (!leveled)
         this.tryConvert(g, registry, milestoneLevel, spare, inst, entry, added, removed);
     }
-    // A gap smaller than any step must not stall growth: in each sector the
-    // held business adding the fewest jobs (the first met on a tie) levels up
-    // past the room, if the sector wants it and the step is small enough.
-    for (const sector of ['com', 'ind'] as const) {
-      if (demand[sector] <= 0) continue;
-      let pick: HeldForRoom | undefined;
-      for (const h of held) {
-        if (h.sector === sector && (!pick || h.jobsAdded < pick.jobsAdded)) pick = h;
-      }
-      if (!pick || pick.jobsAdded > LEVEL_UP_FLOOR_JOBS) continue;
-      const standing = registry.get(pick.inst.id);
-      if (!standing || standing.state !== BuildingState.Active) continue;
-      this.tryLevelUp(
-        g,
-        registry,
-        demand,
-        milestoneLevel,
-        pass,
-        spare,
-        room,
-        'allowed',
-        plats,
-        parks,
-        standing,
-        pick.entry,
-        added,
-        removed,
-      );
-    }
+    // A gap smaller than any step must not stall growth: the held business
+    // adding the fewest jobs (the first met on a tie) levels up past the
+    // commerce room, if shops are wanted and the step is small enough.
+    if (demand.com <= 0) return;
+    let pick: HeldForRoom | undefined;
+    for (const h of held) if (!pick || h.jobsAdded < pick.jobsAdded) pick = h;
+    if (!pick || pick.jobsAdded > LEVEL_UP_FLOOR_JOBS) return;
+    const standing = registry.get(pick.inst.id);
+    if (!standing || standing.state !== BuildingState.Active) return;
+    this.tryLevelUp(
+      g,
+      registry,
+      demand,
+      milestoneLevel,
+      pass,
+      spare,
+      room,
+      'allowed',
+      plats,
+      parks,
+      standing,
+      pick.entry,
+      added,
+      removed,
+    );
   }
 
   /**
@@ -1279,9 +1286,13 @@ export class GrowthSystem {
     ) {
       return false;
     }
-    // A business grows only where the town has room for the jobs it adds.
+    // A business grows only where the town has room for the jobs it adds. A
+    // works never grows past the room; a shop short only of room is noted, and
+    // one such level-up a pass goes ahead (see runLevelUps).
     const jobsAdded = (nextKind.jobs ?? 0) - (entry.jobs ?? 0);
-    const noRoom = sector !== 'res' && farm === null && jobsAdded > room[sector];
+    const jobSector = jobRoomSector(entry);
+    const noRoom = jobSector !== null && jobsAdded > room[jobSector];
+    if (noRoom && jobSector === 'ind') return false;
 
     const { x, z, rotation } = inst;
     const oldFootprint = footprintForRotation(entry, rotation);
@@ -1355,7 +1366,7 @@ export class GrowthSystem {
     if (noRoom && held !== 'allowed') {
       // Everything but the room allows it: note it, and leave it standing.
       if (inst.frame === undefined) writeStamp(g, x, z, oldFootprint.w, oldFootprint.d, inst.id);
-      held.push({ inst, entry, sector, jobsAdded });
+      held.push({ inst, entry, jobsAdded });
       return false;
     }
 
@@ -1378,7 +1389,7 @@ export class GrowthSystem {
     spare.power -= power;
     spare.water -= water;
     spare.sewer -= sewer;
-    if (sector !== 'res') room[sector] -= jobsAdded;
+    if (jobSector !== null) room[jobSector] -= jobsAdded;
 
     this.constructing.set(placed.id, CONSTRUCTION_TICKS);
     this.blockerStreak.delete(inst.id);
