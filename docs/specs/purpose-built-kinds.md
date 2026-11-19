@@ -30,17 +30,17 @@
 
 **Tests:** `src/shared/commercialkinds.test.ts`, `src/shared/storekinds.test.ts` each kind's catalog figures against the sources, lanes clear of aisles; `src/render/lowkindskit.test.ts`, `src/render/morekindskit.test.ts` kits clear of stalls, aisles and lot lines; `src/shared/autorepairparking.test.ts`, `src/shared/repairlot.test.ts` the repair shop's bays; `src/shared/planvariant.test.ts` both plans fit alike over the whole catalog; `src/render/planvariantplan.test.ts` the simulation's layout equals the renderer's.
 
-**Open:** the car wash and the contractor's yard are not added: a car wash's cars a day and a yard's draw weight were not found. A lube's or a bank's compact lot has no room for its lane, so no car circulates there. A repair shop's accessible spaces are counted from the middle of its street face, not its office door, and its bay glass glows only faintly at night. A storage yard's roomy lot is mostly lawn, where a real one fills its site with rows, and its gate has no keypad post. A pharmacy's lane carries no marking. A bank's and a medical office's site sizes were not found. A strip is one straight range: an L needs a body of more than one rectangle. A strip, a supermarket and a medical office have one plan until their kits can stand at the street.
+**Open:** the car wash is to be built. The contractor's yard is not added: its draw weight was not found. A car wash's water is the player's cap, since its cars a day were not found. A lube's or a bank's compact lot has no room for its lane, so no car circulates there. A repair shop's accessible spaces are counted from the middle of its street face, not its office door, and its bay glass glows only faintly at night. A storage yard's roomy lot is mostly lawn, where a real one fills its site with rows, and its gate has no keypad post. A pharmacy's lane carries no marking. A bank's and a medical office's site sizes were not found. A strip is one straight range: an L needs a body of more than one rectangle. A strip, a supermarket and a medical office have one plan until their kits can stand at the street.
 
 ## Why the rules are what they are
 
-### Ten kinds, eight built
+### Ten kinds, nine built
 
 Ten kinds are named in the sources with their real size, site and marks: the auto repair shop, the quick lube, the car wash, the convenience store, the pharmacy, the bank branch, the medical office, self-storage, the contractor's yard and the machine shop. Self-storage and the machine shop are industry; the rest are low commercial.
 
 Each enters the catalog as existing kinds did: jobs from floor area per worker, utilities and noise from the same surveys, a draw weight from establishment or building counts. All have three levels.
 
-The car wash and the contractor's yard are [not added](../sources/commercial-industrial-grounds.md#the-two-kinds-not-added): one figure each could not be derived.
+The contractor's yard is [not added](../sources/commercial-industrial-grounds.md#the-kind-not-added): its draw weight could not be derived. The car wash's cars a day could not be either, so [its water is capped](../sources/commercial-industrial-grounds.md#the-car-wash-in-the-catalog) by the player's rule: no car wash draws more water than three households, and it is drawn rarely, from Busy Township on.
 
 ### What each is
 
@@ -52,6 +52,8 @@ The car wash and the contractor's yard are [not added](../sources/commercial-ind
 - **The bank branch** is a small masonry building with a row of windows and a glazed entrance under a sign band, and beside it one canopy over two drive-up lanes with an island between them.
 - **The medical office** is a low building under a hipped roof with a regular row of windows, an entrance canopy over the walk to its door, and a sign with a cross. It is a workplace: it gives no health cover.
 - **The quick lube** is a body one tile deep on the front of its lot, a bay door on both long faces so a car drives through, a waiting room's door between two bays, a lane along one side wall, and a paved court behind where cars wait.
+
+- **The car wash** is a long low body its cars drive through, an open portal at each end of a tunnel under a bright sign band, reached like the lube by a lane along one side wall and a court behind, with a pay kiosk at the lane and vacuum stalls under a canopy for its parking.
 
 A wall with no shopfront is drawn in its own colour, not the dark frame a glazed front sits in.
 

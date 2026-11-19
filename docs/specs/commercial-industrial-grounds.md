@@ -9,8 +9,8 @@
 - Furnish every commercial and industrial lot from one plan, as a home's lot is: lights, a sign, planting, a walk to the door, a bench and a bin, a refuse enclosure, and a fence round a works' yard. `[R-render-048]`
 - Lay a piece only where the lot has room, in a fixed order of need; omit what does not fit, and never move the building or a stall for one. `[R-render-048]`
 - Keep every piece off stalls, aisles, drives, walks, berths and doors, and off the street's footway. A pole stands in an island or a planted strip. `[R-render-048]`
-- Below Small City, grow a commercial or industrial kind on the first lot of its ladder that holds its building, its code car park and its grounds. `[R-world-055]`
-- From Small City on, a dense kind, and any kind on land of the best standing, takes its compact lot; a building already standing keeps its lot. `[R-world-055]`
+- Below Grand City, grow a commercial or industrial kind on the first lot of its ladder that holds its building, its code car park and its grounds. `[R-world-055]`
+- From Grand City on, a dense kind, and any kind on land of the best standing, takes its compact lot; a building already standing keeps its lot. `[R-world-055]`
 - A lot too small for the roomy form still grows the compact one: grounds are never a prerequisite for growth. `[R-world-055]`
 
 **Numbers:** each is derived in [the sources](../sources/commercial-industrial-grounds.md).
@@ -41,7 +41,7 @@
 | Lot furniture ceiling | 600 a lot, its trees not counted | triangles | `geometrybudget.test.ts` |
 | Entrance bed | 1.2 deep along the front wall, clear of doors | m | dial |
 | Roomy lot, building over lot | 0.28 retail, 0.32 industry, 0.64 office, at most | ratio | Metropolitan Council medians |
-| Compaction starts | Small City (8,000 residents), land value 224 and over | — | dial: the dense kinds' own unlock |
+| Compaction starts | Grand City (20,000 residents), land value 224 and over | — | the player's word: a city is a Grand City or larger |
 
 **Code:** the furniture is built: `src/shared/lotgrounds.ts` `planLotGrounds` the plan (pure, beside `lotlayout.ts`); `src/render/lotplan.ts` `groundsFactsFor` which sides face homes; `src/render/lotgrounds.ts` `LotGroundsRenderer` the pools. The roomy lots are built: `src/shared/roomylots.ts` `ROOMY_LOT_TILES` each kind's roomy lot; `src/data/catalog.json` the lot variants, appended; `src/shared/lotlayout.ts` the strip inside the lot lines; `src/sim/growth.ts` `growsRoomy`, `footprintsOf` the lot choice.
 **Tests:** `src/shared/lotgrounds.test.ts`, `src/render/lotgroundsplan.test.ts` every catalog lot's keep-outs, the order of omission, short poles beside homes; `src/render/lotgrounds.test.ts` the pools; `src/render/geometrybudget.test.ts` the ceiling. `src/shared/roomylots.test.ts`, `src/shared/roomylayout.test.ts` every roomy lot laid to code with its strip; `src/sim/roomygrowth.test.ts` the lot chosen either side of Small City and the fall back to the compact lot; `src/sim/catalogsave.test.ts` an old save loads unchanged on the longer catalog.
@@ -76,7 +76,7 @@ At the game's body fill a one-storey shop covers 46% of its lot. The median US r
 
 The catalog already holds, for the kinds whose car park did not fit, larger lots for the same building. This spec makes that the rule for every commercial and industrial kind: a ladder of lots, the first rung of which holds the building, the code car park and the grounds at or under the median ratio.
 
-Growth takes that roomy rung while the town is below Small City, wherever the zoned block has the room. From Small City the dense kinds unlock, and land of the best standing is worth building tight: there a new building takes the compact lot and parks by its kerb credit or a garage. Nothing already standing is moved or shrunk.
+Growth takes that roomy rung while the town is below Grand City, wherever the zoned block has the room. From Grand City the town is a city, and land of the best standing is worth building tight: there a new building takes the compact lot and parks by its kerb credit or a garage. Nothing already standing is moved or shrunk.
 
 A block too shallow or too short for the roomy rung grows the next rung down, and at last the compact lot, as it does now. A first town never waits on grounds.
 
@@ -94,6 +94,6 @@ The kinds added with the grounds, and how a lot's plan varies, are [purpose-buil
 
 - One shared plan over a kit part per kind: the pieces are the same on every lot, and a plan can be tested against the layout's keep-outs.
 - Omit over shrink: a half-size sign or a 0.6 m walk reads as a fault.
-- Small City over a land-value test alone: the player's words were "unless the size is city", and the dense kinds unlock there already.
+- Grand City over Small City: the player's words were "unless the size is city", and a city is a Grand City or larger. At 8,000 residents a town is still built roomy.
 - Standing buildings keep their lots over a re-plat at the milestone: a town must not rearrange itself the day it grows.
 - Roomy lots mean fewer jobs a tile, so a town needs more commercial and industrial land for the same work. The figure is measured before the lot rule is built and reported to the player.

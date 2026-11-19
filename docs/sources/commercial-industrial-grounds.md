@@ -211,7 +211,22 @@ All three are low commercial, one storey, from Small Town on. Jobs are the build
 - **Roomy lots.** Measured as every other kind's, with the lanes or the full court: the bank 2×3, 3×3 and 4×3; the medical office 4×2, 5×2 and 6×3; the quick lube 2×3, 3×3 and 4×3. A compact lot has no room for a lube's lane or, mostly, a bank's: the lube's smallest holds none of its 5 spaces and parks by its kerb credit.
 - **What they cost.** Weighting level-1 kinds by their draw on compact lots, low commercial holds 6.4 jobs a zoned tile with these three, from 7.0 without: a bank and a surgery employ fewer to the tile than a shop.
 
-## The two kinds not added
+## The car wash in the catalog
 
-- **Car wash.** No first-hand figure for cars a day was found, and its water is that times the water a car: 75 gallons of fresh water on a conveyor and 55 in a bay ([EPA WaterSense at Work](https://19january2017snapshot.epa.gov/www3/watersense/commercial/docs/watersense_at_work/files/assets/basic-html/page185.html), from the trade's own study), 66 to 85 and 50 to 60 in [Maryland's table](https://mde.maryland.gov/programs/Water/waterconservation/Pages/carwashing.aspx). A conveyor holds 10 cars in line ([Stacy MN §153.120](https://www.zoneomics.com/code/stacy-MN/chapter_6)); a full-service bay 6 and a self-service bay 3 (Durham NC, above).
+Low commercial, one storey, from Busy Township (1,200 residents). Its water is set by the player, not derived: no car wash draws more than three households do.
+
+| Level | Lot | Floor | Jobs | Power (MW) | Water (kL a day) |
+| ----- | --- | ----- | ---- | ---------- | ---------------- |
+| 1, two self-service bays | 1×2 | 185 m² (1,990 sq ft) | 4 | 0.0016 | 1.0 |
+| 2, one conveyor tunnel | 1×3 | 370 m² (3,980 sq ft) | 9 | 0.0033 | 2.0 |
+| 3, two tunnels | 2×3 | 740 m² (7,960 sq ft) | 17 | 0.0065 | 3.0 |
+
+- **Water.** A household here is a detached house of three people at 90 gallons each, 1.0 kL a day ([building types](building-types.md#the-residential-kinds)); the three levels draw one, two and three of them. No first-hand figure for cars a day was found, so the cap stands in for it. It is the water of a wash that reclaims: a conveyor uses 75 gallons of fresh water a car and a bay 55 without reclaim ([EPA WaterSense at Work](https://19january2017snapshot.epa.gov/www3/watersense/commercial/docs/watersense_at_work/files/assets/basic-html/page185.html)), 66 to 85 and 50 to 60 in [Maryland's table](https://mde.maryland.gov/programs/Water/waterconservation/Pages/carwashing.aspx), which also notes that 10 to 80 percent of the water can be recycled. At level 3 the cap is 793 gallons a day: about 50 cars at a fifth of a conveyor's fresh water.
+- **Size.** A tunnel is 100 to 125 ft long on 0.8 to 1.2 acre (the table above); a 27 m body on a lot three tiles deep is 89 ft on 0.3 acre, the short end. The body takes the front of its lot, as the lube's does.
+- **Jobs, power, noise.** The census's 8.72 an establishment at level 2, scaled with the floor. Power is the Service figure, 7.2 kWh a square foot. Noise 8, as the lube's: a dial.
+- **Cars in line.** 3 at a self-service bay and 6 at a full-service one ([Durham NC UDO §10.5.1.A](https://udo.durhamnc.gov/udo/10_05_Vehicle%20Stacking.htm)); the side lane and the court together hold them. It parks 2 per 3 employees ([St Charles MO §400.670](https://www.zoneomics.com/code/saint-charles-MO/chapter_5)): 3, 6 and 12, drawn as its vacuum stalls.
+- **Weight.** 20, its establishments in thousands: about one low commercial lot in seventy.
+
+## The kind not added
+
 - **Contractor's yard.** The census counts firms, not yards, and no source gave the share of firms that keep one, so it has no draw weight.

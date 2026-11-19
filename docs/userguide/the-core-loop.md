@@ -4,7 +4,7 @@
    the buildable grid appears alongside them.
 2. **Paint zones, don't build houses.** Mark land residential, commercial, or
    industrial. Demand (the RCI bars) decides whether and how fast it fills in.
-   Until the town is a Small City, shops and works take roomy lots with a
+   Until the town is a Grand City, shops and works take roomy lots with a
    car park, planting and a yard, so give them more land than their
    buildings alone would need; a block with no room still grows tight.
 3. **Power and water flow through roads.** Connect a generator and a water source
