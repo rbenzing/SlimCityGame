@@ -4,8 +4,6 @@ import { builtInParking } from './garage';
 import {
   PORTAL_CLEAR_M,
   PORTAL_WIDTH_M,
-  RAMP_GRADE,
-  RAMP_SILL_MAX_M,
   builtInPortalFor,
   type BuiltInPortal,
 } from './builtinportal';
@@ -116,38 +114,17 @@ describe('the portal of a built-in form', () => {
     });
   });
 
-  it('falls to the portal as a 1 in 8 ramp no more than 1.2 m deep where parking is below ground', () => {
+  it('stands at grade on every form, whether its parking is below ground or above: the drive is flat and no ramp is laid outside', () => {
     eachLot((entry, _layout, portal) => {
-      const below = builtInParking(entry).belowLevels > 0;
-      if (!below) {
-        expect(portal.ramp, entry.id).toBeNull();
-        expect(portal.sillDepth, entry.id).toBe(0);
-        return;
-      }
-      const ramp = portal.ramp!;
-      expect(ramp, entry.id).toBeTruthy();
-      const length = ramp.u1 - ramp.u0;
-      expect(portal.sillDepth, entry.id).toBeCloseTo(
-        Math.min(RAMP_SILL_MAX_M, length * RAMP_GRADE),
-        6,
-      );
-      expect(portal.sillDepth, entry.id).toBeGreaterThan(0);
-      expect(portal.sillDepth, entry.id).toBeLessThanOrEqual(RAMP_SILL_MAX_M);
-      expect(ramp.v0).toBeCloseTo(portal.rect.v0, 6);
-      expect(ramp.v1).toBeCloseTo(portal.rect.v1, 6);
+      expect(Object.keys(portal).sort(), entry.id).toEqual(['centre', 'drive', 'face', 'rect']);
     });
-  });
-
-  it('is at grade, with no ramp, where every parking storey stands above ground', () => {
-    const layout = lotLayoutFor(forms[0]!, 0, true)!;
-    const portal = builtInPortalFor(layout, false)!;
-    expect(portal.ramp).toBeNull();
-    expect(portal.sillDepth).toBe(0);
+    expect(forms.some((e) => builtInParking(e).belowLevels > 0)).toBe(true);
+    expect(forms.some((e) => builtInParking(e).aboveStoreys > 0)).toBe(true);
   });
 
   it('is refused where the ground beside the body is too narrow for a drive', () => {
     const layout = lotLayoutFor(forms[0]!, 0, true)!;
     const narrow = { ...layout, lot: { ...layout.lot, u1: layout.body.u1 + 6 } };
-    expect(builtInPortalFor(narrow, true)).toBeNull();
+    expect(builtInPortalFor(narrow)).toBeNull();
   });
 });

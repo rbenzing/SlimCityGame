@@ -161,7 +161,7 @@ export function lotLayoutFor(
           ? 1
           : 0;
   if (bays > 0) layout.bayDoors = { u0: layout.body.u0, u1: layout.body.u1 };
-  return entry.stacked ? withBuiltInDrive(entry, layout) : layout;
+  return entry.stacked ? withBuiltInDrive(layout) : layout;
 }
 
 /** A building's car park where it stands: the edge it opens onto, its kerb credit and its layout. */

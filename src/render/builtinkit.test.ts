@@ -1,11 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import catalogData from '../data/catalog.json';
-import {
-  PORTAL_CLEAR_M,
-  PORTAL_WIDTH_M,
-  RAMP_GRADE,
-  RAMP_SILL_MAX_M,
-} from '../shared/builtinportal';
+import { PORTAL_CLEAR_M, PORTAL_WIDTH_M } from '../shared/builtinportal';
 import { FLOOR_HEIGHT_METERS, storeysOf } from '../shared/floorarea';
 import { builtInParking } from '../shared/garage';
 import { lotLayoutFor } from '../shared/lotparking';
@@ -38,13 +33,13 @@ function eachForm(
 }
 
 describe('the portal of a built-in form, as drawn', () => {
-  it('is one dark opening 6.1 m wide, 2.5 m clear of its sill, under a header', () => {
-    eachForm((entry, layout, parts) => {
+  it('is one dark opening 6.1 m wide, 2.5 m clear above grade, under a header', () => {
+    eachForm((entry, _layout, parts) => {
       const [opening, ...extra] = of(parts, 'portal');
       expect(extra, entry.id).toHaveLength(0);
       expect(opening!.v1 - opening!.v0, entry.id).toBeCloseTo(PORTAL_WIDTH_M, 6);
-      const sill = layout.portal!.sillDepth;
-      expect(opening!.y1 - opening!.y0 + sill, entry.id).toBeCloseTo(PORTAL_CLEAR_M, 6);
+      expect(opening!.y0, entry.id).toBe(0);
+      expect(opening!.y1, entry.id).toBeCloseTo(PORTAL_CLEAR_M, 6);
       const [header] = of(parts, 'header');
       expect(header!.y0, entry.id).toBeCloseTo(opening!.y1, 6);
       expect(header!.v1 - header!.v0, entry.id).toBeGreaterThan(PORTAL_WIDTH_M);
@@ -59,18 +54,18 @@ describe('the portal of a built-in form, as drawn', () => {
     });
   });
 
-  it('has a ramp between low walls where parking is below ground, and none at grade', () => {
+  it('leaves the drive in front of the opening bare: no part stands on it', () => {
     eachForm((entry, layout, parts) => {
-      const below = builtInParking(entry).belowLevels > 0;
-      expect(of(parts, 'rampDeck'), entry.id).toHaveLength(below ? 1 : 0);
-      expect(of(parts, 'rampWall'), entry.id).toHaveLength(below ? 2 : 0);
-      if (below) {
-        const ramp = layout.portal!.ramp!;
-        const sill = layout.portal!.sillDepth;
-        expect(sill, entry.id).toBeCloseTo(
-          Math.min(RAMP_SILL_MAX_M, (ramp.u1 - ramp.u0) * RAMP_GRADE),
-          6,
-        );
+      const { drive } = layout.portal!;
+      // Only the frame and band, proud of the wall by a hand's breadth, reach out over the drive.
+      const free = { u0: drive.u0 + 0.2, u1: drive.u1, v0: drive.v0, v1: drive.v1 };
+      for (const p of parts) {
+        const blocks =
+          p.u0 < free.u1 - 1e-6 &&
+          p.u1 > free.u0 + 1e-6 &&
+          p.v0 < free.v1 - 1e-6 &&
+          p.v1 > free.v0 + 1e-6;
+        expect(blocks, `${entry.id} ${p.role}`).toBe(false);
       }
     });
   });

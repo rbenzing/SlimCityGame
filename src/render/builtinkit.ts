@@ -1,7 +1,6 @@
 /**
  * The garage a built-in form carries, drawn from its lot layout: a portal in a
- * side wall under a header and a blue P, the ramp that falls to it between low
- * walls where its parking is below ground, and, where parking storeys stand
+ * side wall under a header and a blue P, and, where parking storeys stand
  * above ground, a garage band of slabs, spandrels and dark openings round the
  * storeys just above the ground floor. The parts are boxes in the lot's
  * frontage frame, metres, y up from the ground the body stands on; one
@@ -18,7 +17,7 @@ import {
 import { PORTAL_CLEAR_M } from '../shared/builtinportal';
 import type { LotLayout } from '../shared/lotlayout';
 import { STALL_WIDTH_M } from '../shared/parkingcode';
-import { COLUMN_RGB, LETTER_RGB, RAMP_RGB, SIGN_RGB, SLAB_RGB, SPANDREL_RGB } from './garagekit';
+import { COLUMN_RGB, LETTER_RGB, SIGN_RGB, SLAB_RGB, SPANDREL_RGB } from './garagekit';
 import { materialUnit } from './palette';
 import { mergeGeometryParts, paintVertexColor } from './trees';
 
@@ -33,11 +32,6 @@ const PORTAL_PROUD_M = 0.12;
 const JAMB_M = 0.3;
 const HEADER_M = 0.45;
 const COLUMN_M = 0.5;
-/** The low walls either side of a ramp stand this high and this thick. */
-export const RAMP_WALL_HEIGHT_M = 0.35;
-export const RAMP_WALL_M = 0.25;
-/** The ramp's deck rides this far over the drive, so it reads as its own surface. */
-const RAMP_LIFT_M = 0.05;
 /** The blue P over the header is a plate this wide and tall. */
 const SIGN_W_M = 1;
 const SIGN_H_M = 0.7;
@@ -48,8 +42,6 @@ export type BuiltInPartRole =
   | 'header'
   | 'sign'
   | 'letter'
-  | 'rampDeck'
-  | 'rampWall'
   | 'bandSpandrel'
   | 'bandOpening'
   | 'bandSlab'
@@ -140,8 +132,8 @@ export function builtInParts(layout: LotLayout, aboveStoreys: number): BuiltInPa
   const wall = portal.rect.u0;
   const out = (m: number): [number, number] => [wall, wall + side * m];
   const [v0, v1] = [portal.rect.v0, portal.rect.v1];
-  // The opening is 2.5 m clear from the sill, which sits below grade where the ramp falls to it.
-  const top = PORTAL_CLEAR_M - portal.sillDepth;
+  // The opening stands at grade, 2.5 m clear; any ramp down is inside the body.
+  const top = PORTAL_CLEAR_M;
   add('portal', out(PORTAL_PROUD_M), [v0, v1], [0, top], OPENING_RGB);
   add('jamb', out(PORTAL_PROUD_M + 0.04), [v0 - JAMB_M, v0], [0, top + HEADER_M], SPANDREL_RGB);
   add('jamb', out(PORTAL_PROUD_M + 0.04), [v1, v1 + JAMB_M], [0, top + HEADER_M], SPANDREL_RGB);
@@ -170,25 +162,6 @@ export function builtInParts(layout: LotLayout, aboveStoreys: number): BuiltInPa
   add('letter', out(lu), [mid - 0.2, mid + 0.18], [ly + 0.28, ly + 0.4], LETTER_RGB);
   add('letter', out(lu), [mid + 0.06, mid + 0.18], [ly + 0.28, ly + 0.58], LETTER_RGB);
 
-  const { ramp } = portal;
-  if (ramp) {
-    // The ramp's deck, between low walls; the portal's sill is the ramp's foot below grade.
-    add('rampDeck', [ramp.u0, ramp.u1], [ramp.v0, ramp.v1], [0, RAMP_LIFT_M], RAMP_RGB);
-    add(
-      'rampWall',
-      [ramp.u0, ramp.u1],
-      [ramp.v0, ramp.v0 + RAMP_WALL_M],
-      [0, RAMP_WALL_HEIGHT_M],
-      SLAB_RGB,
-    );
-    add(
-      'rampWall',
-      [ramp.u0, ramp.u1],
-      [ramp.v1 - RAMP_WALL_M, ramp.v1],
-      [0, RAMP_WALL_HEIGHT_M],
-      SLAB_RGB,
-    );
-  }
   return parts;
 }
 
@@ -207,7 +180,7 @@ export function builtInVariantKey(
     r(body.u1),
     r(body.v0),
     r(body.v1),
-    portal ? `${portal.face}${r(portal.rect.v0)}${r(portal.sillDepth)}` : '-',
+    portal ? `${portal.face}${r(portal.rect.v0)}` : '-',
     aboveStoreys,
     mirror ? 'm' : 'n',
   ].join(':');
