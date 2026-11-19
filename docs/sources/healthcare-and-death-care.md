@@ -133,6 +133,8 @@ What tells its faces apart, and what was found for each:
 
 Not found: how many ambulance bays, a bay's size, the stair tower's form, a nursing floor's own height.
 
+The oxygen store, the dock and the generator are not drawn: the block stands 1 m inside its plot's rear and west lines, and the store alone needs 7.6 m. Their figures stay here for the plot that has room.
+
 It is the one civic building whose floor is stated rather than read off the massing formula: 15 tiles at 27 m would claim 23,400 m², and the deck is ground, not floor. The catalog contract test re-derives the hospital's draw from the stated floor.
 
 ### Hospital parking, to code
