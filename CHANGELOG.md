@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.97.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.96.1...slimcity-v1.97.0) (2026-11-19)
+
+
+### Features
+
+* **render:** a building site is furnished with a cabin, skip, toilet and spoil heap ([d77cf0f](https://github.com/rbenzing/SlimCityGame/commit/d77cf0f0d193ce5c4fae8aeac14c10c86cff900c))
+* **render:** rooms wrap the end walls of the hospital's nursing floors at the 4 m pitch ([23e2f13](https://github.com/rbenzing/SlimCityGame/commit/23e2f13494debacf2ee27dc15aed1d19818dc167))
+* **render:** site guardrails, wall openings and a hoist ([257c757](https://github.com/rbenzing/SlimCityGame/commit/257c757195f70b4aaa7aad2a155b031de4a56613))
+* **render:** the hospital's four faces differ: treatment base, patient-room windows, stair towers, a service face ([e50de37](https://github.com/rbenzing/SlimCityGame/commit/e50de37842b76d289333b0b893d4abca6beaac98))
+
+
+### Bug Fixes
+
+* **render:** no door on the hospital's rear or end walls, no window behind the red-cross panel ([a6a2fc6](https://github.com/rbenzing/SlimCityGame/commit/a6a2fc6c6f10c449f66a23ff31c5f0449fb9a87f))
+
 ## [1.96.1](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.96.0...slimcity-v1.96.1) (2026-11-19)
 
 
