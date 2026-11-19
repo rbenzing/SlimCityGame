@@ -82,6 +82,17 @@ export interface LotLayoutInput {
   trailerCourt?: boolean;
   /** Keep a walk between the body's street face and the stall heads, the stalls giving way for it. */
   shopfrontWalk?: boolean;
+  /**
+   * Keep this much ground free inside every lot line, for a planted strip: the
+   * car park is laid on the lot less the strip, and the drive and the walk to
+   * the door run on out to the street across it. A lot that cannot hold its
+   * spaces with the strip is laid without it.
+   */
+  perimeterStrip?: number;
+  /** Refuse a berth that stands on a module aisle: laid for a larger lot of the same building, whose frontage may be short. */
+  clearBerths?: boolean;
+  /** Set where a roomy lot reserves its hardstanding: ground behind the body this deep that no stall or berth takes. */
+  pavingBehind?: number;
 }
 
 /** A drive-through lane is 12 ft (3.66 m) wide. */
@@ -409,7 +420,19 @@ function build(input: LotLayoutInput, c: Candidate): Built {
   // lot behind that row, and its throat comes in from the curb cut to meet it.
   const throat = o === 'v' && c.outerRow ? { u0: curbCut.u0, u1: curbCut.u1, v0: 0, v1: L } : null;
   if (throat) fixed.push(throat);
-  const obstacles = [...fixed, ...shopfrontRoute, ...berths].map((r) => toPQ(o, r));
+  // The ground a hardstanding will pave behind the body and run out sideways to the drive:
+  // no stall or berth stands on it, across the whole lot.
+  const paving: LotRect[] = input.pavingBehind
+    ? [
+        {
+          u0: 0,
+          u1: input.along,
+          v0: c.body.v1,
+          v1: Math.min(input.depth, c.body.v1 + input.pavingBehind),
+        },
+      ]
+    : [];
+  const obstacles = [...fixed, ...shopfrontRoute, ...berths, ...paving].map((r) => toPQ(o, r));
   const fixedPQ = fixed.map((r) => toPQ(o, r));
 
   // The drive runs across the rows from the street, until the body stops it.
@@ -481,6 +504,7 @@ function build(input: LotLayoutInput, c: Candidate): Built {
     if (b.v0 < -EPS || b.u0 < -EPS) return false;
     if (fixed.some((f) => rectsOverlap(f, b))) return false;
     const pq = toPQ(o, b);
+    if (input.clearBerths && moduleAisles.some((a) => overlaps(a, pq))) return false;
     return reach.some((a) => touchesAlong(a, pq));
   });
 
@@ -730,14 +754,81 @@ export function layoutLot(input: LotLayoutInput): LotLayout {
 
 /** The layout itself, uncached; `layoutLot` is what callers use. */
 export function computeLotLayout(input: LotLayoutInput): LotLayout {
-  const { along, depth, bodyAlong, bodyDepth } = input;
-  const rear = input.rearYard ?? 0;
-  const margin = input.bodyMargin ?? 0;
-  const front = input.forecourtDepth ?? Math.max(margin, input.frontSetback ?? 0);
+  const { perimeterStrip: strip = 0, ...plain } = input;
+  if (strip > 0 && plain.along > 2 * strip && plain.depth > 2 * strip) {
+    const inner = computeLotLayout0(
+      { ...plain, along: plain.along - 2 * strip, depth: plain.depth - 2 * strip },
+      true,
+    );
+    if (inner.fits) return insetLayout(inner, strip, plain.along, plain.depth);
+  }
+  return computeLotLayout0(plain, false);
+}
+
+/** An inner layout moved in by `strip` on every side of a lot `along` by `depth`, its street-side ground run out to the street. */
+function insetLayout(inner: LotLayout, strip: number, along: number, depth: number): LotLayout {
+  const mv = (r: LotRect): LotRect => ({
+    u0: r.u0 + strip,
+    u1: r.u1 + strip,
+    v0: r.v0 + strip,
+    v1: r.v1 + strip,
+  });
+  const pt = (p: LotPoint): LotPoint => ({ u: p.u + strip, v: p.v + strip });
+  const toStreet = (r: LotRect): LotRect => {
+    const moved = mv(r);
+    return Math.abs(moved.v0 - strip) < EPS ? { ...moved, v0: 0 } : moved;
+  };
+  const maybe = (r: LotRect | null, f: (r: LotRect) => LotRect): LotRect | null =>
+    r ? f(r) : null;
+  return {
+    ...inner,
+    lot: { u0: 0, u1: along, v0: 0, v1: depth },
+    body: mv(inner.body),
+    forecourt: maybe(inner.forecourt, toStreet),
+    rearYard: maybe(inner.rearYard, mv),
+    entrance: pt(inner.entrance),
+    frontWalk: maybe(inner.frontWalk, toStreet),
+    entranceWalk: maybe(inner.entranceWalk, toStreet),
+    stalls: inner.stalls.map((s) => ({ ...s, rect: mv(s.rect) })),
+    accessAisles: inner.accessAisles.map(mv),
+    aisles: inner.aisles.map(toStreet),
+    berths: inner.berths.map(mv),
+    islands: inner.islands.map(mv),
+    trees: inner.trees.map(pt),
+    curbCut: { u0: inner.curbCut.u0 + strip, u1: inner.curbCut.u1 + strip },
+    throat: maybe(inner.throat, toStreet),
+    driveThrough: inner.driveThrough && {
+      ...inner.driveThrough,
+      rects: inner.driveThrough.rects.map(mv),
+      path: inner.driveThrough.path.map(pt),
+      pickup: { ...inner.driveThrough.pickup, at: pt(inner.driveThrough.pickup.at) },
+    },
+    trailerStalls: inner.trailerStalls.map(mv),
+  };
+}
+
+/**
+ * The layout of a lot with no strip. `reserveHardstanding` keeps a plant's
+ * hardstanding ground behind the body, where the lot is deep enough, so the
+ * paving lies behind the body and joins the drive rather than standing alone
+ * beside an end wall.
+ */
+function computeLotLayout0(
+  base: Omit<LotLayoutInput, 'perimeterStrip'>,
+  reserveHardstanding: boolean,
+): LotLayout {
+  const { along, depth, bodyAlong, bodyDepth } = base;
+  const rear = base.rearYard ?? 0;
+  const margin = base.bodyMargin ?? 0;
+  const front = base.forecourtDepth ?? Math.max(margin, base.frontSetback ?? 0);
+  const behind = base.hardstanding ?? 0;
+  const reserve =
+    reserveHardstanding && front + bodyDepth + behind <= depth - rear - margin ? behind : 0;
+  const input = reserve > 0 ? { ...base, pavingBehind: reserve } : base;
   const centreU = (along - bodyAlong) / 2;
-  const centreV = (depth - bodyDepth) / 2;
+  const centreV = (depth - reserve - bodyDepth) / 2;
   const us = slides(bodyAlong, margin, along - margin);
-  const vs = slides(bodyDepth, front, depth - rear - margin);
+  const vs = slides(bodyDepth, front, depth - reserve - rear - margin);
 
   const candidates: { c: Candidate; cost: number; order: number }[] = [];
   for (const u0 of us) {
@@ -821,11 +912,18 @@ export function computeLotLayout(input: LotLayoutInput): LotLayout {
   };
   // Laid last, on ground the car park left over, so the code's count never moves for it.
   if (input.driveThrough) layout.driveThrough = driveThroughFor(layout);
-  if (input.trailerCourt) {
-    layout.loadingWall = loadingWallFor(layout);
-    if (layout.loadingWall) layout.trailerStalls = trailerStallsFor(layout, layout.loadingWall);
+  if (input.trailerCourt) layout.loadingWall = loadingWallFor(layout);
+  // On a roomy lot the paving comes first, behind the body, and the truck court takes what it leaves;
+  // a lot whose docks stand on the back wall keeps that ground for its court and lays no yard.
+  if (reserveHardstanding && input.hardstanding && layout.loadingWall !== 'v+') {
+    const yard = hardstandingFor(layout, input.hardstanding);
+    // A yard cut short of its depth holds none of the plant's parts: the lot lays none.
+    layout.rearYard = yard && yard.v1 - yard.v0 >= input.hardstanding - EPS ? yard : null;
   }
-  if (input.hardstanding) layout.rearYard = hardstandingFor(layout, input.hardstanding);
+  if (layout.loadingWall) layout.trailerStalls = trailerStallsFor(layout, layout.loadingWall);
+  if (!reserveHardstanding && input.hardstanding) {
+    layout.rearYard = hardstandingFor(layout, input.hardstanding);
+  }
   return layout;
 }
 

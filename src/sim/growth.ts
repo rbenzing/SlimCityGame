@@ -16,6 +16,7 @@
 import {
   ROAD_CHECK_RADIUS,
   SEWER_MILESTONE,
+  SMALL_CITY_MILESTONE,
   TICKS_PER_YEAR,
   TILE_METERS,
   inBounds,
@@ -29,6 +30,8 @@ import { kerbCreditAlongFrame } from '../world/kerbcredit';
 import { claimedTiles, frameCorners } from '../shared/lotframe';
 import { holdsLotParkingAt, lotLayoutFor } from '../shared/lotparking';
 import { drawsLotParking, isDenseLotKind } from '../shared/parkingcode';
+import { roomyLotOf } from '../shared/roomylots';
+import { findRoadFacingEdge } from '../shared/roadedge';
 import { missingSchooling, type EducationRung } from '../shared/schooling';
 import { SoilGrade, isFarmable } from '../shared/soil';
 import type {
@@ -450,11 +453,14 @@ export function spawnCandidates(
  * building, smallest first (ties in catalog order). A level-1 office, hotel,
  * mixed-use block or mid-rise tries its car-park lots first and keeps its own
  * footprint last, where it parks at the kerb: a car park is never a reason
- * for a dense zone to stop growing.
+ * for a dense zone to stop growing. With `roomiest`, a kind that has a roomy lot
+ * is tried from that lot down to its compact one, and any lot larger than the
+ * roomy one comes last.
  */
 export function footprintsOf(
   catalog: readonly BuildingCatalogEntry[],
   entry: BuildingCatalogEntry,
+  roomiest = false,
 ): BuildingCatalogEntry[] {
   const area = (e: BuildingCatalogEntry): number => e.footprint.w * e.footprint.d;
   const lots =
@@ -470,7 +476,20 @@ export function footprintsOf(
         );
   const bySize = lots.sort((a, b) => area(a) - area(b));
   if (entry.level === 1 && isDenseLotKind(entry.kind)) return [...bySize, entry];
-  return [entry, ...bySize].sort((a, b) => area(a) - area(b));
+  const smallestFirst = [entry, ...bySize].sort((a, b) => area(a) - area(b));
+  const roomy = roomiest ? roomyLotOf(entry) : undefined;
+  if (!roomy) return smallestFirst;
+  const within = smallestFirst.filter((e) => area(e) <= roomy.w * roomy.d).reverse();
+  return [...within, ...smallestFirst.filter((e) => area(e) > roomy.w * roomy.d)];
+}
+
+/**
+ * Whether a new shop or works takes the roomiest lot of its kind: below Small
+ * City wherever it stands, from Small City only on land under the best
+ * standing, where it takes the compact lot and parks by its kerb or a garage.
+ */
+export function growsRoomy(milestoneLevel: number, landValue: number): boolean {
+  return milestoneLevel < SMALL_CITY_MILESTONE || landValue < LOT_STANDING_FLOOR.acre;
 }
 
 /** Whether a building may stand at (x, z) turned `rotation` and meet its parking code there. */
@@ -1453,32 +1472,50 @@ export class GrowthSystem {
       // A kind that parks to code stands on the smallest of its footprints
       // whose lot meets its code there, the kerb's stalls along it counted.
       const frontageZone = PLATTED_ZONES.includes(zone) && platReaches(plat, x, z);
+      const roomiest = growsRoomy(milestoneLevel, fieldAt(g, FieldId.LandValue, flat));
       const placements = new Map<
         BuildingCatalogEntry,
         { entry: BuildingCatalogEntry } & Placement
       >();
+      /** The turns a shop or works is tried at on an unplatted tile: its long side along the street it fronts first, then the other way. */
+      const turnsFor = (e: BuildingCatalogEntry): (0 | 1)[] => {
+        if (e.footprint.w === e.footprint.d || (e.category !== 'com' && e.category !== 'ind')) {
+          return [0];
+        }
+        const roadOn = (rx: number, rz: number): boolean =>
+          inBounds(rx, rz) && readTile(g.roadTier, tileIndex(rx, rz)) !== RoadTier.None;
+        const longOnStreet = (rotation: 0 | 1): boolean => {
+          const lot = footprintForRotation(e, rotation);
+          const edge = findRoadFacingEdge(x, z, lot.w, lot.d, roadOn);
+          if (!edge) return false;
+          return edge.edgeTiles >= (edge.side === 'N' || edge.side === 'S' ? lot.d : lot.w);
+        };
+        return longOnStreet(1) && !longOnStreet(0) ? [1, 0] : [0, 1];
+      };
       const fitting = spawnCandidates(
         this.catalog,
         zone,
         this.unlockLevel(milestoneLevel),
         (kind) => {
-          for (const e of footprintsOf(this.catalog, kind)) {
-            const at =
+          for (const e of footprintsOf(this.catalog, kind, roomiest)) {
+            const tries: (Placement | null)[] =
               frontageZone && e.lot === undefined
-                ? frontagePlacement(plat, e, x, z)
-                : ({ x, z, rotation: 0 } as const);
-            if (at === null) continue;
-            const { w, d } = footprintForRotation(e, at.rotation);
-            if (
-              !isZonedLot(g, zone, at.x, at.z, w, d) ||
-              !this.canPlace(g, at.x, at.z, w, d) ||
-              coversFramedParcel(plat, at.x, at.z, w, d)
-            ) {
-              continue;
+                ? [frontagePlacement(plat, e, x, z)]
+                : turnsFor(e).map((rotation) => ({ x, z, rotation }));
+            for (const at of tries) {
+              if (at === null) continue;
+              const { w, d } = footprintForRotation(e, at.rotation);
+              if (
+                !isZonedLot(g, zone, at.x, at.z, w, d) ||
+                !this.canPlace(g, at.x, at.z, w, d) ||
+                coversFramedParcel(plat, at.x, at.z, w, d)
+              ) {
+                continue;
+              }
+              if (!parks(e, at.x, at.z, at.rotation)) continue;
+              placements.set(kind, { entry: e, ...at });
+              return true;
             }
-            if (!parks(e, at.x, at.z, at.rotation)) continue;
-            placements.set(kind, { entry: e, ...at });
-            return true;
           }
           return false;
         },
@@ -1605,12 +1642,17 @@ export class GrowthSystem {
       return { entry: e, frame: run.frame, tiles };
     };
     const sites = new Map<BuildingCatalogEntry, FramedSite>();
+    const first = parcel.tiles[0]!;
+    const roomiest = growsRoomy(
+      milestoneLevel,
+      fieldAt(g, FieldId.LandValue, tileIndex(first.x, first.z)),
+    );
     const fitting = spawnCandidates(
       this.catalog,
       zone,
       this.unlockLevel(milestoneLevel),
       (kind) => {
-        for (const e of footprintsOf(this.catalog, kind)) {
+        for (const e of footprintsOf(this.catalog, kind, roomiest)) {
           const site = siteFor(e);
           if (site === null) continue;
           sites.set(kind, site);

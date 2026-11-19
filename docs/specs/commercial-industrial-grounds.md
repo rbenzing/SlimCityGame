@@ -44,11 +44,11 @@
 | Roomy lot, building over lot | 0.28 retail, 0.32 industry, 0.64 office, at most | ratio | Metropolitan Council medians |
 | Compaction starts | Small City (8,000 residents), land value 224 and over | — | dial: the dense kinds' own unlock |
 
-**Code:** the furniture is built: `src/shared/lotgrounds.ts` `planLotGrounds` the plan (pure, beside `lotlayout.ts`); `src/render/lotplan.ts` `groundsFactsFor` which sides face homes; `src/render/lotgrounds.ts` `LotGroundsRenderer` the pools. To be built: `src/sim/growth.ts` the lot choice; `src/data/catalog.json` the ladders and kinds.
+**Code:** the furniture is built: `src/shared/lotgrounds.ts` `planLotGrounds` the plan (pure, beside `lotlayout.ts`); `src/render/lotplan.ts` `groundsFactsFor` which sides face homes; `src/render/lotgrounds.ts` `LotGroundsRenderer` the pools. The roomy lots are built: `src/shared/roomylots.ts` `ROOMY_LOT_TILES` each kind's roomy lot; `src/data/catalog.json` the lot variants, appended; `src/shared/lotlayout.ts` the strip inside the lot lines; `src/sim/growth.ts` `growsRoomy`, `footprintsOf` the lot choice. To be built: the new kinds.
 
-**Tests:** `src/shared/lotgrounds.test.ts`, `src/render/lotgroundsplan.test.ts` every catalog lot's keep-outs, the order of omission, short poles beside homes; `src/render/lotgrounds.test.ts` the pools; `src/render/geometrybudget.test.ts` the ceiling. To be built: the lot chosen either side of Small City; each ladder's first roomy rung.
+**Tests:** `src/shared/lotgrounds.test.ts`, `src/render/lotgroundsplan.test.ts` every catalog lot's keep-outs, the order of omission, short poles beside homes; `src/render/lotgrounds.test.ts` the pools; `src/render/geometrybudget.test.ts` the ceiling. `src/shared/roomylots.test.ts`, `src/shared/roomylayout.test.ts` every roomy lot laid to code with its strip; `src/sim/roomygrowth.test.ts` the lot chosen either side of Small City and the fall back to the compact lot; `src/sim/catalogsave.test.ts` an old save loads unchanged on the longer catalog.
 
-**Open:** the roomy lots and the new kinds are not built; the kinds' jobs, utilities and draw weights are not derived; a bank's and a medical office's site sizes were not found; no light level is modelled. A lot is planned when it is drawn, so homes zoned beside it later do not shorten its poles. A tight strip or shop has no room for a refuse enclosure.
+**Open:** the new kinds are not built; a works that levels up on a full block builds up on the lot it has and loses its grounds; the kinds' jobs, utilities and draw weights are not derived; a bank's and a medical office's site sizes were not found; no light level is modelled. A lot is planned when it is drawn, so homes zoned beside it later do not shorten its poles. A tight strip or shop has no room for a refuse enclosure.
 
 ## Why the rules are what they are
 
@@ -81,7 +81,13 @@ The catalog already holds, for the kinds whose car park did not fit, larger lots
 
 Growth takes that roomy rung while the town is below Small City, wherever the zoned block has the room. From Small City the dense kinds unlock, and land of the best standing is worth building tight: there a new building takes the compact lot and parks by its kerb credit or a garage. Nothing already standing is moved or shrunk.
 
-A block too shallow or too short for the roomy rung grows the compact lot, as it does now. A first town never waits on grounds.
+A block too shallow or too short for the roomy rung grows the next rung down, and at last the compact lot, as it does now. A first town never waits on grounds.
+
+A lot stands with its long side on its street. The platted zones always turned their lots; industry did not, so on a north-south street a works' roomy lot never fitted. Each rung is now tried long side on the street first, then the other way, before the next rung down. A lot larger than its building never lays a loading berth across a car park aisle.
+
+Each kind's roomy lot is [measured on the layout](../sources/commercial-industrial-grounds.md#the-roomy-lot-of-each-kind). On a roomy rung the car park keeps a 1.5 m planted strip inside every lot line. A kind already under the target (the filling station, the chemical works) keeps its lot. A level-up takes the next level's roomy lot where the ground beside it is free, and otherwise builds up on the lot it has, as before: it never gives ground back and is never refused for want of grounds.
+
+Roomy lots hold fewer jobs a tile: a zone keeps about three fifths of what it held, so the same town needs two thirds as much zoned land again for its shops and works. That is the price of the request, and the Demand panel shows it as room, not as a fault.
 
 ### More kinds
 

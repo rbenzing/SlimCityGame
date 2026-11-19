@@ -10,11 +10,13 @@ import { footprintForRotation } from './footprint';
 import { bodyMetresFor } from './floorarea';
 import { kerbCreditFor, lotDriveCuts, withDriveCuts, type KerbSurroundings } from './kerblayout';
 import { layoutLot, type LotLayout } from './lotlayout';
+import { LOT_PERIMETER_STRIP_M } from './lotgrounds';
 import { isWalkUpKind } from './buildingkind';
 import { GARAGE_FRONT_PROJECTION_M, hasPodium, PODIUM_OVERHANG_M } from './garage';
 import {
   drawsLotParking,
   isDenseLotEntry,
+  isRoomyLotEntry,
   lotSpacesFor,
   onSiteSpaces,
   WALK_UP_REAR_YARD_M,
@@ -100,6 +102,8 @@ export function lotLayoutFor(
     spaces: carPark ? onSiteSpaces(requirement.spaces, kerbCredit) : 0,
     berths: requirement.berths,
     ...lotYardsFor(entry),
+    ...(entry.bodyFootprint !== undefined ? { clearBerths: true } : {}),
+    ...(isRoomyLotEntry(entry) ? { perimeterStrip: LOT_PERIMETER_STRIP_M } : {}),
     ...(entry.category === 'com' && !isDenseLotEntry(entry) ? { shopfrontWalk: true } : {}),
     ...(entry.kind === 'restaurant' ? { driveThrough: true } : {}),
     ...(entry.kind && TRUCK_COURT_KINDS.has(entry.kind) ? { trailerCourt: true } : {}),

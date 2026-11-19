@@ -662,14 +662,20 @@ const kindEntries = (kind: BuildingKind): BuildingCatalogEntry[] =>
 describe('a larger lot for a kind is the same building on more car park', () => {
   const lots = catalog.filter((e) => e.bodyFootprint !== undefined);
 
-  it('exists only for the suburban kinds whose lot falls short of its code, and the dense kinds that park to code at level 1', () => {
+  it('exists for every suburban commercial and industrial kind that has a roomy lot, and the dense kinds that park to code at level 1', () => {
     expect(new Set(lots.map((e) => e.kind))).toEqual(
       new Set([
         'shop',
         'restaurant',
         'strip',
         'supermarket',
+        'workshop',
+        'warehouse',
+        'factory',
         'flex',
+        'foodplant',
+        'metals',
+        'paper',
         'office',
         'hotel',
         'mixed',
@@ -679,7 +685,9 @@ describe('a larger lot for a kind is the same building on more car park', () => 
   });
 
   it('appends the dense kinds’ level-1 car-park lots and their next levels to the catalog, whose saved ids never move', () => {
-    expect(catalog.slice(-10, -3).map((e) => e.id)).toEqual([
+    const ids = catalog.map((e) => e.id);
+    const first = ids.indexOf('res-high-1-lot2x2');
+    expect(ids.slice(first, first + 7)).toEqual([
       'res-high-1-lot2x2',
       'mixed-1-lot2x2',
       'com-high-1-lot4x4',
@@ -688,7 +696,7 @@ describe('a larger lot for a kind is the same building on more car park', () => 
       'com-hotel-1-lot3x3',
       'com-hotel-2-lot3x3',
     ]);
-    expect(new Set(catalog.map((e) => e.id)).size).toBe(catalog.length);
+    expect(new Set(ids).size).toBe(catalog.length);
   });
 
   it('gives every level-1 dense lot a next level on the same lot wherever the next level’s own body is smaller than it', () => {
@@ -728,9 +736,10 @@ describe('a larger lot for a kind is the same building on more car park', () => 
         expect(e.footprint.w * e.footprint.d).toBeGreaterThan(base.footprint.w * base.footprint.d);
         return;
       }
-      // Larger along the street, never shallower.
-      expect(e.footprint.w).toBeGreaterThan(base.footprint.w);
-      expect(e.footprint.d).toBe(base.footprint.d);
+      // A larger lot, never narrower along the street and never shallower than three tiles or its base.
+      expect(e.footprint.w * e.footprint.d).toBeGreaterThan(base.footprint.w * base.footprint.d);
+      expect(e.footprint.w).toBeGreaterThanOrEqual(base.footprint.w);
+      expect(e.footprint.d).toBeGreaterThanOrEqual(Math.min(base.footprint.d, 3));
     },
   );
 });
@@ -842,7 +851,10 @@ describe('Industrial kinds (building-types): three levels per kind, every figure
     expect(byId('ind-1')!.kind).toBe('workshop');
     expect(byId('ind-2')!.kind).toBe('factory');
     expect(byId('ind-3')!.kind).toBe('flex');
-    expect(works.filter((e) => e.zone === ZoneType.IndHeavy).map((e) => e.kind)).toEqual([
+    const heavy = works.filter(
+      (e) => e.zone === ZoneType.IndHeavy && e.bodyFootprint === undefined,
+    );
+    expect(heavy.map((e) => e.kind)).toEqual([
       ...Array(3).fill('foodplant'),
       ...Array(3).fill('chemical'),
       ...Array(3).fill('metals'),

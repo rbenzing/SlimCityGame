@@ -234,6 +234,9 @@ describe('a food plant’s and a steelworks’ hardstanding', () => {
     let measured = 0;
     for (const { e, rotation, side, plan } of yards) {
       if (!plan.lot!.farm) continue;
+      // A lot longer than deep is only ever stood with its long side on the street.
+      const longOnStreet = (rotation % 2 === 0) === (side === 'N' || side === 'S');
+      if (e.footprint.w > e.footprint.d && !longOnStreet) continue;
       const mine = plan.placements.filter((p) => PLANT_PARTS.includes(p.part));
       measured += mine.length;
       expect(strays(plan, PLANT_PARTS), `${e.id} r${rotation}${side}`).toEqual([]);

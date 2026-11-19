@@ -69,6 +69,37 @@ Code ceilings for general commercial run far above what is built: floor area rat
 
 A one-storey shop at the game's 46% body fill stands at a ratio of 0.46, above the retail median of 0.28: the gap is the grounds this spec adds.
 
+## The roomy lot of each kind
+
+Measured on the game's own layout: the smallest lot on which the code car park is laid with a 1.5 m strip free inside every lot line, the building and its yard fit, a walk reaches the door, and the building covers no more than the target share (0.28 retail, 0.32 industry). A lot is no deeper than its compact lot's depth, or three tiles where that leaves no walk or yard. Lots in tiles, frontage by depth; the table in code is `ROOMY_LOT_TILES` in `src/shared/roomylots.ts`.
+
+| Kind | Level 1 | Level 2 | Level 3 |
+| ---- | ------- | ------- | ------- |
+| Shop | 1×1 → 1×2 | 1×2 → 2×2 | 2×2 → 4×2 |
+| Restaurant | 1×2 → 2×2 | 2×2 → 3×2 | 3×2 → 6×2 |
+| Strip | 3×2 → 5×2 | 4×2 → 7×2 | 5×2 → 9×2 |
+| Supermarket | 3×3 → 5×3 | 4×3 → 7×3 | 5×4 → 9×4 |
+| Workshop | 2×2 → 3×2 | 3×2 → 3×3 | 3×3 → 5×3 |
+| Depot | 3×3 → 5×3 | 4×3 → 6×3 | 5×4 → 8×4 |
+| Factory | 2×3 → 3×3 | 3×3 → 5×3 | 4×3 → 6×3 |
+| Flex | 2×2 → 4×2 | 3×2 → 4×2 | 3×4 → 5×3 |
+| Cannery | 3×3 → 5×3 | 4×3 → 6×3 | 5×4 → 8×4 |
+| Foundry | 3×3 → 4×4 | 4×3 → 5×4 | 5×3 → 6×4 |
+| Paper mill | 3×3 → 5×3 | 4×4 → 6×4 | 5×4 → 8×4 |
+| Filling station, chemical works | under the target already: its lot is kept | | |
+
+A shop's first roomy lot is one tile wide and two deep, since two wide and one deep leaves no walk. A restaurant's is 2×2, so that its level-up has a lot to grow on: a level-up never gives ground back.
+
+The office and the hotel are dense kinds and keep their own lots ([structured parking](../specs/structured-parking.md)); the tallest office has no roomy lot at any size.
+
+What it costs, weighting each zone's level-1 kinds by their draw:
+
+| Zone | Jobs a zoned tile, compact | Roomy | Kept |
+| ---- | -------------------------- | ----- | ---- |
+| Low commercial | 7.14 | 4.30 | 60% |
+| Industry | 3.13 | 1.90 | 61% |
+| Heavy industry | 4.36 | 2.99 | 68% |
+
 ## The new kinds, as they stand on the ground
 
 All _typical_: listings and trade prototypes. Jobs, power, water and draw weights are derived when each kind enters the catalog, by the method in [building-types](building-types.md).
