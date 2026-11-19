@@ -37,7 +37,9 @@ const footprint = (id) => {
 const SEED = 7;
 const DEFAULT_PITCH = 0.7;
 /** Tiles a street takes: the deepest lot (4), the road, and the gap to the next street. */
-const STREET_ROWS = 9;
+const STREET_ROWS = 8;
+/** How far the ground may stand above or below the anchor and still count as flat: the streets are levelled as they are built. */
+const FLAT_TOLERANCE_M = 14;
 /** Tiles of road beyond each end of a street's buildings. */
 const MARGIN = 2;
 const LONGEST = 24;
@@ -87,6 +89,22 @@ const STREETS = [
   {
     name: 'pharmacy',
     ids: ['com-pharmacy-1-lot7x2', 'com-pharmacy-2-lot5x4', 'com-pharmacy-3-lot8x3'],
+  },
+  // The bank and the lube share a street: together they are 18 tiles, under the longest street.
+  {
+    name: 'bank',
+    ids: [
+      'com-bank-1-lot2x3',
+      'com-bank-2-lot3x3',
+      'com-bank-3-lot4x3',
+      'com-lube-1-lot2x3',
+      'com-lube-2-lot3x3',
+      'com-lube-3-lot4x3',
+    ],
+  },
+  {
+    name: 'medical',
+    ids: ['com-medical-1-lot4x2', 'com-medical-2-lot5x2', 'com-medical-3-lot6x3'],
   },
   {
     name: 'downtown',
@@ -150,7 +168,7 @@ try {
     x < N &&
     z < N &&
     !g.water[idx(x, z)] &&
-    Math.abs(g.height[idx(x, z)] - h0) <= 6;
+    Math.abs(g.height[idx(x, z)] - h0) <= FLAT_TOLERANCE_M;
   const rowsNeeded = STREETS.length * STREET_ROWS;
   let anchor = null;
   for (let z = 20; z < N - rowsNeeded - 10 && !anchor; z++) {
@@ -374,6 +392,32 @@ try {
     0.45,
     0.8,
   );
+  // The bank's entrance from the street, its two drive-up lanes under the canopy from the side and from above; the medical office's roof, canopy and sign; the lube's doors and its court.
+  for (const [n, id] of [
+    [1, 'com-bank-1-lot2x3'],
+    [2, 'com-bank-2-lot3x3'],
+    [3, 'com-bank-3-lot4x3'],
+  ]) {
+    await frame(`close-bank-${n}`, boxOf([find('bank', id)]), 0.3, 0.5, 0.9);
+  }
+  await frame('close-bank-lanes', boxOf([find('bank', 'com-bank-2-lot3x3')]), 1.0, 0.45, 0.8);
+  await frame('close-bank-above', boxOf([find('bank', 'com-bank-2-lot3x3')]), 0.3, 1.45, 0.8);
+  for (const [n, id] of [
+    [1, 'com-medical-1-lot4x2'],
+    [2, 'com-medical-2-lot5x2'],
+    [3, 'com-medical-3-lot6x3'],
+  ]) {
+    await frame(`close-medical-${n}`, boxOf([find('medical', id)]), 0.3, 0.5, 0.9);
+  }
+  for (const [n, id] of [
+    [1, 'com-lube-1-lot2x3'],
+    [2, 'com-lube-2-lot3x3'],
+    [3, 'com-lube-3-lot4x3'],
+  ]) {
+    await frame(`close-lube-${n}`, boxOf([find('bank', id)]), 0.3, 0.5, 0.9);
+  }
+  await frame('close-lube-above', boxOf([find('bank', 'com-lube-2-lot3x3')]), 0.3, 1.45, 0.8);
+  await frame('close-lube-back', boxOf([find('bank', 'com-lube-2-lot3x3')]), 3.4, 0.5, 0.8);
   // A strip's front door close: the walk, the bed, the bench and bin beside the door, and the lot's lights.
   const stripDoor = () => {
     const s = find('strip', 'com-strip-1-lot5x2') ?? find('strip', 'com-strip-2');
@@ -407,6 +451,8 @@ try {
     0.5,
     0.9,
   );
+  await frame('close-bank-night', boxOf([find('bank', 'com-bank-2-lot3x3')]), 1.0, 0.45, 0.8);
+  await frame('close-lube-night', boxOf([find('bank', 'com-lube-2-lot3x3')]), 0.3, 0.5, 0.9);
   await restoreNight();
 
   await setPhase(LINEUP_NIGHT);
