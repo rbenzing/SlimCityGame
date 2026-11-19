@@ -28,6 +28,17 @@ What the ceilings give, from the catalog:
 
 Before the ceilings all of the dense kinds unlocked at Small City or earlier: the largest tower would have held one resident in twelve of a town of 8,000, and the corporate tower one job to every five residents.
 
+What the ceilings cost in land, by the densest home a town may build, from the catalog:
+
+| Town | Before | With the ceilings |
+| ---- | ------ | ----------------- |
+| Big Town | 22.5 residents a tile (mixed block 2) | 13.5 (garden apartments 3) |
+| Small City | 71.6 (residential tower 3) | 19.0 (mid-rise 1) |
+| Grand City | 71.6 | 45.8 (residential tower 1) |
+| Metropolis | 71.6 | 71.6 |
+
+Growing from 8,000 to 20,000 residents takes at least 632 tiles of homes at 19 a tile, against 168 with towers: under 1% of the 256 by 256 map either way, so a town still reaches Grand City, on nearly four times the residential ground.
+
 ## How fast buildings are replaced
 
 No current annual rate was found, so no rate is set: a building is rebuilt when its level-up conditions hold, as before.
