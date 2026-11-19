@@ -37,7 +37,7 @@ What three reviews of every screenshot the shot tools write found wrong in the g
 
 A reviewer saw each of these in two frames or more; none has been checked against the geometry, and some will prove to be the camera.
 
-- Kits that read as plain boxes: the hospital's four identical faces, the crematorium, the schools' and the college's bare roofs, the rail yard's shed, the enclosed stage of every building site (`shots-healthcare/hospital-street`, `shots-education/c-college-in-the-grid`, `shots-depots/c-rail-yard-track`, `shots-construction/tall-enclosed-street`).
+- Kits that read as plain boxes: the hospital's four identical faces, the enclosed stage of every building site (`shots-healthcare/hospital-street`, `shots-construction/tall-enclosed-street`).
 - Empty ground on a plot: the gas turbine's 12 × 5 tiles round one small building, the depot's and the recovery plant's aprons, the plaza's 160 m of paving, the district park's lawns, building sites of 100 × 60 m (`shots-power/1-gas-turbine-beside-police-station`, `shots-earliest-kits/e-depot-street`, `shots-parks/plaza`, `shots-construction/works-earth-street`).
 
 ## Shot tools

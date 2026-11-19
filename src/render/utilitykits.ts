@@ -204,7 +204,21 @@ import {
   TRAM_SLAB_COLOR,
   YELLOW_MARKING_COLOR,
 } from './roadsmesh';
-import { UNIT_HEIGHT_M, UNIT_LENGTH_M, UNIT_WIDTH_M } from './buildingkit';
+import {
+  BLOCK_PARAPET_M,
+  COOLING_TOWER_SIZE_M,
+  ELEVATOR_BULKHEAD_SIZE_M,
+  PENTHOUSE_HEIGHT_M,
+  PENTHOUSE_PLATE_SHARE,
+  ROOF_INSET_M,
+  ROOF_SETBACK_FROM_STREET_M,
+  SCREEN_HEIGHT_M,
+  SCREEN_THICKNESS_M,
+  UNIT_HEIGHT_M,
+  UNIT_LENGTH_M,
+  UNIT_WIDTH_M,
+  roofEquipment,
+} from './buildingkit';
 import {
   TRAIN_CAR_PITCH,
   TRAIN_CAR_SIZE,
@@ -2580,6 +2594,86 @@ function standingBox(
   return paintVertexColor(box, hexFromRgb(rgb));
 }
 
+/** What a civic roof carries: a box standing on the roof, by its plan centre and size, its underside's height and its own. */
+export type RoofPartKind =
+  | 'parapet'
+  | 'unit'
+  | 'penthouse'
+  | 'screen'
+  | 'coolingTower'
+  | 'bulkhead'
+  | 'monitor'
+  | 'monitorGlass';
+
+export interface RoofBox {
+  part: RoofPartKind;
+  x: number;
+  z: number;
+  w: number;
+  d: number;
+  y: number;
+  h: number;
+}
+
+const ROOF_PART_RGB: Readonly<Record<RoofPartKind, RGB>> = {
+  parapet: [0.62, 0.62, 0.6],
+  unit: [0.7, 0.72, 0.74],
+  penthouse: [0.56, 0.57, 0.59],
+  screen: [0.5, 0.52, 0.55],
+  coolingTower: [0.46, 0.5, 0.54],
+  bulkhead: [0.6, 0.6, 0.58],
+  monitor: [0.5, 0.52, 0.54],
+  monitorGlass: [0.16, 0.2, 0.24],
+};
+const ROOF_PARAPET_THICK_M = 0.3;
+
+/** A parapet band standing on a roof plate's edge, its outer face on the plate's outline. */
+export function parapetBoxes(plate: Rect, roofY: number): RoofBox[] {
+  const t = ROOF_PARAPET_THICK_M;
+  const w = plate.x1 - plate.x0;
+  const d = plate.z1 - plate.z0;
+  const cx = (plate.x0 + plate.x1) / 2;
+  const cz = (plate.z0 + plate.z1) / 2;
+  const band = (x: number, z: number, bw: number, bd: number): RoofBox => ({
+    part: 'parapet',
+    x,
+    z,
+    w: bw,
+    d: bd,
+    y: roofY,
+    h: BLOCK_PARAPET_M,
+  });
+  return [
+    band(cx, plate.z0 + t / 2, w, t),
+    band(cx, plate.z1 - t / 2, w, t),
+    band(plate.x0 + t / 2, cz, t, d - 2 * t),
+    band(plate.x1 - t / 2, cz, t, d - 2 * t),
+  ];
+}
+
+/** The rooftop units a plate takes by the commercial rule: one per 232 m², at most eight, spaced down its long axis 2 m inside its edge. */
+export function roofUnitBoxes(plate: Rect, roofY: number): RoofBox[] {
+  const cx = (plate.x0 + plate.x1) / 2;
+  const cz = (plate.z0 + plate.z1) / 2;
+  const top = { w: plate.x1 - plate.x0, d: plate.z1 - plate.z0, h: 0, yOffset: roofY };
+  return roofEquipment(top, roofY, null, null, true)
+    .filter((p) => p.part === 'rooftopUnit')
+    .map((p) => ({
+      part: 'unit',
+      x: cx + p.offset[0],
+      z: cz + p.offset[2],
+      w: p.size[0],
+      d: p.size[2],
+      y: roofY,
+      h: p.size[1],
+    }));
+}
+
+/** The boxes as one set of painted geometries, standing on `y0` over the roof heights they carry. */
+function roofGeometries(boxes: readonly RoofBox[], y0 = 0): THREE.BufferGeometry[] {
+  return boxes.map((b) => standingBox(b.w, b.h, b.d, b.x, y0 + b.y, b.z, ROOF_PART_RGB[b.part]));
+}
+
 /**
  * The hall box, its low-pitched gable roof (ridge along the hall), the roll-up
  * doors proud of the street-side wall, and the load-out bay along its right
@@ -3099,7 +3193,73 @@ function layDeck(deck: Rect): Pick<HospitalLayout, 'ramp' | 'cores' | 'columns' 
   return { ramp, cores, columns, stalls };
 }
 
-/** The six-storey block, its glass ribbons, roof cap, entrance and emergency doors, the red cross over the ambulance bay, and both canopies; local Y=0 is the GROUND plane. */
+/**
+ * What the hospital's roof carries, as the tower's does: a parapet band, a
+ * penthouse of 30% of the plate set back from the street face, a roof screen
+ * at the street edge with a cooling tower behind it, and a lift bulkhead. The
+ * screen and tower stand beyond the penthouse's end, the bulkhead beyond its
+ * other; local Y=0 is the ground.
+ */
+export function computeHospitalRoof(footprint: FootprintSize): RoofBox[] {
+  const { block } = computeHospitalLayout(footprint);
+  const { w, d } = HOSPITAL_BLOCK_SIZE;
+  const roofY = HOSPITAL_STOREYS * HOSPITAL_STOREY_M;
+  const front = block.z + d / 2;
+  const plate: Rect = {
+    x0: block.x - w / 2,
+    x1: block.x + w / 2,
+    z0: block.z - d / 2,
+    z1: front,
+  };
+  const share = Math.sqrt(PENTHOUSE_PLATE_SHARE);
+  const pw = w * share;
+  const pd = d * share;
+  const [bw, bh, bd] = ELEVATOR_BULKHEAD_SIZE_M;
+  const [tw, th, td] = COOLING_TOWER_SIZE_M;
+  const screenZ = front - ROOF_INSET_M - SCREEN_THICKNESS_M / 2;
+  const equipmentX = plate.x1 - ROOF_INSET_M - (tw + 2) / 2;
+  return [
+    ...parapetBoxes(plate, roofY),
+    {
+      part: 'penthouse',
+      x: block.x,
+      z: front - ROOF_SETBACK_FROM_STREET_M - pd / 2,
+      w: pw,
+      d: pd,
+      y: roofY,
+      h: PENTHOUSE_HEIGHT_M,
+    },
+    {
+      part: 'screen',
+      x: equipmentX,
+      z: screenZ,
+      w: tw + 2,
+      d: SCREEN_THICKNESS_M,
+      y: roofY,
+      h: SCREEN_HEIGHT_M,
+    },
+    {
+      part: 'coolingTower',
+      x: equipmentX,
+      z: screenZ - SCREEN_THICKNESS_M / 2 - td / 2,
+      w: tw,
+      d: td,
+      y: roofY,
+      h: th,
+    },
+    {
+      part: 'bulkhead',
+      x: block.x - pw / 2 - ROOF_SETBACK_FROM_STREET_M - bw / 2,
+      z: front - ROOF_SETBACK_FROM_STREET_M - bd / 2,
+      w: bw,
+      d: bd,
+      y: roofY,
+      h: bh,
+    },
+  ];
+}
+
+/** The six-storey block, its glass ribbons, roof cap, parapet, penthouse and roof plant, entrance and emergency doors, the red cross over the ambulance bay, and both canopies; local Y=0 is the GROUND plane. */
 function buildHospitalBlockGeometry(footprint: FootprintSize): THREE.BufferGeometry {
   const layout = computeHospitalLayout(footprint);
   const { block, entrance, ambulanceCanopy: bay } = layout;
@@ -3120,6 +3280,7 @@ function buildHospitalBlockGeometry(footprint: FootprintSize): THREE.BufferGeome
       block.z,
       HOSPITAL_ROOF_RGB,
     ),
+    ...roofGeometries(computeHospitalRoof(footprint)),
   ];
   const bayX = (bay.x0 + bay.x1) / 2;
 
@@ -4651,8 +4812,11 @@ export function stationHasMast(entry: BuildingCatalogEntry): boolean {
 export const EDU_WING_DEPTH_M = 20.7;
 export const EDU_STOREY_M = 3.2;
 export const EDU_WING_STOREYS = 3;
-/** A gym is one storey of 7.3 m (24 ft), counted as two floors. */
-export const EDU_GYM = { height: 7.3, floors: 2 };
+/**
+ * A gym is one storey of 6.7 m (22 ft) clear under 1 m of roof structure, counted
+ * as two floors, under a shallow gable of `pitch` rise over run (2 in 12).
+ */
+export const EDU_GYM = { clear: 6.7, structure: 1, height: 7.7, floors: 2, pitch: 2 / 12 };
 /** Every building keeps this far clear of the lot's edge. */
 export const EDU_EDGE_M = 2;
 /** A bus pull-in is 9.1 m (30 ft) deep along the frontage. */
@@ -5386,7 +5550,19 @@ function educationCap(m: EducationMass): number {
   return m.height > EDU_WING_STOREYS * EDU_STOREY_M + 1e-9 ? EDU_PARAPET_M : EDU_CAP_M;
 }
 
-/** The masses with their caps and belt courses, the door and its canopy or portico; local Y=0 is the ground, the floor on the lawn plate. */
+/** The rise of a gym's gable over its width: the ridge runs along its long side. */
+export function educationGymRise(gym: Rect): number {
+  return ((gym.x1 - gym.x0) / 2) * EDU_GYM.pitch;
+}
+
+/** The parapet band and rooftop units on every classroom wing's roof; local Y=0 is the ground. */
+export function computeEducationRoof(entry: BuildingCatalogEntry): RoofBox[] {
+  return computeEducationLayout(entry)
+    .masses.filter((m) => m.floors === EDU_WING_STOREYS)
+    .flatMap((m) => [...parapetBoxes(m.rect, m.height), ...roofUnitBoxes(m.rect, m.height)]);
+}
+
+/** The masses with their caps, belt courses, roof parapets and units and the gyms' gables, the door and its canopy or portico; local Y=0 is the ground, the floor on the lawn plate. */
 function buildEducationBuildingGeometry(entry: BuildingCatalogEntry): THREE.BufferGeometry {
   const layout = computeEducationLayout(entry);
   const y0 = RECYCLING_YARD_HEIGHT;
@@ -5414,8 +5590,13 @@ function buildEducationBuildingGeometry(entry: BuildingCatalogEntry): THREE.Buff
           standingBox(w + 0.1, 0.2, d + 0.1, cx, y0 + f * EDU_STOREY_M - 0.1, cz, EDU_BELT_RGB),
         );
       }
+    } else if (m.floors === EDU_GYM.floors) {
+      parts.push(
+        gableRoof(w + 0.4, educationGymRise(r), d + 0.4, cx, y0 + m.height, cz, EDU_CAP_RGB, 'z'),
+      );
     }
   }
+  parts.push(...roofGeometries(computeEducationRoof(entry), y0));
 
   const { door, canopy } = layout;
   const frame = wallPlan(door, 0, 3.2, 0.3, 0.15);
@@ -10426,13 +10607,77 @@ function buildYardPolesGeometry(layout: YardLayout): THREE.BufferGeometry {
   return mergeParts(parts);
 }
 
-/** The shop hall under its roof with the framed doors at its near end, and the office with its door; local Y=0 is the yard slab's top. */
-function buildYardShopGeometry(layout: YardLayout, height: number): THREE.BufferGeometry {
+/** A rail shop's door: 7 ft 6 in either side of its track's centre line, and a dial's height. */
+export const RAIL_SHOP_DOOR = { w: 4.6, h: 5.5 };
+const RAIL_SHOP_DOOR_RGB: RGB = [0.24, 0.27, 0.31];
+/** A ridge monitor along the shop's roof: its width, height, set-in from either end, and its dark glazing band's height. */
+export const RAIL_SHOP_MONITOR = { w: 3, h: 1.2, end: 4, glass: 0.6 };
+/** The two rooftop units on a rail shop's roof stand this far from the roof's middle line, beside the monitor. */
+const RAIL_SHOP_UNIT_OFFSET_M = 2.8;
+
+/** The door on each track that enters a rail shop, centred on that track at the shop's near end. */
+export function railShopDoors(layout: YardLayout): YardDoor[] {
+  return layout.hallRoads.map((road) => ({
+    x: layout.hall.x0,
+    z: road.z0,
+    nx: -1,
+    nz: 0,
+    ...RAIL_SHOP_DOOR,
+  }));
+}
+
+/** A rail shop's roof: a ridge monitor with a glazing band down both sides, and two rooftop units beside it; local Y=0 is the yard slab's top. */
+export function computeRailShopRoof(layout: YardLayout, height: number): RoofBox[] {
+  const { hall } = layout;
+  const cx = (hall.x0 + hall.x1) / 2;
+  const cz = (hall.z0 + hall.z1) / 2;
+  const { w, h, end, glass } = RAIL_SHOP_MONITOR;
+  const length = hall.x1 - hall.x0 - 2 * end;
+  const band = (side: number): RoofBox => ({
+    part: 'monitorGlass',
+    x: cx,
+    z: cz + (side * (w + 0.06)) / 2,
+    w: length - 1,
+    d: 0.06,
+    y: height + (h - glass) / 2,
+    h: glass,
+  });
+  const unit = (side: number): RoofBox => ({
+    part: 'unit',
+    x: cx + (side * (hall.x1 - hall.x0)) / 4,
+    z: cz + RAIL_SHOP_UNIT_OFFSET_M,
+    w: UNIT_LENGTH_M,
+    d: UNIT_WIDTH_M,
+    y: height,
+    h: UNIT_HEIGHT_M,
+  });
+  return [
+    { part: 'monitor', x: cx, z: cz, w: length, d: w, y: height, h },
+    band(-1),
+    band(1),
+    unit(-1),
+    unit(1),
+  ];
+}
+
+/**
+ * The shop hall under its roof with the framed doors at its near end, and the
+ * office with its door; a rail yard's hall takes the dark rail doors, its ridge
+ * monitor and units. Local Y=0 is the yard slab's top.
+ */
+function buildYardShopGeometry(
+  layout: YardLayout,
+  height: number,
+  mode: 'tram' | 'rail',
+): THREE.BufferGeometry {
   const parts: THREE.BufferGeometry[] = [
     ...cappedBox(layout.hall, height, YARD_HALL_RGB, STATION_CAP_M, STATION_CAP_RGB),
     ...cappedBox(layout.office, YARD_OFFICE_H, YARD_OFFICE_RGB, STATION_CAP_M, STATION_CAP_RGB),
   ];
-  for (const door of layout.hallDoors) parts.push(...yardDoorParts(door, 0, YARD_DOOR_RGB));
+  const doors = mode === 'rail' ? railShopDoors(layout) : layout.hallDoors;
+  const leaf = mode === 'rail' ? RAIL_SHOP_DOOR_RGB : YARD_DOOR_RGB;
+  for (const door of doors) parts.push(...yardDoorParts(door, 0, leaf));
+  if (mode === 'rail') parts.push(...roofGeometries(computeRailShopRoof(layout, height)));
   const entrance = layout.officeDoor;
   parts.push(
     wallBox(entrance.w, entrance.h, 0.12, entrance.x, 0, entrance.z, 0, 1, 0, STATION_ENTRANCE_RGB),
@@ -11067,7 +11312,7 @@ export class UtilityKitRenderer {
             tramDepotTrack: pool(buildYardTrackGeometry(side, spec)),
             tramDepotTrackEnd: pool(buildYardTrackGeometry(end, spec)),
             tramDepotPoles: pool(buildYardPolesGeometry(side)),
-            tramDepotShop: pool(buildYardShopGeometry(side, entry.height)),
+            tramDepotShop: pool(buildYardShopGeometry(side, entry.height, mode)),
             tramDepotLit: pool(buildYardLitGeometry(side), this.stationLightMaterial),
             [carKinds[0]]: carPools[0]!,
             [carKinds[1]]: carPools[1]!,
@@ -11077,7 +11322,7 @@ export class UtilityKitRenderer {
             railYardYardEnd: pool(buildYardYardGeometry(footprint, end, spec)),
             railYardTrack: pool(buildYardTrackGeometry(side, spec)),
             railYardTrackEnd: pool(buildYardTrackGeometry(end, spec)),
-            railYardShop: pool(buildYardShopGeometry(side, entry.height)),
+            railYardShop: pool(buildYardShopGeometry(side, entry.height, mode)),
             railYardLit: pool(buildYardLitGeometry(side), this.stationLightMaterial),
             [carKinds[0]]: carPools[0]!,
             [carKinds[1]]: carPools[1]!,
@@ -11939,7 +12184,7 @@ export class UtilityKitRenderer {
       ));
     const yard = fresh(yardKind, () => buildYardYardGeometry(frame.footprint, layout, spec));
     const track = fresh(trackKind, () => buildYardTrackGeometry(layout, spec, rise, lineRise));
-    const shop = fresh(shopKind, () => buildYardShopGeometry(layout, entry.height));
+    const shop = fresh(shopKind, () => buildYardShopGeometry(layout, entry.height, mode));
     const lit = fresh(litKind, () => buildYardLitGeometry(layout), true);
     const poles =
       mode === 'tram' ? fresh(polesKind, () => buildYardPolesGeometry(layout)) : undefined;
