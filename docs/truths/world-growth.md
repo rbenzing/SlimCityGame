@@ -261,3 +261,11 @@ Back to [the index](../GROUND-TRUTHS.md).
   at a gap smaller than a step, and never jumps the cap by a tower. —
   [building-types.md](../specs/building-types.md); `runLevelUps` in
   `src/sim/growth.ts`
+- [R-world-062] A mixed-use block is a business as well as homes. It is built, and it
+  levels up, only where a shop adding its jobs would be: its jobs fit
+  commerce's room, or commerce's demand is above the middle and it takes
+  the allowance a new shop or a level-up has. Its homes still answer to
+  demand for homes. Unchecked, mixed blocks filled commerce's room and no
+  shop or office opened after Big Town. —
+  [demand-the-rci-model.md](../game-design/simulation-rules/demand-the-rci-model.md);
+  `spawnCandidates`, `tryLevelUp` in `src/sim/growth.ts`
