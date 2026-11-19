@@ -225,7 +225,7 @@ describe('the pharmacy, the machine shop and self-storage', () => {
     storage: 0.32,
   };
   const KINDS = ['pharmacy', 'machineshop', 'storage'] as const;
-  /** Whether the code car park, the berths and the body lie inside the planted strip, under the kind's cover share, and a pharmacy's lane stands on its lot. */
+  /** Whether the code car park, the berths and the body lie inside the planted strip, under the kind's cover share, with the front walk and the walk in from the street, and a pharmacy's lane stands on its lot. */
   const holds = (lot: { w: number; d: number }, compact: BuildingCatalogEntry): boolean => {
     const e = { ...compact, footprint: lot, bodyFootprint: compact.footprint };
     const l = lotLayoutFor(e, 0, true)!;
@@ -242,7 +242,8 @@ describe('the pharmacy, the machine shop and self-storage', () => {
     );
     const cover = bodyPlateM2(compact) / (lot.w * lot.d * TILE_METERS * TILE_METERS);
     const lane = compact.kind !== 'pharmacy' || l.driveThrough !== null;
-    return l.fits && inside && cover <= SHARE[compact.kind!]! && lane;
+    const walks = l.frontWalk !== null && l.entranceWalk !== null;
+    return l.fits && inside && cover <= SHARE[compact.kind!]! && lane && walks;
   };
 
   it('each roomy lot is the smallest by area that lays the code car park inside the planted strip under its cover share', () => {

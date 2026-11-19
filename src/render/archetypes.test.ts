@@ -430,9 +430,9 @@ describe('the shipped catalog', () => {
     for (const e of heavy) expect(isCleanIndustry(e), e.id).toBe(false);
   });
 
-  it('calls only what emits nothing clean: the flex buildings and the warehouses', () => {
+  it('calls only what emits nothing clean: the flex buildings, the warehouses and self-storage', () => {
     const clean = industrial.filter(isCleanIndustry);
-    expect(new Set(clean.map((e) => e.kind))).toEqual(new Set(['flex', 'warehouse']));
+    expect(new Set(clean.map((e) => e.kind))).toEqual(new Set(['flex', 'warehouse', 'storage']));
     for (const e of clean) expect(e.pollution ?? 0).toBe(0);
   });
 

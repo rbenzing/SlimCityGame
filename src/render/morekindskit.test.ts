@@ -1,0 +1,312 @@
+import { describe, expect, it } from 'vitest';
+import catalogData from '../data/catalog.json';
+import type { BuildingCatalogEntry } from '../shared/types';
+import { footprintForRotation } from '../shared/footprint';
+import { type BuildingPart } from './archetypes';
+import {
+  kitPlanFor,
+  placementBounds,
+  storageDoorsPerWall,
+  storageRows,
+  STORAGE_DOOR_PITCH_M,
+  STORAGE_DRIVE_M,
+  type KitPlan,
+  type LocalRect,
+  type PartPlacement,
+} from './buildingkit';
+import { tierCountOf } from './massing';
+import { windowlessBody } from './facade';
+
+const catalog = (catalogData as { buildings: BuildingCatalogEntry[] }).buildings;
+const ofKind = (kind: string, roomy: boolean): BuildingCatalogEntry[] =>
+  catalog.filter((e) => e.kind === kind && (e.bodyFootprint !== undefined) === roomy);
+
+type StreetSide = 'N' | 'E' | 'S' | 'W';
+
+/** A street along one side of a w×d lot at (10, 10). */
+function streetOn(side: StreetSide, w: number, d: number): (x: number, z: number) => boolean {
+  switch (side) {
+    case 'N':
+      return (x, z) => z === 9 && x >= 10 && x < 10 + w;
+    case 'S':
+      return (x, z) => z === 10 + d && x >= 10 && x < 10 + w;
+    case 'E':
+      return (x, z) => x === 10 + w && z >= 10 && z < 10 + d;
+    default:
+      return (x, z) => x === 9 && z >= 10 && z < 10 + d;
+  }
+}
+
+function kitOf(e: BuildingCatalogEntry, rotation: 0 | 1 | 2 | 3, side: StreetSide): KitPlan {
+  const lot = footprintForRotation(e, rotation);
+  return kitPlanFor(e, { id: 7, x: 10, z: 10, rotation }, streetOn(side, lot.w, lot.d))!;
+}
+
+const only = (plan: KitPlan, part: BuildingPart): PartPlacement[] =>
+  plan.placements.filter((p) => p.part === part);
+
+const inside = (r: LocalRect, lot: LocalRect): boolean =>
+  r.x0 >= lot.x0 - 1e-6 && r.x1 <= lot.x1 + 1e-6 && r.z0 >= lot.z0 - 1e-6 && r.z1 <= lot.z1 + 1e-6;
+const overlap = (a: LocalRect, b: LocalRect): boolean =>
+  a.x0 < b.x1 - 1e-6 && b.x0 < a.x1 - 1e-6 && a.z0 < b.z1 - 1e-6 && b.z0 < a.z1 - 1e-6;
+
+const alongOf = (p: PartPlacement, side: StreetSide): number =>
+  side === 'N' || side === 'S' ? p.offset[0] : p.offset[2];
+
+const SIDES = ['S', 'N', 'E', 'W'] as const;
+/** A lot on an east or west street stands turned a quarter, so its long frontage runs along that street. */
+const TURN: Readonly<Record<StreetSide, 0 | 1>> = { S: 0, N: 0, E: 1, W: 1 };
+
+describe('the three kinds are one volume at every level', () => {
+  it('stand as a single tier, not a stack, and show no window of their own on the wall', () => {
+    for (const kind of ['pharmacy', 'machineshop', 'storage']) {
+      for (const e of catalog.filter((c) => c.kind === kind)) {
+        expect(tierCountOf(e), e.id).toBe(1);
+        expect(windowlessBody(e), e.id).toBe(true);
+      }
+    }
+  });
+});
+
+describe('a pharmacy', () => {
+  for (const side of SIDES) {
+    for (const e of ofKind('pharmacy', true)) {
+      const plan = kitOf(e, TURN[side], side);
+      // The kit works in the building's own frame, where the street face is `local`.
+      const local = plan.side!;
+      const span = local === 'N' || local === 'S' ? plan.baseBox.w : plan.baseBox.d;
+
+      it(`${e.id} (${side}) enters through a corner tower taller than the roof, glazed, with its door`, () => {
+        const [tower] = only(plan, 'entryTower');
+        expect(tower, e.id).toBeDefined();
+        expect(tower!.size[1]).toBeGreaterThan(e.height);
+        const towerWidth = local === 'N' || local === 'S' ? tower!.size[0] : tower!.size[2];
+        expect(Math.abs(alongOf(tower!, local)), e.id).toBeCloseTo(span / 2 - towerWidth / 2, 5);
+        const [glazing] = only(plan, 'towerGlazing');
+        const [door] = only(plan, 'walkDoor');
+        expect(Math.abs(alongOf(glazing!, local) - alongOf(tower!, local))).toBeLessThan(1e-6);
+        expect(Math.abs(alongOf(door!, local) - alongOf(tower!, local))).toBeLessThan(1e-6);
+        const [front] = only(plan, 'glassFront');
+        expect(front, e.id).toBeDefined();
+        expect(overlap(placementBounds(front!), placementBounds(tower!)), e.id).toBe(false);
+      });
+
+      it(`${e.id} (${side}) signs two faces, the street's and the tower's end wall`, () => {
+        const bands = only(plan, 'signageBand');
+        expect(bands, e.id).toHaveLength(2);
+        const [a, b] = bands.map(placementBounds);
+        // One band is wider along x than deep (a face on the z axis) and the other the reverse.
+        const alongX = (r: LocalRect): boolean => r.x1 - r.x0 > r.z1 - r.z0;
+        expect(alongX(a!) !== alongX(b!), e.id).toBe(true);
+        for (const band of bands) {
+          expect(band.offset[1] + band.size[1] / 2).toBeLessThanOrEqual(e.height);
+        }
+      });
+
+      it(`${e.id} (${side}) puts the drive-up window under a canopy over the head of its lane, on the wall away from the tower`, () => {
+        const lane = plan.lot!.lane!;
+        expect(lane, e.id).not.toBeNull();
+        const [canopy] = only(plan, 'pickupCanopy');
+        const [window] = only(plan, 'bayGlass');
+        expect(canopy, e.id).toBeDefined();
+        expect(window, e.id).toBeDefined();
+        expect(
+          lane.rects.some((r) => overlap(r, placementBounds(canopy!))),
+          e.id,
+        ).toBe(true);
+        const [tower] = only(plan, 'entryTower');
+        const wallIsX = Math.abs(lane.pickupFacing.x) > Math.abs(lane.pickupFacing.z);
+        // The lane's wall is an end wall: the tower stands at the other end of the face.
+        const laneEnd = wallIsX ? lane.pickupFacing.x : lane.pickupFacing.z;
+        expect(Math.sign(alongOf(tower!, local)), e.id).toBe(-Math.sign(laneEnd));
+        for (const p of [tower!, canopy!, window!]) {
+          expect(inside(placementBounds(p), plan.lot!.lot), `${e.id} ${p.part}`).toBe(true);
+        }
+      });
+    }
+  }
+});
+
+describe('a machine shop', () => {
+  for (const side of SIDES) {
+    for (const e of [...ofKind('machineshop', false), ...ofKind('machineshop', true)]) {
+      const plan = kitOf(e, 0, side);
+      const span = side === 'N' || side === 'S' ? plan.baseBox.w : plan.baseBox.d;
+
+      it(`${e.id} (${side}) has one grade door and an office door side by side on the street face`, () => {
+        const doors = only(plan, 'rollUpDoors');
+        const [walk] = only(plan, 'walkDoor');
+        expect(doors, e.id).toHaveLength(1);
+        expect(walk, e.id).toBeDefined();
+        expect(overlap(placementBounds(doors[0]!), placementBounds(walk!)), e.id).toBe(false);
+        expect(doors[0]!.size[1]).toBeCloseTo(3.05, 5);
+        expect(walk!.size[1]).toBeCloseTo(2.1, 5);
+      });
+
+      it(`${e.id} (${side}) has a short sign over the doors, a fan on the roof and a bin clear of every car`, () => {
+        const [sign] = only(plan, 'signageBand');
+        expect(sign, e.id).toBeDefined();
+        const width = side === 'N' || side === 'S' ? sign!.size[0] : sign!.size[2];
+        expect(width).toBeLessThanOrEqual(4 + 1e-9);
+        expect(width).toBeLessThan(span);
+        const [fan] = only(plan, 'exhaustFan');
+        expect(fan!.offset[1] - fan!.size[1] / 2, e.id).toBeCloseTo(e.height, 5);
+        const bins = only(plan, 'scrapBin');
+        expect(bins.length, e.id).toBeLessThanOrEqual(1);
+        if (plan.lot) {
+          for (const bin of bins) {
+            expect(inside(placementBounds(bin), plan.lot.lot), e.id).toBe(true);
+            expect(
+              plan.lot.hard.some((h) => overlap(h, placementBounds(bin))),
+              e.id,
+            ).toBe(false);
+          }
+        }
+      });
+    }
+  }
+
+  it('finds the bin a place on its roomy lots', () => {
+    for (const e of ofKind('machineshop', true)) {
+      expect(only(kitOf(e, 0, 'S'), 'scrapBin'), e.id).toHaveLength(1);
+    }
+  });
+});
+
+describe('self-storage as rows', () => {
+  it('cuts a plate into rows about 9 m wide with 7.3 m drives between them', () => {
+    for (const span of [40.8, 54.4, 68]) {
+      const { count, width } = storageRows(span);
+      expect(count * width + (count - 1) * STORAGE_DRIVE_M).toBeCloseTo(span, 6);
+      expect(width, `${span}`).toBeGreaterThan(7.5);
+      expect(width, `${span}`).toBeLessThan(9.5);
+    }
+    expect(storageRows(40.8).count).toBe(3);
+    expect(storageRows(54.4).count).toBe(4);
+    expect(storageRows(68).count).toBe(5);
+  });
+
+  it('holds a door every 3 m along a wall, a metre of blank wall at each end', () => {
+    expect(storageDoorsPerWall(40.8)).toBe(12);
+    expect(storageDoorsPerWall(54.4)).toBe(17);
+    expect(storageDoorsPerWall(1)).toBe(0);
+  });
+
+  for (const side of SIDES) {
+    for (const e of [...ofKind('storage', false), ...ofKind('storage', true)]) {
+      const plan = kitOf(e, 0, side);
+      const alongX = side === 'N' || side === 'S';
+      const span = alongX ? plan.baseBox.w : plan.baseBox.d;
+      const depth = alongX ? plan.baseBox.d : plan.baseBox.w;
+      const { count, width } = storageRows(span);
+      const body: LocalRect = {
+        x0: -plan.baseBox.w / 2,
+        x1: plan.baseBox.w / 2,
+        z0: -plan.baseBox.d / 2,
+        z1: plan.baseBox.d / 2,
+      };
+
+      it(`${e.id} (${side}) draws ${count} rows, one roof each, that cover the plate between drives and never overlap`, () => {
+        const rows = only(plan, 'storageRow');
+        expect(rows).toHaveLength(count);
+        expect(only(plan, 'storageRoof')).toHaveLength(count);
+        const bounds = rows
+          .map(placementBounds)
+          .sort((a, b) => (alongX ? a.x0 - b.x0 : a.z0 - b.z0));
+        for (const r of bounds) expect(inside(r, body), e.id).toBe(true);
+        for (let i = 1; i < bounds.length; i += 1) {
+          const gap = alongX
+            ? bounds[i]!.x0 - bounds[i - 1]!.x1
+            : bounds[i]!.z0 - bounds[i - 1]!.z1;
+          expect(gap, `${e.id} drive ${i}`).toBeCloseTo(STORAGE_DRIVE_M, 5);
+        }
+        for (const r of rows) {
+          expect(alongX ? r.size[0] : r.size[2], e.id).toBeCloseTo(width, 5);
+          expect(alongX ? r.size[2] : r.size[0], e.id).toBeCloseTo(depth, 5);
+          expect(r.size[1], e.id).toBeCloseTo(e.height, 5);
+        }
+        const covered = (count * width) / span;
+        expect(covered, e.id).toBeGreaterThan(0.5);
+        expect(covered, e.id).toBeLessThan(0.7);
+      });
+
+      it(`${e.id} (${side}) has roll-up doors 3 m apart on both long walls of every row`, () => {
+        const doors = only(plan, 'storageDoor');
+        const perWall = storageDoorsPerWall(depth);
+        expect(doors, e.id).toHaveLength(count * 2 * perWall);
+        const lines = new Map<number, number[]>();
+        for (const d of doors) {
+          const across = alongX ? d.offset[0] : d.offset[2];
+          const along = alongX ? d.offset[2] : d.offset[0];
+          const key = Math.round(across * 100);
+          lines.set(key, [...(lines.get(key) ?? []), along]);
+        }
+        expect(lines.size, e.id).toBe(count * 2);
+        for (const run of lines.values()) {
+          const sorted = run.sort((a, b) => a - b);
+          expect(sorted).toHaveLength(perWall);
+          for (let i = 1; i < sorted.length; i += 1) {
+            expect(sorted[i]! - sorted[i - 1]!, e.id).toBeCloseTo(STORAGE_DOOR_PITCH_M, 5);
+          }
+        }
+        for (const d of doors) expect(d.yaw, e.id).toBeDefined();
+      });
+
+      it(`${e.id} (${side}) has a glazed office and its door at the street end of one row, and a fence or a gate across each drive`, () => {
+        const [glass] = only(plan, 'glassFront');
+        const [walk] = only(plan, 'walkDoor');
+        expect(glass, e.id).toBeDefined();
+        expect(walk, e.id).toBeDefined();
+        expect(overlap(placementBounds(glass!), placementBounds(walk!)), e.id).toBe(false);
+        const rows = only(plan, 'storageRow').map(placementBounds);
+        const office = rows.filter((r) => {
+          const g = placementBounds(glass!);
+          return alongX
+            ? g.x0 >= r.x0 - 1e-6 && g.x1 <= r.x1 + 1e-6
+            : g.z0 >= r.z0 - 1e-6 && g.z1 <= r.z1 + 1e-6;
+        });
+        expect(office, e.id).toHaveLength(1);
+        const fences = only(plan, 'yardFence');
+        const gates = only(plan, 'storageGate');
+        expect(gates, e.id).toHaveLength(1);
+        expect(fences.length + gates.length, e.id).toBe(count - 1);
+        for (const p of [...fences, ...gates]) {
+          expect(Math.abs(p.size[alongX ? 0 : 2] - STORAGE_DRIVE_M), e.id).toBeLessThan(1e-6);
+        }
+        expect(gates[0]!.size[1]).toBeLessThan(fences[0]?.size[1] ?? Infinity);
+      });
+
+      it(`${e.id} (${side}) puts nothing over a stall, an aisle, a berth or the lot line`, () => {
+        if (!plan.lot) return;
+        // The rows, their roofs and the fence stand inside the plate: no car, aisle, berth or walk lies under them.
+        for (const part of ['storageRow', 'storageRoof', 'yardFence', 'storageGate'] as const) {
+          for (const p of only(plan, part)) {
+            const b = placementBounds(p);
+            expect(inside(b, plan.lot.lot), `${e.id} ${part}`).toBe(true);
+            expect(inside(b, body), `${e.id} ${part} in the plate`).toBe(true);
+            // The layout's own edges are good to a millimetre or two.
+            const shrunk = { x0: b.x0 + 0.02, x1: b.x1 - 0.02, z0: b.z0 + 0.02, z1: b.z1 - 0.02 };
+            for (const t of plan.lot.taken)
+              expect(overlap(t, shrunk), `${e.id} ${part}`).toBe(false);
+          }
+        }
+        // What is hung on a wall stands a hand's breadth proud of it, and stays on the lot and off every car and aisle.
+        const shrink = (r: LocalRect): LocalRect => ({
+          x0: r.x0 + 0.2,
+          x1: r.x1 - 0.2,
+          z0: r.z0 + 0.2,
+          z1: r.z1 - 0.2,
+        });
+        for (const part of ['storageDoor', 'glassFront', 'walkDoor', 'signageBand'] as const) {
+          for (const p of only(plan, part)) {
+            const b = placementBounds(p);
+            expect(inside(b, plan.lot.lot), `${e.id} ${part}`).toBe(true);
+            for (const h of plan.lot.hard) {
+              expect(overlap(h, b) && overlap(h, shrink(b)), `${e.id} ${part}`).toBe(false);
+            }
+          }
+        }
+      });
+    }
+  }
+});

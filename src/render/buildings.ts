@@ -452,7 +452,11 @@ export class BuildingInstancer {
   ) {
     this.scene = scene;
     this.heightAt = heightAt;
-    this.plinthIds = plinthIds ?? new Set();
+    // Self-storage is rows its kit draws, so its body is only the slab they stand on.
+    this.plinthIds = new Set([
+      ...(plinthIds ?? []),
+      ...catalog.filter((e) => e.kind === 'storage').map((e) => e.id),
+    ]);
     this.roadAt = roadAt ?? ((): boolean => false);
     this.street = street;
     this.dirtAt = dirtAt;
