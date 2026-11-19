@@ -25,7 +25,7 @@ current behavior only and carry no dates of their own._
 
 ## Status (2026-09-29)
 
-**Test suite:** 11,146 tests passing across 303 test files, run 2026-11-19.
+**Test suite:** 11,167 tests passing across 307 test files, run 2026-11-19.
 This is the only test count in the documentation set. When the suite changes
 again, update the figure here and nowhere else.
 
@@ -37,12 +37,6 @@ again, update the figure here and nowhere else.
 
 - What a review of every shot the tools write found wrong in the game is
   ranked in [open-visual-defects.md](roadmap/open-visual-defects.md).
-- [Buildings rise with the town](specs/redevelopment.md) is agreed and
-  built but for its last part: an abandoned building stands until its land
-  is wanted `[R-world-059]`, a storey ceiling follows the town's size
-  `[R-world-057]`, and a building with no room to spread is rebuilt taller
-  on its lot with its parking built in `[R-world-058]` `[R-services-044]`.
-  Not yet built: the modern tower look.
 - A bend turns at its kerb return's radius, not its class's minimum curve
   radius `[R-roads-081]`: the wider sweep leaves the tiles the road holds, so
   lots, traffic and saves would have to follow it. Not yet bends: a one-way
