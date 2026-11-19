@@ -154,7 +154,11 @@ export type BuildingPart =
   | 'recoveryStack'
   | 'stackBand'
   | 'stackRing'
-  | 'stackPlinth';
+  | 'stackPlinth'
+  | 'tyreRack'
+  | 'oilTank'
+  | 'iceLocker'
+  | 'propaneCage';
 
 /**
  * Whether an industrial building is the CLEAN kind, taken from whether it
@@ -240,6 +244,8 @@ export function archetypeFor(entry: BuildingCatalogEntry): BuildingArchetype {
       case 'strip':
       case 'supermarket':
       case 'restaurant':
+      case 'autorepair':
+      case 'convenience':
         return 'storefront';
       default:
         return (entry.level ?? 1) >= 2 ? 'retailBlock' : 'storefront';
@@ -329,6 +335,30 @@ const STOREFRONT_PARTS: Readonly<Record<string, readonly BuildingPart[]>> = {
     'dumpsterEnclosure',
     'pylon',
     'signPole',
+    'rooftopUnit',
+    'roofHatch',
+  ],
+  /** A repair shop: bay doors across its street face, a glazed office at one end, a sign band, a tyre rack and a waste-oil tank on the far side wall; no shopfront canopy. */
+  autorepair: [
+    'rollUpDoors',
+    'glassFront',
+    'walkDoor',
+    'signageBand',
+    'tyreRack',
+    'oilTank',
+    'rooftopUnit',
+    'roofHatch',
+  ],
+  /** A convenience store: a glazed front under a bright canopy band, an ice locker and a propane cage on the front wall, bollards on the walk, condensers on the roof. */
+  convenience: [
+    'glassFront',
+    'walkDoor',
+    'canopy',
+    'signageBand',
+    'iceLocker',
+    'propaneCage',
+    'bollard',
+    'condenser',
     'rooftopUnit',
     'roofHatch',
   ],

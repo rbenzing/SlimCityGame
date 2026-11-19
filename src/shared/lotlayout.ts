@@ -137,6 +137,8 @@ export interface LotLayout {
   rearYard: LotRect | null;
   /** Where people go in: the middle of the body's street face. */
   entrance: LotPoint;
+  /** The stretch of the body's street face a row of service bay doors fills, for a kind that has them. */
+  bayDoors?: { u0: number; u1: number };
   /** The walk along the body's street face, as deep as the ground in front of it leaves. */
   frontWalk: LotRect | null;
   /** The walk from the street to the front walk, where no parked car or island stands across it. */

@@ -284,6 +284,8 @@ describe('the pieces a lot has room for', () => {
       const front = v.layout.frontWalk;
       if (!front || v.layout.forecourt || front.v1 - front.v0 < 0.6 + MIN_FRONT_WALK_M + EPS)
         continue;
+      // A repair shop's bay doors fill its street face: no bin stands across them.
+      if (v.layout.bayDoors) continue;
       const door = doorClearances(v.layout)[0]!;
       if (v.layout.body.u1 - (door.u1 + 0.2) < 0.6) continue;
       expect(count(plan, 'bin'), v.label).toBe(1);

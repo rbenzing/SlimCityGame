@@ -19,6 +19,7 @@ import {
   isRoomyLotEntry,
   lotSpacesFor,
   onSiteSpaces,
+  repairBays,
   WALK_UP_REAR_YARD_M,
   WALK_UP_SIDE_YARD_M,
 } from './parkingcode';
@@ -95,7 +96,7 @@ export function lotLayoutFor(
   const bodyAlong = alongX ? world.w : world.d;
   const requirement = lotSpacesFor(entry, bodyAlong);
   if (!requirement) return null;
-  return layoutLot({
+  const layout = layoutLot({
     along: (alongX ? lot.w : lot.d) * TILE_METERS,
     depth: (alongX ? lot.d : lot.w) * TILE_METERS,
     bodyAlong,
@@ -109,6 +110,11 @@ export function lotLayoutFor(
     ...(entry.kind === 'restaurant' ? { driveThrough: true } : {}),
     ...(entry.kind && TRUCK_COURT_KINDS.has(entry.kind) ? { trailerCourt: true } : {}),
   });
+  // A repair shop's bay doors fill its street face; the grounds keep that ground clear.
+  if (entry.kind === 'autorepair' && repairBays(bodyAlong) > 0) {
+    layout.bayDoors = { u0: layout.body.u0, u1: layout.body.u1 };
+  }
+  return layout;
 }
 
 /** A building's car park where it stands: the edge it opens onto, its kerb credit and its layout. */

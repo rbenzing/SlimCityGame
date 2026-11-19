@@ -617,7 +617,9 @@ describe('the lot’s paved ground', () => {
       const req = lotParkingRequirement(e)!;
       for (const rotation of [0, 1, 2, 3] as const) {
         for (const alongX of [true, false]) {
-          const layout = lotLayoutFor(e, rotation, alongX, req.spaces)!;
+          // A repair shop owes by the street face it stands on, so it is credited what this turn owes.
+          const owed = lotLayoutFor(e, rotation, alongX)!.required;
+          const layout = lotLayoutFor(e, rotation, alongX, owed)!;
           expect(layout.stalls).toHaveLength(0);
           const { yard, concrete } = lotPaving(layout);
           const walks = [layout.frontWalk, layout.entranceWalk].filter((w) => w !== null);
