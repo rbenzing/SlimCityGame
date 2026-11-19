@@ -378,12 +378,11 @@ try {
     // At night the first street, the pylon and the fuel canopy stand for the kit; the rest repeat the day frames.
     const night = suffix === '-night';
     for (const [s, street] of STREETS.entries()) {
-      if (street.lineup || street.name === 'variants') continue;
+      if (street.lineup || street.name === 'variants' || street.name === 'stacked') continue;
       if (night && s !== 0) continue;
       await frame(`${street.name}${suffix}`, rowBox(s), 0.3);
     }
     await frame(`strip-pylon${suffix}`, boxOf([find('strip', 'com-strip-2')]), 0.3);
-    if (!night) await frame('stacked-above', rowBox(STREETS.findIndex((s) => s.name === 'stacked')), 0.0, 1.45);
     if (night) {
       await frame(`fuel-station${suffix}`, boxOf([find('fuel', 'com-fuel-2')]), 0.3);
       return;
@@ -417,6 +416,13 @@ try {
     const tag = n === 0 ? '' : `-${n + 1}`;
     await frame(`variants${tag}`, boxOf(half), 0.3, 0.6, 0.9);
     await frame(`variants${tag}-above`, boxOf(half), 0.0, 1.45, 0.9);
+  }
+  // The built-in shops and restaurants beside their spread forms, in two halves, oblique and from above.
+  const stackedRow = spans[STREETS.findIndex((s) => s.name === 'stacked')];
+  for (const [n, half] of [stackedRow.slice(0, 5), stackedRow.slice(5)].entries()) {
+    const tag = n === 0 ? '' : `-${n + 1}`;
+    await frame(`stacked${tag}`, boxOf(half), 0.3, 0.6, 0.9);
+    await frame(`stacked${tag}-above`, boxOf(half), 0.0, 1.45, 0.9);
   }
   await frame('close-shop', boxOf([find('main', 'com-low-1')]), 0.3);
   // The pylon and shopfronts from the other side, lower, so these are not the street-level frames again.
