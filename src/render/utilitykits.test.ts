@@ -2876,7 +2876,7 @@ describe('the hospital’s four faces', () => {
         }
         // On the 4 m grid: a room is missing only where the red-cross panel stands.
         const bayGap = row.slice(1).filter((w, i) => w.along - row[i]!.along > 4 + 1e-9);
-        expect(bayGap).toHaveLength(face === 'street' && storey === 2 ? 1 : 0);
+        expect(bayGap).toHaveLength(face === 'street' && storey === 1 ? 1 : 0);
         row.slice(1).forEach((w, i) => {
           const cells = (w.along - row[i]!.along) / 4;
           expect(cells).toBeCloseTo(Math.round(cells), 9);
