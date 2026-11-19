@@ -4,7 +4,8 @@
  * cross street, homes west of it and unbuilt zoned parcels east of it.
  * Frames: `yards-half-above`, `yards-half-street`, `yards-normal-above`, `yards-normal-street`,
  * `yards-corner-above`, `yards-lens` (the zone lens over the corner street, unbuilt parcels
- * outlined with their yards) and `yards-night`. 7 frames.
+ * outlined with their yards), `yards-grid-above` and `yards-grid-lens` (a 7 by 7 block with
+ * homes on all four streets) and `yards-night`. 9 frames.
  * Homes are placed by command along each street with the sim paused: a running sim with no
  * supply abandons and clears them within a minute. Land value is not set, so the half and
  * normal streets are the half and normal homes' own lots.
@@ -77,7 +78,7 @@ try {
   const N = g.size;
   const idx = (x, z) => z * N + x;
   const flat = (x, z, h0) => !g.water[idx(x, z)] && Math.abs(g.height[idx(x, z)] - h0) <= 6;
-  const rowsNeeded = STREETS.length * ROWS + 2;
+  const rowsNeeded = STREETS.length * ROWS + 2 + 10;
   let anchor = null;
   for (let z = 20; z < N - rowsNeeded - 10 && !anchor; z++) {
     for (let x = 20; x < N - 30 && !anchor; x++) {
@@ -138,6 +139,63 @@ try {
       rotation: 0,
     },
   ]);
+  // The grid block: a 7 by 7 block with a street on each side, zoned within three tiles of a
+  // street, with homes on every street. Normal lots run along the north and south streets,
+  // their turned twins down the west and east streets, half lots in the south corners.
+  const GX = X;
+  const GZ = roadRow(STREETS.length - 1) + 3;
+  const column = (x, z0, z1) => Array.from({ length: z1 - z0 + 1 }, (_, i) => ({ x, z: z0 + i }));
+  await send('Block north street', [{ kind: 'buildRoad', tier: 1, tiles: row(GZ, GX, GX + 8) }]);
+  await send('Block south street', [
+    { kind: 'buildRoad', tier: 1, tiles: row(GZ + 8, GX, GX + 8) },
+  ]);
+  await send('Block west street', [{ kind: 'buildRoad', tier: 1, tiles: column(GX, GZ, GZ + 8) }]);
+  await send('Block east street', [
+    { kind: 'buildRoad', tier: 1, tiles: column(GX + 8, GZ, GZ + 8) },
+  ]);
+  const ring = [];
+  for (let z = GZ + 1; z <= GZ + 7; z++) {
+    for (let x = GX + 1; x <= GX + 7; x++) {
+      if (Math.min(x - GX, GX + 8 - x, z - GZ, GZ + 8 - z) <= 3) ring.push({ x, z });
+    }
+  }
+  await send('Block zone', [{ kind: 'paintZone', zone: RES_LOW, tiles: ring }]);
+  // The turn picks the side the front is on (0 south, 2 north). The west and east streets take the
+  // turned twin, which the plat's turned lot is, stood without asking which side its front is on.
+  const blockHomes = [
+    ...Array.from({ length: 7 }, (_, i) => ({
+      id: 'res-normal-1',
+      x: GX + 1 + i,
+      z: GZ + 1,
+      r: 2,
+    })),
+    ...Array.from({ length: 4 }, (_, i) => ({
+      id: 'res-normal-t-1',
+      x: GX + 1,
+      z: GZ + 3 + i,
+      r: 0,
+    })),
+    ...Array.from({ length: 5 }, (_, i) => ({
+      id: 'res-normal-t-1',
+      x: GX + 6,
+      z: GZ + 3 + i,
+      r: 0,
+    })),
+    ...[3, 4, 5].map((i) => ({ id: 'res-normal-1', x: GX + i, z: GZ + 6, r: 0 })),
+    ...[1, 2].map((i) => ({ id: 'res-half-1', x: GX + i, z: GZ + 7, r: 0 })),
+  ];
+  for (const h of blockHomes) {
+    await send('Block home', [
+      {
+        kind: 'placeBuilding',
+        catalogId: h.id,
+        x: h.x,
+        z: h.z,
+        rotation: h.r,
+        ...(h.id.includes('-t-') ? { restore: true } : {}),
+      },
+    ]);
+  }
   // One command each: a batch is atomic, and one refused tile would drop the street.
   const spots = [];
   for (const [s, f] of STREETS.entries()) {
@@ -173,10 +231,13 @@ try {
     await shoot(`yards-${f.name}-above`, midX(f), midZ + 0.5, 150, 0, 1.45);
   }
 
+  await shoot('yards-grid-above', GX + 4, GZ + 4.5, 190, 0, 1.45);
+
   // The zone lens over the corner street: the unbuilt parcels east of the cross street show their yards.
   await page.evaluate(() => window.__slimcity.setTool('zone.resLow'));
   await page.waitForTimeout(1500);
   await shoot('yards-lens', X + 7, cz - 1.5, 170, 0, 1.45);
+  await shoot('yards-grid-lens', GX + 4, GZ + 4.5, 190, 0, 1.45);
   await page.evaluate(() => window.__slimcity.setTool('select'));
 
   await page.evaluate(() => {

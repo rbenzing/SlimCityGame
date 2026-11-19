@@ -513,9 +513,13 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
     return yardWorld;
   };
   // The zoned rows behind a home's lot, which its garden runs over.
+  // The rows each lot was last laid with, by its min corner, so a home is laid again when its yard moves.
+  const yardLaid = new Map<string, number>();
   const yardRowsOf: YardLookup = (lot) => {
     const world = yardWorldNow();
-    return yardRowsBehind(world.src, world.plat, lot);
+    const rows = yardRowsBehind(world.src, world.plat, lot);
+    yardLaid.set(`${lot.x},${lot.z}`, rows);
+    return rows;
   };
   const rebuildPlat = (): void => {
     const zones = plattedZonesFor(store.getState().selectedTool);
@@ -2432,8 +2436,6 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
     trees.clearAt(landfillRenderer.memberTilePoints());
   };
 
-  /** The number of yard tiles each standing home was last laid with. */
-  const yardSeen = new Map<number, number>();
   /**
    * A home's lot is laid over the yard behind it, so when the zone, a road or a
    * building changes the yard, the homes it changed are laid again; the
@@ -2444,19 +2446,14 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
     const { src, plat } = yardWorldNow();
     const moved: BuildingInstance[] = [];
     const cleared: TilePoint[] = [];
-    const standing = new Set<number>();
     for (const b of knownBuildings.values()) {
       const entry = catalogById.get(b.catalogId);
       const lot = entry && isHouseEntry(entry) ? homeLotOf(b, entry, street) : null;
       if (!lot) continue;
-      standing.add(b.id);
-      const tiles = yardTilesOf(src, plat, lot);
-      cleared.push(...tiles);
-      const seen = yardSeen.get(b.id);
-      yardSeen.set(b.id, tiles.length);
-      if (seen !== undefined && seen !== tiles.length) moved.push(b);
+      cleared.push(...yardTilesOf(src, plat, lot));
+      const laid = yardLaid.get(`${lot.x},${lot.z}`);
+      if (laid !== undefined && laid !== yardRowsBehind(src, plat, lot)) moved.push(b);
     }
-    for (const id of [...yardSeen.keys()]) if (!standing.has(id)) yardSeen.delete(id);
     trees.clearAt(cleared);
     if (moved.length === 0) return;
     const relaid = { added: [], removed: [], updated: moved };
