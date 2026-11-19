@@ -432,6 +432,21 @@ try {
     await frame(`stacked${tag}`, boxOf(half), 0.3, 0.6, 0.9);
     await frame(`stacked${tag}-above`, boxOf(half), 0.0, 1.45, 0.9);
   }
+  // The garage portal stands on a built-in body's high-x wall near its rear: the eye stands east of it, low and oblique, with the portal centred.
+  const PORTAL_YAW = 1.3;
+  const portalBox = (b, h) => ({ x: b.x + b.w - 0.6, z: b.z + 1.2, w: 1, d: 2, h });
+  const shop = find('stacked', 'com-shop-2-up1x2');
+  const shop4 = find('stacked', 'com-low-2-up1x1');
+  const restaurant = find('stacked', 'com-restaurant-3-up2x2');
+  await frame('stacked-portal-shop', portalBox(shop, 5), PORTAL_YAW, 0.35, 0.9);
+  await frame('stacked-portal-shop4', portalBox(shop4, 5), PORTAL_YAW, 0.35, 0.9);
+  await frame('stacked-portal-restaurant', portalBox(restaurant, 5), PORTAL_YAW, 0.35, 0.9);
+  // The office: the portal and the garage band over the ground floor in one frame.
+  const officeBuiltIn = find('officeup', 'com-office-2-up2x2');
+  await frame('office-built-in-portal', portalBox(officeBuiltIn, 14), PORTAL_YAW, 0.3, 0.9);
+  // The street faces of the same two shops, straight on and low.
+  await frame('stacked-front-shop', boxOf([shop]), 0.0, 0.3, 0.9);
+  await frame('stacked-front-shop4', boxOf([shop4]), 0.0, 0.3, 0.9);
   await frame('close-shop', boxOf([find('main', 'com-low-1')]), 0.3);
   // The pylon and shopfronts from the other side, lower, so these are not the street-level frames again.
   await frame('close-strip', boxOf([find('strip', 'com-strip-2')]), -0.7, 0.45, 0.8);
