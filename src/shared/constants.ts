@@ -249,6 +249,8 @@ export const BIG_TOWN_MILESTONE = MILESTONES.findIndex((m) => m.name === 'Big To
  * with its parking built in. Below it a town grows as it always has.
  */
 export const BUILT_IN_PARKING_MILESTONE = BIG_TOWN_MILESTONE;
+/** The index of Small City, 8,000 people: the last rung whose storey ceiling is six storeys. */
+export const SMALL_CITY_MILESTONE = MILESTONES.findIndex((m) => m.name === 'Small City');
 /** The index of Grand City, 20,000 people: the rung from which a new shop or works may take the compact lot. */
 export const GRAND_CITY_MILESTONE = MILESTONES.findIndex((m) => m.name === 'Grand City');
 /**
