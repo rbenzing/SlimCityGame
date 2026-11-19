@@ -5285,21 +5285,25 @@ export function computePartPlacements(
         // A built-in form has no drive-through end: its walls keep their windows.
         if (!side || entry.stacked) break;
         // The drive-through end of the body, the whole body's height, as one dark
-        // slab; the other end where that one stands on the lot line, and neither
-        // where the body fills its lot's width.
+        // slab a tier, each on its own tier's wall so a stepped body's upper tiers
+        // are not left with a slab standing clear of them; the other end where
+        // that one stands on the lot line, and neither where the body fills its
+        // lot's width.
         const end = lot?.lane ? sideOfFacing(lot.lane.pickupFacing) : farEnd(side, lot);
         for (const wall of [end, oppositeSide(end)]) {
-          const slab = againstFacade(
-            part,
-            baseBox,
-            wall,
-            facadeSpan(baseBox, wall),
-            FEATURE_WALL_PROUD_M,
-            roofY,
-            roofY / 2,
+          const slabs = tierBoxes.map((box) =>
+            againstFacade(
+              part,
+              box,
+              wall,
+              facadeSpan(box, wall),
+              FEATURE_WALL_PROUD_M,
+              box.h,
+              box.yOffset + box.h / 2,
+            ),
           );
-          if (lot && !rectInside(placementBounds(slab), lot.lot)) continue;
-          out.push(slab);
+          if (lot && !rectInside(placementBounds(slabs[0]!), lot.lot)) continue;
+          out.push(...slabs);
           break;
         }
         break;

@@ -1008,17 +1008,18 @@ describe('a restaurant’s wall and sign band', () => {
   it('stand on the body’s own wall, the flat band 0.16 m proud and the dark wall 0.1 m, never off it', () => {
     for (const id of ['com-restaurant-1', 'com-restaurant-2', 'com-restaurant-3']) {
       const plan = kitOf(byId(id), 0, 'S');
-      const half = plan.baseBox.w / 2;
-      const halfD = plan.baseBox.d / 2;
       for (const p of plan.placements.filter(
         (q) => q.part === 'featureWall' || (q.part === 'signageBand' && q.pitch === undefined),
       )) {
         const b = placementBounds(p);
+        // Off the wall of the tier it stands on: the base's, or an upper tier's that it covers.
         const gap = Math.min(
-          Math.abs(b.x0 + half),
-          Math.abs(b.x1 - half),
-          Math.abs(b.z0 + halfD),
-          Math.abs(b.z1 - halfD),
+          ...computeSetbacks(byId(id), 7, plan.frontage).boxes.flatMap((box) => [
+            Math.abs(b.x0 + box.w / 2),
+            Math.abs(b.x1 - box.w / 2),
+            Math.abs(b.z0 + box.d / 2),
+            Math.abs(b.z1 - box.d / 2),
+          ]),
         );
         expect(gap, `${id} ${p.part}`).toBeLessThanOrEqual(0.2 + 1e-6);
       }
@@ -1360,11 +1361,42 @@ describe('a restaurant’s drive-through', () => {
     }
   });
 
+  it('stands the feature wall on the wall of every tier it covers: no slab stands clear of a stepped body', () => {
+    let stepped = 0;
+    for (const { e, plan } of plans) {
+      const slabs = only(plan, 'featureWall');
+      if (slabs.length === 0) continue;
+      const { boxes } = computeSetbacks(e, 7, plan.frontage);
+      if (boxes.length > 1) stepped += 1;
+      const first = slabs[0]!;
+      const thinX = first.size[0] < first.size[2];
+      const sign = (thinX ? first.offset[0] : first.offset[2]) > 0 ? 1 : -1;
+      for (const tier of boxes) {
+        const covering = slabs.filter(
+          (s) => bottomOf(s) <= tier.yOffset + 1e-6 && topOf(s) >= tier.yOffset + tier.h - 1e-6,
+        );
+        expect(covering.length, `${e.id} tier at ${tier.yOffset}`).toBeGreaterThan(0);
+        const b = placementBounds(covering[0]!);
+        const inner = thinX ? (sign > 0 ? b.x0 : b.x1) : sign > 0 ? b.z0 : b.z1;
+        expect(inner, `${e.id} tier at ${tier.yOffset}`).toBeCloseTo(
+          (sign * (thinX ? tier.w : tier.d)) / 2,
+          6,
+        );
+      }
+    }
+    expect(stepped).toBeGreaterThan(0);
+  });
+
   it('darkens the drive-through end of the body as a feature wall its full height, on the pickup wall where there is a lane', () => {
     for (const { e, plan } of laned) {
-      const [wall] = only(plan, 'featureWall');
+      const slabs = only(plan, 'featureWall');
+      const [wall] = slabs;
       expect(wall, e.id).toBeDefined();
-      expect(wall!.size[1]).toBeCloseTo(plan.topBox.yOffset + plan.topBox.h, 9);
+      // One slab a tier, together the body's whole height.
+      expect(
+        slabs.reduce((sum, s) => sum + s.size[1], 0),
+        e.id,
+      ).toBeCloseTo(plan.topBox.yOffset + plan.topBox.h, 9);
       expect(bottomOf(wall!)).toBeCloseTo(0, 9);
       expect(Math.min(wall!.size[0], wall!.size[2])).toBeCloseTo(0.1, 9);
       const f = plan.lot!.lane!.pickupFacing;
