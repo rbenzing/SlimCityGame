@@ -195,6 +195,8 @@ const views = [
   ['c6-rail-turnout-low', X + 18.2, Z + 16.4, 12, Math.PI + 0.5, 0.3],
   ['c-rail-yard-track', yard.x, yard.z, 130, Math.PI, PITCH],
   ['c2-rail-yard-street', yard.x, yard.z, 120, 0.3, 0.5],
+  // The rail shop's near end, where each of its two tracks runs in through a door: from outside, a little above.
+  ['c7-rail-shop-doors', yard.x - 1.5, yard.z - 1.2, 40, -Math.PI / 2, 0.4],
 ];
 for (const [name, tx, tz, d, yaw, pitch] of views) {
   await camera(tx, tz, d, yaw, pitch);
