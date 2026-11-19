@@ -24,12 +24,13 @@
 | `STORAGE_ROW_COVER` | 0.5 of the yard | ratio | the rows as drawn |
 | Storage drive | 7.3 (24 ft) | m | El Centro CA |
 | Lots with their building at the street | one in three, where both plans fit | share | dial |
+| `STREET_PLAN_SETBACK_M` | 1.9 | m | the store canopy's depth |
 
-**Code:** `src/data/catalog.json` the entries, appended; `src/shared/parkingcode.ts` bays, a storage yard's units and each kind's spaces; `src/shared/floorarea.ts` `STORAGE_ROW_COVER`, `depthCapM` the lube's body; `src/shared/lotlayout.ts` `sideWindow` the lanes, the lube's court; `src/render/buildingkit.ts`, `src/render/archetypes.ts`, `src/render/facade.ts` `plainWalledBody` the kits. To be built: the plan variants.
+**Code:** `src/data/catalog.json` the entries, appended; `src/shared/parkingcode.ts` bays, a storage yard's units and each kind's spaces; `src/shared/floorarea.ts` `STORAGE_ROW_COVER`, `depthCapM` the lube's body; `src/shared/lotlayout.ts` `sideWindow` the lanes, the lube's court; `src/render/buildingkit.ts`, `src/render/archetypes.ts`, `src/render/facade.ts` `plainWalledBody` the kits; `src/shared/planvariant.ts` `planVariantAt` the pick, `src/shared/lotparking.ts` `lotParkingAt` where it enters the layout.
 
-**Tests:** `src/shared/commercialkinds.test.ts`, `src/shared/storekinds.test.ts` each kind's catalog figures against the sources, lanes clear of aisles; `src/render/lowkindskit.test.ts`, `src/render/morekindskit.test.ts` kits clear of stalls, aisles and lot lines; `src/shared/autorepairparking.test.ts`, `src/shared/repairlot.test.ts` the repair shop's bays.
+**Tests:** `src/shared/commercialkinds.test.ts`, `src/shared/storekinds.test.ts` each kind's catalog figures against the sources, lanes clear of aisles; `src/render/lowkindskit.test.ts`, `src/render/morekindskit.test.ts` kits clear of stalls, aisles and lot lines; `src/shared/autorepairparking.test.ts`, `src/shared/repairlot.test.ts` the repair shop's bays; `src/shared/planvariant.test.ts` both plans fit alike over the whole catalog; `src/render/planvariantplan.test.ts` the simulation's layout equals the renderer's.
 
-**Open:** the car wash and the contractor's yard are not added: a car wash's cars a day and a yard's draw weight were not found. A lube's or a bank's compact lot has no room for its lane, so no car circulates there. A repair shop's accessible spaces are counted from the middle of its street face, not its office door, and its bay glass glows only faintly at night. A storage yard's roomy lot is mostly lawn, where a real one fills its site with rows, and its gate has no keypad post. A pharmacy's lane carries no marking. A bank's and a medical office's site sizes were not found. A strip is one straight range: an L needs a body of more than one rectangle.
+**Open:** the car wash and the contractor's yard are not added: a car wash's cars a day and a yard's draw weight were not found. A lube's or a bank's compact lot has no room for its lane, so no car circulates there. A repair shop's accessible spaces are counted from the middle of its street face, not its office door, and its bay glass glows only faintly at night. A storage yard's roomy lot is mostly lawn, where a real one fills its site with rows, and its gate has no keypad post. A pharmacy's lane carries no marking. A bank's and a medical office's site sizes were not found. A strip is one straight range: an L needs a body of more than one rectangle. A strip, a supermarket and a medical office have one plan until their kits can stand at the street.
 
 ## Why the rules are what they are
 
@@ -64,7 +65,9 @@ A roomy lot is measured with the lanes or the full court on it. A compact lot la
 
 A street of shops all set behind identical car parks reads as one stamp. Real frontages mix: most suburban shops park in front, and some stand at the street with their car park behind or beside.
 
-The layout already tries the building at the lot's near edge, its middle and its far edge. Where more than one of those fits, the lot's place picks, so one lot in three stands at the street. A kind whose building is pinned by its own ground (the repair shop's apron, the lube's court, the bank's lanes, a filling station's canopy, a works' truck court, storage rows) has one plan.
+The usual plan is laid first. Where it fits, and the lot's place picks the street plan, the building is tried 1.9 m behind the street line, its awning's depth, with the stalls beside it; it is taken only if it fits too. A shop at the street line has no walk of its own: its front walk is on the footway.
+
+A kind whose building is pinned by its own ground has one plan: the repair shop's apron, the lube's court, the bank's, the pharmacy's and the restaurant's lanes, a filling station's canopy, and the strip, the supermarket and the medical office, whose canopies and entrance need the ground in front. Industry and a lot on a curve keep the usual plan. That leaves the shop, the convenience store, the office and the hotel: about a quarter of the lots that fit can take either plan.
 
 ## Decided
 
