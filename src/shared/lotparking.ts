@@ -89,15 +89,16 @@ export function lotLayoutFor(
   kerbCredit = 0,
   carPark = true,
 ): LotLayout | null {
-  const requirement = lotSpacesFor(entry);
-  if (!requirement) return null;
   const lot = footprintForRotation(entry, rotation);
   const body = bodyMetresFor(entry);
   const world = rotation % 2 === 1 ? { w: body.d, d: body.w } : body;
+  const bodyAlong = alongX ? world.w : world.d;
+  const requirement = lotSpacesFor(entry, bodyAlong);
+  if (!requirement) return null;
   return layoutLot({
     along: (alongX ? lot.w : lot.d) * TILE_METERS,
     depth: (alongX ? lot.d : lot.w) * TILE_METERS,
-    bodyAlong: alongX ? world.w : world.d,
+    bodyAlong,
     bodyDepth: alongX ? world.d : world.w,
     spaces: carPark ? onSiteSpaces(requirement.spaces, kerbCredit) : 0,
     berths: requirement.berths,
