@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.95.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.94.0...slimcity-v1.95.0) (2026-11-19)
+
+
+### Features
+
+* **sim:** an abandoned building stands at least 10 passes before demand may clear it ([6f440f9](https://github.com/rbenzing/SlimCityGame/commit/6f440f9952378e0f6b2f3892000d32bd2e7ab19b))
+* **sim:** an abandoned building stands until its zone's demand is high, then is cleared ([1c63383](https://github.com/rbenzing/SlimCityGame/commit/1c6338394ed7a47d79035373bf2b4436ffd4c7e7))
+* **sim:** no zoned building grows taller than its town's size allows ([8f91c94](https://github.com/rbenzing/SlimCityGame/commit/8f91c941bc9d1a4d1979327bb8dbe04050d3089a))
+
 ## [1.94.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.93.0...slimcity-v1.94.0) (2026-11-19)
 
 
