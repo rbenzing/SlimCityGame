@@ -111,7 +111,7 @@ export function storeysOf(entry: BuildingCatalogEntry): number {
 }
 
 /** Self-storage stands in rows about 9 m wide with drives between them: the rows roof this share of its plate. */
-export const STORAGE_ROW_COVER = 0.6;
+export const STORAGE_ROW_COVER = 0.5;
 
 /** Gross floor area in m²: the plate times its storeys; self-storage's is the rows' share of its plate. */
 export function grossFloorM2(entry: BuildingCatalogEntry): number {

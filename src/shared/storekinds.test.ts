@@ -132,9 +132,9 @@ const ROWS: Row[] = [
     id: 'ind-storage-1',
     name: 'Self-Storage',
     lot: [3, 3],
-    floorM2: 1000,
+    floorM2: 832,
     jobs: 2,
-    powerUse: 0.0071,
+    powerUse: 0.0059,
     waterUse: 0.2,
     pollution: 0,
     noise: 0,
@@ -149,9 +149,9 @@ const ROWS: Row[] = [
     id: 'ind-storage-2',
     name: 'Storage Centre',
     lot: [4, 4],
-    floorM2: 1776,
+    floorM2: 1480,
     jobs: 2,
-    powerUse: 0.0127,
+    powerUse: 0.0105,
     waterUse: 0.2,
     pollution: 0,
     noise: 0,
@@ -165,14 +165,14 @@ const ROWS: Row[] = [
     id: 'ind-storage-3',
     name: 'Storage Park',
     lot: [5, 4],
-    floorM2: 2220,
+    floorM2: 1850,
     jobs: 3,
-    powerUse: 0.0158,
+    powerUse: 0.0132,
     waterUse: 0.3,
     pollution: 0,
     noise: 0,
     height: 3,
-    spaces: 6,
+    spaces: 5,
   },
 ];
 
@@ -207,10 +207,10 @@ describe('the pharmacy, the machine shop and self-storage', () => {
     });
   }
 
-  it('self-storage counts 75, 133 and 166 units, and a plate wider than its rows', () => {
+  it('self-storage counts 63, 111 and 139 units, and a plate wider than its rows', () => {
     const storage = catalog.filter((c) => c.kind === 'storage' && c.bodyFootprint === undefined);
-    expect(storage.map((e) => storageUnits(grossFloorSqFt(e)))).toEqual([75, 133, 166]);
-    for (const e of storage) expect(grossFloorM2(e)).toBeCloseTo(0.6 * bodyPlateM2(e), 6);
+    expect(storage.map((e) => storageUnits(grossFloorSqFt(e)))).toEqual([63, 111, 139]);
+    for (const e of storage) expect(grossFloorM2(e)).toBeCloseTo(0.5 * bodyPlateM2(e), 6);
   });
 
   it('self-storage docks no truck: it owes no loading berth', () => {
