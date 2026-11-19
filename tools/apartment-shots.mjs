@@ -51,6 +51,8 @@ const STREETS = [
   { name: 'tower', ids: ['res-tower-1', 'res-tower-2', 'res-tower-3'] },
   // The level-2 mid-rise beside its built-in form, which stands the same floor on a 1x2 lot in sixteen storeys with its parking below.
   { name: 'builtin', ids: ['res-high-2', 'res-high-2-up1x2'] },
+  // A six-storey block (punched windows) beside the two modern ones over the ceiling (curtain wall, a band a floor, a screened crown); only the street frame and the close ones are shot.
+  { name: 'modern', ids: ['res-high-1', 'res-high-2', 'res-tower-1'], streetOnly: true },
 ];
 
 const browser = await chromium.launch({ headless: true, args: ['--use-angle=default'] });
@@ -234,7 +236,7 @@ try {
     // Each kind at every level from the street, beside the kerb car; the taller the farther back.
     for (const [s, street] of STREETS.entries()) {
       // At night the street frame holds every level, so the per-level frames only repeat it.
-      for (const id of suffix === '-night' ? [] : street.ids) {
+      for (const id of suffix === '-night' || street.streetOnly ? [] : street.ids) {
         await frame(`${street.name}-${id}${suffix}`, boxOf([find(street.name, id)]), 0.3);
       }
       // The street of the kind, all three levels in one frame.
@@ -266,6 +268,12 @@ try {
     0.35,
     0.9,
   );
+  // The old block beside the modern ones, near enough to read the grid and its bands.
+  const modernRow = boxOf(spans[STREETS.findIndex((s) => s.name === 'modern')]);
+  await frame('modern-row', { ...modernRow, h: 20 }, 0.35, 0.5, 0.9);
+  // A modern tower's crown from above: the screen round its plant and the penthouse inside it.
+  const crown = boxOf([find('modern', 'res-tower-1')]);
+  await frame('modern-crown', crown, 0.4, 1.1, 0.7, true);
   // The walk-ups' hips from higher up, where the four pitches meeting at the apex show.
   await frame('roof-garden', garden, 0.4, 1.1, 0.7, true);
   await frame('roof-multiplex', multiplex, 0.4, 1.1, 0.7, true);
@@ -275,6 +283,7 @@ try {
   await views('-night')();
   const restoreNight = await closeUp(page, 2);
   await frame('close-tower-podium-night', tower, 0.2, 0.5, 0.7);
+  await frame('modern-night', { ...modernRow, h: 20 }, 0.35, 0.5, 0.9);
   await restoreNight();
 } finally {
   await browser.close();
