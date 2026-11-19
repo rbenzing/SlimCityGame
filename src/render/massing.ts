@@ -157,6 +157,8 @@ export function tierCountOf(entry: BuildingCatalogEntry): number {
   if (isHouseEntry(entry) || isFarmEntry(entry) || isApartmentEntry(entry)) return 1;
   // These low kinds are one volume at every level: a wider plate, not a taller stack.
   if (ONE_VOLUME_KINDS.has(entry.kind ?? '')) return 1;
+  // A shop or restaurant that has gone up is one straight-walled body of its working storeys.
+  if (entry.stacked && (entry.kind === 'shop' || entry.kind === 'restaurant')) return 1;
   return Math.min(3, Math.max(1, Math.round(entry.level ?? 1)));
 }
 
