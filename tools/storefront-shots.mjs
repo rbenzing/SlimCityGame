@@ -64,6 +64,22 @@ const STREETS = [
       'com-convenience-3-lot5x2',
     ],
   },
+  // Each spread shop and restaurant beside its built-in form, which stands the same level taller on a smaller lot with its parking below.
+  {
+    name: 'stacked',
+    gap: 1,
+    ids: [
+      'com-shop-2',
+      'com-shop-2-up1x2',
+      'com-low-2',
+      'com-low-2-up1x2',
+      'com-low-2-up1x1',
+      'com-restaurant-2',
+      'com-restaurant-2-up1x2',
+      'com-restaurant-3-lot4x2',
+      'com-restaurant-3-up2x2',
+    ],
+  },
   { name: 'strip', ids: ['com-strip-2', 'com-strip-3', 'com-strip-1'] },
   { name: 'market', ids: ['com-market-2', 'com-market-1', 'com-market-3'] },
   {
@@ -367,6 +383,7 @@ try {
       await frame(`${street.name}${suffix}`, rowBox(s), 0.3);
     }
     await frame(`strip-pylon${suffix}`, boxOf([find('strip', 'com-strip-2')]), 0.3);
+    if (!night) await frame('stacked-above', rowBox(STREETS.findIndex((s) => s.name === 'stacked')), 0.0, 1.45);
     if (night) {
       await frame(`fuel-station${suffix}`, boxOf([find('fuel', 'com-fuel-2')]), 0.3);
       return;

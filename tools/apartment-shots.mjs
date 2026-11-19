@@ -49,6 +49,8 @@ const STREETS = [
   { name: 'garden', ids: ['res-medium-1', 'res-medium-2', 'res-medium-3'] },
   { name: 'midrise', ids: ['res-high-1', 'res-high-2', 'res-high-3'] },
   { name: 'tower', ids: ['res-tower-1', 'res-tower-2', 'res-tower-3'] },
+  // The level-2 mid-rise beside its built-in form, which stands the same floor on a 1x2 lot in sixteen storeys with its parking below.
+  { name: 'builtin', ids: ['res-high-2', 'res-high-2-up1x2'] },
 ];
 
 const browser = await chromium.launch({ headless: true, args: ['--use-angle=default'] });
