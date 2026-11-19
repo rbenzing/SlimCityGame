@@ -412,7 +412,7 @@ try {
   // The built-in office with parking above ground beside its spread form: from the street, from the side its portal is on, and from above. A tall pair, so the camera's own distance.
   const officeRow = spans[STREETS.findIndex((s) => s.name === 'officeup')];
   await frame('office-built-in', boxOf(officeRow), 0.3, 0.6, 0.4);
-  await frame('office-built-in-side', boxOf(officeRow), -1.2, 0.5, 0.4);
+  await frame('office-built-in-side', boxOf(officeRow), 1.2, 0.5, 0.4);
   await frame('office-built-in-above', boxOf(officeRow), 0.0, 1.45, 0.4);
 
   // The close shots, at twice the pixels over the camera's floor distance.
@@ -434,7 +434,7 @@ try {
   }
   // The garage portal stands on a built-in body's high-x wall near its rear: the eye stands east of it, low and oblique, with the portal centred.
   const PORTAL_YAW = 1.3;
-  const portalBox = (b, h) => ({ x: b.x + b.w - 0.6, z: b.z + 1.2, w: 1, d: 2, h });
+  const portalBox = (b, h) => ({ x: b.x + b.w - 0.6, z: b.z + 0.2, w: 1, d: 2, h });
   const shop = find('stacked', 'com-shop-2-up1x2');
   const shop4 = find('stacked', 'com-low-2-up1x1');
   const restaurant = find('stacked', 'com-restaurant-3-up2x2');
@@ -443,7 +443,9 @@ try {
   await frame('stacked-portal-restaurant', portalBox(restaurant, 5), PORTAL_YAW, 0.35, 0.9);
   // The office: the portal and the garage band over the ground floor in one frame.
   const officeBuiltIn = find('officeup', 'com-office-2-up2x2');
-  await frame('office-built-in-portal', portalBox(officeBuiltIn, 14), PORTAL_YAW, 0.3, 0.9);
+  await frame('office-built-in-portal', portalBox(officeBuiltIn, 20), PORTAL_YAW, 0.3, 0.5);
+  // The spread restaurant's front corner and the built-in's, from the street at an angle.
+  await frame('stacked-fin', boxOf([find('stacked', 'com-restaurant-3-lot4x2')]), 0.9, 0.5, 0.9);
   // The street faces of the same two shops, straight on and low.
   await frame('stacked-front-shop', boxOf([shop]), 0.0, 0.3, 0.9);
   await frame('stacked-front-shop4', boxOf([shop4]), 0.0, 0.3, 0.9);
