@@ -553,8 +553,15 @@ describe('the storefront kit: where every part stands', () => {
           } else if (p.part === 'ribbonBand') {
             // A ribbon band is a ring round its tier: on the base tier it holds the body, never sits inside it.
             const ring = placementBounds(p);
+            // A wall on the lot line is the one place the ring stops, a hair inside the wall.
+            const line = plan.lot?.lot;
+            const slack = (wall: number, edge: number | undefined): number =>
+              edge !== undefined && Math.abs(wall - edge) < 1e-6 ? 0.02 + 1e-6 : 0;
             const holds =
-              ring.x0 <= body.x0 && ring.x1 >= body.x1 && ring.z0 <= body.z0 && ring.z1 >= body.z1;
+              ring.x0 <= body.x0 + slack(body.x0, line?.x0) &&
+              ring.x1 >= body.x1 - slack(body.x1, line?.x1) &&
+              ring.z0 <= body.z0 + slack(body.z0, line?.z0) &&
+              ring.z1 >= body.z1 - slack(body.z1, line?.z1);
             if (!holds && bottomOf(p) < baseTop - 1e-6) inside.push(label);
           } else if (p.part !== 'entryTower' && overlap(b, body) && bottomOf(p) < baseTop - 1e-6) {
             inside.push(label);
@@ -1340,6 +1347,16 @@ describe('a restaurant’s drive-through', () => {
       expect(pole!.offset[0]).toBeCloseTo(cabinet.offset[0], 9);
       expect(pole!.offset[2]).toBeCloseTo(cabinet.offset[2], 9);
       expect(cabinet.yaw ?? 0).toBe(pole!.yaw ?? 0);
+    }
+  });
+
+  it('leaves a built-in restaurant its side walls: no feature wall hides their windows', () => {
+    const built = restaurants.filter((e) => e.stacked);
+    expect(built.length).toBeGreaterThan(0);
+    for (const e of built) {
+      for (const side of STREET_SIDES) {
+        expect(only(kitOf(e, 0, side), 'featureWall'), `${e.id} ${side}`).toHaveLength(0);
+      }
     }
   });
 

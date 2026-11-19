@@ -588,6 +588,8 @@ export const LOBBY_CANOPY_UNDERSIDE_M = 2.6;
 export const RIBBON_BAND_M = 1.2;
 export const SPANDREL_BAND_M = 1;
 export const RIBBON_BAND_PROUD_M = 0.1;
+/** How far inside a wall on the lot line a ribbon band's face stands, so the wall hides it. */
+const RIBBON_BAND_HIDDEN_M = 0.02;
 export const PORTE_COCHERE_WIDTH_M = 6.1;
 export const PORTE_COCHERE_DEPTH_M = 6;
 export const PORTE_COCHERE_THICKNESS_M = 0.6;
@@ -5280,7 +5282,8 @@ export function computePartPlacements(
         break;
       }
       case 'featureWall': {
-        if (!side) break;
+        // A built-in form has no drive-through end: its walls keep their windows.
+        if (!side || entry.stacked) break;
         // The drive-through end of the body, the whole body's height, as one dark
         // slab; the other end where that one stands on the lot line, and neither
         // where the body fills its lot's width.
@@ -5361,11 +5364,21 @@ export function computePartPlacements(
         const color = materialUnit(tower ? 'spandrelDark' : pick(PRECAST, id));
         for (const box of tierBoxes) {
           const { rows, pitch } = storeysOf(entry, box);
+          // Where a wall stands on the lot line the band stops inside the wall, so nothing of it passes the line.
+          const span = (half: number, lotLo: number | undefined, lotHi: number | undefined) => {
+            const lo = lotLo !== undefined && -half - RIBBON_BAND_PROUD_M < lotLo - 1e-9;
+            const hi = lotHi !== undefined && half + RIBBON_BAND_PROUD_M > lotHi + 1e-9;
+            const a = lo ? -half + RIBBON_BAND_HIDDEN_M : -half - RIBBON_BAND_PROUD_M;
+            const b = hi ? half - RIBBON_BAND_HIDDEN_M : half + RIBBON_BAND_PROUD_M;
+            return { size: b - a, mid: (a + b) / 2 };
+          };
+          const across = span(box.w / 2, lot?.lot.x0, lot?.lot.x1);
+          const deep = span(box.d / 2, lot?.lot.z0, lot?.lot.z1);
           for (let k = 1; k <= rows; k += 1) {
             out.push({
               part,
-              size: [box.w + 2 * RIBBON_BAND_PROUD_M, height, box.d + 2 * RIBBON_BAND_PROUD_M],
-              offset: [0, box.yOffset + k * pitch - height / 2, 0],
+              size: [across.size, height, deep.size],
+              offset: [across.mid, box.yOffset + k * pitch - height / 2, deep.mid],
               color,
             });
           }

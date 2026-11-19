@@ -364,7 +364,10 @@ describe('the lot plan on the map', () => {
 
   it('gives downtown kinds no lot plan: offices, hotels and mixed use park at the kerb', () => {
     const downtown = catalog.filter(
-      (e) => (e.zone === ZoneType.ComHigh || e.zone === ZoneType.Mixed) && !isDenseLotEntry(e),
+      (e) =>
+        (e.zone === ZoneType.ComHigh || e.zone === ZoneType.Mixed) &&
+        !isDenseLotEntry(e) &&
+        e.stacked === undefined,
     );
     expect(downtown.length).toBeGreaterThan(0);
     for (const e of downtown) {
@@ -382,6 +385,17 @@ describe('the lot plan on the map', () => {
       }
       expect(setback.spanXM).toBe(0);
       expect(setback.spanZM).toBe(0);
+    }
+  });
+
+  it('gives every built-in form a lot plan: one drive to its garage and no stalls', () => {
+    const forms = catalog.filter((e) => e.stacked !== undefined);
+    expect(forms.length).toBeGreaterThan(0);
+    for (const e of forms) {
+      const plan = lotPlanFor(e, 10, 10, roads.N(e.footprint.w, e.footprint.d));
+      expect(plan, e.id).not.toBeNull();
+      expect(plan!.layout.aisles, e.id).toHaveLength(1);
+      expect(plan!.layout.stalls, e.id).toHaveLength(0);
     }
   });
 });

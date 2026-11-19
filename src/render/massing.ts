@@ -402,13 +402,19 @@ export function computeSetbacks(
   // The podium fills the lot to the ceiling every body keeps, less the same
   // frontage span the slab gives up. A block that parks in a garage or a car
   // park on its lot keeps a podium a hand wider than its slab instead: the lot's rear is the parking's.
+  // A built-in form's wall stands on its lot line, so its podium is no wider than its slab.
   const garaged = parksInGarage(entry) || isDenseLotEntry(entry);
-  const podiumW = garaged
-    ? body.w + 2 * PODIUM_OVERHANG_M
-    : entry.footprint.w * TILE_METERS * MAX_FOOTPRINT_FILL;
-  const podiumD = garaged
-    ? body.d + 2 * PODIUM_OVERHANG_M
-    : entry.footprint.d * TILE_METERS * MAX_FOOTPRINT_FILL;
+  const builtIn = entry.stacked !== undefined;
+  const podiumW = builtIn
+    ? body.w
+    : garaged
+      ? body.w + 2 * PODIUM_OVERHANG_M
+      : entry.footprint.w * TILE_METERS * MAX_FOOTPRINT_FILL;
+  const podiumD = builtIn
+    ? body.d
+    : garaged
+      ? body.d + 2 * PODIUM_OVERHANG_M
+      : entry.footprint.d * TILE_METERS * MAX_FOOTPRINT_FILL;
   const podium: SetbackBox = {
     w: podiumW - (frontage?.spanXM ?? 0),
     d: podiumD - (frontage?.spanZM ?? 0),

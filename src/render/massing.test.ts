@@ -1062,6 +1062,13 @@ describe('a tower stands on a podium', () => {
     expect(podium!.w).toBeGreaterThan(boxes[0]!.w);
   });
 
+  it('gives a built-in form a podium no wider than its slab: its wall stands on the lot line', () => {
+    const builtIn = { ...tower(1), stacked: { workingStoreys: 2 } } as BuildingCatalogEntry;
+    const { boxes, podium } = computeSetbacks(builtIn, 7);
+    expect(podium!.w).toBeCloseTo(boxes[0]!.w, 9);
+    expect(podium!.d).toBeCloseTo(boxes[0]!.d, 9);
+  });
+
   it('keeps the podium out of the bay row the slab keeps out of', () => {
     const frontage = { spanXM: 0, spanZM: 4, centerXM: 0, centerZM: 2 };
     const { podium } = computeSetbacks(tower(2), 7, frontage);
