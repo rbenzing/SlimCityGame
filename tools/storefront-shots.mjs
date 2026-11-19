@@ -134,6 +134,8 @@ const STREETS = [
     name: 'downtown',
     ids: ['com-high-1', 'com-office-2', 'com-high-2', 'com-hotel-1', 'com-hotel-2', 'com-hotel-3'],
   },
+  // The spread office beside its built-in form, whose parking stands above ground behind a shopfront.
+  { name: 'officeup', gap: 1, ids: ['com-office-2', 'com-office-2-up2x2'] },
   // Eleven shops in a row: a lot's tile picks whether its building stands at the street or behind its car park, so both plans show.
   {
     name: 'variants',
@@ -406,6 +408,12 @@ try {
   await setPhase(0.5);
   await views('')();
   await shootLineup('');
+
+  // The built-in office with parking above ground beside its spread form: from the street, from the side its portal is on, and from above. A tall pair, so the camera's own distance.
+  const officeRow = spans[STREETS.findIndex((s) => s.name === 'officeup')];
+  await frame('office-built-in', boxOf(officeRow), 0.3, 0.6, 0.4);
+  await frame('office-built-in-side', boxOf(officeRow), -1.2, 0.5, 0.4);
+  await frame('office-built-in-above', boxOf(officeRow), 0.0, 1.45, 0.4);
 
   // The close shots, at twice the pixels over the camera's floor distance.
   const restore = await closeUp(page, 2);
