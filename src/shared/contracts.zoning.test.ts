@@ -25,7 +25,7 @@ import type {
   ResidentialKind,
 } from './types';
 import { ZoneType } from './types';
-import { MILESTONES } from './constants';
+import { MILESTONES, ceilingMilestone } from './constants';
 import { bodyPlateM2, grossFloorM2, SQ_FT_PER_M2, storeysOf } from './floorarea';
 import { isDenseLotKind } from './parkingcode';
 import catalogData from '../data/catalog.json';
@@ -583,7 +583,7 @@ describe('Residential kinds (building-types): three levels per kind, every figur
     for (const e of levels) {
       expect(e.zone).toBe(k.zone);
       expect(e.category).toBe('res');
-      expect(e.unlockMilestone).toBe(k.unlock);
+      expect(e.unlockMilestone).toBe(Math.max(k.unlock, ceilingMilestone(e.height)));
       expect(e.cost).toBe(0);
       expect(e.upkeep).toBe(0);
     }
@@ -781,7 +781,7 @@ describe('Commercial kinds (building-types): three levels per kind, every figure
     for (const e of levels) {
       expect(e.zone).toBe(k.zone);
       expect(e.category).toBe('com');
-      expect(e.unlockMilestone).toBe(k.unlock);
+      expect(e.unlockMilestone).toBe(Math.max(k.unlock, ceilingMilestone(e.height)));
       expect(e.residents).toBeUndefined();
       expect(e.cost).toBe(0);
     }
@@ -1052,12 +1052,12 @@ describe('Medium Density Housing catalog (zone 7, §6.21)', () => {
 describe('Mixed Housing catalog (zone 8, §6.21)', () => {
   const mixed = catalog.filter((e) => e.zone === ZoneType.Mixed && e.bodyFootprint === undefined);
 
-  it('has exactly 3 levels, res category (res-sector demand), M3 gated', () => {
+  it('has exactly 3 levels, res category (res-sector demand), M3 gated or later where the storey ceiling needs it', () => {
     expect(mixed).toHaveLength(3);
     expect(mixed.map((e) => e.level).sort()).toEqual([1, 2, 3]);
     for (const e of mixed) {
       expect(e.category).toBe('res');
-      expect(e.unlockMilestone).toBe(3);
+      expect(e.unlockMilestone).toBe(Math.max(3, ceilingMilestone(e.height)));
     }
   });
 
@@ -1114,15 +1114,15 @@ describe('Residential zone families read as distinct greens (§6.21 tints)', () 
 });
 
 describe('ResHigh / ComHigh milestone retune (§6.21 progression)', () => {
-  it('gates the ENTIRE ResHigh family to M4 (was 2/3) — large towers arrive at Small City', () => {
+  it('gates the ResHigh family to M4 or later where the storey ceiling needs it', () => {
     for (const e of catalog.filter((c) => c.zone === ZoneType.ResHigh)) {
-      expect(e.unlockMilestone).toBe(4);
+      expect(e.unlockMilestone, e.id).toBe(Math.max(4, ceilingMilestone(e.height)));
     }
   });
 
-  it('gates the ENTIRE ComHigh family to M4 (was 2/3)', () => {
+  it('gates the ComHigh family to M4 or later where the storey ceiling needs it', () => {
     for (const e of catalog.filter((c) => c.zone === ZoneType.ComHigh)) {
-      expect(e.unlockMilestone).toBe(4);
+      expect(e.unlockMilestone, e.id).toBe(Math.max(4, ceilingMilestone(e.height)));
     }
   });
 
