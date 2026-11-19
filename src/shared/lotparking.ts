@@ -26,6 +26,9 @@ import {
 import { findRoadFacingEdge, type RoadFacingEdge } from './roadedge';
 import type { BuildingCatalogEntry, BuildingKind } from './types';
 
+/** A bank's drive-up lanes hold this many cars each: the teller lane against the wall, then the cash-machine lane. */
+export const BANK_LANE_CARS: readonly [number, number] = [4, 3];
+
 /** A filling station's canopy stands off the kiosk over the forecourt, on posts. */
 export const FUEL_CANOPY_GAP_M = 2;
 export const FUEL_CANOPY_DEPTH_M = 10;
@@ -109,6 +112,10 @@ export function lotLayoutFor(
     ...(entry.category === 'com' && !isDenseLotEntry(entry) ? { shopfrontWalk: true } : {}),
     ...(entry.kind === 'restaurant' ? { driveThrough: true } : {}),
     ...(entry.kind === 'pharmacy' ? { driveThrough: true, sideWindow: true } : {}),
+    ...(entry.kind === 'bank'
+      ? { driveThrough: true, sideWindow: true, driveUpLanes: BANK_LANE_CARS }
+      : {}),
+    ...(entry.kind === 'quicklube' ? { quickLube: true } : {}),
     ...(entry.kind === 'autorepair' ? { entranceAtEnd: true } : {}),
     ...(entry.kind && TRUCK_COURT_KINDS.has(entry.kind) ? { trailerCourt: true } : {}),
   });

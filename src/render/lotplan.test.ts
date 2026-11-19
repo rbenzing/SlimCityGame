@@ -796,7 +796,8 @@ describe('a restaurant’s drive-through lane', () => {
   it('is laid on a lot that has room for it, and on none that has not', () => {
     expect(laned.length).toBeGreaterThan(0);
     expect(layouts.length - laned.length).toBeGreaterThan(0);
-    for (const e of suburban.filter((c) => c.kind !== 'restaurant' && c.kind !== 'pharmacy')) {
+    const laneKinds = ['restaurant', 'pharmacy', 'bank'];
+    for (const e of suburban.filter((c) => !laneKinds.includes(c.kind ?? ''))) {
       expect(onStreet(e).driveThrough, e.id).toBeNull();
     }
   });

@@ -8,7 +8,15 @@ import { TILE_METERS } from './constants';
 import { lotLayoutFor } from './lotparking';
 import { LOT_PERIMETER_STRIP_M } from './lotgrounds';
 import { lotParkingRequirement, storageUnits } from './parkingcode';
-import { DRIVE_THROUGH_LANE_M } from './lotlayout';
+import {
+  DRIVE_THROUGH_LANE_M,
+  DRIVE_THROUGH_STACK_SPACE_M,
+  DRIVE_UP_ISLAND_M,
+  LUBE_COURT_M,
+  type LotRect,
+} from './lotlayout';
+import { lubeBays } from './parkingcode';
+import { bodyMetresFor } from './floorarea';
 
 const catalog = (catalogData as { buildings: BuildingCatalogEntry[] }).buildings;
 
@@ -174,6 +182,115 @@ const ROWS: Row[] = [
     height: 3,
     spaces: 5,
   },
+  ...(
+    [
+      ['bank', 1, 'com-bank-1', 'Bank Branch', [1, 2], 370, 8, 0.0062, 0.8, 5, 76, 12],
+      ['bank', 2, 'com-bank-2', 'Bank', [2, 2], 740, 16, 0.0124, 1.7, 5, undefined, 24],
+      ['bank', 3, 'com-bank-3', 'Regional Bank', [3, 2], 1110, 24, 0.0185, 2.5, 5, undefined, 36],
+      [
+        'medicaloffice',
+        1,
+        'com-medical-1',
+        'Dental Office',
+        [2, 2],
+        740,
+        14,
+        0.0158,
+        1.5,
+        4.6,
+        129,
+        32,
+      ],
+      [
+        'medicaloffice',
+        2,
+        'com-medical-2',
+        'Medical Office',
+        [3, 2],
+        1110,
+        21,
+        0.0237,
+        2.2,
+        4.6,
+        undefined,
+        48,
+      ],
+      [
+        'medicaloffice',
+        3,
+        'com-medical-3',
+        'Medical Offices',
+        [3, 3],
+        1665,
+        31,
+        0.0356,
+        3.2,
+        4.6,
+        undefined,
+        72,
+      ],
+      ['quicklube', 1, 'com-lube-1', 'Quick Lube', [1, 2], 185, 4, 0.0016, 0.4, 5.5, 9, 5],
+      [
+        'quicklube',
+        2,
+        'com-lube-2',
+        'Lube Centre',
+        [2, 2],
+        370,
+        9,
+        0.0033,
+        0.9,
+        5.5,
+        undefined,
+        10,
+      ],
+      [
+        'quicklube',
+        3,
+        'com-lube-3',
+        'Lube & Tyre Centre',
+        [3, 2],
+        555,
+        13,
+        0.0049,
+        1.4,
+        5.5,
+        undefined,
+        15,
+      ],
+    ] as const
+  ).map(
+    ([
+      kind,
+      level,
+      id,
+      name,
+      lot,
+      floorM2,
+      jobs,
+      powerUse,
+      waterUse,
+      height,
+      share,
+      spaces,
+    ]): Row => ({
+      kind,
+      category: 'com',
+      level,
+      id,
+      name,
+      lot: [lot[0], lot[1]],
+      floorM2,
+      jobs,
+      powerUse,
+      waterUse,
+      pollution: 0,
+      ...(kind === 'quicklube' ? { noise: 8 } : {}),
+      height,
+      ...(share === undefined ? {} : { share }),
+      spaces,
+    }),
+  ),
 ];
 
 describe('the pharmacy, the machine shop and self-storage', () => {
@@ -223,9 +340,33 @@ describe('the pharmacy, the machine shop and self-storage', () => {
     pharmacy: 0.28,
     machineshop: 0.32,
     storage: 0.32,
+    bank: 0.28,
+    medicaloffice: 0.28,
+    quicklube: 0.28,
   };
-  const KINDS = ['pharmacy', 'machineshop', 'storage'] as const;
-  /** Whether the code car park, the berths and the body lie inside the planted strip, under the kind's cover share, with the front walk and the walk in from the street, and a pharmacy's lane stands on its lot. */
+  const KINDS = [
+    'pharmacy',
+    'machineshop',
+    'storage',
+    'bank',
+    'medicaloffice',
+    'quicklube',
+  ] as const;
+  /** Whether the lot also holds what its kind keeps beside the car park: a pharmacy's lane, a bank's two lanes, a lube's lane and a full court. */
+  const keepsItsGround = (
+    kind: BuildingKind,
+    l: NonNullable<ReturnType<typeof lotLayoutFor>>,
+    inner: number,
+  ): boolean => {
+    if (kind === 'pharmacy') return l.driveThrough !== null;
+    if (kind === 'bank') return l.driveThrough?.rects.length === 2;
+    if (kind !== 'quicklube') return true;
+    const court = l.lube?.court;
+    return (
+      !!l.lube?.lane && !!court && court.v1 - court.v0 >= LUBE_COURT_M - 0.01 && court.v1 <= inner
+    );
+  };
+  /** Whether the code car park, the berths and the body lie inside the planted strip, under the kind's cover share, with the front walk and the walk in from the street, and its lanes and court stand on its lot. */
   const holds = (lot: { w: number; d: number }, compact: BuildingCatalogEntry): boolean => {
     const e = { ...compact, footprint: lot, bodyFootprint: compact.footprint };
     const l = lotLayoutFor(e, 0, true)!;
@@ -241,7 +382,7 @@ describe('the pharmacy, the machine shop and self-storage', () => {
       (r) => r.u0 >= l.lot.u0 + s && r.u1 <= l.lot.u1 - s && r.v1 <= l.lot.v1 - s,
     );
     const cover = bodyPlateM2(compact) / (lot.w * lot.d * TILE_METERS * TILE_METERS);
-    const lane = compact.kind !== 'pharmacy' || l.driveThrough !== null;
+    const lane = keepsItsGround(compact.kind!, l, l.lot.v1 - s);
     const walks = l.frontWalk !== null && l.entranceWalk !== null;
     return l.fits && inside && cover <= SHARE[compact.kind!]! && lane && walks;
   };
@@ -295,8 +436,8 @@ describe('the pharmacy, the machine shop and self-storage', () => {
     }
   });
 
-  it('the eighteen entries are the last of the catalog, compacts then variants for each kind', () => {
-    const tail = catalog.slice(-18).map((e) => e.id);
+  it('the thirty-six entries are the last of the catalog, compacts then variants for each kind', () => {
+    const tail = catalog.slice(-36).map((e) => e.id);
     const expected: string[] = [];
     for (const kind of KINDS) {
       const compacts = ROWS.filter((r) => r.kind === kind).map((r) => r.id);
@@ -309,5 +450,120 @@ describe('the pharmacy, the machine shop and self-storage', () => {
       );
     }
     expect(tail).toEqual(expected);
+  });
+
+  const apart = (a: LotRect, b: LotRect): boolean =>
+    a.u1 <= b.u0 + 0.01 || b.u1 <= a.u0 + 0.01 || a.v1 <= b.v0 + 0.01 || b.v1 <= a.v0 + 0.01;
+  const ROTATIONS = [
+    [0, true],
+    [1, false],
+  ] as const;
+
+  it('a bank holds three of six cars: a teller lane of 4 and a cash-machine lane of 3, an island between, on no stall or aisle', () => {
+    const roomy = catalog.filter((c) => c.kind === 'bank' && c.bodyFootprint !== undefined);
+    expect(roomy).toHaveLength(3);
+    for (const e of roomy) {
+      for (const [rotation, alongX] of ROTATIONS) {
+        const l = lotLayoutFor(e, rotation, alongX)!;
+        const lanes = l.driveThrough!;
+        expect(lanes, e.id).not.toBeNull();
+        expect(lanes.stacks).toEqual([4, 3]);
+        const [teller, cash] = lanes.rects as [LotRect, LotRect];
+        expect(teller.v1 - teller.v0).toBeCloseTo(4 * DRIVE_THROUGH_STACK_SPACE_M, 6);
+        expect(cash.v1 - cash.v0).toBeCloseTo(3 * DRIVE_THROUGH_STACK_SPACE_M, 6);
+        expect(teller.u1 - teller.u0).toBeCloseTo(DRIVE_THROUGH_LANE_M, 6);
+        const island = lanes.island!;
+        expect(island.u1 - island.u0).toBeCloseTo(DRIVE_UP_ISLAND_M, 6);
+        // The teller lane is against the wall, the island and the cash lane beyond it.
+        expect(
+          Math.abs(teller.u0 - l.body.u1) < 0.01 || Math.abs(teller.u1 - l.body.u0) < 0.01,
+        ).toBe(true);
+        const others = [
+          l.body,
+          ...l.aisles,
+          ...(l.throat ? [l.throat] : []),
+          ...l.stalls.map((s) => s.rect),
+          ...l.accessAisles,
+          ...l.islands,
+          ...l.berths,
+        ];
+        for (const lane of [teller, cash, island]) {
+          for (const o of others)
+            expect(apart(lane, o), `${e.id} meets ${JSON.stringify(o)}`).toBe(true);
+          expect(lane.u0).toBeGreaterThanOrEqual(l.lot.u0);
+          expect(lane.u1).toBeLessThanOrEqual(l.lot.u1);
+          expect(lane.v1).toBeLessThanOrEqual(l.lot.v1);
+        }
+        // The lanes touch the drive the cash lane begins beside, so a car turns in from it.
+        const drive = [...l.aisles, ...(l.throat ? [l.throat] : [])];
+        expect(
+          drive.some((d) => Math.abs(d.u1 - cash.u0) < 0.01 && d.v0 < cash.v1 && cash.v0 < d.v1),
+        ).toBe(true);
+      }
+    }
+  });
+
+  it('a quick lube has one drive-through bay in each 6.8 m of its street face', () => {
+    const lubes = catalog.filter((c) => c.kind === 'quicklube' && c.bodyFootprint === undefined);
+    expect(lubes.map((e) => lubeBays(bodyMetresFor(e).w))).toEqual([2, 4, 6]);
+    for (const e of lubes) expect(bodyMetresFor(e).d).toBeCloseTo(13.6, 6);
+    // A lube's lot is two tiles deep, its body one: the same body stands on the roomy lot.
+    for (const e of catalog.filter(
+      (c) => c.kind === 'quicklube' && c.bodyFootprint !== undefined,
+    )) {
+      expect(bodyMetresFor(e).d, e.id).toBeCloseTo(13.6, 6);
+    }
+  });
+
+  it('a quick lube on its roomy lot stands on the front of the lot, with a lane from the drive and a court of 3 cars a bay', () => {
+    const roomy = catalog.filter((c) => c.kind === 'quicklube' && c.bodyFootprint !== undefined);
+    expect(roomy).toHaveLength(3);
+    for (const e of roomy) {
+      for (const [rotation, alongX] of ROTATIONS) {
+        const l = lotLayoutFor(e, rotation, alongX)!;
+        const { apron, lane, court } = l.lube!;
+        expect(lane, e.id).not.toBeNull();
+        expect(court, e.id).not.toBeNull();
+        // The body is one tile deep on the front: its apron is a drive aisle deep and reaches the street.
+        expect(apron.v1).toBeCloseTo(l.body.v0, 6);
+        expect(apron.v0).toBeCloseTo(0, 6);
+        expect(l.body.v0).toBeLessThan(10); // the 1.5 m strip and the apron, nothing deeper
+        // Behind the body, across its width, 3 cars a bay deep.
+        expect(court!.u0).toBeCloseTo(l.body.u0, 6);
+        expect(court!.u1).toBeCloseTo(l.body.u1, 6);
+        expect(court!.v0).toBeCloseTo(l.body.v1, 6);
+        expect(court!.v1 - court!.v0).toBeCloseTo(LUBE_COURT_M, 6);
+        // The lane runs from the street along the wall to the court and meets the drive beside it.
+        expect(lane!.v0).toBeCloseTo(0, 6);
+        expect(lane!.v1).toBeGreaterThanOrEqual(court!.v0 + 6);
+        expect(lane!.u1 - lane!.u0).toBeCloseTo(DRIVE_THROUGH_LANE_M, 6);
+        const drive = [...l.aisles, ...(l.throat ? [l.throat] : [])];
+        expect(drive.some((d) => Math.abs(d.u1 - lane!.u0) < 0.01 && d.v0 < 1)).toBe(true);
+        const others = [
+          ...drive,
+          ...l.stalls.map((s) => s.rect),
+          ...l.accessAisles,
+          ...l.islands,
+          ...l.berths,
+        ];
+        for (const ground of [apron, lane!, court!]) {
+          for (const o of others)
+            expect(apart(ground, o), `${e.id} meets ${JSON.stringify(o)}`).toBe(true);
+          expect(ground.u0).toBeGreaterThanOrEqual(l.lot.u0 - 0.01);
+          expect(ground.u1).toBeLessThanOrEqual(l.lot.u1 + 0.01);
+          expect(ground.v1).toBeLessThanOrEqual(l.lot.v1 + 0.01);
+        }
+        for (const ground of [lane!, court!]) expect(apart(ground, l.body)).toBe(true);
+        // Side by side, so a car turns from the lane into the court.
+        expect(Math.abs(lane!.u1 - court!.u0) < 0.01 && lane!.v1 > court!.v0 + 1).toBe(true);
+      }
+    }
+  });
+
+  it('a quick lube on a lot too narrow for its lane keeps its apron and lays no lane', () => {
+    const e = catalog.find((c) => c.id === 'com-lube-1')!;
+    const l = lotLayoutFor(e, 0, true)!;
+    expect(l.lube!.lane).toBeNull();
+    expect(l.lube!.apron.v1).toBeCloseTo(l.body.v0, 6);
   });
 });

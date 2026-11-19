@@ -310,6 +310,9 @@ const COMMERCIAL_BODY_PALETTES: Readonly<Record<CommercialKind, readonly Materia
   autorepair: ['whitePlaster', 'eifsCream'],
   convenience: ['eifsCream', 'redBrick', 'eifsTan'],
   pharmacy: ['eifsBeige', 'whiteBrick'],
+  bank: ['stoneBrick', 'paintedMasonry'],
+  medicaloffice: ['eifsCream', 'whiteBrick'],
+  quicklube: ['whitePlaster', 'whiteBrick'],
 };
 const OFFICE_TOWER_BODY_PALETTE: readonly MaterialName[] = ['curtainWall'];
 
@@ -324,6 +327,9 @@ const COMMERCIAL_ROOF_PALETTES: Readonly<Record<CommercialKind, readonly Materia
   autorepair: ['greyMembrane'],
   convenience: ['whiteMembrane'],
   pharmacy: ['whiteMembrane'],
+  bank: ['greyMembrane'],
+  medicaloffice: ['greyMembrane'],
+  quicklube: ['whiteMembrane'],
 };
 
 /** An office's ribbons are tinted glass; the tower's cells are its curtain wall's vision glass. */
@@ -552,10 +558,18 @@ export function industrialAccentStripe(entry: BuildingCatalogEntry): boolean {
   return industrial === null ? true : INDUSTRIAL_ACCENT_STRIPE[industrial];
 }
 
+const WINDOWLESS_COMMERCIAL_KINDS: ReadonlySet<string> = new Set([
+  'autorepair',
+  'pharmacy',
+  'bank',
+  'quicklube',
+]);
+
 /** Does this entry's body show no window at all? The material drops every pane; the grid itself still cuts the kit's storeys and bays. */
 export function windowlessBody(entry: BuildingCatalogEntry): boolean {
   // A repair shop's walls are blank: its glass is the office's, a kit part. A pharmacy's one storey of blank wall holds its glass in the entrance tower.
-  if (entry.kind === 'autorepair' || entry.kind === 'pharmacy') return true;
+  // A bank's glass is its entrance, and a lube's its waiting room, both kit parts.
+  if (WINDOWLESS_COMMERCIAL_KINDS.has(entry.kind ?? '')) return true;
   const industrial = industrialKindOf(entry.kind);
   return industrial !== null && INDUSTRIAL_WINDOWLESS[industrial];
 }

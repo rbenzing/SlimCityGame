@@ -42,6 +42,8 @@ interface BodyRule {
   minM?: number;
   /** Replaces the usual 85% ceiling for a kind that builds closer to its lot lines. */
   maxFill?: number;
+  /** The most the body is deep into its lot, whatever the lot's depth: a body one tile deep on a two-tile lot. */
+  depthCapM?: number;
 }
 
 /** A townhouse row's body: three 6 m homes, a lot wide and as deep, on a 20 m frontage. */
@@ -67,6 +69,8 @@ const BODY_RULES: Partial<Record<BuildingKind, BodyRule>> = {
   fuel: { fill: 0.35, capM: 16 },
   flex: { fill: 0.55 },
   chemical: { fill: 0.5 },
+  // A lube's bays are one tile deep at the front of a lot two tiles deep; the ground behind is where cars wait.
+  quicklube: { perTileM: DEFAULT_BODY_M_PER_TILE, depthCapM: DEFAULT_BODY_M_PER_TILE },
 };
 
 function bodyAxisMetres(tiles: number, rule: BodyRule): number {
@@ -88,7 +92,7 @@ export function bodyMetresFor(entry: BuildingCatalogEntry): { w: number; d: numb
   const sizedOn = entry.bodyFootprint ?? entry.footprint;
   return {
     w: bodyAxisMetres(sizedOn.w, rule),
-    d: bodyAxisMetres(sizedOn.d, rule),
+    d: Math.min(bodyAxisMetres(sizedOn.d, rule), rule.depthCapM ?? Infinity),
   };
 }
 
@@ -98,15 +102,24 @@ export function bodyPlateM2(entry: BuildingCatalogEntry): number {
   return body.w * body.d;
 }
 
+/** The commercial kinds that are one floor under a roof taller than a storey: bays, a sales floor, a banking hall. */
+const ONE_FLOOR_KINDS: ReadonlySet<BuildingKind> = new Set([
+  'autorepair',
+  'pharmacy',
+  'bank',
+  'medicaloffice',
+  'quicklube',
+]);
+
 /**
  * How many floors of the plate a building has. A commercial or office-like
  * building counts one per 3.2 m storey; a works is one high-bay floor however
  * tall its clear height, except flex space, which is offices over the bays; a
- * repair shop's bays and a pharmacy's sales floor are one floor under their 6 m roofs.
+ * repair shop, a pharmacy, a bank, a surgery and a lube bay are one floor under their roofs.
  */
 export function storeysOf(entry: BuildingCatalogEntry): number {
   if (entry.category === 'ind' && entry.kind !== 'flex') return 1;
-  if (entry.kind === 'autorepair' || entry.kind === 'pharmacy') return 1;
+  if (entry.kind && ONE_FLOOR_KINDS.has(entry.kind)) return 1;
   return Math.max(1, Math.round(entry.height / FLOOR_HEIGHT_METERS));
 }
 
