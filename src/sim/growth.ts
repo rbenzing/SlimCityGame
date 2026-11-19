@@ -14,6 +14,7 @@
  * covered over many passes rather than rescanned every time.
  */
 import {
+  LEVEL_UP_FLOOR_JOBS,
   ROAD_CHECK_RADIUS,
   SEWER_MILESTONE,
   GRAND_CITY_MILESTONE,
@@ -328,6 +329,14 @@ interface Spare {
   power: number;
   water: number;
   sewer: number;
+}
+
+/** A business level-up that passed every test but the job room: who, in which sector, and the jobs it would add. */
+interface HeldForRoom {
+  inst: BuildingInstance;
+  entry: BuildingCatalogEntry;
+  sector: Sector;
+  jobsAdded: number;
 }
 
 /** An economy with room for any business, for callers that run no demand model. */
@@ -1067,6 +1076,7 @@ export class GrowthSystem {
     added: BuildingInstance[],
     removed: number[],
   ): void {
+    const held: HeldForRoom[] = [];
     for (const inst of registry.all()) {
       if (inst.state !== BuildingState.Active) continue;
       const entry = this.catalogIndex.get(inst.catalogId);
@@ -1082,6 +1092,7 @@ export class GrowthSystem {
           pass,
           spare,
           room,
+          held,
           plats,
           parks,
           inst,
@@ -1091,6 +1102,35 @@ export class GrowthSystem {
         );
       if (!leveled)
         this.tryConvert(g, registry, milestoneLevel, spare, inst, entry, added, removed);
+    }
+    // A gap smaller than any step must not stall growth: in each sector the
+    // held business adding the fewest jobs (the first met on a tie) levels up
+    // past the room, if the sector wants it and the step is small enough.
+    for (const sector of ['com', 'ind'] as const) {
+      if (demand[sector] <= 0) continue;
+      let pick: HeldForRoom | undefined;
+      for (const h of held) {
+        if (h.sector === sector && (!pick || h.jobsAdded < pick.jobsAdded)) pick = h;
+      }
+      if (!pick || pick.jobsAdded > LEVEL_UP_FLOOR_JOBS) continue;
+      const standing = registry.get(pick.inst.id);
+      if (!standing || standing.state !== BuildingState.Active) continue;
+      this.tryLevelUp(
+        g,
+        registry,
+        demand,
+        milestoneLevel,
+        pass,
+        spare,
+        room,
+        'allowed',
+        plats,
+        parks,
+        standing,
+        pick.entry,
+        added,
+        removed,
+      );
     }
   }
 
@@ -1189,6 +1229,8 @@ export class GrowthSystem {
     pass: number,
     spare: Spare,
     room: JobsBySector,
+    /** Where a business short only of job room is noted, or 'allowed' to level it up past the room. */
+    held: HeldForRoom[] | 'allowed',
     plats: PlatPass,
     parks: ParkingCheck,
     inst: BuildingInstance,
@@ -1239,7 +1281,7 @@ export class GrowthSystem {
     }
     // A business grows only where the town has room for the jobs it adds.
     const jobsAdded = (nextKind.jobs ?? 0) - (entry.jobs ?? 0);
-    if (sector !== 'res' && farm === null && jobsAdded > room[sector]) return false;
+    const noRoom = sector !== 'res' && farm === null && jobsAdded > room[sector];
 
     const { x, z, rotation } = inst;
     const oldFootprint = footprintForRotation(entry, rotation);
@@ -1308,6 +1350,12 @@ export class GrowthSystem {
       (farm !== null && this.rng.next() >= demand.ind)
     ) {
       if (inst.frame === undefined) writeStamp(g, x, z, oldFootprint.w, oldFootprint.d, inst.id);
+      return false;
+    }
+    if (noRoom && held !== 'allowed') {
+      // Everything but the room allows it: note it, and leave it standing.
+      if (inst.frame === undefined) writeStamp(g, x, z, oldFootprint.w, oldFootprint.d, inst.id);
+      if (sector !== 'res') held.push({ inst, entry, sector, jobsAdded });
       return false;
     }
 
