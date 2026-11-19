@@ -5,7 +5,8 @@
  * Frames: hospital-street (oblique, whole building), hospital-above (straight
  * down: plot, drives, deck, stalls), hospital-entrance-close (40 m at the main
  * entrance), hospital-deck-close (40 m at the parking deck), hospital-deck-above
- * (the deck's roof tier from straight above), hospital-night,
+ * (the deck's roof tier from straight above), hospital-rear (the service face),
+ * hospital-west-end (the stair tower), hospital-night,
  * clinic-close, crematorium-street, crematorium-above, crematorium-close.
  * The sim is paused: a running sim with no power or water abandons the
  * buildings within a minute.
@@ -187,6 +188,9 @@ try {
   await shoot('hospital-emergency-close', ...tile(at(hosp, -37, 21)), 40, 1.0, 0.3);
   const deck = at(hosp, 40, 5);
   await shoot('hospital-deck-close', ...tile(deck), 40, -0.5, 0.6);
+  // The service face from behind, and the west end's stair tower from the west.
+  await shoot('hospital-rear', ...tile(at(hosp, -30, -26)), 60, Math.PI + 0.5, 0.45);
+  await shoot('hospital-west-end', ...tile(at(hosp, -48, -22)), 60, -Math.PI / 2 + 0.4, 0.45);
   // Straight down on the deck's roof tier: one car to a stall or not.
   await shoot('clinic-close', ...tile({ x: kc.x, z: kc.z + 6 }), 40, 0.3, 0.5);
   await shoot('crematorium-close', ...tile({ x: cc.x, z: cc.z + 8 }), 40, 0.3, 0.5);
