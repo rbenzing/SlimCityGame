@@ -214,8 +214,7 @@
   Township: zone it away from the homes, and give it water towers of its own,
   since a plant drinks like a small town. Industry levels up when the town
   wants more work, not when land values rise. Zone narrow strips if you want
-  the small stuff and big blocks if you want towers and strips.
-  Zoned tiles only develop if they have road access, power, and water. The exception
+  the small stuff and big blocks if you want towers and strips.  Zoned tiles only develop if they have road access, power, and water. The exception
   is a low-density house off a **dirt road** with no water main beside it: it
   has its own well, so it needs only road access and power.
 - **Agriculture** — farmland, painted like any zone, and the other way a small

@@ -221,6 +221,25 @@ export const MILESTONES: readonly Milestone[] = [
   { name: 'Metropolis', population: 50_000, reward: 120_000 },
 ] as const;
 /**
+ * The tallest a zoned building may stand (m) in a town at each milestone, one
+ * entry a milestone: 11.2 m to Busy Township, 12.8 at Big Town, 19.2 at Small
+ * City, 38.4 at Grand City, no limit at Metropolis. Works and farms are exempt.
+ */
+export const STOREY_CEILING_M: readonly number[] = [
+  11.2,
+  11.2,
+  11.2,
+  12.8,
+  19.2,
+  38.4,
+  Number.POSITIVE_INFINITY,
+];
+/** The first milestone whose storey ceiling holds a building `heightM` tall. */
+export function ceilingMilestone(heightM: number): number {
+  const index = STOREY_CEILING_M.findIndex((ceiling) => heightM <= ceiling);
+  return index < 0 ? STOREY_CEILING_M.length - 1 : index;
+}
+/**
  * The index of Big Town, 3,500 people: the rung from which a town runs its own
  * public works. One source for every rule that cuts over there.
  */
