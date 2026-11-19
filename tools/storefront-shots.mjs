@@ -57,6 +57,9 @@ const STREETS = [
       'com-shop-2',
       'com-low-1',
       'com-low-1',
+      'com-convenience-1-lot3x2',
+      'com-convenience-2-lot4x2',
+      'com-convenience-3-lot5x2',
     ],
   },
   { name: 'strip', ids: ['com-strip-2', 'com-strip-3', 'com-strip-1'] },
@@ -70,7 +73,17 @@ const STREETS = [
       'com-restaurant-2',
     ],
   },
-  { name: 'fuel', ids: ['com-fuel-2', 'com-fuel-1', 'com-fuel-3'] },
+  {
+    name: 'fuel',
+    ids: [
+      'com-fuel-2',
+      'com-fuel-1',
+      'com-fuel-3',
+      'com-autorepair-1-lot2x2',
+      'com-autorepair-2-lot4x2',
+      'com-autorepair-3-lot5x2',
+    ],
+  },
   {
     name: 'downtown',
     ids: ['com-high-1', 'com-office-2', 'com-high-2', 'com-hotel-1', 'com-hotel-2', 'com-hotel-3'],
@@ -84,6 +97,8 @@ const STREETS = [
       'com-market-1',
       'com-restaurant-1-lot2x2',
       'com-fuel-1',
+      'com-autorepair-1-lot2x2',
+      'com-convenience-1-lot3x2',
       'com-high-1',
       'com-hotel-1',
     ],
@@ -312,6 +327,23 @@ try {
     0.8,
   );
   await frame('close-fuel', boxOf([find('fuel', 'com-fuel-2')]), 0.9, 0.4, 0.8);
+  // The repair shop's bay doors and sign, then its end walls (office, tyre rack, oil tank); the store's glazed front, canopy, lockers and bollards.
+  await frame('close-repair', boxOf([find('fuel', 'com-autorepair-2-lot4x2')]), 0.3, 0.5, 0.9);
+  await frame(
+    'close-repair-side',
+    boxOf([find('fuel', 'com-autorepair-2-lot4x2')]),
+    1.0,
+    0.45,
+    0.8,
+  );
+  await frame(
+    'close-repair-far-side',
+    boxOf([find('fuel', 'com-autorepair-2-lot4x2')]),
+    -1.0,
+    0.45,
+    0.8,
+  );
+  await frame('close-store', boxOf([find('main', 'com-convenience-2-lot4x2')]), 0.3, 0.5, 0.9);
   // A strip's front door close: the walk, the bed, the bench and bin beside the door, and the lot's lights.
   const stripDoor = () => {
     const s = find('strip', 'com-strip-1-lot5x2') ?? find('strip', 'com-strip-2');
@@ -324,6 +356,20 @@ try {
   await views('-night')();
   const restoreNight = await closeUp(page, 2);
   await frame('close-front-door-night', stripDoor(), 0.3, 0.5, 0.9);
+  await frame(
+    'close-repair-night',
+    boxOf([find('fuel', 'com-autorepair-2-lot4x2')]),
+    0.3,
+    0.5,
+    0.9,
+  );
+  await frame(
+    'close-store-night',
+    boxOf([find('main', 'com-convenience-2-lot4x2')]),
+    0.3,
+    0.5,
+    0.9,
+  );
   await restoreNight();
 
   await setPhase(LINEUP_NIGHT);
