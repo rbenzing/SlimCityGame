@@ -476,6 +476,7 @@ const ART_TABLE_BODIES: Readonly<Record<CommercialKind, readonly MaterialName[]>
   bank: ['eifsTan', 'redBrick'],
   medicaloffice: ['eifsCream', 'whiteBrick'],
   quicklube: ['whitePlaster', 'eifsBeige'],
+  carwash: ['whitePlaster', 'whiteBrick'],
 };
 const ART_TABLE_ROOFS: Readonly<Record<CommercialKind, MaterialName>> = {
   shop: 'brightBitumen',
@@ -491,6 +492,7 @@ const ART_TABLE_ROOFS: Readonly<Record<CommercialKind, MaterialName>> = {
   bank: 'greyMembrane',
   medicaloffice: 'greyMembrane',
   quicklube: 'whiteMembrane',
+  carwash: 'whiteMembrane',
 };
 const COMMERCIAL_KINDS = Object.keys(ART_TABLE_BODIES) as CommercialKind[];
 const OTHER_KINDS: (BuildingKind | undefined)[] = [
@@ -928,7 +930,7 @@ describe('deriveFacadeParams: an industrial body takes its kind palette by id ha
     // A repair shop's, a pharmacy's, a bank's and a lube's walls are blank: their glass is the kit's.
     for (const kind of COMMERCIAL_KINDS) {
       expect(windowlessBody(commercialEntry(kind)), kind).toBe(
-        ['autorepair', 'pharmacy', 'quicklube'].includes(kind),
+        ['autorepair', 'pharmacy', 'quicklube', 'carwash'].includes(kind),
       );
     }
     for (const kind of OTHER_KINDS) expect(windowlessBody(entry({ kind }))).toBe(false);

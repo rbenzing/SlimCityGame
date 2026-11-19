@@ -278,6 +278,17 @@ export function lubeBays(frontageM: number): number {
   return Math.max(0, Math.floor(frontageM / LUBE_BAY_M + 1e-9));
 }
 
+/** A car wash owes 2 spaces for every 3 employees: the vacuum stalls under its canopy. */
+export const CARWASH_SPACES_PER_EMPLOYEE = 2 / 3;
+/** The bays or tunnels a car wash has: two self-service bays, one conveyor tunnel, two tunnels. */
+export function carwashBays(level: number | undefined): number {
+  return level === 2 ? 1 : 2;
+}
+/** The cars a car wash keeps in line: 3 at each self-service bay, 6 at each conveyor tunnel. */
+export function carwashQueueCars(level: number | undefined): number {
+  return level === 1 ? 3 : 6;
+}
+
 /** Self-storage: three quarters of its floor is rentable, in units of 108 sq ft (a 9 by 12 ft unit). */
 export const STORAGE_RENTABLE_SHARE = 0.75;
 export const STORAGE_UNIT_SQ_FT = 108;
@@ -319,11 +330,17 @@ export function lotParkingRequirement(
       : entry.kind === 'quicklube'
         ? SPACES_PER_LUBE_BAY * lubeBays(frontageM) +
           Math.ceil(LUBE_SPACES_PER_EMPLOYEE * (entry.jobs ?? 0) - 1e-9)
-        : requiredSpaces(entry.kind, grossSqFt, category);
+        : entry.kind === 'carwash'
+          ? Math.ceil(CARWASH_SPACES_PER_EMPLOYEE * (entry.jobs ?? 0) - 1e-9)
+          : requiredSpaces(entry.kind, grossSqFt, category);
   return {
     grossSqFt,
     spaces,
-    berths: loadingBerths(category === 'ind' ? 'industrial' : 'retail', grossSqFt),
+    // A car wash is served by van: no dock, so no berth.
+    berths:
+      entry.kind === 'carwash'
+        ? 0
+        : loadingBerths(category === 'ind' ? 'industrial' : 'retail', grossSqFt),
   };
 }
 

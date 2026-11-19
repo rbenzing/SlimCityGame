@@ -261,6 +261,7 @@ export function archetypeFor(entry: BuildingCatalogEntry): BuildingArchetype {
       case 'bank':
       case 'medicaloffice':
       case 'quicklube':
+      case 'carwash':
         return 'storefront';
       default:
         return (entry.level ?? 1) >= 2 ? 'retailBlock' : 'storefront';
@@ -413,6 +414,16 @@ const STOREFRONT_PARTS: Readonly<Record<string, readonly BuildingPart[]>> = {
   ],
   /** A quick lube: a bay door in each 6.8 m of both long faces, a glazed waiting room, a sign band over the bays. */
   quicklube: ['rollUpDoors', 'glassFront', 'walkDoor', 'signageBand', 'rooftopUnit', 'roofHatch'],
+  /** A car wash: an open portal under a sign band at each end of every bay or tunnel, a pay kiosk, a vacuum canopy on posts. */
+  carwash: [
+    'rollUpDoors',
+    'signageBand',
+    'guardBooth',
+    'pickupCanopy',
+    'signPole',
+    'rooftopUnit',
+    'roofHatch',
+  ],
 };
 
 /** The old form's brown mansard dresses a restaurant at this level only; the levels above it have a flat parapet. */

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import catalogData from '../data/catalog.json';
-import { SMALL_CITY_MILESTONE, tileIndex } from '../shared/constants';
+import { GRAND_CITY_MILESTONE, tileIndex } from '../shared/constants';
 import { LOT_STANDING_FLOOR } from '../shared/lots';
 import { ROOMY_LOT_TILES, roomyLotOf } from '../shared/roomylots';
 import { BuildingState, FieldId, RoadTier, ZoneType } from '../shared/types';
@@ -64,17 +64,17 @@ describe('the lots a kind is tried on, roomiest first', () => {
 });
 
 describe('when a new shop or works takes the roomy lot', () => {
-  it('does below Small City, whatever the land is worth', () => {
-    for (let ms = 0; ms < SMALL_CITY_MILESTONE; ms++) {
+  it('does below Grand City, whatever the land is worth', () => {
+    for (let ms = 0; ms < GRAND_CITY_MILESTONE; ms++) {
       expect(growsRoomy(ms, 0)).toBe(true);
       expect(growsRoomy(ms, 255)).toBe(true);
     }
   });
 
-  it('from Small City does on land under the best standing and not on land of it', () => {
+  it('from Grand City does on land under the best standing and not on land of it', () => {
     const best = LOT_STANDING_FLOOR.acre;
-    expect(SMALL_CITY_MILESTONE).toBe(4);
-    for (const ms of [4, 5, 6]) {
+    expect(GRAND_CITY_MILESTONE).toBe(5);
+    for (const ms of [5, 6]) {
       expect(growsRoomy(ms, best - 1)).toBe(true);
       expect(growsRoomy(ms, best)).toBe(false);
       expect(growsRoomy(ms, 255)).toBe(false);
@@ -129,20 +129,20 @@ describe('a block grows the lot its town and land call for', () => {
     return registry;
   }
 
-  it('stands a corner shop on its roomy lot below Small City, even on the best land', () => {
-    const placed = grown(block(8, 3, 255), 1).all();
+  it('stands a corner shop on its roomy lot below Grand City, even on the best land', () => {
+    const placed = grown(block(8, 3, 255), GRAND_CITY_MILESTONE - 1).all();
     expect(placed.length).toBeGreaterThan(0);
     for (const b of placed) expect(b.catalogId).toBe('com-low-1-lot1x2');
   });
 
-  it('stands it on the compact lot from Small City, on land of the best standing', () => {
-    const placed = grown(block(8, 3, 255), SMALL_CITY_MILESTONE).all();
+  it('stands it on the compact lot from Grand City, on land of the best standing', () => {
+    const placed = grown(block(8, 3, 255), GRAND_CITY_MILESTONE).all();
     expect(placed.length).toBeGreaterThan(0);
     for (const b of placed) expect(b.catalogId).toBe('com-low-1');
   });
 
-  it('stands it on the roomy lot from Small City on land under the best standing', () => {
-    const placed = grown(block(8, 3, LOT_STANDING_FLOOR.acre - 1), SMALL_CITY_MILESTONE).all();
+  it('stands it on the roomy lot from Grand City on land under the best standing', () => {
+    const placed = grown(block(8, 3, LOT_STANDING_FLOOR.acre - 1), GRAND_CITY_MILESTONE).all();
     expect(placed.length).toBeGreaterThan(0);
     for (const b of placed) expect(b.catalogId).toBe('com-low-1-lot1x2');
   });

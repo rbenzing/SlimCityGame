@@ -7,12 +7,13 @@ import type { LotRect } from './lotlayout';
 
 const catalog = (catalogData as { buildings: BuildingCatalogEntry[] }).buildings;
 const repairs = catalog.filter((e) => e.kind === 'autorepair');
-// A quick lube's face is bay doors too, so it keeps its doors clear as a repair shop does.
+// A quick lube's or a car wash's face is bay doors or portals too, so each keeps its doors clear as a repair shop does.
 const others = catalog.filter(
   (e) =>
     e.category === 'com' &&
     e.kind !== 'autorepair' &&
     e.kind !== 'quicklube' &&
+    e.kind !== 'carwash' &&
     e.bodyFootprint !== undefined,
 );
 

@@ -104,6 +104,12 @@ const STREETS = [
       'com-lube-3-lot4x3',
     ],
   },
+  // The three car washes, a tile of ground between them for the same reason.
+  {
+    name: 'carwash',
+    gap: 1,
+    ids: ['com-carwash-1-lot2x3', 'com-carwash-2-lot2x4', 'com-carwash-3-lot3x4'],
+  },
   {
     name: 'medical',
     ids: ['com-medical-1-lot4x2', 'com-medical-2-lot5x2', 'com-medical-3-lot6x3'],
@@ -322,11 +328,15 @@ try {
     'com-lube-1-lot2x3': { cx: 22.9, cz: 39.6, w: 17.3, d: 40.7 },
     'com-lube-2-lot3x3': { cx: 29.7, cz: 39.6, w: 30.9, d: 40.7 },
     'com-lube-3-lot4x3': { cx: 36.5, cz: 39.6, w: 44.5, d: 40.7 },
+    // A car wash's loop runs from the street to the end of its court: the lane, the body and the apron, the court behind.
+    'com-carwash-1-lot2x3': { cx: 22.95, cz: 39.65, w: 17.3, d: 40.7 },
+    'com-carwash-2-lot2x4': { cx: 22.95, cz: 43.7, w: 17.3, d: 72.6 },
+    'com-carwash-3-lot3x4': { cx: 29.75, cz: 43.7, w: 30.9, d: 72.6 },
   };
   const standingNow = await page.evaluate(() => window.__slimcity.readBuildings());
   /** The placed building's own working ground as a box, found by its catalog id. */
-  const complexBox = (id) => {
-    const b = find('bank', id);
+  const complexBox = (id, street = 'bank') => {
+    const b = find(street, id);
     const c = COMPLEX_M[id];
     const real = standingNow.find((s) => s.catalogId === id);
     console.log(
@@ -487,6 +497,15 @@ try {
   await frame('close-lube-apron', complexBox('com-lube-2-lot3x3'), 0.3, 0.3, 0.9);
   await frame('close-lube-above', complexBox('com-lube-2-lot3x3'), 0.0, 1.5, 0.9);
   await frame('close-lube-back', complexBox('com-lube-2-lot3x3'), 3.14, 0.9, 0.9);
+  // The car wash: from above, the lane, the court, the tunnel and the apron as one loop; and low at the street portal under its sign band.
+  const washLoop = () => complexBox('com-carwash-2-lot2x4', 'carwash');
+  await frame('close-carwash-above', washLoop(), 0.0, 1.5, 0.9);
+  // The street portal and the apron before it: the body's front 14 m by 12 m, from the south.
+  const washPortal = () => {
+    const b = find('carwash', 'com-carwash-2-lot2x4');
+    return { x: b.x + 24.8 / T, z: b.z + 74 / T, w: 14 / T, d: 12 / T, h: 5 };
+  };
+  await frame('close-carwash-portal', washPortal(), 0.3, 0.25, 0.9);
   // A strip's front door close: the walk, the bed, the bench and bin beside the door, and the lot's lights.
   const stripDoor = () => {
     const s = find('strip', 'com-strip-1-lot5x2') ?? find('strip', 'com-strip-2');
@@ -522,6 +541,7 @@ try {
   );
   await frame('close-bank-night', complexBox('com-bank-2-lot3x3'), -1.2, 0.3, 0.85);
   await frame('close-lube-night', complexBox('com-lube-2-lot3x3'), 0.3, 0.5, 0.9);
+  await frame('close-carwash-night', washPortal(), 0.3, 0.25, 0.9);
   await restoreNight();
 
   await setPhase(LINEUP_NIGHT);

@@ -1445,7 +1445,8 @@ export type CommercialKind =
   | 'pharmacy'
   | 'bank'
   | 'medicaloffice'
-  | 'quicklube';
+  | 'quicklube'
+  | 'carwash';
 
 /**
  * The kinds of works an industrial zone grows: light industry by what the

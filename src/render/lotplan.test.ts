@@ -206,8 +206,10 @@ describe('every suburban commercial and industrial lot, laid out to code', () =>
       const sqft = grossFloorSqFt(e);
       expect(req.grossSqFt).toBeCloseTo(sqft, 9);
       const table = e.category === 'ind' ? 'industrial' : 'retail';
-      // Self-storage's customers load at their own unit's door: it owes no berth.
-      expect(req.berths, e.id).toBe(e.kind === 'storage' ? 0 : loadingBerths(table, sqft));
+      // Self-storage's customers load at their own unit's door and a car wash is served by van: neither owes a berth.
+      expect(req.berths, e.id).toBe(
+        e.kind === 'storage' || e.kind === 'carwash' ? 0 : loadingBerths(table, sqft),
+      );
     }
   });
 

@@ -16,7 +16,7 @@
 import {
   ROAD_CHECK_RADIUS,
   SEWER_MILESTONE,
-  SMALL_CITY_MILESTONE,
+  GRAND_CITY_MILESTONE,
   TICKS_PER_YEAR,
   TILE_METERS,
   inBounds,
@@ -484,12 +484,12 @@ export function footprintsOf(
 }
 
 /**
- * Whether a new shop or works takes the roomiest lot of its kind: below Small
- * City wherever it stands, from Small City only on land under the best
+ * Whether a new shop or works takes the roomiest lot of its kind: below Grand
+ * City wherever it stands, from Grand City only on land under the best
  * standing, where it takes the compact lot and parks by its kerb or a garage.
  */
 export function growsRoomy(milestoneLevel: number, landValue: number): boolean {
-  return milestoneLevel < SMALL_CITY_MILESTONE || landValue < LOT_STANDING_FLOOR.acre;
+  return milestoneLevel < GRAND_CITY_MILESTONE || landValue < LOT_STANDING_FLOOR.acre;
 }
 
 /** Whether a building may stand at (x, z) turned `rotation` and meet its parking code there. */

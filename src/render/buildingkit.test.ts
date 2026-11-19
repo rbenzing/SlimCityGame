@@ -1825,6 +1825,7 @@ const lotOf = (half: number, over: Partial<KitLot> = {}): KitLot => ({
   lane: null,
   taken: [],
   farm: null,
+  stalls: [],
   ...over,
 });
 

@@ -42,8 +42,8 @@ interface BodyRule {
   minM?: number;
   /** Replaces the usual 85% ceiling for a kind that builds closer to its lot lines. */
   maxFill?: number;
-  /** The most the body is deep into its lot, whatever the lot's depth: a body one tile deep on a two-tile lot. */
-  depthCapM?: number;
+  /** Tiles of the lot's depth kept behind the body, where the cars wait: the body is sized on the depth that is left. */
+  courtTiles?: number;
 }
 
 /** A townhouse row's body: three 6 m homes, a lot wide and as deep, on a 20 m frontage. */
@@ -69,8 +69,9 @@ const BODY_RULES: Partial<Record<BuildingKind, BodyRule>> = {
   fuel: { fill: 0.35, capM: 16 },
   flex: { fill: 0.55 },
   chemical: { fill: 0.5 },
-  // A lube's bays are one tile deep at the front of a lot two tiles deep; the ground behind is where cars wait.
-  quicklube: { perTileM: DEFAULT_BODY_M_PER_TILE, depthCapM: DEFAULT_BODY_M_PER_TILE },
+  // A lube's bays, and a car wash's tunnels, stand at the front of their lot; the last tile of its depth is where cars wait.
+  quicklube: { perTileM: DEFAULT_BODY_M_PER_TILE, courtTiles: 1 },
+  carwash: { perTileM: DEFAULT_BODY_M_PER_TILE, courtTiles: 1 },
 };
 
 function bodyAxisMetres(tiles: number, rule: BodyRule): number {
@@ -92,7 +93,7 @@ export function bodyMetresFor(entry: BuildingCatalogEntry): { w: number; d: numb
   const sizedOn = entry.bodyFootprint ?? entry.footprint;
   return {
     w: bodyAxisMetres(sizedOn.w, rule),
-    d: Math.min(bodyAxisMetres(sizedOn.d, rule), rule.depthCapM ?? Infinity),
+    d: bodyAxisMetres(sizedOn.d - (rule.courtTiles ?? 0), rule),
   };
 }
 
@@ -109,6 +110,7 @@ const ONE_FLOOR_KINDS: ReadonlySet<BuildingKind> = new Set([
   'bank',
   'medicaloffice',
   'quicklube',
+  'carwash',
 ]);
 
 /**

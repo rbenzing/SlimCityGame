@@ -88,6 +88,10 @@ export interface LotLayoutInput {
   driveUpLanes?: readonly number[];
   /** A drive-through service bay: the body stands on the front of its lot behind an apron, with a lane along one wall to a court behind. */
   quickLube?: boolean;
+  /** The body has no door the public walks to: no walk is laid to its street face. */
+  noPublicDoor?: boolean;
+  /** With `quickLube`: how deep the court behind the body is, where it is not the lube's three cars a bay (m). */
+  courtDepth?: number;
   /** Stripe trailer stalls in the truck court before the wall the berths lie beside, on the ground left over. */
   trailerCourt?: boolean;
   /** Keep a walk between the body's street face and the stall heads, the stalls giving way for it. */
@@ -121,7 +125,7 @@ export const DRIVE_UP_ISLAND_M = 1.5;
 export const LUBE_APRON_M = AISLE_WIDTH_M;
 /** The cars that wait for each bay of a lube, in a column behind it. */
 export const LUBE_CARS_PER_BAY = 3;
-/** The court behind a lube is deep enough for that many cars a bay. */
+/** The court behind a lube is deep enough for that many cars a bay; a car wash sets its own depth. */
 export const LUBE_COURT_M = LUBE_CARS_PER_BAY * DRIVE_THROUGH_STACK_SPACE_M;
 /** The least lane worth drawing: three stacking spaces. */
 const DRIVE_THROUGH_MIN_M = 3 * 6.1;
@@ -198,6 +202,8 @@ export interface LotLayout {
   driveThrough: DriveThrough | null;
   /** A drive-through service bay's apron, lane and court; null for any other building. */
   lube: LubeGrounds | null;
+  /** The body has no public door: the lot lays no walk to it. */
+  noPublicDoor?: boolean;
   /** The wall of the body the loading berths lie beside, for a kind that docks trucks; the dock stands on it. */
   loadingWall: LoadingWall | null;
   /** Trailer stalls striped in the truck court before the loading wall, on ground the car park left over. */
@@ -484,7 +490,10 @@ function build(input: LotLayoutInput, c: Candidate): Built {
       ]
     : [];
   // A service bay's apron holds no stall; where its lane and court are not reserved the drive may still cross it.
-  const lube = c.pin === 'lube' ? lubeReserveFor(c.body, curbCut, input.depth) : null;
+  const lube =
+    c.pin === 'lube'
+      ? lubeReserveFor(c.body, curbCut, input.depth, input.courtDepth ?? LUBE_COURT_M)
+      : null;
   if (lube)
     fixed.push(lube.apron, ...(lube.lane ? [lube.lane] : []), ...(lube.court ? [lube.court] : []));
   // A bank's lanes run beside the drive from the face of its body, the cash-machine lane against the drive.
@@ -1032,12 +1041,14 @@ function computeLotLayout0(
   const { c, built, filled, fits } = best!;
   const berths = built.berthsOk ? built.berths : [];
   const entrance = { u: entranceUOf(c.body, built.curbCut, input), v: c.body.v0 };
-  const walks = walksFor(c.body, along, entrance.u, built.forecourt, filled.aisles, [
-    ...filled.stalls.map((s) => s.rect),
-    ...filled.accessAisles,
-    ...filled.islands,
-    ...berths,
-  ]);
+  const walks = input.noPublicDoor
+    ? { frontWalk: null, entranceWalk: null }
+    : walksFor(c.body, along, entrance.u, built.forecourt, filled.aisles, [
+        ...filled.stalls.map((s) => s.rect),
+        ...filled.accessAisles,
+        ...filled.islands,
+        ...berths,
+      ]);
   const layout: LotLayout = {
     lot: { u0: 0, u1: along, v0: 0, v1: depth },
     body: c.body,
@@ -1055,6 +1066,7 @@ function computeLotLayout0(
     throat: filled.aisles.length > 0 ? built.throat : null,
     driveThrough: null,
     lube: null,
+    ...(input.noPublicDoor ? { noPublicDoor: true } : {}),
     loadingWall: null,
     trailerStalls: [],
     required: input.spaces,
@@ -1074,7 +1086,8 @@ function computeLotLayout0(
         ? driveUpLanesFor(layout, input.driveUpLanes)
         : driveThroughFor(layout, input.sideWindow === true));
   }
-  if (input.quickLube) layout.lube = built.lube ?? lubeLeftoverFor(layout);
+  if (input.quickLube)
+    layout.lube = built.lube ?? lubeLeftoverFor(layout, input.courtDepth ?? LUBE_COURT_M);
   if (input.trailerCourt) layout.loadingWall = loadingWallFor(layout);
   // On a roomy lot the paving comes first, behind the body, and the truck court takes what it leaves;
   // a lot whose docks stand on the back wall keeps that ground for its court and lays no yard.
@@ -1457,7 +1470,7 @@ function driveUpLanesAt(
  * in front of the doors, and behind the body whatever court the car park leaves,
  * as deep as it is when it holds at least one car. No lane.
  */
-function lubeLeftoverFor(layout: LotLayout): LubeGrounds {
+function lubeLeftoverFor(layout: LotLayout, courtM: number): LubeGrounds {
   const b = layout.body;
   const standing: LotRect[] = [
     ...layout.aisles,
@@ -1467,7 +1480,7 @@ function lubeLeftoverFor(layout: LotLayout): LubeGrounds {
     ...layout.islands,
     ...layout.berths,
   ];
-  let v1 = Math.min(layout.lot.v1, b.v1 + LUBE_COURT_M);
+  let v1 = Math.min(layout.lot.v1, b.v1 + courtM);
   for (const t of standing) {
     if (rectsOverlap({ ...b, v0: b.v1, v1 }, t)) v1 = Math.min(v1, Math.max(b.v1, t.v0));
   }
@@ -1485,8 +1498,9 @@ function lubeReserveFor(
   body: LotRect,
   curbCut: { u0: number; u1: number },
   depth: number,
+  courtM: number,
 ): LubeGrounds {
-  const v1 = Math.min(depth, body.v1 + LUBE_COURT_M);
+  const v1 = Math.min(depth, body.v1 + courtM);
   const court = v1 - body.v1 > EPS ? { u0: body.u0, u1: body.u1, v0: body.v1, v1 } : null;
   return {
     apron: { ...body, v0: 0, v1: body.v0 },
