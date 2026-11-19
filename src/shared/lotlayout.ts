@@ -89,6 +89,8 @@ export interface LotLayoutInput {
    * spaces with the strip is laid without it.
    */
   perimeterStrip?: number;
+  /** Refuse a berth that stands on a module aisle: laid for a larger lot of the same building, whose frontage may be short. */
+  clearBerths?: boolean;
   /** Set where a roomy lot reserves its hardstanding: ground behind the body this deep that no stall or berth takes. */
   pavingBehind?: number;
 }
@@ -502,6 +504,7 @@ function build(input: LotLayoutInput, c: Candidate): Built {
     if (b.v0 < -EPS || b.u0 < -EPS) return false;
     if (fixed.some((f) => rectsOverlap(f, b))) return false;
     const pq = toPQ(o, b);
+    if (input.clearBerths && moduleAisles.some((a) => overlaps(a, pq))) return false;
     return reach.some((a) => touchesAlong(a, pq));
   });
 

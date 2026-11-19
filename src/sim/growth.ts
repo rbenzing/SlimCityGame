@@ -31,6 +31,7 @@ import { claimedTiles, frameCorners } from '../shared/lotframe';
 import { holdsLotParkingAt, lotLayoutFor } from '../shared/lotparking';
 import { drawsLotParking, isDenseLotKind } from '../shared/parkingcode';
 import { roomyLotOf } from '../shared/roomylots';
+import { findRoadFacingEdge } from '../shared/roadedge';
 import { missingSchooling, type EducationRung } from '../shared/schooling';
 import { SoilGrade, isFarmable } from '../shared/soil';
 import type {
@@ -1476,28 +1477,45 @@ export class GrowthSystem {
         BuildingCatalogEntry,
         { entry: BuildingCatalogEntry } & Placement
       >();
+      /** The turns a shop or works is tried at on an unplatted tile: its long side along the street it fronts first, then the other way. */
+      const turnsFor = (e: BuildingCatalogEntry): (0 | 1)[] => {
+        if (e.footprint.w === e.footprint.d || (e.category !== 'com' && e.category !== 'ind')) {
+          return [0];
+        }
+        const roadOn = (rx: number, rz: number): boolean =>
+          inBounds(rx, rz) && readTile(g.roadTier, tileIndex(rx, rz)) !== RoadTier.None;
+        const longOnStreet = (rotation: 0 | 1): boolean => {
+          const lot = footprintForRotation(e, rotation);
+          const edge = findRoadFacingEdge(x, z, lot.w, lot.d, roadOn);
+          if (!edge) return false;
+          return edge.edgeTiles >= (edge.side === 'N' || edge.side === 'S' ? lot.d : lot.w);
+        };
+        return longOnStreet(1) && !longOnStreet(0) ? [1, 0] : [0, 1];
+      };
       const fitting = spawnCandidates(
         this.catalog,
         zone,
         this.unlockLevel(milestoneLevel),
         (kind) => {
           for (const e of footprintsOf(this.catalog, kind, roomiest)) {
-            const at =
+            const tries: (Placement | null)[] =
               frontageZone && e.lot === undefined
-                ? frontagePlacement(plat, e, x, z)
-                : ({ x, z, rotation: 0 } as const);
-            if (at === null) continue;
-            const { w, d } = footprintForRotation(e, at.rotation);
-            if (
-              !isZonedLot(g, zone, at.x, at.z, w, d) ||
-              !this.canPlace(g, at.x, at.z, w, d) ||
-              coversFramedParcel(plat, at.x, at.z, w, d)
-            ) {
-              continue;
+                ? [frontagePlacement(plat, e, x, z)]
+                : turnsFor(e).map((rotation) => ({ x, z, rotation }));
+            for (const at of tries) {
+              if (at === null) continue;
+              const { w, d } = footprintForRotation(e, at.rotation);
+              if (
+                !isZonedLot(g, zone, at.x, at.z, w, d) ||
+                !this.canPlace(g, at.x, at.z, w, d) ||
+                coversFramedParcel(plat, at.x, at.z, w, d)
+              ) {
+                continue;
+              }
+              if (!parks(e, at.x, at.z, at.rotation)) continue;
+              placements.set(kind, { entry: e, ...at });
+              return true;
             }
-            if (!parks(e, at.x, at.z, at.rotation)) continue;
-            placements.set(kind, { entry: e, ...at });
-            return true;
           }
           return false;
         },

@@ -166,3 +166,77 @@ describe('a block grows the lot its town and land call for', () => {
     for (const b of others) expect(b.catalogId).toBe('com-low-1-lot1x2');
   });
 });
+
+describe('a works grows on its roomy lot along either axis of its street', () => {
+  const wantsWorks: DemandLevels = { res: 0, com: 0, ind: 1 };
+
+  /** A street `length` tiles long with an Industrial block `depth` deep beside it, running east-west or north-south. */
+  function strip(northSouth: boolean, length: number, depth: number): GridState {
+    const g = createGrid();
+    g.fields[FieldId.LandValue]!.fill(100);
+    const at = (along: number, across: number): number =>
+      northSouth ? tileIndex(across, along) : tileIndex(along, across);
+    for (let i = 0; i < length + 2; i++) {
+      g.roadTier[at(i, 0)] = RoadTier.TwoLane;
+      g.roadMask[at(i, 0)] = northSouth
+        ? (i > 0 ? 1 : 0) | (i < length + 1 ? 4 : 0)
+        : (i > 0 ? 8 : 0) | (i < length + 1 ? 2 : 0);
+    }
+    for (let across = 1; across <= depth; across++) {
+      for (let along = 1; along <= length; along++) {
+        const i = at(along, across);
+        g.zone[i] = ZoneType.Industrial;
+        g.power[i] = 1;
+        g.watered[i] = 1;
+        g.sewered[i] = 1;
+      }
+    }
+    return g;
+  }
+
+  const onWorks = (g: GridState, x: number, z: number, w: number, d: number): boolean => {
+    for (let dz = 0; dz < d; dz++) {
+      for (let dx = 0; dx < w; dx++) {
+        if (g.zone[tileIndex(x + dx, z + dz)] !== ZoneType.Industrial) return false;
+      }
+    }
+    return true;
+  };
+
+  function growOn(northSouth: boolean): string[] {
+    const g = strip(northSouth, 12, 3);
+    const depots = catalog.filter((e) => e.kind === 'warehouse');
+    const registry = new BuildingRegistry(depots);
+    const growth = new GrowthSystem(depots, constantRng(0), onWorks);
+    for (let pass = 0; pass < 40; pass++) {
+      growth.tick(g, registry, wantsWorks, 1, pass * 10, UNMETERED_SUPPLY, UNLIMITED_ROOM);
+    }
+    return registry.all().map((b) => b.catalogId);
+  }
+
+  it('stands the same roomy depots beside a north-south street as beside an east-west one', () => {
+    const eastWest = growOn(false);
+    const northSouth = growOn(true);
+    expect(eastWest.length).toBeGreaterThan(0);
+    for (const id of [...eastWest, ...northSouth]) expect(id).toBe('ind-warehouse-1-lot5x3');
+    expect(northSouth.length).toBe(eastWest.length);
+  });
+
+  it('turns the works to its street and keeps the turn through a level-up', () => {
+    const g = strip(true, 12, 3);
+    g.fields[FieldId.LandValue]!.fill(255);
+    const depots = catalog.filter((e) => e.kind === 'warehouse');
+    const registry = new BuildingRegistry(depots);
+    const growth = new GrowthSystem(depots, constantRng(0), onWorks);
+    const levelUps: Record<string, number> = {};
+    for (let pass = 0; pass < 400; pass++) {
+      growth.tick(g, registry, wantsWorks, 1, pass * 10, UNMETERED_SUPPLY, UNLIMITED_ROOM);
+    }
+    for (const b of registry.all()) levelUps[b.catalogId] = (levelUps[b.catalogId] ?? 0) + 1;
+    expect(registry.all().length).toBeGreaterThan(0);
+    for (const b of registry.all()) {
+      expect(b.rotation, b.catalogId).toBe(1);
+    }
+    expect(Object.keys(levelUps).some((id) => id.startsWith('ind-warehouse-2'))).toBe(true);
+  });
+});

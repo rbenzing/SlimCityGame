@@ -102,6 +102,7 @@ export function lotLayoutFor(
     spaces: carPark ? onSiteSpaces(requirement.spaces, kerbCredit) : 0,
     berths: requirement.berths,
     ...lotYardsFor(entry),
+    ...(entry.bodyFootprint !== undefined ? { clearBerths: true } : {}),
     ...(isRoomyLotEntry(entry) ? { perimeterStrip: LOT_PERIMETER_STRIP_M } : {}),
     ...(entry.category === 'com' && !isDenseLotEntry(entry) ? { shopfrontWalk: true } : {}),
     ...(entry.kind === 'restaurant' ? { driveThrough: true } : {}),

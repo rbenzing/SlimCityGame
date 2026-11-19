@@ -5,7 +5,7 @@ import { isRoomyLotEntry } from './parkingcode';
 import { roomyLotOf } from './roomylots';
 import { lotLayoutFor } from './lotparking';
 import { LOT_PERIMETER_STRIP_M } from './lotgrounds';
-import { layoutLot } from './lotlayout';
+import { layoutLot, type LotRect } from './lotlayout';
 
 const catalog = (catalogData as { buildings: BuildingCatalogEntry[] }).buildings;
 /** The roomiest rung of each kind and level: growth stands its long side on the street. */
@@ -85,5 +85,30 @@ describe('the strip is given up where it would cost a code space', () => {
     expect(without.fits).toBe(true);
     expect(withStrip.fits).toBe(true);
     expect(withStrip.provided).toBe(without.provided);
+  });
+});
+
+describe('no loading berth stands on a drive aisle, an access aisle or the body', () => {
+  const overlaps = (a: LotRect, b: LotRect): boolean =>
+    a.u0 < b.u1 - 0.01 && b.u0 < a.u1 - 0.01 && a.v0 < b.v1 - 0.01 && b.v0 < a.v1 - 0.01;
+
+  it('holds for every shop and works lot, turned either way', () => {
+    const lots = catalog.filter((e) => e.category === 'com' || e.category === 'ind');
+    for (const e of lots) {
+      for (const [rotation, alongX] of [
+        [0, true],
+        [1, true],
+        [0, false],
+        [1, false],
+      ] as const) {
+        const l = lotLayoutFor(e, rotation, alongX);
+        if (!l) continue;
+        for (const b of l.berths) {
+          for (const a of [...l.aisles, ...l.accessAisles, l.body]) {
+            expect(overlaps(a, b), `${e.id} r${rotation} ${alongX ? 'x' : 'z'}`).toBe(false);
+          }
+        }
+      }
+    }
   });
 });
