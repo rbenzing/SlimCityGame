@@ -77,6 +77,18 @@ export const DOOR_CLEAR_M = 3;
 const DOOR_CLEAR_DEPTH_M = 1.2;
 const DOOR_FURNITURE_GAP_M = 0.2;
 
+/** A repair shop's office in its end wall: the glass from the street corner in, its door beside it. */
+export const REPAIR_OFFICE_M = { corner: 0.6, glass: 3, doorGap: 0.2, door: 0.9 } as const;
+/** The office door's middle, in from the street corner of its wall. */
+export const REPAIR_OFFICE_DOOR_IN_M =
+  REPAIR_OFFICE_M.corner +
+  REPAIR_OFFICE_M.glass +
+  REPAIR_OFFICE_M.doorGap +
+  REPAIR_OFFICE_M.door / 2;
+
+/** The ground at each end of a front wall the kit's ice locker and propane cage take: this wide along the wall, this deep off it. */
+export const WALL_LOCKER_ZONE_M = { along: 2.4, depth: 1.0 } as const;
+
 /** A refuse enclosure: 2.4 × 3.7 m inside, 1.8 m walls, a 3.7 m gate, a 2.4 m apron before it. */
 export const REFUSE_ENCLOSURE_M = {
   inside: { across: 3.7, depth: 2.4 },
@@ -144,6 +156,8 @@ export interface LotGroundsFacts {
   kitRefuse: boolean;
   /** The kit stands its own furniture (cart corrals) in the car park's islands. */
   kitIslandFurniture?: boolean;
+  /** The kit stands lockers against both ends of the front wall, which the wall furniture leaves free. */
+  kitWallLockers?: boolean;
   /** The side of the drive a sign is set on first: the side traffic arrives from. */
   signSide?: 'u-' | 'u+';
 }
@@ -180,7 +194,7 @@ export function pylonFaceArea(along: number): number {
   return Math.min(PYLON_SIGN.faceAreaPerFrontageM * along, PYLON_SIGN.maxFaceArea);
 }
 
-/** The ground a door keeps clear: the body's street door, and the wall a loading dock stands on. */
+/** The ground a door keeps clear: the body's street door, a row of service bay doors across its street face, and the wall a loading dock stands on. */
 export function doorClearances(layout: LotLayout): LotRect[] {
   const { body, entrance } = layout;
   const out: LotRect[] = [
@@ -191,6 +205,10 @@ export function doorClearances(layout: LotLayout): LotRect[] {
       v1: body.v0,
     },
   ];
+  if (layout.bayDoors) {
+    out.push({ ...layout.bayDoors, v0: body.v0 - DOOR_CLEAR_DEPTH_M, v1: body.v0 });
+    out.push(officeDoorClearance(layout));
+  }
   const wall: LoadingWall | null = layout.loadingWall;
   if (wall === 'v+') out.push({ ...body, v0: body.v1, v1: body.v1 + DOCK_PLATFORM_DEPTH_M });
   if (wall === 'u+') out.push({ ...body, u0: body.u1, u1: body.u1 + DOCK_PLATFORM_DEPTH_M });
@@ -583,8 +601,52 @@ function laneKept(ctx: Ctx, depth: number): boolean {
   return !front || front.v1 - front.v0 - depth >= MIN_FRONT_WALK_M - EPS;
 }
 
+/** The end wall a repair shop's office door is in, named by the way the wall faces: the end its entrance walk lands at. */
+function officeWall(layout: LotLayout): 'u-' | 'u+' {
+  return layout.entrance.u < (layout.body.u0 + layout.body.u1) / 2 ? 'u-' : 'u+';
+}
+
+/** The ground the office door's wall keeps clear: the door's width along the wall and the depth in front of it. */
+function officeDoorClearance(layout: LotLayout): LotRect {
+  const { body } = layout;
+  const wall = officeWall(layout);
+  const v = body.v0 + REPAIR_OFFICE_DOOR_IN_M;
+  const [u0, u1] =
+    wall === 'u-'
+      ? [body.u0 - DOOR_CLEAR_DEPTH_M, body.u0]
+      : [body.u1, body.u1 + DOOR_CLEAR_DEPTH_M];
+  return { u0, u1, v0: v - DOOR_CLEAR_M / 2, v1: v + DOOR_CLEAR_M / 2 };
+}
+
+/** A repair shop's bin and bench stand against its end wall, past the office door. */
+function planOfficeFurniture(ctx: Ctx): void {
+  const { body } = ctx.layout;
+  const wall = officeWall(ctx.layout);
+  const door = officeDoorClearance(ctx.layout);
+  const strip = (v0: number, v1: number, depth: number): LotRect =>
+    wall === 'u-'
+      ? { u0: body.u0 - depth, u1: body.u0, v0, v1 }
+      : { u0: body.u1, u1: body.u1 + depth, v0, v1 };
+  // The first clear ground along the wall past the door, from the door outward: a drive aisle in front of the door is walked round.
+  const place = (from: number, along: number, depth: number): LotRect | null => {
+    for (let v = from; v + along <= body.v1 + EPS; v += 0.2) {
+      const rect = strip(v, v + along, depth);
+      if (clear(ctx, rect)) return rect;
+    }
+    return null;
+  };
+  const bin = place(door.v1 + DOOR_FURNITURE_GAP_M, BIN_M.along, BIN_M.depth);
+  if (bin) put(ctx, { kind: 'bin', rect: bin, facing: wall, height: BIN_M.height });
+  const bench = place((bin?.v1 ?? door.v1) + DOOR_FURNITURE_GAP_M, BENCH_M.along, BENCH_M.depth);
+  if (bench) put(ctx, { kind: 'bench', rect: bench, facing: wall, height: BENCH_M.height });
+}
+
 function planWallFurniture(ctx: Ctx): void {
   const { layout } = ctx;
+  if (layout.bayDoors) {
+    planOfficeFurniture(ctx);
+    return;
+  }
   const e = layout.entrance.u;
   const body = layout.body;
   const gap = DOOR_FURNITURE_GAP_M;
@@ -778,6 +840,14 @@ export function planLotGrounds(layout: LotLayout, facts: LotGroundsFacts): LotGr
     pieces: [],
   };
   planWalk(ctx);
+  if (facts.kitWallLockers) {
+    const { body } = layout;
+    const { along, depth } = WALL_LOCKER_ZONE_M;
+    ctx.taken.push(
+      wallStrip(ctx, body.u0, body.u0 + along, depth),
+      wallStrip(ctx, body.u1 - along, body.u1, depth),
+    );
+  }
   planSign(ctx);
   planLights(ctx);
   planRefuse(ctx);

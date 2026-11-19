@@ -733,11 +733,11 @@ export class BuildingInstancer {
     const glassColor = vec3(...glassBase).mul(
       mix(GLASS_REFLECTANCE_MIN, GLASS_REFLECTANCE_MAX, reflectance),
     );
-    const frameColor = select(
-      isGroundFloor,
-      vec3(...DARK_STOREFRONT_FRAME),
-      solidWall.mul(FRAME_DARKEN),
-    );
+    // A repair shop's walls are plain, not a darkened frame round windows it does not have.
+    const frameColor =
+      entry.kind === 'autorepair'
+        ? solidWall
+        : select(isGroundFloor, vec3(...DARK_STOREFRONT_FRAME), solidWall.mul(FRAME_DARKEN));
 
     // Boarded/plain look for Constructing/Abandoned instances reuses the
     // EXISTING aActive attribute (no new per-instance data): glazing only

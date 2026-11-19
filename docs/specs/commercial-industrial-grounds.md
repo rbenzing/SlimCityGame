@@ -44,11 +44,11 @@
 | Roomy lot, building over lot | 0.28 retail, 0.32 industry, 0.64 office, at most | ratio | Metropolitan Council medians |
 | Compaction starts | Small City (8,000 residents), land value 224 and over | — | dial: the dense kinds' own unlock |
 
-**Code:** the furniture is built: `src/shared/lotgrounds.ts` `planLotGrounds` the plan (pure, beside `lotlayout.ts`); `src/render/lotplan.ts` `groundsFactsFor` which sides face homes; `src/render/lotgrounds.ts` `LotGroundsRenderer` the pools. The roomy lots are built: `src/shared/roomylots.ts` `ROOMY_LOT_TILES` each kind's roomy lot; `src/data/catalog.json` the lot variants, appended; `src/shared/lotlayout.ts` the strip inside the lot lines; `src/sim/growth.ts` `growsRoomy`, `footprintsOf` the lot choice. To be built: the new kinds.
+**Code:** the furniture is built: `src/shared/lotgrounds.ts` `planLotGrounds` the plan (pure, beside `lotlayout.ts`); `src/render/lotplan.ts` `groundsFactsFor` which sides face homes; `src/render/lotgrounds.ts` `LotGroundsRenderer` the pools. The roomy lots are built: `src/shared/roomylots.ts` `ROOMY_LOT_TILES` each kind's roomy lot; `src/data/catalog.json` the lot variants, appended; `src/shared/lotlayout.ts` the strip inside the lot lines; `src/sim/growth.ts` `growsRoomy`, `footprintsOf` the lot choice. Two kinds are built, the auto repair shop and the convenience store: `src/data/catalog.json`; `src/shared/parkingcode.ts` the repair shop's bays and spaces; `src/render/buildingkit.ts`, `src/render/archetypes.ts` their kits. To be built: the other eight.
 
 **Tests:** `src/shared/lotgrounds.test.ts`, `src/render/lotgroundsplan.test.ts` every catalog lot's keep-outs, the order of omission, short poles beside homes; `src/render/lotgrounds.test.ts` the pools; `src/render/geometrybudget.test.ts` the ceiling. `src/shared/roomylots.test.ts`, `src/shared/roomylayout.test.ts` every roomy lot laid to code with its strip; `src/sim/roomygrowth.test.ts` the lot chosen either side of Small City and the fall back to the compact lot; `src/sim/catalogsave.test.ts` an old save loads unchanged on the longer catalog.
 
-**Open:** the new kinds are not built; a works that levels up on a full block builds up on the lot it has and loses its grounds; the kinds' jobs, utilities and draw weights are not derived; a bank's and a medical office's site sizes were not found; no light level is modelled. A lot is planned when it is drawn, so homes zoned beside it later do not shorten its poles. A tight strip or shop has no room for a refuse enclosure.
+**Open:** eight of the ten kinds are not built; a repair shop's accessible spaces are counted from the middle of its street face, not its office door, and its bay glass glows only faintly at night; a works that levels up on a full block builds up on the lot it has and loses its grounds; the kinds' jobs, utilities and draw weights are not derived; a bank's and a medical office's site sizes were not found; no light level is modelled. A lot is planned when it is drawn, so homes zoned beside it later do not shorten its poles. A tight strip or shop has no room for a refuse enclosure.
 
 ## Why the rules are what they are
 
@@ -94,6 +94,13 @@ Roomy lots hold fewer jobs a tile: a zone keeps about three fifths of what it he
 Ten kinds are named in [the sources](../sources/commercial-industrial-grounds.md#the-new-kinds-as-they-stand-on-the-ground) with their real size, site and marks: the auto repair shop, the quick lube, the car wash, the convenience store, the pharmacy, the bank branch, the medical office, self-storage, the contractor's yard and the machine shop. The first seven are low commercial; the last three are industry.
 
 Each enters the catalog as existing kinds did: jobs from floor area per worker, utilities and noise from the same surveys, a draw weight from establishment counts. A kind with no derivation is not added.
+
+The first two are derived in [the sources](../sources/commercial-industrial-grounds.md#the-auto-repair-shop-and-the-convenience-store-in-the-catalog), three levels each, from Small Town on so that a first town draws what it did:
+
+- **The auto repair shop** is a row of roll-up bay doors 3.7 m wide on its street face, three to eleven of them, with a glazed office and its door at one end, a sign band over the bays, a tyre rack and a waste-oil tank on the side wall, and customers' cars on the lot. It has no shopfront canopy.
+- **The convenience store** is a glazed front the width of the building under a bright canopy band, an ice locker and a propane cage against the front wall, bollards along the front walk, and condensers on the roof.
+
+Their roomy lots are measured and checked as every other kind's. A repair shop is one storey with no window above its doors, its walls light so the doors read; the walk, the bench and the bin go to its office door, since the bay row is a door from end to end.
 
 A kind also varies in plan, not only in colour: the building at the street or behind its car park, a strip in a line or an L, storage in rows, a shop with a detached canopy. The variant comes from the lot's id, as the palette does.
 

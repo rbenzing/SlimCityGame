@@ -101,10 +101,12 @@ export function bodyPlateM2(entry: BuildingCatalogEntry): number {
 /**
  * How many floors of the plate a building has. A commercial or office-like
  * building counts one per 3.2 m storey; a works is one high-bay floor however
- * tall its clear height, except flex space, which is offices over the bays.
+ * tall its clear height, except flex space, which is offices over the bays; a
+ * repair shop's bays are one floor under its 6.1 m roof.
  */
 export function storeysOf(entry: BuildingCatalogEntry): number {
   if (entry.category === 'ind' && entry.kind !== 'flex') return 1;
+  if (entry.kind === 'autorepair') return 1;
   return Math.max(1, Math.round(entry.height / FLOOR_HEIGHT_METERS));
 }
 

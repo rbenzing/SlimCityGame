@@ -32,6 +32,8 @@ import {
 } from './massing';
 import { TILE_METERS } from '../shared/constants';
 import { footprintForRotation } from '../shared/footprint';
+import { REPAIR_OFFICE_M, WALL_LOCKER_ZONE_M } from '../shared/lotgrounds';
+import { REPAIR_BAY_M, repairBays } from '../shared/parkingcode';
 import { maxHeightUnderBody } from './footprint';
 import {
   edgeFrameOfParcel,
@@ -211,6 +213,12 @@ const PART_COLOR: Readonly<Record<BuildingPart, number>> = {
   accentBand: saturatedHex('red'),
   mansardBand: materialHex('clayRoof'),
   ribbonBand: materialHex('precastGrey'),
+  // The repair shop's rack of tyres is black rubber; the store's ice locker is white and its propane cage galvanised mesh.
+  tyreRack: KIT_DARK,
+  oilTank: materialHex('galvanised'),
+  bayGlass: litHex('tintedGlass'),
+  iceLocker: materialHex('whitePlaster'),
+  propaneCage: materialHex('galvanised'),
 };
 
 /**
@@ -263,6 +271,7 @@ export const LIT_PARTS: ReadonlySet<BuildingPart> = new Set<BuildingPart>([
   'storefrontBand',
   'dockLight',
   'glassFront',
+  'bayGlass',
   'flareTip',
 ]);
 
@@ -337,6 +346,7 @@ function bulletGeometry(): THREE.BufferGeometry {
 /** A part's unit geometry, scaled per instance: a box unless the part is round or sloped. */
 const PART_GEOMETRY: Partial<Record<BuildingPart, () => THREE.BufferGeometry>> = {
   tanks: () => new THREE.CylinderGeometry(0.5, 0.5, 1, 14),
+  oilTank: () => new THREE.CylinderGeometry(0.5, 0.5, 1, 12),
   bollard: () => new THREE.CylinderGeometry(0.5, 0.5, 1, 8),
   awning: awningGeometry,
   processColumn: () => new THREE.CylinderGeometry(0.5, 0.5, 1, 14),
@@ -614,6 +624,46 @@ export const FACTORY_DOOR_COUNT = 2;
 export const WALK_DOOR_WIDTH_M = 0.9;
 export const WALK_DOOR_HEIGHT_M = 2.1;
 const WALK_DOOR_GAP_M = 1.5;
+/**
+ * A repair shop's service bay doors: one for each 3.7 m of street face, 3.7 m
+ * wide at most, 10 ft tall, with a pier of at least this much between
+ * neighbours; the sign band sits above them. Its office is a glazed front 3 m
+ * wide and a 0.9 m door in one end wall at the street corner, 0.6 m in from it;
+ * its tyre rack and waste-oil tank stand against the far end wall.
+ */
+export { REPAIR_BAY_M };
+export const REPAIR_DOOR_HEIGHT_M = SHOP_DOOR_M;
+const REPAIR_PIER_M = 0.3;
+export const REPAIR_SIGN_CENTRE_Y_M = REPAIR_DOOR_HEIGHT_M + 0.5 + SIGN_HEIGHT_M / 2;
+export const REPAIR_OFFICE_GLASS_M = REPAIR_OFFICE_M.glass;
+export const REPAIR_OFFICE_CORNER_M = REPAIR_OFFICE_M.corner;
+const REPAIR_OFFICE_GLASS_HEIGHT_M = 2.1;
+const REPAIR_OFFICE_SILL_M = 0.6;
+const REPAIR_OFFICE_DOOR_GAP_M = REPAIR_OFFICE_M.doorGap;
+/** A bay door is a pale sectional door with one dark glazed strip across it at two thirds of its height, over a dark pier row. */
+const BAY_GLASS_HEIGHT_M = 0.45;
+const BAY_GLASS_AT = 2 / 3;
+const BAY_GLASS_INSET_M = 0.3;
+const BAY_GLASS_PROUD_M = 0.04;
+const BAY_PIER_DEPTH_M = 0.06;
+export const TYRE_RACK_SIZE_M: readonly [number, number, number] = [2.4, 1.8, 0.9];
+/** A 1,000 gallon waste-oil tank: 1.2 m across and 2.4 m tall. */
+export const OIL_TANK_SIZE_M: readonly [number, number, number] = [1.2, 2.4, 1.2];
+const REPAIR_YARD_GAP_M = 0.3;
+/**
+ * A convenience store's front: a glazed band across the street face between the
+ * end zones its lockers stand in, an ice locker and a propane cage against the
+ * wall, a row of bollards on the walk, and refrigeration condensers on the roof.
+ */
+export const STORE_GLASS_HEIGHT_M = 2.7;
+const GLASS_SILL_M = 0.15;
+export const ICE_LOCKER_SIZE_M: readonly [number, number, number] = [1.5, 2.1, 0.9];
+export const PROPANE_CAGE_SIZE_M: readonly [number, number, number] = [1.2, 1.8, 0.9];
+export const STORE_BOLLARD_SPACING_M = 6;
+/** A bollard stands this far out from the wall, in the front walk. */
+const STORE_BOLLARD_OUT_M = 1.3;
+export const STORE_CONDENSER_SIZE_M: readonly [number, number, number] = [2.4, 1.4, 1.2];
+const STORE_CONDENSER_GAP_M = 1;
 /** A dock door is 9 × 10 ft at 14 ft centres, with a shelter frame 0.3 m proud, two bumpers and a light. */
 export const DOCK_DOOR_WIDTH_M = 2.74;
 export const DOCK_DOOR_HEIGHT_M = 3.05;
@@ -2515,6 +2565,243 @@ function glassFrontOf(
   );
 }
 
+/** The metres along an end wall of `end`, from its middle, of a point `fromCorner` in from the corner at the street face. */
+function alongEndWall(box: SetbackBox, end: Side, street: Side, fromCorner: number): number {
+  const n = sideNormal(street);
+  const towardStreet = isAlongX(end) ? n.nx : n.nz;
+  return towardStreet * (facadeSpan(box, end) / 2 - fromCorner);
+}
+
+/** The service bay doors across a repair shop's street face: as many as `repairBays` counts, each in its share of the face. */
+function repairBayDoors(box: SetbackBox, side: Side): PartPlacement[] {
+  const span = facadeSpan(box, side);
+  const count = repairBays(span);
+  const width = Math.min(REPAIR_BAY_M, span / Math.max(1, count) - REPAIR_PIER_M);
+  const door = materialUnit('ribbedWhite');
+  const out: PartPlacement[] = [
+    // A dark pier row behind the doors, so the pale doors read apart.
+    againstFacade(
+      'panelReveal',
+      box,
+      side,
+      span,
+      BAY_PIER_DEPTH_M,
+      REPAIR_DOOR_HEIGHT_M,
+      REPAIR_DOOR_HEIGHT_M / 2,
+    ),
+  ];
+  for (let i = 0; i < count; i += 1) {
+    const along = bayCentre(span, count, i);
+    out.push(
+      {
+        ...againstFacade(
+          'rollUpDoors',
+          box,
+          side,
+          width,
+          DOOR_THICKNESS_M,
+          REPAIR_DOOR_HEIGHT_M,
+          REPAIR_DOOR_HEIGHT_M / 2,
+          along,
+        ),
+        color: door,
+      },
+      againstFacade(
+        'bayGlass',
+        box,
+        side,
+        width - 2 * BAY_GLASS_INSET_M,
+        DOOR_THICKNESS_M + BAY_GLASS_PROUD_M,
+        BAY_GLASS_HEIGHT_M,
+        REPAIR_DOOR_HEIGHT_M * BAY_GLASS_AT,
+        along,
+      ),
+    );
+  }
+  return out;
+}
+
+/**
+ * The end wall a repair shop's office stands in: the one its walk to the door
+ * lands at, else the one beside the lot's drive.
+ */
+function repairOfficeWall(side: Side, lot: KitLot | null): Side {
+  if (lot?.walk) {
+    const c = isAlongX(side) ? (lot.walk.x0 + lot.walk.x1) / 2 : (lot.walk.z0 + lot.walk.z1) / 2;
+    if (isAlongX(side)) return c < 0 ? 'W' : 'E';
+    return c < 0 ? 'N' : 'S';
+  }
+  return oppositeSide(farEnd(side, lot));
+}
+
+/** A repair shop's glazed office and its door, in the end wall its walk lands at, at the street corner. */
+function repairOffice(
+  box: SetbackBox,
+  side: Side,
+  lot: KitLot | null,
+): { glass: PartPlacement; door: PartPlacement; light: PartPlacement } {
+  const wall = repairOfficeWall(side, lot);
+  const glassIn = REPAIR_OFFICE_CORNER_M + REPAIR_OFFICE_GLASS_M / 2;
+  const doorIn =
+    REPAIR_OFFICE_CORNER_M +
+    REPAIR_OFFICE_GLASS_M +
+    REPAIR_OFFICE_DOOR_GAP_M +
+    WALK_DOOR_WIDTH_M / 2;
+  const doorAlong = alongEndWall(box, wall, side, doorIn);
+  const [lw, lh, ld] = DOCK_LIGHT_SIZE_M;
+  return {
+    glass: againstFacade(
+      'glassFront',
+      box,
+      wall,
+      REPAIR_OFFICE_GLASS_M,
+      GLASS_FRONT_PROUD_M,
+      REPAIR_OFFICE_GLASS_HEIGHT_M,
+      REPAIR_OFFICE_SILL_M + REPAIR_OFFICE_GLASS_HEIGHT_M / 2,
+      alongEndWall(box, wall, side, glassIn),
+    ),
+    door: againstFacade(
+      'walkDoor',
+      box,
+      wall,
+      WALK_DOOR_WIDTH_M,
+      DOOR_THICKNESS_M,
+      WALK_DOOR_HEIGHT_M,
+      WALK_DOOR_HEIGHT_M / 2,
+      doorAlong,
+    ),
+    light: againstFacade(
+      'dockLight',
+      box,
+      wall,
+      lw,
+      ld,
+      lh,
+      WALK_DOOR_HEIGHT_M + DOCK_LIGHT_ABOVE_M + lh / 2,
+      doorAlong,
+    ),
+  };
+}
+
+/** A repair shop's tyre rack and waste-oil tank against the end wall away from the drive, each where the lot leaves the ground free. */
+function repairYard(box: SetbackBox, side: Side, lot: KitLot | null): PartPlacement[] {
+  const wall = oppositeSide(repairOfficeWall(side, lot));
+  const [rw, rh, rd] = TYRE_RACK_SIZE_M;
+  const [tw, th, td] = OIL_TANK_SIZE_M;
+  const rackIn = 1.5 + rw / 2;
+  const tankIn = 1.5 + rw + REPAIR_YARD_GAP_M + tw / 2;
+  return [
+    againstFacade('tyreRack', box, wall, rw, rd, rh, rh / 2, alongEndWall(box, wall, side, rackIn)),
+    againstFacade('oilTank', box, wall, tw, td, th, th / 2, alongEndWall(box, wall, side, tankIn)),
+  ].filter((p) => standsFree(p, lot));
+}
+
+/** Whether `p` stands on the body's front walk, or anywhere free of the car park where the lot lays no walk. */
+function standsOnFrontWalk(p: PartPlacement, lot: KitLot | null): boolean {
+  if (!lot) return true;
+  if (!lot.frontWalk) return standsFree(p, lot);
+  return rectInside(placementBounds(p), lot.frontWalk);
+}
+
+/** A convenience store's glazed front, between the end zones its lockers stand in. */
+function storeGlass(box: SetbackBox, side: Side): PartPlacement {
+  const width = facadeSpan(box, side) - 2 * WALL_LOCKER_ZONE_M.along;
+  return againstFacade(
+    'glassFront',
+    box,
+    side,
+    width,
+    GLASS_FRONT_PROUD_M,
+    STORE_GLASS_HEIGHT_M,
+    GLASS_SILL_M + STORE_GLASS_HEIGHT_M / 2,
+  );
+}
+
+/** The ice locker and the propane cage, one in each end zone of the front wall. */
+function storeLockers(box: SetbackBox, side: Side, lot: KitLot | null): PartPlacement[] {
+  const span = facadeSpan(box, side);
+  const zone = WALL_LOCKER_ZONE_M.along;
+  const [iw, ih, id] = ICE_LOCKER_SIZE_M;
+  const [pw, ph, pd] = PROPANE_CAGE_SIZE_M;
+  return [
+    againstFacade('iceLocker', box, side, iw, id, ih, ih / 2, -span / 2 + zone / 2),
+    againstFacade('propaneCage', box, side, pw, pd, ph, ph / 2, span / 2 - zone / 2),
+  ].filter((p) => standsOnFrontWalk(p, lot));
+}
+
+/** Bollards along the front walk, clear of the walk to the door; none where the lot lays no walk. */
+function storeBollards(box: SetbackBox, side: Side, lot: KitLot | null): PartPlacement[] {
+  if (!lot?.frontWalk) return [];
+  const span = facadeSpan(box, side) - 2 * WALL_LOCKER_ZONE_M.along;
+  const count = Math.floor(span / STORE_BOLLARD_SPACING_M) + 1;
+  const keepOff = lot.walk
+    ? {
+        x0: lot.walk.x0 - BOLLARD_DIAMETER_M,
+        x1: lot.walk.x1 + BOLLARD_DIAMETER_M,
+        z0: lot.walk.z0 - BOLLARD_DIAMETER_M,
+        z1: lot.walk.z1 + BOLLARD_DIAMETER_M,
+      }
+    : null;
+  const out: PartPlacement[] = [];
+  for (let i = 0; i < count; i += 1) {
+    const p = onSide(
+      'bollard',
+      side,
+      (i - (count - 1) / 2) * STORE_BOLLARD_SPACING_M,
+      halfDepthTo(box, side) + STORE_BOLLARD_OUT_M,
+      BOLLARD_DIAMETER_M,
+      BOLLARD_DIAMETER_M,
+      BOLLARD_HEIGHT_M,
+      BOLLARD_HEIGHT_M / 2,
+    );
+    const bounds = placementBounds(p);
+    if (!rectInside(bounds, lot.frontWalk)) continue;
+    if (keepOff && rectsOverlap(bounds, keepOff)) continue;
+    out.push(p);
+  }
+  return out;
+}
+
+/** A convenience store's refrigeration condensers along its back roof edge, two to four by level, clear of the other roof equipment. */
+function storeCondensers(
+  entry: BuildingCatalogEntry,
+  topBox: SetbackBox,
+  roofY: number,
+  side: Side,
+): PartPlacement[] {
+  const back = oppositeSide(side);
+  const [cw, ch, cd] = STORE_CONDENSER_SIZE_M;
+  const reach = (facadeSpan(topBox, back) - 2 * ROOF_INSET_M - cw) / 2;
+  const wanted = (entry.level ?? 1) + 1;
+  const taken = roofEquipment(topBox, roofY, side, null, true).map(placementBounds);
+  const out: PartPlacement[] = [];
+  // Along the back edge from one end, each at the first spot clear of the roof's other equipment and of the last.
+  for (let along = -reach; along <= reach + 1e-9 && out.length < wanted; along += 0.5) {
+    const p = onSide(
+      'condenser',
+      back,
+      along,
+      halfDepthTo(topBox, back) - ROOF_INSET_M - cd / 2,
+      cw,
+      cd,
+      ch,
+      roofY + ch / 2,
+    );
+    const bounds = placementBounds(p);
+    const gapped = {
+      x0: bounds.x0 - STORE_CONDENSER_GAP_M,
+      x1: bounds.x1 + STORE_CONDENSER_GAP_M,
+      z0: bounds.z0 - STORE_CONDENSER_GAP_M,
+      z1: bounds.z1 + STORE_CONDENSER_GAP_M,
+    };
+    const blocked =
+      taken.some((t) => rectsOverlap(t, bounds)) ||
+      out.some((o) => rectsOverlap(placementBounds(o), gapped));
+    if (!blocked) out.push(p);
+  }
+  return out;
+}
+
 /** The plan extent that holds every rectangle in `rects`. */
 function boundsUnion(rects: readonly LocalRect[]): LocalRect {
   return {
@@ -3487,6 +3774,10 @@ export function computePartPlacements(
           }
           break;
         }
+        if (entry.kind === 'autorepair') {
+          out.push(...repairBayDoors(baseBox, side));
+          break;
+        }
         if (entry.kind === 'flex') {
           // Grade doors at the back: two from FLEX_TWO_DOOR_SPAN_M of back wall, else one.
           const back = oppositeSide(side);
@@ -3564,8 +3855,9 @@ export function computePartPlacements(
       }
       case 'canopy': {
         if (!side) break;
-        out.push(
-          againstFacade(
+        // A convenience store's canopy is its brand's bright band.
+        out.push({
+          ...againstFacade(
             part,
             baseBox,
             side,
@@ -3574,7 +3866,20 @@ export function computePartPlacements(
             CANOPY_THICKNESS_M,
             CANOPY_HEIGHT_M,
           ),
-        );
+          ...(entry.kind === 'convenience' ? { color: accent() } : {}),
+        });
+        break;
+      }
+      case 'tyreRack':
+      case 'oilTank': {
+        if (!side) break;
+        out.push(...repairYard(baseBox, side, lot).filter((p) => p.part === part));
+        break;
+      }
+      case 'iceLocker':
+      case 'propaneCage': {
+        if (!side) break;
+        out.push(...storeLockers(baseBox, side, lot).filter((p) => p.part === part));
         break;
       }
       case 'signageBand': {
@@ -3595,7 +3900,9 @@ export function computePartPlacements(
           ? baseTop + PARAPET_STEP_M / 2
           : hotel
             ? roofY - storeysOf(entry, topBox).pitch / 2
-            : SIGN_CENTRE_Y_M;
+            : entry.kind === 'autorepair'
+              ? REPAIR_SIGN_CENTRE_Y_M
+              : SIGN_CENTRE_Y_M;
         if (hasMansard(entry)) {
           // The sign lies on the mansard's slope, its back on the slab's outer face.
           const lean = (MANSARD_THICKNESS_M + SIGN_THICKNESS_M) / 2;
@@ -4100,7 +4407,11 @@ export function computePartPlacements(
       case 'dispenser':
       case 'bollard': {
         if (!side) break;
-        out.push(...islandPart(part, baseBox, side));
+        out.push(
+          ...(entry.kind === 'convenience'
+            ? storeBollards(baseBox, side, lot)
+            : islandPart(part, baseBox, side)),
+        );
         break;
       }
       case 'priceSign': {
@@ -4268,6 +4579,14 @@ export function computePartPlacements(
       }
       case 'glassFront': {
         if (!side) break;
+        if (entry.kind === 'autorepair') {
+          out.push(repairOffice(baseBox, side, lot).glass);
+          break;
+        }
+        if (entry.kind === 'convenience') {
+          out.push(storeGlass(baseBox, side));
+          break;
+        }
         const front = glassFrontOf(entry, baseBox, side, roofY);
         if (front) out.push(front);
         break;
@@ -4294,7 +4613,27 @@ export function computePartPlacements(
         break;
       }
       case 'walkDoor': {
-        if (!side || (entry.kind !== 'workshop' && entry.kind !== 'factory')) break;
+        if (!side) break;
+        if (entry.kind === 'autorepair') {
+          const office = repairOffice(baseBox, side, lot);
+          out.push(office.door, office.light);
+          break;
+        }
+        if (entry.kind === 'convenience') {
+          out.push(
+            againstFacade(
+              part,
+              baseBox,
+              side,
+              2 * WALK_DOOR_WIDTH_M,
+              DOOR_THICKNESS_M,
+              WALK_DOOR_HEIGHT_M,
+              WALK_DOOR_HEIGHT_M / 2,
+            ),
+          );
+          break;
+        }
+        if (entry.kind !== 'workshop' && entry.kind !== 'factory') break;
         const count = serviceDoorCount(entry.kind, span);
         const along = doorRow(span, count).walk;
         out.push(
@@ -4551,6 +4890,10 @@ export function computePartPlacements(
         break;
       }
       case 'condenser': {
+        if (entry.kind === 'convenience') {
+          if (side) out.push(...storeCondensers(entry, topBox, roofY, side));
+          break;
+        }
         if (!bank) break;
         // Two to four evaporative condensers in a row on the roof by the dock side, 2 m in from the parapet, as many as the roof holds.
         const [cw, ch, cd] = CONDENSER_SIZE_M;

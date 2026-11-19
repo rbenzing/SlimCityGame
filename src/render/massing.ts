@@ -142,6 +142,8 @@ export function podiumHeightOf(entry: BuildingCatalogEntry): number | null {
  */
 export function tierCountOf(entry: BuildingCatalogEntry): number {
   if (isHouseEntry(entry) || isFarmEntry(entry) || isApartmentEntry(entry)) return 1;
+  // A repair shop and a convenience store are one volume at every level: a wider plate, not a taller stack.
+  if (entry.kind === 'autorepair' || entry.kind === 'convenience') return 1;
   return Math.min(3, Math.max(1, Math.round(entry.level ?? 1)));
 }
 

@@ -19,6 +19,7 @@ import {
   isRoomyLotEntry,
   lotSpacesFor,
   onSiteSpaces,
+  repairBays,
   WALK_UP_REAR_YARD_M,
   WALK_UP_SIDE_YARD_M,
 } from './parkingcode';
@@ -89,15 +90,16 @@ export function lotLayoutFor(
   kerbCredit = 0,
   carPark = true,
 ): LotLayout | null {
-  const requirement = lotSpacesFor(entry);
-  if (!requirement) return null;
   const lot = footprintForRotation(entry, rotation);
   const body = bodyMetresFor(entry);
   const world = rotation % 2 === 1 ? { w: body.d, d: body.w } : body;
-  return layoutLot({
+  const bodyAlong = alongX ? world.w : world.d;
+  const requirement = lotSpacesFor(entry, bodyAlong);
+  if (!requirement) return null;
+  const layout = layoutLot({
     along: (alongX ? lot.w : lot.d) * TILE_METERS,
     depth: (alongX ? lot.d : lot.w) * TILE_METERS,
-    bodyAlong: alongX ? world.w : world.d,
+    bodyAlong,
     bodyDepth: alongX ? world.d : world.w,
     spaces: carPark ? onSiteSpaces(requirement.spaces, kerbCredit) : 0,
     berths: requirement.berths,
@@ -106,8 +108,14 @@ export function lotLayoutFor(
     ...(isRoomyLotEntry(entry) ? { perimeterStrip: LOT_PERIMETER_STRIP_M } : {}),
     ...(entry.category === 'com' && !isDenseLotEntry(entry) ? { shopfrontWalk: true } : {}),
     ...(entry.kind === 'restaurant' ? { driveThrough: true } : {}),
+    ...(entry.kind === 'autorepair' ? { entranceAtEnd: true } : {}),
     ...(entry.kind && TRUCK_COURT_KINDS.has(entry.kind) ? { trailerCourt: true } : {}),
   });
+  // A repair shop's bay doors fill its street face; the grounds keep that ground clear.
+  if (entry.kind === 'autorepair' && repairBays(bodyAlong) > 0) {
+    layout.bayDoors = { u0: layout.body.u0, u1: layout.body.u1 };
+  }
+  return layout;
 }
 
 /** A building's car park where it stands: the edge it opens onto, its kerb credit and its layout. */

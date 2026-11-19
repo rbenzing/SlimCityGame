@@ -58,6 +58,16 @@ export const ROOMY_LOT_TILES: Readonly<Partial<Record<BuildingKind, readonly [Lo
     { w: 6, d: 3 },
     { w: 8, d: 4 },
   ],
+  autorepair: [
+    { w: 2, d: 2 },
+    { w: 4, d: 2 },
+    { w: 5, d: 2 },
+  ],
+  convenience: [
+    { w: 3, d: 2 },
+    { w: 4, d: 2 },
+    { w: 5, d: 2 },
+  ],
   metals: [
     { w: 4, d: 4 },
     { w: 5, d: 4 },

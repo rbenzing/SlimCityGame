@@ -7,7 +7,7 @@
  */
 import { ZoneType } from './types';
 import type { BuildingCatalogEntry, BuildingKind } from './types';
-import { grossFloorM2, grossFloorSqFt, storeysOf } from './floorarea';
+import { bodyMetresFor, grossFloorM2, grossFloorSqFt, storeysOf } from './floorarea';
 import { isWalkUpKind } from './buildingkind';
 
 /**
@@ -24,6 +24,7 @@ export const SPACES_PER_1000_SQ_FT: Readonly<Partial<Record<BuildingKind, number
   supermarket: 5,
   fuel: 5,
   restaurant: 10,
+  convenience: 5,
   office: 3,
   workshop: 1,
   factory: 1,
@@ -252,15 +253,35 @@ function denseLotRequirement(entry: BuildingCatalogEntry): ParkingRequirement {
   return { grossSqFt, spaces, berths: 0 };
 }
 
-/** The requirement a building's floor sets, or null for one that parks at the kerb or nowhere. */
-export function lotParkingRequirement(entry: BuildingCatalogEntry): ParkingRequirement | null {
+/** A repair shop's service bay door is 3.7 m wide: a 12 ft bay (3.66 m), rounded up. */
+export const REPAIR_BAY_M = 3.7;
+/** A repair shop owes this many spaces for each service bay, and one for each employee. */
+export const SPACES_PER_REPAIR_BAY = 2;
+
+/** The service bays whose doors a body's street face of `frontageM` metres holds. */
+export function repairBays(frontageM: number): number {
+  return Math.max(0, Math.floor(frontageM / REPAIR_BAY_M + 1e-9));
+}
+
+/**
+ * The requirement a building's floor sets, or null for one that parks at the
+ * kerb or nowhere. A repair shop's is set by its bays, which the street face
+ * `frontageM` of its body draws (the unturned body's width when not given).
+ */
+export function lotParkingRequirement(
+  entry: BuildingCatalogEntry,
+  frontageM: number = bodyMetresFor(entry).w,
+): ParkingRequirement | null {
   if (!drawsLotParking(entry)) return null;
   if (isDenseLotEntry(entry)) return denseLotRequirement(entry);
   const category = entry.category === 'ind' ? 'ind' : 'com';
   const grossSqFt = grossFloorSqFt(entry);
   return {
     grossSqFt,
-    spaces: requiredSpaces(entry.kind, grossSqFt, category),
+    spaces:
+      entry.kind === 'autorepair'
+        ? SPACES_PER_REPAIR_BAY * repairBays(frontageM) + (entry.jobs ?? 0)
+        : requiredSpaces(entry.kind, grossSqFt, category),
     berths: loadingBerths(category === 'ind' ? 'industrial' : 'retail', grossSqFt),
   };
 }
@@ -304,6 +325,9 @@ export const WALK_UP_REAR_YARD_M: Readonly<Record<'multiplex' | 'garden', number
 export const WALK_UP_SIDE_YARD_M = 0.45;
 
 /** What a lot lays its car park for: the code's requirement for commerce and industry, a walk-up's homes, null for the rest. */
-export function lotSpacesFor(entry: BuildingCatalogEntry): ParkingRequirement | null {
-  return lotParkingRequirement(entry) ?? walkUpParkingRequirement(entry);
+export function lotSpacesFor(
+  entry: BuildingCatalogEntry,
+  frontageM?: number,
+): ParkingRequirement | null {
+  return lotParkingRequirement(entry, frontageM) ?? walkUpParkingRequirement(entry);
 }

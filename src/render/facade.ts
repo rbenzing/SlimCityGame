@@ -202,6 +202,8 @@ export function storefrontCut(
   tierHeight: number,
 ): StorefrontCut | null {
   if (entry.category !== 'com' || !(tierHeight > 0)) return null;
+  // Its ground floor is bay doors, not shopfront glass.
+  if (entry.kind === 'autorepair') return null;
   const body = bodyMetresFor(entry);
   const faceM = (body.w + body.d) / 2;
   const bays = Math.max(1, Math.round(faceM / STOREFRONT_BAY_M));
@@ -305,6 +307,8 @@ const COMMERCIAL_BODY_PALETTES: Readonly<Record<CommercialKind, readonly Materia
   fuel: ['paintedMasonry', 'whiteBrick'],
   office: ['precastGrey', 'precastBuff'],
   hotel: ['eifsBeige'],
+  autorepair: ['whitePlaster', 'eifsCream'],
+  convenience: ['eifsCream', 'redBrick', 'eifsTan'],
 };
 const OFFICE_TOWER_BODY_PALETTE: readonly MaterialName[] = ['curtainWall'];
 
@@ -316,6 +320,8 @@ const COMMERCIAL_ROOF_PALETTES: Readonly<Record<CommercialKind, readonly Materia
   fuel: ['whiteMembrane'],
   office: ['greyMembrane'],
   hotel: ['greyMembrane'],
+  autorepair: ['greyMembrane'],
+  convenience: ['whiteMembrane'],
 };
 
 /** An office's ribbons are tinted glass; the tower's cells are its curtain wall's vision glass. */
@@ -538,6 +544,8 @@ export function industrialAccentStripe(entry: BuildingCatalogEntry): boolean {
 
 /** Does this entry's body show no window at all? The material drops every pane; the grid itself still cuts the kit's storeys and bays. */
 export function windowlessBody(entry: BuildingCatalogEntry): boolean {
+  // A repair shop's walls are blank: its glass is the office's, a kit part.
+  if (entry.kind === 'autorepair') return true;
   const industrial = industrialKindOf(entry.kind);
   return industrial !== null && INDUSTRIAL_WINDOWLESS[industrial];
 }

@@ -470,6 +470,8 @@ const ART_TABLE_BODIES: Readonly<Record<CommercialKind, readonly MaterialName[]>
   fuel: ['paintedMasonry', 'whiteBrick'],
   office: ['precastGrey', 'precastBuff'],
   hotel: ['eifsBeige'],
+  autorepair: ['whitePlaster', 'eifsCream'],
+  convenience: ['eifsCream', 'redBrick', 'eifsTan'],
 };
 const ART_TABLE_ROOFS: Readonly<Record<CommercialKind, MaterialName>> = {
   shop: 'brightBitumen',
@@ -479,6 +481,8 @@ const ART_TABLE_ROOFS: Readonly<Record<CommercialKind, MaterialName>> = {
   fuel: 'whiteMembrane',
   office: 'greyMembrane',
   hotel: 'greyMembrane',
+  autorepair: 'greyMembrane',
+  convenience: 'whiteMembrane',
 };
 const COMMERCIAL_KINDS = Object.keys(ART_TABLE_BODIES) as CommercialKind[];
 const OTHER_KINDS: (BuildingKind | undefined)[] = [
@@ -909,7 +913,10 @@ describe('deriveFacadeParams: an industrial body takes its kind palette by id ha
     expect(WINDOWLESS_KINDS).toEqual(['foodplant']);
     const foodplant = industrialEntry('foodplant');
     expect(windowGrid(foodplant, 8).cols).toBeGreaterThanOrEqual(2); // the kit still cuts its bays
-    for (const kind of COMMERCIAL_KINDS) expect(windowlessBody(commercialEntry(kind))).toBe(false);
+    // A repair shop's walls are blank: its glass is the kit's office.
+    for (const kind of COMMERCIAL_KINDS) {
+      expect(windowlessBody(commercialEntry(kind)), kind).toBe(kind === 'autorepair');
+    }
     for (const kind of OTHER_KINDS) expect(windowlessBody(entry({ kind }))).toBe(false);
   });
 });
