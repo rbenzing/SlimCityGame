@@ -84,7 +84,10 @@ describe('lot grounds renderer', () => {
     const b = building('com-low-1');
     grounds.apply({ added: [b], updated: [], removed: [] });
     const kinds = grounds.planOf(b)!.plan.pieces.map((p) => p.kind);
-    expect(kinds).toContain('walk');
+    // A shop at the street line has its front walk on the footway, so it needs no walk in from it.
+    const front = lotPlanFor(entry('com-low-1'), b.x, b.z, southStreet('com-low-1'))?.layout
+      .frontWalk;
+    if (!front || front.v0 > 0.01) expect(kinds).toContain('walk');
     expect(kinds).toContain('bin');
     expect(grounds.instancesOf(b.id).head).toBe(0);
     expect(grounds.instancesOf(b.id).tree).toBe(0);

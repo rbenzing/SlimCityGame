@@ -9,6 +9,7 @@ import catalogData from '../data/catalog.json';
 import type { BuildingCatalogEntry } from '../shared/types';
 import { lotLayoutFor } from '../shared/lotparking';
 import { MIN_FRONT_WALK_M } from '../shared/parkingcode';
+import type { PlanVariant } from '../shared/planvariant';
 import type { LotLayout, LotRect } from '../shared/lotlayout';
 import {
   doorClearances,
@@ -85,6 +86,8 @@ const AT_WALL: ReadonlySet<string> = new Set(['bed', 'bench', 'bin', 'bikeRack']
 
 const HOME_SETS: readonly (readonly HomeSide[])[] = [[], ['u-'], ['v+'], ['u-', 'u+', 'v+']];
 
+const PLANS: readonly PlanVariant[] = ['carpark-front', 'street'];
+
 interface Variant {
   label: string;
   layout: LotLayout;
@@ -97,10 +100,17 @@ function variants(): Variant[] {
   for (const entry of lots) {
     // A lot laid along the street either way: the other turns repeat these two shapes.
     for (const alongX of [true, false]) {
-      const layout = lotLayoutFor(entry, 0, alongX);
-      if (!layout) continue;
-      for (const homes of HOME_SETS) {
-        out.push({ label: `${entry.id} ${alongX ? 'x' : 'z'} [${homes}]`, layout, entry, homes });
+      for (const plan of PLANS) {
+        const layout = lotLayoutFor(entry, 0, alongX, 0, true, plan);
+        if (!layout) continue;
+        for (const homes of HOME_SETS) {
+          out.push({
+            label: `${entry.id} ${alongX ? 'x' : 'z'} ${plan} [${homes}]`,
+            layout,
+            entry,
+            homes,
+          });
+        }
       }
     }
   }
@@ -256,7 +266,11 @@ describe('the pieces a lot has room for', () => {
           (v.entry.category === 'ind' && k !== 'flex') ||
           v.entry.id.startsWith('com-shop') ||
           v.entry.id === 'com-low-1');
-      if (must && count(plan, 'walk') + count(plan, 'crossing') === 0) faults.push(v.label);
+      // A building at the street line has its front walk reach the footway, so it needs no walk in from it.
+      const onFootway = v.layout.frontWalk !== null && v.layout.frontWalk.v0 < EPS;
+      if (must && !onFootway && count(plan, 'walk') + count(plan, 'crossing') === 0) {
+        faults.push(v.label);
+      }
     }
     expect(faults).toEqual([]);
   });
