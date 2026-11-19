@@ -20,6 +20,7 @@ import {
   UNLIMITED_ROOM,
   UNMETERED_SUPPLY,
   ABANDONED_CLEAR_DEMAND,
+  ABANDONED_MIN_PASSES,
   drawKind,
   farmKindFor,
   footprintsOf,
@@ -643,11 +644,15 @@ describe('GrowthSystem', () => {
       expect(g.buildingId[idx]).toBe(inst.id);
     });
 
-    it('demolishes an abandoned building in the next pass once its zone’s demand reaches the threshold', () => {
-      const { g, registry, inst, idx, growth } = abandonedHome(lowDemand);
-      growth.tick(g, registry, lowDemand, 0, 30);
+    it('stands for the minimum passes at high demand, then demolishes it on the next', () => {
+      const { g, registry, inst, idx, growth } = abandonedHome(highDemand);
 
-      const delta = growth.tick(g, registry, highDemand, 0, 40);
+      for (let pass = 1; pass < ABANDONED_MIN_PASSES; pass++) {
+        const delta = growth.tick(g, registry, highDemand, 0, 20 + pass * 10);
+        expect(delta.removed).toEqual([]);
+        expect(registry.get(inst.id)).toBeDefined();
+      }
+      const delta = growth.tick(g, registry, highDemand, 0, 20 + ABANDONED_MIN_PASSES * 10);
 
       expect(delta.removed).toEqual([inst.id]);
       expect(registry.get(inst.id)).toBeUndefined();
