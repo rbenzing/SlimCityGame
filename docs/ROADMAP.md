@@ -191,7 +191,7 @@ more transit modes) and AI raster map packs, facade-atlas stage 2 and
 screen-space AO/reflections are the shelf to pick from. **In progress, at
 the player's request: commercial and industrial grounds**
 ([commercial-industrial-grounds.md](specs/commercial-industrial-grounds.md)),
-its lot furniture and roomy lots built, with eight of ten
+its lot furniture and roomy lots built, with nine of ten
 [purpose-built kinds](specs/purpose-built-kinds.md) and two lot plans.
 
 ---
