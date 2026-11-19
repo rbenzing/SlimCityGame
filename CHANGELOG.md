@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.93.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.92.0...slimcity-v1.93.0) (2026-11-19)
+
+
+### Features
+
+* **data:** a roomy lot for every shop and works kind, appended to the catalog ([1603514](https://github.com/rbenzing/SlimCityGame/commit/16035141e908bbb06515a375f77b7fc9ae316eae))
+* **shared:** a roomy lot keeps a planted strip inside every lot line ([dd70f6d](https://github.com/rbenzing/SlimCityGame/commit/dd70f6ddeede20ff53b67a8dcf0dce2aeacbae84))
+* **sim:** below Small City a shop or works grows on the roomiest lot of its kind ([ba44570](https://github.com/rbenzing/SlimCityGame/commit/ba4457092e34ea1c258d58ddbb71a45344ff1ada))
+
+
+### Bug Fixes
+
+* **sim:** turn an unplatted shop or works to put its long side on its street; keep berths off the aisles of a larger lot ([1b391b7](https://github.com/rbenzing/SlimCityGame/commit/1b391b746c003f89ade6e6cfdb0deea510f70233))
+
 ## [1.92.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.91.1...slimcity-v1.92.0) (2026-11-18)
 
 
