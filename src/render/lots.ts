@@ -51,10 +51,12 @@ import {
 } from './civiccrossing';
 import {
   lotToWorld,
+  NO_YARD,
   planHouseLot,
   type BulbRun,
   type HouseLotPlan,
   type LotRect,
+  type YardLookup,
 } from './houselot';
 import { bulbClearRuns, bulbFanToWorld, bulbReachM } from './bulbfront';
 import {
@@ -175,6 +177,8 @@ export class LotRenderer {
   private readonly kerbCreditOf: KerbCreditOf | null;
   /** The water and track a shore kit, a station or a rail yard turns to face, which decide where its way in is. */
   private readonly kitSensors: KitSensors;
+  /** The zoned rows behind a home's lot, which its lawn runs over. */
+  private readonly yardRows: YardLookup;
   /** 0 (day) .. 1 (night): what the lots' ground shades by, the same tint as the terrain. */
   private readonly nightFactorUniform = uniform(0);
   private readonly material = nightBodyMaterial(this.nightFactorUniform, { vertexColors: true });
@@ -195,7 +199,9 @@ export class LotRenderer {
     kerb: KerbSurroundings | null = null,
     kerbCreditOf: KerbCreditOf | null = null,
     kitSensors: KitSensors = NO_SENSORS,
+    yardRows: YardLookup = NO_YARD,
   ) {
+    this.yardRows = yardRows;
     this.scene = scene;
     this.heightAt = heightAt;
     this.catalogById = new Map(catalog.map((e) => [e.id, e]));
@@ -315,7 +321,7 @@ export class LotRenderer {
       this.store(building, positions, colors);
       return;
     }
-    const plan = planHouseLot(building, entry, this.roadAt, this.street);
+    const plan = planHouseLot(building, entry, this.roadAt, this.street, this.yardRows);
     if (building.frame && plan) {
       // A home on a curve: its pad is its lot turned with its street, and
       // every strip on it is laid in the same frame.
@@ -463,6 +469,11 @@ export class LotRenderer {
       };
       const layFan = (run: BulbRun, y: number, name: MaterialName): void =>
         pushBulbFan(positions, colors, plan.frame, run, y, tinted(name), this.heightAt);
+      // The lawn runs back over the yard, so the lot reads as one garden to its rear line.
+      if (plan.yardDepthM > 0) {
+        const rear = { u0: 0, u1: plan.edgeLenM, v0: plan.lotDepthM - plan.yardDepthM };
+        lay({ ...rear, v1: plan.lotDepthM }, LOT_Y_OFFSET, surface);
+      }
       this.layHouseLot(plan, surface, lay, layFan);
     }
     this.store(building, positions, colors);

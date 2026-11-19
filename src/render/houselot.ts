@@ -326,7 +326,10 @@ export interface HouseGroundPlan {
   /** The street edge the lot is laid out from; null when the home fronts none. */
   edge: RoadFacingEdge | null;
   edgeLenM: number;
+  /** The lot's depth from its street edge back to the yard's rear line: the lot and its yard. */
   lotDepthM: number;
+  /** How much of `lotDepthM` is yard, the zoned rows behind the lot's own tiles; zero for a lot with none. */
+  yardDepthM: number;
   body: LotRect;
   /** How many homes the lot holds: one, or three per frontage tile for a row along its street. */
   homes: number;
@@ -611,8 +614,33 @@ interface LotGround {
   edge: RoadFacingEdge | null;
   edgeLenM: number;
   lotDepthM: number;
+  yardDepthM: number;
   body: LotRect;
   streets: Streets | null;
+}
+
+/** The rows of yard behind a grid lot that fronts a street on `front`; the default lot has none. */
+export type YardLookup = (lot: {
+  x: number;
+  z: number;
+  w: number;
+  d: number;
+  front: RoadFacingEdge['side'];
+}) => number;
+
+/** A lookup that finds no yard behind any lot. */
+export const NO_YARD: YardLookup = () => 0;
+
+/** The grid lot a home stands on, and the side its street is on; null for a home on a curve or one that fronts no street. */
+export function homeLotOf(
+  building: BuildingInstance,
+  entry: BuildingCatalogEntry,
+  street: StreetLookup,
+): { x: number; z: number; w: number; d: number; front: RoadFacingEdge['side'] } | null {
+  if (building.frame) return null;
+  const { w, d } = entry.footprint;
+  const edge = findStreetFacingEdge(building.x, building.z, w, d, street);
+  return edge ? { x: building.x, z: building.z, w, d, front: edge.side } : null;
 }
 
 /** A grid lot: laid out from the side its street is on, or from its north side when it fronts none. */
@@ -621,16 +649,28 @@ function gridGround(
   entry: BuildingCatalogEntry,
   roadAt: (x: number, z: number) => boolean,
   street: StreetLookup,
+  yardRows: YardLookup,
 ): LotGround {
   const { w, d } = entry.footprint;
   const edge = findStreetFacingEdge(building.x, building.z, w, d, street);
   const frame = edgeFrameFor(edge?.side ?? 'N', building.x, building.z, w, d);
   const alongTiles = edge ? edge.edgeTiles : w;
   const edgeLenM = alongTiles * TILE_METERS;
-  const lotDepthM = (edge && (edge.side === 'E' || edge.side === 'W') ? w : d) * TILE_METERS;
+  const footprintDepthM = (edge && (edge.side === 'E' || edge.side === 'W') ? w : d) * TILE_METERS;
+  const yardDepthM = edge
+    ? yardRows({ x: building.x, z: building.z, w, d, front: edge.side }) * TILE_METERS
+    : 0;
   const body = bodyRect(building, entry, frame, street);
   const streets = edge ? streetsAcross(building, entry, edge, roadAt, street, frame) : null;
-  return { frame, edge, edgeLenM, lotDepthM, body, streets };
+  return {
+    frame,
+    edge,
+    edgeLenM,
+    lotDepthM: footprintDepthM + yardDepthM,
+    yardDepthM,
+    body,
+    streets,
+  };
 }
 
 /** How far into the road the street under a parcel's kerb is read, metres. */
@@ -672,6 +712,7 @@ function framedGround(
     edge: null,
     edgeLenM,
     lotDepthM,
+    yardDepthM: 0,
     body,
     streets: { across, edgeAt: (u) => lotToWorld(frame, u, 0) },
   };
@@ -1333,8 +1374,9 @@ export function planHouseLot(
   entry: BuildingCatalogEntry,
   roadAt: (x: number, z: number) => boolean,
   street: StreetLookup,
+  yardRows: YardLookup = NO_YARD,
 ): HouseLotPlan | null {
-  const ground = planHouseGround(building, entry, roadAt, street);
+  const ground = planHouseGround(building, entry, roadAt, street, yardRows);
   if (!ground) return null;
   const { body, edgeLenM, lotDepthM, homes, drives, doors } = ground;
   const kit = planKit(building, entry, ground);
@@ -1694,11 +1736,12 @@ export function planHouseGround(
   entry: BuildingCatalogEntry,
   roadAt: (x: number, z: number) => boolean,
   street: StreetLookup,
+  yardRows: YardLookup = NO_YARD,
 ): HouseGroundPlan | null {
   if (!isHouseEntry(entry)) return null;
-  const { frame, edge, edgeLenM, lotDepthM, body, streets } = building.frame
+  const { frame, edge, edgeLenM, lotDepthM, yardDepthM, body, streets } = building.frame
     ? framedGround(building.frame, entry, street)
-    : gridGround(building, entry, roadAt, street);
+    : gridGround(building, entry, roadAt, street, yardRows);
   const surface: DriveSurface = roll(building.id, SLOT_SURFACE) < 0.4 ? 'dirt' : 'concrete';
 
   const vergeLawn: LotRect[] = [];
@@ -1788,6 +1831,7 @@ export function planHouseGround(
       edge,
       edgeLenM,
       lotDepthM,
+      yardDepthM,
       body,
       homes: units,
       wing: null,
@@ -1808,7 +1852,7 @@ export function planHouseGround(
     const planned =
       style === 'splitLevel'
         ? splitLevelDrive(building, body, edgeLenM, streets)
-        : planDrive(building, body, edgeLenM, lotDepthM, streets);
+        : planDrive(building, body, edgeLenM, lotDepthM - yardDepthM, streets);
     if (planned.drive) drives.push(planned.drive);
     doorU = planned.doorU;
     wing = planned.wing ?? null;
@@ -1824,6 +1868,7 @@ export function planHouseGround(
     edge,
     edgeLenM,
     lotDepthM,
+    yardDepthM,
     body,
     homes: 1,
     wing,
