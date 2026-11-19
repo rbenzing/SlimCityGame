@@ -106,7 +106,15 @@ Three more are [derived the same way](../sources/commercial-industrial-grounds.m
 - **The machine shop** is a small metal-sided works with no windows: grade-level roll-up doors and an office door on the street face, a short sign, an exhaust fan on the roof, a scrap bin in its fenced yard.
 - **Self-storage** is not one building but rows on a paved yard: one-storey ranges about 8 m wide, each long wall a run of roll-up doors 3 m apart, with 7.3 m drives between them and a 7.3 m cross drive along the street end that every row drive opens onto. A small office is the street end of the first row; one fence runs along the yard's street face with one gate, a drive wide, beside the office. It owes no loading berth: a tenant loads at the unit's own door.
 
-Their roomy lots are measured and checked as every other kind's; a pharmacy's must hold its lane too. A repair shop is one storey with no window above its doors, its walls light so the doors read; the walk, the bench and the bin go to its office door, since the bay row is a door from end to end.
+And three more, [derived the same way](../sources/commercial-industrial-grounds.md#the-bank-the-medical-office-and-the-quick-lube-in-the-catalog):
+
+- **The bank branch** is a small masonry building with a glazed entrance under a sign band, and beside it one canopy over two drive-up lanes: a teller lane that holds four cars and a cash-machine lane that holds three, an island between them.
+- **The medical office** is a low building under a hipped roof with a regular row of windows, an entrance canopy on two posts over the walk to its door, and a sign with a cross.
+- **The quick lube** is a body one tile deep on the front of its lot, a bay door in each 6.8 m of both long faces so a car drives through, a glazed waiting room at one end, and a paved court behind where three cars wait for each bay.
+
+The car wash and the contractor's yard are [not added](../sources/commercial-industrial-grounds.md#the-two-kinds-not-added): one figure each could not be derived.
+
+Their roomy lots are measured and checked as every other kind's; a pharmacy's or a bank's must hold its lanes too, and a lube's its court. A repair shop is one storey with no window above its doors, its walls light so the doors read; the walk, the bench and the bin go to its office door, since the bay row is a door from end to end.
 
 A kind also varies in plan, not only in colour: the building at the street or behind its car park, a strip in a line or an L, storage in rows, a shop with a detached canopy. The variant comes from the lot's id, as the palette does.
 
