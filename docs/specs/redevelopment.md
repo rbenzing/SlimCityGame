@@ -12,6 +12,8 @@
 - A rebuild is never refused for want of grounds, and never asked of a first town. `[R-world-058]` `[R-world-014]`
 - Park a built-up building below ground first, then on its ground floor behind a shopfront or a lobby; show each by a ramp and a portal on a side or rear face. `[R-services-044]`
 - Count every built-in space; a level parked above ground adds a storey to the building, and no floor is cut for it. `[R-services-044]` `[R-services-040]`
+- Leave an abandoned building standing, boarded, for as long as demand for its zone is low; no clock removes it. `[R-world-059]`
+- Demolish an abandoned building when demand for its zone is high enough, or when the player bulldozes it; the cleared lot regrows as any lot does. `[R-world-059]`
 
 **Numbers:** the ceilings are dials; what was found is in [the sources](../sources/redevelopment.md).
 
@@ -23,6 +25,7 @@
 | Ceiling, Grand City (20,000) | 12 storeys (38.4) | m | dial |
 | Ceiling, Metropolis (50,000) | none | — | dial |
 | Works and plants | no ceiling: a hall is one tall storey | — | — |
+| `ABANDONED_CLEAR_DEMAND` | the zone's demand bar at half or over | — | dial: the player's "high enough" |
 | Levels below ground | 2 at most | levels | dial |
 | A built-in space | 30 (325 sq ft) | m² | the garage's own figure |
 | A parking level, floor to floor | 3.35 (11 ft) | m | the garage's own figure |
@@ -33,7 +36,7 @@
 
 **Tests:** to be written with each slice: no entry above its milestone's ceiling; a standing building over a ceiling is kept; the rebuild order on a free block, a full block and a roomy lot; spaces built in equal spaces owed; the first-town guards unedited.
 
-**Open:** whether a building the town can no longer fill is ever torn down (the player's "fall") is not decided. No vacancy is modelled, so nothing stands empty for want of people. A lot on a curve never changes its footprint.
+**Open:** no vacancy is modelled, so a building is abandoned only for want of power, water or a road, never for want of people. A lot on a curve never changes its footprint.
 
 ## Why the rules are what they are
 
@@ -60,6 +63,12 @@ A level-up already demolishes and rebuilds: the old building goes, a site stands
 
 Roomy lots are the room to grow into. A shop on a lot twice its size is rebuilt larger on that lot before it asks for a neighbour's ground, so a town thickens where it stands. Where the larger building's car park no longer fits on the ground, and no ground is free beside it, the building goes up and takes its cars with it.
 
+### What falls
+
+A building left without power, water or a road is abandoned and boarded up. It used to vanish after a fixed wait, which left a hole nobody chose. Now it stands, as a derelict does, until the land is wanted: when demand for its zone is at half or over, it is demolished and the lot is free to grow again. It still reopens the moment its services return.
+
+The player can clear it sooner with the bulldozer. A town that shrinks therefore keeps its empty buildings until it grows back or the player clears them.
+
 ### Cars go under, then in
 
 A building that builds up parks below ground first: nothing shows but a ramp and a portal, and the lot keeps its front. What two levels below cannot hold goes on the ground floor, behind the street face's shopfront or lobby, and the building stands one storey taller for it. A mid-rise's and a tower's podium is that ground-floor garage already.
@@ -75,3 +84,4 @@ A tower raised from Grand City on is a glazed slab over a podium: a curtain wall
 - A storey ceiling by town size over a share of the town's people: a player can read "six storeys at Small City" off the skyline; a share cannot be seen.
 - Keep what stands over a ceiling, over tearing it down: a rule that flattens a downtown is a punishment, not a simulation.
 - Under before in: a basement costs the street nothing, a ground-floor garage costs it a floor of shops.
+- Demand over a clock for clearing a derelict: the player's ruling. A derelict is cleared when someone would build there, not when a timer runs out.

@@ -351,3 +351,9 @@ Back to [the index](../GROUND-TRUTHS.md).
   has with its parking built in. It never moves to a smaller lot, is never
   refused for want of grounds, and is never asked of a first town. —
   [redevelopment.md](../specs/redevelopment.md)
+- [R-world-059] An abandoned building stands, boarded, until demand for its zone is high
+  enough, and is then demolished so its lot can regrow; no clock removes
+  it. The player's bulldozer clears it at any time, and it reopens the
+  moment its power, water and road return. —
+  [redevelopment.md](../specs/redevelopment.md);
+  `ABANDONED_CLEAR_DEMAND` in `src/sim/growth.ts`
