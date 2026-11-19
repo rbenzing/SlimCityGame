@@ -2918,6 +2918,8 @@ export const AMBULANCE_CANOPY = { inset: 4, w: 16, d: 9, clear: 4.3, slab: 0.5 }
  * frame, 2.4 m high, with an emergency band over them. A dial; no source gives a hospital's.
  */
 export const EMERGENCY_DOORS = { leaf: 1.2, leaves: 2, h: 2.4, frame: 0.25, band: 0.5, thick: 0.3 };
+/** The red-cross panel over the ambulance bay: its size, and how far above the canopy's slab it stands. */
+export const HOSPITAL_SIGN = { w: 3, h: 3, lift: 1.2 };
 /** The walk along the facade, between the block and the accessible spaces' heads. */
 const HOSPITAL_FACADE_WALK_M = 0.5;
 
@@ -3259,7 +3261,192 @@ export function computeHospitalRoof(footprint: FootprintSize): RoofBox[] {
   ];
 }
 
-/** The six-storey block, its glass ribbons, roof cap, parapet, penthouse and roof plant, entrance and emergency doors, the red cross over the ambulance bay, and both canopies; local Y=0 is the GROUND plane. */
+export type HospitalFace = 'street' | 'rear' | 'west' | 'east';
+
+/**
+ * One opening or fitting on a face of the block. `along` is its centre along
+ * the wall (X on the street and rear faces, Z on the ends), `sill` its bottom
+ * above the ground storey's floor, `out` how far its plane stands off the
+ * block's wall (a stair tower's face is proud of it).
+ */
+export interface FacadeItem {
+  face: HospitalFace;
+  kind: 'lobbyGlazing' | 'window' | 'louvre' | 'landingWindow';
+  storey: number;
+  along: number;
+  width: number;
+  sill: number;
+  height: number;
+  out: number;
+}
+
+/** A patient room's window, 4 m centre to centre (a dial: no room width was found) and 1.8 m wide; piers at least this wide stand at each end of a row. */
+export const HOSPITAL_ROOMS = { pitch: 4, w: 1.8, pier: 2 };
+/** The ground storey's louvre band: its head and height, and the dark slats that make it up. */
+export const HOSPITAL_LOUVRE = { head: 3.6, h: 0.9, slats: 3, inset: 2 };
+/** A blank stair tower on each end wall, at the end nearest the rear: width along the wall, how far it stands proud, and a landing's window and its sill above the floor. */
+export const HOSPITAL_TOWER = {
+  w: 6,
+  proud: 0.6,
+  windowW: 0.6,
+  windowH: 1.5,
+  windowSill: 1.2,
+};
+/** The clearance a tower leaves from whatever stands beside its wall. */
+const HOSPITAL_TOWER_AIR_M = 0.02;
+
+/**
+ * What each face of the block carries. The street face has the lobby's glass
+ * and a row of patient rooms on each nursing floor; the rear, the same rows
+ * over a louvre band; each end a blank stair tower and rooms across the rest of
+ * its nursing floors, the west end over a louvre band. No face has a door: no
+ * vehicle or path reaches the rear or the ends. Pure; fixed per footprint.
+ */
+export function computeHospitalFacade(footprint: FootprintSize): {
+  items: FacadeItem[];
+  towers: { face: 'west' | 'east'; rect: Rect }[];
+} {
+  const { halfW } = footprintHalfExtents(footprint);
+  const layout = computeHospitalLayout(footprint);
+  const { block } = layout;
+  const { w, d } = HOSPITAL_BLOCK_SIZE;
+  const x0 = block.x - w / 2;
+  const x1 = block.x + w / 2;
+  const back = block.z - d / 2;
+  const front = block.z + d / 2;
+  const items: FacadeItem[] = [];
+  const add = (item: Omit<FacadeItem, 'out'> & { out?: number }): void => {
+    items.push({ out: 0, ...item });
+  };
+  const nursing = Array.from({ length: HOSPITAL_STOREYS - 1 }, (_, i) => i + 1);
+  // The red-cross panel's footprint on the street face, with a pier either side: no window stands there.
+  const bayX = (layout.ambulanceCanopy.x0 + layout.ambulanceCanopy.x1) / 2;
+  const signLow =
+    RECYCLING_YARD_HEIGHT + AMBULANCE_CANOPY.clear + AMBULANCE_CANOPY.slab + HOSPITAL_SIGN.lift;
+  const room = (face: HospitalFace, storey: number, along: number): void => {
+    const sill = storey * HOSPITAL_STOREY_M + HOSPITAL_WINDOW.sill;
+    const behindSign =
+      face === 'street' &&
+      Math.abs(along - bayX) < (HOSPITAL_SIGN.w + HOSPITAL_ROOMS.w) / 2 + HOSPITAL_ROOMS.pier &&
+      sill < signLow + HOSPITAL_SIGN.h &&
+      sill + HOSPITAL_WINDOW.h > signLow;
+    if (behindSign) return;
+    add({
+      face,
+      kind: 'window',
+      storey,
+      along,
+      width: HOSPITAL_ROOMS.w,
+      sill,
+      height: HOSPITAL_WINDOW.h,
+    });
+  };
+
+  // Rooms along a long face: as many at the pitch as leave a pier at each end, centred.
+  const rooms =
+    Math.floor((w - 2 * HOSPITAL_ROOMS.pier - HOSPITAL_ROOMS.w) / HOSPITAL_ROOMS.pitch) + 1;
+  for (const face of ['street', 'rear'] as const) {
+    for (const storey of nursing) {
+      for (let i = 0; i < rooms; i++) {
+        room(face, storey, block.x + (i - (rooms - 1) / 2) * HOSPITAL_ROOMS.pitch);
+      }
+    }
+  }
+
+  const lobby = HOSPITAL_ENTRANCE.canopyW;
+  add({
+    face: 'street',
+    kind: 'lobbyGlazing',
+    storey: 0,
+    along: layout.entrance.x,
+    width: lobby,
+    sill: HOSPITAL_WINDOW.sill,
+    height: HOSPITAL_WINDOW.h,
+  });
+
+  const louvre = (face: HospitalFace, from: number, to: number): void =>
+    add({
+      face,
+      kind: 'louvre',
+      storey: 0,
+      along: (from + to) / 2,
+      width: to - from,
+      sill: HOSPITAL_LOUVRE.head - HOSPITAL_LOUVRE.h,
+      height: HOSPITAL_LOUVRE.h,
+    });
+
+  // The rear: a louvre the width of the wall less its piers; no door, since no vehicle or path reaches it.
+  louvre('rear', x0 + HOSPITAL_LOUVRE.inset, x1 - HOSPITAL_LOUVRE.inset);
+
+  // The ends: a stair tower at the rear corner, rooms across the rest of each nursing floor.
+  const towers: { face: 'west' | 'east'; rect: Rect }[] = [];
+  const clearance = { west: x0 - -halfW, east: layout.deck.x0 - x1 };
+  for (const face of ['west', 'east'] as const) {
+    const proud = Math.min(HOSPITAL_TOWER.proud, clearance[face] - HOSPITAL_TOWER_AIR_M);
+    const wallX = face === 'west' ? x0 : x1;
+    const outer = face === 'west' ? wallX - proud : wallX + proud;
+    towers.push({
+      face,
+      rect: {
+        x0: Math.min(wallX, outer),
+        x1: Math.max(wallX, outer),
+        z0: back,
+        z1: back + HOSPITAL_TOWER.w,
+      },
+    });
+    const towerZ = back + HOSPITAL_TOWER.w / 2;
+    for (const storey of nursing) {
+      add({
+        face,
+        kind: 'landingWindow',
+        storey,
+        along: towerZ,
+        width: HOSPITAL_TOWER.windowW,
+        sill: storey * HOSPITAL_STOREY_M + HOSPITAL_TOWER.windowSill,
+        height: HOSPITAL_TOWER.windowH,
+        out: proud,
+      });
+    }
+    // Rooms wrap the floor: the same pitch along the end wall outside the tower, centred between it and the street corner.
+    const span = d - HOSPITAL_TOWER.w;
+    const endRooms =
+      Math.floor((span - 2 * HOSPITAL_ROOMS.pier - HOSPITAL_ROOMS.w) / HOSPITAL_ROOMS.pitch) + 1;
+    const spanMid = back + HOSPITAL_TOWER.w + span / 2;
+    for (const storey of nursing) {
+      for (let i = 0; i < endRooms; i++) {
+        room(face, storey, spanMid + (i - (endRooms - 1) / 2) * HOSPITAL_ROOMS.pitch);
+      }
+    }
+    // A louvre a half-metre from the deck's wall would breathe nothing.
+    if (face === 'west') {
+      louvre(face, back + HOSPITAL_TOWER.w + HOSPITAL_LOUVRE.inset, front - HOSPITAL_LOUVRE.inset);
+    }
+  }
+  return { items, towers };
+}
+
+/** A box on a face of the block: `item`'s opening, standing `2 × proud` thick across the plane `item.out` off the wall; local Y=0 is the ground plane, `baseY` the lowest an item starts. */
+function facadeBox(
+  block: Vec2,
+  face: HospitalFace,
+  item: FacadeItem,
+  baseY: number,
+  rgb: RGB,
+  y = Math.max(item.sill, baseY),
+  height = item.height,
+): THREE.BufferGeometry {
+  const { w, d } = HOSPITAL_BLOCK_SIZE;
+  const thick = 2 * HOSPITAL_WINDOW.proud;
+  const out = item.out;
+  if (face === 'street' || face === 'rear') {
+    const wall = face === 'street' ? block.z + d / 2 + out : block.z - d / 2 - out;
+    return standingBox(item.width, height, thick, item.along, y, wall, rgb);
+  }
+  const wall = face === 'east' ? block.x + w / 2 + out : block.x - w / 2 - out;
+  return standingBox(thick, height, item.width, wall, y, item.along, rgb);
+}
+
+/** The six-storey block, its stair towers, louvres and doors, roof cap, parapet, penthouse and roof plant, entrance and emergency doors, the red cross over the ambulance bay, and both canopies; local Y=0 is the GROUND plane. */
 function buildHospitalBlockGeometry(footprint: FootprintSize): THREE.BufferGeometry {
   const layout = computeHospitalLayout(footprint);
   const { block, entrance, ambulanceCanopy: bay } = layout;
@@ -3282,6 +3469,39 @@ function buildHospitalBlockGeometry(footprint: FootprintSize): THREE.BufferGeome
     ),
     ...roofGeometries(computeHospitalRoof(footprint)),
   ];
+  const facade = computeHospitalFacade(footprint);
+  // Each stair tower stands proud of its end wall, the full height.
+  for (const { rect } of facade.towers) {
+    parts.push(
+      standingBox(
+        rect.x1 - rect.x0,
+        height,
+        rect.z1 - rect.z0,
+        (rect.x0 + rect.x1) / 2,
+        0,
+        (rect.z0 + rect.z1) / 2,
+        DECK_CORE_RGB,
+      ),
+    );
+  }
+  const slatH = HOSPITAL_LOUVRE.h / (2 * HOSPITAL_LOUVRE.slats - 1);
+  for (const item of facade.items) {
+    if (item.kind === 'louvre') {
+      for (let s = 0; s < HOSPITAL_LOUVRE.slats; s++) {
+        parts.push(
+          facadeBox(
+            block,
+            item.face,
+            item,
+            y0,
+            HOSPITAL_DOOR_RGB,
+            item.sill + 2 * s * slatH,
+            slatH,
+          ),
+        );
+      }
+    }
+  }
   const bayX = (bay.x0 + bay.x1) / 2;
 
   // The emergency entrance behind the bay: a pale frame standing proud of the wall
@@ -3362,35 +3582,34 @@ function buildHospitalBlockGeometry(footprint: FootprintSize): THREE.BufferGeome
   }
 
   // A red cross on a white panel over the ambulance bay.
-  const signY = y0 + clear + slab + 1.2;
-  parts.push(standingBox(3, 3, 0.15, bayX, signY, front + 0.2, HOSPITAL_SIGN_RGB));
+  const signY = y0 + clear + slab + HOSPITAL_SIGN.lift;
+  parts.push(
+    standingBox(
+      HOSPITAL_SIGN.w,
+      HOSPITAL_SIGN.h,
+      0.15,
+      bayX,
+      signY,
+      front + 0.2,
+      HOSPITAL_SIGN_RGB,
+    ),
+  );
   parts.push(standingBox(2.2, 0.7, 0.1, bayX, signY + 1.15, front + 0.32, HOSPITAL_CROSS_RGB));
   parts.push(standingBox(0.7, 2.2, 0.1, bayX, signY + 0.4, front + 0.32, HOSPITAL_CROSS_RGB));
   return mergeParts(parts);
 }
 
-/** The window ribbons, the main entrance glazing and the emergency door leaves, one geometry for the one emissive material; local Y=0 is the GROUND plane. */
+/** The patient-room, lobby and landing windows, the main entrance glazing and the emergency door leaves, one geometry for the one emissive material; local Y=0 is the GROUND plane. */
 function buildHospitalLitGeometry(footprint: FootprintSize): THREE.BufferGeometry {
   const layout = computeHospitalLayout(footprint);
   const { block, entrance } = layout;
-  const { w, d } = HOSPITAL_BLOCK_SIZE;
+  const { d } = HOSPITAL_BLOCK_SIZE;
   const y0 = RECYCLING_YARD_HEIGHT;
   const front = block.z + d / 2;
-  const p = HOSPITAL_WINDOW.proud;
-  const parts: THREE.BufferGeometry[] = [];
-  for (let k = 0; k < HOSPITAL_STOREYS; k++) {
-    parts.push(
-      standingBox(
-        w + 2 * p,
-        HOSPITAL_WINDOW.h,
-        d + 2 * p,
-        block.x,
-        k * HOSPITAL_STOREY_M + HOSPITAL_WINDOW.sill,
-        block.z,
-        HOSPITAL_GLASS_RGB,
-      ),
-    );
-  }
+  const lit: FacadeItem['kind'][] = ['lobbyGlazing', 'window', 'landingWindow'];
+  const parts: THREE.BufferGeometry[] = computeHospitalFacade(footprint)
+    .items.filter((item) => lit.includes(item.kind))
+    .map((item) => facadeBox(block, item.face, item, 0, HOSPITAL_GLASS_RGB));
   const doorT = EMERGENCY_DOORS.thick;
   parts.push(
     standingBox(

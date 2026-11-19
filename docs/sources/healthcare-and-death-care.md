@@ -124,6 +124,17 @@ The hospital is a 3×5 lot: a 3×3 building and a 3×2 parking deck beside it, b
 
 That is a plate of about 2,800 m² (drawn 58 × 48 m, 2,784 m²) over **six storeys at 4.5 m** floor to floor, the low end of the 14 ft 8 in–16 ft (4.5–4.9 m) inpatient floors run in project examples ([City of Naples planning record](https://www.naplesgov.com/media/98066); a single source). It stands **27 m**.
 
+What tells its faces apart, and what was found for each:
+
+- **A window to each patient room.** Every medical and surgical patient room has a window to the outside, glazed to at least 8% of the room's floor (FGI Guidelines 2010, 2.2-2.2.2.3 and 2.1-7.2.2.5(2), read in [a summary of the edition](https://datadrivenaec.com/insights/fgi-emergency-department-requirements)). No room width was found, so one window every 4 m is a dial.
+- **Bulk oxygen.** A liquid oxygen container stands 25 ft (7.6 m) from a sprinklered or fire-resistive building, 10 ft (3 m) from a wall opening and a public sidewalk, and 5 ft (1.5 m) from a property line, on noncombustible paving ([Washington WAC 296-24-32003](https://lawfilesext.leg.wa.gov/Law/WACArchive/2024/htm/WAC%20296%20-%2024%20%20CHAPTER/WAC%20296%20-%2024%20-32003.htm)); 10 ft from parked vehicles (NFPA 55 table 9.3.2, by a secondary account). No tank or pad size was found: the tank is a dial.
+- **The dock.** A dock stands 48 in (1.22 m) above its apron, with doors of 8 to 10 ft (trade pages on commercial docks; nothing hospital-specific was found).
+- **The generator.** A sound-attenuated enclosure for 350 to 600 kW is 4.9 to 5.5 m long and 2 m wide (a dealer's listing of one maker's sets). No generator size for a hospital of this size was found.
+
+Not found: how many ambulance bays, a bay's size, the stair tower's form, a nursing floor's own height.
+
+The oxygen store, the dock and the generator are not drawn: the block stands 1 m inside its plot's rear and west lines, and the store alone needs 7.6 m. Their figures stay here for the plot that has room.
+
 It is the one civic building whose floor is stated rather than read off the massing formula: 15 tiles at 27 m would claim 23,400 m², and the deck is ground, not floor. The catalog contract test re-derives the hospital's draw from the stated floor.
 
 ### Hospital parking, to code

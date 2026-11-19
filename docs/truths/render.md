@@ -246,8 +246,10 @@ Back to [the index](../GROUND-TRUTHS.md).
   `setRibbonVisible` in `src/render/transit.ts`
 - [R-render-039] A building under construction is drawn as a site whose stage reads without
   a label: graded earth and a fence, a slab, an open frame rising to the
-  building's own height, then sheathed walls, with scaffold and a crane by
-  height. The stage comes from the sim's progress, sent only when the picture
+  building's own height, then sheathed walls with their openings cut, with
+  scaffold and a crane by height. Its cabin, skip and toilet stand inside
+  the fence where the lot has ground free of the body, never on the
+  footprint. The stage comes from the sim's progress, sent only when the picture
   changes, and a progress-only update touches the site's instances and
   nothing else. Nothing on a site is emissive. —
   [construction-and-abandonment.md](../art/buildings/construction-and-abandonment.md);

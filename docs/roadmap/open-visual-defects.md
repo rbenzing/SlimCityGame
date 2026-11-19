@@ -31,6 +31,8 @@ What three reviews of every screenshot the shot tools write found wrong in the g
 - A street's parking lane stands empty beside homes: a home's cars stand only on its drive `[R-render-026]`. — `shots-parking/kerb-both-1`
 - Angled and head-in stalls keep one rhythm for the whole street, so a driveway leaves up to a stall's width unmarked beside it; parallel stalls are laid run by run.
 - Seen in the player's own screenshot and not reproduced on any road the tools build: a darker, drive-wide patch on the parking lane at a home's drive.
+- The hospital's block stands 1 m inside its plot's rear and west lines and half a metre off its deck: no service yard, dock, generator or oxygen store fits, no door opens on three faces, and the next tile's trees stand at its rear wall. A deeper plot is a catalog change. — `shots-healthcare/hospital-rear`
+- A building site's fence has no gate and its lot no drive; a large works' graded pad still reads mostly bare round its cabin, skips and heap. — `shots-construction/works-earth-above`
 - A modern block's balconies and bays keep the older 6.8 m grid, so they do not sit on its 1.5 m glass modules, and a mid-rise's piers and bays hide most of its glass. — `shots-apartments/modern-row`
 - A building on a curved parcel keeps a 2 m water and sewer lead, short of its wall. — `frontWallSetbackM` in `src/render/massing.ts`
 
@@ -38,8 +40,7 @@ What three reviews of every screenshot the shot tools write found wrong in the g
 
 A reviewer saw each of these in two frames or more; none has been checked against the geometry, and some will prove to be the camera.
 
-- Kits that read as plain boxes: the hospital's four identical faces, the enclosed stage of every building site (`shots-healthcare/hospital-street`, `shots-construction/tall-enclosed-street`).
-- Empty ground on a plot: the gas turbine's 12 × 5 tiles round one small building, the depot's and the recovery plant's aprons, the plaza's 160 m of paving, the district park's lawns, building sites of 100 × 60 m (`shots-power/1-gas-turbine-beside-police-station`, `shots-earliest-kits/e-depot-street`, `shots-parks/plaza`, `shots-construction/works-earth-street`).
+- Empty ground on a plot: the gas turbine's 12 × 5 tiles round one small building, the depot's and the recovery plant's aprons, the plaza's 160 m of paving, the district park's lawns (`shots-power/1-gas-turbine-beside-police-station`, `shots-earliest-kits/e-depot-street`, `shots-parks/plaza`).
 
 ## Shot tools
 

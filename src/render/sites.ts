@@ -22,6 +22,7 @@ import { FLOOR_HEIGHT_METERS } from './facade';
 import { InstancedSlotPool, type SetbackBox } from './massing';
 import { materialUnit, saturatedUnit, type MaterialName } from './palette';
 import { nightTintNode } from './nightlook';
+import { FENCE_INSET_M, planFurniture } from './sitefurniture';
 
 export { ENCLOSED_FROM, FOUNDATION_FROM, FRAME_FROM };
 
@@ -82,8 +83,29 @@ function heightOf(boxes: readonly SetbackBox[]): number {
   return top;
 }
 
-export type SitePart = 'fence' | 'slab' | 'frame' | 'wall' | 'scaffold' | 'crane';
-const PARTS: readonly SitePart[] = ['fence', 'slab', 'frame', 'wall', 'scaffold', 'crane'];
+export type SitePart =
+  | 'fence'
+  | 'slab'
+  | 'frame'
+  | 'wall'
+  | 'scaffold'
+  | 'crane'
+  | 'furniture'
+  | 'rail'
+  | 'opening'
+  | 'hoist';
+const PARTS: readonly SitePart[] = [
+  'fence',
+  'slab',
+  'frame',
+  'wall',
+  'scaffold',
+  'crane',
+  'furniture',
+  'rail',
+  'opening',
+  'hoist',
+];
 
 /** A box in world metres: centre, size, and turn about Y. */
 export interface SiteBox {
@@ -103,9 +125,10 @@ export interface SiteBody {
   boxes: readonly SetbackBox[];
   seat: { centerX: number; centerZ: number; groundY: number; yaw: number };
   lot: { x0: number; z0: number; x1: number; z1: number } | null;
+  /** A house: its site lays no cabin. */
+  house?: boolean;
 }
 
-const FENCE_INSET_M = 0.5;
 /** Without a lot rectangle (a parcel on a curve) the fence stands this far outside the body. */
 const FENCE_MARGIN_M = 1.5;
 /** A temporary fence panel is 12 ft (3.66 m) wide; a post stands at each panel joint. */
@@ -127,6 +150,22 @@ const SCAFFOLD_DEPTH_M = 1.5;
 const SCAFFOLD_POST_M = 0.18;
 const SCAFFOLD_POST_BAY_M = 3;
 const SCAFFOLD_PLANK_M = 0.15;
+/** A guardrail's top rail stands 42 in (1.07 m) above the deck; its rail is drawn thin. */
+const GUARDRAIL_M = 1.07;
+const GUARDRAIL_RAIL_M = 0.05;
+/** A wall opening runs from a 0.9 m sill to a 2.1 m head, about half a bay wide, a few centimetres proud of the wall. */
+const OPENING_SILL_M = 0.9;
+const OPENING_HEAD_M = 2.1;
+const OPENING_PROUD_M = 0.05;
+const DOOR_WIDTH_M = 1;
+const DOOR_HEIGHT_M = 2.1;
+/** A twin-mast hoist: a car 1.5 m out from the wall and 3.2 m along it, 2.3 m high, between two square masts. */
+const HOIST_CAR_WIDTH_M = 1.5;
+const HOIST_CAR_LENGTH_M = 3.2;
+const HOIST_CAR_HEIGHT_M = 2.3;
+const HOIST_MAST_M = 0.3;
+const HOIST_GAP_M = 0.1;
+const HOIST_ABOVE_ROOF_M = 1.5;
 const CRANE_MAST_M = 1.8;
 const CRANE_CLEAR_M = 8;
 const CRANE_JIB_M = 1.2;
@@ -180,6 +219,7 @@ export function layoutSite(body: SiteBody, id: number, progress: number): SiteBo
   };
 
   layFence(body, out);
+  layFurniture(body, id, storeys, plan.stage, out);
 
   if (plan.stage < SiteStage.Foundation) return out;
   const base = boxes[0]!;
@@ -223,6 +263,7 @@ export function layoutSite(body: SiteBody, id: number, progress: number): SiteBo
       const level = k * storeyM;
       const tier = tierAt(boxes, level - 0.01);
       local('frame', 0, 0, level - DECK_M, tier.w, DECK_M, tier.d, frameColor);
+      layDeckRail(tier, tierAt(boxes, level + 0.01) !== tier, level, local);
     }
   }
 
@@ -233,10 +274,12 @@ export function layoutSite(body: SiteBody, id: number, progress: number): SiteBo
       const lo = Math.max(tier.yOffset, FOUNDATION_M);
       local('wall', 0, 0, lo, tier.w, tier.yOffset + tier.h - lo, tier.d, skin);
     }
-    if (plan.scaffold) layScaffold(boxes[0]!, storeyM, hash1(id + 1), local);
+    layOpenings(boxes, storeyM, timber ? STUD_BAY_M : COLUMN_BAY_M, local);
+    if (plan.scaffold) layScaffold(boxes[0]!, storeyM, scaffoldFace(id), local);
   }
 
   if (plan.crane) {
+    layHoist(base, scaffoldFace(id) ^ 1, local);
     // The mast stands at a corner of the body and its jib turns to a heading chosen from the id.
     const mx = base.w / 2 - 1.5;
     const mz = base.d / 2 - 1.5;
@@ -273,6 +316,84 @@ export function layoutSite(body: SiteBody, id: number, progress: number): SiteBo
   }
   return out;
 }
+
+/** The street face as the axis the seat's local +Z looks along. */
+function frontAxis(yaw: number): { x: number; z: number } {
+  const sx = Math.sin(yaw);
+  const sz = Math.cos(yaw);
+  return Math.abs(sx) > Math.abs(sz) ? { x: Math.sign(sx), z: 0 } : { x: 0, z: Math.sign(sz) };
+}
+
+/**
+ * The cabin, skip and toilet the lot has room for, and on a big lot a heap of
+ * spoil that is carted away once the frame rises. Nothing is laid on a lot
+ * without a rectangle (a parcel on a curve), which has no ground round the body.
+ */
+function layFurniture(
+  body: SiteBody,
+  id: number,
+  storeys: number,
+  stage: SiteStage,
+  out: SiteBox[],
+): void {
+  const { lot, seat, boxes } = body;
+  if (!lot) return;
+  const base = boxes[0]!;
+  const turned = Math.abs(Math.sin(seat.yaw)) > 0.5;
+  const hx = (turned ? base.d : base.w) / 2;
+  const hz = (turned ? base.w : base.d) / 2;
+  const pieces = planFurniture(
+    {
+      lot,
+      body: {
+        x0: seat.centerX - hx,
+        z0: seat.centerZ - hz,
+        x1: seat.centerX + hx,
+        z1: seat.centerZ + hz,
+      },
+      front: frontAxis(seat.yaw),
+      house: body.house === true,
+      standoff: storeys > SCAFFOLD_ABOVE_STOREYS ? SCAFFOLD_DEPTH_M : 0,
+    },
+    id,
+  );
+  const put = (
+    x: number,
+    z: number,
+    y0: number,
+    w: number,
+    h: number,
+    d: number,
+    yaw: number,
+    color: readonly [number, number, number],
+  ): void => {
+    out.push({ part: 'furniture', x, y: seat.groundY + y0 + h / 2, z, w, h, d, yaw, color });
+  };
+  for (const p of pieces) {
+    if (p.kind === 'heap') {
+      if (stage > SiteStage.Foundation) continue;
+      // A low stepped mound: three layers, each smaller than the one below.
+      const layers = [
+        [1, 0.4],
+        [0.7, 0.4],
+        [0.4, 0.3],
+      ] as const;
+      let y0 = 0;
+      for (const [share, h] of layers) {
+        put(p.x, p.z, y0, p.w * share, h * (p.h / 1.1), p.d * share, p.yaw, unit('sand'));
+        y0 += h * (p.h / 1.1);
+      }
+      continue;
+    }
+    put(p.x, p.z, 0, p.w, p.h, p.d, p.yaw, unit(FURNITURE_COLOURS[p.kind]));
+  }
+}
+
+const FURNITURE_COLOURS = {
+  cabin: 'ribbedAsh',
+  skip: 'ribbedRed',
+  toilet: 'ribbedBlue',
+} as const satisfies Record<string, MaterialName>;
 
 /** The tier whose height range holds `y`; the top tier above the stack. */
 function tierAt(boxes: readonly SetbackBox[], y: number): SetbackBox {
@@ -354,35 +475,159 @@ type LocalBox = (
   yawExtra?: number,
 ) => void;
 
-/** Scaffolding on one face of the lowest tier: a plank deck at every storey and standards along its outer edge. */
-function layScaffold(base: SetbackBox, storeyM: number, pick: number, local: LocalBox): void {
-  const face = Math.floor(pick * 4);
+/** The face of the lowest tier the scaffold stands on, 0..3: +x, -x, +z, -z. */
+function scaffoldFace(id: number): number {
+  return Math.floor(hash1(id + 1) * 4);
+}
+
+/** A face of a tier: which way it runs, which side of the centre it is on, how long it is and how far its plane stands out. */
+function faceOf(
+  base: SetbackBox,
+  face: number,
+): {
+  length: number;
+  wall: number;
+  at: (t: number, o: number) => [number, number];
+  alongX: boolean;
+} {
   const alongX = face < 2; // faces facing +/-x run along Z
   const sign = face % 2 === 0 ? 1 : -1;
-  const length = alongX ? base.d : base.w;
-  const wall = (alongX ? base.w : base.d) / 2;
-  const at = (t: number, o: number): [number, number] => (alongX ? [sign * o, t] : [t, sign * o]);
+  return {
+    alongX,
+    length: alongX ? base.d : base.w,
+    wall: (alongX ? base.w : base.d) / 2,
+    at: (t, o) => (alongX ? [sign * o, t] : [t, sign * o]),
+  };
+}
+
+/** A rail along each side of a deck at 1.07 m, with a post at each bay where the tier above steps in and leaves the edge unframed. */
+function layDeckRail(tier: SetbackBox, steppedIn: boolean, level: number, local: LocalBox): void {
+  const color = saturatedUnit('yellow');
+  const y0 = level + GUARDRAIL_M - GUARDRAIL_RAIL_M;
+  local('rail', 0, -tier.d / 2, y0, tier.w, GUARDRAIL_RAIL_M, GUARDRAIL_RAIL_M, color);
+  local('rail', 0, tier.d / 2, y0, tier.w, GUARDRAIL_RAIL_M, GUARDRAIL_RAIL_M, color);
+  local('rail', -tier.w / 2, 0, y0, GUARDRAIL_RAIL_M, GUARDRAIL_RAIL_M, tier.d, color);
+  local('rail', tier.w / 2, 0, y0, GUARDRAIL_RAIL_M, GUARDRAIL_RAIL_M, tier.d, color);
+  if (!steppedIn) return;
+  const nx = Math.max(1, Math.ceil(tier.w / COLUMN_BAY_M));
+  const nz = Math.max(1, Math.ceil(tier.d / COLUMN_BAY_M));
+  for (let i = 0; i <= nx; i++) {
+    const lx = -tier.w / 2 + (tier.w * i) / nx;
+    local('rail', lx, -tier.d / 2, level, GUARDRAIL_RAIL_M, GUARDRAIL_M, GUARDRAIL_RAIL_M, color);
+    local('rail', lx, tier.d / 2, level, GUARDRAIL_RAIL_M, GUARDRAIL_M, GUARDRAIL_RAIL_M, color);
+  }
+  for (let i = 1; i < nz; i++) {
+    const lz = -tier.d / 2 + (tier.d * i) / nz;
+    local('rail', -tier.w / 2, lz, level, GUARDRAIL_RAIL_M, GUARDRAIL_M, GUARDRAIL_RAIL_M, color);
+    local('rail', tier.w / 2, lz, level, GUARDRAIL_RAIL_M, GUARDRAIL_M, GUARDRAIL_RAIL_M, color);
+  }
+}
+
+/**
+ * The sheathed walls' dark, unglazed openings: one to each bay of each storey
+ * (the bays the frame used), half a bay wide, and a door on the street face at
+ * grade in place of the bay nearest the middle. Flat panels a little proud of
+ * the wall.
+ */
+function layOpenings(
+  boxes: readonly SetbackBox[],
+  storeyM: number,
+  bay: number,
+  local: LocalBox,
+): void {
+  const color = unit('darkPanel');
+  boxes.forEach((tier, index) => {
+    const storeys = Math.max(1, Math.round(tier.h / storeyM));
+    const rise = tier.h / storeys;
+    const facesZ = [tier.d / 2, -tier.d / 2];
+    const facesX = [tier.w / 2, -tier.w / 2];
+    for (let j = 0; j < storeys; j++) {
+      const floor = Math.max(tier.yOffset + j * rise, FOUNDATION_M);
+      const grade = index === 0 && j === 0;
+      for (const [length, faces, alongX] of [
+        [tier.w, facesZ, true],
+        [tier.d, facesX, false],
+      ] as const) {
+        const n = Math.max(1, Math.ceil(length / bay));
+        const open = length / n / 2;
+        for (const face of faces) {
+          const street = alongX && face > 0 && grade;
+          const doorBay = Math.round(n / 2 - 0.5);
+          for (let i = 0; i < n; i++) {
+            const t = -length / 2 + ((i + 0.5) * length) / n;
+            const door = street && i === doorBay;
+            const w = door ? DOOR_WIDTH_M : open;
+            const y0 = door ? floor : floor + OPENING_SILL_M;
+            const h = door ? DOOR_HEIGHT_M : OPENING_HEAD_M - OPENING_SILL_M;
+            const out = face + Math.sign(face) * (OPENING_PROUD_M / 2);
+            if (alongX) local('opening', t, out, y0, w, h, OPENING_PROUD_M, color);
+            else local('opening', out, t, y0, OPENING_PROUD_M, h, w, color);
+          }
+        }
+      }
+    }
+  });
+}
+
+/** A twin-mast hoist on a face of the lowest tier: two masts to above the roof and a car between them at mid-height. */
+function layHoist(base: SetbackBox, face: number, local: LocalBox): void {
+  const { wall, at } = faceOf(base, face);
+  const mastColor = unit('rackSteel');
+  const half = HOIST_CAR_LENGTH_M / 2;
+  for (const side of [-1, 1]) {
+    const [lx, lz] = at(side * (half + HOIST_MAST_M / 2), wall + HOIST_GAP_M + HOIST_MAST_M / 2);
+    local('hoist', lx, lz, 0, HOIST_MAST_M, base.h + HOIST_ABOVE_ROOF_M, HOIST_MAST_M, mastColor);
+  }
+  const [cx, cz] = at(0, wall + HOIST_GAP_M + HOIST_CAR_WIDTH_M / 2);
+  const alongX = face < 2;
+  local(
+    'hoist',
+    cx,
+    cz,
+    base.h / 2 - HOIST_CAR_HEIGHT_M / 2,
+    alongX ? HOIST_CAR_WIDTH_M : HOIST_CAR_LENGTH_M,
+    HOIST_CAR_HEIGHT_M,
+    alongX ? HOIST_CAR_LENGTH_M : HOIST_CAR_WIDTH_M,
+    unit('ribbedWhite'),
+  );
+}
+
+/** Scaffolding on one face of the lowest tier: a plank deck and a guardrail at every storey, and standards along its outer edge. */
+function layScaffold(base: SetbackBox, storeyM: number, face: number, local: LocalBox): void {
+  const { alongX, length, wall, at } = faceOf(base, face);
   const planks = Math.max(1, Math.round(base.h / storeyM));
   const planksColor = unit('brightestWood');
   const poleColor = unit('galvanised');
+  const railColor = saturatedUnit('yellow');
   for (let k = 1; k <= planks; k++) {
     const [lx, lz] = at(0, wall + SCAFFOLD_DEPTH_M / 2);
-    const y0 = Math.min(k * storeyM, base.h) - SCAFFOLD_PLANK_M;
+    const top = Math.min(k * storeyM, base.h);
     local(
       'scaffold',
       lx,
       lz,
-      y0,
+      top - SCAFFOLD_PLANK_M,
       alongX ? SCAFFOLD_DEPTH_M : length,
       SCAFFOLD_PLANK_M,
       alongX ? length : SCAFFOLD_DEPTH_M,
       planksColor,
     );
+    const [rx, rz] = at(0, wall + SCAFFOLD_DEPTH_M);
+    local(
+      'rail',
+      rx,
+      rz,
+      top + GUARDRAIL_M - GUARDRAIL_RAIL_M,
+      alongX ? GUARDRAIL_RAIL_M : length,
+      GUARDRAIL_RAIL_M,
+      alongX ? length : GUARDRAIL_RAIL_M,
+      railColor,
+    );
   }
   const bays = Math.max(1, Math.ceil(length / SCAFFOLD_POST_BAY_M));
   for (let i = 0; i <= bays; i++) {
     const [lx, lz] = at(-length / 2 + (length * i) / bays, wall + SCAFFOLD_DEPTH_M);
-    local('scaffold', lx, lz, 0, SCAFFOLD_POST_M, base.h + 1, SCAFFOLD_POST_M, poleColor);
+    local('scaffold', lx, lz, 0, SCAFFOLD_POST_M, base.h + GUARDRAIL_M, SCAFFOLD_POST_M, poleColor);
   }
 }
 

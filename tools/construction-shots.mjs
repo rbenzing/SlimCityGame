@@ -158,9 +158,16 @@ try {
         await cleanShot(page, `${out}/${name}-${stage.name}-street.png`);
         // From above only the groundworks show something the street view does not.
         if (stage.name === 'earth' || stage.name === 'foundation') {
-          await camera(b.x + 1, b.z + 1, 150, 0.3, 1.3);
+          // A works' lot is 100 m by 60 m: stand back far enough to see all of it.
+          await camera(b.x + 1, b.z + 1, name === 'works' ? 300 : 150, 0.3, 1.3);
           await page.waitForTimeout(1000);
           await cleanShot(page, `${out}/${name}-${stage.name}-above.png`);
+        }
+        // A near frame of the closed-in building from the street.
+        if (stage.name === 'enclosed' && (name === 'tall' || name === 'shop')) {
+          await camera(b.x + 1, b.z + 1, 70, 0.3, 0.45);
+          await page.waitForTimeout(1000);
+          await cleanShot(page, `${out}/${name}-enclosed-close.png`);
         }
       }
     }
@@ -185,7 +192,8 @@ try {
       begun = ((await goingUp())[name]?.length ?? 0) > 0;
       if (!begun && s % 120 === 0) console.log('waiting for the', name, 'block,', s / 4, 's');
     }
-    if (!begun) throw new Error(`construction-shots: no building began going up in the ${name} block`);
+    if (!begun)
+      throw new Error(`construction-shots: no building began going up in the ${name} block`);
     await growHeldAndShoot([name]);
   }
   await hook(() => window.__slimcity.holdConstruction(false));
