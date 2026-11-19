@@ -362,3 +362,6 @@ Back to [the index](../GROUND-TRUTHS.md).
   water are: never from one corner. Growth never builds, levels up or
   moves a building onto a lot the next pass would flag `NoRoad`. —
   [population-model.md](../world-sim/population-model.md)
+- [R-world-061] A level-up is held to job room as a new business is: one a pass, its
+  zone's smallest step, goes ahead without room while its sector's demand
+  is above the middle. — [building-types.md](../specs/building-types.md)
