@@ -143,9 +143,9 @@ Both are low commercial and follow [the method the existing kinds use](building-
 
 | Kind | Level | Lot | Plate | Jobs | Power (MW) | Water (kL a day) |
 | ---- | ----- | --- | ----- | ---- | ---------- | ---------------- |
-| Auto repair shop | 1 | 1×2 | 370 m² (3,980 sq ft), 4 bays | 5 | 0.0033 | 0.5 |
-| | 2 | 2×2 | 740 m² (7,960 sq ft), 8 bays | 10 | 0.0065 | 1.0 |
-| | 3 | 3×2 | 1,110 m² (11,900 sq ft), 12 bays | 14 | 0.0098 | 1.5 |
+| Auto repair shop | 1 | 1×2 | 370 m² (3,980 sq ft), 3 bays | 5 | 0.0033 | 0.5 |
+| | 2 | 2×2 | 740 m² (7,960 sq ft), 7 bays | 10 | 0.0065 | 1.0 |
+| | 3 | 3×2 | 1,110 m² (11,900 sq ft), 11 bays | 14 | 0.0098 | 1.5 |
 | Convenience store | 1 | 1×2 | 370 m² (3,980 sq ft) | 17 | 0.0242 | 1.8 |
 | | 2 | 2×2 | 740 m² (7,960 sq ft) | 34 | 0.0485 | 3.5 |
 | | 3 | 3×2 | 1,110 m² (11,900 sq ft) | 51 | 0.0727 | 5.3 |
@@ -157,6 +157,8 @@ Both are low commercial and follow [the method the existing kinds use](building-
 - **Convenience store, size.** The average store is 3,041 sq ft (NACS, in [building types](building-types.md#lots-and-bodies)); one tile's plate is 2,000 and two tiles' 3,980. Levels 2 and 3 are the small-format grocer and are dials.
 - **Convenience store, jobs.** 17.5 m² of net floor a job on 80% of the plate, as the shop it competes with.
 - **Convenience store, power.** A food-sales building, 53.3 kWh a square foot a year, six times a shop's: the coolers.
-- **Parking.** A repair shop owes 2 spaces a service bay and 1 an employee, the commonest form in the codes read ([St Charles MO §400.670](https://www.zoneomics.com/code/saint-charles-MO/chapter_5): 2 a bay with pumps, 1 a bay and 2 per 3 employees without; Hudson OH and Walbridge OH 2 a bay; Seymour IN 2.5; Brooklyn OH 4; [Stacy MN §153.120](https://www.zoneomics.com/code/stacy-MN/chapter_6) by area). A bay is not a parking space. A convenience store owes the shop's 5 per 1,000 sq ft; St Charles asks 4.
+- **Parking.** A repair shop owes 2 spaces a service bay and 1 an employee, the commonest form in the codes read ([St Charles MO §400.670](https://www.zoneomics.com/code/saint-charles-MO/chapter_5): 2 a bay with pumps, 1 a bay and 2 per 3 employees without; Hudson OH and Walbridge OH 2 a bay; Seymour IN 2.5; Brooklyn OH 4; [Stacy MN §153.120](https://www.zoneomics.com/code/stacy-MN/chapter_6) by area). A bay is not a parking space. A convenience store owes the shop's 5 per 1,000 sq ft; St Charles asks 4. That is 11, 24 and 36 spaces for the repair shop's three levels and 20, 40 and 60 for the store's.
+- **Bays.** As many 3.7 m doors as the body's street face holds: 3, 7 and 11.
+- **Roomy lots.** Measured as every other kind's: the repair shop 2×2, 4×2 and 5×2; the store 3×2, 4×2 and 5×2. The repair shop's compact lots do not hold its code, so it stands on a roomy one or parks by its kerb credit.
 - **Weights.** Establishments in thousands, as the other low commercial weights are building counts in thousands: auto repair 85, convenience store 37.
 - **From.** Small Town (400 residents) for both, so that a first town's draw is what it was.

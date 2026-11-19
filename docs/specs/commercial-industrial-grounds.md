@@ -97,10 +97,10 @@ Each enters the catalog as existing kinds did: jobs from floor area per worker, 
 
 The first two are derived in [the sources](../sources/commercial-industrial-grounds.md#the-auto-repair-shop-and-the-convenience-store-in-the-catalog), three levels each, from Small Town on so that a first town draws what it did:
 
-- **The auto repair shop** is a row of roll-up bay doors 3.7 m wide on its street face or its side, four to twelve of them, with a glazed office and its door at one end, a sign band over the bays, a tyre rack and a waste-oil tank on the side wall, and customers' cars on the lot. It has no shopfront canopy.
+- **The auto repair shop** is a row of roll-up bay doors 3.7 m wide on its street face, three to eleven of them, with a glazed office and its door at one end, a sign band over the bays, a tyre rack and a waste-oil tank on the side wall, and customers' cars on the lot. It has no shopfront canopy.
 - **The convenience store** is a glazed front the width of the building under a bright canopy band, an ice locker and a propane cage against the front wall, bollards along the front walk, and condensers on the roof.
 
-Their roomy lots are one frontage tile wider than their compact ones at each level, laid and checked as every other kind's.
+Their roomy lots are measured and checked as every other kind's. A repair shop is one storey with no window above its doors, its walls light so the doors read; the walk, the bench and the bin go to its office door, since the bay row is a door from end to end.
 
 A kind also varies in plan, not only in colour: the building at the street or behind its car park, a strip in a line or an L, storage in rows, a shop with a detached canopy. The variant comes from the lot's id, as the palette does.
 
