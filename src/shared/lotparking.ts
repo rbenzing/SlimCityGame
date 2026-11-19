@@ -18,6 +18,7 @@ import {
   isDenseLotEntry,
   isRoomyLotEntry,
   lotSpacesFor,
+  lubeBays,
   onSiteSpaces,
   repairBays,
   WALK_UP_REAR_YARD_M,
@@ -25,6 +26,11 @@ import {
 } from './parkingcode';
 import { findRoadFacingEdge, type RoadFacingEdge } from './roadedge';
 import type { BuildingCatalogEntry, BuildingKind } from './types';
+
+/** A medical office's hip roof overhangs its walls by this much, so its body stands this far in from every lot line. */
+export const HIP_EAVE_OVERHANG_M = 0.45;
+/** A service bay's doors and glazing stand this far proud of its walls, so its body stands this far in from every lot line. */
+export const BAY_DOOR_PROUD_M = 0.2;
 
 /** A bank's drive-up lanes hold this many cars each: the teller lane against the wall, then the cash-machine lane. */
 export const BANK_LANE_CARS: readonly [number, number] = [4, 3];
@@ -76,6 +82,8 @@ export function lotYardsFor(entry: BuildingCatalogEntry): {
       : {}),
     ...(denseFront > 0 ? { frontSetback: denseFront } : {}),
     ...(isDenseLotEntry(entry) && hasPodium(entry) ? { bodyMargin: PODIUM_OVERHANG_M } : {}),
+    ...(kind === 'medicaloffice' ? { bodyMargin: HIP_EAVE_OVERHANG_M } : {}),
+    ...(kind === 'quicklube' ? { bodyMargin: BAY_DOOR_PROUD_M } : {}),
     ...(kind && TANK_FARM_KINDS.has(kind) ? { rearYard: TANK_GAP_M + TANK_DIAMETER_M } : {}),
     ...(kind === 'multiplex' || kind === 'garden' ? { rearYard: WALK_UP_REAR_YARD_M[kind] } : {}),
     ...(kind && HARDSTANDING_M[kind] ? { hardstanding: HARDSTANDING_M[kind] } : {}),
@@ -119,10 +127,14 @@ export function lotLayoutFor(
     ...(entry.kind === 'autorepair' ? { entranceAtEnd: true } : {}),
     ...(entry.kind && TRUCK_COURT_KINDS.has(entry.kind) ? { trailerCourt: true } : {}),
   });
-  // A repair shop's bay doors fill its street face; the grounds keep that ground clear.
-  if (entry.kind === 'autorepair' && repairBays(bodyAlong) > 0) {
-    layout.bayDoors = { u0: layout.body.u0, u1: layout.body.u1 };
-  }
+  // A repair shop's or a lube's bay doors fill its street face; the grounds keep that ground clear.
+  const bays =
+    entry.kind === 'autorepair'
+      ? repairBays(bodyAlong)
+      : entry.kind === 'quicklube'
+        ? lubeBays(bodyAlong)
+        : 0;
+  if (bays > 0) layout.bayDoors = { u0: layout.body.u0, u1: layout.body.u1 };
   return layout;
 }
 

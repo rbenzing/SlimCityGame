@@ -33,7 +33,7 @@ import {
 import { TILE_METERS } from '../shared/constants';
 import { footprintForRotation } from '../shared/footprint';
 import { REPAIR_OFFICE_M, WALL_LOCKER_ZONE_M, YARD_FENCE_HEIGHT_M } from '../shared/lotgrounds';
-import { REPAIR_BAY_M, repairBays } from '../shared/parkingcode';
+import { lubeBays, REPAIR_BAY_M, repairBays } from '../shared/parkingcode';
 import { maxHeightUnderBody } from './footprint';
 import {
   edgeFrameOfParcel,
@@ -87,7 +87,12 @@ import {
   type KerbCreditOf,
   type LotPlan,
 } from './lotplan';
-import { DRIVE_THROUGH_LANE_M, DRIVE_THROUGH_STACK_M, type LotRect } from '../shared/lotlayout';
+import {
+  DRIVE_THROUGH_LANE_M,
+  DRIVE_THROUGH_STACK_M,
+  DRIVE_THROUGH_STACK_SPACE_M,
+  type LotRect,
+} from '../shared/lotlayout';
 import type { KerbSurroundings } from '../shared/kerblayout';
 
 const INITIAL_PART_CAPACITY = 32;
@@ -241,6 +246,8 @@ const TENANT_ACCENTS: readonly SaturatedName[] = [
   'navyAccent',
   'greenAccent',
 ];
+/** A medical office's sign panel is blue or green, never red. */
+const MEDICAL_ACCENTS: readonly SaturatedName[] = ['blue', 'greenAccent'];
 /** A hotel's sign band is navy or green. */
 const HOTEL_ACCENTS: readonly SaturatedName[] = ['navyAccent', 'greenAccent'];
 /** A shop's awnings: dark green, burgundy or black, by building id. */
@@ -693,6 +700,28 @@ export const PHARMACY_CANOPY_M = {
   postInset: 0.1,
   fascia: 0.4,
 } as const;
+/**
+ * A bank branch: a glazed entrance 4.8 m wide with its sign band 8 m wide over
+ * it, and over its two drive-up lanes one canopy 12.2 m (two stacking spaces
+ * of a car) along the lanes at their head, 3 m clear, on two 0.2 m posts on the
+ * island; a teller kiosk 1.2 by 2.4 m and a cash machine 0.8 m square on the
+ * island at the heads of their lanes.
+ */
+export const BANK_GLASS_M = 4.8;
+export const BANK_SIGN_M = 8;
+export const BANK_CANOPY_M = { clear: 3, thick: 0.25, post: 0.2, edge: 0.4 } as const;
+export const BANK_KIOSK_M = { across: 1.2, along: 2.4, height: 2.4 } as const;
+export const BANK_CASH_MACHINE_M = { size: 0.8, height: 1.4 } as const;
+/** A medical office's entrance: a glazed front 3.4 m wide, a canopy 3.4 m wide and 2.4 m out on two 0.15 m posts, and a sign panel 1.6 m square with a white cross. */
+export const MEDICAL_GLASS_M = 3.4;
+export const MEDICAL_CANOPY_M = { across: 3.4, out: 2.4, clear: 2.8, post: 0.15 } as const;
+/** How far out the canopy reaches, tried in turn: its posts stand past the 2.44 m front walk; with none clear the canopy is hung from the wall at `out`, without posts. */
+export const MEDICAL_CANOPY_REACHES_M: readonly number[] = [3.2, 4, 5];
+export const MEDICAL_SIGN_M = { size: 1.6, bar: 0.3, centreY: 3.6 } as const;
+/** A quick lube: a roll-up door 3.4 m wide and 3.05 m tall in each 6.8 m module of both long faces; a waiting room glazed on the face and on the end wall away from the lane; a sign band over the doors. */
+export const LUBE_DOOR_M = { w: 3.4, h: 3.05 } as const;
+export const LUBE_SIGN_M = 10;
+export const LUBE_WAITING_GLASS_M = { across: 3.2, height: 2.4 } as const;
 /** A machine shop's short sign, its exhaust fan on the roof (1.2 m across, this far in from the back edge) and its scrap bin, a roll-off of 3.7 by 1.8 m, 1.5 m tall. */
 export const MACHINE_SIGN_M = 4;
 export const EXHAUST_FAN_M = 1.2;
@@ -1004,6 +1033,10 @@ export interface KitLot {
   /** Ground a car, a truck or a trailer stands on: stalls, aisles, berths, trailer stalls and the planted islands, but no walk. */
   hard: LocalRect[];
   lane: KitLane | null;
+  /** The island between two drive-up lanes, where the service points stand; null where the lot has one lane or none. */
+  laneIsland?: LocalRect | null;
+  /** A drive-through service bay's apron, lane and court; null for any other building. */
+  lube?: { apron: LocalRect; lane: LocalRect | null; court: LocalRect | null } | null;
   /** Ground a stall, aisle, berth, walk, yard or the lane is laid on, which a part on the ground must not stand on; planted islands are left to them. */
   taken: LocalRect[];
   /** A plant's tank-farm ground behind the body, also in `taken`: the one taken ground the farm's own parts stand on. */
@@ -3307,6 +3340,279 @@ function storageKit(
   return out;
 }
 
+/**
+ * A bank branch's dressing: a glazed entrance with its door under a sign band
+ * on the street face, and over the two drive-up lanes beside the building one
+ * canopy at the lanes' head on two posts on the island, with a teller kiosk at
+ * the head of the teller lane and a cash machine at the head of the other.
+ */
+function bankKit(box: SetbackBox, side: Side, lot: KitLot | null, sign: RGB): PartPlacement[] {
+  const span = facadeSpan(box, side);
+  const half = halfDepthTo(box, side);
+  const out: PartPlacement[] = [
+    againstFacade(
+      'glassFront',
+      box,
+      side,
+      Math.min(BANK_GLASS_M, span - 1),
+      GLASS_FRONT_PROUD_M,
+      STORE_GLASS_HEIGHT_M,
+      GLASS_SILL_M + STORE_GLASS_HEIGHT_M / 2,
+    ),
+    onSide(
+      'walkDoor',
+      side,
+      0,
+      half + GLASS_FRONT_PROUD_M + DOOR_THICKNESS_M / 2,
+      2 * WALK_DOOR_WIDTH_M,
+      DOOR_THICKNESS_M,
+      WALK_DOOR_HEIGHT_M,
+      WALK_DOOR_HEIGHT_M / 2,
+    ),
+    {
+      ...againstFacade(
+        'signageBand',
+        box,
+        side,
+        Math.min(BANK_SIGN_M, span - 2),
+        SIGN_THICKNESS_M,
+        SIGN_HEIGHT_M,
+        STORE_GLASS_HEIGHT_M + 0.3 + SIGN_HEIGHT_M / 2,
+      ),
+      color: sign,
+    },
+  ];
+  const lane = lot?.lane;
+  const island = lot?.laneIsland;
+  if (!lane || !island || lane.rects.length !== 2) return out;
+
+  // The lanes run along one axis of the plan; the canopy covers their width over their last two car lengths.
+  const first = lane.path[0]!;
+  const last = lane.path[lane.path.length - 1]!;
+  const alongX = Math.abs(last.x - first.x) > Math.abs(last.z - first.z);
+  const dir = Math.sign(alongX ? last.x - first.x : last.z - first.z);
+  const lo = (r: LocalRect): number => (alongX ? r.x0 : r.z0);
+  const hi = (r: LocalRect): number => (alongX ? r.x1 : r.z1);
+  const headOf = (r: LocalRect): number => (dir > 0 ? hi(r) : lo(r));
+  const across = boundsUnion([...lane.rects, island]);
+  const acrossMid = alongX ? (across.z0 + across.z1) / 2 : (across.x0 + across.x1) / 2;
+  const acrossWidth = alongX ? across.z1 - across.z0 : across.x1 - across.x0;
+  const islandMid = alongX ? (island.z0 + island.z1) / 2 : (island.x0 + island.x1) / 2;
+  const stack = DRIVE_THROUGH_STACK_SPACE_M;
+  const head = headOf(lane.rects[0]!);
+  /** A box at `along` on the lanes' axis and `across` the lanes, `a` by `c` metres along and across. */
+  const box2 = (
+    part: BuildingPart,
+    along: number,
+    acrossAt: number,
+    a: number,
+    c: number,
+    height: number,
+    centreY: number,
+  ): PartPlacement =>
+    alongX
+      ? atPoint(part, along, acrossAt, a, c, height, centreY)
+      : atPoint(part, acrossAt, along, c, a, height, centreY);
+
+  const length = 2 * stack;
+  const { clear, thick, post } = BANK_CANOPY_M;
+  out.push(
+    box2(
+      'pickupCanopy',
+      head - (dir * length) / 2,
+      acrossMid,
+      length,
+      acrossWidth,
+      thick,
+      clear + thick / 2,
+    ),
+  );
+  for (const at of [BANK_CANOPY_M.edge, length - BANK_CANOPY_M.edge]) {
+    out.push(box2('signPole', head - dir * at, islandMid, post, post, clear, clear / 2));
+  }
+  const [teller, cash] = lane.rects as [LocalRect, LocalRect];
+  out.push(
+    box2(
+      'guardBooth',
+      headOf(teller) - (dir * stack) / 2,
+      islandMid,
+      BANK_KIOSK_M.along,
+      BANK_KIOSK_M.across,
+      BANK_KIOSK_M.height,
+      BANK_KIOSK_M.height / 2,
+    ),
+    box2(
+      'mailKiosk',
+      headOf(cash) - (dir * stack) / 2,
+      islandMid,
+      BANK_CASH_MACHINE_M.size,
+      BANK_CASH_MACHINE_M.size,
+      BANK_CASH_MACHINE_M.height,
+      BANK_CASH_MACHINE_M.height / 2,
+    ),
+  );
+  return out;
+}
+
+/**
+ * A medical office's dressing: a hip roof over the body, a glazed entrance with
+ * its door under a canopy on two posts that stand either side of the walk, and
+ * over the canopy a sign panel in blue or green with a white cross.
+ */
+function medicalOfficeKit(
+  box: SetbackBox,
+  side: Side,
+  lot: KitLot | null,
+  id: number,
+  baseTop: number,
+  sign: RGB,
+): PartPlacement[] {
+  const half = halfDepthTo(box, side);
+  const { across, out: reach, clear, post } = MEDICAL_CANOPY_M;
+  const { size, bar, centreY } = MEDICAL_SIGN_M;
+  const out: PartPlacement[] = [
+    hipRoofOf(box, side, baseTop, rgbOf(roofColorHex(id))),
+    againstFacade(
+      'glassFront',
+      box,
+      side,
+      MEDICAL_GLASS_M,
+      GLASS_FRONT_PROUD_M,
+      STORE_GLASS_HEIGHT_M,
+      GLASS_SILL_M + STORE_GLASS_HEIGHT_M / 2,
+    ),
+    onSide(
+      'walkDoor',
+      side,
+      0,
+      half + GLASS_FRONT_PROUD_M + DOOR_THICKNESS_M / 2,
+      2 * WALK_DOOR_WIDTH_M,
+      DOOR_THICKNESS_M,
+      WALK_DOOR_HEIGHT_M,
+      WALK_DOOR_HEIGHT_M / 2,
+    ),
+  ];
+  // The posts stand past the front walk, beside the walk in; the first reach that puts both clear of every walk, stall and aisle is the canopy's.
+  const postsAt = (r: number): PartPlacement[] =>
+    [-1, 1].map((k) =>
+      onSide(
+        'signPole',
+        side,
+        (k * (across - post)) / 2,
+        half + r - post / 2,
+        post,
+        post,
+        clear,
+        clear / 2,
+      ),
+    );
+  const free = (ps: readonly PartPlacement[]): boolean =>
+    !lot ||
+    ps.every((p) => {
+      const b = placementBounds(p);
+      return rectInside(b, lot.lot) && !lot.taken.some((t) => rectsOverlap(t, b));
+    });
+  const reachOf = MEDICAL_CANOPY_REACHES_M.find((r) => free(postsAt(r)));
+  // With no ground for posts the canopy is hung from the wall, as far out as clears the cars' ground.
+  const canopyAt = (r: number): PartPlacement =>
+    againstFacade('entryCanopy', box, side, across, r, 0.2, clear + 0.1);
+  const hung = [reach, 1.5, 0.7].find(
+    (r) => !lot || !lot.hard.some((h) => rectsOverlap(h, placementBounds(canopyAt(r)))),
+  );
+  out.push(canopyAt(reachOf ?? hung ?? 0.7));
+  if (reachOf !== undefined) out.push(...postsAt(reachOf));
+  out.push(
+    {
+      ...againstFacade('signageBand', box, side, size, SIGN_THICKNESS_M, size, centreY),
+      color: sign,
+    },
+    // The cross: two white bars standing a little proud of the panel.
+    againstFacade('signageBand', box, side, bar, SIGN_THICKNESS_M + 0.06, size * 0.7, centreY),
+    againstFacade('signageBand', box, side, size * 0.7, SIGN_THICKNESS_M + 0.06, bar, centreY),
+  );
+  return out;
+}
+
+/**
+ * A quick lube's dressing: a roll-up door in the middle of each 6.8 m module of
+ * both long faces, so a car drives through, a glazed waiting room with its door
+ * on the street face between two bays and glazing on the end wall away from the
+ * lane, and a sign band over the doors.
+ */
+function quickLubeKit(box: SetbackBox, side: Side, lot: KitLot | null, sign: RGB): PartPlacement[] {
+  const span = facadeSpan(box, side);
+  const half = halfDepthTo(box, side);
+  const bays = lubeBays(span);
+  const out: PartPlacement[] = [];
+  for (const face of [side, oppositeSide(side)]) {
+    for (let i = 0; i < bays; i += 1) {
+      out.push(
+        againstFacade(
+          'rollUpDoors',
+          box,
+          face,
+          LUBE_DOOR_M.w,
+          DOOR_THICKNESS_M,
+          LUBE_DOOR_M.h,
+          LUBE_DOOR_M.h / 2,
+          bayCentre(span, bays, i),
+        ),
+      );
+    }
+  }
+  const { across, height } = LUBE_WAITING_GLASS_M;
+  out.push(
+    againstFacade(
+      'glassFront',
+      box,
+      side,
+      across,
+      GLASS_FRONT_PROUD_M,
+      height,
+      GLASS_SILL_M + height / 2,
+    ),
+    onSide(
+      'walkDoor',
+      side,
+      0,
+      half + GLASS_FRONT_PROUD_M + DOOR_THICKNESS_M / 2,
+      2 * WALK_DOOR_WIDTH_M,
+      DOOR_THICKNESS_M,
+      WALK_DOOR_HEIGHT_M,
+      WALK_DOOR_HEIGHT_M / 2,
+    ),
+    {
+      ...againstFacade(
+        'signageBand',
+        box,
+        side,
+        Math.min(LUBE_SIGN_M, span - 2),
+        SIGN_THICKNESS_M,
+        SIGN_HEIGHT_M,
+        LUBE_DOOR_M.h + 0.4 + SIGN_HEIGHT_M / 2,
+      ),
+      color: sign,
+    },
+  );
+  // The waiting room's end glazing, on the end wall away from the lane.
+  const lane = lot?.lube?.lane;
+  const laneAlong = lane ? (isAlongX(side) ? (lane.x0 + lane.x1) / 2 : (lane.z0 + lane.z1) / 2) : 0;
+  const endWall = endWallOf(side, laneAlong > 0 ? -1 : 1);
+  out.push(
+    againstFacade(
+      'glassFront',
+      box,
+      endWall,
+      across,
+      GLASS_FRONT_PROUD_M,
+      height,
+      GLASS_SILL_M + height / 2,
+      alongEndWall(box, endWall, side, across / 2 + 0.6),
+    ),
+  );
+  return out;
+}
+
 /** A point in the street frame as the footprint's x and z: `along` the street face from its middle, `out` toward the street from the footprint's centre. */
 function streetFramePoint(side: Side, along: number, out: number): { x: number; z: number } {
   const { nx, nz } = sideNormal(side);
@@ -3332,6 +3638,24 @@ const OWN_PARTS: Readonly<Record<string, ReadonlySet<BuildingPart>>> = {
     'exhaustFan',
     'scrapBin',
   ]),
+  bank: new Set<BuildingPart>([
+    'glassFront',
+    'walkDoor',
+    'signageBand',
+    'pickupCanopy',
+    'signPole',
+    'guardBooth',
+    'mailKiosk',
+  ]),
+  medicaloffice: new Set<BuildingPart>([
+    'hipRoofBlock',
+    'glassFront',
+    'walkDoor',
+    'entryCanopy',
+    'signPole',
+    'signageBand',
+  ]),
+  quicklube: new Set<BuildingPart>(['rollUpDoors', 'glassFront', 'walkDoor', 'signageBand']),
   storage: new Set<BuildingPart>([
     'storageRow',
     'storageRoof',
@@ -4255,6 +4579,19 @@ export function computePartPlacements(
       if (entry.kind === 'pharmacy') ownParts = pharmacyKit(entry, baseBox, side, lot, accent(0));
       else if (entry.kind === 'machineshop') {
         ownParts = machineShopKit(baseBox, side, lot, roofY, accent(0));
+      } else if (entry.kind === 'bank') {
+        ownParts = bankKit(baseBox, side, lot, saturatedUnit(pick(HOTEL_ACCENTS, id)));
+      } else if (entry.kind === 'medicaloffice') {
+        ownParts = medicalOfficeKit(
+          baseBox,
+          side,
+          lot,
+          id,
+          baseTop,
+          saturatedUnit(pick(MEDICAL_ACCENTS, id)),
+        );
+      } else if (entry.kind === 'quicklube') {
+        ownParts = quickLubeKit(baseBox, side, lot, accent(0));
       } else ownParts = storageKit(entry, baseBox, side, lot, id, accent(0));
     }
     return ownParts.filter((p) => p.part === part);
@@ -5773,6 +6110,12 @@ export function kitLotOf(
 
   const frontWalk = layout.frontWalk ? rect(layout.frontWalk) : null;
   const rearYard = layout.rearYard ? rect(layout.rearYard) : null;
+  // A service bay's apron, lane and court are driven ground: no part stands on them.
+  const lubeGround = layout.lube
+    ? [layout.lube.apron, layout.lube.lane, layout.lube.court]
+        .filter((r): r is LotRect => r !== null)
+        .map(rect)
+    : [];
   return {
     lot: rect(layout.lot),
     curbCut: rect({ u0: layout.curbCut.u0, u1: layout.curbCut.u1, v0: 0, v1: 1 }),
@@ -5790,8 +6133,17 @@ export function kitLotOf(
       ...berths,
       ...trailers,
       ...layout.islands.map(rect),
+      ...lubeGround,
     ],
     lane,
+    laneIsland: layout.driveThrough?.island ? rect(layout.driveThrough.island) : null,
+    lube: layout.lube
+      ? {
+          apron: rect(layout.lube.apron),
+          lane: layout.lube.lane ? rect(layout.lube.lane) : null,
+          court: layout.lube.court ? rect(layout.lube.court) : null,
+        }
+      : null,
     taken: [
       ...layout.stalls.map((s) => rect(s.rect)),
       ...layout.accessAisles.map(rect),
@@ -5804,6 +6156,7 @@ export function kitLotOf(
       ...(frontWalk ? [frontWalk] : []),
       ...(layout.entranceWalk ? [rect(layout.entranceWalk)] : []),
       ...laneRects,
+      ...lubeGround,
     ],
     farm: rearYard && !rearYardFree ? rearYard : null,
   };

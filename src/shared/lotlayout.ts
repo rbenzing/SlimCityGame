@@ -919,7 +919,7 @@ function computeLotLayout0(
   const us = slides(bodyAlong, margin, along - margin);
   // A service bay's body stands on the front of its lot, behind its apron.
   const vs = base.quickLube
-    ? [Math.max(0, Math.min(front, depth - bodyDepth))]
+    ? [Math.max(margin, Math.min(front, depth - bodyDepth - margin))]
     : slides(bodyDepth, front, depth - reserve - rear - margin);
 
   const candidates: { c: Candidate; cost: number; order: number }[] = [];
@@ -1527,13 +1527,17 @@ export function lotPaving(layout: LotLayout): LotPaving {
       ...layout.trailerStalls,
       ...(layout.forecourt ? [layout.forecourt] : []),
       ...(layout.rearYard ? [layout.rearYard] : []),
+      ...(layout.lube
+        ? [layout.lube.apron, ...(layout.lube.court ? [layout.lube.court] : [])]
+        : []),
     ],
     concrete: [
       layout.body,
       ...(layout.frontWalk ? [layout.frontWalk] : []),
       ...(layout.entranceWalk ? [layout.entranceWalk] : []),
+      ...(layout.driveThrough?.island ? [layout.driveThrough.island] : []),
     ],
-    lane: layout.driveThrough?.rects ?? [],
+    lane: [...(layout.driveThrough?.rects ?? []), ...(layout.lube?.lane ? [layout.lube.lane] : [])],
   };
 }
 

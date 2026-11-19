@@ -93,7 +93,7 @@ export const ROOMY_LOT_TILES: Readonly<Partial<Record<BuildingKind, readonly [Lo
   medicaloffice: [
     { w: 4, d: 2 },
     { w: 5, d: 2 },
-    { w: 4, d: 4 },
+    { w: 6, d: 3 },
   ],
   quicklube: [
     { w: 2, d: 3 },
