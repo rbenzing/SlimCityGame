@@ -543,7 +543,7 @@ describe('the apartment kit', () => {
       isApartmentEntry(e),
     );
     // Twelve blocks, and the mid-rise's larger level-1 lot.
-    expect(blocks).toHaveLength(13);
+    expect(blocks.filter((e) => e.stacked === undefined)).toHaveLength(13);
     for (const e of blocks) expect(partsFor(e).length, e.id).toBeGreaterThan(0);
   });
 });

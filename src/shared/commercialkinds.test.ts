@@ -8,7 +8,9 @@ import { TILE_METERS } from './constants';
 import { lotLayoutFor } from './lotparking';
 import { LOT_PERIMETER_STRIP_M } from './lotgrounds';
 
-const catalog = (catalogData as { buildings: BuildingCatalogEntry[] }).buildings;
+const catalog = (catalogData as { buildings: BuildingCatalogEntry[] }).buildings.filter(
+  (e) => e.stacked === undefined,
+);
 
 interface Row {
   kind: BuildingKind;

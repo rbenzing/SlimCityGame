@@ -1220,6 +1220,7 @@ export class GrowthSystem {
         e.kind === entry.kind &&
         e.lot === entry.lot &&
         e.bodyFootprint === undefined &&
+        e.stacked === undefined &&
         (e.lot === undefined ||
           (e.footprint.w === entry.footprint.w && e.footprint.d === entry.footprint.d)),
     );

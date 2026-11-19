@@ -148,6 +148,7 @@ export function isRoomyLotEntry(entry: BuildingCatalogEntry): boolean {
 
 /** Whether a building parks on its own lot to code: suburban commerce and industry and a dense kind on its larger lot, never a farm. */
 export function drawsLotParking(entry: BuildingCatalogEntry): boolean {
+  if (entry.stacked) return false;
   if (isDenseLotEntry(entry)) return true;
   if (entry.category !== 'com' && entry.category !== 'ind') return false;
   if (entry.zone === ZoneType.Agriculture) return false;

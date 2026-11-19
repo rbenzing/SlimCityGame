@@ -3,7 +3,9 @@ import catalogData from '../data/catalog.json';
 import type { BuildingCatalogEntry } from './types';
 import { ROOMY_LOT_TILES, roomyLotOf } from './roomylots';
 
-const catalog = (catalogData as { buildings: BuildingCatalogEntry[] }).buildings;
+const catalog = (catalogData as { buildings: BuildingCatalogEntry[] }).buildings.filter(
+  (e) => e.stacked === undefined,
+);
 const compacts = catalog.filter(
   (e) => e.bodyFootprint === undefined && e.kind !== undefined && roomyLotOf(e) !== undefined,
 );

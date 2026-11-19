@@ -27,7 +27,9 @@ import {
 } from './parkingcode';
 import { holdsLotParkingAt, lotLayoutFor, lotParkingAt } from './lotparking';
 
-const catalog = (catalogData as { buildings: BuildingCatalogEntry[] }).buildings;
+const catalog = (catalogData as { buildings: BuildingCatalogEntry[] }).buildings.filter(
+  (e) => e.stacked === undefined,
+);
 
 describe('a walk-up’s car park', () => {
   const walkUps = catalog.filter((e) => e.kind === 'multiplex' || e.kind === 'garden');

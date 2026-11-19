@@ -1008,7 +1008,8 @@ describe('a high-density block houses the homes its catalog plates were counted 
   const APARTMENT_M2 = 93;
   const STEP_INSET = (MIN_SETBACK_INSET + MAX_SETBACK_INSET) / 2;
   const blocks = (catalogData as { buildings: BuildingCatalogEntry[] }).buildings.filter(
-    (e) => e.kind === 'midrise' || e.kind === 'tower' || e.kind === 'mixed',
+    (e) =>
+      e.stacked === undefined && (e.kind === 'midrise' || e.kind === 'tower' || e.kind === 'mixed'),
   );
 
   // Homes in the stacked body the figures were worked out on: equal storeys

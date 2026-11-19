@@ -30,7 +30,11 @@ import { bodyPlateM2, grossFloorM2, SQ_FT_PER_M2, storeysOf } from './floorarea'
 import { isDenseLotKind } from './parkingcode';
 import catalogData from '../data/catalog.json';
 
-const catalog = (catalogData as { buildings: BuildingCatalogEntry[] }).buildings;
+// The spread catalog: the built-in forms repeat a kind's next level on a lot it already
+// stands on, and stacking.test.ts holds them to their bases.
+const catalog = (catalogData as { buildings: BuildingCatalogEntry[] }).buildings.filter(
+  (e) => e.stacked === undefined,
+);
 const byId = (id: string) => catalog.find((e) => e.id === id);
 
 /** RGB channel split of a packed 0xRRGGBB catalog color. */
