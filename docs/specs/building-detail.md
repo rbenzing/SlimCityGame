@@ -58,7 +58,10 @@
 | Box bay colour | wall colour × 0.78 | factor | dial |
 | Bulkhead and penthouse setback / penthouse share | 3 m / 30% of the plate | m | dial |
 | Gymnasium clear height | 6.7 (22 ft) | m | [New Jersey's school code](../sources/building-detail.md#ploppables-without-a-kit-and-the-earliest-kits) |
-| Rail shop door | 4.6 wide (7 ft 6 in either side of the track's centre line) | m | Washington WAC 296-860, same table |
+| Gymnasium structure / roof | 1 over the clear height / 2:12 gable | m | dial |
+| Rail shop door | 4.6 wide (7 ft 6 in either side of the track's centre line), 5.5 high | m | Washington WAC 296-860, same table; the height a dial |
+| Rail shop ridge monitor | 3 wide, 1.2 high, 4 in from each end | m | dial |
+| Hospital parapet / penthouse height | 0.76 / 4.1 | m | dial |
 | Crematorium stack over its roof | 1.2 (4 ft) at least | m | Vermont DEC, same table |
 | Multiplex and garden car park | 1.4 per `units` | spaces | dial |
 | Registry of utility kit ids | 30 | ids | `UTILITY_KIT_CATALOG_IDS` |
@@ -207,7 +210,7 @@ The station reads its track edge as the sewage works reads its water edge: the e
 
 One shelter builder serves the line's stop and the bus-stop kit. `TransitRenderer.apply` takes a `hasStopBuilding(x, z)` predicate and draws no shelter where a stop building stands. The bus stop has its own 500-triangle row.
 
-A civic roof is never a bare slab. The hospital carries what the tower does: a penthouse set back from the street face, a roof screen with a cooling tower behind it, and a lift bulkhead. A school's and the college's wings carry rooftop units by the commercial rule and a parapet, and the gymnasium stands a storey over its classroom wings. The rail yard's shop has a door on each track that enters it, a ridge monitor along its roof and its own units. The crematorium's stack clears its roof.
+A civic roof is never a bare slab. The hospital carries what the tower does: a penthouse set back from the street face, a roof screen with a cooling tower behind it, and a lift bulkhead. A school's and the college's wings carry rooftop units by the commercial rule and a parapet. A gymnasium is 6.7 m clear under a low gable with no window above that height; its ridge tops a middle or high school's three-storey wings and sits under an elementary's. The college has no gymnasium. The rail yard's shop has a dark door on each maintenance and wash road that enters it, a glazed ridge monitor along its roof and two units. The crematorium's stack clears its chapel's ridge.
 
 The six earliest kits get a layout and builders each, pure from the footprint; shore kits keep `waterSideOf`. Merged geometries serve the heap, riprap, gallery, bridges and dome; nothing animates. Scale houses and switchyards are reused across kits, and the kit registry and coexistence tests change by addition only.
 
