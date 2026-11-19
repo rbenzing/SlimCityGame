@@ -84,8 +84,9 @@ small enough to read as smooth growth on the stats panel:
   (`ABANDON_BLOCKER_STREAK = 3`, each pass `GROWTH_INTERVAL = 10` ticks
   apart) with no power, no water, or no road, and becomes `Abandoned` — its
   full figure is removed in that instant.
-- An Abandoned building stands until demand for its zone reaches
-  `ABANDONED_CLEAR_DEMAND`, when it is removed `[R-world-059]`, or returns
+- An Abandoned building stands at least `ABANDONED_MIN_PASSES = 10` passes
+  and then until demand for its zone reaches `ABANDONED_CLEAR_DEMAND`, when
+  it is removed `[R-world-059]`, or returns
   to `Active` (re-adding its figure, vacancies intact) the moment its blocker
   clears. See
   [../game-design/simulation-rules.md](../game-design/simulation-rules/README.md)
