@@ -116,9 +116,10 @@ describe('layoutSite', () => {
     expect(storeysOf(body(12).boxes)).toBe(12);
   });
 
-  it('shows only the fence on cleared earth, 1.8 m high', () => {
-    const boxes = layoutSite(body(1), 1, 0);
-    expect(boxes.every((b) => b.part === 'fence')).toBe(true);
+  it('shows only the fence and the site furniture on cleared earth, the fence 1.8 m high', () => {
+    const all = layoutSite(body(1), 1, 0);
+    expect(all.every((b) => b.part === 'fence' || b.part === 'furniture')).toBe(true);
+    const boxes = all.filter((b) => b.part === 'fence');
     expect(boxes.length).toBeGreaterThan(0);
     const tops = boxes.map((b) => b.y + b.h / 2);
     expect(Math.max(...tops)).toBeCloseTo(FENCE_HEIGHT_M, 5);
@@ -174,6 +175,56 @@ describe('layoutSite', () => {
     expect(partsOf(house, 'wall')).toBe(1);
     expect(partsOf(house, 'scaffold')).toBe(0);
     expect(partsOf(house, 'crane')).toBe(0);
+  });
+
+  it('furnishes a site from the earth stage with pieces inside the fence and off the body', () => {
+    const big: SiteBody = { ...body(2), lot: { x0: -10, z0: -10, x1: 30, z1: 30 } };
+    const earth = layoutSite(big, 3, 0).filter((b) => b.part === 'furniture');
+    expect(earth.length).toBeGreaterThanOrEqual(3);
+    for (const b of earth) {
+      const turned = Math.abs(Math.sin(b.yaw)) > 0.5;
+      const hx = (turned ? b.d : b.w) / 2;
+      const hz = (turned ? b.w : b.d) / 2;
+      expect(b.x - hx).toBeGreaterThanOrEqual(-10 + 0.5);
+      expect(b.x + hx).toBeLessThanOrEqual(30 - 0.5);
+      expect(b.z - hz).toBeGreaterThanOrEqual(-10 + 0.5);
+      expect(b.z + hz).toBeLessThanOrEqual(30 - 0.5);
+      // Off the body's 10 m by 8 m footprint at (10, 10).
+      const clear = Math.abs(b.x - 10) >= 5 + hx || Math.abs(b.z - 10) >= 4 + hz;
+      expect(clear).toBe(true);
+      expect(b.y - b.h / 2).toBeCloseTo(0, 5);
+    }
+  });
+
+  it('lays no furniture on a lot with no rectangle or no room', () => {
+    expect(
+      layoutSite({ ...body(2), lot: null }, 3, 0.5).filter((b) => b.part === 'furniture'),
+    ).toHaveLength(0);
+    const tight: SiteBody = { ...body(2), lot: { x0: 3, z0: 3, x1: 17, z1: 17 } };
+    expect(layoutSite(tight, 3, 0.5).filter((b) => b.part === 'furniture')).toHaveLength(0);
+  });
+
+  it('gives a house site no cabin: its furniture is shorter than a cabin', () => {
+    const lot = { x0: -10, z0: -10, x1: 30, z1: 30 };
+    const heights = (house: boolean): number[] =>
+      layoutSite({ ...body(2), lot, house }, 3, 0.1)
+        .filter((b) => b.part === 'furniture')
+        .map((b) => b.h);
+    expect(heights(false)).toContain(2.6);
+    expect(heights(true)).not.toContain(2.6);
+    expect(heights(true)).toContain(1.4);
+  });
+
+  it('carts a spoil heap away once the frame rises', () => {
+    const wide: SiteBody = {
+      boxes: [{ w: 40, d: 30, h: 6.4, yOffset: 0 }],
+      seat: { centerX: 50, centerZ: 30, groundY: 0, yaw: 0 },
+      lot: { x0: 0, z0: 0, x1: 100, z1: 60 },
+    };
+    const heap = (p: number): number =>
+      layoutSite(wide, 3, p).filter((b) => b.part === 'furniture' && b.h < 1).length;
+    expect(heap(0.05)).toBeGreaterThan(0);
+    expect(heap(0.5)).toBe(0);
   });
 
   it('keeps a handful of boxes a site', () => {

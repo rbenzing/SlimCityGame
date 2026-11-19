@@ -53,7 +53,7 @@ import type { KerbCreditOf } from './lotplan';
 import type { KerbSurroundings } from '../shared/kerblayout';
 import { maxHeightOverRect, maxHeightUnderBody, minHeightOverRect } from './footprint';
 import { isModernTall } from '../shared/modernlook';
-import { isFarmEntry } from './archetypes';
+import { isFarmEntry, isHouseEntry } from './archetypes';
 import { CURTAIN_MODULE_M, CURTAIN_MULLION_M, curtainBays, curtainWallCut } from './curtainwall';
 import { nightTintNode } from './nightlook';
 import { BARN_EAVE_SHARE, planFarm, type FarmRect } from './farmlot';
@@ -1087,7 +1087,12 @@ export class BuildingInstancer {
     }
     const boxes = this.boxesFor(entry, instance);
     const seat = this.seatFor(entry, instance, boxes[0]!);
-    return { boxes, seat, lot: instance.frame ? null : lotBounds(instance, entry) };
+    return {
+      boxes,
+      seat,
+      lot: instance.frame ? null : lotBounds(instance, entry),
+      house: isHouseEntry(entry),
+    };
   }
 
   private frontageOf(entry: BuildingCatalogEntry, instance: BuildingInstance): FrontageSetback {

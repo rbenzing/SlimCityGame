@@ -22,6 +22,7 @@ import { FLOOR_HEIGHT_METERS } from './facade';
 import { InstancedSlotPool, type SetbackBox } from './massing';
 import { materialUnit, saturatedUnit, type MaterialName } from './palette';
 import { nightTintNode } from './nightlook';
+import { FENCE_INSET_M, planFurniture } from './sitefurniture';
 
 export { ENCLOSED_FROM, FOUNDATION_FROM, FRAME_FROM };
 
@@ -82,8 +83,29 @@ function heightOf(boxes: readonly SetbackBox[]): number {
   return top;
 }
 
-export type SitePart = 'fence' | 'slab' | 'frame' | 'wall' | 'scaffold' | 'crane';
-const PARTS: readonly SitePart[] = ['fence', 'slab', 'frame', 'wall', 'scaffold', 'crane'];
+export type SitePart =
+  | 'fence'
+  | 'slab'
+  | 'frame'
+  | 'wall'
+  | 'scaffold'
+  | 'crane'
+  | 'furniture'
+  | 'rail'
+  | 'opening'
+  | 'hoist';
+const PARTS: readonly SitePart[] = [
+  'fence',
+  'slab',
+  'frame',
+  'wall',
+  'scaffold',
+  'crane',
+  'furniture',
+  'rail',
+  'opening',
+  'hoist',
+];
 
 /** A box in world metres: centre, size, and turn about Y. */
 export interface SiteBox {
@@ -103,9 +125,10 @@ export interface SiteBody {
   boxes: readonly SetbackBox[];
   seat: { centerX: number; centerZ: number; groundY: number; yaw: number };
   lot: { x0: number; z0: number; x1: number; z1: number } | null;
+  /** A house: its site lays no cabin. */
+  house?: boolean;
 }
 
-const FENCE_INSET_M = 0.5;
 /** Without a lot rectangle (a parcel on a curve) the fence stands this far outside the body. */
 const FENCE_MARGIN_M = 1.5;
 /** A temporary fence panel is 12 ft (3.66 m) wide; a post stands at each panel joint. */
@@ -180,6 +203,7 @@ export function layoutSite(body: SiteBody, id: number, progress: number): SiteBo
   };
 
   layFence(body, out);
+  layFurniture(body, id, storeys, plan.stage, out);
 
   if (plan.stage < SiteStage.Foundation) return out;
   const base = boxes[0]!;
@@ -273,6 +297,84 @@ export function layoutSite(body: SiteBody, id: number, progress: number): SiteBo
   }
   return out;
 }
+
+/** The street face as the axis the seat's local +Z looks along. */
+function frontAxis(yaw: number): { x: number; z: number } {
+  const sx = Math.sin(yaw);
+  const sz = Math.cos(yaw);
+  return Math.abs(sx) > Math.abs(sz) ? { x: Math.sign(sx), z: 0 } : { x: 0, z: Math.sign(sz) };
+}
+
+/**
+ * The cabin, skip and toilet the lot has room for, and on a big lot a heap of
+ * spoil that is carted away once the frame rises. Nothing is laid on a lot
+ * without a rectangle (a parcel on a curve), which has no ground round the body.
+ */
+function layFurniture(
+  body: SiteBody,
+  id: number,
+  storeys: number,
+  stage: SiteStage,
+  out: SiteBox[],
+): void {
+  const { lot, seat, boxes } = body;
+  if (!lot) return;
+  const base = boxes[0]!;
+  const turned = Math.abs(Math.sin(seat.yaw)) > 0.5;
+  const hx = (turned ? base.d : base.w) / 2;
+  const hz = (turned ? base.w : base.d) / 2;
+  const pieces = planFurniture(
+    {
+      lot,
+      body: {
+        x0: seat.centerX - hx,
+        z0: seat.centerZ - hz,
+        x1: seat.centerX + hx,
+        z1: seat.centerZ + hz,
+      },
+      front: frontAxis(seat.yaw),
+      house: body.house === true,
+      standoff: storeys > SCAFFOLD_ABOVE_STOREYS ? SCAFFOLD_DEPTH_M : 0,
+    },
+    id,
+  );
+  const put = (
+    x: number,
+    z: number,
+    y0: number,
+    w: number,
+    h: number,
+    d: number,
+    yaw: number,
+    color: readonly [number, number, number],
+  ): void => {
+    out.push({ part: 'furniture', x, y: seat.groundY + y0 + h / 2, z, w, h, d, yaw, color });
+  };
+  for (const p of pieces) {
+    if (p.kind === 'heap') {
+      if (stage > SiteStage.Foundation) continue;
+      // A low stepped mound: three layers, each smaller than the one below.
+      const layers = [
+        [1, 0.4],
+        [0.7, 0.4],
+        [0.4, 0.3],
+      ] as const;
+      let y0 = 0;
+      for (const [share, h] of layers) {
+        put(p.x, p.z, y0, p.w * share, h * (p.h / 1.1), p.d * share, p.yaw, unit('sand'));
+        y0 += h * (p.h / 1.1);
+      }
+      continue;
+    }
+    put(p.x, p.z, 0, p.w, p.h, p.d, p.yaw, unit(FURNITURE_COLOURS[p.kind]));
+  }
+}
+
+const FURNITURE_COLOURS = {
+  cabin: 'ribbedAsh',
+  skip: 'ribbedRed',
+  toilet: 'ribbedBlue',
+} as const satisfies Record<string, MaterialName>;
 
 /** The tier whose height range holds `y`; the top tier above the stack. */
 function tierAt(boxes: readonly SetbackBox[], y: number): SetbackBox {
