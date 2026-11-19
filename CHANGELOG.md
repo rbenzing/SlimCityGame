@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.94.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.93.0...slimcity-v1.94.0) (2026-11-19)
+
+
+### Features
+
+* **data:** the car wash, three levels, with its parking, lane and court ([6604c87](https://github.com/rbenzing/SlimCityGame/commit/6604c877efbec9896ec714f5c84ecfec19e7507c))
+* **render:** the car wash kit: open portals under sign bands, a pay kiosk, a vacuum canopy on posts ([28890cd](https://github.com/rbenzing/SlimCityGame/commit/28890cd9836edf7a8fcee62c6e707c6eb2c7e23d))
+* **sim:** lots stay roomy until Grand City ([ed8dfb9](https://github.com/rbenzing/SlimCityGame/commit/ed8dfb90f0f8dd54260708204d08c26a66136f47))
+
+
+### Bug Fixes
+
+* **data:** a car wash lays no walk to its portals ([f227a0a](https://github.com/rbenzing/SlimCityGame/commit/f227a0a9e6b035388b54f536f4fdcd36d7113296))
+
 ## [1.93.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.92.0...slimcity-v1.93.0) (2026-11-19)
 
 
