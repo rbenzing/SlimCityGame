@@ -57,6 +57,9 @@
 | Hip roof pitch, rise cap | 5:12, 4.5 | m | dial |
 | Box bay colour | wall colour × 0.78 | factor | dial |
 | Bulkhead and penthouse setback / penthouse share | 3 m / 30% of the plate | m | dial |
+| Gymnasium clear height | 6.7 (22 ft) | m | [New Jersey's school code](../sources/building-detail.md#ploppables-without-a-kit-and-the-earliest-kits) |
+| Rail shop door | 4.6 wide (7 ft 6 in either side of the track's centre line) | m | Washington WAC 296-860, same table |
+| Crematorium stack over its roof | 1.2 (4 ft) at least | m | Vermont DEC, same table |
 | Multiplex and garden car park | 1.4 per `units` | spaces | dial |
 | Registry of utility kit ids | 30 | ids | `UTILITY_KIT_CATALOG_IDS` |
 | Detached-house level heights | level 2 is the 5 m half storey | m | catalog |
@@ -203,6 +206,8 @@ The clinic, rail station and bus stop join `UTILITY_KIT_CATALOG_IDS`, so their p
 The station reads its track edge as the sewage works reads its water edge: the edge with the most rail tiles, ties broken north, east, south, west. Platform, tactile strip, canopy and bay go to it, car park and drop-off opposite. With no rail the platform takes the back of the lot.
 
 One shelter builder serves the line's stop and the bus-stop kit. `TransitRenderer.apply` takes a `hasStopBuilding(x, z)` predicate and draws no shelter where a stop building stands. The bus stop has its own 500-triangle row.
+
+A civic roof is never a bare slab. The hospital carries what the tower does: a penthouse set back from the street face, a roof screen with a cooling tower behind it, and a lift bulkhead. A school's and the college's wings carry rooftop units by the commercial rule and a parapet, and the gymnasium stands a storey over its classroom wings. The rail yard's shop has a door on each track that enters it, a ridge monitor along its roof and its own units. The crematorium's stack clears its roof.
 
 The six earliest kits get a layout and builders each, pure from the footprint; shore kits keep `waterSideOf`. Merged geometries serve the heap, riprap, gallery, bridges and dome; nothing animates. Scale houses and switchyards are reused across kits, and the kit registry and coexistence tests change by addition only.
 
