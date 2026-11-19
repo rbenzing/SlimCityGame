@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.97.1](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.97.0...slimcity-v1.97.1) (2026-11-19)
+
+
+### Bug Fixes
+
+* **sim:** judge a building's road from its whole footprint ([71c8c45](https://github.com/rbenzing/SlimCityGame/commit/71c8c455e465590453d1e056254132ed50d0fce8))
+
 ## [1.97.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.96.1...slimcity-v1.97.0) (2026-11-19)
 
 
