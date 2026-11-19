@@ -350,7 +350,8 @@ Back to [the index](../GROUND-TRUTHS.md).
   larger lot, where the ground beside it is free; and last on the lot it
   has with its parking built in. It never moves to a smaller lot, is never
   refused for want of grounds, and is never asked of a first town. —
-  [redevelopment.md](../specs/redevelopment.md)
+  [redevelopment.md](../specs/redevelopment.md); `tryLevelUp` in
+  `src/sim/growth.ts`
 - [R-world-059] An abandoned building stands, boarded, until demand for its zone is high
   enough, and is then demolished so its lot can regrow; no clock removes
   it. The player's bulldozer clears it at any time, and it reopens the

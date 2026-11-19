@@ -10,7 +10,12 @@
    How tall a town builds follows its size: nothing over four storeys before
    Small City, six storeys there, twelve at Grand City, and the tallest
    towers only at Metropolis. Nothing standing is torn down for being too
-   tall.
+   tall. A building that upgrades is rebuilt larger: on its own lot where
+   the bigger building and its car park fit, onto free ground beside it
+   where they do not. From Big Town a shop, restaurant, office, hotel or
+   apartment block with no room to spread is rebuilt taller on the lot it
+   has, with its parking inside; leave ground free beside a building you
+   would rather see spread.
 3. **Power and water flow through roads.** Connect a generator and a water source
    to the road network and the whole connected network is served.
 4. **Watch it grow, then read it.** Buildings construct, upgrade, and occasionally
