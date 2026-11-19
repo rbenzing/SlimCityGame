@@ -26,6 +26,8 @@ export const SPACES_PER_1000_SQ_FT: Readonly<Partial<Record<BuildingKind, number
   restaurant: 10,
   convenience: 5,
   pharmacy: 5,
+  bank: 3,
+  medicaloffice: 4,
   office: 3,
   workshop: 1,
   machineshop: 1,
@@ -265,6 +267,17 @@ export function repairBays(frontageM: number): number {
   return Math.max(0, Math.floor(frontageM / REPAIR_BAY_M + 1e-9));
 }
 
+/** A quick lube's drive-through bay is 6.8 m of street face, its body one tile deep. */
+export const LUBE_BAY_M = 6.8;
+/** A quick lube owes a space for each bay and 2 for every 3 employees. */
+export const SPACES_PER_LUBE_BAY = 1;
+export const LUBE_SPACES_PER_EMPLOYEE = 2 / 3;
+
+/** The drive-through bays a body's street face of `frontageM` metres holds. */
+export function lubeBays(frontageM: number): number {
+  return Math.max(0, Math.floor(frontageM / LUBE_BAY_M + 1e-9));
+}
+
 /** Self-storage: three quarters of its floor is rentable, in units of 108 sq ft (a 9 by 12 ft unit). */
 export const STORAGE_RENTABLE_SHARE = 0.75;
 export const STORAGE_UNIT_SQ_FT = 108;
@@ -300,12 +313,16 @@ export function lotParkingRequirement(
       berths: 0,
     };
   }
+  const spaces =
+    entry.kind === 'autorepair'
+      ? SPACES_PER_REPAIR_BAY * repairBays(frontageM) + (entry.jobs ?? 0)
+      : entry.kind === 'quicklube'
+        ? SPACES_PER_LUBE_BAY * lubeBays(frontageM) +
+          Math.ceil(LUBE_SPACES_PER_EMPLOYEE * (entry.jobs ?? 0) - 1e-9)
+        : requiredSpaces(entry.kind, grossSqFt, category);
   return {
     grossSqFt,
-    spaces:
-      entry.kind === 'autorepair'
-        ? SPACES_PER_REPAIR_BAY * repairBays(frontageM) + (entry.jobs ?? 0)
-        : requiredSpaces(entry.kind, grossSqFt, category),
+    spaces,
     berths: loadingBerths(category === 'ind' ? 'industrial' : 'retail', grossSqFt),
   };
 }

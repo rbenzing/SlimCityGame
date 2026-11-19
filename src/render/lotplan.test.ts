@@ -628,7 +628,9 @@ describe('the lot’s paved ground', () => {
           expect(layout.stalls).toHaveLength(0);
           const { yard, concrete } = lotPaving(layout);
           const walks = [layout.frontWalk, layout.entranceWalk].filter((w) => w !== null);
-          expect(concrete).toEqual([layout.body, ...walks]);
+          // A bank's island between its lanes is concrete too.
+          const island = layout.driveThrough?.island ? [layout.driveThrough.island] : [];
+          expect(concrete).toEqual([layout.body, ...walks, ...island]);
           const { body, frontWalk, entranceWalk } = layout;
           if (frontWalk) {
             // Along the body's street face, the body's width.
@@ -642,7 +644,9 @@ describe('the lot’s paved ground', () => {
             expect(layout.entrance.u).toBeGreaterThanOrEqual(entranceWalk.u0);
             expect(layout.entrance.u).toBeLessThanOrEqual(entranceWalk.u1);
           }
-          const yards = [layout.forecourt, layout.rearYard].filter((r) => r !== null);
+          // A service bay's apron and court are its yard.
+          const lube = layout.lube ? [layout.lube.apron, layout.lube.court] : [];
+          const yards = [layout.forecourt, layout.rearYard, ...lube].filter((r) => r !== null);
           if (req.berths === 0) {
             // No berth, so no drive: the curb cut is never cut.
             expect(layout.aisles).toHaveLength(0);
@@ -796,7 +800,8 @@ describe('a restaurant’s drive-through lane', () => {
   it('is laid on a lot that has room for it, and on none that has not', () => {
     expect(laned.length).toBeGreaterThan(0);
     expect(layouts.length - laned.length).toBeGreaterThan(0);
-    for (const e of suburban.filter((c) => c.kind !== 'restaurant' && c.kind !== 'pharmacy')) {
+    const laneKinds = ['restaurant', 'pharmacy', 'bank'];
+    for (const e of suburban.filter((c) => !laneKinds.includes(c.kind ?? ''))) {
       expect(onStreet(e).driveThrough, e.id).toBeNull();
     }
   });

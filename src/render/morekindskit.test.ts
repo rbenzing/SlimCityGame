@@ -16,7 +16,7 @@ import {
   type PartPlacement,
 } from './buildingkit';
 import { tierCountOf } from './massing';
-import { windowlessBody } from './facade';
+import { plainWalledBody, windowlessBody } from './facade';
 
 const catalog = (catalogData as { buildings: BuildingCatalogEntry[] }).buildings;
 const ofKind = (kind: string, roomy: boolean): BuildingCatalogEntry[] =>
@@ -364,6 +364,230 @@ describe('self-storage as rows', () => {
             }
           }
         }
+      });
+    }
+  }
+});
+
+const NEW_KINDS = ['bank', 'medicaloffice', 'quicklube'] as const;
+const everyLot = (kind: string): BuildingCatalogEntry[] => [
+  ...ofKind(kind, false),
+  ...ofKind(kind, true),
+];
+
+describe('a bank, a medical office and a quick lube', () => {
+  it('stand as a single tier; a bank and a lube show no window of their own, a medical office its row of windows', () => {
+    for (const kind of NEW_KINDS) {
+      for (const e of catalog.filter((c) => c.kind === kind)) {
+        expect(tierCountOf(e), e.id).toBe(1);
+        expect(windowlessBody(e), e.id).toBe(kind === 'quicklube');
+        // A bank's masonry and a lube's plaster are drawn plain, not as the near-black storefront frame.
+        expect(plainWalledBody(e), e.id).toBe(true);
+      }
+    }
+  });
+
+  it('keep every part off every stall, aisle and walk, and on their lot, at every turn and street side', () => {
+    const groundParts = ['pickupCanopy', 'entryCanopy', 'signPole', 'guardBooth', 'mailKiosk'];
+    for (const kind of NEW_KINDS) {
+      for (const e of everyLot(kind)) {
+        for (const side of SIDES) {
+          const plan = kitOf(e, TURN[side], side);
+          if (!plan.lot) continue;
+          for (const p of plan.placements) {
+            const b = placementBounds(p);
+            if (p.part === 'hipRoofBlock') continue;
+            expect(inside(b, plan.lot.lot), `${e.id} ${side} ${p.part} on the lot`).toBe(true);
+            if (!groundParts.includes(p.part)) continue;
+            // A canopy is overhead, and the lane's own island is not ground a car stands on.
+            if (p.part === 'pickupCanopy' || p.part === 'entryCanopy') {
+              for (const h of plan.lot.hard) {
+                expect(overlap(h, b), `${e.id} ${side} ${p.part} over ${JSON.stringify(h)}`).toBe(
+                  false,
+                );
+              }
+              continue;
+            }
+            for (const t of plan.lot.taken) {
+              expect(overlap(t, b), `${e.id} ${side} ${p.part} on ${JSON.stringify(t)}`).toBe(
+                false,
+              );
+            }
+          }
+        }
+      }
+    }
+  });
+});
+
+describe('a bank', () => {
+  for (const side of SIDES) {
+    for (const e of ofKind('bank', true)) {
+      const plan = kitOf(e, TURN[side], side);
+      const lane = plan.lot!.lane!;
+      const island = plan.lot!.laneIsland!;
+
+      it(`${e.id} (${side}) has a glazed entrance with its door under one sign band`, () => {
+        const [glass] = only(plan, 'glassFront');
+        const [door] = only(plan, 'walkDoor');
+        const bands = only(plan, 'signageBand');
+        expect(glass, e.id).toBeDefined();
+        expect(door, e.id).toBeDefined();
+        expect(bands, e.id).toHaveLength(1);
+        expect(bands[0]!.offset[1] - bands[0]!.size[1] / 2).toBeGreaterThan(
+          glass!.offset[1] + glass!.size[1] / 2,
+        );
+        expect(bands[0]!.offset[1] + bands[0]!.size[1] / 2).toBeLessThanOrEqual(e.height);
+      });
+
+      it(`${e.id} (${side}) stands one canopy over both lanes and the island, on two posts on the island`, () => {
+        expect(lane, e.id).not.toBeNull();
+        expect(lane.rects, e.id).toHaveLength(2);
+        const canopies = only(plan, 'pickupCanopy');
+        expect(canopies, e.id).toHaveLength(1);
+        const slab = placementBounds(canopies[0]!);
+        for (const r of [...lane.rects, island]) expect(overlap(slab, r), e.id).toBe(true);
+        // It spans the lanes and the island across, and two stacking spaces along them.
+        const along = Math.max(slab.x1 - slab.x0, slab.z1 - slab.z0);
+        const across = Math.min(slab.x1 - slab.x0, slab.z1 - slab.z0);
+        expect(along, e.id).toBeCloseTo(2 * 6.096, 3);
+        expect(across, e.id).toBeCloseTo(2 * 3.66 + 1.5, 3);
+        const posts = only(plan, 'signPole');
+        expect(posts, e.id).toHaveLength(2);
+        for (const post of posts) {
+          expect(inside(placementBounds(post), island), e.id).toBe(true);
+          expect(post.size[1], e.id).toBeCloseTo(canopies[0]!.offset[1] - 0.125, 5);
+        }
+      });
+
+      it(`${e.id} (${side}) has a teller kiosk and a cash machine on the island at the head of their lanes`, () => {
+        const [kiosk] = only(plan, 'guardBooth');
+        const [machine] = only(plan, 'mailKiosk');
+        expect(kiosk, e.id).toBeDefined();
+        expect(machine, e.id).toBeDefined();
+        for (const p of [kiosk!, machine!])
+          expect(inside(placementBounds(p), island), e.id).toBe(true);
+        expect(overlap(placementBounds(kiosk!), placementBounds(machine!)), e.id).toBe(false);
+        // The kiosk is at the teller lane's head, the machine nearer the tail: the cash lane is a car shorter.
+        const alongX = Math.abs(lane.path[1]!.x - lane.path[0]!.x) > 1e-6;
+        const at = (p: PartPlacement): number => (alongX ? p.offset[0] : p.offset[2]);
+        const dir = Math.sign(
+          alongX ? lane.path[1]!.x - lane.path[0]!.x : lane.path[1]!.z - lane.path[0]!.z,
+        );
+        expect(dir * (at(kiosk!) - at(machine!)), e.id).toBeCloseTo(6.096, 3);
+      });
+    }
+  }
+});
+
+describe('a medical office', () => {
+  for (const side of SIDES) {
+    for (const e of everyLot('medicaloffice')) {
+      const plan = kitOf(e, TURN[side], side);
+
+      it(`${e.id} (${side}) has a hip roof over its body and a glazed entrance`, () => {
+        const roofs = only(plan, 'hipRoofBlock');
+        expect(roofs, e.id).toHaveLength(1);
+        const roof = placementBounds(roofs[0]!);
+        expect(roof.x1 - roof.x0, e.id).toBeGreaterThanOrEqual(plan.baseBox.w);
+        expect(roofs[0]!.offset[1] - roofs[0]!.size[1] / 2, e.id).toBeCloseTo(e.height, 5);
+        expect(only(plan, 'glassFront'), e.id).toHaveLength(1);
+        expect(only(plan, 'walkDoor'), e.id).toHaveLength(1);
+      });
+
+      it(`${e.id} (${side}) signs a cross in white on blue or green, never red`, () => {
+        const [panel, ...bars] = only(plan, 'signageBand');
+        expect(panel, e.id).toBeDefined();
+        expect(bars, e.id).toHaveLength(2);
+        const [r, g, b] = panel!.color!;
+        expect(r, e.id).toBeLessThan(Math.max(g, b));
+        expect(panel!.color![0]).toBeLessThan(0.5);
+        for (const bar of bars) expect(bar.color, e.id).toBeUndefined();
+        const [first, second] = bars.map(placementBounds);
+        // One bar upright, one across, crossing at the panel's middle.
+        const upright = (rect: LocalRect): boolean => {
+          const alongX = plan.side === 'N' || plan.side === 'S';
+          return alongX
+            ? rect.z1 - rect.z0 < rect.x1 - rect.x0
+            : rect.x1 - rect.x0 < rect.z1 - rect.z0;
+        };
+        expect(upright(first!) || upright(second!), e.id).toBe(true);
+        for (const bar of bars) {
+          expect(bar.offset[1], e.id).toBeCloseTo(panel!.offset[1], 5);
+          expect(bar.offset[1] + bar.size[1] / 2, e.id).toBeLessThanOrEqual(e.height);
+        }
+      });
+    }
+  }
+
+  it('hangs a canopy over the walk in on two posts at the roomy lots, standing past the front walk', () => {
+    for (const side of SIDES) {
+      for (const e of ofKind('medicaloffice', true)) {
+        const plan = kitOf(e, TURN[side], side);
+        const [canopy] = only(plan, 'entryCanopy');
+        const posts = only(plan, 'signPole');
+        expect(canopy, e.id).toBeDefined();
+        const slab = placementBounds(canopy!);
+        // The 6x3 lot's street face is a drive aisle along the street, with no ground for a post: its canopy is hung from the wall over no car.
+        if (e.id === 'com-medical-3-lot6x3') {
+          expect(posts, `${e.id} ${side}`).toHaveLength(0);
+          for (const h of plan.lot!.hard) expect(overlap(h, slab), `${e.id} ${side}`).toBe(false);
+          continue;
+        }
+        expect(posts, `${e.id} ${side}`).toHaveLength(2);
+        for (const post of posts) expect(inside(placementBounds(post), slab), e.id).toBe(true);
+        const walk = plan.lot!.walk!;
+        expect(overlap(slab, walk), `${e.id} ${side}`).toBe(true);
+        for (const post of posts) expect(overlap(placementBounds(post), walk)).toBe(false);
+      }
+    }
+  });
+});
+
+describe('a quick lube', () => {
+  for (const side of SIDES) {
+    for (const e of everyLot('quicklube')) {
+      const plan = kitOf(e, TURN[side], side);
+      const local = plan.side!;
+      const alongX = local === 'N' || local === 'S';
+      const span = alongX ? plan.baseBox.w : plan.baseBox.d;
+      const bays = Math.round(span / 6.8);
+
+      it(`${e.id} (${side}) has a bay door in each 6.8 m of both long faces`, () => {
+        expect(bays, e.id).toBe(Number(e.id.match(/com-lube-(\d)/)![1]) * 2);
+        const doors = only(plan, 'rollUpDoors');
+        expect(doors, e.id).toHaveLength(2 * bays);
+        const across = (p: PartPlacement): number => (alongX ? p.offset[2] : p.offset[0]);
+        const along = (p: PartPlacement): number => (alongX ? p.offset[0] : p.offset[2]);
+        const faces = [doors.filter((p) => across(p) > 0), doors.filter((p) => across(p) < 0)];
+        for (const face of faces) {
+          expect(face, e.id).toHaveLength(bays);
+          const at = face.map(along).sort((a, b) => a - b);
+          for (let i = 1; i < at.length; i += 1)
+            expect(at[i]! - at[i - 1]!, e.id).toBeCloseTo(6.8, 5);
+          for (const p of face) expect(p.size[alongX ? 0 : 2], e.id).toBeCloseTo(3.4, 5);
+          for (const p of face) expect(p.size[1], e.id).toBeCloseTo(3.05, 5);
+        }
+        // Each door stands in the middle of its module, so a car drives straight through.
+        expect(
+          faces[0]!.map(along).sort((a, b) => a - b),
+          e.id,
+        ).toEqual(faces[1]!.map(along).sort((a, b) => a - b));
+      });
+
+      it(`${e.id} (${side}) has a glazed waiting room with its door on the street face and glass on the end wall, under a sign band`, () => {
+        const glass = only(plan, 'glassFront');
+        expect(glass, e.id).toHaveLength(2);
+        expect(only(plan, 'walkDoor'), e.id).toHaveLength(1);
+        const [band] = only(plan, 'signageBand');
+        expect(band, e.id).toBeDefined();
+        expect(band!.offset[1] - band!.size[1] / 2, e.id).toBeGreaterThan(3.05);
+        const doors = only(plan, 'rollUpDoors').map(placementBounds);
+        const [street] = glass.filter((p) =>
+          alongX ? p.size[0] > p.size[2] : p.size[2] > p.size[0],
+        );
+        expect(street, e.id).toBeDefined();
+        for (const d of doors) expect(overlap(d, placementBounds(street!)), e.id).toBe(false);
       });
     }
   }

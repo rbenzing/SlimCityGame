@@ -16,7 +16,7 @@ const roomy = catalog.filter((e) => {
 
 describe('a roomy rung keeps a planted strip inside its lot lines', () => {
   it('is a catalog entry that grows its body onto a larger lot and parks to code', () => {
-    expect(roomy).toHaveLength(48);
+    expect(roomy).toHaveLength(57);
     expect(roomy.every((e) => e.bodyFootprint !== undefined)).toBe(true);
   });
 

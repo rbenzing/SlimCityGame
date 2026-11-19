@@ -258,6 +258,9 @@ export function archetypeFor(entry: BuildingCatalogEntry): BuildingArchetype {
       case 'autorepair':
       case 'convenience':
       case 'pharmacy':
+      case 'bank':
+      case 'medicaloffice':
+      case 'quicklube':
         return 'storefront';
       default:
         return (entry.level ?? 1) >= 2 ? 'retailBlock' : 'storefront';
@@ -387,6 +390,29 @@ const STOREFRONT_PARTS: Readonly<Record<string, readonly BuildingPart[]>> = {
     'rooftopUnit',
     'roofHatch',
   ],
+  /** A bank branch: a glazed entrance under a sign band, and beside the building one canopy on posts over two drive-up lanes with a teller kiosk and a cash machine on the island between. */
+  bank: [
+    'glassFront',
+    'walkDoor',
+    'signageBand',
+    'pickupCanopy',
+    'signPole',
+    'guardBooth',
+    'mailKiosk',
+    'rooftopUnit',
+    'roofHatch',
+  ],
+  /** A medical office: a hip roof, a canopy on two posts over the walk to its door, and a sign with a cross. */
+  medicaloffice: [
+    'hipRoofBlock',
+    'glassFront',
+    'walkDoor',
+    'entryCanopy',
+    'signPole',
+    'signageBand',
+  ],
+  /** A quick lube: a bay door in each 6.8 m of both long faces, a glazed waiting room, a sign band over the bays. */
+  quicklube: ['rollUpDoors', 'glassFront', 'walkDoor', 'signageBand', 'rooftopUnit', 'roofHatch'],
 };
 
 /** The old form's brown mansard dresses a restaurant at this level only; the levels above it have a flat parapet. */

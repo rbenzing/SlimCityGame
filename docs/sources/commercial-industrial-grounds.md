@@ -186,9 +186,32 @@ By the same method. All three are from Small Town on.
 - **Self-storage, the rest.** Two or three staff: the census counts 2.61 an establishment. Power is the Warehouse figure, 5.8 kWh a square foot. It parks 2 spaces per 100 units and 2 for the office ([Prince George County VA §90-862.2](https://www.zoneomics.com/code/prince-george-county-unincorporated-VA/chapter_20)): 4, 5 and 5. It owes no loading berth, a design choice: a tenant loads at the unit's door from the drive.
 - **Roomy lots.** Measured as every other kind's: the pharmacy 7×2, 5×4 and 8×3, each the smallest that also holds its lane; the machine shop 2×2, 3×2 and 5×2; self-storage 5×3, 6×4 and 8×4, its cover counted on the whole yard. Weight 8: its 2,650 million sq ft is 15% of the building survey's 17,483 million of warehouse and storage ([CBECS 2018, table B1](https://www.eia.gov/consumption/commercial/data/2018/bc/html/b1.php)), the class it is counted in, against the warehouse's 55.
 
-## Read for the kinds still to come
+## The bank, the medical office and the quick lube in the catalog
 
-- **Bank.** 3 spaces per 1,000 sq ft (Prince George County VA) or 1 per 250 sq ft (El Centro CA); 4 or 5 cars in line a lane (Durham NC 4).
-- **Medical office.** 1 space per 200 to 250 sq ft (El Centro CA, Lancaster PA). The building survey counts 129 thousand outpatient buildings of 13,640 sq ft on average (table B1, above).
-- **Quick lube.** 3 cars in line a bay; 20 to 39 cars a day is the commonest band ([NOLN 2025 survey](https://www.noln.net/running-a-shop/news/55361049/counting-cars)).
-- **Car wash.** 10 cars in line for a conveyor ([Stacy MN §153.120](https://www.zoneomics.com/code/stacy-MN/chapter_6)); no first-hand figure for cars a day was found, and its water depends on it.
+All three are low commercial, one storey, from Small Town on. Jobs are the building survey's own floor a worker for the bank and the medical office ([CBECS 2018, table B1](https://www.eia.gov/consumption/commercial/data/2018/bc/html/b1.php): offices 507 sq ft a worker, outpatient health care 575), since a branch or a surgery is not a corporate office floor.
+
+| Kind | Level | Lot | Floor | Jobs | Power (MW) | Water (kL a day) |
+| ---- | ----- | --- | ----- | ---- | ---------- | ---------------- |
+| Bank branch | 1 | 1×2 | 370 m² (3,980 sq ft) | 8 | 0.0062 | 0.8 |
+| | 2 | 2×2 | 740 m² (7,960 sq ft) | 16 | 0.0124 | 1.7 |
+| | 3 | 3×2 | 1,110 m² (11,950 sq ft) | 24 | 0.0185 | 2.5 |
+| Medical office | 1 | 2×2 | 740 m² (7,960 sq ft) | 14 | 0.0158 | 1.5 |
+| | 2 | 3×2 | 1,110 m² (11,950 sq ft) | 21 | 0.0237 | 2.2 |
+| | 3 | 3×3 | 1,665 m² (17,920 sq ft) | 31 | 0.0356 | 3.2 |
+| Quick lube | 1 | 1×2 | 185 m² (1,990 sq ft), 2 bays | 4 | 0.0016 | 0.4 |
+| | 2 | 2×2 | 370 m² (3,980 sq ft), 4 bays | 9 | 0.0033 | 0.9 |
+| | 3 | 3×2 | 555 m² (5,970 sq ft), 6 bays | 13 | 0.0049 | 1.4 |
+
+- **Bank, size.** A branch is 2,000 to 3,500 sq ft (the table above), so level 1; levels 2 and 3 are dials. Power is the Office figure, 13.6 kWh a square foot.
+- **Bank, lanes.** Two drive-up lanes under one canopy beside the building, a teller lane holding 4 cars and a cash-machine lane holding 3 ([Durham NC UDO §10.5.1.A](https://udo.durhamnc.gov/udo/10_05_Vehicle%20Stacking.htm)); a car in line takes 2.4 by 6.1 m (8 by 20 ft, §10.5.2.A), and a line may not block a parking space. It parks 3 spaces per 1,000 sq ft (Prince George County VA; El Centro CA asks 4): 12, 24 and 36. Weight 76: the deposit insurer counts over 76,000 offices ([FDIC, 2025](https://www.fdic.gov/news/press-releases/2025/fdic-releases-results-summary-deposits-annual-survey)).
+- **Medical office, size.** The survey's outpatient building averages 13,700 sq ft, between levels 2 and 3. Power is its Outpatient figure, 17.4 kWh a square foot. It parks 1 space per 250 sq ft, the lower of the codes read (El Centro CA, Lancaster PA 1 per 200 to 250): 32, 48 and 72. Weight 129, the survey's outpatient buildings in thousands. It is a workplace only: it treats nobody the health service counts.
+- **Quick lube, size.** A shop is 2,100 to 4,000 sq ft with 2 to 4 drive-through bays, about 1,000 sq ft a bay: one bay to each 6.8 m of street face on a body one tile deep, so 2, 4 and 6. Level 3 is a dial. The body takes the front tile of the lot; the back tile is where cars wait.
+- **Quick lube, the rest.** Jobs are the census's 8.5 an establishment at level 2, scaled with the floor. Power is the Service figure, 7.2 kWh a square foot; noise 8, as the repair shop's. Cars wait 3 to a bay, the figure of one stacking table read without its city noted, so a dial. It parks 1 space a bay and 2 per 3 employees ([St Charles MO §400.670](https://www.zoneomics.com/code/saint-charles-MO/chapter_5), a service station without pumps): 5, 10 and 15. Weight 9, its establishments in thousands; 20 to 39 cars a day is the commonest band ([NOLN 2025 survey](https://www.noln.net/running-a-shop/news/55361049/counting-cars)).
+- **As laid.** A lube's body stands behind a 7.3 m apron its bays open onto; a 3.66 m lane runs from the street along one side wall to a court behind, the bays' width and 18.3 m deep, three cars of 6.1 m. A bank's two lanes lie beside its wall with a 1.5 m island between them, and a 3.66 m link across their start and across their head joins both to the drive, so neither is a dead end. Each owes loading berths by the shop's table.
+- **Roomy lots.** Measured as every other kind's, with the lanes or the full court: the bank 2×3, 3×3 and 4×3; the medical office 4×2, 5×2 and 6×3; the quick lube 2×3, 3×3 and 4×3. A compact lot has no room for a lube's lane or, mostly, a bank's: the lube's smallest holds none of its 5 spaces and parks by its kerb credit.
+- **What they cost.** Weighting level-1 kinds by their draw on compact lots, low commercial holds 6.4 jobs a zoned tile with these three, from 7.0 without: a bank and a surgery employ fewer to the tile than a shop.
+
+## The two kinds not added
+
+- **Car wash.** No first-hand figure for cars a day was found, and its water is that times the water a car: 75 gallons of fresh water on a conveyor and 55 in a bay ([EPA WaterSense at Work](https://19january2017snapshot.epa.gov/www3/watersense/commercial/docs/watersense_at_work/files/assets/basic-html/page185.html), from the trade's own study), 66 to 85 and 50 to 60 in [Maryland's table](https://mde.maryland.gov/programs/Water/waterconservation/Pages/carwashing.aspx). A conveyor holds 10 cars in line ([Stacy MN §153.120](https://www.zoneomics.com/code/stacy-MN/chapter_6)); a full-service bay 6 and a self-service bay 3 (Durham NC, above).
+- **Contractor's yard.** The census counts firms, not yards, and no source gave the share of firms that keep one, so it has no draw weight.

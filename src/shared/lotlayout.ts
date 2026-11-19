@@ -80,6 +80,13 @@ export interface LotLayoutInput {
   driveThrough?: boolean;
   /** The window is on a side wall: the lane runs along that wall alone, from the edge of the drive, standing on no aisle. */
   sideWindow?: boolean;
+  /**
+   * With `sideWindow`: lay these drive-up lanes side by side instead of one, the cars each holds
+   * in order from the wall, with an island between them; the lot lays none where it cannot hold them all.
+   */
+  driveUpLanes?: readonly number[];
+  /** A drive-through service bay: the body stands on the front of its lot behind an apron, with a lane along one wall to a court behind. */
+  quickLube?: boolean;
   /** Stripe trailer stalls in the truck court before the wall the berths lie beside, on the ground left over. */
   trailerCourt?: boolean;
   /** Keep a walk between the body's street face and the stall heads, the stalls giving way for it. */
@@ -103,6 +110,16 @@ export interface LotLayoutInput {
 export const DRIVE_THROUGH_LANE_M = 3.66;
 /** A stacking space is 20 ft (6.1 m) and a lane holds six. */
 export const DRIVE_THROUGH_STACK_M = 6 * 6.1;
+/** One car in a line takes 8 by 20 ft (2.4 by 6.1 m). */
+export const DRIVE_THROUGH_STACK_SPACE_M = 20 * FOOT_M;
+/** The island between two drive-up lanes, which carries the teller kiosk and the cash machine. */
+export const DRIVE_UP_ISLAND_M = 1.5;
+/** A service bay's apron in front of its doors: a drive aisle deep. */
+export const LUBE_APRON_M = AISLE_WIDTH_M;
+/** The cars that wait for each bay of a lube, in a column behind it. */
+export const LUBE_CARS_PER_BAY = 3;
+/** The court behind a lube is deep enough for that many cars a bay. */
+export const LUBE_COURT_M = LUBE_CARS_PER_BAY * DRIVE_THROUGH_STACK_SPACE_M;
 /** The least lane worth drawing: three stacking spaces. */
 const DRIVE_THROUGH_MIN_M = 3 * 6.1;
 
@@ -130,6 +147,22 @@ export interface DriveThrough {
   length: number;
   /** The pickup window, on the body's wall beside the lane's last stretch. */
   pickup: { at: LotPoint; face: PickupFace };
+  /** Lanes laid side by side: the ground between them, which carries the service points. */
+  island?: LotRect;
+  /** The paving that joins the lanes to the drive: across their start, and across their head, where cars leave. */
+  links?: LotRect[];
+  /** The cars each of `rects` holds in a line, where it is a line of several. */
+  stacks?: number[];
+}
+
+/** The ground a drive-through service bay keeps round its body: where cars leave, the way they come in, and where they wait. */
+export interface LubeGrounds {
+  /** In front of the bay doors: the cars leave across it, to the drive and the street. */
+  apron: LotRect;
+  /** Along one side wall from the lot's drive to the court; null where the ground allows none. */
+  lane: LotRect | null;
+  /** Behind the body across its width: the cars wait here for a bay; null where the ground leaves none. */
+  court: LotRect | null;
 }
 
 export interface LotLayout {
@@ -160,6 +193,8 @@ export interface LotLayout {
   throat: LotRect | null;
   /** A restaurant's drive-through lane, where the ground left over holds it; null otherwise. */
   driveThrough: DriveThrough | null;
+  /** A drive-through service bay's apron, lane and court; null for any other building. */
+  lube: LubeGrounds | null;
   /** The wall of the body the loading berths lie beside, for a kind that docks trucks; the dock stands on it. */
   loadingWall: LoadingWall | null;
   /** Trailer stalls striped in the truck court before the loading wall, on ground the car park left over. */
@@ -365,9 +400,16 @@ interface Candidate {
   rowsAlong: RowsAlong;
   outerRow: boolean;
   body: LotRect;
+  /**
+   * The body stands beside the ground its kind reserves next to the curb cut's drive:
+   * a service bay's lane, apron and court, or a bank's drive-up lanes.
+   */
+  pin?: 'lube' | 'lanes';
 }
 
 interface Built {
+  lube: LubeGrounds | null;
+  lanes: DriveThrough | null;
   runs: Run[];
   berths: LotRect[];
   berthsOk: boolean;
@@ -438,7 +480,28 @@ function build(input: LotLayoutInput, c: Candidate): Built {
         },
       ]
     : [];
-  const obstacles = [...fixed, ...shopfrontRoute, ...berths, ...paving].map((r) => toPQ(o, r));
+  // A service bay's apron holds no stall; where its lane and court are not reserved the drive may still cross it.
+  const lube = c.pin === 'lube' ? lubeReserveFor(c.body, curbCut, input.depth) : null;
+  if (lube)
+    fixed.push(lube.apron, ...(lube.lane ? [lube.lane] : []), ...(lube.court ? [lube.court] : []));
+  // A bank's lanes run beside the drive from the face of its body, the cash-machine lane against the drive.
+  const lanes =
+    c.pin === 'lanes' && input.driveUpLanes?.length === 2
+      ? driveUpLanesAt(false, c.body.u0, c.body.v0, [
+          input.driveUpLanes[0]!,
+          input.driveUpLanes[1]!,
+        ])
+      : null;
+  if (lanes) {
+    // The links stand on the lot or are not laid.
+    lanes.links = lanes.links!.filter((r) => r.v0 >= -EPS && r.v1 <= input.depth + EPS);
+    fixed.push(...lanes.rects, lanes.island!, ...lanes.links);
+  }
+  const apron: LotRect[] =
+    input.quickLube && !lube && c.body.v0 > EPS ? [{ ...c.body, v0: 0, v1: c.body.v0 }] : [];
+  const obstacles = [...fixed, ...shopfrontRoute, ...berths, ...paving, ...apron].map((r) =>
+    toPQ(o, r),
+  );
   const fixedPQ = fixed.map((r) => toPQ(o, r));
 
   // The drive runs across the rows from the street, until the body stops it.
@@ -525,6 +588,8 @@ function build(input: LotLayoutInput, c: Candidate): Built {
       })
     : null;
   return {
+    lube,
+    lanes,
     runs: door ? runs.flatMap((r) => clearOf(r, door)) : runs,
     berths,
     berthsOk,
@@ -824,6 +889,13 @@ function insetLayout(inner: LotLayout, strip: number, along: number, depth: numb
       rects: inner.driveThrough.rects.map(mv),
       path: inner.driveThrough.path.map(pt),
       pickup: { ...inner.driveThrough.pickup, at: pt(inner.driveThrough.pickup.at) },
+      ...(inner.driveThrough.island ? { island: mv(inner.driveThrough.island) } : {}),
+      ...(inner.driveThrough.links ? { links: inner.driveThrough.links.map(mv) } : {}),
+    },
+    lube: inner.lube && {
+      apron: toStreet(inner.lube.apron),
+      lane: maybe(inner.lube.lane, toStreet),
+      court: maybe(inner.lube.court, mv),
     },
     trailerStalls: inner.trailerStalls.map(mv),
   };
@@ -842,7 +914,9 @@ function computeLotLayout0(
   const { along, depth, bodyAlong, bodyDepth } = base;
   const rear = base.rearYard ?? 0;
   const margin = base.bodyMargin ?? 0;
-  const front = base.forecourtDepth ?? Math.max(margin, base.frontSetback ?? 0);
+  const front =
+    base.forecourtDepth ??
+    Math.max(margin, base.frontSetback ?? 0, base.quickLube ? LUBE_APRON_M : 0);
   const behind = base.hardstanding ?? 0;
   const reserve =
     reserveHardstanding && front + bodyDepth + behind <= depth - rear - margin ? behind : 0;
@@ -850,7 +924,10 @@ function computeLotLayout0(
   const centreU = (along - bodyAlong) / 2;
   const centreV = (depth - reserve - bodyDepth) / 2;
   const us = slides(bodyAlong, margin, along - margin);
-  const vs = slides(bodyDepth, front, depth - reserve - rear - margin);
+  // A service bay's body stands on the front of its lot, behind its apron.
+  const vs = base.quickLube
+    ? [Math.max(margin, Math.min(front, depth - bodyDepth - margin))]
+    : slides(bodyDepth, front, depth - reserve - rear - margin);
 
   const candidates: { c: Candidate; cost: number; order: number }[] = [];
   for (const u0 of us) {
@@ -864,6 +941,27 @@ function computeLotLayout0(
         });
       });
     }
+  }
+  const pin = base.quickLube ? 'lube' : base.driveUpLanes ? 'lanes' : null;
+  if (pin) {
+    // The body stands beside the ground its kind keeps next to the drive from the curb cut: cars come in beside it.
+    const reserved =
+      pin === 'lube' ? DRIVE_THROUGH_LANE_M : 2 * DRIVE_THROUGH_LANE_M + DRIVE_UP_ISLAND_M;
+    ORDER.forEach((o, order) => {
+      if (o.rowsAlong !== 'u') return;
+      const u0 = (o.outerRow ? STALL_LENGTH_M : 0) + CURB_CUT_M + reserved;
+      if (u0 + bodyAlong > along - margin + EPS) return;
+      // A bank stands near its street, a walk's length beyond the front walk, so its door is reached from the street.
+      const fronts = pin === 'lube' ? vs : [Math.max(front, 2 * ENTRANCE_WALK_M)];
+      for (const v0 of fronts) {
+        const body = { u0, u1: u0 + bodyAlong, v0, v1: v0 + bodyDepth };
+        candidates.push({
+          c: { ...o, body, pin },
+          cost: Math.abs(v0 - centreV) - along - depth,
+          order,
+        });
+      }
+    });
   }
   candidates.sort((a, b) => a.cost - b.cost || a.order - b.order);
 
@@ -922,6 +1020,7 @@ function computeLotLayout0(
     curbCut: built.curbCut,
     throat: filled.aisles.length > 0 ? built.throat : null,
     driveThrough: null,
+    lube: null,
     loadingWall: null,
     trailerStalls: [],
     required: input.spaces,
@@ -934,7 +1033,14 @@ function computeLotLayout0(
     shortfall: Math.max(0, input.spaces - filled.provided),
   };
   // Laid last, on ground the car park left over, so the code's count never moves for it.
-  if (input.driveThrough) layout.driveThrough = driveThroughFor(layout, input.sideWindow === true);
+  if (input.driveThrough) {
+    layout.driveThrough =
+      built.lanes ??
+      (input.driveUpLanes
+        ? driveUpLanesFor(layout, input.driveUpLanes)
+        : driveThroughFor(layout, input.sideWindow === true));
+  }
+  if (input.quickLube) layout.lube = built.lube ?? lubeLeftoverFor(layout);
   if (input.trailerCourt) layout.loadingWall = loadingWallFor(layout);
   // On a roomy lot the paving comes first, behind the body, and the truck court takes what it leaves;
   // a lot whose docks stand on the back wall keeps that ground for its court and lays no yard.
@@ -1216,6 +1322,150 @@ function driveThroughFor(layout: LotLayout, sideWindow: boolean): DriveThrough |
   return null;
 }
 
+/**
+ * Two drive-up lanes side by side along a body's side wall, the first against
+ * the wall, with an island between them for the service points. Each lane is
+ * as long as the cars it holds, 6.1 m a car, and both start where the nearest
+ * drive beside them ends. Nothing a car park lays, no walk, yard or the body
+ * lies under them; null where either side of the body cannot hold all of it.
+ */
+function driveUpLanesFor(layout: LotLayout, stacks: readonly number[]): DriveThrough | null {
+  const [first, second] = stacks;
+  if (first === undefined || second === undefined) return null;
+  const W = DRIVE_THROUGH_LANE_M;
+  const b = layout.body;
+  const drive: LotRect[] = [...layout.aisles, ...(layout.throat ? [layout.throat] : [])];
+  const taken: LotRect[] = [
+    b,
+    ...drive,
+    ...layout.stalls.map((s) => s.rect),
+    ...layout.accessAisles,
+    ...layout.islands,
+    ...layout.berths,
+    ...(layout.forecourt ? [layout.forecourt] : []),
+    ...(layout.rearYard ? [layout.rearYard] : []),
+    ...(layout.frontWalk ? [layout.frontWalk] : []),
+    ...(layout.entranceWalk ? [layout.entranceWalk] : []),
+  ];
+  const clear = (r: LotRect): boolean =>
+    inside(r, layout.lot) && !taken.some((t) => rectsOverlap(t, r));
+  const across = 2 * W + DRIVE_UP_ISLAND_M;
+  const farHigh = (layout.curbCut.u0 + layout.curbCut.u1) / 2 < (b.u0 + b.u1) / 2;
+  for (const high of farHigh ? [true, false] : [false, true]) {
+    const edge = high ? b.u1 : b.u0;
+    const whole = high ? { u0: edge, u1: edge + across } : { u0: edge - across, u1: edge };
+    const beside = drive.filter(
+      (d) => d.u0 < whole.u1 - EPS && whole.u0 < d.u1 - EPS && d.v1 <= b.v1 + EPS,
+    );
+    if (beside.length === 0) continue;
+    const v0 = Math.max(...beside.map((d) => d.v1));
+    const lanes = driveUpLanesAt(high, edge, v0, [first, second]);
+    if (![...lanes.rects, lanes.island!].every(clear)) continue;
+    return { ...lanes, links: lanes.links!.filter(clear) };
+  }
+  return null;
+}
+
+/**
+ * Two drive-up lanes starting at `v0` from the wall at `edge`, running out to
+ * the high side of the wall or the low: the lane against the wall, the island,
+ * then the second lane, each lane as long as the cars it holds.
+ */
+function driveUpLanesAt(
+  high: boolean,
+  edge: number,
+  v0: number,
+  stacks: readonly [number, number],
+): DriveThrough {
+  const W = DRIVE_THROUGH_LANE_M;
+  const I = DRIVE_UP_ISLAND_M;
+  const laneAt = (u0: number, cars: number): LotRect => ({
+    u0,
+    u1: u0 + W,
+    v0,
+    v1: v0 + cars * DRIVE_THROUGH_STACK_SPACE_M,
+  });
+  const near = laneAt(high ? edge : edge - W, stacks[0]);
+  const far = laneAt(high ? edge + W + I : edge - 2 * W - I, stacks[1]);
+  const island: LotRect = {
+    u0: high ? edge + W : edge - W - I,
+    u1: high ? edge + W + I : edge - W,
+    v0,
+    v1: Math.max(near.v1, far.v1),
+  };
+  const midU = (near.u0 + near.u1) / 2;
+  // A car turns into the wall lane across a link ahead of the lanes and leaves across one at their head,
+  // so neither lane is a dead end: both links run the lanes' whole width, to the drive beside them.
+  const across = { u0: Math.min(near.u0, far.u0), u1: Math.max(near.u1, far.u1) };
+  const links: LotRect[] = [
+    { ...across, v0: v0 - W, v1: v0 },
+    { ...across, v0: island.v1, v1: island.v1 + W },
+  ];
+  return {
+    rects: [near, far],
+    path: [
+      { u: midU, v: near.v0 },
+      { u: midU, v: near.v1 },
+    ],
+    length: near.v1 - near.v0,
+    pickup: {
+      at: { u: (island.u0 + island.u1) / 2, v: near.v1 - DRIVE_THROUGH_STACK_SPACE_M / 2 },
+      face: high ? 'u+' : 'u-',
+    },
+    island,
+    stacks: [...stacks],
+    links,
+  };
+}
+
+/**
+ * The grounds of a service bay whose lot is too narrow for its lane: the apron
+ * in front of the doors, and behind the body whatever court the car park leaves,
+ * as deep as it is when it holds at least one car. No lane.
+ */
+function lubeLeftoverFor(layout: LotLayout): LubeGrounds {
+  const b = layout.body;
+  const standing: LotRect[] = [
+    ...layout.aisles,
+    ...(layout.throat ? [layout.throat] : []),
+    ...layout.stalls.map((s) => s.rect),
+    ...layout.accessAisles,
+    ...layout.islands,
+    ...layout.berths,
+  ];
+  let v1 = Math.min(layout.lot.v1, b.v1 + LUBE_COURT_M);
+  for (const t of standing) {
+    if (rectsOverlap({ ...b, v0: b.v1, v1 }, t)) v1 = Math.min(v1, Math.max(b.v1, t.v0));
+  }
+  const court = v1 - b.v1 >= DRIVE_THROUGH_STACK_SPACE_M - EPS ? { ...b, v0: b.v1, v1 } : null;
+  return { apron: { ...b, v0: 0, v1: b.v0 }, lane: null, court };
+}
+
+/**
+ * The ground a service bay reserves when its body stands one lane beyond the
+ * drive from the curb cut: the apron across the front of the body, the lane
+ * from the street along the body's wall nearest the drive, and the court behind
+ * the body as deep as the lot holds, up to a column of cars for each bay.
+ */
+function lubeReserveFor(
+  body: LotRect,
+  curbCut: { u0: number; u1: number },
+  depth: number,
+): LubeGrounds {
+  const v1 = Math.min(depth, body.v1 + LUBE_COURT_M);
+  const court = v1 - body.v1 > EPS ? { u0: body.u0, u1: body.u1, v0: body.v1, v1 } : null;
+  return {
+    apron: { ...body, v0: 0, v1: body.v0 },
+    lane: {
+      u0: curbCut.u1,
+      u1: curbCut.u1 + DRIVE_THROUGH_LANE_M,
+      v0: 0,
+      v1: court ? court.v1 : body.v1,
+    },
+    court,
+  };
+}
+
 const inside = (r: LotRect, lot: LotRect): boolean =>
   r.u0 >= lot.u0 - EPS && r.u1 <= lot.u1 + EPS && r.v0 >= lot.v0 - EPS && r.v1 <= lot.v1 + EPS;
 
@@ -1292,13 +1542,21 @@ export function lotPaving(layout: LotLayout): LotPaving {
       ...layout.trailerStalls,
       ...(layout.forecourt ? [layout.forecourt] : []),
       ...(layout.rearYard ? [layout.rearYard] : []),
+      ...(layout.lube
+        ? [layout.lube.apron, ...(layout.lube.court ? [layout.lube.court] : [])]
+        : []),
     ],
     concrete: [
       layout.body,
       ...(layout.frontWalk ? [layout.frontWalk] : []),
       ...(layout.entranceWalk ? [layout.entranceWalk] : []),
+      ...(layout.driveThrough?.island ? [layout.driveThrough.island] : []),
     ],
-    lane: layout.driveThrough?.rects ?? [],
+    lane: [
+      ...(layout.driveThrough?.rects ?? []),
+      ...(layout.driveThrough?.links ?? []),
+      ...(layout.lube?.lane ? [layout.lube.lane] : []),
+    ],
   };
 }
 
