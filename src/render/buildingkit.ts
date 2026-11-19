@@ -684,6 +684,15 @@ export const PHARMACY_GLASS_M = 12;
 export const PHARMACY_STREET_SIGN_M = 10;
 export const PHARMACY_END_SIGN_M = 8;
 export const PHARMACY_WINDOW_M = { w: 1.2, h: 1.2, sill: 1, proud: 0.12 } as const;
+/** A pharmacy's drive-up canopy: 3.7 m out over the lane, 6 m along the wall, on two 0.15 m posts at the outer edge, with a 0.4 m pale fascia. */
+export const PHARMACY_CANOPY_M = {
+  out: 3.7,
+  along: 6,
+  post: 0.15,
+  /** The posts stand this far in from the outer edge, inside the lane's 3.66 m. */
+  postInset: 0.1,
+  fascia: 0.4,
+} as const;
 /** A machine shop's short sign, its exhaust fan on the roof (1.2 m across, this far in from the back edge) and its scrap bin, a roll-off of 3.7 by 1.8 m, 1.5 m tall. */
 export const MACHINE_SIGN_M = 4;
 export const EXHAUST_FAN_M = 1.2;
@@ -2978,17 +2987,46 @@ function pharmacyKit(
         PHARMACY_WINDOW_M.sill + PHARMACY_WINDOW_M.h / 2,
         along,
       ),
+      // The canopy slab over the lane, and a pale fascia along its outer edge.
       againstFacade(
         'pickupCanopy',
         box,
         wall,
-        PICKUP_CANOPY_WIDTH_M,
-        PICKUP_CANOPY_DEPTH_M,
+        PHARMACY_CANOPY_M.along,
+        PHARMACY_CANOPY_M.out,
         PICKUP_CANOPY_THICKNESS_M,
         PICKUP_CANOPY_HEIGHT_M + PICKUP_CANOPY_THICKNESS_M / 2,
         along,
       ),
+      onSide(
+        'pickupCanopy',
+        wall,
+        along,
+        halfDepthTo(box, wall) + PHARMACY_CANOPY_M.out - PHARMACY_CANOPY_M.fascia / 4,
+        PHARMACY_CANOPY_M.along,
+        PHARMACY_CANOPY_M.fascia / 2,
+        PHARMACY_CANOPY_M.fascia,
+        PICKUP_CANOPY_HEIGHT_M + PICKUP_CANOPY_THICKNESS_M - PHARMACY_CANOPY_M.fascia / 2,
+      ),
     );
+    // Two posts at the outer edge, at either end.
+    for (const k of [-1, 1]) {
+      out.push(
+        onSide(
+          'signPole',
+          wall,
+          along + (k * (PHARMACY_CANOPY_M.along - PHARMACY_CANOPY_M.post)) / 2,
+          halfDepthTo(box, wall) +
+            PHARMACY_CANOPY_M.out -
+            PHARMACY_CANOPY_M.postInset -
+            PHARMACY_CANOPY_M.post / 2,
+          PHARMACY_CANOPY_M.post,
+          PHARMACY_CANOPY_M.post,
+          PICKUP_CANOPY_HEIGHT_M,
+          PICKUP_CANOPY_HEIGHT_M / 2,
+        ),
+      );
+    }
   }
   return out;
 }
@@ -3110,12 +3148,13 @@ export function storageDoorsPerWall(length: number): number {
 
 /**
  * Self-storage's plate drawn as rows: ranges about 9 m wide running into the
- * plate from the street, each with a roll-up door every 3 m down both long
- * walls and a roof of its own, 7.3 m drives between them, a small glazed office
- * and its door at the street end of the row beside the lot's drive, and a fence
- * across every drive at the street face, with a gate across the one by the
- * office. Every part stands inside the plate, so no row reaches a drive, a stall
- * or the lot line.
+ * plate, each with a roll-up door every 3 m down both long walls and a roof of
+ * its own, 7.3 m drives between them and a 7.3 m cross drive along the street
+ * end that every row drive opens onto. A small glazed office and its door stand
+ * at the cross drive's end of the row beside the lot's drive; one fence runs
+ * along the plate's street face with one gate where the lot's drive meets the
+ * cross drive. Every part stands inside the plate, so no row reaches a drive, a
+ * stall or the lot line.
  */
 function storageKit(
   entry: BuildingCatalogEntry,
@@ -3137,20 +3176,24 @@ function storageKit(
   const minus: Side = isAlongX(side) ? 'W' : 'N';
   const out: PartPlacement[] = [];
 
-  const doors = storageDoorsPerWall(depth);
+  // The rows start behind a cross drive along the street end of the plate.
+  const rowLength = depth - STORAGE_DRIVE_M;
+  const rowOut = -STORAGE_DRIVE_M / 2;
+  const rowFront = half - STORAGE_DRIVE_M;
+  const doors = storageDoorsPerWall(rowLength);
   for (let i = 0; i < count; i += 1) {
     out.push(
       {
-        ...onSide('storageRow', side, alongOf(i), 0, width, depth, height, height / 2),
+        ...onSide('storageRow', side, alongOf(i), rowOut, width, rowLength, height, height / 2),
         color: wall,
       },
       onSide(
         'storageRoof',
         side,
         alongOf(i),
-        0,
+        rowOut,
         width,
-        depth,
+        rowLength,
         STORAGE_ROOF_M,
         height + STORAGE_ROOF_M / 2,
       ),
@@ -3162,7 +3205,7 @@ function storageKit(
         const at = streetFramePoint(
           side,
           alongOf(i) + (sign * width) / 2,
-          (j + 0.5 - doors / 2) * STORAGE_DOOR_PITCH_M,
+          rowOut + (j + 0.5 - doors / 2) * STORAGE_DOOR_PITCH_M,
         );
         out.push({
           part: 'storageDoor',
@@ -3191,7 +3234,7 @@ function storageKit(
         'glassFront',
         side,
         glassAlong,
-        half + GLASS_FRONT_PROUD_M / 2,
+        rowFront + GLASS_FRONT_PROUD_M / 2,
         glass,
         GLASS_FRONT_PROUD_M,
         STORAGE_OFFICE_GLASS_M,
@@ -3202,7 +3245,7 @@ function storageKit(
           'signageBand',
           side,
           oa,
-          half + SIGN_THICKNESS_M / 2,
+          rowFront + SIGN_THICKNESS_M / 2,
           width - 2 * STORAGE_OFFICE_MARGIN_M,
           SIGN_THICKNESS_M,
           STORAGE_SIGN_M,
@@ -3217,7 +3260,7 @@ function storageKit(
       'walkDoor',
       side,
       doorAlong,
-      half + DOOR_THICKNESS_M / 2,
+      rowFront + DOOR_THICKNESS_M / 2,
       STORAGE_OFFICE_DOOR_M,
       DOOR_THICKNESS_M,
       WALK_DOOR_HEIGHT_M,
@@ -3225,24 +3268,42 @@ function storageKit(
     ),
   );
 
-  // A fence across each drive at the street face; the gate is the drive beside the office.
-  const gate = officeRow === 0 ? 0 : count - 2;
-  for (let d = 0; d < count - 1; d += 1) {
-    const along = alongOf(d) + width / 2 + STORAGE_DRIVE_M / 2;
-    const isGate = d === gate;
+  // One fence along the plate's street face, with one gate where the cross drive meets the lot's drive, at the end beside the office.
+  const gateEnd = officeRow === 0 ? -1 : 1;
+  const gateAlong = gateEnd * (span / 2 - STORAGE_DRIVE_M / 2);
+  const fenceOut = half - STORAGE_FENCE_M / 2 - STORAGE_FENCE_SETBACK_M;
+  const gateLow = gateAlong - STORAGE_DRIVE_M / 2;
+  const gateHigh = gateAlong + STORAGE_DRIVE_M / 2;
+  for (const [from, to] of [
+    [-span / 2, gateLow],
+    [gateHigh, span / 2],
+  ] as const) {
+    if (to - from < 0.1) continue;
     out.push(
       onSide(
-        isGate ? 'storageGate' : 'yardFence',
+        'yardFence',
         side,
-        along,
-        half - STORAGE_FENCE_M / 2 - STORAGE_FENCE_SETBACK_M,
-        STORAGE_DRIVE_M,
+        (from + to) / 2,
+        fenceOut,
+        to - from,
         STORAGE_FENCE_M,
-        isGate ? STORAGE_GATE_HEIGHT_M : YARD_FENCE_HEIGHT_M,
-        (isGate ? STORAGE_GATE_HEIGHT_M : YARD_FENCE_HEIGHT_M) / 2,
+        YARD_FENCE_HEIGHT_M,
+        YARD_FENCE_HEIGHT_M / 2,
       ),
     );
   }
+  out.push(
+    onSide(
+      'storageGate',
+      side,
+      gateAlong,
+      fenceOut,
+      STORAGE_DRIVE_M,
+      STORAGE_FENCE_M,
+      STORAGE_GATE_HEIGHT_M,
+      STORAGE_GATE_HEIGHT_M / 2,
+    ),
+  );
   return out;
 }
 
@@ -3262,6 +3323,7 @@ const OWN_PARTS: Readonly<Record<string, ReadonlySet<BuildingPart>>> = {
     'signageBand',
     'pickupCanopy',
     'bayGlass',
+    'signPole',
   ]),
   machineshop: new Set<BuildingPart>([
     'rollUpDoors',

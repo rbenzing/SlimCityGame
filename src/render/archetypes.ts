@@ -383,6 +383,7 @@ const STOREFRONT_PARTS: Readonly<Record<string, readonly BuildingPart[]>> = {
     'signageBand',
     'pickupCanopy',
     'bayGlass',
+    'signPole',
     'rooftopUnit',
     'roofHatch',
   ],

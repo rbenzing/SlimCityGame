@@ -674,7 +674,14 @@ export class LotRenderer {
       }
     }
     for (const piece of shape.fills) layPoly(piece, DRIVE_Y_OFFSET, surface);
-    for (const r of paving.concrete) lay(r, WALK_Y_OFFSET, 'cleanConcrete');
+    // Self-storage's plate is its drives between the rows, so it is paved as the yard is.
+    for (const r of paving.concrete) {
+      lay(
+        r,
+        WALK_Y_OFFSET,
+        entry.kind === 'storage' && r === layout.body ? surface : 'cleanConcrete',
+      );
+    }
     for (const r of paving.lane) lay(r, LANE_Y_OFFSET, 'darkAsphalt');
     for (const r of trailerStripes(layout.trailerStalls)) stripe(r);
   }

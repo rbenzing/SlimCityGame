@@ -5,6 +5,7 @@ import { footprintForRotation } from '../shared/footprint';
 import { type BuildingPart } from './archetypes';
 import {
   kitPlanFor,
+  PHARMACY_CANOPY_M,
   placementBounds,
   storageDoorsPerWall,
   storageRows,
@@ -119,6 +120,35 @@ describe('a pharmacy', () => {
         // The lane's wall is an end wall: the tower stands at the other end of the face.
         const laneEnd = wallIsX ? lane.pickupFacing.x : lane.pickupFacing.z;
         expect(Math.sign(alongOf(tower!, local)), e.id).toBe(-Math.sign(laneEnd));
+        // The canopy reaches 3.7 m out over the lane, 6 m along the wall, on two posts at its outer edge, with a fascia.
+        const slab = placementBounds(canopy!);
+        const reach = wallIsX ? slab.x1 - slab.x0 : slab.z1 - slab.z0;
+        const along = wallIsX ? slab.z1 - slab.z0 : slab.x1 - slab.x0;
+        expect(reach, e.id).toBeCloseTo(PHARMACY_CANOPY_M.out, 5);
+        expect(along, e.id).toBeCloseTo(PHARMACY_CANOPY_M.along, 5);
+        expect(only(plan, 'pickupCanopy'), e.id).toHaveLength(2);
+        const posts = only(plan, 'signPole');
+        expect(posts, e.id).toHaveLength(2);
+        const outer = (r: LocalRect): number =>
+          wallIsX ? (laneEnd > 0 ? r.x1 : -r.x0) : laneEnd > 0 ? r.z1 : -r.z0;
+        for (const post of posts) {
+          expect(outer(slab) - outer(placementBounds(post)), e.id).toBeCloseTo(
+            PHARMACY_CANOPY_M.postInset,
+            5,
+          );
+        }
+        // It stands off every stall and aisle (the lane's own width is 3.66 m, so a hair of reach is allowed).
+        const trim = (r: LocalRect): LocalRect => ({
+          x0: r.x0 + 0.1,
+          x1: r.x1 - 0.1,
+          z0: r.z0 + 0.1,
+          z1: r.z1 - 0.1,
+        });
+        for (const p of [canopy!, ...posts, ...only(plan, 'pickupCanopy')]) {
+          for (const h of plan.lot!.hard) {
+            expect(overlap(h, trim(placementBounds(p))), `${e.id} ${p.part}`).toBe(false);
+          }
+        }
         for (const p of [tower!, canopy!, window!]) {
           expect(inside(placementBounds(p), plan.lot!.lot), `${e.id} ${p.part}`).toBe(true);
         }
@@ -222,17 +252,38 @@ describe('self-storage as rows', () => {
         }
         for (const r of rows) {
           expect(alongX ? r.size[0] : r.size[2], e.id).toBeCloseTo(width, 5);
-          expect(alongX ? r.size[2] : r.size[0], e.id).toBeCloseTo(depth, 5);
+          expect(alongX ? r.size[2] : r.size[0], e.id).toBeCloseTo(depth - STORAGE_DRIVE_M, 5);
           expect(r.size[1], e.id).toBeCloseTo(e.height, 5);
         }
-        const covered = (count * width) / span;
-        expect(covered, e.id).toBeGreaterThan(0.5);
-        expect(covered, e.id).toBeLessThan(0.7);
+        // A cross drive 7.3 m deep lies between the street face and every row's end, and the rows reach the far end.
+        const gapToStreet = (r: LocalRect): number =>
+          side === 'S'
+            ? body.z1 - r.z1
+            : side === 'N'
+              ? r.z0 - body.z0
+              : side === 'E'
+                ? body.x1 - r.x1
+                : r.x0 - body.x0;
+        const farGap = (r: LocalRect): number =>
+          side === 'S'
+            ? r.z0 - body.z0
+            : side === 'N'
+              ? body.z1 - r.z1
+              : side === 'E'
+                ? r.x0 - body.x0
+                : body.x1 - r.x1;
+        for (const r of bounds) {
+          expect(gapToStreet(r), `${e.id} cross drive`).toBeCloseTo(STORAGE_DRIVE_M, 5);
+          expect(farGap(r), `${e.id} far end`).toBeCloseTo(0, 5);
+        }
+        const covered = (count * width * (depth - STORAGE_DRIVE_M)) / (span * depth);
+        expect(covered, e.id).toBeGreaterThan(0.45);
+        expect(covered, e.id).toBeLessThan(0.6);
       });
 
       it(`${e.id} (${side}) has roll-up doors 3 m apart on both long walls of every row`, () => {
         const doors = only(plan, 'storageDoor');
-        const perWall = storageDoorsPerWall(depth);
+        const perWall = storageDoorsPerWall(depth - STORAGE_DRIVE_M);
         expect(doors, e.id).toHaveLength(count * 2 * perWall);
         const lines = new Map<number, number[]>();
         for (const d of doors) {
@@ -269,11 +320,18 @@ describe('self-storage as rows', () => {
         const fences = only(plan, 'yardFence');
         const gates = only(plan, 'storageGate');
         expect(gates, e.id).toHaveLength(1);
-        expect(fences.length + gates.length, e.id).toBe(count - 1);
-        for (const p of [...fences, ...gates]) {
-          expect(Math.abs(p.size[alongX ? 0 : 2] - STORAGE_DRIVE_M), e.id).toBeLessThan(1e-6);
-        }
-        expect(gates[0]!.size[1]).toBeLessThan(fences[0]?.size[1] ?? Infinity);
+        // One fence run along the street face, in at most two pieces round the one gate, which is a drive wide.
+        expect(fences.length, e.id).toBeGreaterThanOrEqual(1);
+        expect(fences.length, e.id).toBeLessThanOrEqual(2);
+        const lengthOf = (p: PartPlacement): number => p.size[alongX ? 0 : 2];
+        expect(lengthOf(gates[0]!), e.id).toBeCloseTo(STORAGE_DRIVE_M, 5);
+        const total = fences.reduce((s, p) => s + lengthOf(p), 0) + lengthOf(gates[0]!);
+        expect(total, e.id).toBeCloseTo(span, 5);
+        expect(gates[0]!.size[1]).toBeLessThan(fences[0]!.size[1]);
+        // The gate stands at the end of the face beside the office, and the cross drive runs from it to every row drive.
+        const gateAlong = alongX ? gates[0]!.offset[0] : gates[0]!.offset[2];
+        const officeAlong = alongX ? placementBounds(glass!).x0 : placementBounds(glass!).z0;
+        expect(Math.sign(gateAlong), e.id).toBe(Math.sign(officeAlong));
       });
 
       it(`${e.id} (${side}) puts nothing over a stall, an aisle, a berth or the lot line`, () => {
