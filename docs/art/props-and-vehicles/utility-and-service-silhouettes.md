@@ -99,7 +99,15 @@ of the generic building facade box:
   its 4.5 m storey; a glazed main entrance under a canopy and, beside it, an
   ambulance canopy, 4.3 m clear, over the emergency drop-off, with an
   ambulance parked under it beside the emergency doors: two framed glass
-  leaves of 1.2 m, 2.4 m high, in the wall behind the bay. Next to the block
+  leaves of 1.2 m, 2.4 m high, in the wall behind the bay. No two faces are
+  alike. The ground storey is the treatment base: glazed at the lobby on
+  the street face, a solid wall with a louvre band elsewhere. The five
+  nursing floors have a punched window to each patient room on the two long
+  faces, not a band. Each end wall is a blank stair tower, proud of the
+  wall, with a door at grade and a narrow window a landing. The rear is the
+  service face: two dock doors under a canopy and a generator enclosure,
+  and a bulk oxygen tank on a fenced concrete pad only where the plot holds
+  its clearances. Next to the block
   stands the 3×2 parking deck: an open two-level
   deck, 3.35 m floor to floor, its roof edged by a precast spandrel band,
   with a ramp of 1 in 8 up its far side, two stair-and-lift cores at its street corners
