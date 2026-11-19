@@ -559,6 +559,11 @@ export function groundsTriangles(
 
 const RESIDENTIAL_PROBE_SIDES: readonly HomeSide[] = ['u-', 'u+', 'v+'];
 
+/** Whether a building's lot is planted by the grounds plan: commerce and industry, and a built-in form of any kind. */
+function hasGrounds(entry: BuildingCatalogEntry): boolean {
+  return entry.category === 'com' || entry.category === 'ind' || entry.stacked !== undefined;
+}
+
 export class LotGroundsRenderer {
   private readonly scene: THREE.Scene;
   private readonly heightAt: (x: number, z: number) => number;
@@ -649,7 +654,7 @@ export class LotGroundsRenderer {
   /** The plan a building's lot is drawn from where it stands, or null when it has none. */
   planOf(building: BuildingInstance): { plan: LotGroundsPlan; lot: LotPlan } | null {
     const entry = this.catalogById.get(building.catalogId);
-    if (!entry || (entry.category !== 'com' && entry.category !== 'ind')) return null;
+    if (!entry || !hasGrounds(entry)) return null;
     const lot = lotPlanAt(entry, building, this.roadAt, this.kerb, this.kerbCreditOf);
     if (!lot) return null;
     const homes = this.homeSidesOf(lot);
@@ -664,7 +669,7 @@ export class LotGroundsRenderer {
    */
   clearDiscs(building: BuildingInstance, street: StreetLookup): KeepClearDisc[] {
     const entry = this.catalogById.get(building.catalogId);
-    if (!entry || (entry.category !== 'com' && entry.category !== 'ind')) return [];
+    if (!entry || !hasGrounds(entry)) return [];
     const lot = lotPlanAt(entry, building, this.roadAt, this.kerb, this.kerbCreditOf);
     const walk = lot ? streetWalk(lot.layout) : null;
     if (!lot || !walk) return [];
