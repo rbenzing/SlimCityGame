@@ -603,7 +603,7 @@ export const ROOF_INSET_M = 2;
 const HATCH_SIZE_M: readonly [number, number, number] = [0.9, 0.3, 0.76];
 const HATCH_CLEAR_M = 0.5;
 export const SCREEN_HEIGHT_M = 3;
-const SCREEN_THICKNESS_M = 0.3;
+export const SCREEN_THICKNESS_M = 0.3;
 export const COOLING_TOWER_SIZE_M: readonly [number, number, number] = [6, 3, 3];
 
 /** A tank farm: three tanks in a row off the wall opposite the street, in the yard behind the plant. */
@@ -1212,7 +1212,7 @@ export function rooftopUnitCount(topBox: SetbackBox): number {
  * (confined to the half nearest the dock when the dock is on one end), and a
  * hatch by the back parapet.
  */
-function roofEquipment(
+export function roofEquipment(
   topBox: SetbackBox,
   roofY: number,
   side: Side | null,

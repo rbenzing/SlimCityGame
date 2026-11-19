@@ -90,6 +90,7 @@ import {
   HOSPITAL_WINDOW,
   VAN_CLEARANCE_M,
   computeHospitalLayout,
+  computeHospitalRoof,
   deckStallTaken,
   hospitalAccessibleSpaces,
   hospitalDeckSpaces,
@@ -2545,7 +2546,10 @@ describe('hospital kit', () => {
     const floor = plate * HOSPITAL_STOREYS * SQFT_PER_M2;
     expect(Math.abs(floor - HOSPITAL_BEDS * 2_500) / (HOSPITAL_BEDS * 2_500)).toBeLessThan(0.005);
     expect(HOSPITAL_STOREYS * HOSPITAL_STOREY_M).toBe(HOSPITAL.height);
-    expect(boundsOf('hospitalBlock').max.y).toBeCloseTo(HOSPITAL.height, 5);
+    // The roof plane stays at 27 m; the parapet band and the plant on it stand over it.
+    const roof = computeHospitalRoof(HOSPITAL.footprint);
+    for (const b of roof) expect(b.y).toBeCloseTo(HOSPITAL.height, 9);
+    expect(boundsOf('hospitalBlock').max.y).toBeCloseTo(Math.max(...roof.map((b) => b.y + b.h)), 5);
   });
 
   it('parks two cars a bed in the deck, 3.35 m a level and clear for a van', () => {

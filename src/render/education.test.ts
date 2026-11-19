@@ -11,13 +11,16 @@ import {
   SCHOOL_BUS_SIZE,
   UtilityKitRenderer,
   computeEducationLayout,
+  computeEducationRoof,
   educationFloorArea,
+  educationGymRise,
   educationStallRect,
   footprintHalfExtents,
   type EducationLayout,
   type Rect,
   type UtilityKitPartKind,
 } from './utilitykits';
+import { UNIT_HEIGHT_M } from './buildingkit';
 import { sizeForKind } from './vehicles';
 import catalogData from '../data/catalog.json';
 import {
@@ -204,11 +207,11 @@ describe('the wings and gyms', () => {
     expect(3 * EDU_STOREY_M).toBeCloseTo(9.6, 9);
   });
 
-  it('stand each gym 7.3 m tall at the front of the back wing, away from the side wing', () => {
+  it('stand each gym 6.7 m clear under 1 m of roof structure at the front of the back wing, away from the side wing', () => {
     for (const id of ['school', 'middle-school', 'high-school'] as const) {
       const layout = computeEducationLayout(byId(id));
       const [back, side, gym] = layout.masses;
-      expect(gym!.height).toBe(7.3);
+      expect(gym!.height).toBeCloseTo(7.7, 9);
       expect(gym!.floors).toBe(EDU_GYM.floors);
       expect(gym!.rect.z0).toBeCloseTo(back!.rect.z1, 9);
       expect(gym!.rect.x0).toBeGreaterThan(side!.rect.x1);
@@ -400,9 +403,14 @@ describe.each(EDUCATION_IDS)('the %s kit', (id) => {
     building.computeBoundingBox();
     const top = building.boundingBox!.max.y - RECYCLING_YARD_HEIGHT;
     const tallest = Math.max(...layout.masses.map((m) => m.height));
-    expect(top).toBeCloseTo(tallest, 5);
-    // The college's portico and pediment stay under its wings.
-    if (id === 'college') expect(top).toBeLessThanOrEqual(entry.height + 1e-6);
+    // What stands on the roofs is the roof plant, and a gym's gable over its eave.
+    const plant = Math.max(0, ...computeEducationRoof(entry).map((b) => b.y + b.h));
+    const gym = layout.masses.find((m) => m.floors === EDU_GYM.floors);
+    const ridge = gym ? gym.height + educationGymRise(gym.rect) : 0;
+    const highest = Math.max(tallest, plant, ridge);
+    expect(top).toBeCloseTo(highest, 5);
+    // The college's portico and pediment stay under its wings and their units.
+    if (id === 'college') expect(top).toBeLessThanOrEqual(entry.height + UNIT_HEIGHT_M + 1e-6);
   });
 
   it('stands on the highest ground under its lot, so a slope never shows through', () => {
