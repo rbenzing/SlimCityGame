@@ -2913,19 +2913,25 @@ describe('the hospital’s four faces', () => {
     }
   });
 
-  it('gives each end wall a short row of patient rooms on the nursing floors, clear of the tower', () => {
+  it('wraps the patient rooms round each end wall: a window every 4 m outside the tower on every nursing floor', () => {
     for (const face of ['west', 'east'] as const) {
       const rooms = itemsOf(face, 'window').filter((i) => i.out === 0);
       expect(itemsOf(face, 'window').every((i) => i.out === 0)).toBe(true);
+      const towerEnd = blockRect.z0 + HOSPITAL_TOWER.w;
       for (const storey of NURSING) {
-        const row = rooms.filter((i) => i.storey === storey);
-        expect(row.length).toBeGreaterThanOrEqual(2);
-        expect(row.length).toBeLessThan(
-          itemsOf('street', 'window').filter((i) => i.storey === storey).length,
-        );
-        for (const w of row) {
-          expect(w.along - w.width / 2).toBeGreaterThan(blockRect.z0 + HOSPITAL_TOWER.w);
-          expect(w.along + w.width / 2).toBeLessThan(blockRect.z1);
+        const row = rooms.filter((i) => i.storey === storey).sort((a, b) => a.along - b.along);
+        row.slice(1).forEach((w, i) => expect(w.along - row[i]!.along).toBeCloseTo(4, 9));
+        const first = row[0]!;
+        const last = row[row.length - 1]!;
+        // A pier at least the minimum at each end, and too short for one more room.
+        const pierTower = first.along - first.width / 2 - towerEnd;
+        const pierCorner = blockRect.z1 - (last.along + last.width / 2);
+        expect(pierTower).toBeCloseTo(pierCorner, 9);
+        expect(pierTower).toBeGreaterThanOrEqual(HOSPITAL_ROOMS.pier - 1e-9);
+        expect(pierTower + 4).toBeGreaterThan(HOSPITAL_ROOMS.pier + 1e-9);
+        // So every 4 m cell of the wall outside the tower holds one.
+        for (let z = towerEnd; z + 4 <= blockRect.z1 + 1e-9; z += 4) {
+          expect(row.some((w) => w.along >= z - 1e-9 && w.along < z + 4 - 1e-9)).toBe(true);
         }
       }
       expect(rooms.filter((i) => i.storey === 0)).toHaveLength(0);

@@ -3279,7 +3279,7 @@ export interface FacadeItem {
 }
 
 /** A patient room's window, 4 m centre to centre (a dial: no room width was found) and 1.8 m wide; piers at least this wide stand at each end of a row. */
-export const HOSPITAL_ROOMS = { pitch: 4, w: 1.8, pier: 2, endRooms: 3 };
+export const HOSPITAL_ROOMS = { pitch: 4, w: 1.8, pier: 2 };
 /** The ground storey's louvre band: its head and height, and the dark slats that make it up. */
 export const HOSPITAL_LOUVRE = { head: 3.6, h: 0.9, slats: 3, inset: 2 };
 /** A stair tower on each end wall, at the end nearest the rear: width along the wall, how far it stands proud, its door, and a landing's window and its sill above the floor. */
@@ -3380,7 +3380,7 @@ export function computeHospitalFacade(footprint: FootprintSize): {
   const doorsEnd = x0 + doors.fromEnd + doors.count * doors.w + (doors.count - 1) * doors.gap;
   louvre('rear', doorsEnd + doors.gap, x1 - HOSPITAL_LOUVRE.inset);
 
-  // The ends: a stair tower at the rear corner, a short row of rooms toward the street.
+  // The ends: a stair tower at the rear corner, rooms across the rest of each nursing floor.
   const towers: { face: 'west' | 'east'; rect: Rect }[] = [];
   const clearance = { west: x0 - -halfW, east: layout.deck.x0 - x1 };
   for (const face of ['west', 'east'] as const) {
@@ -3419,13 +3419,14 @@ export function computeHospitalFacade(footprint: FootprintSize): {
         out: proud,
       });
     }
+    // Rooms wrap the floor: the same pitch along the end wall outside the tower, centred between it and the street corner.
+    const span = d - HOSPITAL_TOWER.w;
+    const endRooms =
+      Math.floor((span - 2 * HOSPITAL_ROOMS.pier - HOSPITAL_ROOMS.w) / HOSPITAL_ROOMS.pitch) + 1;
+    const spanMid = back + HOSPITAL_TOWER.w + span / 2;
     for (const storey of nursing) {
-      for (let i = 0; i < HOSPITAL_ROOMS.endRooms; i++) {
-        room(
-          face,
-          storey,
-          front - HOSPITAL_ROOMS.pier - HOSPITAL_ROOMS.w / 2 - i * HOSPITAL_ROOMS.pitch,
-        );
+      for (let i = 0; i < endRooms; i++) {
+        room(face, storey, spanMid + (i - (endRooms - 1) / 2) * HOSPITAL_ROOMS.pitch);
       }
     }
     // A louvre a half-metre from the deck's wall would breathe nothing.
