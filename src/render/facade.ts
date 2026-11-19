@@ -202,9 +202,8 @@ export function storefrontCut(
   tierHeight: number,
 ): StorefrontCut | null {
   if (entry.category !== 'com' || !(tierHeight > 0)) return null;
-  // Its ground floor is bay doors, not shopfront glass; a bank's glass is its entrance and a lube's its waiting room, kit parts, on masonry walls.
-  if (entry.kind === 'autorepair' || entry.kind === 'bank' || entry.kind === 'quicklube')
-    return null;
+  // Its ground floor is bay doors, not shopfront glass; a bank's glass is its entrance and a lube's its waiting room, kit parts, on masonry walls; a medical office's windows are a regular row in plain walls.
+  if (plainWalledBody(entry)) return null;
   const body = bodyMetresFor(entry);
   const faceM = (body.w + body.d) / 2;
   const bays = Math.max(1, Math.round(faceM / STOREFRONT_BAY_M));
@@ -311,7 +310,7 @@ const COMMERCIAL_BODY_PALETTES: Readonly<Record<CommercialKind, readonly Materia
   autorepair: ['whitePlaster', 'eifsCream'],
   convenience: ['eifsCream', 'redBrick', 'eifsTan'],
   pharmacy: ['eifsBeige', 'whiteBrick'],
-  bank: ['stoneBrick', 'paintedMasonry'],
+  bank: ['eifsTan', 'redBrick'],
   medicaloffice: ['eifsCream', 'whiteBrick'],
   quicklube: ['whitePlaster', 'eifsBeige'],
 };
@@ -562,14 +561,25 @@ export function industrialAccentStripe(entry: BuildingCatalogEntry): boolean {
 const WINDOWLESS_COMMERCIAL_KINDS: ReadonlySet<string> = new Set([
   'autorepair',
   'pharmacy',
-  'bank',
   'quicklube',
 ]);
 
+/** The kinds whose wall is drawn plain, in the body's own colour, rather than as a dark frame round panes: a repair shop's and a lube's bay walls, a bank's masonry between its windows. */
+const PLAIN_WALL_KINDS: ReadonlySet<string> = new Set([
+  'autorepair',
+  'quicklube',
+  'bank',
+  'medicaloffice',
+]);
+
+/** Is this entry's wall plain (the palette colour), not the dark storefront frame that stands between a shop's panes? */
+export function plainWalledBody(entry: BuildingCatalogEntry): boolean {
+  return PLAIN_WALL_KINDS.has(entry.kind ?? '');
+}
+
 /** Does this entry's body show no window at all? The material drops every pane; the grid itself still cuts the kit's storeys and bays. */
 export function windowlessBody(entry: BuildingCatalogEntry): boolean {
-  // A repair shop's walls are blank: its glass is the office's, a kit part. A pharmacy's one storey of blank wall holds its glass in the entrance tower.
-  // A bank's glass is its entrance, and a lube's its waiting room, both kit parts.
+  // A repair shop's walls are blank: its glass is the office's, a kit part. A pharmacy's one storey of blank wall holds its glass in the entrance tower. A lube's glass is its waiting room.
   if (WINDOWLESS_COMMERCIAL_KINDS.has(entry.kind ?? '')) return true;
   const industrial = industrialKindOf(entry.kind);
   return industrial !== null && INDUSTRIAL_WINDOWLESS[industrial];

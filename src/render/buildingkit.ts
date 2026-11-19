@@ -721,6 +721,7 @@ export const MEDICAL_SIGN_M = { size: 1.6, bar: 0.3, centreY: 3.6 } as const;
 /** A quick lube: a roll-up door 3.4 m wide and 3.05 m tall in each 6.8 m module of both long faces; a waiting room glazed on the face and on the end wall away from the lane; a sign band over the doors. */
 export const LUBE_DOOR_M = { w: 3.4, h: 3.05 } as const;
 export const LUBE_SIGN_M = 10;
+export const LUBE_DOOR_RGB: RGB = [0.07, 0.08, 0.1];
 export const LUBE_WAITING_GLASS_M = { across: 3.2, height: 2.4 } as const;
 /** A machine shop's short sign, its exhaust fan on the roof (1.2 m across, this far in from the back edge) and its scrap bin, a roll-off of 3.7 by 1.8 m, 1.5 m tall. */
 export const MACHINE_SIGN_M = 4;
@@ -3546,8 +3547,9 @@ function quickLubeKit(box: SetbackBox, side: Side, lot: KitLot | null, sign: RGB
   const out: PartPlacement[] = [];
   for (const face of [side, oppositeSide(side)]) {
     for (let i = 0; i < bays; i += 1) {
-      out.push(
-        againstFacade(
+      // Dark steel doors on pale walls, so a bay reads as an opening.
+      out.push({
+        ...againstFacade(
           'rollUpDoors',
           box,
           face,
@@ -3557,7 +3559,8 @@ function quickLubeKit(box: SetbackBox, side: Side, lot: KitLot | null, sign: RGB
           LUBE_DOOR_M.h / 2,
           bayCentre(span, bays, i),
         ),
-      );
+        color: LUBE_DOOR_RGB,
+      });
     }
   }
   const { across, height } = LUBE_WAITING_GLASS_M;

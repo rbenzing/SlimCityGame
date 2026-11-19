@@ -473,7 +473,7 @@ const ART_TABLE_BODIES: Readonly<Record<CommercialKind, readonly MaterialName[]>
   autorepair: ['whitePlaster', 'eifsCream'],
   convenience: ['eifsCream', 'redBrick', 'eifsTan'],
   pharmacy: ['eifsBeige', 'whiteBrick'],
-  bank: ['stoneBrick', 'paintedMasonry'],
+  bank: ['eifsTan', 'redBrick'],
   medicaloffice: ['eifsCream', 'whiteBrick'],
   quicklube: ['whitePlaster', 'eifsBeige'],
 };
@@ -928,7 +928,7 @@ describe('deriveFacadeParams: an industrial body takes its kind palette by id ha
     // A repair shop's, a pharmacy's, a bank's and a lube's walls are blank: their glass is the kit's.
     for (const kind of COMMERCIAL_KINDS) {
       expect(windowlessBody(commercialEntry(kind)), kind).toBe(
-        ['autorepair', 'pharmacy', 'bank', 'quicklube'].includes(kind),
+        ['autorepair', 'pharmacy', 'quicklube'].includes(kind),
       );
     }
     for (const kind of OTHER_KINDS) expect(windowlessBody(entry({ kind }))).toBe(false);

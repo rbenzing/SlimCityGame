@@ -16,7 +16,7 @@ import {
   type PartPlacement,
 } from './buildingkit';
 import { tierCountOf } from './massing';
-import { windowlessBody } from './facade';
+import { plainWalledBody, windowlessBody } from './facade';
 
 const catalog = (catalogData as { buildings: BuildingCatalogEntry[] }).buildings;
 const ofKind = (kind: string, roomy: boolean): BuildingCatalogEntry[] =>
@@ -380,7 +380,9 @@ describe('a bank, a medical office and a quick lube', () => {
     for (const kind of NEW_KINDS) {
       for (const e of catalog.filter((c) => c.kind === kind)) {
         expect(tierCountOf(e), e.id).toBe(1);
-        expect(windowlessBody(e), e.id).toBe(kind !== 'medicaloffice');
+        expect(windowlessBody(e), e.id).toBe(kind === 'quicklube');
+        // A bank's masonry and a lube's plaster are drawn plain, not as the near-black storefront frame.
+        expect(plainWalledBody(e), e.id).toBe(true);
       }
     }
   });
