@@ -73,8 +73,9 @@ A shopfront block's shops add the draw of a retail floor: a mercantile building 
 | Hotel             | High commercial  | M4   | 107    | 2×2 / 2×2 / 3×3          | 4 / 6 / 8   | 11 / 28 / 128    |
 | Auto repair shop  | Low commercial   | M1   | 85     | 1×2 / 2×2 / 3×2          | 1 / 1 / 1   | 5 / 10 / 14      |
 | Convenience store | Low commercial   | M1   | 37     | 1×2 / 2×2 / 3×2          | 1 / 1 / 1   | 17 / 34 / 51     |
+| Pharmacy          | Low commercial   | M1   | 42     | 3×2 / 3×3 / 4×3          | 1 / 1 / 1   | 51 / 76 / 101    |
 
-The last two are derived in [the grounds sources](commercial-industrial-grounds.md#the-auto-repair-shop-and-the-convenience-store-in-the-catalog).
+The last three are derived in the grounds sources: [the repair shop and the store](commercial-industrial-grounds.md#the-auto-repair-shop-and-the-convenience-store-in-the-catalog), [the pharmacy](commercial-industrial-grounds.md#the-pharmacy-the-machine-shop-and-self-storage-in-the-catalog).
 
 ### Where the kinds come from
 
@@ -110,6 +111,10 @@ From the employment density guide: a shop, a food store and a restaurant run at 
 | Chemical plant | heavy | M2   | 26     | 3×3 / 4×4 / 5×4          | 10 / 12 / 15     | 25 / 44 / 56   |
 | Steelworks     | heavy | M2   | 6      | 3×3 / 4×3 / 5×3          | 12 / 15 / 18     | 46 / 62 / 77   |
 | Paper mill     | heavy | M2   | 6      | 3×3 / 4×4 / 5×4          | 10 / 13 / 15     | 46 / 82 / 103  |
+| Machine shop   | light | M1   | 2      | 1×2 / 2×2 / 3×2          | 6.1              | 10 / 21 / 31   |
+| Self-storage   | light | M1   | 8      | 3×3 / 4×4 / 5×4          | 3.0              | 2 / 2 / 3      |
+
+The last two are derived in [the grounds sources](commercial-industrial-grounds.md#the-pharmacy-the-machine-shop-and-self-storage-in-the-catalog).
 
 ### Where the kinds come from
 
