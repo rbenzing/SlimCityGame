@@ -3413,7 +3413,7 @@ describe('a suburban lot meets its parking code, the kerb’s stalls counted', (
     return registry;
   };
 
-  it('stands a strip on its roomy lot below Small City, with a kerb painting parking or none', () => {
+  it('stands a strip on its roomy lot below Grand City, with a kerb painting parking or none', () => {
     const grownOn = (profile: RoadProfile | null): string[] => {
       const { g, kerb } = parkedBlock(profile, 12);
       return growOnce(g, kerb, withLots('com-strip-1'))
@@ -3426,11 +3426,11 @@ describe('a suburban lot meets its parking code, the kerb’s stalls counted', (
     }
   });
 
-  it('stands a strip on a smaller lot on a street painting parallel parking than on one painting none, from Small City on land of the best standing', () => {
+  it('stands a strip on a smaller lot on a street painting parallel parking than on one painting none, from Grand City on land of the best standing', () => {
     const area = (id: string): number => byId(id).footprint.w * byId(id).footprint.d;
     const grownOn = (profile: RoadProfile | null): string[] => {
       const { g, kerb } = parkedBlock(profile, 12);
-      return growOnce(g, kerb, withLots('com-strip-1'), undefined, undefined, undefined, 4)
+      return growOnce(g, kerb, withLots('com-strip-1'), undefined, undefined, undefined, 5)
         .all()
         .map((b) => b.catalogId);
     };

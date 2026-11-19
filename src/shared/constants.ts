@@ -225,8 +225,8 @@ export const MILESTONES: readonly Milestone[] = [
  * public works. One source for every rule that cuts over there.
  */
 export const BIG_TOWN_MILESTONE = MILESTONES.findIndex((m) => m.name === 'Big Town');
-/** The index of Small City, 8,000 people: the rung from which the dense kinds unlock and a new shop or works may take the compact lot. */
-export const SMALL_CITY_MILESTONE = MILESTONES.findIndex((m) => m.name === 'Small City');
+/** The index of Grand City, 20,000 people: the rung from which a new shop or works may take the compact lot. */
+export const GRAND_CITY_MILESTONE = MILESTONES.findIndex((m) => m.name === 'Grand City');
 /**
  * The milestone from which a building on the mains needs a drain. Below it
  * the whole town is on septic tanks, as a community under the Census' old
