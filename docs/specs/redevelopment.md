@@ -29,6 +29,7 @@
 | `ABANDONED_MIN_PASSES` | 10 growth passes (100 ticks) abandoned before it may be cleared | passes | the old wait, now a floor |
 | Storeys of a building gone up | the next level's floor over this lot's plate, rounded up | storeys | the same floor, stacked |
 | Tallest a rebuild goes | 80 (25 storeys), the catalog's tallest | m | dial |
+| Earliest a building parks in itself | Big Town (3,500) | — | dial: where the first garages already appear |
 | Levels below ground | 2 at most | levels | dial |
 | A built-in space | 30 (325 sq ft) | m² | the garage's own figure |
 | A parking level, floor to floor | 3.35 (11 ft) | m | the garage's own figure |
@@ -66,11 +67,13 @@ A level-up already demolishes and rebuilds: the old building goes, a site stands
 
 Roomy lots are the room to grow into. A shop on a lot twice its size is rebuilt larger on that lot before it asks for a neighbour's ground, so a town thickens where it stands. Where the larger building's car park no longer fits on the ground, and no ground is free beside it, the building goes up and takes its cars with it.
 
-Of the catalog's level-ups, 57 of 84 need a larger lot than the building's compact one. For most of them the roomy lot is that larger lot, so the first rebuild is free; it is the second that meets the neighbours.
+Of the catalog's level-ups, 57 of 84 need a larger lot than the building's compact one. A roomy lot is often as large as the next level's compact lot, but that lot's car park does not fit on it without kerb stalls: measured, a level-1 shop on its roomy lot with no free ground beside it never rebuilt at all. So the way up is needed at the first rebuild, not only the second.
 
 ### Going up
 
-A kind that stacks goes up: the shop, the restaurant, the office, the hotel, the mid-rise, the mixed block and the tower. The building it becomes holds the next level's floor, jobs and homes on the lot it already has, in as many storeys as that floor needs. A shop that would have spread over four tiles stands two storeys on two.
+A kind that stacks goes up: the shop, the restaurant, the office, the hotel, the mid-rise, the mixed block and the tower. The building it becomes holds the next level's floor, jobs and homes on the lot it already has, in as many storeys as that floor needs, with its parking built in. A shop that would have spread over four tiles stands two storeys on two; on a lot already large enough it keeps one storey and only its cars go below.
+
+No town below Big Town builds one: an underground garage in a village is wrong, and a first town grows as it always has.
 
 A kind that cannot stack waits for ground: a filling station, a strip, a supermarket, a works, and the purpose-built kinds are one storey by their trade.
 
