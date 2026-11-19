@@ -83,6 +83,8 @@ Growth takes that roomy rung while the town is below Small City, wherever the zo
 
 A block too shallow or too short for the roomy rung grows the next rung down, and at last the compact lot, as it does now. A first town never waits on grounds.
 
+A lot stands with its long side on its street. The platted zones always turned their lots; industry did not, so on a north-south street a works' roomy lot never fitted. Each rung is now tried long side on the street first, then the other way, before the next rung down. A lot larger than its building never lays a loading berth across a car park aisle.
+
 Each kind's roomy lot is [measured on the layout](../sources/commercial-industrial-grounds.md#the-roomy-lot-of-each-kind). On a roomy rung the car park keeps a 1.5 m planted strip inside every lot line. A kind already under the target (the filling station, the chemical works) keeps its lot. A level-up takes the next level's roomy lot where the ground beside it is free, and otherwise builds up on the lot it has, as before: it never gives ground back and is never refused for want of grounds.
 
 Roomy lots hold fewer jobs a tile: a zone keeps about three fifths of what it held, so the same town needs two thirds as much zoned land again for its shops and works. That is the price of the request, and the Demand panel shows it as room, not as a fault.
