@@ -100,6 +100,12 @@ The first two are derived in [the sources](../sources/commercial-industrial-grou
 - **The auto repair shop** is a row of roll-up bay doors 3.7 m wide on its street face, three to eleven of them, with a glazed office and its door at one end, a sign band over the bays, a tyre rack and a waste-oil tank on the side wall, and customers' cars on the lot. It has no shopfront canopy.
 - **The convenience store** is a glazed front the width of the building under a bright canopy band, an ice locker and a propane cage against the front wall, bollards along the front walk, and condensers on the roof.
 
+Three more are [derived the same way](../sources/commercial-industrial-grounds.md#the-pharmacy-the-machine-shop-and-self-storage-in-the-catalog):
+
+- **The pharmacy** is a large one-storey shop with its entrance in a taller corner tower, a sign band on two faces, and on one side wall a drive-through window under a small canopy with a lane that holds three cars clear of the car park's aisles.
+- **The machine shop** is a small metal-sided works: one grade-level roll-up door and an office door on the street face, a short sign, an exhaust fan on the roof, a scrap bin in its fenced yard.
+- **Self-storage** is not one building but rows: one-storey ranges about 9 m wide, the plate's length, each wall a run of roll-up doors 3 m apart, with 7.3 m drives between them, a small office at the street end of the first row, and the whole behind a fence with a keypad gate at the drive.
+
 Their roomy lots are measured and checked as every other kind's. A repair shop is one storey with no window above its doors, its walls light so the doors read; the walk, the bench and the bin go to its office door, since the bay row is a door from end to end.
 
 A kind also varies in plan, not only in colour: the building at the street or behind its car park, a strip in a line or an L, storage in rows, a shop with a detached canopy. The variant comes from the lot's id, as the palette does.
