@@ -37,6 +37,11 @@ again, update the figure here and nowhere else.
 
 - What a review of every shot the tools write found wrong in the game is
   ranked in [open-visual-defects.md](roadmap/open-visual-defects.md).
+- [Buildings rise with the town](specs/redevelopment.md) is agreed and not
+  yet built `[R-world-057]` `[R-world-058]` `[R-services-044]`: a storey
+  ceiling by town size, a standing building rebuilt larger on its own lot
+  first, and parking built into a building that goes up. Until then every
+  dense kind still unlocks at Small City or earlier.
 - A bend turns at its kerb return's radius, not its class's minimum curve
   radius `[R-roads-081]`: the wider sweep leaves the tiles the road holds, so
   lots, traffic and saves would have to follow it. Not yet bends: a one-way

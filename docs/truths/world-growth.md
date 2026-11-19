@@ -340,3 +340,20 @@ Back to [the index](../GROUND-TRUTHS.md).
   never changes whether the lot fits or how many spaces it holds, and
   nothing of it is saved. —
   [purpose-built-kinds.md](../specs/purpose-built-kinds.md)
+- [R-world-057] No zoned building grows taller than its town's size allows: the storey
+  ceiling rises with each milestone, and a works' hall is exempt. A
+  building already standing above a ceiling is kept; a ceiling never
+  tears one down. — [redevelopment.md](../specs/redevelopment.md);
+  `unlockMilestone` in `src/data/catalog.json`
+- [R-world-058] A standing building is rebuilt at its next level first on the lot it
+  has, where the larger building and its code car park fit; then on a
+  larger lot, where the ground beside it is free; and last on the lot it
+  has with its parking built in. It never moves to a smaller lot, is never
+  refused for want of grounds, and is never asked of a first town. —
+  [redevelopment.md](../specs/redevelopment.md)
+- [R-world-059] An abandoned building stands, boarded, until demand for its zone is high
+  enough, and is then demolished so its lot can regrow; no clock removes
+  it. The player's bulldozer clears it at any time, and it reopens the
+  moment its power, water and road return. —
+  [redevelopment.md](../specs/redevelopment.md);
+  `ABANDONED_CLEAR_DEMAND` in `src/sim/growth.ts`

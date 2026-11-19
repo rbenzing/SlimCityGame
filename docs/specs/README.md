@@ -35,4 +35,5 @@ One spec a built feature, card first; the template is [_template.md](_template.m
 | [airport-facilities.md](airport-facilities.md) | An airport's fence, tower, fuel, hangars, cargo, garages, loop road, signs and boarding bridges |
 | [paved-corners.md](paved-corners.md) | The radius every paved corner turns on: car parks, islands, plot roads, alleys and taxiways |
 | [commercial-industrial-grounds.md](commercial-industrial-grounds.md) | A shop's and a works' lot furniture, and roomy lots below Grand City |
+| [redevelopment.md](redevelopment.md) | How tall a building may be for the town's size, how a standing one is rebuilt larger, and parking built into a building |
 | [purpose-built-kinds.md](purpose-built-kinds.md) | The auto shop, the store, the pharmacy, the bank and the other purpose-built kinds, their lanes, and how a lot's plan varies |

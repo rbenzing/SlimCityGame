@@ -317,3 +317,9 @@ Back to [the index](../GROUND-TRUTHS.md).
   lane lays none. —
   [purpose-built-kinds.md](../specs/purpose-built-kinds.md); `sideWindow`
   in `src/shared/lotlayout.ts`
+- [R-services-044] A building that builds up on a lot too small for its car park carries
+  its parking in itself: below ground first, then on its ground floor
+  behind a shopfront or a lobby on the street face. Each shows a ramp and
+  a portal; every built-in space is counted, a level above ground adds a
+  storey, and no floor is cut for it. —
+  [redevelopment.md](../specs/redevelopment.md)
