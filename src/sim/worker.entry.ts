@@ -226,7 +226,7 @@ import { FieldSim } from './fields';
 import { footprintForRotation } from '../shared/footprint';
 import { PLACEMENT_REFUSALS } from '../shared/placement';
 import { BuildingRegistry, settleBuildingDelta, standingTiles } from './buildings';
-import { computeDemand, jobRoom } from './demand';
+import { computeDemand, housingRoom, jobRoom } from './demand';
 import { GrowthSystem, levelReadTile, schoolsMissingAt, type GrowthSupply } from './growth';
 import { gridKerbSurroundings } from './kerbsurroundings';
 import { ServiceSim, nearestRoadTile, openSpaceOf } from './services';
@@ -696,6 +696,7 @@ class SimWorld implements WorkerSim {
     population: 0,
     jobs: { com: 0, ind: 0 },
     pipeline: { com: 0, ind: 0 },
+    peopleGoingUp: 0,
   };
   /** Whom the last utility pass cut and what it left spare; nothing is spare before the first. */
   private supply: GrowthSupply = {
@@ -1046,6 +1047,7 @@ class SimWorld implements WorkerSim {
       population: this.stats.population,
       jobs: this.occupancy.jobs,
       pipeline: this.occupancy.pipeline,
+      peopleGoingUp: this.occupancy.peopleGoingUp,
       taxRates: this.stats.taxRates,
       happiness: this.stats.happiness,
     };
@@ -1058,7 +1060,7 @@ class SimWorld implements WorkerSim {
       this.stats.milestoneLevel,
       t,
       this.supply,
-      jobRoom(demandInput),
+      { ...jobRoom(demandInput), res: housingRoom(demandInput) },
       // The stalls the streets paint, which a car park counts toward its code.
       () => gridKerbSurroundings(g, this.network.getNodes(), (id) => this.profileForId(id)),
     );

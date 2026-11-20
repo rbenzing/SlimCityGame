@@ -2,6 +2,9 @@
 
 - **RCI demand bars** (bottom-left) — green Residential, blue Commercial, orange
   Industrial. Full bars mean that zone type is in demand; paint more of it. A
+  bar is full when the town is a tenth short of that zone and empty when it
+  is a tenth over. Homes come only as fast as work does, so nearly everyone
+  who wants a job has one; a happier town draws people faster. A
   town grows like a real one: its first homes come before any work, then it
   needs industry — the mills and factories it lives by — and shops only follow
   once there are wages to spend, about four shop jobs for every five industrial

@@ -111,7 +111,12 @@ const LEVEL_2_LAND_VALUE = 140;
 const LEVEL_3_LAND_VALUE = 190;
 const HIGH_CRIME = 170;
 const HIGH_POLLUTION = 170;
-const LOW_DEMAND = -0.5;
+/**
+ * A building is flagged Low Demand when its sector's demand is at the floor of
+ * its range: the bar is empty, a tenth or more over what the town supports (a
+ * floor's worth of jobs, in a town small enough that a floor rules).
+ */
+const LOW_DEMAND = -1;
 
 function zoneSector(zone: ZoneType): Sector | null {
   switch (zone) {
@@ -350,8 +355,38 @@ interface HeldForRoom {
   jobsAdded: number;
 }
 
-/** An economy with room for any business, for callers that run no demand model. */
-export const UNLIMITED_ROOM: JobsBySector = { com: Infinity, ind: Infinity };
+/**
+ * What the town has room for: the jobs each business sector can still take and
+ * the people the homes can still house. Handed out once a pass, and each
+ * building placed takes its share at once.
+ */
+export interface GrowthRoom extends JobsBySector {
+  res: number;
+}
+
+/** An economy with room for any business and any home, for callers that run no demand model. */
+export const UNLIMITED_ROOM: GrowthRoom = { com: Infinity, ind: Infinity, res: Infinity };
+
+/** The people `entry` houses for the housing room: a home's residents; a farmhouse, and anything that is no home, none. */
+function housedBy(entry: BuildingCatalogEntry): number {
+  if (farmKindOf(entry) !== null || entry.zone === undefined) return 0;
+  return zoneSector(entry.zone) === 'res' ? (entry.residents ?? 0) : 0;
+}
+
+/**
+ * The homes among `candidates` whose people fit the housing room, or, where
+ * some room is left and none fits, the smallest of them, so growth never
+ * stalls at a gap smaller than any home. Kinds that house nobody pass.
+ */
+function withinHousingRoom(
+  candidates: readonly BuildingCatalogEntry[],
+  room: number,
+): BuildingCatalogEntry[] {
+  const fits = candidates.filter((e) => housedBy(e) <= room);
+  if (fits.length > 0 || room <= 0) return fits;
+  const smallest = Math.min(...candidates.map(housedBy));
+  return candidates.filter((e) => housedBy(e) === smallest);
+}
 
 /**
  * The business kinds among `candidates` whose jobs fit the sector's `room`,
@@ -371,25 +406,27 @@ export function withinRoom(
 
 /**
  * The kinds of a lot's `sector` that may open: a business by `withinRoom`; in
- * a residential-demand zone the homes untouched, and the kinds that carry jobs
- * only where they fit the commerce room, or where shops are wanted and it is
- * the fewest-jobs of them, so growth never stalls at a gap smaller than any.
+ * a residential-demand zone the homes and the kinds that carry jobs, the
+ * latter only where they fit the commerce room, or where shops are wanted and
+ * it is the fewest-jobs of them, so growth never stalls at a gap smaller than
+ * any; and of those only the homes whose people fit the housing room (see
+ * `withinHousingRoom`).
  */
 function withinJobRoom(
   candidates: readonly BuildingCatalogEntry[],
   sector: Sector,
   demand: DemandLevels,
-  room: JobsBySector,
+  room: GrowthRoom,
 ): BuildingCatalogEntry[] {
   if (sector !== 'res') return withinRoom(candidates, sector, room);
   const homes = candidates.filter((e) => jobRoomSector(e) === null);
-  if (homes.length === candidates.length) return homes;
+  if (homes.length === candidates.length) return withinHousingRoom(homes, room.res);
   const jobbed = candidates.filter((e) => jobRoomSector(e) !== null);
   const open =
     demand.com > 0
       ? withinRoom(jobbed, 'com', room)
       : jobbed.filter((e) => (e.jobs ?? 0) <= room.com);
-  return [...homes, ...open];
+  return withinHousingRoom([...homes, ...open], room.res);
 }
 
 /** Something growth would build or level up but for the supply: the pass it last asked in, and what it wanted, in utility units. */
@@ -434,7 +471,7 @@ function computeProblems(
   if (fieldAt(g, FieldId.Crime, idx) > HIGH_CRIME) problems |= Problem.HighCrime;
   if (sector === 'res' && fieldAt(g, FieldId.Pollution, idx) > HIGH_POLLUTION)
     problems |= Problem.HighPollution;
-  if (demandForSector < LOW_DEMAND) problems |= Problem.LowDemand;
+  if (demandForSector <= LOW_DEMAND) problems |= Problem.LowDemand;
   return problems;
 }
 
@@ -786,7 +823,7 @@ export class GrowthSystem {
     milestoneLevel: number,
     tickNo: number,
     supply: GrowthSupply = UNMETERED_SUPPLY,
-    room: JobsBySector = UNLIMITED_ROOM,
+    room: GrowthRoom = UNLIMITED_ROOM,
     /** The roads as the kerb stall layout reads them, built on demand; null, no street paints a stall. */
     kerb: (() => KerbSurroundings) | null = null,
   ): BuildingDelta {
@@ -804,7 +841,7 @@ export class GrowthSystem {
         sewer: supply.sewer.spare,
       };
       // The room, like the spare supply, is handed out once per pass.
-      const roomLeft: JobsBySector = { ...room };
+      const roomLeft: GrowthRoom = { ...room };
       this.forgetStaleWaits(pass);
       this.processProblemsAndAbandonment(
         g,
@@ -1130,7 +1167,7 @@ export class GrowthSystem {
     milestoneLevel: number,
     pass: number,
     spare: Spare,
-    room: JobsBySector,
+    room: GrowthRoom,
     plats: PlatPass,
     parks: ParkingCheck,
     added: BuildingInstance[],
@@ -1161,7 +1198,7 @@ export class GrowthSystem {
           removed,
         );
       if (!leveled)
-        this.tryConvert(g, registry, milestoneLevel, spare, inst, entry, added, removed);
+        this.tryConvert(g, registry, milestoneLevel, spare, room, inst, entry, added, removed);
     }
     // A gap smaller than any step must not stall growth: the held business
     // adding the fewest jobs (the first met on a tie) levels up past the
@@ -1222,6 +1259,7 @@ export class GrowthSystem {
     registry: BuildingRegistry,
     milestoneLevel: number,
     spare: Spare,
+    room: GrowthRoom,
     inst: BuildingInstance,
     entry: BuildingCatalogEntry,
     added: BuildingInstance[],
@@ -1244,6 +1282,9 @@ export class GrowthSystem {
     );
     if (candidates.length === 0) return false;
     const plex = drawKind(candidates, candidates.length > 1 ? this.rng.next() : 0);
+    // A teardown that houses more people goes ahead only where they fit.
+    const peopleAdded = housedBy(plex) - housedBy(entry);
+    if (peopleAdded > 0 && peopleAdded > room.res) return false;
 
     const { x, z, rotation } = inst;
     const footprint = footprintForRotation(entry, rotation);
@@ -1269,6 +1310,7 @@ export class GrowthSystem {
     spare.power -= power;
     spare.water -= water;
     spare.sewer -= sewer;
+    room.res -= peopleAdded;
 
     this.constructing.set(placed.id, CONSTRUCTION_TICKS);
     this.blockerStreak.delete(inst.id);
@@ -1284,7 +1326,7 @@ export class GrowthSystem {
     milestoneLevel: number,
     pass: number,
     spare: Spare,
-    room: JobsBySector,
+    room: GrowthRoom,
     /** Where a business short only of job room is noted, or 'allowed' to level it up past the room. */
     held: HeldForRoom[] | 'allowed',
     plats: PlatPass,
@@ -1405,6 +1447,12 @@ export class GrowthSystem {
         tiles: standingTiles(g.size, nx, nz, newFootprint.w, newFootprint.d, inst.frame),
       },
     );
+    // A level-up that houses more people goes ahead only where they fit.
+    const peopleAdded = housedBy(nextEntry) - housedBy(entry);
+    if (peopleAdded > 0 && peopleAdded > room.res) {
+      if (inst.frame === undefined) writeStamp(g, x, z, oldFootprint.w, oldFootprint.d, inst.id);
+      return false;
+    }
     if (
       !this.suppliedFor(waitKey, [], pass, spare, power, water, sewer) ||
       (farm !== null && this.rng.next() >= demand.ind)
@@ -1439,6 +1487,7 @@ export class GrowthSystem {
     spare.water -= water;
     spare.sewer -= sewer;
     if (jobSector !== null) room[jobSector] -= jobsAdded;
+    room.res -= peopleAdded;
 
     this.constructing.set(placed.id, CONSTRUCTION_TICKS);
     this.blockerStreak.delete(inst.id);
@@ -1559,7 +1608,7 @@ export class GrowthSystem {
     milestoneLevel: number,
     pass: number,
     spare: Spare,
-    room: JobsBySector,
+    room: GrowthRoom,
     plats: PlatPass,
     parks: ParkingCheck,
     added: BuildingInstance[],
@@ -1732,7 +1781,7 @@ export class GrowthSystem {
     milestoneLevel: number,
     pass: number,
     spare: Spare,
-    room: JobsBySector,
+    room: GrowthRoom,
     plats: PlatPass,
     added: BuildingInstance[],
     zone: ZoneType,
@@ -1863,7 +1912,7 @@ export class GrowthSystem {
     milestoneLevel: number,
     pass: number,
     spare: Spare,
-    room: JobsBySector,
+    room: GrowthRoom,
     added: BuildingInstance[],
     x: number,
     z: number,
@@ -1919,7 +1968,7 @@ export class GrowthSystem {
     milestoneLevel: number,
     pass: number,
     spare: Spare,
-    room: JobsBySector,
+    room: GrowthRoom,
     added: BuildingInstance[],
     frame?: ParcelFrame,
     claimed?: readonly TilePoint[],
@@ -1942,6 +1991,7 @@ export class GrowthSystem {
     spare.sewer -= sewer;
     const jobSector = jobRoomSector(entry);
     if (jobSector !== null) room[jobSector] -= entry.jobs ?? 0;
+    room.res -= housedBy(entry);
     this.constructing.set(placed.id, CONSTRUCTION_TICKS);
     added.push(placed);
   }

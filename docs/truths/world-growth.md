@@ -285,3 +285,25 @@ Back to [the index](../GROUND-TRUTHS.md).
   its back row and one on the south or east by its front. —
   [environmental-simulation.md](../world-sim/environmental-simulation.md#landvalue-fieldidlandvalue--0);
   `levelReadTile` in `src/sim/growth.ts`
+- [R-world-066] Homes are held to housing room as businesses are to job room. The room
+  is the people residential demand still calls for, the people of homes
+  going up counted as housed. A home, a mixed block, a level-up or a
+  conversion that adds people goes ahead only where they fit, and takes
+  them from the room at once. With room left and no kind small enough, the
+  lot's smallest home still opens; a step that adds nobody is never held. —
+  [demand-the-rci-model.md](../game-design/simulation-rules/demand-the-rci-model.md);
+  `housingRoom` in `src/sim/demand.ts`
+- [R-world-067] The founders who come before there is work are a fixed 60 workers
+  (`FOUNDER_WORKERS`), never a share of the town. As a share (the old 0.3)
+  it let 30 workers in 100 stand idle at any size. A town under 400 people
+  reads exactly as it did. —
+  [demand-the-rci-model.md](../game-design/simulation-rules/demand-the-rci-model.md);
+  `computeDemand` in `src/sim/demand.ts`
+- [R-world-068] A demand value is its sector's shortfall over a tenth of its target
+  (`DEMAND_FULL_SHARE`), never over the whole target, and never under the
+  sector's floor. The scale never moves a value's zero, a room, or the
+  jobs a tax point shifts: the rooms bound what is built, the value only
+  sets how readily. Over the whole target a balanced town read 0.01 to
+  0.05 and grew 3.2 times slower. —
+  [demand-the-rci-model.md](../game-design/simulation-rules/demand-the-rci-model.md);
+  `fullScale` in `src/sim/demand.ts`
