@@ -30,12 +30,13 @@ sector's tax rate, and city-wide happiness, with no randomness:
   with no industry supports no shops however many people live in it, and
   shops beyond what its industry supports stand empty. The 8 is one corner
   shop's jobs (`com-low-1`, the first low-commercial entry in the catalog).
-- **Residential** = 0.3 + (jobs − workforce) ÷ max(200, population × 0.5) +
-  (happiness − 50) ÷ 150 − (resTax − 9%) × 4. People follow work: empty jobs
-  pull residents in, and a workforce with no work for it turns them away. The
-  0.3 lets a town's first households — its founders — arrive before there is
-  any work at all. A happier city draws people; a residential tax above the
-  9% default repels them.
+- **Residential** = (jobs + 60 − workforce, housed or going up) ÷ max(200,
+  population × 0.5) + (happiness − 50) ÷ 150 − (resTax − 9%) × 4. People
+  follow work: empty jobs pull residents in, and a workforce with no work for
+  it turns them away. The 60 are a town's founders, the workers who arrive
+  before there is any work at all (`FOUNDER_WORKERS`, a dial): a fixed
+  number, never a share of the town `[R-world-067]`. A happier city draws
+  people; a residential tax above the 9% default repels them.
 
 Jobs in buildings still under construction count as supply on both sides —
 industrial ones against the basic jobs wanted, commercial ones against the
@@ -52,6 +53,16 @@ homes over shops, so it answers to both: demand for homes, and commerce's
 room for its shop jobs `[R-world-062]`. Left unchecked, a town of 8,000
 held 2,060 commercial jobs where its industry supported 1,530, most of
 them under mixed blocks, and no shop or office opened after Big Town.
+
+Homes have a room too `[R-world-066]`: the people residential demand still
+calls for, with the people of homes going up counted as housed already. A
+home, a mixed block, a level-up or a conversion that adds people goes ahead
+only where they fit, and each one built takes its people from the room at
+once. Growth never stalls at a gap smaller than any home: while some room is
+left a lot's smallest kind may open, and a house that gains a level with the
+same family in it is not counted at all. Unheld, the milestone that
+unlocks towers housed 10,000 people in 200 ticks on ground already zoned,
+and the share of the workforce in work fell from 86% to 67%.
 
 Every result is clamped to -1..1. So a new town grows the way a farming or
 mill town does: its first households arrive, the industry they need follows,
