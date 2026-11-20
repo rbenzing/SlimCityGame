@@ -333,6 +333,26 @@ describe('EconomySystem: population/jobs/employed aggregation', () => {
     expect(occupancy.jobs).toEqual({ com: 0, ind: 1 });
   });
 
+  it('tallies the residents of buildings under construction apart from the population, and counts no one twice or not at all', () => {
+    const g = makeGrid();
+    const buildings: BuildingInstance[] = [];
+    const sys = new EconomySystem([...catalog, mixedBlock], roadSpecs);
+    place(g, buildings, 1, 'res', 0, 0);
+    place(g, buildings, 2, 'res', 1, 0, BuildingState.Constructing);
+    place(g, buildings, 3, 'mixed', 2, 0, BuildingState.Constructing);
+    place(g, buildings, 4, 'res', 3, 0, BuildingState.Abandoned);
+    const occupancy = sys.occupancy(buildings);
+    // The home going up and the block going up are not yet people; an abandoned one is neither.
+    expect(occupancy.population).toBe(10);
+    expect(occupancy.peopleGoingUp).toBe(10 + 30);
+    // Once the replacement opens it is population, and no longer going up.
+    buildings[1]!.state = BuildingState.Active;
+    buildings[2]!.state = BuildingState.Active;
+    const open = sys.occupancy(buildings);
+    expect(open.population).toBe(10 + 10 + 30);
+    expect(open.peopleGoingUp).toBe(0);
+  });
+
   it('counts Mixed (res-category) buildings into BOTH population and jobs (§6.21)', () => {
     const g = makeGrid();
     const buildings: BuildingInstance[] = [];

@@ -118,6 +118,13 @@ export interface Occupancy {
   jobs: JobsBySector;
   /** Jobs in buildings under construction: supply a developer can already see. */
   pipeline: JobsBySector;
+  /**
+   * The residents of buildings under construction, not yet in `population`. A
+   * level-up or conversion removes the old building and raises the new one
+   * under construction, so its family is in this tally and no longer in the
+   * population: counted once.
+   */
+  peopleGoingUp: number;
 }
 
 /**
@@ -182,11 +189,13 @@ export class EconomySystem {
     let population = 0;
     const jobs: JobsBySector = { com: 0, ind: 0 };
     const pipeline: JobsBySector = { com: 0, ind: 0 };
+    let peopleGoingUp = 0;
     for (const b of buildings) {
       if (b.state === BuildingState.Abandoned) continue;
       const spec = this.catalog.get(b.catalogId);
       if (!spec) continue;
       const open = b.state === BuildingState.Active;
+      if (!open) peopleGoingUp += spec.residents ?? 0;
       const tally = open ? jobs : pipeline;
       // Whoever lives in it, whatever it is: a farm's family live on the farm.
       population += occupiedResidents(spec, b);
@@ -199,7 +208,7 @@ export class EconomySystem {
       } else if (spec.category === 'com') tally.com += spec.jobs ?? 0;
       else if (spec.category === 'ind') tally.ind += spec.jobs ?? 0;
     }
-    return { population, jobs, pipeline };
+    return { population, jobs, pipeline, peopleGoingUp };
   }
 
   tick(input: EconomyTickInput): EconomyTickResult {

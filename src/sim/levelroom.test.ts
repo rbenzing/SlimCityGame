@@ -88,7 +88,10 @@ function town(zone: ZoneType, standing: [string, number][], beyond?: ZoneType): 
     growth,
     ids,
     pass: (demand, room) => {
-      growth.tick(g, registry, demand, MILESTONE, tickNo, UNMETERED_SUPPLY, room);
+      growth.tick(g, registry, demand, MILESTONE, tickNo, UNMETERED_SUPPLY, {
+        ...room,
+        res: Infinity,
+      });
       tickNo += 10;
     },
   };
@@ -212,7 +215,7 @@ describe('a level-up is held to job room, with one small step a pass past it', (
         0,
         tickNo,
         UNMETERED_SUPPLY,
-        { com: 0, ind: room },
+        { com: 0, ind: room, res: Infinity },
       );
       return registry;
     };

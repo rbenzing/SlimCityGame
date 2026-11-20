@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { SEWER_MILESTONE, TICKS_PER_YEAR, tileIndex } from '../shared/constants';
 import { BuildingState, FieldId, Problem, RoadTier, ZoneType } from '../shared/types';
-import type { JobsBySector } from './economy';
 import type {
   BuildingCatalogEntry,
   BuildingInstance,
@@ -20,6 +19,7 @@ import {
   UNLIMITED_ROOM,
   UNMETERED_SUPPLY,
   ABANDONED_CLEAR_DEMAND,
+  type GrowthRoom,
   ABANDONED_MIN_PASSES,
   drawKind,
   farmKindFor,
@@ -613,6 +613,23 @@ describe('GrowthSystem', () => {
         expect(now.problems & Problem.LowDemand).toBe(Problem.LowDemand);
         expect(now.vacancies).toBe(3);
       }
+    });
+
+    it('flags LowDemand only when the sector’s bar is empty: a tenth over what the town supports', () => {
+      const flagged = (res: number): boolean => {
+        const g = makeGrid();
+        const registry = new BuildingRegistry(growthCatalog);
+        const inst = registry.place(g, resL1, 3, 3, 0, BuildingState.Active)!;
+        keepServiced(g, 3, 3);
+        const growth = new GrowthSystem(growthCatalog, constantRng(0), alwaysTrue);
+        for (let pass = 0; pass < 5; pass++) {
+          growth.tick(g, registry, { res, com: 0, ind: 0 }, 0, pass * 10);
+        }
+        return (registry.get(inst.id)!.problems & Problem.LowDemand) !== 0;
+      };
+      expect(flagged(-0.5)).toBe(false); // 5% over on the narrow scale
+      expect(flagged(-0.95)).toBe(false);
+      expect(flagged(-1)).toBe(true);
     });
 
     /** An unpowered home abandoned after three passes at the given demand. */
@@ -2528,7 +2545,11 @@ describe('a business opens where the town has room for its jobs', () => {
     const registry = new BuildingRegistry(catalog);
     // A roll near one would pick the strip, the heavier kind, whenever it is a candidate.
     const growth = new GrowthSystem(catalog, constantRng(0.99), onZoned(ZoneType.ComLow));
-    growth.tick(g, registry, wantsShops, 1, 0, UNMETERED_SUPPLY, { com: 10, ind: 0 });
+    growth.tick(g, registry, wantsShops, 1, 0, UNMETERED_SUPPLY, {
+      com: 10,
+      ind: 0,
+      res: Infinity,
+    });
     const grown = registry.all().map((b) => b.catalogId);
     expect(grown.length).toBeGreaterThan(0);
     expect(new Set(grown)).toEqual(new Set(['shop-1']));
@@ -2542,7 +2563,11 @@ describe('a business opens where the town has room for its jobs', () => {
     const growth = new GrowthSystem(catalog, constantRng(0.99), onZoned(ZoneType.ComLow));
     // Room for one strip and a little over: the first lot takes it, the next gets a shop.
     // With no kerb parking on the street, the strip stands on the lot that holds its code.
-    growth.tick(g, registry, wantsShops, 1, 0, UNMETERED_SUPPLY, { com: 60, ind: 0 });
+    growth.tick(g, registry, wantsShops, 1, 0, UNMETERED_SUPPLY, {
+      com: 60,
+      ind: 0,
+      res: Infinity,
+    });
     expect(registry.all().map((b) => b.catalogId)).toEqual(['strip-1-lot5x2', 'shop-1']);
   });
 
@@ -2595,7 +2620,7 @@ describe('a business opens where the town has room for its jobs', () => {
     g: GridState,
     cat: BuildingCatalogEntry[],
     rng = constantRng(0.99),
-    room: JobsBySector = UNLIMITED_ROOM,
+    room: GrowthRoom = UNLIMITED_ROOM,
     passes = 32,
   ): BuildingRegistry => {
     const registry = new BuildingRegistry(cat);
@@ -2628,7 +2653,7 @@ describe('a business opens where the town has room for its jobs', () => {
         fronting('S', 2),
         [one, fuel],
         constantRng(roll),
-        { com: 9, ind: 0 },
+        { com: 9, ind: 0, res: Infinity },
         1,
       );
       expect(registry.all()).toHaveLength(1);
@@ -2699,15 +2724,23 @@ describe('a business opens where the town has room for its jobs', () => {
     g.fields[FieldId.LandValue]![tileIndex(0, 1)] = 200;
     const growth = new GrowthSystem(catalog, constantRng(0), onZoned(ZoneType.ComHigh));
 
-    growth.tick(g, registry, wantsShops, 4, 0, UNMETERED_SUPPLY, { com: 500, ind: 0 });
+    growth.tick(g, registry, wantsShops, 4, 0, UNMETERED_SUPPLY, {
+      com: 500,
+      ind: 0,
+      res: Infinity,
+    });
     expect(registry.get(inst.id)!.level).toBe(1);
 
-    growth.tick(g, registry, wantsShops, 4, 10, UNMETERED_SUPPLY, { com: 592, ind: 0 });
+    growth.tick(g, registry, wantsShops, 4, 10, UNMETERED_SUPPLY, {
+      com: 592,
+      ind: 0,
+      res: Infinity,
+    });
     expect(registry.get(inst.id)).toBeUndefined();
     expect(registry.all().map((b) => b.catalogId)).toEqual(['office-2']);
   });
 
-  it('never holds a home to the room: homes follow residential demand alone', () => {
+  it('never holds a home to the job room: homes follow residential demand and the housing room', () => {
     const g = block(ZoneType.ResLow, 2, 2);
     g.fields[FieldId.LandValue]!.fill(100);
     const registry = new BuildingRegistry(growthCatalog);
@@ -2715,8 +2748,98 @@ describe('a business opens where the town has room for its jobs', () => {
     growth.tick(g, registry, { res: 1, com: 0, ind: 0 }, 0, 0, UNMETERED_SUPPLY, {
       com: -100,
       ind: -100,
+      res: Infinity,
     });
     expect(registry.all().length).toBeGreaterThan(0);
+  });
+
+  describe('a home opens where the town has room for its people', () => {
+    const wantsHomes: DemandLevels = { res: 1, com: 0, ind: 0 };
+    const roomOf = (res: number): GrowthRoom => ({ ...UNLIMITED_ROOM, res });
+    /** A row of served ResLow lots wide enough that one pass meets two of them (the scan strides 32 tiles). */
+    function homesAfterOnePass(res: number, cat = growthCatalog): number {
+      const g = block(ZoneType.ResLow, 64, 1);
+      g.fields[FieldId.LandValue]!.fill(100);
+      const registry = new BuildingRegistry(cat);
+      new GrowthSystem(cat, constantRng(0), alwaysTrue).tick(
+        g,
+        registry,
+        wantsHomes,
+        0,
+        0,
+        UNMETERED_SUPPLY,
+        roomOf(res),
+      );
+      return registry.all().length;
+    }
+
+    it('takes each home’s people from the room within the pass', () => {
+      expect(homesAfterOnePass(Infinity)).toBe(2);
+      expect(homesAfterOnePass(8)).toBe(2); // two 4-person homes
+      expect(homesAfterOnePass(4)).toBe(1);
+    });
+
+    it('opens nothing where there is no room, and the lot’s smallest home where some is left', () => {
+      expect(homesAfterOnePass(0)).toBe(0);
+      expect(homesAfterOnePass(-30)).toBe(0);
+      expect(homesAfterOnePass(1)).toBe(1); // a 4-person home does not fit 1, but the room is not spent
+    });
+
+    it('holds a mixed block to the housing room as well as commerce’s room', () => {
+      const cat = [mixedL1];
+      const grow = (res: number, com: number): number => {
+        const g = block(ZoneType.Mixed, 64, 2);
+        g.fields[FieldId.LandValue]!.fill(100);
+        const registry = new BuildingRegistry(cat);
+        new GrowthSystem(cat, constantRng(0), alwaysTrue).tick(
+          g,
+          registry,
+          { res: 1, com: 0, ind: 0 },
+          3,
+          0,
+          UNMETERED_SUPPLY,
+          { com, ind: 0, res },
+        );
+        return registry.all().length;
+      };
+      expect(grow(Infinity, Infinity)).toBeGreaterThan(0);
+      expect(grow(0, Infinity)).toBe(0);
+      expect(grow(Infinity, 0)).toBe(0);
+    });
+
+    /** `from` standing Active at (5, 5) with land value 200, one pass with `res` people of room; what stands there. */
+    function levelUp(from: BuildingCatalogEntry, to: BuildingCatalogEntry, res: number): string {
+      const cat = [from, to];
+      const g = makeGrid();
+      const registry = new BuildingRegistry(cat);
+      registry.place(g, from, 5, 5, 0, BuildingState.Active);
+      keepServiced(g, 5, 5);
+      g.fields[FieldId.LandValue]![tileIndex(5, 5)] = 200;
+      new GrowthSystem(cat, constantRng(0), alwaysTrue).tick(
+        g,
+        registry,
+        wantsHomes,
+        0,
+        0,
+        UNMETERED_SUPPLY,
+        roomOf(res),
+      );
+      return registry.all().find((b) => b.x === 5 && b.z === 5)!.catalogId;
+    }
+
+    it('lets a level-up add people only where they fit, and takes them from the room', () => {
+      // res-l2 holds 4 more people than res-l1.
+      expect(levelUp(resL1, resL2, 0)).toBe('res-l1');
+      expect(levelUp(resL1, resL2, 3)).toBe('res-l1');
+      expect(levelUp(resL1, resL2, 4)).toBe('res-l2');
+      expect(levelUp(resL1, resL2, Infinity)).toBe('res-l2');
+    });
+
+    it('never holds a step that adds nobody, whatever the room', () => {
+      const sameFamily: BuildingCatalogEntry = { ...resL2, residents: resL1.residents };
+      expect(levelUp(resL1, sameFamily, 0)).toBe('res-l2');
+      expect(levelUp(resL1, sameFamily, -50)).toBe('res-l2');
+    });
   });
 
   describe('a business takes whole lots along its frontage', () => {
@@ -3241,6 +3364,7 @@ describe('a house on prime land is torn down for a plex', () => {
       milestone?: number;
       supply?: GrowthSupply;
       rotation?: 0 | 1 | 2 | 3;
+      room?: GrowthRoom;
     } = {},
   ): { catalogId: string; state: BuildingState; x: number; z: number; rotation: number } {
     const g = lotGrid(opts.landValue ?? PRIME);
@@ -3254,11 +3378,24 @@ describe('a house on prime land is torn down for a plex', () => {
       opts.milestone ?? 1,
       0,
       opts.supply,
+      opts.room,
     );
     const here = registry.all().filter((b) => b.x === 0 && b.z === 1);
     expect(here).toHaveLength(1);
     return here[0]!;
   }
+
+  it('holds a conversion to the housing room: it goes ahead only where the people it adds fit', () => {
+    const drawn = pass('res-normal-1').catalogId;
+    const added = entry(drawn).residents! - entry('res-normal-1').residents!;
+    expect(added).toBeGreaterThan(0);
+    const room = (res: number): GrowthRoom => ({ ...UNLIMITED_ROOM, res });
+    expect(pass('res-normal-1', { room: room(0) }).catalogId).toBe('res-normal-1');
+    expect(pass('res-normal-1', { room: room(added - 1) }).catalogId).toBe('res-normal-1');
+    expect(pass('res-normal-1', { room: room(added) }).catalogId).toMatch(
+      /^res-(duplex|fourplex)-1$/,
+    );
+  });
 
   it('compounds its per-pass chance to two percent a year', () => {
     const passesPerYear = TICKS_PER_YEAR / 10;
