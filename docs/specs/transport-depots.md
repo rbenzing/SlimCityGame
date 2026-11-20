@@ -73,7 +73,7 @@
 - `src/render/utilitykits.ts` `chooseYardJoin`, `computeYardLayout`, `mirrorYard` — the lead's curve to the line, its turnout, and the yard laid mirrored where the line runs the other way; `computeDepotTrackside` — the platform out to its track; `relayBeside` — the kit laid again when its track changes.
 - `src/render/vehicles.ts` `buildVehicleGeometry(VehicleKind.Bus)` — the bus the stalls park.
 - `src/ui/` — headway, served over requested, depot and running cost in the line panel; "no depot" at served 0; four cards in the Transit category.
-- `tools/depot-shots.mjs` — the screenshots that judge the kits.
+- The `depots` shot series — the screenshots that judge the kits.
 
 **Tests:**
 
