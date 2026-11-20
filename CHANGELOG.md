@@ -7,6 +7,11 @@
 
 * **tools:** contact sheets, drawn tops, airport parts and a runner that holds its budgets ([5c13bb1](https://github.com/rbenzing/SlimCityGame/commit/5c13bb1ca2d58cb9d6dfb99b61fdd24362fe10dd))
 
+
+### Bug Fixes
+
+* **render:** a works' yard fence and gate are drawn from both sides ([c1b4385](https://github.com/rbenzing/SlimCityGame/commit/c1b438516de7d786f6881ef3328e3dbb83cd0084))
+
 ## [1.100.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.99.0...slimcity-v1.100.0) (2026-11-20)
 
 
