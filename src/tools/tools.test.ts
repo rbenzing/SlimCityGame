@@ -716,28 +716,51 @@ describe('zone rectangle preview + commit', () => {
 
   it('underground, snaps a pipe drag onto the system, lays nothing under a street, and says what it joins', () => {
     const { env, previews, sent } = makeEnv();
-    // A street main along z = 2 from x = 0 to 5; the Water Tower on (6, 0).
+    // A street main along z = 12 from x = 0 to 5; the Water Tower on (3, 6).
     env.pipeWorld = {
-      mainAt: (x, z) => z === 2 && x >= 0 && x <= 5,
+      mainAt: (x, z) => z === 12 && x >= 0 && x <= 5,
       pipeAt: () => false,
-      buildingNameAt: (x, z) => (x === 6 && z === 0 ? 'Water Tower' : null),
+      buildingNameAt: (x, z) => (x === 3 && z === 6 ? 'Water Tower' : null),
     };
     const tm = new ToolManager(env);
     tm.setTool('water.pipe');
-    // The drag starts a tile short of the main and ends beside the tower.
-    tm.pointerDown(0, 1, 0);
-    tm.pointerMove(5, 0, 0);
+    // The straight drag starts a tile short of the main and ends beside the tower.
+    tm.pointerDown(3, 11, 0);
+    tm.pointerMove(3, 7, 0);
     const preview = previews.at(-1)!;
-    // The start snapped north... no: the main lies south of (0, 1), so the run begins on it.
-    expect(preview.tiles[0]).toEqual({ x: 0, z: 2 });
+    // The main lies south of (3, 11), so the run begins on it.
+    expect(preview.tiles[0]).toEqual({ x: 3, z: 12 });
     expect(preview.note).toBe('Joins a street main · reaches the Water Tower');
     // The tile on the main is not laid or charged; the rest is.
-    const laidInPreview = preview.tiles.filter((t) => t.z !== 2);
+    const laidInPreview = preview.tiles.filter((t) => t.z !== 12);
     expect(preview.cost).toBe(laidInPreview.length * WATER_PIPE_COST_PER_TILE);
-    tm.pointerUp(5, 0, 0);
+    tm.pointerUp(3, 7, 0);
     const tiles = (sent[0]?.commands[0] as { tiles: { x: number; z: number }[] }).tiles;
-    expect(tiles.some((t) => t.z === 2)).toBe(false);
+    expect(tiles.some((t) => t.z === 12)).toBe(false);
     expect(tiles.length).toBe(laidInPreview.length);
+  });
+
+  it('underground, a tower diagonal from a main is joined by two straight drags', () => {
+    const { env, previews } = makeEnv();
+    // The main runs along z = 12; the tower stands on (6, 7), diagonal from the main.
+    const laidPipe = new Set<string>();
+    env.pipeWorld = {
+      mainAt: (x, z) => z === 12 && x >= 0 && x <= 5,
+      pipeAt: (x, z) => laidPipe.has(`${x},${z}`),
+      buildingNameAt: (x, z) => (x === 6 && z === 7 ? 'Water Tower' : null),
+    };
+    const tm = new ToolManager(env);
+    tm.setTool('water.pipe');
+    tm.pointerDown(3, 12, 0);
+    tm.pointerMove(3, 7, 0);
+    expect(previews.at(-1)?.note).toBe('Joins a street main · reaches nothing');
+    tm.pointerUp(3, 7, 0);
+    for (let z = 7; z < 12; z++) laidPipe.add(`3,${z}`);
+    // The second drag starts on the first run's end and reaches the tower.
+    tm.pointerDown(3, 7, 0);
+    tm.pointerMove(5, 7, 0);
+    expect(previews.at(-1)?.tiles[0]).toEqual({ x: 3, z: 7 });
+    expect(previews.at(-1)?.note).toBe('Joins your pipe · reaches the Water Tower');
   });
 
   it('underground, a drag wholly along a street sends nothing', () => {
