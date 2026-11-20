@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.99.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.98.0...slimcity-v1.99.0) (2026-11-20)
+
+
+### Features
+
+* **sim:** homes are held to housing room; a demand bar reads full a tenth short ([6a88b26](https://github.com/rbenzing/SlimCityGame/commit/6a88b26e09e4a281f0be451ba77ab9ddaad2f957))
+
 ## [1.98.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.97.1...slimcity-v1.98.0) (2026-11-20)
 
 
