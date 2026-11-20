@@ -33,6 +33,11 @@ export const PROBES = [
     seconds: 60,
     what: 'the boot and the first tools driven by keyboard and mouse',
   },
+  {
+    name: 'playthrough',
+    seconds: 154,
+    what: 'a new game played through its interface, every step read back',
+  },
 ];
 
 const argv = process.argv.slice(2);

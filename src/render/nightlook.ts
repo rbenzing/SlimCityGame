@@ -9,7 +9,7 @@
  * night sky's hemisphere and moon light (scene.ts NIGHT_KEYFRAME) and this
  * tint land the look together — a body at 03:00 reads at 18 to 30% of its
  * noon value and the ground at 12 to 25% in the harness
- * (tools/nightlook-shots.mjs) — so the two are tuned as one dial. Only
+ * (the `night` shot series) — so the two are tuned as one dial. Only
  * window panes, a kit's lit parts and the lamps glow; nothing here emits.
  */
 import * as THREE from 'three';
