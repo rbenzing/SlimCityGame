@@ -165,7 +165,7 @@ export function buildHedgeGeometry(): THREE.BufferGeometry {
   return hedge;
 }
 
-/** The thin fabric of a fence run: a lower mesh panel under a top rail, one sheet facing +z. */
+/** The thin fabric of a fence run: a lower mesh panel under a top rail, one sheet facing +z, drawn from both sides (the material flips its normal on the back face, so it is lit from either). */
 export function buildFenceFabricGeometry(): THREE.BufferGeometry {
   const rail = FENCE_RAIL_FRACTION;
   const mesh = FABRIC_COLOR;
@@ -608,7 +608,10 @@ export class LotGroundsRenderer {
       fabric: new InstancedSlotPool(
         this.scene,
         buildFenceFabricGeometry(),
-        nightBodyMaterial(this.nightFactorUniform, { vertexColors: true }),
+        nightBodyMaterial(this.nightFactorUniform, {
+          vertexColors: true,
+          side: THREE.DoubleSide,
+        }),
         INITIAL_CAPACITY,
       ),
       post: new InstancedSlotPool(
