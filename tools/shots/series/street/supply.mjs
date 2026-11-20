@@ -42,7 +42,7 @@ const beside = (id, at, then, extra = {}) => ({
 });
 
 export default defineSeries({
-  name: 'power',
+  name: 'supply',
   type: 'street',
   purpose:
     'Power reaches a street as it does in life: a supplied street carries its own pole line behind the kerb and lights, an unsupplied one stands dark, a strung line crosses open ground on poles to a lot no street reaches, a buried cable shows only its risers and boxes, and a line leaves a substation.',

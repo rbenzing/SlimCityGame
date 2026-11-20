@@ -52,6 +52,7 @@
 import { mkdirSync, readdirSync, readFileSync, rmSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { cleanShot, closeUp, tileCamera, tileMeters } from './camera.mjs';
+import { fileClash } from './names.mjs';
 import { photographRoads } from './roads.mjs';
 import { openSession, settle } from './session.mjs';
 import { writeSheets } from './sheet.mjs';
@@ -240,6 +241,11 @@ async function run(spec, url) {
 export function defineSeries(spec) {
   check(spec);
   if (!process.env.SHOTS_NO_RUN) {
+    const clash = fileClash(process.argv[1]);
+    if (clash) {
+      console.error(clash);
+      process.exit(2);
+    }
     run(spec, process.argv[2] ?? 'http://localhost:5173').then((ok) => process.exit(ok ? 0 : 1));
   }
   return spec;

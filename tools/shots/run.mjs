@@ -14,6 +14,7 @@ import { readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { framesOf } from './lib/frames.mjs';
+import { clashOf } from './lib/names.mjs';
 
 const HERE = fileURLToPath(new URL('.', import.meta.url));
 const SERIES_DIR = join(HERE, 'series');
@@ -56,6 +57,11 @@ async function readSeries() {
 }
 
 const all = await readSeries();
+const clash = clashOf(all);
+if (clash) {
+  console.error(clash);
+  process.exit(2);
+}
 
 if (listOnly) {
   for (const s of all) console.log(`${s.type.padEnd(7)} ${s.name}  (${s.budgetS}s)  ${s.purpose}`);
