@@ -367,6 +367,8 @@ export class ZoneGridRenderer {
   private readonly platMesh: THREE.Mesh;
 
   private gridSize = 0;
+  private parcels: readonly Parcel[] = [];
+  private framedParcels: readonly FramedParcel[] = [];
   /** Cached last-known zone byte per tile (z*size+x), fed by applyZonePatches. */
   private zoneCache = new Uint8Array(0);
   /** The zone the tool in hand paints, whose land the grid shows. */
@@ -451,6 +453,10 @@ export class ZoneGridRenderer {
       pushEdgeStrip(linePositions, this.heightAt, edge);
     }
     this.setGeometry(this.lineMesh, linePositions);
+
+    // The tint and the plat sit on the ground too, so they are laid again when it is graded.
+    this.rebuildTint();
+    this.layPlat();
   }
 
   /**
@@ -524,7 +530,16 @@ export class ZoneGridRenderer {
    * kerb is outlined turned with its street.
    */
   setParcels(parcels: readonly Parcel[], framed: readonly FramedParcel[] = []): void {
+    this.parcels = parcels;
+    this.framedParcels = framed;
+    this.layPlat();
+  }
+
+  /** Lays the outlines of the parcels last given, on the ground as it is now. */
+  private layPlat(): void {
     const positions: number[] = [];
+    const parcels = this.parcels;
+    const framed = this.framedParcels;
     for (const p of parcels) {
       for (const edge of parcelEdges(p))
         pushEdgeStrip(positions, this.heightAt, edge, PLAT_LINE_WIDTH_M, PLAT_Y_OFFSET);

@@ -384,6 +384,32 @@ describe('ZoneGridRenderer.rebuild', () => {
     }
   });
 
+  it('re-lays the zone tint and the parcel outlines on the ground as it is now, when the ground is graded under them', () => {
+    let lift = 0;
+    const gradedHeightAt = (x: number, _z: number): number => (x < 100 ? lift : 0);
+    const scene = new THREE.Scene();
+    const renderer = new ZoneGridRenderer(scene, gradedHeightAt);
+    const g = gridWithStraightRoad(12, 5, 2, 7);
+    renderer.rebuild(g);
+    renderer.applyZonePatches([
+      { x: 3, z: 4, w: 1, h: 1, data: Uint8Array.from([ZoneType.ResLow]) },
+    ]);
+    renderer.setParcels([{ x: 3, z: 4, w: 1, d: 1, lot: 'half', front: 'N' }]);
+
+    lift = 0.7;
+    renderer.rebuild(g);
+
+    for (const mesh of [renderer.layers().tint, renderer.layers().plat]) {
+      const position = mesh.geometry.getAttribute('position')!;
+      expect(position.count).toBeGreaterThan(0);
+      for (let i = 0; i < position.count; i++) {
+        const lifted = position.getY(i) - gradedHeightAt(position.getX(i), position.getZ(i));
+        expect(lifted).toBeGreaterThan(0);
+        expect(lifted).toBeLessThan(0.15);
+      }
+    }
+  });
+
   it('rebuilding with a new road layout changes the fill geometry size', () => {
     const scene = new THREE.Scene();
     const renderer = new ZoneGridRenderer(scene, flatHeightAt);
