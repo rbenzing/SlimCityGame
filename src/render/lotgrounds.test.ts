@@ -155,6 +155,22 @@ describe('lot grounds renderer', () => {
     expect(none.some((p) => p.short)).toBe(false);
   });
 
+  it('draws every upright sheet, fence fabric and gate included, from both sides', () => {
+    const { scene } = renderer('ind-warehouse-2');
+    const sheets: THREE.InstancedMesh[] = [];
+    scene.traverse((o) => {
+      if (!(o instanceof THREE.InstancedMesh)) return;
+      o.geometry.computeBoundingBox();
+      const size = o.geometry.boundingBox!.getSize(new THREE.Vector3());
+      const upright = size.y > 0 && (size.x === 0 || size.z === 0);
+      if (upright) sheets.push(o);
+    });
+    // The fabric and the post pools.
+    expect(sheets).toHaveLength(2);
+    for (const mesh of sheets)
+      expect((mesh.material as THREE.Material).side).toBe(THREE.DoubleSide);
+  });
+
   it('keeps the lamp heads lit through the night tint', () => {
     const { scene, grounds } = renderer('ind-warehouse-2');
     grounds.apply({ added: [building('ind-warehouse-2')], updated: [], removed: [] });
