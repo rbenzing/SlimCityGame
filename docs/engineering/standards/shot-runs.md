@@ -1,6 +1,60 @@
-# Running the shot tools
+# Shot series
 
-How to run every `tools/*-shots.mjs` harness at once, and what a frame must do to stay in a tool. What each harness is for is in [debugging.md](debugging.md).
+How the game is photographed for review: what a series is, the views every subject gets, what a run may cost, and how to run one. A frame is evidence; a tool that exits 0 proves nothing until its frames have been looked at ([testing.md](testing.md#screenshots-not-read-backs)).
+
+## What a series is
+
+A **series** is one file that photographs one family of related things: the kits of one service, one class of road piece, one zone's buildings. It states its purpose, lays its scene with the game's own commands, and names its subjects. The views come from the standard below, never from hand-placed cameras.
+
+- One family a series. A frame that belongs to another family moves there; a series is not a place to park a check that had nowhere to go.
+- A series says what a reviewer judges in it, in one sentence (`purpose`). A series with no purpose a reviewer could fail is deleted.
+- A series plops its subjects in a sandbox with the simulation paused. Only the `town` type grows anything.
+- A subject's size is read from the catalog, never typed into a series.
+- A measurement is not a series. Frame time, memory, growth figures and sound are probes; they write numbers, not frames.
+
+## Types
+
+| Type | What is judged | Series |
+| --- | --- | --- |
+| `roads` | The carriageway itself: surface, kerbs, paint, how pieces meet | classes, bends, junctions, ends, grade (bridges, ramps, interchanges, cut and fill) |
+| `street` | What stands on and beside a street | furniture, power, transit |
+| `zoned` | What zones grow, level by level | homes, apartments, shops, works, lots, building life |
+| `civic` | What the player places | health, schools, first services, utilities, depots, parks, airport, farms |
+| `views` | How the game shows itself | underground, night, ghosts, narrow windows, the way out of a view |
+| `town` | Everything at once, in one small grown town | town, lenses |
+
+A new family goes in the type that names what a reviewer judges. A seventh type needs a rule here first.
+
+## The views every subject gets
+
+A series lists subjects; the runner takes every view in the subject's set. A view is never skipped because the face is plain: the plain rear of a building is how a missing wall is found.
+
+| Subject | Views | Frames |
+| --- | --- | --- |
+| A building or plot | `above`, `front`, `rear`, `left`, `right` | 5 |
+| A road piece | `above`, `along` (low, down the centreline), `oblique` | 3 |
+| A lens or panel | `full` | 1 |
+| The series | `night`: its first subject at 22:00, the front view turned 30° | 1 |
+
+- `front` is the street side; `left` and `right` are the viewer's own, standing at the front.
+- A view frames the subject's footprint, 10 m of ground round it and its height, with a tenth of the frame clear at every edge and a further tenth above the bottom bar.
+- Subjects stand far enough apart that no neighbour is between a camera and its subject.
+- A **detail** is a frame the set cannot give: a doorway at 40 m, a stall row from straight above. It is declared with what it shows, and a subject has at most two; the runner refuses a third.
+- A frame is named `<subject>-<view>.png`, a detail `<subject>-<what>.png`, in `tools/shots/out/<series>/`. A doc cites a frame as `<series>/<frame>`.
+
+## What a run may cost
+
+| Limit | Value |
+| --- | --- |
+| A plopped series, on an idle machine | 60 s; the first one takes 10 s for 25 frames |
+| A `town` series | 300 s |
+| A full run, three series at a time | 15 minutes |
+| A fixed wait | 1 s, and only where no condition exists |
+
+- A series declares its budget (`budgetS`). The runner fails one that runs over one and a half times it, and prints the seconds of each.
+- Wait on a condition: the subject standing, the frame drawn, the clock at an hour. Set the clock (`pinDay`); never wait for it. A paused simulation does not relight the scene by itself.
+- One page a series. Scenes stand side by side on one map and the camera moves; a series never reloads the page for its next subject.
+- Lay what a player would, and check it was accepted (`cleanShot`). Two rail rows laid side by side with joining on drew as rings, and a review read it as a fault in the game.
 
 ## Run them
 
@@ -8,35 +62,17 @@ Start one dev server, then:
 
 ```
 npm run shots -- http://localhost:5173
-npm run shots -- http://localhost:5173 roadmatrix bend
+npm run shots -- http://localhost:5173 civic
+npm run shots -- http://localhost:5173 health bends
 npm run shots -- --list
 ```
 
-A tool is named without its `-shots.mjs` ending.
+A name is a type or a series; a series also runs alone, `node tools/shots/series/civic/health.mjs <url>`. Tools not yet moved to a series run with `npm run shots:old`. The runner prints one table when it ends: series, type, exit code, seconds, frames. It exits non-zero if any series failed, ran over, or wrote no frame. Never edit `src/` while a run is going: the server reloads the page under it.
 
-| Option | Default | What it does |
-| --- | --- | --- |
-| `--shards N` | 3 | Tools run N at a time against the one server, longest first |
-| `--timeout S` | 600 | Seconds a tool may take; a tool's own limit is in the table at the top of `tools/shots.mjs` |
-| `--list` | | Prints the tools and exits |
+## Adding or changing a series
 
-The runner prints one table when it ends: tool, exit code, seconds, frames written. It exits non-zero if any tool failed, timed out or wrote no frame.
+- Copy the smallest series of the same type in `tools/shots/series/<type>/`.
+- Before cutting a frame, look for its citation: `grep -rn "<series>/<frame>" docs`.
+- Shared work belongs in `tools/shots/lib/`: opening the game, finding flat ground, laying a street, placing and checking subjects, the views. A series holds data and details, not setup.
 
-A full run writes about 850 frames. On a machine doing nothing else it takes under half an hour; other work on the machine slows it, because several tools wait on the simulation's clock.
-
-- Run `services-shots`, `town-shots` and `tramway-shots` on their own when the machine is busy: they wait for the town to grow and for the clock to reach night, and starve under load.
-- `services-shots` prints its stall figure as a warning. Pass `--strict-stall` to fail the run on it.
-- Never edit `src/` while a run is going: the server reloads the page under the tool.
-
-## What a frame must do
-
-- **Show a fault if there is one.** A frame aimed at grass, cut off by the edge, hidden behind a panel, or too dark or too far to judge is fixed or removed.
-- **Earn its place.** Where two frames show one subject from one side, keep the one that shows more. An oblique view stays only where height matters.
-- **One night frame a kit family**, not one a building: night shows lit panes and the shared tint, and both are the same across a family.
-- **Keep the name a doc cites.** Before cutting a frame, look for it: `grep -rhoE "shots-[a-z-]+/[A-Za-z0-9._-]+" docs`.
-- **Lay what a player would.** A harness uses the game's own commands and checks they were accepted (`cleanShot` in `tools/shotcam.mjs`). Two rail rows laid side by side with joining on drew as rings, and a review read it as a fault in the game.
-- **Wait on a condition, not a clock.** A fixed wait over 5 s is replaced by a wait on what it stands for: homes grown, a vehicle on its line, the clock at an hour.
-
-## Adding a tool
-
-Add its last known duration to the table in `tools/shots.mjs`, so the shards stay balanced. A tool that needs longer than the default limit says so there.
+**Code:** `tools/shots/run.mjs` the runner; `tools/shots/lib/series.mjs` the series and its runner, `views.mjs` the views, `site.mjs` the ground and the street, `session.mjs` the page, `camera.mjs` the camera and `cleanShot`.
