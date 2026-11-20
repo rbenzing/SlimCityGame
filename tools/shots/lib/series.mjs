@@ -19,6 +19,13 @@
  *                        turned, its lot's sides swapped on odd turns; for type
  *                        `roads`, road pieces each on its own pad (see
  *                        `lib/roads.mjs`), `gap` tiles apart (3 by default)
+ *                        `top` (metres) is the drawn top where a stack, mast or turbine
+ *                        stands above the catalog height: the views frame it (default
+ *                        from `lib/tops.mjs`);
+ *                        `parts: [{ name, from, to }]` splits a plot wider than the
+ *                        camera reaches into slices of its width (fractions), each
+ *                        taking its above, front and rear views; the whole keeps
+ *                        its left and right
  *   site                 optional `{ level, anywhere, prepare }`, see `buildSite`;
  *                        `prepare(session, site)` lays what the subjects need
  *                        (zoning, a track) before they are planted
@@ -38,8 +45,10 @@ import { fileURLToPath } from 'node:url';
 import { cleanShot, closeUp, tileCamera, tileMeters } from './camera.mjs';
 import { photographRoads } from './roads.mjs';
 import { openSession, settle } from './session.mjs';
+import { writeSheets } from './sheet.mjs';
 import { buildSite } from './site.mjs';
-import { BUILDING_VIEWS, buildingView, threeQuarterView } from './views.mjs';
+import { DRAWN_TOPS } from './tops.mjs';
+import { BUILDING_VIEWS, MAX_DISTANCE, buildingView, threeQuarterView } from './views.mjs';
 
 const NIGHT = 22 / 24;
 const MAX_DETAILS = 2;
@@ -58,6 +67,13 @@ function catalogBox(given) {
   );
   if (!entry) throw new Error(`catalog has no building '${subject.id}'`);
   // A quarter turn swaps the lot's sides: a yard's long side then lies along its street.
+  // A roomier lot of a building draws the same stacks.
+  const top =
+    subject.top ??
+    DRAWN_TOPS[subject.id] ??
+    DRAWN_TOPS[subject.id.replace(/-lot\d+x\d+$/, '')] ??
+    entry.height;
+  if (top < entry.height) throw new Error(`top of '${subject.id}' is below its catalog height`);
   const rotation = subject.rotation ?? 0;
   const turned = rotation % 2 === 1;
   return {
@@ -65,11 +81,26 @@ function catalogBox(given) {
     name,
     w: turned ? entry.footprint.d : entry.footprint.w,
     d: turned ? entry.footprint.w : entry.footprint.d,
-    h: entry.height,
+    h: top,
     needs: entry.requiresAdjacent,
     rotation,
+    parts: subject.parts,
   };
 }
+
+/** The part of a plot the camera cannot frame whole: a slice of its width, `from` to `to` as
+ * fractions of it. Its box is the slice, so its views fit the slice alone. */
+const partBox = (box, part) => ({
+  ...box,
+  w: (part.to - part.from) * box.w,
+  cx: box.cx + ((part.from + part.to) / 2 - 0.5) * box.w,
+});
+
+/** The views a part takes: the faces along the plot's length. The ends belong to the whole plot. */
+const PART_VIEWS = ['above', 'front', 'rear'];
+
+/** The sheet rows of a subject: itself, then each of its parts. */
+const rowsOf = (box) => [box.name, ...(box.parts ?? []).map((p) => `${box.name}-${p.name}`)];
 
 function check(spec) {
   for (const key of ['name', 'type', 'purpose', 'budgetS', 'subjects'])
@@ -83,6 +114,10 @@ function check(spec) {
     if (!spec.subjects.some((s) => (s.as ?? s.id) === d.subject))
       throw new Error(`detail ${d.name} names unknown subject '${d.subject}'`);
   }
+  for (const s of spec.subjects)
+    for (const p of s.parts ?? [])
+      if (!(p.from >= 0 && p.to <= 1 && p.from < p.to))
+        throw new Error(`part '${p.name}' of '${s.id}' is not a slice of 0 to 1`);
 }
 
 async function run(spec, url) {
@@ -93,17 +128,26 @@ async function run(spec, url) {
 
   const session = await openSession(url);
   const { page } = session;
+  const shots = [];
   let frames = 0;
+  let sheets = 0;
   try {
     const tile = await tileMeters(page);
     const aim = tileCamera(page);
     const shoot = async (name, cam) => {
+      // A frame the camera cannot reach round is a cut frame: the subject needs parts.
+      if (cam.needed > MAX_DISTANCE + 1)
+        throw new Error(
+          `${name}: the box needs ${Math.round(cam.needed)} m, the camera reaches ${MAX_DISTANCE} m`,
+        );
       await aim(cam.tx, cam.tz, cam.distance, cam.yaw, cam.pitch);
       await settle(page);
       await cleanShot(page, `${dir}/${name}.png`);
       frames++;
-      console.log('shot', name);
+      shots.push(name);
+      console.log('shot', name, `${Math.round((performance.now() - started) / 1000)}s`);
     };
+    let rows = spec.subjects.map((s) => s.as ?? s.id);
 
     if (spec.type === 'roads') {
       await photographRoads(session, spec, {
@@ -120,9 +164,15 @@ async function run(spec, url) {
       if (spec.scene) await spec.scene(session, site);
       await settle(page);
 
-      for (const box of boxes)
+      rows = boxes.flatMap(rowsOf);
+      for (const box of boxes) {
         for (const view of BUILDING_VIEWS)
-          await shoot(`${box.name}-${view}`, buildingView(view, box));
+          if (!box.parts || !PART_VIEWS.includes(view))
+            await shoot(`${box.name}-${view}`, buildingView(view, box));
+        for (const part of box.parts ?? [])
+          for (const view of PART_VIEWS)
+            await shoot(`${box.name}-${part.name}-${view}`, buildingView(view, partBox(box, part)));
+      }
 
       for (const d of spec.details ?? []) {
         const box = boxes.find((b) => b.name === d.subject);
@@ -147,6 +197,7 @@ async function run(spec, url) {
     if (refused.length > 0) throw new Error(`the game refused: ${refused.join('; ')}`);
     if (session.errors.length > 0) throw new Error(`page errors: ${session.errors.join('; ')}`);
     if (frames === 0) throw new Error('no frames written');
+    sheets = await writeSheets(session.browser, dir, rows, shots);
     return true;
   } catch (e) {
     const refused = await session.refusals().catch(() => []);
@@ -155,7 +206,9 @@ async function run(spec, url) {
   } finally {
     await session.close();
     const seconds = Math.round((performance.now() - started) / 1000);
-    console.log(`${spec.name}: ${frames} frames, ${seconds}s (budget ${spec.budgetS}s)`);
+    console.log(
+      `${spec.name}: ${frames} frames, ${sheets} sheets, ${seconds}s (budget ${spec.budgetS}s)`,
+    );
   }
 }
 

@@ -4,7 +4,8 @@
  * in frame with a tenth of the frame clear at every edge, and a further tenth
  * at the bottom for the HUD bar. Nothing here touches a page.
  *
- * The camera sits at `target + distance * (cos pitch * sin yaw, sin pitch,
+ * `needed` is the distance the whole box wants before the camera's limits clamp it: above
+ * MAX_DISTANCE the box cannot be framed. The camera sits at `target + distance * (cos pitch * sin yaw, sin pitch,
  * cos pitch * cos yaw)` and looks at the target on the ground: yaw 0 looks
  * north from the south, yaw pi/2 looks west from the east.
  */
@@ -148,6 +149,7 @@ const fit = (sx, sz, h, yaw, pitch, centre = false) => {
     dx: -best.shift * Math.sin(yaw),
     dz: -best.shift * Math.cos(yaw),
     distance,
+    needed: least,
     yaw,
     pitch,
   };
@@ -159,6 +161,7 @@ const place = (cx, cz, tile, f) => ({
   tx: cx + f.dx / tile,
   tz: cz + f.dz / tile,
   distance: f.distance,
+  needed: f.needed,
   yaw: f.yaw,
   pitch: f.pitch,
 });
@@ -188,7 +191,7 @@ function seen(box, turn, pitch) {
   const turned = street === 'E' || street === 'W';
   const sx = (turned ? box.d : box.w) * box.tile + 2 * PAD;
   const sz = (turned ? box.w : box.d) * box.tile + 2 * PAD;
-  return place(box.cx, box.cz, box.tile, fit(sx, sz, box.h, base + turn, pitch));
+  return place(box.cx, box.cz, box.tile, fit(sx, sz, box.h, base + turn, pitch, true));
 }
 
 /**

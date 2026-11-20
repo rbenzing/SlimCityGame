@@ -78,6 +78,7 @@ export async function openSession(url) {
   await pinDay(NOON);
 
   return {
+    browser,
     page,
     errors,
     send,

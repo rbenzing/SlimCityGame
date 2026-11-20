@@ -16,9 +16,14 @@ const ONE_LANE_PROFILE = {
 const C = 5;
 const END = 10;
 
+/** The box above and oblique frame: the junction's tile and two tiles of each arm, and the wider one a roundabout's ring needs. */
+const AT_JUNCTION = { x0: C - 2, z0: C - 2, length: 5, width: 5 };
+const AT_RING = { x0: C - 3, z0: C - 3, length: 7, width: 7 };
+
 /** A through road along row C and a minor one down column C, crossing. */
 const cross = (id, major, minor, extra = {}) => ({
   id,
+  close: AT_JUNCTION,
   lay: (p) => [
     p.road(major, p.row(C, 0, END)),
     p.road(minor, p.col(C, 0, END), extra.replace ? { replace: true } : {}),
@@ -27,6 +32,7 @@ const cross = (id, major, minor, extra = {}) => ({
 /** A through road along row C and a minor one that stops against it from the north. */
 const tee = (id, major, minor) => ({
   id,
+  close: AT_JUNCTION,
   lay: (p) => [p.road(major, p.row(C, 0, END)), p.road(minor, p.col(C, 0, C))],
 });
 /** A road that comes from the north and ends where a second leaves it to the west, in a smaller pad. */
@@ -34,6 +40,7 @@ const BEND = 3;
 const corner = (id, major, minor) => ({
   id,
   pad: { w: 2 * BEND + 1, h: 2 * BEND + 1 },
+  close: { x0: 0, z0: 0, length: BEND + 1, width: BEND + 1 },
   lay: (p) => [p.road(major, p.col(BEND, 0, BEND)), p.road(minor, p.row(BEND, 0, BEND))],
 });
 /** The block's missing corner laid as a street, as the Roundabout tool lays it, then the ring. */
@@ -53,6 +60,7 @@ export default defineSeries({
       // Lit for the night frame: a turbine at the north arm's end powers the lamps, clear of
       // the line the low view looks down.
       id: 'roundabout-four-way',
+      close: AT_RING,
       lay: (p) => [
         p.road(TIER.twoLane, p.row(C, 0, END)),
         p.road(TIER.twoLane, p.col(C, 0, END)),
@@ -62,6 +70,7 @@ export default defineSeries({
     },
     {
       id: 'roundabout-tee',
+      close: AT_RING,
       lay: (p) => [
         p.road(TIER.twoLane, p.row(C, 0, END)),
         p.road(TIER.twoLane, p.col(C, C, END)),
@@ -70,6 +79,7 @@ export default defineSeries({
     },
     {
       id: 'roundabout-one-way-arm',
+      close: AT_RING,
       lay: (p) => [
         p.road(TIER.twoLane, p.row(C, C, END)),
         p.road(TIER.twoLane, p.col(C, 0, END)),
@@ -94,28 +104,5 @@ export default defineSeries({
     cross('twolane-x-bike', TIER.bike, TIER.twoLane),
     cross('tram-x-twolane', TIER.twoLane, TIER.tram),
     cross('rail-breaks-twolane', TIER.twoLane, TIER.rail, { replace: true }),
-  ],
-  details: [
-    {
-      subject: 'twolane-x-twolane',
-      name: 'corner',
-      shows: "the north-west kerb return: where one street's footway meets the other's",
-      local: [-10, -10],
-      distance: 40,
-      yaw: 0,
-      pitch: 1.1,
-      scale: 2,
-    },
-    {
-      subject: 'twolane-t-avenue',
-      name: 'corner',
-      shows:
-        "the north-west corner, where the avenue's kerb strip meets the street's wider footway",
-      local: [-10, -10],
-      distance: 40,
-      yaw: 0,
-      pitch: 1.1,
-      scale: 2,
-    },
   ],
 });

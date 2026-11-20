@@ -14,7 +14,10 @@
  *   after     optional `(p, tools) => tiles`: work that needs the page (a tool
  *             clicked as a player does); returns the tiles that must carry road
  *   view      `{ x0, z0, length, width, axis, height }` the box the views frame,
- *             in pad tiles (the whole pad by default)
+ *             in pad tiles (the whole pad by default); the low `along` view follows it
+ *   close     fields of `view` to override for `above` and `oblique`: the closest box that
+ *             holds what is judged (a junction's box and two tiles of each arm, a seam and
+ *             three tiles each way, an end and its last three tiles)
  */
 import { closeUp } from './camera.mjs';
 import { settle } from './session.mjs';
@@ -370,9 +373,11 @@ export async function buildScene(session, spec, { tile, catalogBox, aim }) {
     if (piece.after)
       await waitForRoads(session, await piece.after(p, { page, aim, clickTool }), piece.id);
     const view = { x0: 0, z0: 0, length: pad.w, width: pad.h, axis: 'x', ...(piece.view ?? {}) };
+    const onMap = (box) => ({ ...box, x0: origin.x + box.x0, z0: origin.z + box.z0, tile });
     pieces.push({
       ...piece,
-      run: { ...view, x0: origin.x + view.x0, z0: origin.z + view.z0, tile },
+      run: onMap(view),
+      closeRun: onMap({ ...view, ...(piece.close ?? {}) }),
     });
   }
   await waitForBuildings(page, expectHomes);
@@ -389,7 +394,10 @@ export async function photographRoads(session, spec, ctx) {
   const pieces = await buildScene(session, spec, ctx);
   for (const piece of pieces)
     for (const view of ROAD_VIEWS)
-      await ctx.shoot(`${piece.id}-${view}`, roadView(view, piece.run));
+      await ctx.shoot(
+        `${piece.id}-${view}`,
+        roadView(view, view === 'along' ? piece.run : piece.closeRun),
+      );
 
   for (const d of spec.details ?? []) {
     const { run } = pieces.find((s) => s.id === d.subject);
@@ -410,5 +418,5 @@ export async function photographRoads(session, spec, ctx) {
   }
 
   await ctx.night();
-  await ctx.shoot(`${pieces[0].id}-night`, roadView('oblique', pieces[0].run));
+  await ctx.shoot(`${pieces[0].id}-night`, roadView('oblique', pieces[0].closeRun));
 }

@@ -15,6 +15,7 @@ const toSeam = (seam, tile = 20) => (seam - 0.5 - (LENGTH - 1) / 2) * tile;
 const change = (id, from, to) => ({
   id,
   pad: { w: LENGTH, h: 1 },
+  close: { x0: SEAM - 3, length: 6 },
   lay: (p) => [p.road(from, p.row(0, 0, SEAM - 1)), p.road(to, p.row(0, SEAM, LENGTH - 1))],
 });
 
@@ -54,6 +55,7 @@ export default defineSeries({
     {
       id: 'motorway-lane-drop',
       pad: { w: LENGTH, h: 1 },
+      close: { x0: SEAM - 1, length: LENGTH - SEAM + 1 },
       lay: async (p) => {
         const profile = await composeProfile(p.page, TIER.highway, { lanes: 4 });
         return [

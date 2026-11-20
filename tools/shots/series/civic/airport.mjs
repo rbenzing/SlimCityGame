@@ -32,11 +32,24 @@ export default defineSeries({
   name: 'airport',
   type: 'civic',
   purpose:
-    'The three airports read as airports from the street and from the air: runway, taxiway, apron, terminal, car parks, hangars, tower and fence drawn and in place on every side. The international plot is wider than the camera can reach, so its frames show part of it.',
+    'The three airports read as airports from the street and from the air: runway, taxiway, apron, terminal, car parks, hangars, tower and fence drawn and in place on every side. The international plot is wider than the camera can reach, so it is shot in three parts.',
   budgetS: 60,
   // The three plots are wider than any dry stretch: levelled wherever they stand, in two bands.
   site: { ...civicSite, anywhere: true },
-  subjects: [{ id: 'airfield' }, { id: 'regional-airport' }, { id: 'international-airport' }],
+  subjects: [
+    { id: 'airfield' },
+    { id: 'regional-airport' },
+    {
+      id: 'international-airport',
+      // 3.7 km long, past what the camera reaches: its above, front and rear views are taken in
+      // three slices, a runway end at each side of the terminal and apron.
+      parts: [
+        { name: 'runway-west', from: 0, to: 0.3 },
+        { name: 'terminal', from: 0.3, to: 0.7 },
+        { name: 'runway-east', from: 0.7, to: 1 },
+      ],
+    },
+  ],
   details: [
     ...rung('airfield', [-361, -52], [0, 59], 224),
     ...rung('regional-airport', [-712, -108], [0, 80], 220),

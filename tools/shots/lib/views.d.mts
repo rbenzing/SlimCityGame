@@ -2,6 +2,8 @@ export interface Camera {
   tx: number;
   tz: number;
   distance: number;
+  /** The distance the whole box wants, before the camera's limits clamp `distance`. */
+  needed?: number;
   yaw: number;
   pitch: number;
 }

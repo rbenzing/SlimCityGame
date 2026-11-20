@@ -10,6 +10,8 @@ export default defineSeries({
   purpose:
     'Each apartment kind reads as itself at every level: multiplex, garden walk-up, mid-rise, tower and the mixed-use blocks with their shopfronts, entrances, car parks and rooflines drawn on every side.',
   budgetS: 60,
+  // The row is longer than any dry stretch of the map: the middle of it is levelled instead.
+  site: { anywhere: true, level: 2 },
   subjects: subjectsOf(
     'res-multiplex-1',
     'res-multiplex-2',
@@ -30,6 +32,17 @@ export default defineSeries({
     'mixed-3',
   ),
   details: [
+    {
+      subject: 'res-high-2',
+      name: 'row',
+      shows:
+        'the mid-rise blocks side by side along the street: balconies and bays against the glass modules of each',
+      local: [0, 0],
+      distance: 170,
+      yaw: 0.35,
+      pitch: 0.5,
+      scale: 1,
+    },
     {
       subject: 'res-medium-2',
       name: 'breezeway',

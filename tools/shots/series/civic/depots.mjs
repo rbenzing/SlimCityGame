@@ -51,6 +51,16 @@ export default defineSeries({
       scale: 2,
     },
     {
+      subject: 'tram-depot',
+      name: 'lead',
+      shows: 'the track lead crossing the footway to the tram street, and its turnout',
+      local: [-30, -26],
+      distance: 40,
+      yaw: 0.5,
+      pitch: 1.1,
+      scale: 2,
+    },
+    {
       subject: 'service-vehicles',
       name: 'emergency',
       shows: 'the fire engine, police car and ambulance at 40 m against the 4 m car',

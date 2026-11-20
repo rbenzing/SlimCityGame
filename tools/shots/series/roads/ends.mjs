@@ -14,6 +14,9 @@ const FRONTS_WEST = 3;
 const ROW = 3;
 const LAST = 8;
 const LENGTH = 14;
+/** The box above and oblique frame: the end and its last three tiles, a tile of homes each side of a street's row `row`. */
+const atEnd = (row, length = 5) => ({ x0: LAST - 3, z0: row - 2, length, width: 5 });
+
 /** Homes line only the last few tiles of the street: the rest is out of every frame, and every home costs a frame's time. */
 const HOMES_FROM = LAST - 4;
 /** The view: the homed stretch of street, its end and a tile beyond. */
@@ -40,6 +43,7 @@ const street = (id, tier) => ({
   id,
   pad: { w: LENGTH, h: 2 * ROW + 1 },
   view: END_VIEW,
+  close: atEnd(ROW),
   lay: (p) => [p.road(tier, p.row(ROW, 0, LAST)), ...lining(p, ROW, HOMES_FROM, LAST)],
 });
 
@@ -48,6 +52,7 @@ const avenue = (id, blocked) => ({
   id,
   pad: { w: LENGTH, h: 2 * ROW + 3 },
   view: { ...END_VIEW, z0: 0, width: 2 * ROW + 3 },
+  close: atEnd(ROW + 1),
   lay: (p) => [
     p.road(TIER.avenue, p.row(ROW + 1, 0, LAST)),
     ...(blocked ? [p.building(BLOCKER, LAST + 1, ROW + 1, FRONTS_WEST)] : []),
@@ -60,6 +65,7 @@ const culdesac = (id, south) => ({
   id,
   pad: { w: LENGTH, h: 2 * ROW + 1 },
   view: { x0: HOMES_FROM - 2, z0: 0, length: 11, width: 2 * ROW + 1 },
+  close: atEnd(ROW, 6),
   lay: (p) => [p.road(TIER.twoLane, p.row(ROW, 0, LAST)), ...lining(p, ROW, HOMES_FROM, LAST - 1)],
   after: async (p, { page, aim, clickTool }) => {
     await clickTool(page, aim, 'culdesac', p.at(LAST, ROW), [0.5, south ? 0.85 : 0.15]);
@@ -82,6 +88,7 @@ export default defineSeries({
       id: 'blocked',
       pad: { w: LENGTH, h: 2 * ROW + 1 },
       view: END_VIEW,
+      close: atEnd(ROW),
       lay: (p) => [
         p.road(TIER.twoLane, p.row(ROW, 0, LAST)),
         p.building(BLOCKER, LAST + 1, ROW, FRONTS_WEST),
