@@ -17,7 +17,7 @@
  *                        stands more than once; `{ id, plot: { w, d, h } }` is
  *                        ground that is not placed; `rotation` (0..3) places it
  *                        turned, its lot's sides swapped on odd turns; for type
- *                        `roads`, road pieces each on its own pad (see
+ *                        `roads` and `street`, road pieces each on its own pad (see
  *                        `lib/roads.mjs`), `gap` tiles apart (3 by default)
  *                        `top` (metres) is the drawn top where a stack, mast or turbine
  *                        stands above the catalog height: the views frame it (default
@@ -51,6 +51,8 @@ import { DRAWN_TOPS } from './tops.mjs';
 import { BUILDING_VIEWS, MAX_DISTANCE, buildingView, threeQuarterView } from './views.mjs';
 
 const NIGHT = 22 / 24;
+/** Types whose subjects are runs of street on their own pads (see `lib/roads.mjs`). */
+const ROAD_PIECE_TYPES = ['roads', 'street'];
 const MAX_DETAILS = 2;
 const OUT = fileURLToPath(new URL('../out/', import.meta.url));
 const CATALOG = fileURLToPath(new URL('../../../src/data/catalog.json', import.meta.url));
@@ -149,7 +151,7 @@ async function run(spec, url) {
     };
     let rows = spec.subjects.map((s) => s.as ?? s.id);
 
-    if (spec.type === 'roads') {
+    if (ROAD_PIECE_TYPES.includes(spec.type)) {
       await photographRoads(session, spec, {
         tile,
         catalogBox,
