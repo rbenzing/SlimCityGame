@@ -86,16 +86,23 @@ const distanceFor = (points, yaw, pitch, shift) => {
   return need;
 };
 
+/** How much farther than the least distance a view may stand to keep the box centred. */
+const SLACK = 1.02;
+
 /** The camera for a box of sx by sz metres and h tall, seen at a yaw and pitch.
  * The target slides along the view's ground line to the spot that needs the least distance. */
 const fit = (sx, sz, h, yaw, pitch) => {
   const points = corners(sx, sz, h);
   const reach = Math.hypot(sx, sz) / 2;
-  let best = { shift: 0, distance: Infinity };
-  for (let shift = -reach; shift <= reach; shift += reach / 40) {
-    const distance = distanceFor(points, yaw, pitch, shift);
-    if (distance < best.distance) best = { shift, distance };
-  }
+  const tries = [];
+  for (let shift = -reach; shift <= reach; shift += reach / 40)
+    tries.push({ shift, distance: distanceFor(points, yaw, pitch, shift) });
+  // A box wider than it is deep is bound by its width, so sliding the target changes the distance
+  // only a little: take the shift nearest the box centre among those within SLACK of the least.
+  const least = Math.min(...tries.map((t) => t.distance));
+  const best = tries
+    .filter((t) => t.distance <= least * SLACK)
+    .reduce((a, b) => (Math.abs(b.shift) < Math.abs(a.shift) ? b : a));
   return {
     dx: -best.shift * Math.sin(yaw),
     dz: -best.shift * Math.cos(yaw),

@@ -12,7 +12,10 @@
  *   name, type, purpose  the series' file name, its type folder, and the one
  *                        sentence a reviewer judges it by
  *   budgetS              seconds on an idle machine
- *   subjects             `[{ id }]` catalog ids, planted in order along one street
+ *   subjects             `[{ id }]` catalog ids, planted in order along one street;
+ *                        `{ id, plot: { w, d, h } }` is ground that is not placed
+ *                        `rotation` (0..3) places it turned, its lot's sides swapped on odd turns
+ *   site                 optional `{ level, anywhere, prepare }`, see `buildSite`
  *   scene(session, site) optional: what to stand on the site once it is built
  *                        (vehicles, graves); `site.subjects` carries each
  *                        subject's tiles and building id, `site.tile` the tile size
@@ -20,7 +23,9 @@
  *                        yaw, pitch, scale }]` frames the standard views cannot
  *                        give, at most two a subject. `local` is metres from the
  *                        subject's centre, +z toward the street; `yaw` 0 looks
- *                        north from the street; `scale` multiplies the resolution.
+ *                        north from the street; `scale` multiplies the resolution;
+ *                        `setup(session, site)` optional, runs just before the frame
+ *                        (a worn lawn, a vehicle moved up to the camera).
  */
 import { mkdirSync, readdirSync, readFileSync, rmSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -34,11 +39,26 @@ const MAX_DETAILS = 2;
 const OUT = fileURLToPath(new URL('../out/', import.meta.url));
 const CATALOG = fileURLToPath(new URL('../../../src/data/catalog.json', import.meta.url));
 
-/** Footprint and height of a catalog entry, from the game's own data. */
-function catalogBox(id) {
-  const entry = JSON.parse(readFileSync(CATALOG, 'utf8')).buildings.find((e) => e.id === id);
-  if (!entry) throw new Error(`catalog has no building '${id}'`);
-  return { id, w: entry.footprint.w, d: entry.footprint.d, h: entry.height };
+/** Footprint, height and the terrain it needs beside it, of a catalog entry, from the game's own
+ * data. A subject with a `plot` (`{ w, d, h }`) is ground that is not placed, such as a row of
+ * parked vehicles: it carries the box it is given. */
+function catalogBox(subject) {
+  if (subject.plot) return { id: subject.id, plot: true, ...subject.plot };
+  const entry = JSON.parse(readFileSync(CATALOG, 'utf8')).buildings.find(
+    (e) => e.id === subject.id,
+  );
+  if (!entry) throw new Error(`catalog has no building '${subject.id}'`);
+  // A quarter turn swaps the lot's sides: a yard's long side then lies along its street.
+  const rotation = subject.rotation ?? 0;
+  const turned = rotation % 2 === 1;
+  return {
+    id: subject.id,
+    w: turned ? entry.footprint.d : entry.footprint.w,
+    d: turned ? entry.footprint.w : entry.footprint.d,
+    h: entry.height,
+    needs: entry.requiresAdjacent,
+    rotation,
+  };
 }
 
 function check(spec) {
@@ -75,11 +95,7 @@ async function run(spec, url) {
       console.log('shot', name);
     };
 
-    const site = await buildSite(
-      session,
-      spec.subjects.map((s) => catalogBox(s.id)),
-      tile,
-    );
+    const site = await buildSite(session, spec.subjects.map(catalogBox), tile, spec.site);
     site.tile = tile;
     const boxes = site.subjects.map((s) => ({ ...s, tile }));
     if (spec.scene) await spec.scene(session, site);
@@ -91,6 +107,7 @@ async function run(spec, url) {
     for (const d of spec.details ?? []) {
       const box = boxes.find((b) => b.id === d.subject);
       const [lx, lz] = d.local;
+      if (d.setup) await d.setup(session, site);
       const restore = d.scale > 1 ? await closeUp(page, d.scale) : null;
       await shoot(`${d.subject}-${d.name}`, {
         tx: box.cx + lx / tile,
@@ -111,7 +128,8 @@ async function run(spec, url) {
     if (frames === 0) throw new Error('no frames written');
     return true;
   } catch (e) {
-    console.log('FAILED', e.message);
+    const refused = await session.refusals().catch(() => []);
+    console.log('FAILED', e.message, refused.length > 0 ? `(refused: ${refused.join('; ')})` : '');
     return false;
   } finally {
     await session.close();
