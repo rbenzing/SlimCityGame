@@ -25,7 +25,7 @@ current behavior only and carry no dates of their own._
 
 ## Status (2026-09-29)
 
-**Test suite:** 11,352 tests passing across 317 test files, run 2026-11-20.
+**Test suite:** 11,368 tests across 317 test files, run 2026-11-20.
 This is the only test count in the documentation set. When the suite changes
 again, update the figure here and nowhere else.
 
@@ -134,8 +134,8 @@ again, update the figure here and nowhere else.
 - Placing a district-edge column of road across the street rows in
   `tools/frame-budget.mjs` logs about 27 "road network (command): tile(s)
   derived differently … roadMask" errors at the junctions; the city stands,
-  but the conversion disagrees with itself there. `tools/bridge-shots.mjs`
-  logs the same error laying its parallel bridge rows.
+  but the conversion disagrees with itself there. The `grade` shot series
+  logs the same error at a crossroads on a slope of 1.9 m a tile.
 - A multiplex's stoop step stands 0.6 m into its car park's aisle and its
   mail kiosk on the front walk the aisle overlaps by 1.2 m; the lot layout
   should hold the aisle off the entrance walk. The courtyard apartments have

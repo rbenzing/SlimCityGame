@@ -83,7 +83,7 @@
 - `src/render/lots.ts`, `src/shared/lotlayout.ts` — merged lot mesh, drive-through, trailer stalls, car parks.
 - `src/render/terrain.ts`, `src/render/roadsmesh.ts` — the chunk-mesh shape lots follow.
 - `src/render/geometrybudget.test.ts` — the tiers; `tools/frame-budget.mjs` and `window.__slimcity.renderInfo()` — the frame measurement.
-- `tools/house-shots.mjs`, `storefront-shots.mjs`, `industry-shots.mjs`, `apartment-shots.mjs`, `ploppable-shots.mjs`, `earliest-kits-shots.mjs`, `nightlook-shots.mjs` — the shots.
+- The `zoned` and `civic` shot series (`tools/shots/series/`), `tools/ploppable-shots.mjs`, `tools/nightlook-shots.mjs` — the shots.
 - `src/main.ts` — builds `hasStopBuilding` from the snapshot.
 - `UtilityKitRenderer` in `src/render/utilitykits.ts` — one `InstancedMesh` per part kind, the civic pattern.
 - `src/data/catalog.json`, `src/sim/`, `src/world/` — untouched; the catalog's `kind` already names the recipe, and the save holds no geometry.

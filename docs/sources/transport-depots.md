@@ -137,4 +137,4 @@ roof is a dial: no data sheet read gave it.
 5. A before/after pair of the same line at the same camera, old cosmetic speed against the commercial speed, beside ordinary traffic.
 6. Two consecutive buses on one line, timed against the stated headway.
 
-Shots: `tools/depot-shots.mjs`.
+Shots: series `depots`.

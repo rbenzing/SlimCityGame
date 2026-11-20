@@ -7,7 +7,7 @@
  * the tool refuses is shown disabled with the reason rather than offered and
  * then refused.
  */
-import type { JSX, ReactNode } from 'react';
+import { useEffect, type JSX, type ReactNode } from 'react';
 import { BRIDGE_MAX_ELEVATION, ROAD_ELEVATION_STEP_M, TILE_METERS } from '../shared/constants';
 import {
   composeProfile,
@@ -29,7 +29,7 @@ import { insertionLossDb, SOUND_WALL_HEIGHTS_M } from '../shared/soundwall';
 import type { ParkingStyle, RoadTier } from '../shared/types';
 import { offersGrid, ROAD_TOOL_TO_TIER } from '../tools/tools';
 import type { ToolMode } from './store';
-import { useCityStore } from './store';
+import { DEFAULT_TOOL_MODE, useCityStore } from './store';
 
 const CHIP = 'rounded-md px-2 py-1 text-xs font-medium transition-colors';
 const CHIP_ON = 'bg-accent text-white';
@@ -511,8 +511,14 @@ function ProfileSections({ tier }: { tier: RoadTier }): JSX.Element {
   );
 }
 
+/**
+ * The options live as long as the roads drawer is open. The path mode belongs
+ * to the drawer, so it returns to its default when the drawer goes, however
+ * it goes.
+ */
 export function RoadToolOptions(): JSX.Element | null {
   const tool = useCityStore((s) => s.selectedTool);
+  useEffect(() => () => useCityStore.getState().setToolMode(DEFAULT_TOOL_MODE), []);
   const tier = ROAD_TOOL_TO_TIER[tool];
   if (tier === undefined) return null;
   return (

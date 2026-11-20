@@ -106,3 +106,94 @@ describe.each(['diamond', 'parclo', 'cloverleaf'] as InterchangeForm[])('a %s la
     expect(Array.from(after.roadMask)).toEqual(Array.from(before.roadMask));
   });
 });
+
+describe('a diamond laid: how its slip roads stand', () => {
+  const NORTH = 1;
+  const EAST = 2;
+  const SOUTH = 4;
+  const WEST = 8;
+  /** Each neighbour's offset, the bit that says this tile joins it, and the bit that says it joins back. */
+  const NEIGHBOURS = [
+    [0, -1, NORTH, SOUTH],
+    [1, 0, EAST, WEST],
+    [0, 1, SOUTH, NORTH],
+    [-1, 0, WEST, EAST],
+  ] as const;
+
+  /** The most recent junction list the sim posted: it travels only when it changes. */
+  function junctionsOf(h: Harness): { x: number; z: number; control: string }[] {
+    for (let i = h.messages.length - 1; i >= 0; i--) {
+      const m = h.messages[i]!;
+      if (m.type === 'snapshot' && m.snap.junctions !== undefined) return m.snap.junctions;
+    }
+    return [];
+  }
+
+  it('is four slip roads, each joined once to the motorway and once to the street, the street over both carriageways', () => {
+    const { h } = lay('diamond');
+    h.ticks(4);
+    const g = grid(h);
+    const tierAt = (x: number, z: number): number => g.roadTier[tileIndex(x, z)] ?? 0;
+    const maskAt = (x: number, z: number): number => g.roadMask[tileIndex(x, z)] ?? 0;
+
+    // The slip roads are the runs of ramp tiles joined to each other.
+    const seen = new Set<string>();
+    const runs: TilePoint[][] = [];
+    for (let z = ROW - 16; z <= ROW + 16; z++) {
+      for (let x = SB - 12; x <= NB + 12; x++) {
+        if (tierAt(x, z) !== RoadTier.Ramp || seen.has(`${x},${z}`)) continue;
+        const tiles: TilePoint[] = [];
+        const stack = [{ x, z }];
+        seen.add(`${x},${z}`);
+        while (stack.length > 0) {
+          const t = stack.pop()!;
+          tiles.push(t);
+          for (const [dx, dz, bit] of NEIGHBOURS) {
+            const n = { x: t.x + dx, z: t.z + dz };
+            if (tierAt(n.x, n.z) !== RoadTier.Ramp || seen.has(`${n.x},${n.z}`)) continue;
+            if ((maskAt(t.x, t.z) & bit) === 0) continue;
+            seen.add(`${n.x},${n.z}`);
+            stack.push(n);
+          }
+        }
+        runs.push(tiles);
+      }
+    }
+    expect(runs).toHaveLength(4);
+
+    const joinsOf = (tiles: TilePoint[], tier: number): TilePoint[] =>
+      tiles.flatMap((t) =>
+        NEIGHBOURS.flatMap(([dx, dz, bit, back]) => {
+          const n = { x: t.x + dx, z: t.z + dz };
+          return tierAt(n.x, n.z) === tier &&
+            (maskAt(t.x, t.z) & bit) !== 0 &&
+            (maskAt(n.x, n.z) & back) !== 0
+            ? [n]
+            : [];
+        }),
+      );
+    const terminals: TilePoint[] = [];
+    for (const [i, tiles] of runs.entries()) {
+      expect(joinsOf(tiles, RoadTier.Highway), `slip road ${i} at the motorway`).toHaveLength(1);
+      const street = joinsOf(tiles, RoadTier.TwoLane);
+      expect(street, `slip road ${i} at the street`).toHaveLength(1);
+      terminals.push(street[0]!);
+    }
+
+    // A ramp terminal is where the street holds traffic; the motorway end of a ramp never does.
+    const controls = junctionsOf(h);
+    for (const t of terminals) {
+      const j = controls.find((q) => q.x === t.x && q.z === t.z);
+      expect(j, `terminal ${t.x},${t.z}`).toBeDefined();
+      expect(j!.control).not.toBe('none');
+    }
+
+    // The street crosses on the over layer, with the motorway still under it.
+    for (const column of [SB, NB]) {
+      expect(g.overTier[tileIndex(column, ROW)], `street over column ${column}`).toBe(
+        RoadTier.TwoLane,
+      );
+      expect(tierAt(column, ROW)).toBe(RoadTier.Highway);
+    }
+  });
+});

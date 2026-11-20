@@ -549,10 +549,11 @@ export const ROAD_TOOL_TO_TIER: Record<string, RoadTier> = {
 
 /**
  * Whether a tool offers the `Grid` mode: every road but the motorway, whose
- * carriageways and ramps a street grid has no place for.
+ * carriageways and ramps a street grid has no place for. Nothing but a road
+ * tool lays a grid.
  */
 export function offersGrid(tool: ToolId): boolean {
-  return tool !== 'road.highway' && tool !== 'road.ramp';
+  return tool in ROAD_TOOL_TO_TIER && tool !== 'road.highway' && tool !== 'road.ramp';
 }
 
 /** The 'terraform' Command's mode field (shared/types.ts), named locally for readability. */
@@ -2146,9 +2147,18 @@ export class ToolManager {
     return this.bendsOnce() ? buildLPath(start, end, bend) : straightPath(start, end);
   }
 
-  /** Whether the road drag is an L-path: one bend, rather than a straight run or a grid. */
+  /**
+   * Whether the drag is an L-path: one bend, rather than a straight run or a
+   * grid. Only a road tool reads the path mode; a pipe or a power line is
+   * always one straight run.
+   */
   private bendsOnce(): boolean {
-    return !this.flags.angleLock && !this.flags.straightMode && !this.flags.gridMode;
+    return (
+      this._tool in ROAD_TOOL_TO_TIER &&
+      !this.flags.angleLock &&
+      !this.flags.straightMode &&
+      !this.flags.gridMode
+    );
   }
 
   /**

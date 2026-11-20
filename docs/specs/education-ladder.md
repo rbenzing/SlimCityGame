@@ -55,7 +55,7 @@
 `src/data/catalog.json` — `school`, `middle-school`, `high-school`, `college`, `library`.
 `src/sim/worker.entry.ts` — the inspector's missing-school list. `src/sim/economy.ts`, `src/sim/dispatch.ts` — speak `FundingKey` via `fundingKeyOf`.
 `src/ui/` — rows per rung, three lenses, the marker, the Advisor's per-rung count.
-`src/render/utilitykits.ts` `UTILITY_KIT_CATALOG_IDS` — five campus kits; `tools/education-shots.mjs` frames them.
+`src/render/utilitykits.ts` `UTILITY_KIT_CATALOG_IDS` — five campus kits; the `schools` shot series frames them.
 
 **Tests:** `tests/interaction/firsttown.test.ts` — the first town needs no school. Grid loader tests pin a v15 save (zero planes, every building intact) and a v16 round trip.
 Growth tests pin the gates: `ResHigh` at land value 200 with only middle coverage keeps level 2 and `NeedsSchool`; no count of elementary schools opens it.
