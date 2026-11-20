@@ -52,6 +52,7 @@ import { photographRoads } from './roads.mjs';
 import { openSession, settle } from './session.mjs';
 import { writeSheets } from './sheet.mjs';
 import { buildSite } from './site.mjs';
+import { photographTown } from './town.mjs';
 import { DRAWN_TOPS } from './tops.mjs';
 import { checkViews, photographViews } from './views-ui.mjs';
 import { BUILDING_VIEWS, MAX_DISTANCE, buildingView, threeQuarterView } from './views.mjs';
@@ -174,6 +175,8 @@ async function run(spec, url) {
         shoot,
         night: () => session.pinDay(NIGHT),
       });
+    } else if (spec.type === 'town') {
+      rows = await photographTown(session, spec, { url, tile, shoot });
     } else {
       const site = await buildSite(session, spec.subjects.map(catalogBox), tile, spec.site);
       site.tile = tile;
