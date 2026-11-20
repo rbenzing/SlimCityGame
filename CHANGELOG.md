@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.100.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.99.0...slimcity-v1.100.0) (2026-11-20)
+
+
+### Features
+
+* **tools:** the shot series library, its runner and the civic/health pilot ([a04f3c3](https://github.com/rbenzing/SlimCityGame/commit/a04f3c3d3304e8ecce4ab7d1eeb1d7b06614e5ff))
+
 ## [1.99.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.98.0...slimcity-v1.99.0) (2026-11-20)
 
 
