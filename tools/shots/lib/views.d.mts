@@ -20,6 +20,9 @@ export interface RoadRun {
   length: number;
   tile: number;
   axis?: 'x' | 'z';
+  width?: number;
+  height?: number;
+  line?: number;
 }
 export const MIN_DISTANCE: number;
 export const MAX_DISTANCE: number;

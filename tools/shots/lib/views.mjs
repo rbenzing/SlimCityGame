@@ -89,24 +89,65 @@ const distanceFor = (points, yaw, pitch, shift) => {
 /** How much farther than the least distance a view may stand to keep the box centred. */
 const SLACK = 1.02;
 
+/** The least gap, as a fraction of the frame, between any point and the top margin or the line the
+ * HUD bar leaves, when the camera stands `distance` off, seen from `target` shifted by `shift`. */
+const slackAt = (points, yaw, pitch, shift, distance) => {
+  const u = eyeDir(yaw, pitch);
+  const cy = Math.cos(yaw);
+  const sy = Math.sin(yaw);
+  const sp = Math.sin(pitch);
+  const cp = Math.cos(pitch);
+  let slack = Infinity;
+  for (const [px, py, pz] of points) {
+    const rx = px + shift * sy;
+    const rz = pz + shift * cy;
+    const up = -rx * sp * sy + py * cp - rz * sp * cy;
+    const depth = distance - (rx * u[0] + py * u[1] + rz * u[2]);
+    const y = 0.5 - up / (depth * TAN_HALF_FOV) / 2;
+    slack = Math.min(slack, y - MARGIN, 1 - MARGIN - HUD - y);
+  }
+  return slack;
+};
+
+/** A centred view may stand this much further off than the least distance to sit in the middle. */
+const CENTRE_TOLERANCE = 1.1;
+
 /** The camera for a box of sx by sz metres and h tall, seen at a yaw and pitch.
- * The target slides along the view's ground line to the spot that needs the least distance. */
-const fit = (sx, sz, h, yaw, pitch) => {
+ * The target slides along the view's ground line to the spot that needs the least distance. With
+ * `centre`, a thin box that has room to spare up and down the frame, or one that fits nearer than
+ * the camera's floor, is stood in the middle of the frame instead of against an edge. */
+const fit = (sx, sz, h, yaw, pitch, centre = false) => {
   const points = corners(sx, sz, h);
   const reach = Math.hypot(sx, sz) / 2;
-  const tries = [];
-  for (let shift = -reach; shift <= reach; shift += reach / 40)
-    tries.push({ shift, distance: distanceFor(points, yaw, pitch, shift) });
+  const shifts = Array.from({ length: 81 }, (_, i) => -reach + (i * reach) / 40);
+  const tries = shifts.map((shift) => ({
+    shift,
+    distance: distanceFor(points, yaw, pitch, shift),
+  }));
   // A box wider than it is deep is bound by its width, so sliding the target changes the distance
   // only a little: take the shift nearest the box centre among those within SLACK of the least.
   const least = Math.min(...tries.map((t) => t.distance));
-  const best = tries
+  let best = tries
     .filter((t) => t.distance <= least * SLACK)
     .reduce((a, b) => (Math.abs(b.shift) < Math.abs(a.shift) ? b : a));
+  let distance = Math.min(MAX_DISTANCE, Math.max(MIN_DISTANCE, best.distance));
+  if (centre) {
+    let roomiest = -Infinity;
+    for (const shift of shifts) {
+      const needed = distanceFor(points, yaw, pitch, shift);
+      if (needed > distance * CENTRE_TOLERANCE) continue;
+      const slack = slackAt(points, yaw, pitch, shift, Math.max(distance, needed));
+      if (slack > roomiest) {
+        roomiest = slack;
+        best = { shift, distance: needed };
+      }
+    }
+    distance = Math.min(MAX_DISTANCE, Math.max(distance, best.distance));
+  }
   return {
     dx: -best.shift * Math.sin(yaw),
     dz: -best.shift * Math.cos(yaw),
-    distance: Math.min(MAX_DISTANCE, Math.max(MIN_DISTANCE, best.distance)),
+    distance,
     yaw,
     pitch,
   };
@@ -155,15 +196,24 @@ function seen(box, turn, pitch) {
  *
  * `run`: `x0`, `z0` the first tile and `length` the count of tiles, running east
  * (`axis` `x`, the default) or south (`z`), `tile` the tile size in metres. The
- * run is one tile wide and has no height.
+ * run is `width` tiles across (one by default, more for a junction's whole box)
+ * and `height` metres tall (none by default, a bridge deck's rise otherwise).
+ * The low view frames only the one tile wide corridor down the middle (or down
+ * `line`, the tile index across the box of the road it should follow): a box as
+ * wide as a junction would push a camera standing at its end far back.
  */
 export function roadView(view, run) {
   const axis = run.axis ?? 'x';
+  const box = run.width ?? 1;
+  const across = view === 'along' ? 1 : box;
   const along = run.length * run.tile;
-  const sx = axis === 'x' ? along : run.tile;
-  const sz = axis === 'x' ? run.tile : along;
-  const cx = run.x0 + (axis === 'x' ? (run.length - 1) / 2 : 0);
-  const cz = run.z0 + (axis === 'z' ? (run.length - 1) / 2 : 0);
+  const sx = axis === 'x' ? along : across * run.tile;
+  const sz = axis === 'x' ? across * run.tile : along;
+  // The low view looks down `line`, the tile index across the box of the road it follows (the middle by default).
+  const middle = (box - 1) / 2;
+  const line = view === 'along' ? (run.line ?? middle) : middle;
+  const cx = run.x0 + (axis === 'x' ? (run.length - 1) / 2 : line);
+  const cz = run.z0 + (axis === 'z' ? (run.length - 1) / 2 : line);
   // The low view stands at the run's first end and looks down its centreline.
   const axisYaw = axis === 'x' ? -Math.PI / 2 : Math.PI;
   const options = {
@@ -173,7 +223,7 @@ export function roadView(view, run) {
   };
   if (!(view in options)) throw new Error(`unknown road view ${view}`);
   const [yaw, pitch] = options[view];
-  return place(cx, cz, run.tile, fit(sx, sz, 0, yaw, pitch));
+  return place(cx, cz, run.tile, fit(sx, sz, run.height ?? 0, yaw, pitch, true));
 }
 
 /** The bottom edge of the frame is this far below the view's own pitch. */

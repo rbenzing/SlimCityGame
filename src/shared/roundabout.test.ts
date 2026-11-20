@@ -309,6 +309,25 @@ describe('what refuses a roundabout', () => {
     expect(oneLaneEachWay(presetProfileForTier(RoadTier.FourLane))).toBe(false);
   });
 
+  it('an avenue, or the preset one-way street, but not a one-way street of one lane', () => {
+    const avenue = fixture();
+    road(avenue, row(20, 15, 25), RoadTier.Avenue);
+    road(avenue, col(20, 15, 25));
+    expect(at(avenue)).toBe(ROUNDABOUT_REFUSALS.wide);
+    // The preset one-way street carries two lanes the same way; a profile of one lane is taken.
+    expect(oneLaneEachWay(presetProfileForTier(RoadTier.OneWay))).toBe(false);
+    expect(
+      oneLaneEachWay({
+        class: 'oneWay',
+        pieces: [
+          { kind: 'sidewalk', width: 1.875 },
+          { kind: 'travel', width: 3.05, flow: 'fwd' },
+          { kind: 'sidewalk', width: 1.875 },
+        ],
+      }),
+    ).toBe(true);
+  });
+
   it('a tramway, a motorway, or a slip road running round it', () => {
     const tram = fixture();
     road(tram, row(20, 15, 25));

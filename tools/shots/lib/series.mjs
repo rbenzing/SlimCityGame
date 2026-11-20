@@ -15,6 +15,8 @@
  *   subjects             `[{ id }]` catalog ids, planted in order along one street;
  *                        `{ id, plot: { w, d, h } }` is ground that is not placed
  *                        `rotation` (0..3) places it turned, its lot's sides swapped on odd turns
+ *                        for type `roads`, road pieces each on its own pad (see
+ *                        `lib/roads.mjs`), `gap` tiles apart (3 by default)
  *   site                 optional `{ level, anywhere, prepare }`, see `buildSite`
  *   scene(session, site) optional: what to stand on the site once it is built
  *                        (vehicles, graves); `site.subjects` carries each
@@ -30,6 +32,7 @@
 import { mkdirSync, readdirSync, readFileSync, rmSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { cleanShot, closeUp, tileCamera, tileMeters } from './camera.mjs';
+import { photographRoads } from './roads.mjs';
 import { openSession, settle } from './session.mjs';
 import { buildSite } from './site.mjs';
 import { BUILDING_VIEWS, buildingView, threeQuarterView } from './views.mjs';
@@ -42,7 +45,8 @@ const CATALOG = fileURLToPath(new URL('../../../src/data/catalog.json', import.m
 /** Footprint, height and the terrain it needs beside it, of a catalog entry, from the game's own
  * data. A subject with a `plot` (`{ w, d, h }`) is ground that is not placed, such as a row of
  * parked vehicles: it carries the box it is given. */
-function catalogBox(subject) {
+function catalogBox(given) {
+  const subject = typeof given === 'string' ? { id: given } : given;
   if (subject.plot) return { id: subject.id, plot: true, ...subject.plot };
   const entry = JSON.parse(readFileSync(CATALOG, 'utf8')).buildings.find(
     (e) => e.id === subject.id,
@@ -95,32 +99,43 @@ async function run(spec, url) {
       console.log('shot', name);
     };
 
-    const site = await buildSite(session, spec.subjects.map(catalogBox), tile, spec.site);
-    site.tile = tile;
-    const boxes = site.subjects.map((s) => ({ ...s, tile }));
-    if (spec.scene) await spec.scene(session, site);
-    await settle(page);
-
-    for (const box of boxes)
-      for (const view of BUILDING_VIEWS) await shoot(`${box.id}-${view}`, buildingView(view, box));
-
-    for (const d of spec.details ?? []) {
-      const box = boxes.find((b) => b.id === d.subject);
-      const [lx, lz] = d.local;
-      if (d.setup) await d.setup(session, site);
-      const restore = d.scale > 1 ? await closeUp(page, d.scale) : null;
-      await shoot(`${d.subject}-${d.name}`, {
-        tx: box.cx + lx / tile,
-        tz: box.cz + lz / tile,
-        distance: d.distance,
-        yaw: d.yaw,
-        pitch: d.pitch,
+    if (spec.type === 'roads') {
+      await photographRoads(session, spec, {
+        tile,
+        catalogBox,
+        aim,
+        shoot,
+        night: () => session.pinDay(NIGHT),
       });
-      if (restore) await restore();
-    }
+    } else {
+      const site = await buildSite(session, spec.subjects.map(catalogBox), tile, spec.site);
+      site.tile = tile;
+      const boxes = site.subjects.map((s) => ({ ...s, tile }));
+      if (spec.scene) await spec.scene(session, site);
+      await settle(page);
 
-    await session.pinDay(NIGHT);
-    await shoot(`${boxes[0].id}-night`, threeQuarterView(boxes[0]));
+      for (const box of boxes)
+        for (const view of BUILDING_VIEWS)
+          await shoot(`${box.id}-${view}`, buildingView(view, box));
+
+      for (const d of spec.details ?? []) {
+        const box = boxes.find((b) => b.id === d.subject);
+        const [lx, lz] = d.local;
+        if (d.setup) await d.setup(session, site);
+        const restore = d.scale > 1 ? await closeUp(page, d.scale) : null;
+        await shoot(`${d.subject}-${d.name}`, {
+          tx: box.cx + lx / tile,
+          tz: box.cz + lz / tile,
+          distance: d.distance,
+          yaw: d.yaw,
+          pitch: d.pitch,
+        });
+        if (restore) await restore();
+      }
+
+      await session.pinDay(NIGHT);
+      await shoot(`${boxes[0].id}-night`, threeQuarterView(boxes[0]));
+    }
 
     const refused = await session.refusals();
     if (refused.length > 0) throw new Error(`the game refused: ${refused.join('; ')}`);

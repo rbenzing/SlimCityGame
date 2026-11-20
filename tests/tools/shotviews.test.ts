@@ -184,6 +184,53 @@ describe('road views', () => {
     expect(Math.abs(Math.cos(cam.yaw))).toBeLessThan(EPS);
     expect(cam.pitch).toBeLessThan(FACE_PITCH);
   });
+
+  describe('a box of several tiles across, such as a whole junction', () => {
+    const box = { x0: 50, z0: 70, length: 11, width: 11, tile: TILE };
+    for (const view of ['above', 'oblique']) {
+      it(`${view} keeps the whole box inside the margins`, () => {
+        const cam = roadView(view, box);
+        for (const c of cornersOf(box.x0, box.z0, 11, 11, 0))
+          expect(inside(project(cam, c))).toBe(true);
+      });
+    }
+
+    it('along frames only the one tile corridor down the middle, not the width of the box', () => {
+      const cam = roadView('along', box);
+      for (const c of cornersOf(box.x0, box.z0 + 5, 11, 1, 0))
+        expect(inside(project(cam, c))).toBe(true);
+      // A wide box would push the camera back; the corridor leaves it at its floor.
+      expect(cam.distance).toBeCloseTo(MIN_DISTANCE, 6);
+    });
+
+    it('stands the box in the middle of the frame where it fits nearer than the camera floor', () => {
+      const cam = roadView('along', box);
+      const far = project(cam, [(box.x0 + 11) * TILE, 0, (box.z0 + 5.5) * TILE]);
+      const near = project(cam, [box.x0 * TILE, 0, (box.z0 + 5.5) * TILE]);
+      const clearAbove = far.y - MARGIN;
+      const clearBelow = 1 - MARGIN - HUD - near.y;
+      expect(clearAbove).toBeGreaterThan(0);
+      expect(clearBelow).toBeGreaterThan(0);
+      expect(Math.abs(clearAbove - clearBelow)).toBeLessThan(0.1);
+    });
+  });
+
+  it('stands a long thin run in the middle of the frame, not against its top or bottom edge', () => {
+    const run = { x0: 50, z0: 70, length: 14, tile: TILE };
+    const cam = roadView('above', run);
+    const y = project(cam, [(run.x0 + 7) * TILE, 0, (run.z0 + 0.5) * TILE]).y;
+    // Centred between the top margin and the line the HUD bar leaves.
+    expect(Math.abs(y - (MARGIN + (1 - MARGIN - HUD)) / 2)).toBeLessThan(0.02);
+  });
+
+  it('frames the rise of a raised deck: its top corners stay inside the margins', () => {
+    const run = { x0: 50, z0: 70, length: 20, tile: TILE, height: 12 };
+    for (const view of ROAD_VIEWS) {
+      const cam = roadView(view, run);
+      for (const c of cornersOf(run.x0, run.z0, 20, 1, 12))
+        expect(inside(project(cam, c))).toBe(true);
+    }
+  });
 });
 
 describe('row spacing', () => {
