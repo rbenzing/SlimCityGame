@@ -96,6 +96,8 @@ export default defineSeries({
   purpose:
     'Transit reads as service on the street: a bus line with its shelters and buses, the street tramway, a tram reservation as a raised guideway with its station and a cross street passing under it, the ramp from street to guideway, a railway with its stations and a train, and parallel track that does not join.',
   budgetS: 60,
+  // Wide enough that a neighbouring pad's rail yard and train stand out of a close-up's view.
+  gap: 12,
   subjects: [
     // Shot at night: the bus line after dark.
     served('bus-line', TIER.twoLane, BUS_DEPOT, FRONTS_NORTH, 'bus', (p) => [

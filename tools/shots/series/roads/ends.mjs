@@ -81,7 +81,8 @@ export default defineSeries({
   purpose:
     'Every way a street ends reads as an ending: a plain end with homes beside it on each class, a one-tile stub, an end that meets a building, an off-grid curve and a cul-de-sac, each with its rounded cap, edge line and kerb clear of any drive.',
   budgetS: 60,
-  gap: 4,
+  // Wide enough that a neighbouring pad's homes stand out of an oblique view.
+  gap: 9,
   subjects: [
     {
       // Shot at night, lit by a turbine on the north side of the last tile but one.

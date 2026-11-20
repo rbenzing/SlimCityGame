@@ -2,7 +2,7 @@ import { readdirSync } from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { LENS_MEANING } from '../../src/shared/lenses';
-import { row } from '../../tools/shots/lib/town.mjs';
+import { framedBox, gridBox, row, viewOf } from '../../tools/shots/lib/town.mjs';
 
 const SERIES_DIR = fileURLToPath(new URL('../../tools/shots/series/town/', import.meta.url));
 
@@ -37,7 +37,13 @@ async function readSeries(): Promise<Spec[]> {
 describe('town series', () => {
   it('stay inside the town type budget and name each subject once', async () => {
     const series = await readSeries();
-    expect(series.map((s) => s.name).sort()).toEqual(['lenses', 'life', 'lots', 'town']);
+    expect(series.map((s) => s.name).sort()).toEqual([
+      'firstgame',
+      'lenses',
+      'life',
+      'lots',
+      'town',
+    ]);
     for (const s of series) {
       expect(s.type).toBe('town');
       expect(s.budgetS).toBeLessThanOrEqual(300);
@@ -51,6 +57,32 @@ describe('town series', () => {
     const shown = lenses.subjects.filter((s) => s.lens !== undefined).map((s) => s.lens);
     expect(new Set(shown).size).toBe(shown.length);
     expect([...shown].map(String).sort()).toEqual(Object.keys(LENS_MEANING).sort());
+  });
+
+  it('keeps the first game to a few full frames, one a step', async () => {
+    const first = (await readSeries()).find((s) => s.name === 'firstgame')!;
+    expect(first.subjects.length).toBeLessThanOrEqual(25);
+    for (const s of first.subjects) expect(s.views).toEqual(['full']);
+  });
+
+  it('turns a lot to its street: a north-facing lot is looked at from the north', () => {
+    const farm = { catalogId: 'farm-crops-1', x: 10, z: 20, rotation: 2 };
+    const box = gridBox(farm);
+    // The 4 by 5 lot's centre, whatever way it faces.
+    expect([box.cx, box.cz]).toEqual([11.5, 22]);
+    expect(box.facing).toBeCloseTo(Math.PI);
+    const front = viewOf('front', { ...box, tile: 20 });
+    expect(front.yaw).toBeCloseTo(Math.PI);
+    // The camera stands north of the centre, on the street side.
+    expect(front.tz).toBeLessThan(box.cz);
+    // A parcel on a road running east (heading 0) fronts north, too.
+    const framed = framedBox(
+      { frame: { x: 400, z: 400, heading: 0 } },
+      { footprint: { w: 2, d: 2 }, height: 8 },
+      20,
+    );
+    expect(framed.facing).toBeCloseTo(Math.PI);
+    expect([framed.cx, framed.cz]).toEqual([20 + 1 - 0.5, 20 + 1 - 0.5]);
   });
 
   it('lays a row of tiles from its first tile', () => {

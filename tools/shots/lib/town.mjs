@@ -17,10 +17,14 @@
  * that needs sites (`plan.live`) saves an empty flat map and runs its phases in the loaded game
  * itself, at speed 4, each phase ending on its `until` conditions or failing at `timeoutMs`.
  */
+import { readFileSync } from 'node:fs';
 import { hooksReady } from './camera.mjs';
 import { settle } from './session.mjs';
 import { BUILDING_VIEWS, buildingView, threeQuarterView } from './views.mjs';
 
+const CATALOG = JSON.parse(
+  readFileSync(new URL('../../../src/data/catalog.json', import.meta.url), 'utf8'),
+).buildings;
 const NIGHT = 22 / 24;
 const NOON = 0.5;
 const SAVE_ID_KEY = 'saveId';
@@ -214,8 +218,8 @@ async function growLive(session, phases) {
   }
 }
 
-/** The view a subject's frame is taken from, by its name. */
-function viewOf(name, box) {
+/** The view a subject's frame is taken from, by its name, for a box whose street is on +z. */
+function plainViewOf(name, box) {
   if (name === 'oblique' || name === 'night') return threeQuarterView(box);
   if (name === 'full') return buildingView('above', box);
   if (BUILDING_VIEWS.includes(name)) return buildingView(name, box);
@@ -223,17 +227,86 @@ function viewOf(name, box) {
 }
 
 /**
+ * The view of a box, turned about its centre when it carries `facing`: the radians its street
+ * side is turned from +z (a parcel on a curved street). The views are worked out for the box
+ * square to its street, then the camera is swung round with it.
+ */
+export function viewOf(name, box) {
+  if (!box.facing) return plainViewOf(name, box);
+  const v = plainViewOf(name, { ...box, cx: 0, cz: 0 });
+  const c = Math.cos(box.facing);
+  const s = Math.sin(box.facing);
+  return {
+    ...v,
+    tx: box.cx + v.tx * c + v.tz * s,
+    tz: box.cz - v.tx * s + v.tz * c,
+    yaw: v.yaw + box.facing,
+  };
+}
+
+/** A catalog entry by id, from the game's own data. */
+export const catalogEntry = (id) => {
+  const entry = CATALOG.find((e) => e.id === id);
+  if (!entry) throw new Error(`catalog has no building '${id}'`);
+  return entry;
+};
+
+/**
+ * A grown building's box on a grid lot, turned to face the street its `rotation` names (0
+ * south, 1 east, 2 north, 3 west, as the views name them). `b` is a building read from the page.
+ */
+export function gridBox(b) {
+  const entry = catalogEntry(b.catalogId);
+  const { w, d } = entry.footprint;
+  const turned = b.rotation % 2 === 1;
+  return {
+    cx: b.x + ((turned ? d : w) - 1) / 2,
+    cz: b.z + ((turned ? w : d) - 1) / 2,
+    w,
+    d,
+    h: entry.height,
+    facing: (b.rotation * Math.PI) / 2,
+  };
+}
+
+/**
+ * A grown building's box on a framed parcel (a curved street's), turned to face its street:
+ * `b` a building read from the page, `entry` its catalog entry, `tile` metres. The frame is
+ * the one of `src/shared/lotframe.ts`: local u along the street, v into the lot, street at -v.
+ */
+export function framedBox(b, entry, tile) {
+  const f = b.frame;
+  const c = Math.cos(f.heading);
+  const s = Math.sin(f.heading);
+  const w = entry.footprint.w * tile;
+  const d = entry.footprint.d * tile;
+  const centre = { x: f.x + (w / 2) * c - (d / 2) * s, z: f.z + (w / 2) * s + (d / 2) * c };
+  return {
+    cx: centre.x / tile - 0.5,
+    cz: centre.z / tile - 0.5,
+    w: entry.footprint.w,
+    d: entry.footprint.d,
+    h: entry.height,
+    facing: Math.PI - f.heading,
+  };
+}
+
+/**
  * Photographs a town series: grows and loads its town, then each subject in turn, then the
  * night frames. Returns the sheet rows.
  *
  * Spec: `plan` (see the file's head), `ready(session, town)` optional, run once the town is
- * loaded (traffic, the clock), and `subjects`: `{ id, box, views, lens, before, night }` where
- * `box` is `{ x0, z0, x1, z1, h }` or `(town) => box`, `views` default `['above', 'oblique']`,
- * `lens` a lens id shown for the subject's frames, `before(session, town)` lays what the frame
- * needs, and `night` takes the subject's `night` frame in the night pass.
+ * loaded (traffic, the clock), and `subjects`: `{ id, box, views, lens, tool, before, night }`
+ * where `box` is `{ x0, z0, x1, z1, h }` or `(town) => box` (or a `framedBox`), `views` default
+ * `['above', 'oblique']`, `lens` a lens id shown for the subject's frames, `tool` a tool held
+ * for its `full` frame only (the zoning lens a zone tool shows), `before(session, town)` lays
+ * what the frame needs, and `night` takes the subject's `night` frame in the night pass.
+ *
+ * A series with `play(session, { capture })` plays a first game instead (see `playthrough.mjs`).
  */
-export async function photographTown(session, spec, { url, tile, shoot, onTown }) {
+export async function photographTown(session, spec, { url, tile, shoot, capture, onTown }) {
   const { page } = session;
+  if (spec.play) return spec.play(session, { capture });
   const grown = await page.evaluate(growInPage, spec.plan);
   console.log('grown', JSON.stringify(grown));
   await loadSave(session, url, grown[SAVE_ID_KEY]);
@@ -243,6 +316,8 @@ export async function photographTown(session, spec, { url, tile, shoot, onTown }
     facts: grown,
     buildings: () => page.evaluate(() => window.__slimcity.readBuildings()),
     vehicles: () => page.evaluate(() => window.__slimcity.readVehicles()),
+    /** Runs `fn(arg)` in the page, for a read hook a series needs. */
+    read: (fn, arg) => page.evaluate(fn, arg),
   };
   if (spec.plan.interactionTown)
     town.TOWN = await page.evaluate(async () => (await import('/tests/support/town.ts')).TOWN);
@@ -251,6 +326,7 @@ export async function photographTown(session, spec, { url, tile, shoot, onTown }
 
   const boxOf = async (s) => {
     const b = typeof s.box === 'function' ? await s.box(town) : s.box;
+    if (b.cx !== undefined) return { ...b, tile };
     return {
       w: b.x1 - b.x0 + 1,
       d: b.z1 - b.z0 + 1,
@@ -268,8 +344,12 @@ export async function photographTown(session, spec, { url, tile, shoot, onTown }
       await settle(page);
     }
     const box = await boxOf(s);
-    for (const view of s.views ?? ['above', 'oblique'])
+    for (const view of s.views ?? ['above', 'oblique']) {
+      const held = view === 'full' && s.tool;
+      if (held) await page.evaluate((t) => window.__slimcity.setTool(t), s.tool);
       await shoot(`${s.id}-${view}`, viewOf(view, box));
+      if (held) await page.evaluate(() => window.__slimcity.setTool('select'));
+    }
     if (s.lens !== undefined) await page.evaluate(() => window.__slimcity.setOverlay(null));
     if (s.after) await s.after(session, town);
   }

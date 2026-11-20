@@ -40,6 +40,10 @@
  *                        `setup(session, site)` optional, runs just before the frame
  *                        (a worn lawn, a vehicle moved up to the camera).
  *
+ * Type `town` may also carry `session: { fresh, seed }` (open a player's first game, see
+ * `openSession`) and `play(session, { capture })`, which plays that game itself and returns the
+ * sheet rows (see `lib/playthrough.mjs`).
+ *
  * Type `views` photographs how the game shows itself (a view, a panel, a preview), not a
  * building: `subjects` are the things shown (`{ id }`, one sheet row each) and `frames`
  * the frames, each a camera on the scene or `full` (the page as the player sees it, HUD
@@ -139,7 +143,7 @@ async function run(spec, url) {
   mkdirSync(dir, { recursive: true });
   for (const f of readdirSync(dir)) if (f.endsWith('.png')) rmSync(`${dir}/${f}`);
 
-  const session = await openSession(url);
+  const session = await openSession(url, spec.session);
   const { page } = session;
   const shots = [];
   let frames = 0;
@@ -176,7 +180,7 @@ async function run(spec, url) {
         night: () => session.pinDay(NIGHT),
       });
     } else if (spec.type === 'town') {
-      rows = await photographTown(session, spec, { url, tile, shoot });
+      rows = await photographTown(session, spec, { url, tile, shoot, capture });
     } else {
       const site = await buildSite(session, spec.subjects.map(catalogBox), tile, spec.site);
       site.tile = tile;
