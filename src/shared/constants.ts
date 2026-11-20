@@ -501,6 +501,8 @@ export const WATER_FOUL_PER_KL = 255 / 3785;
 /** How far along connected water a discharge's fouling reaches before it fades to nothing, in tiles. */
 export const WATER_FOUL_REACH_TILES = 25;
 /** Cosmetic trucks a landfill area fields: base + one per LANDFILL_TRUCKS_PER_TILES painted tiles, capped. */
+/** The most jobs a level-up may add past the town's job room (a level-3 shop's jobs); a dial. */
+export const LEVEL_UP_FLOOR_JOBS = 34;
 export const LANDFILL_TRUCKS_BASE = 1;
 export const LANDFILL_TRUCKS_PER_TILES = 16;
 export const LANDFILL_TRUCKS_MAX = 4;

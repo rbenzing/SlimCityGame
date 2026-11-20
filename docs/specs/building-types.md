@@ -140,8 +140,8 @@ A shop or office is drawn as a home is, with one more test. The demand model kno
 
 - `jobRoom(input)` returns the two gaps the demand formulas already compute, in jobs. The worker computes it beside `computeDemand` every tick and passes it to `growth.tick` as `room`, unlimited for callers with no economy.
 - Growth copies it per pass and counts it down as it builds, as `spare` does, so two lots on one pass cannot both fill it.
-- In `runSpawnScan` a `com` or `ind` candidate needs `jobs <= room[sector]`, or is the candidate with the fewest jobs, so growth never stalls at a gap smaller than any building.
-- `tryLevelUp` needs `next.jobs - entry.jobs <= room[sector]` for those sectors. Homes and farms are untouched.
+- In `runSpawnScan` a `com` or `ind` candidate needs `jobs <= room[sector]`, or is the fewest-jobs candidate, so no gap smaller than a building stalls growth.
+- `tryLevelUp` needs the added jobs `<= room[sector]`, bar one smallest step a pass `[R-world-061]`. Homes and farms are untouched.
 - A village of forty gets a corner shop, not a shopping strip; the strip comes when the town supports its eighty jobs.
 
 ### The commercial kinds

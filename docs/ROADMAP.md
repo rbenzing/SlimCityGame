@@ -25,7 +25,7 @@ current behavior only and carry no dates of their own._
 
 ## Status (2026-09-29)
 
-**Test suite:** 11,227 tests passing across 311 test files, run 2026-11-19.
+**Test suite:** 11,247 tests passing across 312 test files, run 2026-11-19.
 This is the only test count in the documentation set. When the suite changes
 again, update the figure here and nowhere else.
 
@@ -37,12 +37,13 @@ again, update the figure here and nowhere else.
 
 - What a review of every shot the tools write found wrong in the game is
   ranked in [open-visual-defects.md](roadmap/open-visual-defects.md).
-- Growth, measured and awaiting a decision: shops rarely level up, since a
-  level-up needs more job room than a new shop does; a zone's back rows
-  stay empty behind small home lots; a works on a full block never levels.
-  No town has yet been grown past Busy Township by script, so the
-  milestones above it are proven on prepared streets only. The numbers are
-  in the [history](history/2026-11.md).
+- Growth, measured in a scripted town of 41,504 people: ordinary served
+  land sits under the level-2 line, so little levels up without parks; a
+  zone's back rows stay empty behind small home lots; a works on a full
+  block never levels, and most works stop at level 1 or 2 where a zone
+  three rows deep cannot hold the next level's lot. Metropolis is proven
+  on prepared streets only. The numbers are in the
+  [history](history/2026-11.md).
 - A bend turns at its kerb return's radius, not its class's minimum curve
   radius `[R-roads-081]`: the wider sweep leaves the tiles the road holds, so
   lots, traffic and saves would have to follow it. Not yet bends: a one-way
