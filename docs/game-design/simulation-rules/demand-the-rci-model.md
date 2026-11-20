@@ -46,8 +46,10 @@ sector's tax rate, and city-wide happiness, with no randomness. Each is a
 A sector a tenth short of its target reads full, and a tenth over reads
 empty `[R-world-068]`. Read against the whole target, a town near balance
 showed 0.01 to 0.05 on every bar, and a lot's chance to build, which
-follows the value, was about 2% a pass. A town small enough that a floor
-rules reads as it always did.
+follows the value, was about 2% a pass. Where a floor ruled the old scale
+nothing changed: homes under 400 people, industry under about 60. Past
+that a small town's bars read stronger than they did; it reaches Small
+Town at the same tick.
 
 Jobs in buildings still under construction count as supply on both sides —
 industrial ones against the basic jobs wanted, commercial ones against the
