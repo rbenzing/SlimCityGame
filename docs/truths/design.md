@@ -108,8 +108,10 @@ Back to [the index](../GROUND-TRUTHS.md).
 - [R-design-023] The road path mode belongs to the roads drawer. It starts at `Straight`,
   returns to `Straight` whenever the drawer closes or another category
   opens, and is never saved. No tool outside the roads drawer reads it: a
-  water pipe is always one straight run. A grid drawn for streets once
-  stayed selected, and the next pipe drag laid a grid of pipes. —
-  [interaction.md](../ux/interaction.md#grid-road-mode); `setToolMode` in
-  `src/ui/store.ts`, `pathFor` in `src/tools/tools.ts`
+  water pipe, a power line and a buried cable are each always one straight
+  run. A grid drawn for streets once stayed selected, and the next pipe
+  drag laid a grid of pipes. —
+  [interaction.md](../ux/interaction.md#grid-road-mode); `DEFAULT_TOOL_MODE`
+  in `src/ui/store.ts`, `RoadToolOptions` in `src/ui/RoadToolOptions.tsx`,
+  `offersGrid` and `bendsOnce` in `src/tools/tools.ts`
 
