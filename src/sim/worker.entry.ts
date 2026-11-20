@@ -227,7 +227,7 @@ import { footprintForRotation } from '../shared/footprint';
 import { PLACEMENT_REFUSALS } from '../shared/placement';
 import { BuildingRegistry, settleBuildingDelta, standingTiles } from './buildings';
 import { computeDemand, jobRoom } from './demand';
-import { GrowthSystem, schoolsMissingAt, type GrowthSupply } from './growth';
+import { GrowthSystem, levelReadTile, schoolsMissingAt, type GrowthSupply } from './growth';
 import { gridKerbSurroundings } from './kerbsurroundings';
 import { ServiceSim, nearestRoadTile, openSpaceOf } from './services';
 import { EconomySystem, buildingMonthlyTax, type Occupancy } from './economy';
@@ -1823,7 +1823,13 @@ class SimWorld implements WorkerSim {
       ...(intakeYield !== undefined ? { intakeYield } : {}),
       ...(entry.depot !== undefined ? { depot: this.depotInfo(inst.id, entry.depot) } : {}),
       ...(inst.problems & Problem.NeedsSchool && entry.zone !== undefined
-        ? { missingSchools: schoolsMissingAt(this.grid, idx, entry.zone).map((rung) => rung.kind) }
+        ? {
+            missingSchools: schoolsMissingAt(
+              this.grid,
+              levelReadTile(this.grid, inst, entry),
+              entry.zone,
+            ).map((rung) => rung.kind),
+          }
         : {}),
     };
     this.post({ type: 'selection', info });
