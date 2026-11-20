@@ -2412,6 +2412,9 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
   const toolManager = new ToolManager(env);
   toolManager.setBrush(store.getState().brushSettings);
   toolManager.setInterchange(store.getState().interchange);
+  // The store's flags (the path mode the roads drawer opens on) are the start
+  // state; the subscription below only forwards later changes.
+  toolManager.setFlags(store.getState().toolFlags);
 
   /**
    * A committed bulldoze clears the cosmetic trees on every tile it covers,

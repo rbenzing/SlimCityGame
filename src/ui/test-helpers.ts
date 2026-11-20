@@ -6,7 +6,12 @@
 import { DEFAULT_SETTINGS } from '../app/session';
 import { NO_EDITS } from '../shared/roadprofile';
 import { DEFAULT_BRUSH_SETTINGS } from '../tools/tools';
-import { createInitialStats, createInitialToolFlags, useCityStore } from './store';
+import {
+  createInitialStats,
+  createInitialToolFlags,
+  DEFAULT_TOOL_MODE,
+  useCityStore,
+} from './store';
 
 export function resetCityStore(): void {
   useCityStore.setState({
@@ -27,7 +32,7 @@ export function resetCityStore(): void {
     bound: null,
     toolFlags: createInitialToolFlags(),
     roadProfileEdits: NO_EDITS,
-    toolMode: 'lpath',
+    toolMode: DEFAULT_TOOL_MODE,
     roadElevation: 0,
     previousMonthPopulation: createInitialStats().population,
     previousMonthFunds: createInitialStats().funds,

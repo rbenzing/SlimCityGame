@@ -84,6 +84,9 @@ export interface BoundActions {
  */
 export type ToolMode = 'straight' | 'lpath' | 'grid' | 'curve';
 
+/** The path mode the roads drawer opens on, and returns to when it closes. */
+export const DEFAULT_TOOL_MODE: ToolMode = 'straight';
+
 /**
  * The junction the inspector has open: where it is, who gives way there, and
  * whether that is the control the warrant worked out (`auto`) or the one the
@@ -123,7 +126,7 @@ export interface SelectedJunction {
 export function createInitialToolFlags(): ToolFlags {
   return {
     angleLock: false,
-    straightMode: false,
+    straightMode: true,
     gridMode: false,
     guideSnap: false,
     roadSnap: true,
@@ -361,7 +364,7 @@ export const useCityStore = create<CityStoreState>((set, get) => ({
   canRedo: false,
   bound: null,
   toolFlags: createInitialToolFlags(),
-  toolMode: 'lpath',
+  toolMode: DEFAULT_TOOL_MODE,
   roadElevation: 0,
   roadProfileEdits: NO_EDITS,
   interchange: { form: 'diamond', streetTier: RoadTier.TwoLane },
