@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.101.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.100.0...slimcity-v1.101.0) (2026-11-20)
+
+
+### Features
+
+* **tools:** contact sheets, drawn tops, airport parts and a runner that holds its budgets ([5c13bb1](https://github.com/rbenzing/SlimCityGame/commit/5c13bb1ca2d58cb9d6dfb99b61fdd24362fe10dd))
+
 ## [1.100.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.99.0...slimcity-v1.100.0) (2026-11-20)
 
 
