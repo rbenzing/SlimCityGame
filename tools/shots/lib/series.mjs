@@ -12,12 +12,16 @@
  *   name, type, purpose  the series' file name, its type folder, and the one
  *                        sentence a reviewer judges it by
  *   budgetS              seconds on an idle machine
- *   subjects             `[{ id }]` catalog ids, planted in order along one street;
- *                        `{ id, plot: { w, d, h } }` is ground that is not placed
- *                        `rotation` (0..3) places it turned, its lot's sides swapped on odd turns
- *                        for type `roads`, road pieces each on its own pad (see
+ *   subjects             `[{ id, as? }]` catalog ids, planted in order along one
+ *                        street; `as` names the frames (and details) where one id
+ *                        stands more than once; `{ id, plot: { w, d, h } }` is
+ *                        ground that is not placed; `rotation` (0..3) places it
+ *                        turned, its lot's sides swapped on odd turns; for type
+ *                        `roads`, road pieces each on its own pad (see
  *                        `lib/roads.mjs`), `gap` tiles apart (3 by default)
- *   site                 optional `{ level, anywhere, prepare }`, see `buildSite`
+ *   site                 optional `{ level, anywhere, prepare }`, see `buildSite`;
+ *                        `prepare(session, site)` lays what the subjects need
+ *                        (zoning, a track) before they are planted
  *   scene(session, site) optional: what to stand on the site once it is built
  *                        (vehicles, graves); `site.subjects` carries each
  *                        subject's tiles and building id, `site.tile` the tile size
@@ -47,7 +51,8 @@ const CATALOG = fileURLToPath(new URL('../../../src/data/catalog.json', import.m
  * parked vehicles: it carries the box it is given. */
 function catalogBox(given) {
   const subject = typeof given === 'string' ? { id: given } : given;
-  if (subject.plot) return { id: subject.id, plot: true, ...subject.plot };
+  const name = subject.as ?? subject.id;
+  if (subject.plot) return { id: subject.id, name, plot: true, ...subject.plot };
   const entry = JSON.parse(readFileSync(CATALOG, 'utf8')).buildings.find(
     (e) => e.id === subject.id,
   );
@@ -57,6 +62,7 @@ function catalogBox(given) {
   const turned = rotation % 2 === 1;
   return {
     id: subject.id,
+    name,
     w: turned ? entry.footprint.d : entry.footprint.w,
     d: turned ? entry.footprint.w : entry.footprint.d,
     h: entry.height,
@@ -74,7 +80,7 @@ function check(spec) {
     perSubject[d.subject] = (perSubject[d.subject] ?? 0) + 1;
     if (perSubject[d.subject] > MAX_DETAILS)
       throw new Error(`subject '${d.subject}' has more than ${MAX_DETAILS} details`);
-    if (!spec.subjects.some((s) => s.id === d.subject))
+    if (!spec.subjects.some((s) => (s.as ?? s.id) === d.subject))
       throw new Error(`detail ${d.name} names unknown subject '${d.subject}'`);
   }
 }
@@ -116,10 +122,10 @@ async function run(spec, url) {
 
       for (const box of boxes)
         for (const view of BUILDING_VIEWS)
-          await shoot(`${box.id}-${view}`, buildingView(view, box));
+          await shoot(`${box.name}-${view}`, buildingView(view, box));
 
       for (const d of spec.details ?? []) {
-        const box = boxes.find((b) => b.id === d.subject);
+        const box = boxes.find((b) => b.name === d.subject);
         const [lx, lz] = d.local;
         if (d.setup) await d.setup(session, site);
         const restore = d.scale > 1 ? await closeUp(page, d.scale) : null;
@@ -134,7 +140,7 @@ async function run(spec, url) {
       }
 
       await session.pinDay(NIGHT);
-      await shoot(`${boxes[0].id}-night`, threeQuarterView(boxes[0]));
+      await shoot(`${boxes[0].name}-night`, threeQuarterView(boxes[0]));
     }
 
     const refused = await session.refusals();

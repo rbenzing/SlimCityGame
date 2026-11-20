@@ -85,7 +85,8 @@ function findFlat(grid, cols, rows) {
  * `options.level` levels the site to that height instead of the height found there;
  * `options.anywhere` skips the search for dry ground, so the site is the middle of the map and
  * is levelled whatever stands there; `options.prepare(session, site)` runs after the street is
- * laid and before the subjects are placed, with `site.subjects` carrying each one's tiles.
+ * laid and before the subjects are placed, with `site.subjects` carrying each one's tiles, each
+ * with its `band`, and `site.roads` the street row of each band.
  */
 export async function buildSite(session, subjects, tile, options = {}) {
   const { page, send } = session;
