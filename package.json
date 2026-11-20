@@ -13,7 +13,7 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint src tests",
     "shots": "node tools/shots/run.mjs",
-    "shots:old": "node tools/shots.mjs",
+    "probes": "node tools/probes/run.mjs",
     "lint:docs": "node tools/check-docs.mjs",
     "format": "prettier --write ."
   },

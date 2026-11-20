@@ -6,7 +6,7 @@
  *
  * Generates its own WAV so the run needs no committed audio (and cleans it up).
  *
- *   node tools/audio-check.mjs [url]
+ *   node tools/probes/audio-check.mjs [url]
  */
 import { chromium } from 'playwright';
 import { writeFileSync, mkdirSync, rmSync, existsSync } from 'node:fs';
@@ -106,7 +106,11 @@ try {
     await music.scan();
     return music.state().tracks.length;
   });
-  check('two more rescans do not duplicate tracks', afterRescans === engine.tracks.length, `${afterRescans}`);
+  check(
+    'two more rescans do not duplicate tracks',
+    afterRescans === engine.tracks.length,
+    `${afterRescans}`,
+  );
 
   // Actually play it.
   const playback = await page.evaluate(async () => {

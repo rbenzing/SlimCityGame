@@ -7,7 +7,7 @@
  * memory" is not a diagnosis — the shape of the curve is. Linear with buildings
  * is a budget; superlinear, or climbing while the city is static, is a leak.
  *
- * Usage: node tools/memory-probe.mjs [url] [seconds]
+ * Usage: node tools/probes/memory-probe.mjs [url] [seconds]
  */
 import { chromium } from 'playwright';
 

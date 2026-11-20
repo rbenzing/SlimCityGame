@@ -3,14 +3,15 @@
  * drives tools via the keyboard hotkeys + mouse, and screenshots the canvas
  * after each action so a human (or model) can SEE what renders.
  *
- * Usage: node smoke.mjs <url> <outDir>
+ * Usage: node tools/probes/visual-smoke.mjs [url] [outDir]
+ * The frames land in tools/shots/out/visual-smoke unless an outDir is given.
  */
 import { chromium } from 'playwright';
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 
 const url = process.argv[2] ?? 'http://localhost:5173';
-const outDir = process.argv[3] ?? 'shots';
+const outDir = process.argv[3] ?? 'tools/shots/out/visual-smoke';
 mkdirSync(outDir, { recursive: true });
 
 const browser = await chromium.launch({
@@ -28,6 +29,13 @@ async function shot(name) {
   console.log(`shot: ${name}`);
 }
 
+// The game opens on its menu; the session record starts a new game straight away.
+await page.addInitScript(() => {
+  sessionStorage.setItem(
+    'slimcity.session',
+    JSON.stringify({ screen: 'playing', seed: 12345, mode: 'new' }),
+  );
+});
 await page.goto(url, { waitUntil: 'domcontentloaded' });
 await page.waitForSelector('#viewport canvas', { timeout: 20000 });
 // Pause the sim (Space toggles play/pause) so game time doesn't advance during
@@ -38,7 +46,8 @@ await page.waitForTimeout(4000); // boot + first snapshots (sim paused)
 await shot('01-boot.png');
 await page.keyboard.press('Space'); // resume 1x for the interactive steps
 
-const cx = 640, cy = 400;
+const cx = 640,
+  cy = 400;
 
 // --- wind turbine plop (Digit3 hotkey) ------------------------------------
 await page.keyboard.press('Digit3');

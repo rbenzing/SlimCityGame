@@ -11,11 +11,11 @@
  * renderer through the dev hook `renderInfo()`. Results land in the out
  * directory as result.json and result.md beside one PNG per view.
  *
- * Usage: node tools/frame-budget.mjs [baseUrl] [--buildings N] [--out dir]
+ * Usage: node tools/probes/frame-budget.mjs [baseUrl] [--buildings N] [--out dir]
  *        [--seed N] [--frames N]       (a dev server must be running) */
 import { chromium } from 'playwright';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { hooksReady, tileCamera } from './shotcam.mjs';
+import { hooksReady, tileCamera } from '../shots/lib/camera.mjs';
 
 // --- the mix ----------------------------------------------------------------
 
@@ -105,7 +105,7 @@ const WARMUP = 30;
 mkdirSync(out, { recursive: true });
 
 const catalog = JSON.parse(
-  readFileSync(new URL('../src/data/catalog.json', import.meta.url), 'utf8'),
+  readFileSync(new URL('../../src/data/catalog.json', import.meta.url), 'utf8'),
 ).buildings;
 const byId = new Map(catalog.map((e) => [e.id, e]));
 const grown = catalog.filter((e) => !e.id.includes('-lot'));
