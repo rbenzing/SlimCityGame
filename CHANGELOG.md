@@ -1,5 +1,26 @@
 # Changelog
 
+## [1.98.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.97.1...slimcity-v1.98.0) (2026-11-20)
+
+
+### Features
+
+* **render:** a low-density home's garden runs back over its yard ([2ce6e6c](https://github.com/rbenzing/SlimCityGame/commit/2ce6e6c7cfe18a57590351f5fe3fcdb30d87e803))
+* **render:** homes are laid again when their yard moves; yard shots show a 7 by 7 block ([927c711](https://github.com/rbenzing/SlimCityGame/commit/927c7119d37409817c8a573ed7153c24edb97b84))
+* **sim:** a mixed block's jobs are held to commerce room at spawn ([8b05ee6](https://github.com/rbenzing/SlimCityGame/commit/8b05ee6d95182b5d4ee7634a8046ded3f2b764ea))
+* **sim:** a school and a police station in reach each add a point of gain to land value ([46cb5e5](https://github.com/rbenzing/SlimCityGame/commit/46cb5e570149a17701e51c37e60ca76e3bdaca5f))
+* **sim:** one small level-up a pass in each sector goes ahead past the job room ([2b456c1](https://github.com/rbenzing/SlimCityGame/commit/2b456c11f9696883e20da6f664781768f6b84474))
+* **world:** a yard is the zoned ground no parcel of the plat covers, and plain ground ([cd4a1a6](https://github.com/rbenzing/SlimCityGame/commit/cd4a1a632e9df718045c7e8968bbf50693aa72e1))
+* **world:** the yard behind a low-density lot, derived from the zone, roads and buildings ([b35e98c](https://github.com/rbenzing/SlimCityGame/commit/b35e98c3c590beee416e5650b84248bd30d0f639))
+
+
+### Bug Fixes
+
+* **render:** the zone lens lays its tint and parcel outlines again when the ground is graded ([53cb107](https://github.com/rbenzing/SlimCityGame/commit/53cb1071641db149ec19b1a1a17a7bf595353355))
+* **sim:** a level-up and a conversion read land value at the lot's street row on every side of the street ([eeb6003](https://github.com/rbenzing/SlimCityGame/commit/eeb600358ce388771cbc708fa37b3f6c5a14c142))
+* **sim:** drop a redundant sector test the type check rejects ([71d0b59](https://github.com/rbenzing/SlimCityGame/commit/71d0b59fa79e003d8b4dea911133acbacea82695))
+* **sim:** only commerce takes the level-up allowance; a mixed block's shopfronts are held to commerce room ([765db97](https://github.com/rbenzing/SlimCityGame/commit/765db97bcedf5e654eb73ba1c47b71a380a51716))
+
 ## [1.97.1](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.97.0...slimcity-v1.97.1) (2026-11-19)
 
 
