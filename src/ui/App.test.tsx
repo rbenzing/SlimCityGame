@@ -93,6 +93,54 @@ describe('App', () => {
       expect(screen.queryByText('Two-Lane Road')).not.toBeInTheDocument();
     });
 
+    describe('the road path mode stays in the roads drawer', () => {
+      /** Roads drawer open on a road tool, Grid picked. */
+      const gridDrawn = (): void => {
+        render(<App />);
+        fireEvent.click(screen.getByRole('button', { name: 'Roads' }));
+        fireEvent.click(screen.getByText('Two-Lane Road'));
+        fireEvent.click(screen.getByRole('button', { name: 'Grid' }));
+        expect(useCityStore.getState().toolMode).toBe('grid');
+        expect(useCityStore.getState().toolFlags.gridMode).toBe(true);
+      };
+      const expectStraight = (): void => {
+        expect(useCityStore.getState().toolMode).toBe('straight');
+        expect(useCityStore.getState().toolFlags).toMatchObject({
+          straightMode: true,
+          gridMode: false,
+          curveMode: false,
+        });
+      };
+
+      it('returns to Straight when the dock closes the roads drawer', () => {
+        gridDrawn();
+        fireEvent.click(screen.getByRole('button', { name: 'Roads' }));
+        expectStraight();
+      });
+
+      it('returns to Straight when another category opens', () => {
+        gridDrawn();
+        fireEvent.click(screen.getByRole('button', { name: 'Water' }));
+        expectStraight();
+      });
+
+      it('returns to Straight on Escape', () => {
+        gridDrawn();
+        act(() => {
+          window.dispatchEvent(
+            new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', bubbles: true }),
+          );
+        });
+        expectStraight();
+      });
+
+      it("returns to Straight on the drawer's own close button", () => {
+        gridDrawn();
+        fireEvent.click(screen.getByRole('button', { name: /close asset drawer/i }));
+        expectStraight();
+      });
+    });
+
     it("the drawer's ✕ exits placement mode: closes the drawer AND resets the tool to select (hides the zoning grid) — playtest round 6", () => {
       render(<App />);
       fireEvent.click(screen.getByRole('button', { name: 'Roads' }));

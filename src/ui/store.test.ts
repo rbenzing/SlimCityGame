@@ -43,10 +43,10 @@ describe('useCityStore initial state', () => {
 
   it('defaults the wave-2 tool-options/trend/selection fields sanely', () => {
     const s = useCityStore.getState();
-    expect(s.toolMode).toBe('lpath');
+    expect(s.toolMode).toBe('straight');
     expect(s.toolFlags).toEqual({
       angleLock: false,
-      straightMode: false,
+      straightMode: true,
       gridMode: false,
       guideSnap: false,
       roadSnap: true,
@@ -135,7 +135,7 @@ describe('tool flags + mode (UI-SPEC §5)', () => {
     useCityStore.getState().setToolFlags({ angleLock: true });
     expect(useCityStore.getState().toolFlags).toEqual({
       angleLock: true,
-      straightMode: false,
+      straightMode: true,
       gridMode: false,
       guideSnap: false,
       roadSnap: true,
@@ -144,13 +144,21 @@ describe('tool flags + mode (UI-SPEC §5)', () => {
   });
 
   it('setToolMode updates toolMode and mirrors the straightMode contract flag', () => {
-    useCityStore.getState().setToolMode('straight');
-    expect(useCityStore.getState().toolMode).toBe('straight');
-    expect(useCityStore.getState().toolFlags.straightMode).toBe(true);
-
     useCityStore.getState().setToolMode('lpath');
     expect(useCityStore.getState().toolMode).toBe('lpath');
     expect(useCityStore.getState().toolFlags.straightMode).toBe(false);
+
+    useCityStore.getState().setToolMode('straight');
+    expect(useCityStore.getState().toolMode).toBe('straight');
+    expect(useCityStore.getState().toolFlags.straightMode).toBe(true);
+  });
+
+  it('starts every mode flag on Straight and the path mode is not part of the saved settings', () => {
+    const s = useCityStore.getState();
+    expect(s.toolMode).toBe('straight');
+    expect(s.toolFlags).toMatchObject({ straightMode: true, gridMode: false });
+    expect(Object.keys(s.settings)).not.toContain('toolMode');
+    expect(Object.keys(s.settings)).not.toContain('toolFlags');
   });
 
   it('setToolMode and setToolFlags are independent of one another', () => {

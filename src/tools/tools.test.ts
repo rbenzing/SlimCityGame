@@ -3136,6 +3136,66 @@ describe('Grid mode lays the street grid a drag encloses', () => {
   });
 });
 
+describe('Only a road tool reads the road path mode', () => {
+  const MODES = {
+    grid: { gridMode: true },
+    lPath: { straightMode: false, gridMode: false },
+    curve: { curveMode: true },
+    ninetyLock: { angleLock: true },
+  } as const;
+  const straightRun = [0, 1, 2, 3, 4, 5].map((x) => ({ x, z: 0 }));
+
+  const dragTiles = (tool: 'water.pipe' | 'power.line' | 'power.cable', flags: object) => {
+    const { env, sent } = makeEnv();
+    const tm = new ToolManager(env);
+    tm.setFlags(flags);
+    tm.setTool(tool);
+    tm.pointerDown(0, 0, 0);
+    tm.pointerMove(5, 3, 0);
+    tm.pointerUp(5, 3, 0);
+    return (sent[0]!.commands[0] as { tiles: { x: number; z: number }[] }).tiles;
+  };
+
+  it.each(Object.entries(MODES))(
+    'a water pipe drag is one straight run with the %s flags set',
+    (_name, flags) => {
+      expect(dragTiles('water.pipe', flags)).toEqual(straightRun);
+    },
+  );
+
+  it.each(Object.entries(MODES))(
+    'a power line and a cable are one straight run with the %s flags set',
+    (_name, flags) => {
+      expect(dragTiles('power.line', flags)).toEqual(straightRun);
+      expect(dragTiles('power.cable', flags)).toEqual(straightRun);
+    },
+  );
+
+  it('offers Grid to every road but the motorway and ramp, and to nothing else', () => {
+    expect(offersGrid('road.two')).toBe(true);
+    expect(offersGrid('road.rail')).toBe(true);
+    expect(offersGrid('road.highway')).toBe(false);
+    expect(offersGrid('road.ramp')).toBe(false);
+    expect(offersGrid('water.pipe')).toBe(false);
+    expect(offersGrid('power.line')).toBe(false);
+  });
+
+  it('a road tool still lays a grid in Grid mode and an L in L-path', () => {
+    const lay = (flags: object) => {
+      const { env, previews } = makeEnv();
+      const tm = new ToolManager(env);
+      tm.setTool('road.two');
+      tm.setFlags(flags);
+      tm.pointerDown(0, 0, 0);
+      tm.pointerMove(5, 3, 0);
+      return previews.at(-1)!.tiles;
+    };
+    expect(lay({ gridMode: true })).toHaveLength(6 * 4 - 4 * 2);
+    // 6 + 3 tiles: the L shares its corner.
+    expect(lay({ straightMode: false, gridMode: false })).toHaveLength(9);
+  });
+});
+
 describe('Road guide snapping pulls a near-miss into line', () => {
   /** A road running along X at row z, from x0 to x1. */
   const rowOfRoad = (z: number, x0: number, x1: number) => (x: number, zz: number) =>

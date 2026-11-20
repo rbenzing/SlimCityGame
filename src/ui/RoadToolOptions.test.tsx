@@ -556,20 +556,21 @@ describe('RoadToolOptions', () => {
       expect(screen.getByRole('button', { name: /90°/ })).toBeInTheDocument();
     });
 
-    it('defaults to L-path selected and the lock chip off', () => {
+    it('defaults to Straight selected and the lock chip off', () => {
       render(<RoadToolOptions />);
-      expect(screen.getByRole('button', { name: 'L-path' })).toHaveAttribute(
+      expect(screen.getByRole('button', { name: 'Straight' })).toHaveAttribute(
         'aria-pressed',
         'true',
       );
-      expect(screen.getByRole('button', { name: 'Straight' })).toHaveAttribute(
+      expect(screen.getByRole('button', { name: 'L-path' })).toHaveAttribute(
         'aria-pressed',
         'false',
       );
       expect(screen.getByRole('button', { name: /90°/ })).toHaveAttribute('aria-pressed', 'false');
     });
 
-    it('clicking Straight writes toolMode and the mirrored straightMode contract flag', () => {
+    it('clicking Straight after L-path writes toolMode and the mirrored straightMode contract flag', () => {
+      useCityStore.getState().setToolMode('lpath');
       render(<RoadToolOptions />);
       fireEvent.click(screen.getByRole('button', { name: 'Straight' }));
       expect(useCityStore.getState().toolMode).toBe('straight');
@@ -584,8 +585,7 @@ describe('RoadToolOptions', () => {
       );
     });
 
-    it('clicking L-path after Straight switches back and clears straightMode', () => {
-      useCityStore.getState().setToolMode('straight');
+    it('clicking L-path switches from Straight and clears straightMode', () => {
       render(<RoadToolOptions />);
       fireEvent.click(screen.getByRole('button', { name: 'L-path' }));
       expect(useCityStore.getState().toolMode).toBe('lpath');
