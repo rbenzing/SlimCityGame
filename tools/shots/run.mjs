@@ -3,10 +3,11 @@
  * Usage: node tools/shots/run.mjs <url> [type|series ...] [--shards N] [--list]
  *
  * A name is a type (a folder under tools/shots/series) or a series (a file in
- * one). With no names every series runs. A series that runs over one and a half
- * times its budget is killed and fails. One table at the end lists series, type,
- * exit code, seconds and frames; the run exits 1 if any series failed or wrote
- * no frame.
+ * one). With no names every series runs, the one with most frames first,
+ * two at a time. A series that runs over three times its budget is killed; one that runs
+ * over its budget is `slow`; both fail. One table at the end lists series, type, exit
+ * code, seconds, frames and contact sheets; the run exits 1 if any series failed,
+ * was slow, or wrote no frame or no sheet.
  */
 import { spawn, spawnSync } from 'node:child_process';
 import { readdirSync, statSync } from 'node:fs';
@@ -16,8 +17,16 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 const HERE = fileURLToPath(new URL('.', import.meta.url));
 const SERIES_DIR = join(HERE, 'series');
 const OUT_DIR = join(HERE, 'out');
-const DEFAULT_SHARDS = 3;
-const OVER_BUDGET = 1.5;
+/** Every page redraws the scene continuously, so three at once saturate the GPU and each frame
+ * takes three times as long (measured: three shards 384 s and 5 to 7 series over budget, two
+ * shards 254 s and none). */
+const DEFAULT_SHARDS = 2;
+/** A series that runs past this many times its budget is hung: it is killed. One that runs
+ * past the budget alone is `slow`, and fails the run. */
+const KILL_AT = 3;
+/** Views a subject is photographed from: a building's five, a road piece's three. */
+const BUILDING_VIEWS = 5;
+const ROAD_VIEWS = 3;
 
 const argv = process.argv.slice(2);
 const flag = (name, fallback) => {
@@ -63,15 +72,27 @@ if (unknown.length) {
   console.error(`unknown type or series: ${unknown.join(', ')} (see --list)`);
   process.exit(2);
 }
+/** Frames a series will write: the views of each subject, its details and its night frame. */
+const framesOf = (s) =>
+  s.subjects.length * (s.type === 'roads' ? ROAD_VIEWS : BUILDING_VIEWS) +
+  (s.details?.length ?? 0) +
+  1;
 const queue = all
   .filter((s) => names.length === 0 || names.some((n) => s.name === n || s.type === n))
-  .sort((a, b) => b.budgetS - a.budgetS);
+  .map((s) => ({ ...s, expected: framesOf(s) }))
+  .sort((a, b) => b.expected - a.expected);
 
-const framesSince = (name, since) => {
+/** PNGs a series wrote since `since`: its frames, or with `sheets` its contact sheets. */
+const framesSince = (name, since, sheets = false) => {
   let n = 0;
   try {
     for (const f of readdirSync(join(OUT_DIR, name)))
-      if (f.endsWith('.png') && statSync(join(OUT_DIR, name, f)).mtimeMs >= since) n++;
+      if (
+        f.endsWith('.png') &&
+        /^sheet-\d+\.png$/.test(f) === sheets &&
+        statSync(join(OUT_DIR, name, f)).mtimeMs >= since
+      )
+        n++;
   } catch {
     return 0;
   }
@@ -101,20 +122,23 @@ const runOne = (series) =>
         over = true;
         killTree(child);
       },
-      series.budgetS * OVER_BUDGET * 1000,
+      series.budgetS * KILL_AT * 1000,
     );
     child.on('close', (code) => {
       clearTimeout(timer);
+      const seconds = Math.round((Date.now() - started) / 1000);
+      const exit = over ? 'killed' : String(code);
       const result = {
         name: series.name,
         type: series.type,
-        exit: over ? 'over' : String(code),
-        seconds: Math.round((Date.now() - started) / 1000),
+        exit: exit === '0' && seconds > series.budgetS ? 'slow' : exit,
+        seconds,
         frames: framesSince(series.name, started),
+        sheets: framesSince(series.name, started, true),
         tail,
       };
       console.log(
-        `done ${series.name}: exit ${result.exit}, ${result.seconds}s, ${result.frames} frames`,
+        `done ${series.name}: exit ${result.exit}, ${result.seconds}s, ${result.frames} frames, ${result.sheets} sheets`,
       );
       resolve(result);
     });
@@ -129,12 +153,14 @@ await Promise.all(Array.from({ length: Math.min(shards, queue.length) }, worker)
 
 results.sort((a, b) => a.type.localeCompare(b.type) || a.name.localeCompare(b.name));
 const pad = (s, n) => String(s).padEnd(n);
-console.log(`\n${pad('series', 18)}${pad('type', 10)}${pad('exit', 8)}${pad('seconds', 9)}frames`);
+console.log(
+  `\n${pad('series', 18)}${pad('type', 10)}${pad('exit', 8)}${pad('seconds', 9)}${pad('frames', 8)}sheets`,
+);
 for (const r of results)
   console.log(
-    `${pad(r.name, 18)}${pad(r.type, 10)}${pad(r.exit, 8)}${pad(r.seconds, 9)}${r.frames}`,
+    `${pad(r.name, 18)}${pad(r.type, 10)}${pad(r.exit, 8)}${pad(r.seconds, 9)}${pad(r.frames, 8)}${r.sheets}`,
   );
-const failed = results.filter((r) => r.exit !== '0' || r.frames === 0);
+const failed = results.filter((r) => r.exit !== '0' || r.frames === 0 || r.sheets === 0);
 const total = results.reduce((n, r) => n + r.frames, 0);
 console.log(
   `\nwall ${Math.round((Date.now() - wallStart) / 1000)}s, ${total} frames, ${failed.length} failed`,

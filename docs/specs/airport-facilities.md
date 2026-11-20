@@ -48,7 +48,7 @@
 | Triangles a plot, at most           | 15,240           | 26,270            | 41,050              | measured, and a tenth over               |
 | Boarding bridges                    | none             | 4                 | 6                   | one a terminal stand; size a dial        |
 
-**Code:** `src/shared/airportlayout.ts` `airportLayout` (the parts as fields of `AirportLayout`, every figure a named constant); `src/render/airportfacilities.ts` (the plate's polygons, the solid parts, the fence); `src/render/airportkit.ts` (the plate and the buildings); `src/render/landmarks.ts` (the pools, one of them a cylinder); `src/shared/roundedoutline.ts` (the arcs); `tools/airport-shots.mjs` (landside, support, parking and gantry frames a rung).
+**Code:** `src/shared/airportlayout.ts` `airportLayout` (the parts as fields of `AirportLayout`, every figure a named constant); `src/render/airportfacilities.ts` (the plate's polygons, the solid parts, the fence); `src/render/airportkit.ts` (the plate and the buildings); `src/render/landmarks.ts` (the pools, one of them a cylinder); `src/shared/roundedoutline.ts` (the arcs); the `airport` shot series (each rung from above and all four sides, the international in three parts).
 
 **Tests:** `src/shared/airportlayout.test.ts` (every figure here; every part inside the plot, off the clear areas, off each other and off every road; the fence closed; the tower's sight lines; heights under the 7 to 1 surface); `src/render/airportfacilities.test.ts` (each part drawn at its size; pools shared; nothing off the plot; corner radii from the plate; the triangle ceilings).
 

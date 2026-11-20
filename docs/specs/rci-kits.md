@@ -45,7 +45,7 @@
 `src/render/servicevehicles.ts` — the docked trailer.
 `src/render/houses.ts`, `src/render/houselot.ts` — shingles, porch, garage and chimney shares; craftsman and split-level forms.
 `src/render/massing.ts`, `src/render/palette.ts` — the 5-over-1 podium, siding and shingle chart entries, window rows capped per kind.
-`tools/storefront-shots.mjs`, `tools/industry-shots.mjs`, `tools/house-shots.mjs` — the line-up shot per family.
+The `zoned` shot series (`tools/shots/series/zoned/`) — every kind at each level, a series per family.
 
 **Tests:** `src/render/facade.test.ts` — a kind body never takes the old industrial palette or the catalog colour; kindless and farm entries keep the old one.
 `src/render/archetypes.test.ts` — the parts map holds every part the art table names for each kind.
