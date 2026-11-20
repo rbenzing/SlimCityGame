@@ -210,7 +210,7 @@ export const composeProfile = (page, tier, edits) =>
   );
 
 /** The pixel at fraction (fx, fz) across a tile, as the camera sees it, or null when it is off screen. */
-const pixelOn = (page, tx, tz, fx, fz) =>
+export const pixelOn = (page, tx, tz, fx, fz) =>
   page.evaluate(
     ([x, z, a, b]) => {
       let x0 = Infinity;

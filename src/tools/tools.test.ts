@@ -1357,6 +1357,18 @@ describe('CursorChip payload (UI-SPEC §6)', () => {
     expect(avenue).toBeGreaterThan(11.25);
   });
 
+  it('an avenue preview is 19.95 m wide: four 3.6 m lanes, a 1.2 m median, two footways with their kerbs', () => {
+    const { env, previews } = makeEnv();
+    const tm = new ToolManager(env);
+    tm.setTool('road.avenue');
+    tm.pointerDown(0, 0, 0);
+    tm.pointerMove(3, 0, 0);
+    const width = previews.at(-1)?.widthMeters ?? 0;
+    expect(width).toBeCloseTo(19.95, 6);
+    // Inside the 20 m tile, so one row of tiles carries it.
+    expect(width).toBeLessThan(20);
+  });
+
   it('road previews carry the road’s cross-section for every tile, read from its profile', () => {
     const { env, previews } = makeEnv();
     const tm = new ToolManager(env);

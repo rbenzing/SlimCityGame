@@ -39,6 +39,11 @@
  *                        north from the street; `scale` multiplies the resolution;
  *                        `setup(session, site)` optional, runs just before the frame
  *                        (a worn lawn, a vehicle moved up to the camera).
+ *
+ * Type `views` photographs how the game shows itself (a view, a panel, a preview), not a
+ * building: `subjects` are the things shown (`{ id }`, one sheet row each) and `frames`
+ * the frames, each a camera on the scene or `full` (the page as the player sees it, HUD
+ * included), see `lib/views-ui.mjs`.
  */
 import { mkdirSync, readdirSync, readFileSync, rmSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -48,6 +53,7 @@ import { openSession, settle } from './session.mjs';
 import { writeSheets } from './sheet.mjs';
 import { buildSite } from './site.mjs';
 import { DRAWN_TOPS } from './tops.mjs';
+import { checkViews, photographViews } from './views-ui.mjs';
 import { BUILDING_VIEWS, MAX_DISTANCE, buildingView, threeQuarterView } from './views.mjs';
 
 const NIGHT = 22 / 24;
@@ -107,6 +113,10 @@ const rowsOf = (box) => [box.name, ...(box.parts ?? []).map((p) => `${box.name}-
 function check(spec) {
   for (const key of ['name', 'type', 'purpose', 'budgetS', 'subjects'])
     if (!spec[key]) throw new Error(`series is missing '${key}'`);
+  if (spec.type === 'views') {
+    checkViews(spec);
+    return;
+  }
   const perSubject = {};
   for (const d of spec.details ?? []) {
     if (!d.shows) throw new Error(`detail ${d.subject}-${d.name} says nothing about what it shows`);
@@ -136,6 +146,13 @@ async function run(spec, url) {
   try {
     const tile = await tileMeters(page);
     const aim = tileCamera(page);
+    const capture = async (name, options) => {
+      await settle(page);
+      await cleanShot(page, `${dir}/${name}.png`, options);
+      frames++;
+      shots.push(name);
+      console.log('shot', name, `${Math.round((performance.now() - started) / 1000)}s`);
+    };
     const shoot = async (name, cam) => {
       // A frame the camera cannot reach round is a cut frame: the subject needs parts.
       if (cam.needed > MAX_DISTANCE + 1)
@@ -143,15 +160,13 @@ async function run(spec, url) {
           `${name}: the box needs ${Math.round(cam.needed)} m, the camera reaches ${MAX_DISTANCE} m`,
         );
       await aim(cam.tx, cam.tz, cam.distance, cam.yaw, cam.pitch);
-      await settle(page);
-      await cleanShot(page, `${dir}/${name}.png`);
-      frames++;
-      shots.push(name);
-      console.log('shot', name, `${Math.round((performance.now() - started) / 1000)}s`);
+      await capture(name);
     };
     let rows = spec.subjects.map((s) => s.as ?? s.id);
 
-    if (ROAD_PIECE_TYPES.includes(spec.type)) {
+    if (spec.type === 'views') {
+      await photographViews(session, spec, { tile, catalogBox, aim, capture });
+    } else if (ROAD_PIECE_TYPES.includes(spec.type)) {
       await photographRoads(session, spec, {
         tile,
         catalogBox,

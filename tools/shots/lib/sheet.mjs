@@ -70,7 +70,7 @@ body{margin:0;background:#222;color:#ddd;font:13px monospace}
 .c{width:${CELL_WIDTH}px}
 .c p{margin:2px 0 0;height:${LABEL_HEIGHT - 2}px;overflow:hidden;white-space:nowrap}
 .none{background:#333}
-img{display:block}</style>${body}`;
+img{display:block;object-fit:contain;background:#111}</style>${body}`;
 };
 
 /**
