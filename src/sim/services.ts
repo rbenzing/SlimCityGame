@@ -37,6 +37,9 @@ import {
   tileIndex,
 } from '../shared/constants';
 import { occupiedResidents } from '../shared/occupancy';
+import { SCHOOLING_GATE } from '../shared/schooling';
+import { ZONE_DEPTH } from '../world/zonable';
+import type { LotReach } from './fields';
 import { cellTile, freeCellsOn, neighbours, roadCellsOf } from '../world/roadnet';
 
 /** Radius (orthogonal steps) searched around a building's footprint for its nearest road tile. */
@@ -232,6 +235,18 @@ function forTilesAround(idx: number, visit: (tile: number) => void): void {
   }
 }
 
+/** Marks every on-map tile within ZONE_DEPTH orthogonal steps of road tile `idx`: the lots on that street. */
+function markLots(reach: Uint8Array, idx: number): void {
+  const x = idx % MAP_SIZE;
+  const z = Math.floor(idx / MAP_SIZE);
+  for (let dz = -ZONE_DEPTH; dz <= ZONE_DEPTH; dz++) {
+    const remaining = ZONE_DEPTH - Math.abs(dz);
+    for (let dx = -remaining; dx <= remaining; dx++) {
+      if (inBounds(x + dx, z + dz)) reach[tileIndex(x + dx, z + dz)] = 1;
+    }
+  }
+}
+
 /** Bodies that fell on one tile (a grid index) in one tick and have not been collected. */
 export interface UncollectedBody {
   tile: number;
@@ -309,6 +324,10 @@ interface GatheredFacility {
   footprint: readonly number[];
   /** Null for a facility with no road, no range or no coverage — it still takes its park bonus. */
   coverage: Map<number, number> | null;
+  /** The road tiles the facility's walk reached, with their hop distance; null alongside `coverage`. */
+  reached: ReadonlyMap<number, number> | null;
+  /** The funded range the walk was cut at. */
+  range: number;
 }
 
 /**
@@ -356,10 +375,30 @@ export class ServiceSim {
    */
   private readonly parkBlend = new Float32Array(MAP_TILES);
   private readonly parkTouched: number[] = [];
+  /**
+   * The lots an elementary school and a police station reach, and the grid
+   * they were built for: every tile within ZONE_DEPTH of a road tile the
+   * service's walk reaches, rebuilt each tick from the walks it already makes.
+   * Derived, never saved.
+   */
+  private readonly lotReach: { school: Uint8Array; police: Uint8Array } = {
+    school: new Uint8Array(MAP_TILES),
+    police: new Uint8Array(MAP_TILES),
+  };
+  private lotReachGrid: GridState | null = null;
 
   constructor(catalog: BuildingCatalogEntry[], bfs: RoadBfs = roadBfsFrom) {
     this.catalog = new Map(catalog.map((c) => [c.id, c] as const));
     this.bfs = bfs;
+  }
+
+  /**
+   * The lots a school and a police station reach along the roads, as of the
+   * last tick on `g`; null for a grid no tick has seen, so a loaded or new
+   * world has no reach until its first tick rather than the previous world's.
+   */
+  lotReachOn(g: GridState): LotReach | null {
+    return this.lotReachGrid === g ? this.lotReach : null;
   }
 
   /**
@@ -406,6 +445,9 @@ export class ServiceSim {
     tickNo = 0,
   ): Record<ServiceKind, ServiceLoad> {
     this.growFields(g);
+    this.lotReach.school.fill(0);
+    this.lotReach.police.fill(0);
+    this.lotReachGrid = g;
     this.loadByFacility.clear();
     this.uplift.clear();
 
@@ -506,7 +548,7 @@ export class ServiceSim {
       const spec = this.catalog.get(b.catalogId);
       if (!spec?.service) continue;
       const footprint = footprints.get(b.id) ?? [];
-      const entry: GatheredFacility = { spec, footprint, coverage: null };
+      const entry: GatheredFacility = { spec, footprint, coverage: null, reached: null, range: 0 };
       gathered.push(entry);
 
       const range = Math.floor(spec.service.range * funding);
@@ -520,6 +562,8 @@ export class ServiceSim {
       const school = SCHOOL_FIELD[kind] !== undefined;
       const reach = school ? Math.ceil(range * (1 + this.maxUplift / 100)) : range;
       const reached = this.bfs(g, starts, reach);
+      entry.reached = reached;
+      entry.range = range;
       const coverage = radiateWeighted(
         reached,
         range,
@@ -528,6 +572,9 @@ export class ServiceSim {
       );
       if (coverage.size === 0) continue;
       entry.coverage = coverage;
+      if (kind === 'police') {
+        for (const [road, d] of reached) if (d < range) markLots(this.lotReach.police, road);
+      }
 
       // Funding is money and money is staff, so it buys throughput as well as
       // reach. No capacity, or nobody in reach, divides to Infinity — and
@@ -550,7 +597,7 @@ export class ServiceSim {
     }
 
     // --- resolve: the old per-facility pass, each value scaled by its supply --
-    for (const { spec, footprint, coverage } of gathered) {
+    for (const { spec, footprint, coverage, reached, range } of gathered) {
       if (kind === 'park') {
         const bonus = spec.landValueBonus ?? 0;
         if (bonus > 0 && footprint.length > 0) {
@@ -566,6 +613,16 @@ export class ServiceSim {
       // facility on the hottest pass in this file.
       for (const [tile, value] of coverage) {
         coverage.set(tile, value * Math.min(1, supply.get(tile) ?? Infinity));
+      }
+      if (kind === 'education' && reached) {
+        // A road tile reaches its lots where the school's field there passes
+        // the same gate a level-3 home waits on.
+        for (const [road, d] of reached) {
+          const local = range * (1 + (this.uplift.get(road) ?? 0) / 100);
+          const field =
+            spec.service!.strength * (1 - d / local) * Math.min(1, supply.get(road) ?? Infinity);
+          if (field > SCHOOLING_GATE) markLots(this.lotReach.school, road);
+        }
       }
       if (kind === 'park') this.blendPark(coverage);
       else this.applyCoverage(g, kind, coverage);

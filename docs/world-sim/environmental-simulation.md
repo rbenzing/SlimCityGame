@@ -61,6 +61,8 @@ diffuse-and-decay result (`applyLandValueDecay`):
 gain = (255 − pollution) >> 5        // rewards low ambient pollution, max +7
      + 6 if any orthogonal neighbor is water
      + trees >> 4                   // tree density / 16, max +15
+     + 1 if an elementary school reaches the tile
+     + 1 if a police station reaches the tile
 loss = pollution >> 3                // −pollution/8
      + floor(noise / 12)
      + floor(crime / 10)
@@ -75,7 +77,24 @@ straight river bank at **181**, over it and under the level-3 line of 190
 (the bank's +6 is shared with the row behind by diffusion, so a lone water
 tile is worth much less than a shore). A block under a light works' 40
 pollution settles below 60; a street's 24 noise alone holds ground near 80.
-A level-up is earned by water, trees, a park or a clean quiet street, never
+Each point of gain is worth about 20 at the equilibrium. A service that
+reaches a street reaches its lots: every tile within the zoning depth of a
+road tile the service reaches (`markLots` in `src/sim/services.ts`,
+marked in the service pass, never saved). So on an ordinary block, with
+streets seven tiles apart, a school or a police station alone settles
+every lot at **138**, still under the line, and both at **153 to 158**:
+over level 2, under the double lot's 160 and level 3's 190
+`[R-world-063]`. On a lone street with bare ground behind it the row at
+the street reads 141 with both and the rows behind 139 and 135. A served
+ordinary street reaches level 2; level 3 still wants water, trees or a
+park. A served block pays about 7% more tax by the land-value factor. A fire station and a
+clinic add nothing: no study found prices them in, and a home beside
+either sells at a small discount
+([sources](../sources/lots-and-land.md#what-raises-a-homes-value)). In a
+town of 41,504 grown before this rule, with a pocket park on every third
+street, 3% of homes had reached level 2 and no shop or dense block had.
+A level-up is earned by water, trees, a park, a served street or a clean
+quiet one, never
 by waiting: at the old decay of 255/256 the field had no equilibrium short
 of saturation and the whole map read 255 within thirty seconds of a new
 game, so every reader of it was reading a constant.

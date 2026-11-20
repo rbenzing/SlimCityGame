@@ -445,16 +445,43 @@ function computeProblems(
  */
 function meetsLevelUpRequirement(
   g: GridState,
-  x: number,
-  z: number,
+  idx: number,
   zone: ZoneType,
   targetLevel: number,
 ): boolean {
-  const idx = tileIndex(x, z);
   const landValue = fieldAt(g, FieldId.LandValue, idx);
   const threshold = targetLevel >= 3 ? LEVEL_3_LAND_VALUE : LEVEL_2_LAND_VALUE;
   if (landValue <= threshold) return false;
   return targetLevel < 3 || schoolsMissingAt(g, idx, zone).length === 0;
+}
+
+/**
+ * The tile a standing building's land value is read at for a level-up or a
+ * conversion: the first tile of its footprint's street row, so a lot reads the
+ * same row from its street whichever side of the street it is on. A lot on a
+ * curved parcel, or one with no street tile along it, reads its min corner.
+ */
+export function levelReadTile(
+  g: GridState,
+  inst: BuildingInstance,
+  entry: BuildingCatalogEntry,
+): number {
+  if (inst.frame === undefined) {
+    const { w, d } = footprintForRotation(entry, inst.rotation);
+    const edge = findRoadFacingEdge(
+      inst.x,
+      inst.z,
+      w,
+      d,
+      (x, z) => inBounds(x, z) && readTile(g.roadTier, tileIndex(x, z)) !== RoadTier.None,
+    );
+    if (edge) {
+      const x = edge.side === 'E' ? inst.x + w - 1 : inst.x;
+      const z = edge.side === 'S' ? inst.z + d - 1 : inst.z;
+      return tileIndex(x, z);
+    }
+  }
+  return tileIndex(inst.x, inst.z);
 }
 
 /** The schools a zone's level 3 still lacks on tile `idx`. */
@@ -466,8 +493,7 @@ export function schoolsMissingAt(g: GridState, idx: number, zone: ZoneType): Edu
  * Whether a building at level 2 is held there by its schooling alone: land value
  * clears level 3 and a school its zone waits on is missing.
  */
-function heldBySchooling(g: GridState, x: number, z: number, zone: ZoneType): boolean {
-  const idx = tileIndex(x, z);
+function heldBySchooling(g: GridState, idx: number, zone: ZoneType): boolean {
   return (
     fieldAt(g, FieldId.LandValue, idx) > LEVEL_3_LAND_VALUE &&
     schoolsMissingAt(g, idx, zone).length > 0
@@ -1022,7 +1048,7 @@ export class GrowthSystem {
           standingTiles(g.size, inst.x, inst.z, footprint.w, footprint.d, inst.frame),
         ) |
         shortageOf(supply, inst.id) |
-        (inst.level === 2 && heldBySchooling(g, inst.x, inst.z, entry.zone)
+        (inst.level === 2 && heldBySchooling(g, levelReadTile(g, inst, entry), entry.zone)
           ? Problem.NeedsSchool
           : 0);
       const hasBlocker = (newProblems & (Problem.NoPower | Problem.NoWater | Problem.NoRoad)) !== 0;
@@ -1202,7 +1228,7 @@ export class GrowthSystem {
     removed: number[],
   ): boolean {
     if (entry.kind !== 'detached' || (entry.lot !== 'half' && entry.lot !== 'normal')) return false;
-    if (fieldAt(g, FieldId.LandValue, tileIndex(inst.x, inst.z)) < LOT_STANDING_FLOOR.estate) {
+    if (fieldAt(g, FieldId.LandValue, levelReadTile(g, inst, entry)) < LOT_STANDING_FLOOR.estate) {
       return false;
     }
     if (this.rng.next() >= CONVERSION_CHANCE_PER_PASS) return false;
@@ -1282,7 +1308,7 @@ export class GrowthSystem {
     // out of town, plays no part. Homes and shops still need the land value.
     if (sector === 'ind') {
       if (demand.ind <= 0) return false;
-    } else if (!meetsLevelUpRequirement(g, inst.x, inst.z, zone, targetLevel)) {
+    } else if (!meetsLevelUpRequirement(g, levelReadTile(g, inst, entry), zone, targetLevel)) {
       return false;
     }
 

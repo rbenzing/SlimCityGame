@@ -18,7 +18,7 @@ How to use it:
 | Roads: markings and kerb parking       | [roads-markings.md](truths/roads-markings.md) | 13    | `R-roads-044–050, 068, 069, 087, 089–091` |
 | Roads: rail, tram and transit          | [roads-transit.md](truths/roads-transit.md)   | 12    | `R-roads-007, 008, 011–014, 037–039, 082, 088, 096` |
 | World: grid and simulation core        | [world-grid.md](truths/world-grid.md)         | 25    | `R-world-001–006, 019–024, 027, 030–035, 049–054` |
-| World: growth and population           | [world-growth.md](truths/world-growth.md)     | 31    | `R-world-007–018, 025, 026, 028, 029, 036, 043–048, 055–062` |
+| World: growth and population           | [world-growth.md](truths/world-growth.md)     | 33    | `R-world-007–018, 025, 026, 028, 029, 036, 043–048, 055–063, 065` |
 | World: lots and parcels                | [world-lots.md](truths/world-lots.md)         | 6     | `R-world-037–042`                    |
 | Utilities and services                 | [services.md](truths/services.md)             | 44    | `R-services-001` to `R-services-044` |
 | Saves and the data model               | [saves.md](truths/saves.md)                   | 13    | `R-saves-001` to `R-saves-013`       |

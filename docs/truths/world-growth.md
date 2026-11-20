@@ -271,3 +271,17 @@ Back to [the index](../GROUND-TRUTHS.md).
   shop or office opened after Big Town. —
   [demand-the-rci-model.md](../game-design/simulation-rules/demand-the-rci-model.md);
   `spawnCandidates`, `tryLevelUp` in `src/sim/growth.ts`
+- [R-world-063] An elementary school in reach and a police station in reach each add one
+  point of gain to land value, and nothing else a service does adds any:
+  no fire station, no clinic. Both together lift an ordinary street over
+  the level-2 line and never to the double lot's 160 or level 3's 190;
+  one alone lifts it to neither. A town too small for either is exactly as
+  it was. —
+  [environmental-simulation.md](../world-sim/environmental-simulation.md#landvalue-fieldidlandvalue--0);
+  `applyLandValueDecay` in `src/sim/fields.ts`
+- [R-world-065] A level-up and a conversion read land value and schooling at the lot's
+  street-row tile on every side of its street, never at the building's
+  corner: read there, a deep lot on the north or west side was judged by
+  its back row and one on the south or east by its front. —
+  [environmental-simulation.md](../world-sim/environmental-simulation.md#landvalue-fieldidlandvalue--0);
+  `levelReadTile` in `src/sim/growth.ts`
