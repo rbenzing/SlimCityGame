@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  ALONG_LEAD,
   ASPECT,
   BUILDING_VIEWS,
   FACE_PITCH,
@@ -171,13 +172,34 @@ describe('road views', () => {
       it(`${view} keeps a ${axis} run of six tiles inside the margins`, () => {
         const run = { x0: 50, z0: 70, length: 6, tile: TILE, axis };
         const cam = roadView(view, run);
-        const sx = axis === 'x' ? 6 : 1;
-        const sz = axis === 'x' ? 1 : 6;
-        for (const c of cornersOf(run.x0, run.z0, sx, sz, 0))
-          expect(inside(project(cam, c))).toBe(true);
+        // The low view leaves the run's first tiles behind it.
+        const lead = view === 'along' ? ALONG_LEAD : 0;
+        const sx = axis === 'x' ? 6 - lead : 1;
+        const sz = axis === 'x' ? 1 : 6 - lead;
+        const x0 = run.x0 + (axis === 'x' ? lead : 0);
+        const z0 = run.z0 + (axis === 'z' ? lead : 0);
+        for (const c of cornersOf(x0, z0, sx, sz, 0)) expect(inside(project(cam, c))).toBe(true);
       });
     }
   }
+
+  it('starts the along view inside a run, so its rounded end is not in the foreground', () => {
+    const run = { x0: 50, z0: 70, length: 12, tile: TILE };
+    const cam = roadView('along', run);
+    // The run's first tile edge is out of frame: behind the camera or below the bottom edge.
+    const first = project(cam, [run.x0 * TILE, 0, (run.z0 + 0.5) * TILE]);
+    expect(first.depth <= 0 || first.y > 1 - MARGIN - HUD).toBe(true);
+    // Above and oblique still hold the whole run.
+    for (const view of ['above', 'oblique'])
+      for (const c of cornersOf(run.x0, run.z0, 12, 1, 0))
+        expect(inside(project(roadView(view, run), c))).toBe(true);
+  });
+
+  it('keeps the whole of a run too short to spare any tiles in the low view', () => {
+    const run = { x0: 50, z0: 70, length: 4, tile: TILE };
+    const cam = roadView('along', run);
+    for (const c of cornersOf(run.x0, run.z0, 4, 1, 0)) expect(inside(project(cam, c))).toBe(true);
+  });
 
   it('looks down the centreline in the along view: the eye is level with the run', () => {
     const cam = roadView('along', { x0: 50, z0: 70, length: 6, tile: TILE });
@@ -197,7 +219,7 @@ describe('road views', () => {
 
     it('along frames only the one tile corridor down the middle, not the width of the box', () => {
       const cam = roadView('along', box);
-      for (const c of cornersOf(box.x0, box.z0 + 5, 11, 1, 0))
+      for (const c of cornersOf(box.x0 + ALONG_LEAD, box.z0 + 5, 11 - ALONG_LEAD, 1, 0))
         expect(inside(project(cam, c))).toBe(true);
       // A wide box would push the camera back; the corridor leaves it at its floor.
       expect(cam.distance).toBeCloseTo(MIN_DISTANCE, 6);
@@ -206,7 +228,7 @@ describe('road views', () => {
     it('stands the box in the middle of the frame where it fits nearer than the camera floor', () => {
       const cam = roadView('along', box);
       const far = project(cam, [(box.x0 + 11) * TILE, 0, (box.z0 + 5.5) * TILE]);
-      const near = project(cam, [box.x0 * TILE, 0, (box.z0 + 5.5) * TILE]);
+      const near = project(cam, [(box.x0 + ALONG_LEAD) * TILE, 0, (box.z0 + 5.5) * TILE]);
       const clearAbove = far.y - MARGIN;
       const clearBelow = 1 - MARGIN - HUD - near.y;
       expect(clearAbove).toBeGreaterThan(0);
@@ -227,7 +249,8 @@ describe('road views', () => {
     const run = { x0: 50, z0: 70, length: 20, tile: TILE, height: 12 };
     for (const view of ROAD_VIEWS) {
       const cam = roadView(view, run);
-      for (const c of cornersOf(run.x0, run.z0, 20, 1, 12))
+      const lead = view === 'along' ? ALONG_LEAD : 0;
+      for (const c of cornersOf(run.x0 + lead, run.z0, 20 - lead, 1, 12))
         expect(inside(project(cam, c))).toBe(true);
     }
   });
