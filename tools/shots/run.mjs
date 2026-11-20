@@ -13,6 +13,7 @@ import { spawn, spawnSync } from 'node:child_process';
 import { readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { framesOf } from './lib/frames.mjs';
 
 const HERE = fileURLToPath(new URL('.', import.meta.url));
 const SERIES_DIR = join(HERE, 'series');
@@ -24,9 +25,6 @@ const DEFAULT_SHARDS = 2;
 /** A series that runs past this many times its budget is hung: it is killed. One that runs
  * past the budget alone is `slow`, and fails the run. */
 const KILL_AT = 3;
-/** Views a subject is photographed from: a building's five, a road piece's three. */
-const BUILDING_VIEWS = 5;
-const ROAD_VIEWS = 3;
 
 const argv = process.argv.slice(2);
 const flag = (name, fallback) => {
@@ -60,7 +58,7 @@ async function readSeries() {
 const all = await readSeries();
 
 if (listOnly) {
-  for (const s of all) console.log(`${s.type}/${s.name}  (${s.budgetS}s)  ${s.purpose}`);
+  for (const s of all) console.log(`${s.type.padEnd(7)} ${s.name}  (${s.budgetS}s)  ${s.purpose}`);
   process.exit(0);
 }
 if (!url) {
@@ -72,11 +70,6 @@ if (unknown.length) {
   console.error(`unknown type or series: ${unknown.join(', ')} (see --list)`);
   process.exit(2);
 }
-/** Frames a series will write: the views of each subject, its details and its night frame. */
-const framesOf = (s) =>
-  s.subjects.length * (s.type === 'roads' ? ROAD_VIEWS : BUILDING_VIEWS) +
-  (s.details?.length ?? 0) +
-  1;
 const queue = all
   .filter((s) => names.length === 0 || names.some((n) => s.name === n || s.type === n))
   .map((s) => ({ ...s, expected: framesOf(s) }))
