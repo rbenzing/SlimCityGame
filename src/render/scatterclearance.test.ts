@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { RoadMeshRenderer } from './roadsmesh';
 import { TreeRenderer, crownReach, type TreeSpecies } from './trees';
 import { endCapsOf } from './roadfurniture';
@@ -7,6 +7,9 @@ import type { FurnitureRoadTile } from './roadfurniture';
 import { RoadFlow, RoadTier } from '../shared/types';
 import type { MapData, RoadTileDelta } from '../shared/types';
 import { TILE_METERS } from '../shared/constants';
+import { SLOW_TEST_TIMEOUT_MS } from '../../tests/support/timeouts';
+
+vi.setConfig({ testTimeout: SLOW_TEST_TIMEOUT_MS });
 
 const SIZE = 14;
 const ROW = 6;

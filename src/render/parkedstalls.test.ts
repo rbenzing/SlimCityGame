@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import * as THREE from 'three';
 import catalogData from '../data/catalog.json';
 import { LOT_TREE_SCALE, ParkedCarRenderer } from './parked';
@@ -14,6 +14,9 @@ import {
   type BuildingInstance,
 } from '../shared/types';
 import type { LotRect } from '../shared/lotlayout';
+import { SLOW_TEST_TIMEOUT_MS } from '../../tests/support/timeouts';
+
+vi.setConfig({ testTimeout: SLOW_TEST_TIMEOUT_MS });
 
 const catalog = (catalogData as { buildings: BuildingCatalogEntry[] }).buildings;
 /** Every kind that lays a car park on its lot: suburban commerce, industry, the walk-ups and a dense kind on its larger level-1 lot. */
@@ -212,7 +215,7 @@ describe('a lot car park, one vehicle to a stall', () => {
     expect(lots).toBeGreaterThan(0);
     expect(faults).toEqual([]);
     // Every lot kind at every turn and side: five seconds alone, several times that on a loaded machine.
-  }, 60_000);
+  });
 
   it('parks a level-1 dense kind on its larger lot a car a stall, and reports the lot’s stalls as its own', () => {
     const lots = catalog.filter(isDenseLotEntry);

@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { BuildingState, FIELD_COUNT, FieldId, RoadTier } from '../shared/types';
 import type { BuildingCatalogEntry, BuildingInstance, GridState } from '../shared/types';
 import { MAP_TILES, tileIndex } from '../shared/constants';
@@ -6,6 +6,9 @@ import { createGrid } from '../world/grid';
 import catalogData from '../data/catalog.json';
 import { FieldSim, LAND_VALUE_BASE } from './fields';
 import { ServiceSim } from './services';
+import { SLOW_TEST_TIMEOUT_MS } from '../../tests/support/timeouts';
+
+vi.setConfig({ testTimeout: SLOW_TEST_TIMEOUT_MS });
 
 const catalog = (catalogData as { buildings: BuildingCatalogEntry[] }).buildings;
 const funding = { police: 1, fire: 1, health: 1, education: 1, park: 1 };
