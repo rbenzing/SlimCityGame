@@ -19,7 +19,11 @@
 3. **Power and water flow through roads.** Connect a generator and a water source
    to the road network and the whole connected network is served.
 4. **Watch it grow, then read it.** Buildings construct, upgrade, and occasionally
-   abandon on their own. Use the infoview lenses and stats to see why. An
+   abandon on their own. Use the infoview lenses and stats to see why.
+   A home or a shop upgrades where its land is worth more: an elementary
+   school and a police station within reach lift a street to the second
+   level, and a park, water or trees nearby to the third. A fire station
+   and a clinic keep people safe and well but do not raise land value. An
    abandoned building reopens when its power, water and road return;
    otherwise it stands boarded up until its zone is in demand again, or
    until you bulldoze it.

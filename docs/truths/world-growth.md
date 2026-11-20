@@ -279,3 +279,9 @@ Back to [the index](../GROUND-TRUTHS.md).
   it was. —
   [environmental-simulation.md](../world-sim/environmental-simulation.md#landvalue-fieldidlandvalue--0);
   `applyLandValueDecay` in `src/sim/fields.ts`
+- [R-world-065] A level-up and a conversion read land value and schooling at the lot's
+  street-row tile on every side of its street, never at the building's
+  corner: read there, a deep lot on the north or west side was judged by
+  its back row and one on the south or east by its front. —
+  [environmental-simulation.md](../world-sim/environmental-simulation.md#landvalue-fieldidlandvalue--0);
+  `levelReadTile` in `src/sim/growth.ts`

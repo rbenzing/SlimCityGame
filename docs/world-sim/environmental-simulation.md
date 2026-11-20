@@ -77,11 +77,17 @@ straight river bank at **181**, over it and under the level-3 line of 190
 (the bank's +6 is shared with the row behind by diffusion, so a lone water
 tile is worth much less than a shore). A block under a light works' 40
 pollution settles below 60; a street's 24 noise alone holds ground near 80.
-Each point of gain is worth about 20 at the equilibrium, so a street with
-a school or a police station alone settles at **138**, still under the
-line, and one with both at **158**: over level 2, under the double lot's
-160 and level 3's 190 `[R-world-063]`. A served ordinary street reaches
-level 2; level 3 still wants water, trees or a park. A fire station and a
+Each point of gain is worth about 20 at the equilibrium. A service that
+reaches a street reaches its lots: every tile within the zoning depth of a
+road tile the service reaches (`markLots` in `src/sim/services.ts`,
+marked in the service pass, never saved). So on an ordinary block, with
+streets seven tiles apart, a school or a police station alone settles
+every lot at **138**, still under the line, and both at **153 to 158**:
+over level 2, under the double lot's 160 and level 3's 190
+`[R-world-063]`. On a lone street with bare ground behind it the row at
+the street reads 141 with both and the rows behind 139 and 135. A served
+ordinary street reaches level 2; level 3 still wants water, trees or a
+park. A served block pays about 7% more tax by the land-value factor. A fire station and a
 clinic add nothing: no study found prices them in, and a home beside
 either sells at a small discount
 ([sources](../sources/lots-and-land.md#what-raises-a-homes-value)). In a
