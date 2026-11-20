@@ -313,4 +313,10 @@ Back to [the index](../GROUND-TRUTHS.md).
   screen as tall as the rooftop plant it hides. A lower building keeps
   its punched windows, and a works is never glazed for its height. —
   [redevelopment.md](../specs/redevelopment.md)
+- [R-render-050] A thin sheet that can be seen from both sides is drawn from both: a
+  fence's fabric, a gate, a screen, a sign's panel, a railing. A works'
+  yard fence drew its posts from both sides and its mesh from one, so
+  from inside the yard only the posts stood. —
+  [commercial-industrial-grounds.md](../specs/commercial-industrial-grounds.md);
+  `src/render/lotgrounds.ts`
 
