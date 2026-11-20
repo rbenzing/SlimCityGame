@@ -60,11 +60,13 @@ import {
   frontageYaw,
   inwardYaw,
   lotToWorld,
+  NO_YARD,
   outwardYaw,
   planHouseLot,
   type HouseLotPlan,
   type KitBox,
   type LotRect,
+  type YardLookup,
 } from './houselot';
 import { FenceBook, fenceLotOf, trimFence } from './fencelines';
 import { DRIVE_Y_OFFSET } from './lots';
@@ -501,6 +503,7 @@ export class HouseRoofRenderer {
   private readonly heightAt: (x: number, z: number) => number;
   private readonly roadAt: (x: number, z: number) => boolean;
   private readonly street: StreetLookup;
+  private readonly yardRows: YardLookup;
   private readonly catalogById: Map<string, BuildingCatalogEntry>;
   private readonly nightFactorUniform = uniform(0);
   private readonly pools: Record<HousePart, InstancedSlotPool>;
@@ -515,10 +518,12 @@ export class HouseRoofRenderer {
     catalog: BuildingCatalogEntry[],
     roadAt: (x: number, z: number) => boolean = () => false,
     street: StreetLookup = NO_STREETS,
+    yardRows: YardLookup = NO_YARD,
   ) {
     this.heightAt = heightAt;
     this.roadAt = roadAt;
     this.street = street;
+    this.yardRows = yardRows;
     this.catalogById = new Map(catalog.map((entry) => [entry.id, entry]));
     // The structure shares one night uniform, so a house's roof, garage and
     // doors darken together with the body.
@@ -688,7 +693,7 @@ export class HouseRoofRenderer {
 
     const entry = this.catalogById.get(building.catalogId);
     if (!entry || !isHouseEntry(entry)) return;
-    const plan = planHouseLot(building, entry, this.roadAt, this.street);
+    const plan = planHouseLot(building, entry, this.roadAt, this.street, this.yardRows);
     if (!plan) return;
     this.lotPlans.set(building.id, { plan, state: building.state });
     this.fenceBook.set(

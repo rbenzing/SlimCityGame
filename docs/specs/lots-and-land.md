@@ -14,6 +14,7 @@
 - Re-cut only empty ground: a standing building is a parcel the cut steps over, and no two parcels share a tile. `[R-world-039]`
 - The zone lens draws the same plat function the spawner reads, for the platted zones only. `[R-world-039]` `[R-world-041]`
 - Read land value, never write it: a street of villas does not raise its own value.
+- Give a low-density home, as its yard, the zoned ground behind its lot that no parcel of the plat covers; derive it, store nothing, and change no lot's size. `[R-world-064]`
 
 **Numbers:** every standard below is derived in [the sources](../sources/lots-and-land.md).
 
@@ -57,7 +58,8 @@
 - `src/world/plat.ts` `platOf`, `parcelsAnchoredAt`, `takesWholeParcels`, `platReaches`, `takesFrontageLots`: the one plat function and what a kind may take.
 - `src/sim/growth.ts` `tryLevelUp`, `tryConvert`, `spawnCandidates`, `drawKind`: the lot-fit draw, level-up keeping a lot, redevelopment, teardown to a plex.
 - `src/sim/worker.entry.ts` `cmdPaintZone`: a building keeps the zone it grew on.
-- `src/render/zonegrid.ts` `setParcels`: the amber outline of each parcel.
+- `src/render/zonegrid.ts` `setParcels`: the amber outline of each parcel, its yard included.
+- `src/world/yard.ts` `yardRowsBehind`, `yardTilesOf`, `parcelWithYard`: a lot's yard; `src/render/houselot.ts` `detachedYard`: the lawn, fence and trees over it.
 - `src/main.ts` `rebuildPlat`: the plat under a ploppable in hand.
 - `src/ui/format.ts` `lotLine`: the inspector's Lot row; `src/ui/InfoPanel.tsx`: the panel.
 
@@ -67,6 +69,7 @@
 - `src/world/plat.test.ts` — runs cut from one end, bends, cul-de-sacs, no shared tile, whole parcels, frontage lots.
 - `src/sim/growth.test.ts` — the lot a house stands on, level-up keeping it, redevelopment, teardown, "the plat changes under empty ground only".
 - `src/ui/format.test.ts` — the lot line text.
+- `src/world/yard.test.ts`, `src/render/yardground.test.ts`, `src/render/houselot.test.ts` — the yard's rows by lot size, one owner a tile, none dead on a 7 by 7 block, the ground over lot and yard.
 
 **Open:**
 
@@ -105,6 +108,7 @@ A lot forms from its street and faces it.
 - **A standing building is a parcel of its own** and is stepped over, so the cut never moves a house. Round a bend each arm is its own run, and a cul-de-sac is two runs, one down each side, with no lot cut across its end.
 - **The lot is turned to its street.** An upright catalog entry's `w` is the frontage and its `d` the depth. On a street running north to south the lot is its turned twin (`res-normal-t-N`, 2×1; `res-estate-t-N`, 3×2), so a normal lot is 20 m of frontage by 40 m deep whichever way its street runs. The square lots have no twin.
 - **Only the row starts a lot.** The rows behind the first, up to the zoning depth, are yard: no parcel starts there, so a house is never platted behind another. A tile no street fronts within the depth keeps the lot its land warrants.
+- **The yard belongs to the home in front of it.** A zoned low-density tile behind a lot, joined to its rear line, holding no building and covered by no parcel of the plat, is that home's yard: two rows behind a half lot, one behind a normal or double lot, none behind an estate or an acre. A tile two homes could claim goes to the one whose street is nearer, and on a tie to the one first in map order. The home's lawn and fence run over it and its garden trees stand on it; the patio, pool and play equipment stay on the lot itself, so a small lot's yard is plain ground. The lens outlines the parcel with its yard. The lot does not change: its area, home and residents are the sourced lot's, and growth never reads a yard. When the plat later claims a yard tile for a new lot, the yard gives it up. Before, those rows stood bare: 63 of 144 zoned residential tiles in one measured town, 4 of 48 on a block 7 tiles square, now none.
 - **Faces follow.** A home faces the street that borders most of its edge ([buildings.md](../art/buildings/residential-lots.md)), the street it was cut from.
 
 The whole plat is cut once, run by run in map order, with a claimed-tile set, so two streets fronting one corner never cut overlapping parcels. The spawner cuts it once a pass the same way.

@@ -430,7 +430,104 @@ describe('planHouseLot — rows', () => {
   });
 });
 
-describe('planHouseLot — the yard', () => {
+describe('planHouseLot — the yard behind the lot', () => {
+  const half = entry({ footprint: { w: 1, d: 1 } });
+  const { roadAt, street } = streetRow(8);
+  const homes = (e: BuildingCatalogEntry, rows: number, count = 40): HouseLotPlan[] =>
+    Array.from({ length: count }, (_, i) =>
+      planHouseLot(
+        home({ id: i + 1, x: i * 4, z: 8 - e.footprint.d }),
+        e,
+        roadAt,
+        street,
+        () => rows,
+      )!,
+    );
+
+  it('runs the ground plan back over the lot and its yard, and says how much of it is yard', () => {
+    const lots: number[] = [];
+    const plan = planHouseLot(home({ z: 7 }), half, roadAt, street, (lot) => {
+      lots.push(lot.x, lot.z, lot.w, lot.d);
+      return 2;
+    })!;
+    expect(lots).toEqual([4, 7, 1, 1]);
+    expect(plan.yardDepthM).toBe(2 * TILE_METERS);
+    expect(plan.lotDepthM).toBe(3 * TILE_METERS);
+    const bare = planHouseLot(home({ z: 7 }), half, roadAt, street)!;
+    expect(bare.yardDepthM).toBe(0);
+    expect(bare.lotDepthM).toBe(TILE_METERS);
+  });
+
+  it('asks for the side the street is on', () => {
+    const fronts: string[] = [];
+    const west = {
+      roadAt: (x: number) => x === 3,
+      street: (x: number) => (x === 3 ? { vergeM: VERGE, sidewalkM: SIDEWALK } : null),
+    };
+    planHouseLot(home(), half, west.roadAt, west.street, (lot) => (fronts.push(lot.front), 0));
+    expect(fronts).toEqual(['W']);
+  });
+
+  it('leaves the body, the drive and the walk where the lot alone puts them', () => {
+    for (const rows of [1, 2]) {
+      homes(half, rows).forEach((plan, i) => {
+        const bare = planHouseLot(home({ id: i + 1, x: i * 4, z: 7 }), half, roadAt, street)!;
+        expect(plan.body).toEqual(bare.body);
+        expect(plan.drives).toEqual(bare.drives);
+        expect(plan.paths).toEqual(bare.paths);
+        expect(plan.doors).toEqual(bare.doors);
+        expect(plan.kit).toEqual(bare.kit);
+      });
+    }
+  });
+
+  it('stands the rear fence on the yard’s rear line and keeps every part inside the lot and yard', () => {
+    const rear = 3 * TILE_METERS - 0.1;
+    const plans = homes(half, 2);
+    const fenced = plans.filter((p) => p.yard.fence.length > 0);
+    expect(fenced.length).toBeGreaterThan(0);
+    for (const plan of fenced) {
+      expect(Math.max(...plan.yard.fence.map((r) => Math.max(r.v0, r.v1)))).toBeCloseTo(rear, 6);
+    }
+    for (const plan of plans) {
+      for (const t of plan.yard.trees) expect(t.v).toBeLessThanOrEqual(plan.lotDepthM);
+      for (const p of plan.yard.patios) expect(p.v1).toBeLessThanOrEqual(plan.lotDepthM);
+    }
+  });
+
+  it('keeps every amenity on the sourced lot: a yard adds lawn, fence and garden trees only', () => {
+    const lotOnly = (entries: BuildingCatalogEntry): HouseLotPlan[] => homes(entries, 0);
+    for (const e of [half, small]) {
+      const bare = lotOnly(e);
+      for (const rows of [1, 2]) {
+        homes(e, rows).forEach((plan, i) => {
+          const base = bare[i]!.yard;
+          expect(plan.yard.patios).toEqual(base.patios);
+          expect(plan.yard.grills).toEqual(base.grills);
+          expect(plan.yard.pool).toEqual(base.pool);
+          expect(plan.yard.trampoline).toEqual(base.trampoline);
+          expect(plan.yard.bushes).toEqual(base.bushes);
+          expect(plan.yard.trees.slice(0, base.trees.length)).toEqual(base.trees);
+          for (const t of plan.yard.trees.slice(base.trees.length)) {
+            expect(t.v).toBeGreaterThanOrEqual(plan.lotDepthM - plan.yardDepthM);
+          }
+        });
+      }
+    }
+  });
+
+  it('plants more of the back garden as the yard deepens', () => {
+    const trees = (rows: number): number =>
+      homes(half, rows).reduce((n, p) => n + p.yard.trees.length, 0);
+    expect(trees(2)).toBeGreaterThan(trees(0));
+  });
+
+  it('gives a home on a curve no yard', () => {
+    const parcel: ParcelFrame = { x: 212.5, z: 340.25, heading: 0.6 };
+    const plan = planHouseLot(home({ frame: parcel }), half, roadAt, street, () => 2)!;
+    expect(plan.yardDepthM).toBe(0);
+  });
+
   it('never runs a fence through a drive, a carport or a garage', () => {
     for (const plan of [...streetOf(small), ...streetOf(villa), ...streetOf(terrace, 10)]) {
       const driven = plan.drives.flatMap((d) => (d.coverRect ? [d.rect, d.coverRect] : [d.rect]));

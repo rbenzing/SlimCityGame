@@ -111,3 +111,16 @@ Back to [the index](../GROUND-TRUTHS.md).
   [a block starts on one lot](../specs/lots-and-land.md#a-block-starts-on-one-lot);
   `takesFrontageLots` in `src/world/plat.ts`, `tryLevelUp` in
   `src/sim/growth.ts`
+
+- [R-world-064] The zoned ground behind a low-density home's lot, joined to its rear
+  line up to the zoning depth, that holds no building and that no parcel of
+  the plat covers, is that home's yard, and no one else's: a tile two homes
+  could claim goes to the one whose street is nearer, then to the first in
+  map order. The yard is derived with the plat and stored nowhere; it gives
+  up a tile the plat later claims. It changes nothing a lot is counted by:
+  not its area, its home, its residents, its road, power or water, and
+  growth never reads it. It carries lawn, the lot's fence and trees, and no
+  amenity: a patio, a pool and play equipment stay on the lot. —
+  [lots-and-land.md](../specs/lots-and-land.md#the-plat-is-cut-from-the-street);
+  `yardRowsBehind` in `src/world/yard.ts`, `detachedYard` in
+  `src/render/houselot.ts`
