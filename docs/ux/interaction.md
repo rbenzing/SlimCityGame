@@ -130,6 +130,11 @@ step, including any road it split.
 and ramp) also offers `Grid`. Picking a motorway while `Grid` is selected
 falls back to `Straight`.
 
+**The mode stays in the roads drawer** `[R-design-023]`. It starts at
+`Straight` and goes back to `Straight` when the drawer closes or another
+category opens; it is not saved with the game or the settings. Nothing
+outside the drawer reads it: a water pipe drag is always one straight run.
+
 **Drawing a ramp.** The Ramp card says how: start on a street and drag toward
 the highway, and the ramp bends to run beside the highway the way its traffic
 goes and joins at its end. The player marks the two ends and the tool chooses
