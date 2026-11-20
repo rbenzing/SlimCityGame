@@ -37,16 +37,16 @@ again, update the figure here and nowhere else.
 
 - What a review of every shot the tools write found wrong in the game is
   ranked in [open-visual-defects.md](roadmap/open-visual-defects.md).
-- Growth, measured in a scripted town of 41,504 people: a works on a full
-  block never levels, and most works stop at level 1 or 2 where a zone
-  three rows deep cannot hold the next level's lot; a new home's lot size
-  is still read at its back corner on the north and west sides of a
-  street. Only low-density homes have yards: the back rows behind row
-  houses, medium-density and curved lots stay bare. Grown again on the new
-  rules the town passed Metropolis with 82% of homes at level 2, but only
-  68% of its workforce employed: homes now house more people than jobs
-  grew to match, and how much of that is the test's map is not known. The
-  numbers are in the [history](history/2026-11.md).
+- Growth, measured in a scripted town: a works levels only where it has
+  free ground beside it, so on a built-up block two works in three stay at
+  level 1, and chemical, paper and food plants never reach the levels that
+  need a lot four rows deep in a zone three deep; a new home's lot size is
+  still read at its back corner on the north and west sides of a street.
+  Only low-density homes have yards: the back rows behind row houses,
+  medium-density and curved lots stay bare. Homes now follow work, so a
+  town reaches Grand City 1.5 times later than it did; level 3 homes
+  stopped rising late in the measured run, not yet traced. The numbers are
+  in the [history](history/2026-11.md).
 - A bend turns at its kerb return's radius, not its class's minimum curve
   radius `[R-roads-081]`: the wider sweep leaves the tiles the road holds, so
   lots, traffic and saves would have to follow it. Not yet bends: a one-way

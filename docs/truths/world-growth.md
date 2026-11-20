@@ -299,3 +299,11 @@ Back to [the index](../GROUND-TRUTHS.md).
   reads exactly as it did. —
   [demand-the-rci-model.md](../game-design/simulation-rules/demand-the-rci-model.md);
   `computeDemand` in `src/sim/demand.ts`
+- [R-world-068] A demand value is its sector's shortfall over a tenth of its target
+  (`DEMAND_FULL_SHARE`), never over the whole target, and never under the
+  sector's floor. The scale never moves a value's zero, a room, or the
+  jobs a tax point shifts: the rooms bound what is built, the value only
+  sets how readily. Over the whole target a balanced town read 0.01 to
+  0.05 and grew 3.2 times slower. —
+  [demand-the-rci-model.md](../game-design/simulation-rules/demand-the-rci-model.md);
+  `fullScale` in `src/sim/demand.ts`

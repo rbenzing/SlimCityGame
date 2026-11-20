@@ -63,7 +63,8 @@ power, no piped water or no drain reaching its footprint (water and drain
 only for a building that draws city water, and a drain only from Big Town),
 no street within Manhattan
 distance 3 (for a farm, no dirt road within 3 of its lot), crime over 170,
-pollution over 170 (residential lots only), and sector demand under -0.5. An
+pollution over 170 (residential lots only), and a sector demand bar that is
+empty (-1: the sector is a tenth or more over what the town supports). An
 Active building carrying a power, water, or road blocker for 3 consecutive
 passes becomes Abandoned; a missing drain is never a blocker, since the
 consequence of no sewer is no growth and a fouled ground, not a dead
