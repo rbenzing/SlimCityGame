@@ -25,7 +25,7 @@ current behavior only and carry no dates of their own._
 
 ## Status (2026-09-29)
 
-**Test suite:** 11,510 tests passing across 333 test files, run 2026-11-23.
+**Test suite:** 11,557 tests passing across 335 test files, run 2026-11-23.
 This is the only test count in the documentation set. When the suite changes
 again, update the figure here and nowhere else.
 
@@ -56,12 +56,14 @@ again, update the figure here and nowhere else.
   town reaches Grand City 1.5 times later than it did; level 3 homes
   stopped rising late in the measured run, not yet traced. The numbers are
   in the [history](history/2026-11.md).
-- [The water surface](specs/water-surface.md) is agreed and not built:
-  ocean, lake and river told apart by shape, waves sized by fetch, swell, a
-  river's drawn current and the light in the water. Today's surface bakes
-  its depth once, so a dug canal draws with the old ground's depth. Behind
-  it, at the player's request: harbours and boats (marinas, docks,
-  shipyards), deferred in [DESIGN.md](DESIGN.md).
+- [The water surface](specs/water-surface.md) is built; what it leaves: a
+  wind wave never moves the mesh, so close water is flat between swells; a
+  strait flows out of both ends; the wind never turns; a dug canal's banks
+  draw grey; the map's edge still ends in a white void beside the sea; its
+  cost is measured on one discrete GPU only. Behind it, at the player's
+  request:
+  harbours and boats (marinas, docks, shipyards), deferred in
+  [DESIGN.md](DESIGN.md).
 - A bend turns at its kerb return's radius, not its class's minimum curve
   radius `[R-roads-081]`: the wider sweep leaves the tiles the road holds, so
   lots, traffic and saves would have to follow it. Not yet bends: a one-way

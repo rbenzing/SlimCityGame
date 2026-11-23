@@ -27,6 +27,10 @@ The amplitudes in the spec follow from a height of four standard deviations of t
 
 - **Swell.** A dominant period of 8 s or more usually means swell ([NDBC](https://www.ndbc.noaa.gov/faq/windsea.shtml)); wind waves run about 3 to 6 s and fresh swell 7 to 10 s (a National Weather Service note, _summary_). Swell from a storm 10,000 km away arrives at 13 to 15 s ([Swell](https://en.wikipedia.org/wiki/Swell_(ocean))).
 - **Not found:** a typical height for an ordinary day on a coast. The 1.0 m in the spec is a dial.
+- **Shallow water.** A wave is in deep water where the depth is over half its length, and in shallow water where it is under a twentieth ([Wind wave](https://en.wikipedia.org/wiki/Wind_wave)). In shallow water its speed is `sqrt(g h)`, whatever its length ([Dispersion](https://en.wikipedia.org/wiki/Dispersion_(water_waves))). A swell 100 m long is in neither on this map's 8 m; the spec uses the shallow speed throughout.
+- **Shoaling.** A wave's height grows as the depth to the power −¼: a sixteenth of the depth, twice the height ([Green's law](https://en.wikipedia.org/wiki/Green%27s_law)).
+- **Arrival times.** The time a front takes to reach each point at a speed that varies from place to place is the eikonal equation, solved by the fast marching method (Sethian 1996; [Fast marching method](https://en.wikipedia.org/wiki/Fast_marching_method)).
+- **The design wind.** Force 4, a moderate breeze, is 5.5 to 7.9 m/s: "small waves becoming longer; fairly frequent white horses" ([Beaufort scale](https://en.wikipedia.org/wiki/Beaufort_scale)).
 - **Breaking.** A wave breaks in shallow water when its height passes 0.8 of the depth ([Wind wave](https://en.wikipedia.org/wiki/Wind_wave)). McCowan's 0.78 for a solitary wave is the figure usually quoted; no page stating it was opened.
 - **Steepness.** In deep water a wave's height cannot pass 0.142 of its length ([Miche criterion](https://en.wikipedia.org/wiki/Miche_criterion), after Miche 1944). The same Wind wave page gives 0.17 as the onset of breaking; the spec's waves stay under 0.04.
 - **Summing waves.** A sum of trochoidal waves keeps from looping while `Σ Q·k·a ≤ 1`; the chapter's example sums four in the vertex stage ([GPU Gems, chapter 1](https://developer.nvidia.com/gpugems/gpugems/part-i-natural-effects/chapter-1-effective-water-simulation-physical-models)).
@@ -43,7 +47,8 @@ No source gives a width or a depth that parts a river from a lake: hydrology par
 
 ## Light in the water
 
-- **Refraction.** Water's refractive index is 1.33 at 20 °C ([Optical properties of water and ice](https://en.wikipedia.org/wiki/Optical_properties_of_water_and_ice)); the reflectance facing the surface is `((n−1)/(n+1))²`, 0.02.
+- **Refraction.** Water's refractive index is 1.33 at 20 °C ([Optical properties of water and ice](https://en.wikipedia.org/wiki/Optical_properties_of_water_and_ice)); the reflectance facing the surface is `((n−1)/(n+1))²`, 0.02, rising toward a glancing view as `R0 + (1 − R0)(1 − cos θ)⁵` ([Schlick's approximation](https://en.wikipedia.org/wiki/Schlick%27s_approximation)).
+- **Dimming with depth.** Light through a medium falls as `e^(−μd)` ([Beer–Lambert law](https://en.wikipedia.org/wiki/Beer%E2%80%93Lambert_law)).
 - **Absorption.** Pure water absorbs 0.00922 per metre at 450 nm, 0.0565 at 550 nm and 0.34 at 650 nm ([Pope and Fry 1997](https://omlc.org/spectra/water/data/pope97.txt), Applied Optics 36). Hale and Querry 1973 give 0.0285, 0.0448 and 0.317 for the same colours; the newer set is used.
 - **Clarity.** A clear lake's Secchi depth is over 5 m and a rich one's under 2.5 m ([Grand Valley State University](https://www.gvsu.edu/wri/education/instructors-manual-water-transparency-8.htm)). Rivers 1 to 2.5 m, clear lakes 1 to 8 m and oceans 1 to 80 m come from a scale read only as a _summary_.
 - **Light on the bed.** The bright sheets spread apart with depth ([Atmospheric Optics](https://www.atoptics.co.uk/blog/opod-trout-optical-catastrophes/)). No depth at which they stop being seen was found; the 3 m is a dial.

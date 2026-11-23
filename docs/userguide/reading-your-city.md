@@ -19,6 +19,12 @@
   red land nothing grows on. A chip at the top left names the lens that is
   on; **Exit** there, or `Esc`, turns it off. Under the chip a legend says
   what the colours mean, and says so when a lens has nothing to show yet.
+- **Water tells you what it is** — the sea is deep blue, with swell rolling
+  in from the open edge and breaking as surf on a beach; a lake is clear at
+  its rim and shows gusts drifting across it; a river or a canal is green
+  and drifts toward the water it empties into. A canal you dig becomes a
+  river a moment after you stop digging. Water going brown is sewage from a
+  drain, not the river's own colour.
 - **Stats panel** — line charts of population, money, and other trends over
   time. Each line is scaled to its own range; its row gives the unit, the
   latest value and the range.
