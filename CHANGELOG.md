@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.102.1](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.102.0...slimcity-v1.102.1) (2026-11-23)
+
+
+### Bug Fixes
+
+* **sim:** the happiness average refreshes where the sim moves, never in postSnapshot ([e6f56f6](https://github.com/rbenzing/SlimCityGame/commit/e6f56f68b3b440ec8011451cdcc7e7f27c546f04))
+* **tools:** settle flushes the page's queued road, lamp and tree work before counting frames ([0d4c0c2](https://github.com/rbenzing/SlimCityGame/commit/0d4c0c2c4c0f49ef956dfc1b04d210ee9614e98f))
+
+
+### Performance Improvements
+
+* **render:** a snapshot's road work follows what changed, paced over frames ([bc54bd4](https://github.com/rbenzing/SlimCityGame/commit/bc54bd475a549680787c0f48b4413b465d5e6e8c))
+* the worker posts one snapshot at a time, a control change stops at the next junction, road chunks drain by time ([a42b51c](https://github.com/rbenzing/SlimCityGame/commit/a42b51c93b6ba96a588083f95c449160ffa8ce78))
+
 ## [1.102.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.101.0...slimcity-v1.102.0) (2026-11-23)
 
 
