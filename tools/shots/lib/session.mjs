@@ -103,13 +103,15 @@ export async function openSession(url, { fresh = false, seed = SEED } = {}) {
  * `until` is a page function (with `arg`) true once what was asked for exists:
  * the building standing, the ground level. Without one, the wait is the frames
  * alone. Frames are counted after the condition holds, so the draw that shows it
- * has happened.
+ * has happened. The page's queued road, lamp and tree work is done first, so a
+ * large build is not caught part-drawn.
  */
 export async function settle(page, { until, arg, timeout = 15000 } = {}) {
   if (until) await page.waitForFunction(until, arg, { timeout, polling: 100 });
   await page.evaluate(
     (n) =>
       new Promise((done) => {
+        window.__slimcity?.flushDeferred?.();
         const tick = (left) => (left === 0 ? done() : requestAnimationFrame(() => tick(left - 1)));
         tick(n);
       }),
