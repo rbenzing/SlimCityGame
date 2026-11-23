@@ -53,6 +53,11 @@ file is the index to what they foreclose, not a second copy of the argument.
   maps.
 - **Dynamic water flow simulation.** Heightfield flow is a performance tar pit,
   and the derived sea-level model already covers seas, lakes and dug canals.
+  A river's current is drawn from the water's shape and moves no water
+  ([water-surface.md](specs/water-surface.md)).
+- **Harbours and boats**, asked for by the player: marinas, docks and
+  shipyards on a shore, and the boats they put on the water. The water
+  surface is specified so a hull can ride it; ferries join them above.
 - **Sewage, recycling, internet and heating as distinct networks.** Garbage is
   built, but as a service-radius collection system with landfills and an
   incinerator — not as a utility network.
