@@ -25,7 +25,7 @@ current behavior only and carry no dates of their own._
 
 ## Status (2026-09-29)
 
-**Test suite:** 11,494 tests passing across 331 test files, run 2026-11-23.
+**Test suite:** 11,510 tests passing across 333 test files, run 2026-11-23.
 This is the only test count in the documentation set. When the suite changes
 again, update the figure here and nowhere else.
 
@@ -37,10 +37,9 @@ again, update the figure here and nowhere else.
 
 - What a review of every shot the tools write found wrong in the game is
   ranked in [open-visual-defects.md](roadmap/open-visual-defects.md).
-- The page stalls while a small town runs at 4×: a read-back took 16.9 s at
-  a population of 544, against a 1 s target
-  ([performance-budget.md](engineering/performance-budget.md)). Found when
-  the stall measurement was restored as a probe; the cause is not traced.
+- The happiness average demand reads is refreshed once a pump, so a run's
+  result depends on how its ticks are batched into pumps (never on the
+  page, `[R-architecture-018]`). No CI step runs the stall probe.
 - Three probes measure less than they claim: `growth-probe` and
   `memory-probe` build a town that never gains a resident, `audio-check`
   fails one run in two on "track plays", and the road audit's one-section

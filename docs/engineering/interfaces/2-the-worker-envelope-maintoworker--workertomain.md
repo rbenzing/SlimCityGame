@@ -4,7 +4,7 @@ Both unions live in `src/shared/types.ts`. `MainToWorker` is render -> worker
 only; `WorkerToMain` is worker -> render only. Neither is ever sent the other
 direction.
 
-### `MainToWorker` (8 variants)
+### `MainToWorker` (9 variants)
 
 | Type           | Fields                                 | Worker behavior                                                                                                                                                                         |
 | -------------- | -------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -16,6 +16,11 @@ direction.
 | `loadSave`     | `data: ArrayBuffer`                    | Throws if `payload.header.version` is `< 1` or greater than this build's `SAVE_VERSION`; otherwise migrates and replaces the whole world (see [§6](6-the-world-grid-and-persistence.md)). |
 | `select`       | `buildingId: number`                   | Starts a `selection` stream for that building (re-pushed on every later snapshot while held).                                                                                           |
 | `clearSelect`  | —                                      | Ends the `selection` stream.                                                                                                                                                            |
+| `snapshotApplied` | —                                   | The page drew the frame showing the last snapshot. The first one turns pacing on: from then one snapshot is in flight, and a snapshot owed meanwhile posts on the next one `[R-architecture-018]`. |
+
+A client that never sends `snapshotApplied` (a test, a tool driving the
+worker alone) gets every snapshot as it falls due. A hidden tab draws no
+frame, so the worker holds its deltas until the tab draws again.
 
 Messages other than `init` are ignored until the worker has initialized
 (`if (!this.initialized) return;`, `src/sim/worker.entry.ts:460`).
@@ -26,7 +31,7 @@ Messages other than `init` are ignored until the worker has initialized
 | ----------- | ------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `ready`     | —                                    | Exactly once, at the end of `init`.                                                                                                                                                                                                                                                                                                                                                           |
 | `ack`       | `ack: CommandAck`                    | Once per `commands` batch received, in the order the batches were drained.                                                                                                                                                                                                                                                                                                                    |
-| `snapshot`  | `snap: SimSnapshot`                  | Every `SNAPSHOT_TICKS` ticks (`TICK_RATE / SNAPSHOT_HZ` = 2), plus once after `init`/`loadSave`, plus once whenever a command is applied while paused.                                                                                                                                                                                                                                        |
+| `snapshot`  | `snap: SimSnapshot`                  | Every `SNAPSHOT_TICKS` ticks (`TICK_RATE / SNAPSHOT_HZ` = 2), plus once after `init`/`loadSave`, plus once whenever a command is applied while paused; held while one is unacknowledged.                                                                                                                                                                                                                                        |
 | `field`     | `field: FieldId`, `data: Uint8Array` | Once per `requestField`.                                                                                                                                                                                                                                                                                                                                                                      |
 | `save`      | `data: ArrayBuffer`                  | Once per `requestSave`.                                                                                                                                                                                                                                                                                                                                                                       |
 | `notify`    | `note: CityNotification`             | Whenever the economy system raises one (unbounded; the UI store caps its own history at 50).                                                                                                                                                                                                                                                                                                  |
