@@ -1,38 +1,35 @@
 # Shader specification
 
-What every custom shader in the project must do, and the conventions they share.
+What a surface may use to get an effect, and what it may not `[R-render-005]`.
 
-## There are no custom shaders
+## No shader source, node graphs allowed
 
-Not one. `src/` contains no `ShaderMaterial`, no `onBeforeCompile`, no GLSL
-source, and no vertex or fragment shader of any kind. Every surface in the game
-is a stock three.js material.
+`src/` contains no `ShaderMaterial`, no `onBeforeCompile` and no GLSL or WGSL
+source. Every surface is a stock three.js material or a
+`MeshStandardNodeMaterial` whose inputs are TSL node graphs: arithmetic on
+position, vertex colour, instance colour, time and a few uniforms.
 
-This is worth stating plainly, because the world does things that usually imply
-a shader and does not use one to get them:
+Where a node graph does the work a shader usually would:
 
-- **Water** — the moving surface, depth-keyed colour, shoreline foam and sun
-  glint are built from layered normal maps, animated UV offsets and per-vertex
-  displacement on a standard material. See [water.md](water.md).
-- **Terrain** — the land-to-water ramp, the material blend between grass, rock
-  and sand, and the earth cross-section at the map edge are all per-vertex
-  colours baked at chunk build time. See [terrain.md](terrain.md).
-- **Building windows at night** — the emissive grid is a texture and a material
-  property driven per-instance, not a shader. See [lighting.md](lighting.md).
+- **Water** — the swell that moves the surface, the scrolling wave normals,
+  depth-keyed colour, shoreline foam, sky reflection and sun glint are one
+  node graph with no image texture. See [water.md](water.md) and
+  [the water surface](../specs/water-surface.md).
+- **Night** — surfaces take one night tint through a shared uniform node
+  (`nightTintNode`). See [lighting.md](lighting.md).
+- **Terrain** — the land-to-water ramp, the blend between grass, rock and sand,
+  and the earth cross-section at the map edge are per-vertex colours baked at
+  chunk build time. See [terrain.md](terrain.md).
 
-The consequence is that anything a shader would normally give you is not
-available: no screen-space effects beyond the bloom pass, no per-pixel
-procedural detail, no GPU-side displacement. Effects are bought with geometry
-and vertex data instead, which is why the budgets in
-[asset-technical-requirements.md](asset-technical-requirements.md) matter as
-much as they do.
+## What a node graph keeps to
 
-## When this document gets written
+- It reads no image texture on a world surface `[R-render-006]`.
+- The water's graph mirrors pure TypeScript functions in `src/render/water.ts`
+  term for term, and `src/render/water.test.ts` pins those functions; a value
+  another system needs is read from the function, never from the GPU.
 
-The first custom shader. At that point this file records what it does, which
-uniforms it takes, how it degrades on the WebGL2 fallback path, and — the part
-that actually bites — how it stays consistent with the day/night ramp that
-every other material follows automatically.
+## Screen-space effects
 
-Screen-space reflections and occlusion culling are rejected outright rather
-than merely unbuilt; see [../DESIGN.md](../DESIGN.md).
+Bloom is the only pass over the finished frame. Screen-space reflections and
+occlusion culling are rejected outright rather than merely unbuilt; see
+[../DESIGN.md](../DESIGN.md).

@@ -1,8 +1,8 @@
 # Water rendering specification
 
-Seas, lakes and dug canals are one surface: a plane at sea level, with the
-terrain continuing visibly beneath it. There is no separate river geometry and
-no flow.
+What is drawn today. Seas, lakes and dug canals are one surface: a plane at
+sea level, with the terrain continuing visibly beneath it. There is no
+separate river geometry and no flow.
 
 ## The surface
 
@@ -38,16 +38,26 @@ The long-wavelength chop layer is the one that matters most and the least
 obvious: without it the surface animates at wavelengths too short to read from
 the default camera distance, and the water looks like a flat slate sheet.
 
-All of this is achieved with a standard material plus animated UV offsets and
-per-vertex displacement. There is no water shader — see
+All of this is a TSL node graph on a `MeshStandardNodeMaterial`: waves, foam
+and glint are arithmetic on position and time, with no image texture — see
 [shaders.md](shaders.md).
+
+The depth each vertex carries is baked when the surface is built and is not
+refreshed when terrain is dug, so a new canal draws with the depth of the
+ground it replaced.
+
+## Agreed, not built
+
+[The water surface](../specs/water-surface.md) replaces this page's surface:
+ocean, lake and river told apart by shape, waves sized by fetch, swell on an
+ocean, a drawn current on a river, and one height function a boat can read.
 
 ## Not built
 
-**Dynamic fluid flow** — flowing rivers, a flood simulation — is an explicit
-non-goal rather than a backlog item. A heightfield flow model is a performance
-tar pit, and the derived sea-level model already covers seas, lakes and dug
-canals.
+**Dynamic fluid flow** — water that moves between tiles, a flood simulation —
+is deferred. A heightfield flow model is a performance tar pit, and the
+derived sea-level model already covers seas, lakes and dug canals. A river's
+drawn current moves no water.
 
 **Planar reflections** (a true mirror render pass) are designed for but not
 built; the analytic sky blend above stands in for them.

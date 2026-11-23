@@ -37,3 +37,4 @@ One spec a built feature, card first; the template is [_template.md](_template.m
 | [commercial-industrial-grounds.md](commercial-industrial-grounds.md) | A shop's and a works' lot furniture, and roomy lots below Grand City |
 | [redevelopment.md](redevelopment.md) | How tall a building may be for the town's size, how a standing one is rebuilt larger, and parking built into a building |
 | [purpose-built-kinds.md](purpose-built-kinds.md) | The auto shop, the store, the pharmacy, the bank and the other purpose-built kinds, their lanes, and how a lot's plan varies |
+| [water-surface.md](water-surface.md) | Which water is ocean, lake or river, the waves and current each carries, the light in it, and the height a boat reads |
