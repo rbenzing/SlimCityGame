@@ -65,6 +65,15 @@ describe('AssetDrawer', () => {
       expect(screen.queryByRole('tab', { name: /maintenance/i })).not.toBeInTheDocument();
     });
 
+    it('offers no card for a bus lane, a bike lane or a tram track on any Roads sub-tab: they are options on a road', () => {
+      render(<AssetDrawer category="roads" onClose={vi.fn()} />);
+      for (const tab of screen.getAllByRole('tab')) {
+        fireEvent.click(tab);
+        for (const gone of ['Bus Lane', 'Bike Lane', 'Tram Track'])
+          expect(screen.queryByText(gone, { exact: true })).not.toBeInTheDocument();
+      }
+    });
+
     it('categories with a single natural group render no sub-tab row at all', () => {
       render(<AssetDrawer category="electricity" onClose={vi.fn()} />);
       expect(screen.queryAllByRole('tab')).toHaveLength(0);

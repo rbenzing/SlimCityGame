@@ -42,7 +42,7 @@ buildings that ship.
 | Tall      | mid-rise flats and a tower                | 4,000                    | `src/render/geometrybudget.test.ts`     |
 | Farm      | a crop, orchard or pasture farm           | 40,000                   | `src/render/geometrybudget.test.ts`     |
 | Ploppable | every kit                                 | 30,000                   | `src/render/geometrybudget.test.ts`     |
-| The city  | a Metropolis, about 10,000 buildings      | the frame                | `tools/frame-budget.mjs`, run per slice |
+| The city  | a Metropolis, about 10,000 buildings      | the frame                | `tools/probes/frame-budget.mjs`, run per slice |
 
 A recipe that grows past its tier fails the test; a slice that moves the
 frame past the figure below shrinks its parts, never the budget. The old
@@ -62,7 +62,7 @@ they are, so a Metropolis's dozen or so of them may spend 4,000 each.
 
 ### What the measurement read
 
-Measured by `tools/frame-budget.mjs` on an Intel Arc Pro 140T
+Measured by `tools/probes/frame-budget.mjs` on an Intel Arc Pro 140T
 (a laptop-class GPU) at 1280 × 800, headless, the browser's frame cap off:
 a synthetic Metropolis of 8,759 buildings in the catalog's real mix and one
 of every kit, placed by command on seed 7, the sim paused. The record is

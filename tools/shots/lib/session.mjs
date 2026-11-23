@@ -32,7 +32,7 @@ const watchRefusals = () => {
  * Returns `{ page, errors, send, refusals, close }`. `send(label, commands)`
  * runs one command batch through the game's own path.
  */
-export async function openSession(url) {
+export async function openSession(url, { fresh = false, seed = SEED } = {}) {
   const browser = await chromium.launch({ headless: true, args: ['--use-angle=default'] });
   const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
   const errors = [];
@@ -40,19 +40,24 @@ export async function openSession(url) {
   page.on('console', (m) => {
     if (m.type() === 'error') console.log('[console.error]', m.text());
   });
+  // A `fresh` game is a player's first: no sandbox, no unlimited money, no unlocked rungs. Only
+  // the first load starts a new game; a save loaded from the menu reloads the page with its own
+  // session intent, which must survive.
   await page.addInitScript(
-    ([session]) => {
+    ([session, plain]) => {
       try {
-        sessionStorage.setItem('slimcity.session', JSON.stringify(session));
-        localStorage.setItem(
-          'slimcity.settings',
-          JSON.stringify({ sandboxUnlockAll: true, unlimitedMoney: true }),
-        );
+        if (!sessionStorage.getItem('slimcity.session'))
+          sessionStorage.setItem('slimcity.session', JSON.stringify(session));
+        if (!plain)
+          localStorage.setItem(
+            'slimcity.settings',
+            JSON.stringify({ sandboxUnlockAll: true, unlimitedMoney: true }),
+          );
       } catch (e) {
         void e;
       }
     },
-    [{ screen: 'playing', seed: SEED, mode: 'new' }],
+    [{ screen: 'playing', seed, mode: 'new' }, fresh],
   );
   await page.addInitScript(watchRefusals);
   await page.goto(new URL('?nobloom', url).href, { waitUntil: 'domcontentloaded' });
@@ -61,8 +66,10 @@ export async function openSession(url) {
 
   const send = (label, commands) =>
     page.evaluate(([l, c]) => window.__slimcity.cmd(l, c), [label, commands]);
-  await send('Sandbox', [{ kind: 'setSandbox', on: true }]);
-  await send('Money', [{ kind: 'setUnlimitedMoney', on: true }]);
+  if (!fresh) {
+    await send('Sandbox', [{ kind: 'setSandbox', on: true }]);
+    await send('Money', [{ kind: 'setUnlimitedMoney', on: true }]);
+  }
   // The light follows the clock only when a snapshot lands, and a paused sim sends none, so
   // pinning the hour sends a no-op command and waits for the snapshot it brings.
   const pinDay = async (t) => {
@@ -75,7 +82,9 @@ export async function openSession(url) {
     });
   };
   await page.evaluate(() => window.__slimcity.setSpeed(0));
-  await pinDay(NOON);
+  // The hour is pinned with a command that turns money unlimited on, which a first game must not.
+  if (fresh) await page.evaluate((t) => window.__slimcity.setDayT(t), NOON);
+  else await pinDay(NOON);
 
   return {
     browser,

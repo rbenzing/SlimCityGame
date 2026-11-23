@@ -72,16 +72,15 @@ build rather than being discovered by a reader following it.
 
 Two kinds of file live here, and the naming makes the difference legible:
 
-- **`*-shots.mjs`** (and similarly-purposed scripts like
-  `visual-smoke.mjs`, `audio-check.mjs`, `growth-probe.mjs`,
-  `deterministic-town.mjs`) — Playwright harnesses that boot the real game
-  in a headless/real browser and drive it to produce screenshots or console
-  captures a human (or model) looks at. See
-  [testing.md](testing.md#screenshots-not-read-backs) and
+- **`shots/`** — the shot series: `series/<type>/<name>.mjs` one family of
+  frames each, `lib/` what they share, `run.mjs` the runner (`npm run
+  shots`). Playwright boots the real game in a browser and photographs it
+  for a human (or model) to look at. Their frames and sheets go to
+  `shots/out/`, which is gitignored. See [shot-runs.md](shot-runs.md) and
+  [testing.md](testing.md#screenshots-not-read-backs).
+- **`probes/`** — measurements that need a browser and write numbers, not
+  frames: frame time, memory, the road audit, sound (`npm run probes`). See
   [debugging.md](debugging.md).
-- **`shots-<name>/`** directories — each harness's PNG/log output. Gitignored
-  (`tools/shots-*/*.png` etc. in `.gitignore`) — the scripts are tracked,
-  their output never is.
 - **`check-doc-links.mjs`** — the doc-link checker above.
 - **`vite-songs-manifest.ts`** — a Vite plugin (imported by `vite.config.ts`),
   the one non-script file in the directory.

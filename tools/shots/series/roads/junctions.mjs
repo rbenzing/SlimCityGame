@@ -93,6 +93,8 @@ export default defineSeries({
     cross('twolane-x-avenue', TIER.avenue, TIER.twoLane),
     tee('twolane-t-avenue', TIER.avenue, TIER.twoLane),
     cross('twolane-x-fourlane', TIER.fourLane, TIER.twoLane),
+    cross('fourlane-x-fourlane', TIER.fourLane, TIER.fourLane),
+    tee('ramp-t-ramp', TIER.ramp, TIER.ramp),
     tee('alley-t-twolane', TIER.twoLane, TIER.alley),
     tee('alley-t-avenue', TIER.avenue, TIER.alley),
     tee('gravel-t-twolane', TIER.twoLane, TIER.gravel),

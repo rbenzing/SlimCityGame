@@ -36,11 +36,15 @@ const sideDetail = (subject) => ({
   scale: 1,
 });
 
+/** The box above and oblique frame for a span: the water and one tile of bank at each abutment. */
+const abutments = (pad) => ({ x0: BANK - 1, length: pad.w - 2 * (BANK - 1) });
+
 /** A road laid across the water on its own row, bank to bank. */
 const span = (id, tier, extra = {}, view = {}) => ({
   id,
   river: true,
   view,
+  close: abutments,
   lay: (p) => [p.road(tier, p.row(0, 0, p.w - 1), extra)],
 });
 
@@ -74,6 +78,8 @@ export default defineSeries({
       id: 'ramps',
       pad: { w: 19, h: STREET + 1 },
       view: { x0: 0, z0: 0, length: 19, width: STREET + 1, line: HWY },
+      // The motorway's band and both slip roads' merge ends, not the street below.
+      close: { x0: 1, z0: HWY - 2, length: 15, width: 6 },
       lay: (p) => {
         const col = (x, a, b) => p.col(x, a, b);
         const row = (z, a, b) => p.row(z, a, b);
@@ -95,6 +101,8 @@ export default defineSeries({
       id: 'diamond',
       pad: { w: 14, h: 2 * (REACH + 2) + 1 },
       view: { x0: 0, z0: 0, length: 14, width: 2 * (REACH + 2) + 1, line: CROSS },
+      // The bridge and the four terminals where the slip roads meet the street.
+      close: { x0: 0, z0: CROSS - 5, length: 14, width: 11 },
       lay: (p) => {
         const south = p.col(SOUTHBOUND, CROSS - REACH, CROSS + REACH);
         const north = p.col(SOUTHBOUND + 1, CROSS + REACH, CROSS - REACH);

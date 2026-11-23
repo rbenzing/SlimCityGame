@@ -13,7 +13,7 @@
 - Keep the lot inside its tier, counting everything on it: house 3,000, block 1,500, ploppable 30,000 triangles. `[R-render-004]`
 - Place window-framing parts on `windowGrid`, so geometry and the facade material never disagree. `[R-render-013]`
 - Light only window panes and a kit's lit parts, and only while Active; a porch, garage door, roof or wall never glows. `[R-render-019]` `[R-render-021]`
-- Run `tools/frame-budget.mjs` before and after every slice and look at the screenshots. `[R-render-032]`
+- Run `tools/probes/frame-budget.mjs` before and after every slice and look at the screenshots. `[R-render-032]`
 
 **Numbers:** the figures of each reference type are in [the library](../sources/building-detail.md#the-reference-library).
 
@@ -39,7 +39,7 @@
 | Performance slice result | calls down by half to two-thirds, 10 M fewer triangles, 2–3 ms | — | measured |
 | Synthetic Metropolis | about 9,000 zoned buildings, ~10,000 with kits, built in about 80 | s | dial |
 | Frame statistic | 95th percentile of eight-frame averages | frames | dial |
-| Night body band | 30–50% of noon, at 03:00 and midnight | % | `tools/nightlook-shots.mjs` |
+| Night body band | 18–30% of noon, at 03:00 | % | the `night` shot series; `[R-render-021]` |
 | Roof pitch, level 1 / levels 2 and 3 | 5:12 (0.42) / 8:12, rise under 4.5 | m | [house parts](../art/buildings/residential-kinds/the-house-kits-parts.md) |
 | Window grid | two columns a tile, a row a storey; 9.5 m face = three bays of 3.17 m | m | `windowGrid` |
 | Porch | 1.8 m deep, floor 0.6 m up on three risers | m | `houselot.ts` |
@@ -82,8 +82,8 @@
 - `src/render/busshelter.ts` `buildBusShelterGeometry`; `src/render/transit.ts` `TransitRenderer.apply` — the shared shelter.
 - `src/render/lots.ts`, `src/shared/lotlayout.ts` — merged lot mesh, drive-through, trailer stalls, car parks.
 - `src/render/terrain.ts`, `src/render/roadsmesh.ts` — the chunk-mesh shape lots follow.
-- `src/render/geometrybudget.test.ts` — the tiers; `tools/frame-budget.mjs` and `window.__slimcity.renderInfo()` — the frame measurement.
-- The `zoned` and `civic` shot series (`tools/shots/series/`), `tools/ploppable-shots.mjs`, `tools/nightlook-shots.mjs` — the shots.
+- `src/render/geometrybudget.test.ts` — the tiers; `tools/probes/frame-budget.mjs` and `window.__slimcity.renderInfo()` — the frame measurement.
+- The `zoned` and `civic` shot series and the `night` series (`tools/shots/series/`) — the shots.
 - `src/main.ts` — builds `hasStopBuilding` from the snapshot.
 - `UtilityKitRenderer` in `src/render/utilitykits.ts` — one `InstancedMesh` per part kind, the civic pattern.
 - `src/data/catalog.json`, `src/sim/`, `src/world/` — untouched; the catalog's `kind` already names the recipe, and the save holds no geometry.
@@ -144,9 +144,9 @@ A tier counts everything on the lot: body, roof, parts, paving, yard, trees, car
 | House | detached, duplex, fourplex, townhouse row | a geometry test per recipe |
 | Block | every other zoned kind; midrise and tower take the tall tier | a geometry test per recipe |
 | Ploppable | every kit; farms take 40,000 | a geometry test per kit |
-| The city | a Metropolis of about 10,000 buildings | `tools/frame-budget.mjs` |
+| The city | a Metropolis of about 10,000 buildings | `tools/probes/frame-budget.mjs` |
 
-No save-sized city existed and growth is tick-driven, so `tools/frame-budget.mjs` builds a synthetic Metropolis by command. Sandbox mode lets the place command take any catalog entry; streets go over dry ground, about nine thousand zoned buildings in the catalog's real mix plus one of every kit, with the sim paused, because a running sim clears a city with no power or zones.
+No save-sized city existed and growth is tick-driven, so `tools/probes/frame-budget.mjs` builds a synthetic Metropolis by command. Sandbox mode lets the place command take any catalog entry; streets go over dry ground, about nine thousand zoned buildings in the catalog's real mix plus one of every kit, with the sim paused, because a running sim clears a city with no power or zones.
 
 It reads frame time with the browser's frame cap off, and draw calls and triangles from `window.__slimcity.renderInfo()`, over four fixed views by day and night, against the empty map. A cheaper CPU side lets the browser queue frames, so it reports the 95th percentile of eight-frame averages, not single frames.
 
@@ -216,7 +216,7 @@ The six earliest kits get a layout and builders each, pure from the footprint; s
 
 ### Night
 
-Windows keep lighting from the facade material, and new window geometry lights on the stations' emissive material, so a street at night keeps its character. `tools/nightlook-shots.mjs` pins one camera at noon, 03:00 and midnight and reads a wall, a shutter and a roof pixel back, failing outside the body band or on a pane that clips or is not warm.
+Windows keep lighting from the facade material, and new window geometry lights on the stations' emissive material, so a street at night keeps its character. The `night` shot series pins one camera at noon and 03:00 and reads a wall, a shutter and a roof pixel back, failing outside the body band or on a pane that clips or is not warm.
 
 ## Decided
 

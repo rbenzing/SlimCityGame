@@ -17,7 +17,7 @@
  *                        stands more than once; `{ id, plot: { w, d, h } }` is
  *                        ground that is not placed; `rotation` (0..3) places it
  *                        turned, its lot's sides swapped on odd turns; for type
- *                        `roads`, road pieces each on its own pad (see
+ *                        `roads` and `street`, road pieces each on its own pad (see
  *                        `lib/roads.mjs`), `gap` tiles apart (3 by default)
  *                        `top` (metres) is the drawn top where a stack, mast or turbine
  *                        stands above the catalog height: the views frame it (default
@@ -39,18 +39,32 @@
  *                        north from the street; `scale` multiplies the resolution;
  *                        `setup(session, site)` optional, runs just before the frame
  *                        (a worn lawn, a vehicle moved up to the camera).
+ *
+ * Type `town` may also carry `session: { fresh, seed }` (open a player's first game, see
+ * `openSession`) and `play(session, { capture })`, which plays that game itself and returns the
+ * sheet rows (see `lib/playthrough.mjs`).
+ *
+ * Type `views` photographs how the game shows itself (a view, a panel, a preview), not a
+ * building: `subjects` are the things shown (`{ id }`, one sheet row each) and `frames`
+ * the frames, each a camera on the scene or `full` (the page as the player sees it, HUD
+ * included), see `lib/views-ui.mjs`.
  */
 import { mkdirSync, readdirSync, readFileSync, rmSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { cleanShot, closeUp, tileCamera, tileMeters } from './camera.mjs';
+import { fileClash } from './names.mjs';
 import { photographRoads } from './roads.mjs';
 import { openSession, settle } from './session.mjs';
 import { writeSheets } from './sheet.mjs';
 import { buildSite } from './site.mjs';
+import { photographTown } from './town.mjs';
 import { DRAWN_TOPS } from './tops.mjs';
+import { checkViews, photographViews } from './views-ui.mjs';
 import { BUILDING_VIEWS, MAX_DISTANCE, buildingView, threeQuarterView } from './views.mjs';
 
 const NIGHT = 22 / 24;
+/** Types whose subjects are runs of street on their own pads (see `lib/roads.mjs`). */
+const ROAD_PIECE_TYPES = ['roads', 'street'];
 const MAX_DETAILS = 2;
 const OUT = fileURLToPath(new URL('../out/', import.meta.url));
 const CATALOG = fileURLToPath(new URL('../../../src/data/catalog.json', import.meta.url));
@@ -105,6 +119,10 @@ const rowsOf = (box) => [box.name, ...(box.parts ?? []).map((p) => `${box.name}-
 function check(spec) {
   for (const key of ['name', 'type', 'purpose', 'budgetS', 'subjects'])
     if (!spec[key]) throw new Error(`series is missing '${key}'`);
+  if (spec.type === 'views') {
+    checkViews(spec);
+    return;
+  }
   const perSubject = {};
   for (const d of spec.details ?? []) {
     if (!d.shows) throw new Error(`detail ${d.subject}-${d.name} says nothing about what it shows`);
@@ -126,7 +144,7 @@ async function run(spec, url) {
   mkdirSync(dir, { recursive: true });
   for (const f of readdirSync(dir)) if (f.endsWith('.png')) rmSync(`${dir}/${f}`);
 
-  const session = await openSession(url);
+  const session = await openSession(url, spec.session);
   const { page } = session;
   const shots = [];
   let frames = 0;
@@ -134,6 +152,13 @@ async function run(spec, url) {
   try {
     const tile = await tileMeters(page);
     const aim = tileCamera(page);
+    const capture = async (name, options) => {
+      await settle(page);
+      await cleanShot(page, `${dir}/${name}.png`, options);
+      frames++;
+      shots.push(name);
+      console.log('shot', name, `${Math.round((performance.now() - started) / 1000)}s`);
+    };
     const shoot = async (name, cam) => {
       // A frame the camera cannot reach round is a cut frame: the subject needs parts.
       if (cam.needed > MAX_DISTANCE + 1)
@@ -141,15 +166,13 @@ async function run(spec, url) {
           `${name}: the box needs ${Math.round(cam.needed)} m, the camera reaches ${MAX_DISTANCE} m`,
         );
       await aim(cam.tx, cam.tz, cam.distance, cam.yaw, cam.pitch);
-      await settle(page);
-      await cleanShot(page, `${dir}/${name}.png`);
-      frames++;
-      shots.push(name);
-      console.log('shot', name, `${Math.round((performance.now() - started) / 1000)}s`);
+      await capture(name);
     };
     let rows = spec.subjects.map((s) => s.as ?? s.id);
 
-    if (spec.type === 'roads') {
+    if (spec.type === 'views') {
+      await photographViews(session, spec, { tile, catalogBox, aim, capture });
+    } else if (ROAD_PIECE_TYPES.includes(spec.type)) {
       await photographRoads(session, spec, {
         tile,
         catalogBox,
@@ -157,6 +180,8 @@ async function run(spec, url) {
         shoot,
         night: () => session.pinDay(NIGHT),
       });
+    } else if (spec.type === 'town') {
+      rows = await photographTown(session, spec, { url, tile, shoot, capture });
     } else {
       const site = await buildSite(session, spec.subjects.map(catalogBox), tile, spec.site);
       site.tile = tile;
@@ -216,6 +241,11 @@ async function run(spec, url) {
 export function defineSeries(spec) {
   check(spec);
   if (!process.env.SHOTS_NO_RUN) {
+    const clash = fileClash(process.argv[1]);
+    if (clash) {
+      console.error(clash);
+      process.exit(2);
+    }
     run(spec, process.argv[2] ?? 'http://localhost:5173').then((ok) => process.exit(ok ? 0 : 1));
   }
   return spec;

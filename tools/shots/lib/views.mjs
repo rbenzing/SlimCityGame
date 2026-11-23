@@ -34,6 +34,9 @@ export const OBLIQUE_PITCH = 0.7;
 export const ABOVE_PITCH = MAX_PITCH;
 /** The road's low view down the centreline. */
 export const ALONG_PITCH = 0.25;
+/** Tiles of the run the low view leaves behind it, kept only where at least this many more remain. */
+export const ALONG_LEAD = 2;
+const ALONG_LEAD_MIN = 3;
 
 /** A building's views, in the order they are taken. */
 export const BUILDING_VIEWS = ['above', 'front', 'rear', 'left', 'right'];
@@ -209,14 +212,17 @@ export function roadView(view, run) {
   const axis = run.axis ?? 'x';
   const box = run.width ?? 1;
   const across = view === 'along' ? 1 : box;
-  const along = run.length * run.tile;
+  // The low view starts inside the run: a run's rounded end would otherwise fill its foreground.
+  const lead = view === 'along' && run.length > ALONG_LEAD + ALONG_LEAD_MIN ? ALONG_LEAD : 0;
+  const along = (run.length - lead) * run.tile;
   const sx = axis === 'x' ? along : across * run.tile;
   const sz = axis === 'x' ? across * run.tile : along;
   // The low view looks down `line`, the tile index across the box of the road it follows (the middle by default).
   const middle = (box - 1) / 2;
   const line = view === 'along' ? (run.line ?? middle) : middle;
-  const cx = run.x0 + (axis === 'x' ? (run.length - 1) / 2 : line);
-  const cz = run.z0 + (axis === 'z' ? (run.length - 1) / 2 : line);
+  const mid = lead + (run.length - lead - 1) / 2;
+  const cx = run.x0 + (axis === 'x' ? mid : line);
+  const cz = run.z0 + (axis === 'z' ? mid : line);
   // The low view stands at the run's first end and looks down its centreline.
   const axisYaw = axis === 'x' ? -Math.PI / 2 : Math.PI;
   const options = {

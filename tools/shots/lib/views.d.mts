@@ -34,6 +34,7 @@ export const ASPECT: number;
 export const MARGIN: number;
 export const HUD: number;
 export const FACE_PITCH: number;
+export const ALONG_LEAD: number;
 export const PAD: number;
 export const BUILDING_VIEWS: string[];
 export const ROAD_VIEWS: string[];

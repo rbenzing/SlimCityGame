@@ -14,7 +14,7 @@ target nobody currently checks by automation.
 
 - **60 fps** render at a 256×256 map with 10k buildings and 1k visible
   vehicles, via `InstancedMesh` + frustum-culled chunks, at **≤ ~300 draw
-  calls**. — _measured by hand, not enforced._ `tools/frame-budget.mjs`
+  calls**. — _measured by hand, not enforced._ `tools/probes/frame-budget.mjs`
   builds a synthetic city by command and reads frame time, draw calls and
   triangles over four fixed camera views, beside the same views of the empty
   map (see below); no test or CI step fails on it. The instancing
@@ -70,10 +70,16 @@ Source: `TICK_RATE`, `SPEED_MULTIPLIERS` and `SNAPSHOT_HZ` in
 one-a-pump rule 4× posted 53 a second, and any work a snapshot did over the
 whole city was done 53 times a second.
 
-**Target:** while `tools/services-shots.mjs` grows its city of a hundred
+**Target:** while `tools/probes/stall.mjs` grows its city of a hundred
 zoned blocks at 4×, no read-back from the page takes longer than 1 s. —
 _measured by that tool, which fails over `STALL_LIMIT_MS`, on any page error
 and on a read-back that never returns; no CI step runs it._
+
+**Not met.** Run again when the tool became a probe, the longest read-back
+was 16.9 s at a population of 544, and the old tool taken from history gave
+15.9 s at 647 people and 69 s at 1,857 before the page stopped answering.
+The "Now" column below is what was measured when the limit was set; what
+has slowed the page since is not traced.
 
 | Measured on that city at 4×     | Before                                  | Now         |
 | ------------------------------- | --------------------------------------- | ----------- |
@@ -123,7 +129,7 @@ No test or CI step in this repository:
 - measures or bounds initial page-load time,
 - measures process or GPU memory.
 
-`tools/frame-budget.mjs` is the one thing that reads frame time. Run by hand
+`tools/probes/frame-budget.mjs` is the one thing that reads frame time. Run by hand
 against a dev server, it lays a grid of streets over the dry ground of a
 generated map, places zoned buildings at their catalog footprints in the
 catalog's real mix and one of every kit, and reads frame time (mean, median

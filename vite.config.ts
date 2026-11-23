@@ -24,7 +24,14 @@ export default defineConfig(() => ({
       // everything to a screenshot harness, which loses `window.__slimcity`
       // mid-run and then photographs a city that reset itself to empty. The
       // shot still lands and still exits 0, which is the dangerous part.
-      ignored: ['**/docs/**', '**/tools/shots-*/**', '**/tools/*-shots.mjs', '**/*.md'],
+      ignored: [
+        '**/docs/**',
+        '**/tools/shots-*/**',
+        '**/tools/shots/**',
+        '**/tools/probes/**',
+        '**/.scratch/**',
+        '**/*.md',
+      ],
     },
   },
   build: {

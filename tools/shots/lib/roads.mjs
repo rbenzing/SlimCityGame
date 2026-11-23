@@ -17,7 +17,9 @@
  *             in pad tiles (the whole pad by default); the low `along` view follows it
  *   close     fields of `view` to override for `above` and `oblique`: the closest box that
  *             holds what is judged (a junction's box and two tiles of each arm, a seam and
- *             three tiles each way, an end and its last three tiles)
+ *             three tiles each way, an end and its last three tiles); a function of the
+ *             pad and its map origin where they are found at run time (a span between its
+ *             banks, a run that must hold a chunk seam)
  */
 import { closeUp } from './camera.mjs';
 import { settle } from './session.mjs';
@@ -209,8 +211,48 @@ export const composeProfile = (page, tier, edits) =>
     [tier, edits],
   );
 
+/** Custom cross-section ids start past the presets, whose last is the ramp at 12. */
+let nextProfileId = 13;
+
+/**
+ * The commands that lay `tiles` as `tier` with a cross-section the game composes from the tier's
+ * preset and `edits` (`parking`, `footways`, `middle`, `tram`...), defined under a fresh id.
+ * `extra` carries the other fields of the buildRoad command (`flows`, `elevation`).
+ */
+export async function composedRun(p, tier, edits, tiles, extra = {}) {
+  const id = nextProfileId++;
+  const profile = await composeProfile(p.page, tier, edits);
+  return [
+    { kind: 'defineRoadProfile', id, profile },
+    p.road(tier, tiles, { profile: id, ...extra }),
+  ];
+}
+
+/**
+ * The two commands that lay a corridor (a road of two tiles across, each carrying one
+ * direction) down `tiles`, a straight run, as the game's own corridor code splits it.
+ * `profile` is the id both halves carry.
+ */
+export async function corridorRuns(p, tier, tiles, profile) {
+  const runs = await p.page.evaluate(
+    async (path) => (await import('/src/shared/corridor.ts')).corridorRunsFor(path),
+    tiles,
+  );
+  if (!runs) throw new Error('the game lays no corridor down these tiles');
+  return [
+    p.road(tier, runs.near, { profile, flows: runs.near.map(() => runs.nearFlow) }),
+    p.road(tier, runs.far, { profile, flows: runs.far.map(() => runs.farFlow) }),
+  ];
+}
+
+/** A cross-section written out piece by piece, defined under a fresh id; returns the id and the command. */
+export function definedProfile(profile) {
+  const id = nextProfileId++;
+  return { id, define: { kind: 'defineRoadProfile', id, profile } };
+}
+
 /** The pixel at fraction (fx, fz) across a tile, as the camera sees it, or null when it is off screen. */
-const pixelOn = (page, tx, tz, fx, fz) =>
+export const pixelOn = (page, tx, tz, fx, fz) =>
   page.evaluate(
     ([x, z, a, b]) => {
       let x0 = Infinity;
@@ -374,10 +416,15 @@ export async function buildScene(session, spec, { tile, catalogBox, aim }) {
       await waitForRoads(session, await piece.after(p, { page, aim, clickTool }), piece.id);
     const view = { x0: 0, z0: 0, length: pad.w, width: pad.h, axis: 'x', ...(piece.view ?? {}) };
     const onMap = (box) => ({ ...box, x0: origin.x + box.x0, z0: origin.z + box.z0, tile });
+    // A piece laid across water knows its box only once the water is found: `close` is then
+    // a function of the pad it was given.
+    const close = typeof piece.close === 'function' ? piece.close(pad, origin) : piece.close;
     pieces.push({
       ...piece,
+      pad,
+      origin,
       run: onMap(view),
-      closeRun: onMap({ ...view, ...(piece.close ?? {}) }),
+      closeRun: onMap({ ...view, ...(close ?? {}) }),
     });
   }
   await waitForBuildings(page, expectHomes);
@@ -392,6 +439,8 @@ export async function buildScene(session, spec, { tile, catalogBox, aim }) {
 export async function photographRoads(session, spec, ctx) {
   const { page } = session;
   const pieces = await buildScene(session, spec, ctx);
+  // What stands on the finished scene (vehicles, a pedestrian): metres are `(piece.origin.x + tx) * tile`.
+  if (spec.scene) await spec.scene(session, { pieces, tile: ctx.tile });
   for (const piece of pieces)
     for (const view of ROAD_VIEWS)
       await ctx.shoot(

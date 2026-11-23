@@ -87,7 +87,7 @@
 - `src/render/transit.ts` `TransitRenderer.apply` — trams ride the beam; `isStation(x, z)` beside `hasStopBuilding` suppresses the kerb shelter.
 - `src/main.ts` `keepOff` (`main.ts`) — lamps and poles stay off the stop and landing tiles.
 - `src/sim/worker.entry.ts`, tools preview — the overpass and guideway refusals.
-- `tools/tramway-shots.mjs` — the screenshots that judge the look.
+- The `transit` shot series — the screenshots that judge the look.
 
 **Tests:**
 

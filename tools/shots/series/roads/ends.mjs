@@ -81,7 +81,8 @@ export default defineSeries({
   purpose:
     'Every way a street ends reads as an ending: a plain end with homes beside it on each class, a one-tile stub, an end that meets a building, an off-grid curve and a cul-de-sac, each with its rounded cap, edge line and kerb clear of any drive.',
   budgetS: 60,
-  gap: 4,
+  // Wide enough that a neighbouring pad's homes stand out of an oblique view.
+  gap: 9,
   subjects: [
     {
       // Shot at night, lit by a turbine on the north side of the last tile but one.
@@ -107,6 +108,14 @@ export default defineSeries({
         p.building(HOME, 3, 3 - p.size(HOME).d, FRONTS_SOUTH),
         p.building(HOME, 3, 4, FRONTS_NORTH),
       ],
+    },
+    {
+      // A motorway lifted 8 m onto a deck that stops: the cap of a raised road, with no ground through it.
+      id: 'raised-highway-end',
+      pad: { w: LENGTH, h: 5 },
+      view: { x0: 0, z0: 0, length: LENGTH, width: 5, line: 2, height: 8 },
+      close: { x0: LAST - 5, z0: 0, length: 7, width: 5 },
+      lay: (p) => [p.road(TIER.highway, p.row(2, 0, LAST), { elevation: 8 })],
     },
     avenue('avenue-end', false),
     avenue('avenue-end-blocked', true),

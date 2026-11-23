@@ -76,8 +76,8 @@ plates and the trees alike — so the whole world dims on the one dial and the g
 the bodies: at full night the ground sits at 12 to 25% of its noon
 brightness, and the bright things are the lit panes, the lit parts and the
 lamps' pools. The sky dome stays the keyframe's navy and the fog follows it.
-`tools/nightlook-shots.mjs` is the measurement: a colonial and a shop shot
-from one pinned camera at noon, 03:00 and midnight, a wall, a shutter, a
+The `night` shot series is the measurement: a colonial and a shop shot
+from one pinned camera at noon and 03:00, a wall, a shutter, a
 roof, a lawn and a road pixel read back from each, failing on a body outside
 18–30%, ground outside 12–25%, or a pane that clips or is not warm. The
 share is of the light on the surface — the pixel taken back through sRGB and

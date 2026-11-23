@@ -1,6 +1,6 @@
 /** Contact sheets: a series' frames laid out so one image shows a whole subject.
  *
- * One row a subject, one column a view in the standard order, details after, the frame's name
+ * One row a subject (consecutive one-frame subjects flow together, FLOW_CELLS to a row), one column a view in the standard order, details after, the frame's name
  * under each cell, at most ROWS_PER_SHEET rows a sheet. The frames are loaded into a blank page of
  * the series' own browser and that page is photographed, so no image library is needed.
  */
@@ -11,6 +11,8 @@ export const ROWS_PER_SHEET = 6;
 /** A cell is wide enough to see a missing wall or a cut top. */
 export const CELL_WIDTH = 380;
 const CELL_HEIGHT = Math.round((CELL_WIDTH * 800) / 1280);
+/** Subjects with one frame each share a row, this many cells across. */
+const FLOW_CELLS = 5;
 const LABEL_HEIGHT = 22;
 const GAP = 6;
 /** The standard views, in the order the columns run. */
@@ -37,13 +39,30 @@ export function layoutSheets(rows, frames) {
   }
   const live = rows.filter((r) => found.get(r).views.size + found.get(r).extras.length > 0);
   const standard = VIEW_ORDER.filter((v) => live.some((r) => found.get(r).views.has(v)));
-  const columns = standard.length + Math.max(0, ...live.map((r) => found.get(r).extras.length));
-  const laid = live.map((row) => {
+  const framesOf = (row) => {
     const { views, extras } = found.get(row);
-    const cells = [...standard.map((v) => views.get(v) ?? null), ...extras];
-    while (cells.length < columns) cells.push(null);
-    return { row, cells };
-  });
+    return [...standard.map((v) => views.get(v)).filter(Boolean), ...extras];
+  };
+  const laid = [];
+  let flowing = null;
+  for (const row of live) {
+    const { views, extras } = found.get(row);
+    if (views.size + extras.length === 1) {
+      if (!flowing || flowing.cells.length === FLOW_CELLS) {
+        flowing = { row, cells: [] };
+        laid.push(flowing);
+      }
+      flowing.cells.push(framesOf(row)[0]);
+      continue;
+    }
+    flowing = null;
+    laid.push({
+      row,
+      cells: [...standard.map((v) => views.get(v) ?? null), ...extras],
+    });
+  }
+  const columns = Math.max(0, ...laid.map((r) => r.cells.length));
+  for (const r of laid) while (r.cells.length < columns) r.cells.push(null);
   const sheets = [];
   for (let i = 0; i < laid.length; i += ROWS_PER_SHEET)
     sheets.push(laid.slice(i, i + ROWS_PER_SHEET));
@@ -70,7 +89,7 @@ body{margin:0;background:#222;color:#ddd;font:13px monospace}
 .c{width:${CELL_WIDTH}px}
 .c p{margin:2px 0 0;height:${LABEL_HEIGHT - 2}px;overflow:hidden;white-space:nowrap}
 .none{background:#333}
-img{display:block}</style>${body}`;
+img{display:block;object-fit:contain;background:#111}</style>${body}`;
 };
 
 /**

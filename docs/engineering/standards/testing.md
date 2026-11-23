@@ -74,6 +74,11 @@ the 20-second default fails it on machine load rather than on anything it
 checks. Shorter tests keep the default, so a genuinely stuck one still fails
 fast.
 
+A file whose cases each build a mesh or settle a field takes 5 to 14 s a
+case on a quiet machine. It sets `SLOW_TEST_TIMEOUT_MS` (60 s, in
+`tests/support/timeouts.ts`) for the whole file with `vi.setConfig`, as the
+car-park, scatter-clearance and land-value-reach files do.
+
 Every interaction file calls `guardRoadNetwork()` from `tests/support/guard.ts`
 at its top. After every test it fails if the worker reported a road-network
 disagreement (a tile whose road layers, derived from the network again, came
@@ -139,7 +144,7 @@ The town is built once per file and shared by its tests, because growing it
 is the expensive part. A new feature that a player can build adds a step to
 `tests/support/town.ts` and an assertion to `town.test.ts`.
 
-`tools/town-shots.mjs` photographs the same town in a real browser. The page
+The `town` shot series (`tools/shots/series/town/`) photograph the same town in a real browser. The page
 imports `tests/support/town.ts` through the dev server, grows the town with
 the same steps and seed, stores it as a saved game and loads it the way the
 Load Game menu does, so the pictures are of exactly the city the test
@@ -147,12 +152,12 @@ checked. That is why nothing in `tests/support/` except `guard.ts` imports
 Vitest. The browser draws its own map's trees, which a save does not carry,
 so a few stand where the town's river runs.
 
-`tools/playthrough-shots.mjs` plays a new game through the interface itself,
+`tools/probes/playthrough.mjs` plays a new game through the interface itself,
 the way a player does. It clicks dock categories and drawer cards, drags roads
 and zones with the pointer, and places buildings with a click, never through
-the command hook. It photographs every step and reads the grid and stats back
-after each one, so a check fails when the world did not change the way the
-click promised. It runs from a starter town to services, transit, bulldoze
+the command hook. It reads the grid and stats back after each step, so a check
+fails when the world did not change the way the click promised; the pictures
+of a first game are the `firstgame` shot series. It runs from a starter town to services, transit, bulldoze
 with undo and redo, the terrain brushes, every lens, the corner panels, the
 speed controls and a save loaded back, and exits non-zero on any failed
 check or page error. A tool a player can reach adds a step to it.
