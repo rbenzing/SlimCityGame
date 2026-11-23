@@ -14,10 +14,16 @@ import {
   coveredTiles,
   foulMix,
   vertexFouling,
-  vertexKind,
+  vertexLook,
+  blurWaterLooks,
+  glintLobe,
   glintScale,
+  glintShininess,
   glintSpecular,
-  GLINT_ROUGHEN,
+  GLINT_BASE_VARIANCE,
+  GLINT_MAX,
+  GLINT_MAX_SHININESS,
+  GLINT_MIN_SHININESS,
 } from './water';
 import {
   BED_LOST_TRANSMISSION,
@@ -28,6 +34,7 @@ import {
   NET_DEPTH_M,
   STREAK_STRENGTH,
   SURF_LINE_CENTRE_TURNS,
+  SURF_LINE_STRENGTH,
   SURF_TRAIL_S,
   SURF_TRAIL_STRENGTH,
   WATER_IOR,
@@ -182,8 +189,10 @@ describe('what shows through the water', () => {
     expect(og).toBeGreaterThan(or);
     expect(lg).toBeGreaterThanOrEqual(lb);
     expect(lg).toBeGreaterThan(lr);
+    // A river is a dark green-teal, so brown fouling still shows on it.
     expect(rg).toBeGreaterThan(rb);
-    expect(rr).toBeGreaterThan(rb);
+    expect(rb).toBeGreaterThan(rr);
+    expect(FOUL_WATER_COLOR[0]).toBeGreaterThan(rr * 3);
     expect(lookOf(WaterKind.None)).toEqual(lookOf(WaterKind.Ocean));
   });
 });
@@ -195,10 +204,10 @@ describe('gusts and the net of light on the bed', () => {
     expect(gustScale(5)).toBe(1.5);
   });
 
-  it('widens the glint in a ruffled patch and narrows it in a calm one, the peak unmoved', () => {
-    expect(glintSpecular(0.9, 0, 1.5)).toBeGreaterThan(glintSpecular(0.9, 0, 1));
-    expect(glintSpecular(0.9, 0, 0.5)).toBeLessThan(glintSpecular(0.9, 0, 1));
-    expect(glintSpecular(1, 0, 1.5)).toBeCloseTo(glintSpecular(1, 0, 1), 9);
+  it('widens the glint in a ruffled patch and narrows it in a calm one', () => {
+    expect(glintSpecular(0.99, 0.8, 0, 1.5)).toBeGreaterThan(glintSpecular(0.99, 0.8, 0, 1));
+    expect(glintSpecular(0.99, 0.8, 0, 0.5)).toBeLessThan(glintSpecular(0.99, 0.8, 0, 1));
+    expect(glintShininess(0, 1.5)).toBeLessThan(glintShininess(0, 1));
   });
 
   it('draws the net only in the shallows, by day: gone at NET_DEPTH_M and at night, moving with time', () => {
@@ -261,9 +270,10 @@ describe('foam', () => {
 
   it('breaks the surf line up with noise: ragged, never a ruled stripe', () => {
     expect(surfFoam(1, 1, 0, 0.1)).toBe(0);
-    expect(surfFoam(1, 1, 0, 0.9)).toBe(1);
+    expect(surfFoam(1, 1, 0, 0.9)).toBe(SURF_LINE_STRENGTH);
+    expect(SURF_LINE_STRENGTH).toBeLessThan(1);
     expect(surfFoam(1, 1, 0, 0.4)).toBeGreaterThan(0);
-    expect(surfFoam(1, 1, 0, 0.4)).toBeLessThan(1);
+    expect(surfFoam(1, 1, 0, 0.4)).toBeLessThan(SURF_LINE_STRENGTH);
     // Nothing breaks, nothing shows.
     expect(surfFoam(0, 1, 1, 0.9)).toBe(0);
   });
@@ -315,47 +325,59 @@ describe('glintScale', () => {
 });
 
 describe('glintSpecular', () => {
-  it('is exactly 0 at ndotH=0 (both lobes vanish)', () => {
-    expect(glintSpecular(0)).toBe(0);
-  });
-
-  it('is deterministic: identical inputs always produce the identical output', () => {
-    expect(glintSpecular(0.6)).toBe(glintSpecular(0.6));
-  });
-
-  it('increases monotonically as ndotH rises from 0 to 1', () => {
-    const vals = [0, 0.2, 0.4, 0.6, 0.8, 1].map((n) => glintSpecular(n));
+  it('is zero where the half-vector is far from the normal and peaks at the mirror direction', () => {
+    expect(glintSpecular(0, 0.7)).toBe(0);
+    expect(glintSpecular(0.9, 0.7)).toBeLessThan(1e-6);
+    const vals = [0.9, 0.99, 0.999, 1].map((n) => glintSpecular(n, 0.7));
     for (let i = 1; i < vals.length; i++) expect(vals[i]!).toBeGreaterThanOrEqual(vals[i - 1]!);
+    expect(glintSpecular(1, 0.7)).toBeGreaterThan(0.1);
   });
 
-  it('is the peak of the sampled domain at ndotH=1', () => {
-    const vals = [0, 0.2, 0.4, 0.6, 0.8, 0.99].map((n) => glintSpecular(n));
-    for (const v of vals) expect(glintSpecular(1)).toBeGreaterThanOrEqual(v);
+  it('is deterministic and clamps out-of-range inputs', () => {
+    expect(glintSpecular(0.99, 0.5)).toBe(glintSpecular(0.99, 0.5));
+    expect(glintSpecular(-3, 0.5)).toBe(glintSpecular(0, 0.5));
+    expect(glintSpecular(7, 0.5)).toBeCloseTo(glintSpecular(1, 0.5), 9);
   });
 
-  it('is meaningfully non-zero well away from the peak (v2: the broader lobe reads before the tight lobe would)', () => {
-    // A single tight (~60-shininess) lobe would be utterly negligible at
-    // ndotH=0.7 (0.7**60 ~ 5e-10); v2's added broad lobe keeps the glint
-    // track visible here, which is the whole point of the second lobe.
-    expect(glintSpecular(0.7)).toBeGreaterThan(1e-4);
+  it('never exceeds GLINT_MAX, at the sharpest lobe and the grazing view', () => {
+    expect(glintSpecular(1, 0, 0, 0.5)).toBeLessThanOrEqual(GLINT_MAX);
+    expect(glintSpecular(1, 0, 0, 0.5)).toBe(GLINT_MAX);
   });
 
-  it('clamps out-of-range ndotH', () => {
-    expect(glintSpecular(-3)).toBe(glintSpecular(0));
-    expect(glintSpecular(7)).toBeCloseTo(glintSpecular(1), 9);
+  it('is zero at the night scale of zero and follows the scale otherwise', () => {
+    expect(glintSpecular(1, 0.7, 0, 1, 0)).toBe(0);
+    expect(glintSpecular(1, 0.7, 0, 1, 0.2)).toBeCloseTo(0.2 * glintSpecular(1, 0.7), 9);
   });
 
-  it('widens both lobes with the slope variance the fade removed, and keeps the peak', () => {
-    expect(glintSpecular(0.9, 0)).toBe(glintSpecular(0.9));
-    expect(glintSpecular(0.9, 0.01)).toBeGreaterThan(glintSpecular(0.9));
-    expect(glintSpecular(0.9, 0.05)).toBeGreaterThan(glintSpecular(0.9, 0.01));
-    expect(glintSpecular(1, 0.05)).toBeCloseTo(glintSpecular(1), 9);
-    // Each shininess is divided by 1 + GLINT_ROUGHEN * variance.
-    const rough = 1 + GLINT_ROUGHEN * 0.02;
-    expect(glintSpecular(0.8, 0.02)).toBeCloseTo(
-      0.8 ** (60 / rough) * 1.4 + 0.8 ** (12 / rough) * 0.15,
-      9,
-    );
+  it('reflects more at a grazing view than from straight above (Schlick)', () => {
+    expect(glintSpecular(0.999, 0.1)).toBeGreaterThan(glintSpecular(0.999, 1));
+  });
+
+  it('keeps its energy as it narrows: the lobe integrates to about the same over the half-vector sphere', () => {
+    const energy = (n: number): number => {
+      let sum = 0;
+      const steps = 20000;
+      for (let i = 0; i < steps; i++) {
+        const theta = ((i + 0.5) / steps) * (Math.PI / 2);
+        sum +=
+          glintLobe(Math.cos(theta), n) * Math.sin(theta) * (Math.PI / 2 / steps) * 2 * Math.PI;
+      }
+      return sum;
+    };
+    const wide = energy(glintShininess(0.05, 1));
+    const narrow = energy(glintShininess(0, 1));
+    expect(glintShininess(0, 1)).toBeGreaterThan(glintShininess(0.05, 1) * 4);
+    expect(narrow / wide).toBeGreaterThan(0.7);
+    expect(narrow / wide).toBeLessThan(1.3);
+    expect(energy(GLINT_MAX_SHININESS)).toBeLessThan(2);
+  });
+
+  it('narrows with a calmer surface and widens with the slope variance the pixel fade removed', () => {
+    expect(glintShininess(0.05)).toBeLessThan(glintShininess(0.01));
+    expect(glintShininess(0.01)).toBeLessThan(glintShininess(0));
+    expect(glintShininess(10)).toBe(GLINT_MIN_SHININESS);
+    expect(glintShininess(0, 0.01)).toBe(GLINT_MAX_SHININESS);
+    expect(glintShininess(0)).toBeCloseTo(2 / GLINT_BASE_VARIANCE, 9);
   });
 });
 
@@ -532,20 +554,36 @@ describe('WaterRenderer', () => {
     expect(sawFlow).toBe(true);
   });
 
-  it('carries each vertex its kind’s murk and scatter, read from the highest kind that meets there', () => {
-    const kind = new Uint8Array([WaterKind.None, WaterKind.River, WaterKind.Lake, WaterKind.None]);
-    const bodies = { size: 2, kind } as unknown as Parameters<typeof vertexKind>[0];
-    expect(vertexKind(bodies, 1, 1)).toBe(WaterKind.River);
-    expect(vertexKind(bodies, 0.5, 1.5)).toBe(WaterKind.Lake);
-    expect(vertexKind(bodies, 0.5, 0.5)).toBe(WaterKind.Ocean); // no water here: open water's look
-    expect(vertexKind(bodies, 2, 2)).toBe(WaterKind.Ocean);
+  it('blurs murk and scatter over the water tiles so one kind runs into the next', () => {
+    // A row of 12 tiles: river on the left, ocean on the right, one dry tile beside them.
+    const size = 12;
+    const kind = new Uint8Array(size * size);
+    for (let x = 0; x < size; x++) kind[x] = x < 6 ? WaterKind.River : WaterKind.Ocean;
+    kind[size] = WaterKind.None;
+    const looks = blurWaterLooks(kind, size, 3);
+    const river = lookOf(WaterKind.River);
+    const ocean = lookOf(WaterKind.Ocean);
+    // Far from the join a tile keeps its own look; at the join it is between the two.
+    expect(looks.murk[0]).toBeCloseTo(river.murk, 6);
+    expect(looks.murk[size - 1]).toBeCloseTo(ocean.murk, 6);
+    expect(looks.murk[5]!).toBeLessThan(river.murk);
+    expect(looks.murk[5]!).toBeGreaterThan(looks.murk[6]!);
+    expect(looks.murk[6]!).toBeGreaterThan(ocean.murk);
+    for (let x = 0; x < size - 1; x++)
+      expect(looks.murk[x]!).toBeGreaterThanOrEqual(looks.murk[x + 1]! - 1e-5);
+    // A dry tile carries no look and never darkens its neighbours.
+    expect(looks.wet[size]).toBe(0);
+    expect(looks.murk[size]).toBe(0);
+    // Vertices average the wet tiles that meet there, and open water where there is none.
+    const mid = vertexLook(looks, size, 6, 1);
+    expect(mid.murk).toBeCloseTo((looks.murk[5]! + looks.murk[6]!) / 2, 6);
+    expect(vertexLook(looks, size, 0.5, 6.5).murk).toBeCloseTo(ocean.murk, 6);
 
     const scene = new THREE.Scene();
     new WaterRenderer(scene, flatHeightAt, allWet(), 4);
     const geometry = (scene.children[0] as THREE.Mesh).geometry;
     const murk = geometry.attributes.waterMurk!;
     const scatter = geometry.attributes.waterScatter!;
-    const ocean = lookOf(WaterKind.Ocean);
     expect(murk.count).toBe(geometry.attributes.position!.count);
     for (let i = 0; i < murk.count; i++) {
       expect(murk.getX(i)).toBeCloseTo(ocean.murk, 6);

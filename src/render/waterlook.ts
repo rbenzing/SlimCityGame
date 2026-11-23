@@ -21,7 +21,7 @@ const TWO_PI = Math.PI * 2;
 // ---------------------------------------------------------------------------
 
 /** Depth under which the water laps at the shore, metres. Dial. */
-export const LAP_DEPTH_M = 0.06;
+export const LAP_DEPTH_M = 0.04;
 /** Share of the lapping band's width that breathes with the noise. */
 export const LAP_BREATH = 0.4;
 /** Peak brightness of the lapping band. */
@@ -31,17 +31,24 @@ export const SURF_LINE_CENTRE_TURNS = 0.03;
 export const SURF_LINE_WIDTH_TURNS = 0.035;
 /** Seconds a surf trail takes to fade, and its peak brightness against the line's. */
 export const SURF_TRAIL_S = 4;
-export const SURF_TRAIL_STRENGTH = 0.3;
+export const SURF_TRAIL_STRENGTH = 0.06;
+/** Peak brightness of the surf line itself: under 1, so the sand shows through even at the foam's whitest. */
+export const SURF_LINE_STRENGTH = 0.7;
 /** The noise (0..1) that lets the surf line show, and the higher noise that lets its trail show: the trail is the more broken. */
 export const SURF_LINE_NOISE: readonly [number, number] = [0.3, 0.5];
 export const SURF_TRAIL_NOISE: readonly [number, number] = [0.55, 0.75];
 /** Peak brightness of a river's foam streaks. */
-export const STREAK_STRENGTH = 0.35;
+export const STREAK_STRENGTH = 0.2;
 /** The ridge value (1 on a noise zero-crossing) where a streak starts and is whole. */
-export const STREAK_RIDGE: readonly [number, number] = [0.9, 0.99];
-/** A streak's noise cell, metres along the flow and across it. */
+export const STREAK_RIDGE: readonly [number, number] = [0.85, 0.97];
+/** A streak's noise cell, metres along its axis and across it. */
 export const STREAK_ALONG_M = 14;
 export const STREAK_ACROSS_M = 2.5;
+/** The fixed axes (radians) a streak is stretched along; the flow's direction weighs them by |cos| to the power STREAK_AXIS_SHARPNESS. */
+export const STREAK_AXES: readonly number[] = [0, Math.PI / 4, Math.PI / 2, (3 * Math.PI) / 4];
+export const STREAK_AXIS_SHARPNESS = 8;
+/** The length scale (metres) the streaks' pixel fade is judged at: they fade out as a pixel grows past a quarter of it. */
+export const STREAK_WIDTH_FADE_M = 1.2;
 
 /**
  * How far a swell of significant height `swellHeightM` is breaking in water
@@ -74,7 +81,7 @@ export function surfFoam(breaking: number, line: number, trail: number, noise01:
   return (
     breaking *
     Math.max(
-      line * smooth(SURF_LINE_NOISE[0], SURF_LINE_NOISE[1], noise01),
+      SURF_LINE_STRENGTH * line * smooth(SURF_LINE_NOISE[0], SURF_LINE_NOISE[1], noise01),
       trail * smooth(SURF_TRAIL_NOISE[0], SURF_TRAIL_NOISE[1], noise01),
     )
   );
@@ -122,7 +129,7 @@ export const WATER_LOOKS: Readonly<
 > = {
   [WaterKind.Ocean]: { bedLostM: 8, scatter: [0.03, 0.16, 0.32] },
   [WaterKind.Lake]: { bedLostM: 4, scatter: [0.05, 0.26, 0.26] },
-  [WaterKind.River]: { bedLostM: 1.5, scatter: [0.2, 0.22, 0.08] },
+  [WaterKind.River]: { bedLostM: 1.5, scatter: [0.07, 0.19, 0.16] },
 };
 
 /** The look of the water of a kind; open water for none. */
@@ -186,12 +193,12 @@ export function gustScale(noise: number): number {
 /** Depth to which the light net shows on the bed, metres. Dial. */
 export const NET_DEPTH_M = 3;
 /** Extra brightness of the net's lines at full strength. */
-export const NET_GAIN = 0.35;
+export const NET_GAIN = 0.15;
 /** Radians per metre of the net's two sets of lines, how far (metres) a noise value of 1 bends the point they are read at, that noise's frequency (per metre), and the net's wavelength for the pixel fade. */
 export const NET_SCALE: readonly [number, number] = [1.9, 2.3];
 export const NET_WARP_M = 2;
 export const NET_WARP_K = 0.3;
-export const NET_WAVELENGTH_M = 2;
+export const NET_WAVELENGTH_M = 0.8;
 
 /** The bright net at a bed point (x, z) and time: two sets of lines read at a point bent by two noise values (`warpX`, `warpZ`, about -1..1), 0..1. */
 export function bedNet(x: number, z: number, t: number, warpX: number, warpZ: number): number {

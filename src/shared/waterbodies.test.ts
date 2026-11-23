@@ -254,4 +254,29 @@ describe('sampleWater', () => {
     const mid = sampleWater(b, 41 * TILE_METERS, 40.5 * TILE_METERS);
     expect(mid.fetchM).toBeCloseTo((b.fetchM[i]! + b.fetchM[i + 1]!) / 2, 3);
   });
+
+  it('keeps the swell time rising toward a shore the swell does not reach, not flat at the last tile', () => {
+    // Ocean from the west edge to tile 40; the swell's time rises 1 crossing a tile.
+    const b = deriveWaterBodies(mask([[0, 0, 40, SIZE - 1]]), SIZE, () => -SWELL_REF_DEPTH_M);
+    expect(b.swellTau[at(b, 41, 48)]).toBe(-1);
+    const z = 48.5 * TILE_METERS;
+    let last = -Infinity;
+    // Past tile 41 none of the four tiles is reached: the nearest reached tile's time still carries on, never zero.
+    for (let tx = 38; tx <= 43; tx += 0.1) {
+      const tau = sampleWater(b, tx * TILE_METERS, z).swellTau;
+      expect(tau).toBeGreaterThan(last);
+      last = tau;
+    }
+    expect(sampleWater(b, 43 * TILE_METERS, z).swellSlowX).toBeCloseTo(
+      b.swellSlowX[at(b, 40, 48)]!,
+      9,
+    );
+    // Half a tile past the last tile's centre the time is that tile's plus half a tile of slowness.
+    const edge = sampleWater(b, 41 * TILE_METERS, z);
+    const lastTile = b.swellTau[at(b, 40, 48)]!;
+    expect(edge.swellTau).toBeCloseTo(
+      lastTile + b.swellSlowX[at(b, 40, 48)]! * 0.5 * TILE_METERS,
+      4,
+    );
+  });
 });

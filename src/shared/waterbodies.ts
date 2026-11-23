@@ -785,7 +785,11 @@ export function sampleWater(bodies: WaterBodies, x: number, z: number): WaterSam
     );
   };
   // The swell's time and gradient blend only over the tiles it reaches: a
-  // tile it does not reach holds no time to blend with.
+  // tile it does not reach holds no time to blend with. Each reached tile's
+  // time is carried to the sample point along its own gradient, so the blend
+  // keeps rising toward the shore where some corners are missing instead of
+  // flattening to the nearest tile's time (which drew nested squares of surf
+  // at a corner of the coast).
   const corners = [
     z0 * size + x0,
     z0 * size + x0 + 1,
@@ -800,12 +804,48 @@ export function sampleWater(bodies: WaterBodies, x: number, z: number): WaterSam
   corners.forEach((c, k) => {
     if (bodies.swellTau[c]! < 0) return;
     const wt = cornerWeights[k]!;
-    tau += bodies.swellTau[c]! * wt;
+    const cornerX = ((c % size) + 0.5) * TILE_METERS;
+    const cornerZ = (Math.floor(c / size) + 0.5) * TILE_METERS;
+    tau +=
+      (bodies.swellTau[c]! +
+        bodies.swellSlowX[c]! * (x - cornerX) +
+        bodies.swellSlowZ[c]! * (z - cornerZ)) *
+      wt;
     slowX += bodies.swellSlowX[c]! * wt;
     slowZ += bodies.swellSlowZ[c]! * wt;
     reachedWeight += wt;
   });
-  const norm = reachedWeight > 0 ? 1 / reachedWeight : 0;
+  let norm = reachedWeight > 0 ? 1 / reachedWeight : 0;
+  if (reachedWeight === 0) {
+    // None of the four reaches: take the nearest reached tile within a few
+    // and carry its time along its gradient, so the time never falls to zero
+    // (a vertex on the dry ring beside the sea would pull the surf's phase
+    // through every crest between it and the water).
+    let nearest = -1;
+    let nearestD = Infinity;
+    for (let tz = Math.max(0, z0 - 2); tz <= Math.min(size - 1, z0 + 3); tz++) {
+      for (let tx = Math.max(0, x0 - 2); tx <= Math.min(size - 1, x0 + 3); tx++) {
+        const c = tz * size + tx;
+        if (bodies.swellTau[c]! < 0) continue;
+        const d = Math.hypot((tx + 0.5) * TILE_METERS - x, (tz + 0.5) * TILE_METERS - z);
+        if (d < nearestD) {
+          nearestD = d;
+          nearest = c;
+        }
+      }
+    }
+    if (nearest >= 0) {
+      const cornerX = ((nearest % size) + 0.5) * TILE_METERS;
+      const cornerZ = (Math.floor(nearest / size) + 0.5) * TILE_METERS;
+      tau =
+        bodies.swellTau[nearest]! +
+        bodies.swellSlowX[nearest]! * (x - cornerX) +
+        bodies.swellSlowZ[nearest]! * (z - cornerZ);
+      slowX = bodies.swellSlowX[nearest]!;
+      slowZ = bodies.swellSlowZ[nearest]!;
+      norm = 1;
+    }
+  }
   return {
     fetchM: at(bodies.fetchM),
     swellTau: tau * norm,

@@ -7,6 +7,13 @@ const LAKE = 2;
 const RIVER = 3;
 /** The 22:00 the standard's night frame is taken at, as a share of the day. */
 const NIGHT = 22 / 24;
+/**
+ * A morning sun about 30 degrees up, and the camera yaw that looks toward it
+ * (sunDirection in src/render/sun.ts: east with a small tilt; the camera looks
+ * along -sin(yaw), -cos(yaw)).
+ */
+const LOW_SUN = 0.34;
+const LOW_SUN_YAW = -1.747;
 /** The wave clock every frame is taken at, seconds, so a run repeats. */
 const WAVE_CLOCK_S = 20;
 /** Seconds between the two frames of a river drift pair and of a lake gust pair. */
@@ -356,6 +363,17 @@ export default defineSeries({
       setup: pinned(undefined, clock),
       camera: (s) => ({ ...at('lake')(s), distance: 420, yaw: 0, pitch: 1.45 }),
     })),
+    {
+      subject: 'ocean',
+      view: 'sun-oblique',
+      shows:
+        'the ocean looking toward a low sun: a track of glitter on the water toward the sun and none elsewhere',
+      setup: async (session, s) => {
+        await pinned()(session, s);
+        await session.pinDay(LOW_SUN);
+      },
+      camera: (s) => ({ ...at('ocean')(s), distance: 300, yaw: LOW_SUN_YAW, pitch: 0.2 }),
+    },
     {
       subject: 'ocean',
       view: 'night',

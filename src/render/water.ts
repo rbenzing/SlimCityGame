@@ -14,7 +14,7 @@
  * are carried along by the current. The frame behind the water is read once
  * and shown through the surface, bent by the wave normal and dimmed per colour
  * by the water's depth and murk; Schlick's reflection of the sky, surf,
- * lapping and river foam, gusts and a net of light on the bed, and a two-lobe
+ * lapping and river foam, gusts and a net of light on the bed, and a one-lobe
  * sun/moon glint are drawn over it. Every animated quantity runs off a clock
  * advanced from update()'s dtMs: no wall clock and no random numbers.
  *
@@ -51,7 +51,6 @@ import {
   positionGeometry,
   positionView,
   positionWorld,
-  positionWorldDirection,
   reflect,
   refract,
   round,
@@ -102,16 +101,21 @@ import {
   NET_WAVELENGTH_M,
   STREAK_ACROSS_M,
   STREAK_ALONG_M,
+  STREAK_AXES,
+  STREAK_AXIS_SHARPNESS,
+  STREAK_WIDTH_FADE_M,
   STREAK_RIDGE,
   STREAK_STRENGTH,
   SURF_LINE_CENTRE_TURNS,
   SURF_LINE_NOISE,
+  SURF_LINE_STRENGTH,
   SURF_TRAIL_NOISE,
   SURF_LINE_WIDTH_TURNS,
   SURF_TRAIL_S,
   SURF_TRAIL_STRENGTH,
   WATER_IOR,
   lookOf,
+  schlick,
 } from './waterlook';
 
 export type HeightSampler = (x: number, z: number) => number;
@@ -181,9 +185,9 @@ interface RippleSet {
 
 /** Ripples a river carries, 9 m, 4 m and 1.5 m long, set across each other. Dials. */
 export const RIPPLE_SETS: readonly RippleSet[] = [
-  { dirX: 0.8, dirZ: 0.6, wavelengthM: 4, slope: 0.12, phase: 0.7 },
-  { dirX: -0.6, dirZ: 0.8, wavelengthM: 1.5, slope: 0.08, phase: 3.1 },
-  { dirX: 0.95, dirZ: -0.31, wavelengthM: 9, slope: 0.05, phase: 5 },
+  { dirX: 0.8, dirZ: 0.6, wavelengthM: 4, slope: 0.04, phase: 0.7 },
+  { dirX: -0.6, dirZ: 0.8, wavelengthM: 1.5, slope: 0.025, phase: 3.1 },
+  { dirX: 0.95, dirZ: -0.31, wavelengthM: 9, slope: 0.015, phase: 5 },
 ];
 
 /** How far the bed seen through the surface shifts for a tilt of the normal, as a share of the screen. Dial. */
@@ -218,10 +222,15 @@ export const MOON_GLINT_FRACTION = 0.2;
 
 export const SUN_GLINT_COLOR: readonly [number, number, number] = [1, 0.96, 0.82];
 export const MOON_GLINT_COLOR: readonly [number, number, number] = [0.75, 0.82, 0.95];
-const GLINT_SHININESS = 60; // tight sparkle lobe
-const GLINT_INTENSITY = 1.4;
-const GLINT_WIDE_SHININESS = 12; // broad lobe so the glitter track survives a wide/distant shot
-const GLINT_WIDE_INTENSITY = 0.15; // kept low: 0.35 would highlight every wave-lattice crossing as a dot grid
+/** Slope variance of the capillary ripples no train carries, which sets the glint's narrowest lobe. */
+export const GLINT_BASE_VARIANCE = 0.004;
+/** The lobe's exponent never leaves this range, so it neither blows to a pin nor spreads to the whole sky. */
+export const GLINT_MIN_SHININESS = 8;
+export const GLINT_MAX_SHININESS = 2000;
+/** The sun's radiance against the reflectance it is seen through: scales the lobe times Schlick up to a visible glitter. */
+export const GLINT_GAIN = 3;
+/** The most the glint adds to a pixel (before the day/night scale). */
+export const GLINT_MAX = 4;
 
 /**
  * Glint intensity multiplier: 1 at full day (nightFactor=0), scaled by
@@ -233,30 +242,41 @@ export function glintScale(nightFactor: number): number {
 }
 
 /**
- * How much both glint lobes widen per unit of slope variance the pixel fade
- * took out of the normal: far water, whose small waves are too fine to shade,
- * glitters evenly instead of showing stripes.
+ * The lobe's Blinn-Phong exponent from the surface's roughness: 2 over the
+ * slope variance, which is the capillary floor plus the variance of every wind
+ * train and river ripple, scaled by the square of the gust (a ruffled patch
+ * has steeper slopes, so a wider lobe). Pure.
  */
-export const GLINT_ROUGHEN = 400;
+export function glintShininess(variance = 0, gust = 1): number {
+  const v = (GLINT_BASE_VARIANCE + Math.max(0, variance)) * gust * gust;
+  return Math.min(GLINT_MAX_SHININESS, Math.max(GLINT_MIN_SHININESS, 2 / v));
+}
 
 /**
- * Two-lobe specular glint from ndotH (clamped dot of the shading normal and
- * the light/view half-vector, 0..1): a tight, bright sparkle lobe plus a
- * broader, dimmer lobe so the glitter
- * track is still visible well away from the tight lobe's pinpoint peak — the
- * spread that makes it read from RTS camera distance. `variance` is the
- * slope variance of the waves too fine to shade: each lobe's shininess is
- * divided by 1 + GLINT_ROUGHEN * variance, then by the square of the gust
- * scale (a ruffled patch widens the glint, a calm one narrows it). Pure; day/night
- * tint/scale apply on top via glintColor/glintScale, not here.
+ * Blinn-Phong lobe of exponent `shininess` at `ndotH` (clamped dot of the
+ * shading normal and the half-vector of light and eye), normalised by
+ * (n + 8) / (8 pi) so the energy it reflects stays the same as it narrows.
  */
-export function glintSpecular(ndotH: number, variance = 0, gust = 1): number {
-  const n = clamp01(ndotH);
-  const rough = (1 + GLINT_ROUGHEN * Math.max(0, variance)) * gust * gust;
-  return (
-    n ** (GLINT_SHININESS / rough) * GLINT_INTENSITY +
-    n ** (GLINT_WIDE_SHININESS / rough) * GLINT_WIDE_INTENSITY
-  );
+export function glintLobe(ndotH: number, shininess: number): number {
+  return ((shininess + 8) / (8 * Math.PI)) * clamp01(ndotH) ** shininess;
+}
+
+/**
+ * The sun or moon glitter added to a pixel: one lobe whose width comes from
+ * the surface's roughness, times Schlick's reflectance at `cosView` (the
+ * normal against the direction to the eye) and GLINT_GAIN, clamped to
+ * GLINT_MAX, then times the day/night `scale` (glintScale). Pure; the light's
+ * colour applies on top.
+ */
+export function glintSpecular(
+  ndotH: number,
+  cosView: number,
+  variance = 0,
+  gust = 1,
+  scale = 1,
+): number {
+  const lobe = glintLobe(ndotH, glintShininess(variance, gust));
+  return Math.min(GLINT_MAX, lobe * schlick(cosView) * GLINT_GAIN) * scale;
 }
 
 // ---------------------------------------------------------------------------
@@ -330,21 +350,102 @@ export function buildWaterGrid(water: Uint8Array, size: number): WaterGrid {
   return { positions: new Float32Array(positions), indices: new Uint32Array(indices) };
 }
 
+/** Tiles either side over which a water tile's murk and scatter are averaged with its water neighbours', so one kind runs into the next over about this distance. */
+export const LOOK_BLUR_TILES = 3;
+
+export interface WaterLooks {
+  /** Murk per metre, per tile (the average over the water tiles near it). */
+  readonly murk: Float32Array;
+  /** Scatter colour, three floats per tile. */
+  readonly scatter: Float32Array;
+  /** 1 where the tile is water: only those carry a look. */
+  readonly wet: Uint8Array;
+}
+
 /**
- * The kind of water a vertex takes its look from: the highest kind among the
- * (up to four) tiles that meet at it, so a river or lake keeps its colour to
- * the edge of the open water it flows into. `tx`/`tz` is the vertex's place
- * in tile units. Open water (ocean) where no tile there is water.
+ * The look of every water tile: its kind's murk and scatter averaged over the
+ * water tiles within LOOK_BLUR_TILES (a box, in x then z), so a river's colour
+ * runs out into the sea instead of ending at a tile edge. Pure.
  */
-export function vertexKind(bodies: WaterBodies, tx: number, tz: number): number {
-  let kind: number = WaterKind.None;
+export function blurWaterLooks(
+  kind: Uint8Array,
+  size: number,
+  radius: number = LOOK_BLUR_TILES,
+): WaterLooks {
+  const n = size * size;
+  const wet = new Uint8Array(n);
+  // Five channels per tile, each weighted by wetness: murk, r, g, b, and wetness itself.
+  let a = new Float32Array(n * 5);
+  for (let i = 0; i < n; i++) {
+    const k = kind[i] ?? WaterKind.None;
+    if (k === WaterKind.None) continue;
+    wet[i] = 1;
+    const look = lookOf(k);
+    a[i * 5] = look.murk;
+    a[i * 5 + 1] = look.scatter[0];
+    a[i * 5 + 2] = look.scatter[1];
+    a[i * 5 + 3] = look.scatter[2];
+    a[i * 5 + 4] = 1;
+  }
+  for (const alongX of [true, false]) {
+    const b = new Float32Array(n * 5);
+    for (let z = 0; z < size; z++) {
+      for (let x = 0; x < size; x++) {
+        const o = (z * size + x) * 5;
+        for (let d = -radius; d <= radius; d++) {
+          const sx = alongX ? x + d : x;
+          const sz = alongX ? z : z + d;
+          if (sx < 0 || sz < 0 || sx >= size || sz >= size) continue;
+          const s = (sz * size + sx) * 5;
+          for (let c = 0; c < 5; c++) b[o + c]! += a[s + c]!;
+        }
+      }
+    }
+    a = b;
+  }
+  const murk = new Float32Array(n);
+  const scatter = new Float32Array(n * 3);
+  for (let i = 0; i < n; i++) {
+    const w = a[i * 5 + 4]!;
+    if (wet[i] === 0 || w <= 0) continue;
+    murk[i] = a[i * 5]! / w;
+    for (let c = 0; c < 3; c++) scatter[i * 3 + c] = a[i * 5 + 1 + c]! / w;
+  }
+  return { murk, scatter, wet };
+}
+
+/**
+ * The look a vertex takes: the mean over the (up to four) water tiles that
+ * meet at it. `tx`/`tz` is the vertex's place in tile units. Open water's look
+ * where no tile there is water.
+ */
+export function vertexLook(
+  looks: WaterLooks,
+  size: number,
+  tx: number,
+  tz: number,
+): { murk: number; scatter: [number, number, number] } {
+  let count = 0;
+  let murk = 0;
+  const scatter: [number, number, number] = [0, 0, 0];
   for (let z = Math.ceil(tz) - 1; z <= Math.floor(tz); z++) {
     for (let x = Math.ceil(tx) - 1; x <= Math.floor(tx); x++) {
-      if (x < 0 || z < 0 || x >= bodies.size || z >= bodies.size) continue;
-      kind = Math.max(kind, bodies.kind[z * bodies.size + x] ?? WaterKind.None);
+      if (x < 0 || z < 0 || x >= size || z >= size) continue;
+      const i = z * size + x;
+      if (looks.wet[i] === 0) continue;
+      count++;
+      murk += looks.murk[i]!;
+      for (let c = 0; c < 3; c++) scatter[c]! += looks.scatter[i * 3 + c]!;
     }
   }
-  return kind === WaterKind.None ? WaterKind.Ocean : kind;
+  if (count === 0) {
+    const open = lookOf(WaterKind.Ocean);
+    return { murk: open.murk, scatter: [...open.scatter] };
+  }
+  return {
+    murk: murk / count,
+    scatter: [scatter[0] / count, scatter[1] / count, scatter[2] / count],
+  };
 }
 
 function findDirectionalLight(scene: THREE.Scene): THREE.DirectionalLight | null {
@@ -424,12 +525,13 @@ export class WaterRenderer {
     const flow = new Float32Array(count * 2);
     const murk = new Float32Array(count);
     const scatter = new Float32Array(count * 3);
+    const looks = blurWaterLooks(bodies.kind, this.sizeTiles);
     for (let i = 0; i < count; i++) {
       const x = grid.positions[i * 3]!;
       const z = grid.positions[i * 3 + 2]!;
       const d = Math.max(0, SEA_LEVEL - this.heightAt(x, z));
       const s = sampleWater(bodies, x, z);
-      const look = lookOf(vertexKind(bodies, x / TILE_METERS, z / TILE_METERS));
+      const look = vertexLook(looks, this.sizeTiles, x / TILE_METERS, z / TILE_METERS);
       murk[i] = look.murk;
       scatter.set(look.scatter, i * 3);
       depth[i] = d;
@@ -601,8 +703,8 @@ export class WaterRenderer {
     const material = new MeshStandardNodeMaterial({
       transparent: true,
       depthWrite: false,
-      roughness: 0.18,
-      metalness: 0.05,
+      roughness: 0.5,
+      metalness: 0,
     });
 
     // The mesh sits at the origin in x and z, so the raw vertex position is world.
@@ -703,15 +805,23 @@ export class WaterRenderer {
 
     let slopeX: Node<'float'> = float(0);
     let slopeZ: Node<'float'> = float(0);
-    // The slope variance the fade takes out of the normal, half the square of
-    // each train's removed slope amplitude: the glint widens by it.
-    let removedVariance: Node<'float'> = float(0);
+    // The swell's own slope, which the glint follows: it is long-crested and
+    // always resolved. Everything shorter reaches the glint as slope variance
+    // (half the square of each train's slope amplitude) that widens its lobe,
+    // so the glint is a smooth patch, not a sparkle of single facets.
+    let swellSlopeX: Node<'float'> = float(0);
+    let swellSlopeZ: Node<'float'> = float(0);
+    let shortVariance: Node<'float'> = float(0);
     for (const part of parts) {
       const { train } = part;
       const strength = cos(part.phase).mul(part.amplitude);
       if (train.band === SWELL_BAND) {
-        slopeX = slopeX.add(strength.mul(train.omega).mul(swellSlowAttr.x));
-        slopeZ = slopeZ.add(strength.mul(train.omega).mul(swellSlowAttr.y));
+        const sx = strength.mul(train.omega).mul(swellSlowAttr.x);
+        const sz = strength.mul(train.omega).mul(swellSlowAttr.y);
+        swellSlopeX = swellSlopeX.add(sx);
+        swellSlopeZ = swellSlopeZ.add(sz);
+        slopeX = slopeX.add(sx);
+        slopeZ = slopeZ.add(sz);
         continue;
       }
       const fade = fadeNode((Math.PI * 2) / train.wavenumber);
@@ -719,12 +829,14 @@ export class WaterRenderer {
       const dz = warpGradZ.mul(train.warpScale).add(train.wavenumber * Math.sin(train.angleRad));
       slopeX = slopeX.add(strength.mul(fade).mul(gust).mul(dx));
       slopeZ = slopeZ.add(strength.mul(fade).mul(gust).mul(dz));
-      const removed = part.amplitude.mul(oneMinus(fade)).mul(dx.mul(dx).add(dz.mul(dz)).sqrt());
-      removedVariance = removedVariance.add(removed.mul(removed).mul(0.5));
+      const amplitudeSlope = part.amplitude.mul(dx.mul(dx).add(dz.mul(dz)).sqrt());
+      shortVariance = shortVariance.add(amplitudeSlope.mul(amplitudeSlope).mul(0.5));
     }
     slopeX = slopeX.mul(breakScale);
     slopeZ = slopeZ.mul(breakScale);
-    removedVariance = removedVariance.mul(breakScale).mul(breakScale);
+    swellSlopeX = swellSlopeX.mul(breakScale);
+    swellSlopeZ = swellSlopeZ.mul(breakScale);
+    shortVariance = shortVariance.mul(breakScale).mul(breakScale);
 
     // River drift: two copies of the ripple pattern, each carried along the
     // flow and reset every cycle, half a cycle apart and cross-faded so the
@@ -754,8 +866,8 @@ export class WaterRenderer {
         .mul(set.slope);
       slopeX = slopeX.add(ripple.mul(set.dirX));
       slopeZ = slopeZ.add(ripple.mul(set.dirZ));
-      const rippleRemoved = flowStrength.mul(oneMinus(rippleFade)).mul(set.slope);
-      removedVariance = removedVariance.add(rippleRemoved.mul(rippleRemoved).mul(0.5));
+      const rippleSlope = flowStrength.mul(set.slope);
+      shortVariance = shortVariance.add(rippleSlope.mul(rippleSlope).mul(0.5));
     }
     const shadingNormalLocal = normalize(vec3(slopeX.negate(), float(1), slopeZ.negate()));
     material.normalNode = transformNormalToView(shadingNormalLocal);
@@ -865,7 +977,9 @@ export class WaterRenderer {
     const raggedNoise = noiseAt(worldX, worldZ, 0.15, t.mul(0.2)).mul(0.5).add(0.5);
     const surf = breaking.mul(
       max(
-        lineMax.mul(smoothstep(SURF_LINE_NOISE[0], SURF_LINE_NOISE[1], raggedNoise)),
+        lineMax
+          .mul(smoothstep(SURF_LINE_NOISE[0], SURF_LINE_NOISE[1], raggedNoise))
+          .mul(SURF_LINE_STRENGTH),
         trailMax.mul(smoothstep(SURF_TRAIL_NOISE[0], SURF_TRAIL_NOISE[1], raggedNoise)),
       ),
     );
@@ -883,21 +997,38 @@ export class WaterRenderer {
     // two copies cross-faded as the ripples are.
     const flowDirX = flowAttr.x.div(max(length(flowAttr), 1e-4));
     const flowDirZ = flowAttr.y.div(max(length(flowAttr), 1e-4));
+    // The noise is stretched along a few fixed axes and the flow's direction
+    // weighs them, so no coordinate frame turns with the flow: a frame turned
+    // about the world origin swings the pattern by metres for a small change
+    // of direction, and the tile-by-tile flow drew that as nested rectangles.
+    const axisWeights = STREAK_AXES.map((angle) => {
+      const align = abs(flowDirX.mul(Math.cos(angle)).add(flowDirZ.mul(Math.sin(angle))));
+      return align.pow(STREAK_AXIS_SHARPNESS);
+    });
+    const axisSum = axisWeights.reduce((sum, w) => sum.add(w), float(1e-4));
     const streakCopy = (cyc: Node<'float'>, fadeIn: Node<'float'>): Node<'float'> => {
       const drift = cyc.mul(RIPPLE_CYCLE_S);
       const px = worldX.sub(flowAttr.x.mul(drift));
       const pz = worldZ.sub(flowAttr.y.mul(drift));
-      const along = px.mul(flowDirX).add(pz.mul(flowDirZ));
-      const across = pz.mul(flowDirX).sub(px.mul(flowDirZ));
-      const ridge = oneMinus(
-        abs(mx_noise_float(vec3(along.div(STREAK_ALONG_M), across.div(STREAK_ACROSS_M), 5.3))),
-      );
+      let ridge: Node<'float'> = float(0);
+      STREAK_AXES.forEach((angle, k) => {
+        const along = px.mul(Math.cos(angle)).add(pz.mul(Math.sin(angle)));
+        const across = pz.mul(Math.cos(angle)).sub(px.mul(Math.sin(angle)));
+        const line = oneMinus(
+          abs(
+            mx_noise_float(
+              vec3(along.div(STREAK_ALONG_M), across.div(STREAK_ACROSS_M), 5.3 + k * 3.1),
+            ),
+          ),
+        );
+        ridge = ridge.add(line.mul(axisWeights[k]!.div(axisSum)));
+      });
       return smoothstep(STREAK_RIDGE[0], STREAK_RIDGE[1], ridge).mul(fadeIn);
     };
     const streaks = streakCopy(cycleA, fadeA)
       .add(streakCopy(cycleB, fadeB))
       .mul(flowStrength.mul(flowStrength))
-      .mul(fadeNode(4))
+      .mul(fadeNode(STREAK_WIDTH_FADE_M))
       .mul(STREAK_STRENGTH);
     const foam = clamp(max(max(surf, lap), streaks), 0, 1);
 
@@ -921,18 +1052,28 @@ export class WaterRenderer {
     // tinted warm by day / pale by night, scaled by (1-nightFactor) with the
     // moon-glint fixed at MOON_GLINT_FRACTION of that at full night.
     const lightDir = normalize(this.lightDirUniform);
-    const worldViewDir = normalize(positionWorldDirection);
-    const halfDir = normalize(lightDir.add(worldViewDir));
-    const ndotH = clamp(dot(shadingNormalLocal, halfDir), 0, 1);
-    // A tight lobe plus a second, wider/dimmer lobe — mirrors
-    // glintSpecular's two-term sum exactly, so the glitter track survives a
-    // wide/distant RTS shot instead of collapsing to a single pinpoint. A
-    // gust widens or narrows both by its square, as the slope variance it scales.
-    const rough = removedVariance.mul(GLINT_ROUGHEN).add(1).mul(gust).mul(gust);
-    const specular = ndotH
-      .pow(rough.reciprocal().mul(GLINT_SHININESS))
-      .mul(GLINT_INTENSITY)
-      .add(ndotH.pow(rough.reciprocal().mul(GLINT_WIDE_SHININESS)).mul(GLINT_WIDE_INTENSITY));
+    const halfDir = normalize(lightDir.add(eye));
+    const glintNormal = normalize(vec3(swellSlopeX.negate(), float(1), swellSlopeZ.negate()));
+    const ndotH = clamp(dot(glintNormal, halfDir), 0, 1);
+    const glintFresnel = oneMinus(clamp(dot(glintNormal, eye), 0, 1))
+      .pow(5)
+      .mul(1 - FRESNEL_F0)
+      .add(FRESNEL_F0);
+    // One normalised lobe, its exponent from the surface's roughness, times
+    // Schlick and the gain: mirrors glintSpecular and glintShininess.
+    const shininess = clamp(
+      float(2).div(shortVariance.add(GLINT_BASE_VARIANCE).mul(gust).mul(gust)),
+      GLINT_MIN_SHININESS,
+      GLINT_MAX_SHININESS,
+    );
+    const specular = min(
+      ndotH
+        .pow(shininess)
+        .mul(shininess.add(8).div(8 * Math.PI))
+        .mul(glintFresnel)
+        .mul(GLINT_GAIN),
+      GLINT_MAX,
+    );
     const glintColor = mix(
       vec3(...SUN_GLINT_COLOR),
       vec3(...MOON_GLINT_COLOR),
