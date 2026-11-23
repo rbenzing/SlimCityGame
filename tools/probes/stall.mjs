@@ -63,6 +63,8 @@ export async function runStall(url, growthS = DEFAULT_GROWTH_S) {
   let longestMs = 0;
   let longestAt = '';
   let pop = 0;
+  /** The longest read-back seen at each population band, in ms. */
+  const byBand = new Map();
   try {
     const g = await page.evaluate(() => {
       const r = window.__slimcity.readGrid();
@@ -180,6 +182,20 @@ export async function runStall(url, growthS = DEFAULT_GROWTH_S) {
         break;
       }
       pop = s.population;
+      const mem = await asked(
+        page.evaluate(() => ({
+          heapMb: performance.memory ? Math.round(performance.memory.usedJSHeapSize / 1048576) : 0,
+          ...window.__slimcity.renderInfo(),
+        })),
+      );
+      if (mem) {
+        const band = pop < 500 ? 'under 500' : pop < 1500 ? '500-1500' : 'over 1500';
+        const prior = byBand.get(band) ?? 0;
+        byBand.set(band, Math.max(prior, ms));
+        console.log(
+          `pop ${pop} read ${ms} ms heap ${mem.heapMb} MB geometries ${mem.geometries} programs ${mem.programs}`,
+        );
+      }
       if (ms > longestMs) {
         longestMs = ms;
         longestAt = `pop ${pop} tick ${s.tick}`;
@@ -192,6 +208,16 @@ export async function runStall(url, growthS = DEFAULT_GROWTH_S) {
       `grew to ${pop} people in ${((performance.now() - growthStart) / 1000).toFixed(0)} s`,
     );
     console.log(`heap ${Math.round((heap ?? 0) / 1048576)} MB`);
+    for (const [band, ms] of byBand) console.log(`longest read-back at ${band}: ${ms} ms`);
+    // Whether the browser draws on a real GPU or in software decides what the target means.
+    const gpu = await asked(
+      page.evaluate(() => {
+        const gl = document.createElement('canvas').getContext('webgl');
+        const ext = gl && gl.getExtension('WEBGL_debug_renderer_info');
+        return ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : 'unknown';
+      }),
+    );
+    console.log(`gpu ${gpu}`);
     if (pop === 0)
       failures.push('nothing grew: the stall figure over an empty town proves nothing');
     if (longestMs > STALL_LIMIT_MS)
