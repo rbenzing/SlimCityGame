@@ -1548,6 +1548,24 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
    */
   const dirtyPoleChunks = new Set<number>();
   const poleSlots = { line: false, free: false };
+  /**
+   * Whole-city work a snapshot marks and the next frame does once, however
+   * many snapshots arrived between: the drive cuts to hand the road mesh, the
+   * kerbside furniture, and the sweep of trees off occupied ground.
+   */
+  const ROAD_CHUNKS_PER_FRAME = 4;
+  roadsMesh.setQueueing(true);
+  const deferred: {
+    junctions: SimSnapshot['junctions'] | null;
+    driveCuts: TileDriveCut[] | null;
+    lamps: boolean;
+    trees: boolean;
+  } = {
+    junctions: null,
+    driveCuts: null,
+    lamps: false,
+    trees: false,
+  };
   /** The tiles a generator or a substation stands on, as the pole layout keys them. */
   const sourceTiles = (): Set<number> => {
     const out = new Set<number>();
@@ -1667,6 +1685,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
    * strip, off every drive and bus stop's span, or is not stood.
    */
   const rebuildLamps = (): void => {
+    deferred.lamps = false;
     // Nothing kerbside stands on a raised station's stop tile or its landing tile.
     const stationTiles = tramStations.tiles();
     const keepOff =
@@ -2433,6 +2452,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
    * loaded, whose trees are regrown from the map it was founded on.
    */
   const keepTreesOffOccupied = (): void => {
+    deferred.trees = false;
     trees.clearAt(clientGrid.occupiedTiles());
     trees.clearBeside(clientGrid.roadTilePoints());
     trees.clearEndCaps(endCapsOf(clientGrid.roadTiles()));
@@ -2511,7 +2531,100 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
     }
   };
 
+  /**
+   * Lays again every known building beside a redrawn road chunk, except those
+   * the snapshot just delivered. A change that only moved the kerb stalls
+   * (`kerbOnly`) lays again only the parked cars, the one renderer that reads them.
+   */
+  const relayBeside = (
+    chunks: ReadonlySet<number>,
+    delivered: ReadonlySet<number>,
+    kerbOnly: boolean,
+  ): void => {
+    if (chunks.size === 0) return;
+    const updated: BuildingInstance[] = [];
+    for (const b of knownBuildings.values()) {
+      if (delivered.has(b.id)) continue;
+      const entry = catalogById.get(b.catalogId);
+      if (!entry) continue;
+      const { w, d } = footprintForRotation(entry, b.rotation);
+      const beside = chunksOver(b.x - 1, b.z - 1, b.x + w, b.z + d);
+      if ([...beside].some((key) => chunks.has(key))) updated.push(b);
+    }
+    if (updated.length === 0) return;
+    const relaid = { added: [], removed: [], updated };
+    if (kerbOnly) {
+      parkedCars.apply(relaid);
+      return;
+    }
+    const relaidFaced = faceStreets(relaid, catalogById, street);
+    lots.apply(relaid);
+    instancer.apply(relaidFaced);
+    massing.apply(relaidFaced);
+    sites.apply(relaidFaced);
+    roofProps.apply(relaidFaced);
+    buildingKit.apply(relaidFaced);
+    houseRoofs.apply(relaid);
+    garages.apply(relaid);
+    builtIns.apply(relaid);
+    parkedCars.apply(relaid);
+    lotGrounds.apply(relaid);
+    pedestrianRenderer.apply({ stops: latestStopPoints, buildings: relaid });
+  };
+
+  /** Snapshots taken so far, and how many had been when the furniture and trees were last swept. */
+  let snapshotsTaken = 0;
+  let sweptAtSnapshot = -1;
+  let sweptAtMs = Number.NEGATIVE_INFINITY;
+  /** While snapshots keep arriving, the furniture and tree sweeps run at most this often, in ms. */
+  const SWEEP_INTERVAL_MS = 500;
+  /**
+   * Does the whole-city work snapshots marked since the last frame, once. The
+   * frame loop runs it before drawing; anything that reads the scene outside
+   * the loop calls it first with `everything`, which also skips the pacing.
+   * The furniture and tree sweeps wait for a frame no snapshot arrived before
+   * (or for the interval), so a town growing fast sweeps a few times a second
+   * rather than once a snapshot.
+   */
+  const flushDeferred = (everything = false): void => {
+    const junctions = deferred.junctions;
+    if (junctions) {
+      deferred.junctions = null;
+      roadsMesh.setJunctionControls(junctions);
+    }
+    const cuts = deferred.driveCuts;
+    if (cuts) {
+      deferred.driveCuts = null;
+      roadsMesh.setDriveCuts(cuts);
+    }
+    // The road chunks those two queued are rebuilt a few a frame, and the
+    // buildings beside each are laid again as it lands.
+    const { whole, kerb } = roadsMesh.drainQueued(
+      everything ? Number.POSITIVE_INFINITY : ROAD_CHUNKS_PER_FRAME,
+    );
+    relayBeside(whole, new Set(), false);
+    relayBeside(kerb, new Set(), true);
+    const now = performance.now();
+    const settled = snapshotsTaken === sweptAtSnapshot;
+    if (!everything && !settled && now - sweptAtMs < SWEEP_INTERVAL_MS) return;
+    sweptAtSnapshot = snapshotsTaken;
+    sweptAtMs = now;
+    if (deferred.lamps) {
+      rebuildLamps();
+      flushPoles(false);
+    }
+    if (deferred.trees) keepTreesOffOccupied();
+  };
+  if (import.meta.env.DEV) {
+    // For a tool that reads the scene without waiting on a frame.
+    const hook = (window as unknown as Record<string, unknown>).__slimcity;
+    if (hook && typeof hook === 'object') {
+      (hook as Record<string, unknown>).flushDeferred = () => flushDeferred(true);
+    }
+  }
+
   const onSnapshot = (incoming: SimSnapshot): void => {
+    snapshotsTaken += 1;
     // A building whose only change is how far it has got redraws its site and
     // nothing else; the rest of the snapshot never hears of it.
     const { snapshot: snap, progressOnly } = withoutProgressOnly(incoming, knownBuildings);
@@ -2702,10 +2815,10 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       culDeSacChunks.push(...roadsMesh.setCulDeSacs(snap.culDeSacs));
     }
     // A cul-de-sac laid or removed lays again the lots beside its ring.
-    const redrawnChunks = new Set<number>([
-      ...(snap.junctions ? roadsMesh.setJunctionControls(snap.junctions) : []),
-      ...culDeSacChunks,
-    ]);
+    const redrawnChunks = new Set<number>(culDeSacChunks);
+    // The controls are the sim's whole answer each time, so the latest one is
+    // the only one the road mesh needs to be given.
+    if (snap.junctions) deferred.junctions = snap.junctions;
     if (snap.junctions || snap.roundabouts || snap.culDeSacs) {
       // An open inspector shows the junction as it IS: the worker may have
       // refused the change, or the warrant may have moved it while the panel
@@ -2848,14 +2961,11 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
         drivewayTiles = nextDriveways;
         driveDiscs = nextDiscs;
         driveDiscSignature = discSignature;
-        rebuildLamps();
+        deferred.lamps = true;
       }
-      // A drive is a no-parking zone on its kerb: the stalls along it are laid round it.
-      for (const key of roadsMesh.setDriveCuts(
-        driveSites.flatMap((s) => (s.cut === null ? [] : [s.cut])),
-      )) {
-        redrawnChunks.add(key);
-      }
+      // A drive is a no-parking zone on its kerb: the stalls along it are laid
+      // round it, once, at the next frame.
+      deferred.driveCuts = driveSites.flatMap((s) => (s.cut === null ? [] : [s.cut]));
 
       const selected = state.selectedBuilding;
       if (selected) {
@@ -2874,33 +2984,9 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
         for (const b of snap.buildings.added) delivered.add(b.id);
         for (const b of snap.buildings.updated) delivered.add(b.id);
       }
-      const updated: BuildingInstance[] = [];
-      for (const b of knownBuildings.values()) {
-        if (delivered.has(b.id)) continue;
-        const entry = catalogById.get(b.catalogId);
-        if (!entry) continue;
-        const { w, d } = footprintForRotation(entry, b.rotation);
-        const beside = chunksOver(b.x - 1, b.z - 1, b.x + w, b.z + d);
-        if ([...beside].some((key) => redrawnChunks.has(key))) updated.push(b);
-      }
-      if (updated.length > 0) {
-        const relaid = { added: [], removed: [], updated };
-        const relaidFaced = faceStreets(relaid, catalogById, street);
-        lots.apply(relaid);
-        instancer.apply(relaidFaced);
-        massing.apply(relaidFaced);
-        sites.apply(relaidFaced);
-        roofProps.apply(relaidFaced);
-        buildingKit.apply(relaidFaced);
-        houseRoofs.apply(relaid);
-        garages.apply(relaid);
-        builtIns.apply(relaid);
-        parkedCars.apply(relaid);
-        lotGrounds.apply(relaid);
-        pedestrianRenderer.apply({ stops: latestStopPoints, buildings: relaid });
-      }
+      relayBeside(redrawnChunks, delivered, false);
     }
-    if (snap.roads || snap.roadNet || snap.buildings) keepTreesOffOccupied();
+    if (snap.roads || snap.roadNet || snap.buildings) deferred.trees = true;
     // A home's yard follows the zone, the roads and the buildings behind its lot.
     if (snap.zones || snap.roads || snap.roadNet || snap.buildings) refreshYards();
     if (snap.deathCare) utilityKits.setInterments(snap.deathCare.facilities);
@@ -3437,6 +3523,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
   let signalSeconds = 0; // elapsed TRAFFIC time, which is what the signal cycle runs on
   handle.start((dtMs) => {
     lastFrameMs = dtMs;
+    flushDeferred();
     rig.update(dtMs);
     // Shadow sweep: keep the limited-span sun shadow frustum centred on the
     // camera target so lamp/prop/pedestrian shadows stay resolved on screen.
