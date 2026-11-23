@@ -48,6 +48,7 @@ import {
 } from 'three/tsl';
 import { nightTintNode } from './nightlook';
 import { MAP_SIZE, MAX_WATER_DEPTH_VIS, SEA_LEVEL, TILE_METERS } from '../shared/constants';
+import { PHASE_WARP_TERMS, phaseWarp } from '../shared/waves';
 
 export type HeightSampler = (x: number, z: number) => number;
 
@@ -60,33 +61,6 @@ const lerp3 = (
 ): [number, number, number] => [lerp(a[0], b[0], t), lerp(a[1], b[1], t), lerp(a[2], b[2], t)];
 
 const TWO_PI = Math.PI * 2;
-
-// ---------------------------------------------------------------------------
-// Positional phase warp — moiré fix. Pure directional sine layers with
-// straight wavefronts interfere into a visible lattice/checkerboard from RTS
-// distance (the surface reads as woven fabric). Warping every
-// layer's phase by a slow 2-term positional sine field bends the wavefronts
-// into wandering curves, which breaks the lattice without any texture or
-// randomness — still fully deterministic in (x, z, t).
-// ---------------------------------------------------------------------------
-
-export const PHASE_WARP_TERMS: ReadonlyArray<{
-  readonly amplitude: number; // radians of phase shift contributed
-  readonly freqX: number; // radians per meter
-  readonly freqZ: number;
-}> = [
-  { amplitude: 2.4, freqX: 0.071, freqZ: 0.113 },
-  { amplitude: 1.7, freqX: 0.157, freqZ: -0.089 },
-];
-
-/** Deterministic positional phase offset (radians) at world (x, z). Pure. */
-export function phaseWarp(x: number, z: number): number {
-  let w = 0;
-  for (const term of PHASE_WARP_TERMS) {
-    w += Math.sin(x * term.freqX + z * term.freqZ) * term.amplitude;
-  }
-  return w;
-}
 
 // ---------------------------------------------------------------------------
 // Depth-keyed surface color (shallow teal near shores -> deep navy over depth).
