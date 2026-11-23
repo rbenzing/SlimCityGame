@@ -2667,7 +2667,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       terrain.applyHeightPatches(snap.heightPatches);
       clientGrid.applyHeightPatches(snap.heightPatches);
       // The water mask just changed in place: the surface re-derives its depth and kinds.
-      water.markTerrainChanged();
+      water.markTerrainChanged(snap.heightPatches);
       // The trees were scattered on the seed map: a riverbed sunk since loses
       // them, and raised ground carries them up with it.
       trees.applyHeightPatches(

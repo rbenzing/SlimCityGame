@@ -1,5 +1,5 @@
 /**
- * Water surface renderer: the single owner of water. One translucent mesh at
+ * Water surface renderer: the single owner of water. One mesh at
  * SEA_LEVEL with a vertex every WATER_VERTEX_SPACING_M, only over water tiles
  * and the ring of tiles round them. Each vertex carries its depth, fouling,
  * wind fetch, swell and river flow, all read from the water bodies derived
@@ -11,14 +11,16 @@
  * the vertices, and every train, wind and swell, tilts the shading normal
  * from its analytic slope. A wind train fades out of the normal as its crests
  * near the pixel grid. Where a river flows, two crossed sets of short ripples
- * are carried along by the current. Colour is keyed to depth and fouling,
- * blended toward an analytic sky reflection, with shoreline foam and a
- * two-lobe sun/moon glint. Every animated quantity runs off a clock advanced
- * from update()'s dtMs: no wall clock and no random numbers.
+ * are carried along by the current. The frame behind the water is read once
+ * and shown through the surface, bent by the wave normal and dimmed per colour
+ * by the water's depth and murk; Schlick's reflection of the sky, surf,
+ * lapping and river foam, gusts and a net of light on the bed, and a two-lobe
+ * sun/moon glint are drawn over it. Every animated quantity runs off a clock
+ * advanced from update()'s dtMs: no wall clock and no random numbers.
  *
- * The pure math below (depthColor, glancingOpacity, reflectedColor,
- * foamStrength, glintSpecular, glintScale) is unit-tested directly; the node
- * graph mirrors those formulas into the live shader.
+ * The pure math (waterlook.ts, plus glintSpecular and glintScale below) is
+ * unit-tested directly; the node graph mirrors those formulas into the live
+ * shader.
  */
 
 import * as THREE from 'three';
@@ -27,33 +29,47 @@ import type { Node } from 'three/webgpu';
 import {
   abs,
   attribute,
+  cameraFar,
+  cameraNear,
+  cameraPosition,
   clamp,
   cos,
   dFdx,
   dFdy,
   dot,
+  exp,
   float,
   fract,
   length,
   max,
   min,
   mix,
+  mx_noise_float,
   normalize,
   oneMinus,
+  perspectiveDepthToViewZ,
   positionGeometry,
-  positionViewDirection,
+  positionView,
   positionWorld,
   positionWorldDirection,
+  reflect,
+  refract,
+  round,
+  screenUV,
   sin,
   smoothstep,
   transformNormalToView,
   uniform,
+  vec2,
   vec3,
+  viewportDepthTexture,
+  viewportSharedTexture,
 } from 'three/tsl';
 import { nightTintNode } from './nightlook';
-import { MAP_SIZE, MAX_WATER_DEPTH_VIS, SEA_LEVEL, TILE_METERS } from '../shared/constants';
+import { MAP_SIZE, SEA_LEVEL, TILE_METERS } from '../shared/constants';
 import {
   RIVER_SURFACE_SPEED_MPS,
+  WIND_TOWARD,
   WaterKind,
   deriveWaterBodies,
   sampleWater,
@@ -67,39 +83,50 @@ import {
   SWELL_BAND,
   WAVE_TRAINS,
   WIND_BANDS,
-  phaseWarp,
 } from '../shared/waves';
 import type { WaveTrain } from '../shared/waves';
+import {
+  ABSORPTION_PER_M,
+  FRESNEL_F0,
+  GUST_DRIFT_MPS,
+  GUST_GAIN,
+  GUST_SCALES_M,
+  LAP_BREATH,
+  LAP_DEPTH_M,
+  LAP_STRENGTH,
+  NET_DEPTH_M,
+  NET_GAIN,
+  NET_SCALE,
+  NET_WARP_K,
+  NET_WARP_M,
+  NET_WAVELENGTH_M,
+  STREAK_ACROSS_M,
+  STREAK_ALONG_M,
+  STREAK_RIDGE,
+  STREAK_STRENGTH,
+  SURF_LINE_CENTRE_TURNS,
+  SURF_LINE_NOISE,
+  SURF_TRAIL_NOISE,
+  SURF_LINE_WIDTH_TURNS,
+  SURF_TRAIL_S,
+  SURF_TRAIL_STRENGTH,
+  WATER_IOR,
+  lookOf,
+} from './waterlook';
 
 export type HeightSampler = (x: number, z: number) => number;
 
 const clamp01 = (v: number): number => Math.min(1, Math.max(0, v));
-const lerp = (a: number, b: number, t: number): number => a + (b - a) * t;
-const lerp3 = (
-  a: readonly [number, number, number],
-  b: readonly [number, number, number],
-  t: number,
-): [number, number, number] => [lerp(a[0], b[0], t), lerp(a[1], b[1], t), lerp(a[2], b[2], t)];
 
 const TWO_PI = Math.PI * 2;
 
-// ---------------------------------------------------------------------------
-// Depth-keyed surface color (shallow teal near shores -> deep navy over depth).
-// ---------------------------------------------------------------------------
-
+/** The colour of the still water a kit's pond is laid in (a flat sheet, apart from this surface). */
 export const SHALLOW_WATER_COLOR: readonly [number, number, number] = [0.08, 0.5, 0.48];
-export const DEEP_WATER_COLOR: readonly [number, number, number] = [0.02, 0.06, 0.22];
-
-/** Water SURFACE color at a given depth (meters below SEA_LEVEL), saturating at MAX_WATER_DEPTH_VIS. Pure. */
-export function depthColor(depth: number): [number, number, number] {
-  const t = clamp01(depth / MAX_WATER_DEPTH_VIS);
-  return lerp3(SHALLOW_WATER_COLOR, DEEP_WATER_COLOR, t);
-}
 
 // ---------------------------------------------------------------------------
-// Fouling: where the city's drains empty, the surface goes from its depth
-// colour toward a murky brown, by the sim's 0..255 fouling of the tiles that
-// meet at each vertex.
+// Fouling: where the city's drains empty, the water goes from its own colour
+// toward a murky brown, by the sim's 0..255 fouling of the tiles that meet at
+// each vertex.
 // ---------------------------------------------------------------------------
 
 /** The colour of water fully fouled by raw sewage: a murky brown, warm enough to read against the blue at distance. */
@@ -113,11 +140,6 @@ export const FOUL_WATER_COLOR: readonly [number, number, number] = [0.36, 0.28, 
  */
 export function foulMix(foul: number): number {
   return Math.sqrt(clamp01(foul));
-}
-
-/** The surface colour at `depth` once fouled by `foul` (0..1): the depth colour mixed toward the foul colour by foulMix. Pure. */
-export function fouledColor(depth: number, foul: number): [number, number, number] {
-  return lerp3(depthColor(depth), FOUL_WATER_COLOR, foulMix(foul));
 }
 
 /**
@@ -164,29 +186,17 @@ export const RIPPLE_SETS: readonly RippleSet[] = [
   { dirX: 0.95, dirZ: -0.31, wavelengthM: 9, slope: 0.05, phase: 5 },
 ];
 
+/** How far the bed seen through the surface shifts for a tilt of the normal, as a share of the screen. Dial. */
+const REFRACTION_UV_PER_SLOPE = 0.15;
+/** Depth at which that shift is whole; shallower water bends the bed less. */
+const REFRACTION_FULL_DEPTH_M = 1.5;
+
 /** Seconds a ripple pattern drifts before it fades out and is replaced by a copy half a cycle on. */
 export const RIPPLE_CYCLE_S = 4;
 
 // ---------------------------------------------------------------------------
-// Glancing-angle (Fresnel-ish) opacity — more opaque/reflective at grazing
-// view angles, clearer looking straight down.
-// ---------------------------------------------------------------------------
-
-export const OPACITY_AT_NORMAL_INCIDENCE = 0.55;
-export const OPACITY_AT_GRAZING_ANGLE = 0.92;
-
-/** Surface opacity from cosViewAngle (1 = straight-on/normal incidence, 0 = grazing/horizon). Pure. */
-export function glancingOpacity(cosViewAngle: number): number {
-  const c = clamp01(cosViewAngle);
-  return lerp(OPACITY_AT_GRAZING_ANGLE, OPACITY_AT_NORMAL_INCIDENCE, c);
-}
-
-// ---------------------------------------------------------------------------
-// Analytic sky reflection — fresnel-weighted blend of the sky
-// dome's zenith/horizon colors into the depth-keyed surface color. No render
-// pass, no cubemap: reuses the same cosView glancingOpacity is keyed on, so
-// grazing views read mostly sky (a mirror) and overhead views read mostly
-// the water body's own depth color (see-through), matching real water.
+// Sky reflection: the sky tone at the reflected ray's height, weighted by
+// Schlick's reflectance (waterlook.ts). No render pass, no cubemap.
 // ---------------------------------------------------------------------------
 
 /**
@@ -198,71 +208,6 @@ export const DEFAULT_SKY_ZENITH_COLOR: readonly [number, number, number] = [0.25
 export const DEFAULT_SKY_HORIZON_COLOR: readonly [number, number, number] = [
   0.7525, 0.8625, 0.9725,
 ];
-
-/**
- * Water surface color once the analytic sky reflection is blended in.
- * cosView=1 (straight down) sees its own depthColor (fresnel weight 0, no
- * sky contribution); cosView=0 (grazing) sees pure horizon (fresnel weight
- * 1); in between, the reflected sky tone itself slides from horizon toward
- * zenith as the view steepens. A mirror blend, not a lit surface. Pure.
- */
-export function reflectedColor(
-  cosView: number,
-  depthColor: readonly [number, number, number],
-  zenith: readonly [number, number, number],
-  horizon: readonly [number, number, number],
-): [number, number, number] {
-  const c = clamp01(cosView);
-  const sky = lerp3(horizon, zenith, c);
-  const fresnelWeight = 1 - c;
-  return lerp3(depthColor, sky, fresnelWeight);
-}
-
-// ---------------------------------------------------------------------------
-// Animated shoreline foam — a scrolling brightening band where the baked
-// waterDepth attribute is shallow, pulsing against the static
-// waterline (the separate, unanimated terrain-side foam band at 0.4m).
-// ---------------------------------------------------------------------------
-
-/** Depth (m) below which the animated foam band can appear (baked depth < ~0.8m). */
-export const SHORELINE_FOAM_DEPTH_M = 0.8;
-// Moiré fix: a single straight sine band would paint the whole shallow zone
-// with diagonal zebra stripes. Foam is instead the product of two
-// crossed, phase-warped scrolling waves — patchy pulses that hug the shore —
-// shaped by an envelope exponent and capped below pure white.
-const FOAM_WAVELENGTH_A = 6.3;
-const FOAM_WAVELENGTH_B = 9.7;
-const FOAM_DIR_A_X = 0.945;
-const FOAM_DIR_A_Z = 0.326;
-const FOAM_DIR_B_X = -0.292;
-const FOAM_DIR_B_Z = 0.956;
-const FOAM_SPEED_A = 1.6; // radians/second
-const FOAM_SPEED_B = -1.1;
-const FOAM_ENVELOPE_EXPONENT = 1.6; // hugs the waterline tighter than linear
-const FOAM_PATTERN_EXPONENT = 1.3; // sharpens the crossed-wave product into patches
-const FOAM_MAX = 0.9; // never a pure-white wash
-
-/**
- * Foam brightening strength (0..FOAM_MAX) at world (x,z), animation time t
- * (seconds), for a given baked water depth (meters): the product of two
- * crossed, phase-warped scrolling waves (patchy pulses, not straight bands)
- * inside an envelope that fades from 1 at depth<=0 to 0 at
- * depth>=SHORELINE_FOAM_DEPTH_M. Pure; deterministic in (x, z, t).
- */
-export function foamStrength(depth: number, x: number, z: number, t: number): number {
-  const envelope = clamp01(1 - depth / SHORELINE_FOAM_DEPTH_M) ** FOAM_ENVELOPE_EXPONENT;
-  if (envelope <= 0) return 0;
-  const warp = phaseWarp(x, z);
-  const phaseA =
-    (x * FOAM_DIR_A_X + z * FOAM_DIR_A_Z) * (TWO_PI / FOAM_WAVELENGTH_A) + warp + t * FOAM_SPEED_A;
-  const phaseB =
-    (x * FOAM_DIR_B_X + z * FOAM_DIR_B_Z) * (TWO_PI / FOAM_WAVELENGTH_B) +
-    warp * 0.7 +
-    t * FOAM_SPEED_B;
-  const a = Math.sin(phaseA) * 0.5 + 0.5;
-  const b = Math.sin(phaseB) * 0.5 + 0.5;
-  return envelope * (a * b) ** FOAM_PATTERN_EXPONENT * FOAM_MAX;
-}
 
 // ---------------------------------------------------------------------------
 // Sun/moon glint day-night scaling.
@@ -301,12 +246,13 @@ export const GLINT_ROUGHEN = 400;
  * track is still visible well away from the tight lobe's pinpoint peak — the
  * spread that makes it read from RTS camera distance. `variance` is the
  * slope variance of the waves too fine to shade: each lobe's shininess is
- * divided by 1 + GLINT_ROUGHEN * variance. Pure; day/night
+ * divided by 1 + GLINT_ROUGHEN * variance, then by the square of the gust
+ * scale (a ruffled patch widens the glint, a calm one narrows it). Pure; day/night
  * tint/scale apply on top via glintColor/glintScale, not here.
  */
-export function glintSpecular(ndotH: number, variance = 0): number {
+export function glintSpecular(ndotH: number, variance = 0, gust = 1): number {
   const n = clamp01(ndotH);
-  const rough = 1 + GLINT_ROUGHEN * Math.max(0, variance);
+  const rough = (1 + GLINT_ROUGHEN * Math.max(0, variance)) * gust * gust;
   return (
     n ** (GLINT_SHININESS / rough) * GLINT_INTENSITY +
     n ** (GLINT_WIDE_SHININESS / rough) * GLINT_WIDE_INTENSITY
@@ -384,6 +330,23 @@ export function buildWaterGrid(water: Uint8Array, size: number): WaterGrid {
   return { positions: new Float32Array(positions), indices: new Uint32Array(indices) };
 }
 
+/**
+ * The kind of water a vertex takes its look from: the highest kind among the
+ * (up to four) tiles that meet at it, so a river or lake keeps its colour to
+ * the edge of the open water it flows into. `tx`/`tz` is the vertex's place
+ * in tile units. Open water (ocean) where no tile there is water.
+ */
+export function vertexKind(bodies: WaterBodies, tx: number, tz: number): number {
+  let kind: number = WaterKind.None;
+  for (let z = Math.ceil(tz) - 1; z <= Math.floor(tz); z++) {
+    for (let x = Math.ceil(tx) - 1; x <= Math.floor(tx); x++) {
+      if (x < 0 || z < 0 || x >= bodies.size || z >= bodies.size) continue;
+      kind = Math.max(kind, bodies.kind[z * bodies.size + x] ?? WaterKind.None);
+    }
+  }
+  return kind === WaterKind.None ? WaterKind.Ocean : kind;
+}
+
 function findDirectionalLight(scene: THREE.Scene): THREE.DirectionalLight | null {
   for (const child of scene.children) {
     if (child instanceof THREE.DirectionalLight) return child;
@@ -459,11 +422,16 @@ export class WaterRenderer {
     const swellSlow = new Float32Array(count * 2);
     const swellAmp = new Float32Array(count);
     const flow = new Float32Array(count * 2);
+    const murk = new Float32Array(count);
+    const scatter = new Float32Array(count * 3);
     for (let i = 0; i < count; i++) {
       const x = grid.positions[i * 3]!;
       const z = grid.positions[i * 3 + 2]!;
       const d = Math.max(0, SEA_LEVEL - this.heightAt(x, z));
       const s = sampleWater(bodies, x, z);
+      const look = lookOf(vertexKind(bodies, x / TILE_METERS, z / TILE_METERS));
+      murk[i] = look.murk;
+      scatter.set(look.scatter, i * 3);
       depth[i] = d;
       fetch[i] = s.fetchM;
       swellTau[i] = s.swellTau;
@@ -487,13 +455,30 @@ export class WaterRenderer {
     geometry.setAttribute('waterSwellSlow', new THREE.BufferAttribute(swellSlow, 2));
     geometry.setAttribute('waterSwellAmp', new THREE.BufferAttribute(swellAmp, 1));
     geometry.setAttribute('waterFlow', new THREE.BufferAttribute(flow, 2));
+    geometry.setAttribute('waterMurk', new THREE.BufferAttribute(murk, 1));
+    geometry.setAttribute('waterScatter', new THREE.BufferAttribute(scatter, 3));
     return { geometry, bodies, foul };
   }
 
-  /** Tells the water that terrain heights, and so perhaps the water mask, changed. */
-  markTerrainChanged(): void {
-    this.dirty = true;
-    this.idleS = 0;
+  /**
+   * Tells the water that terrain heights, and so perhaps the water mask,
+   * changed in the given tile rectangles. Nothing is rebuilt unless a patched
+   * tile or one of its neighbours is, or was, water.
+   */
+  markTerrainChanged(patches: ReadonlyArray<{ x: number; z: number; w: number; h: number }>): void {
+    const n = this.sizeTiles;
+    for (const p of patches) {
+      for (let z = Math.max(0, p.z - 1); z <= Math.min(n - 1, p.z + p.h); z++) {
+        for (let x = Math.max(0, p.x - 1); x <= Math.min(n - 1, p.x + p.w); x++) {
+          const i = z * n + x;
+          if (this.water[i] !== 0 || this.bodies.kind[i] !== WaterKind.None) {
+            this.dirty = true;
+            this.idleS = 0;
+            return;
+          }
+        }
+      }
+    }
   }
 
   private rebuild(): void {
@@ -624,19 +609,14 @@ export class WaterRenderer {
     const worldX = positionGeometry.x;
     const worldZ = positionGeometry.z;
 
-    // Per-vertex depth (meters) — reused below by the wave cap, the depth-keyed
-    // base color, the sky-reflection fresnel weight, and the shoreline foam.
+    // Per-vertex depth (metres), interpolated: the wave cap and the swell's
+    // lift use it. The colour and foam use the pixel's own depth, below.
     const depthAttr = attribute<'float'>('waterDepth', 'float');
-
-    // Depth-keyed base color (shallow teal near shores -> deep navy over depth),
-    // then fouled toward the sewage brown by the per-vertex fouling — mirrors
-    // fouledColor exactly.
-    const depthT = clamp(depthAttr.div(MAX_WATER_DEPTH_VIS), 0, 1);
-    const cleanColor = mix(vec3(...SHALLOW_WATER_COLOR), vec3(...DEEP_WATER_COLOR), depthT);
     const foulAttr = attribute<'float'>('waterFoul', 'float');
-    const baseColor = mix(cleanColor, vec3(...FOUL_WATER_COLOR), clamp(foulAttr, 0, 1).sqrt());
+    const murkAttr = attribute<'float'>('waterMurk', 'float');
+    const scatterAttr = attribute<'vec3'>('waterScatter', 'vec3');
 
-    // Positional phase warp shared by every wave/foam phase below —
+    // Positional phase warp shared by every wind-wave phase below —
     // mirrors phaseWarp(x, z) exactly (see its doc for why: straight
     // wavefronts interfere into a lattice/moiré at RTS distance).
     let warpNode: Node<'float'> = float(0);
@@ -704,6 +684,23 @@ export class WaterRenderer {
     const metresPerPixel = max(length(dFdx(positionWorld)), length(dFdy(positionWorld)));
     const fadeNode = (wavelengthM: number): Node<'float'> =>
       smoothstep(FADE_GONE_PX, FADE_FULL_PX, float(wavelengthM).div(max(metresPerPixel, 1e-6)));
+    // Gusts: a slow noise field drifting downwind scales the wind trains'
+    // slope and the glint's width, so a calm lake shows patches of ruffled
+    // and smooth water. Shading only; the surface height is untouched.
+    const gustDrift = this.timeUniform.mul(GUST_DRIFT_MPS);
+    const gustX = worldX.sub(gustDrift.mul(WIND_TOWARD.x));
+    const gustZ = worldZ.sub(gustDrift.mul(WIND_TOWARD.z));
+    const gustNoise = mx_noise_float(
+      vec3(gustX.div(GUST_SCALES_M[0]), gustZ.div(GUST_SCALES_M[0]), 0.37),
+    )
+      .mul(0.65)
+      .add(
+        mx_noise_float(vec3(gustX.div(GUST_SCALES_M[1]), gustZ.div(GUST_SCALES_M[1]), 3.71)).mul(
+          0.35,
+        ),
+      );
+    const gust = clamp(gustNoise.mul(GUST_GAIN).add(1), 0.5, 1.5);
+
     let slopeX: Node<'float'> = float(0);
     let slopeZ: Node<'float'> = float(0);
     // The slope variance the fade takes out of the normal, half the square of
@@ -720,8 +717,8 @@ export class WaterRenderer {
       const fade = fadeNode((Math.PI * 2) / train.wavenumber);
       const dx = warpGradX.mul(train.warpScale).add(train.wavenumber * Math.cos(train.angleRad));
       const dz = warpGradZ.mul(train.warpScale).add(train.wavenumber * Math.sin(train.angleRad));
-      slopeX = slopeX.add(strength.mul(fade).mul(dx));
-      slopeZ = slopeZ.add(strength.mul(fade).mul(dz));
+      slopeX = slopeX.add(strength.mul(fade).mul(gust).mul(dx));
+      slopeZ = slopeZ.add(strength.mul(fade).mul(gust).mul(dz));
       const removed = part.amplitude.mul(oneMinus(fade)).mul(dx.mul(dx).add(dz.mul(dz)).sqrt());
       removedVariance = removedVariance.add(removed.mul(removed).mul(0.5));
     }
@@ -763,63 +760,175 @@ export class WaterRenderer {
     const shadingNormalLocal = normalize(vec3(slopeX.negate(), float(1), slopeZ.negate()));
     material.normalNode = transformNormalToView(shadingNormalLocal);
 
-    // Glancing-angle (Fresnel-ish) cosView — shared by opacity below and by
-    // the sky reflection's fresnel weight.
-    const viewDir = normalize(positionViewDirection);
-    const cosView = clamp(dot(transformNormalToView(shadingNormalLocal), viewDir), 0, 1);
-    material.opacityNode = mix(
-      float(OPACITY_AT_GRAZING_ANGLE),
-      float(OPACITY_AT_NORMAL_INCIDENCE),
-      cosView,
+    // The view: from the surface point to the eye, and the ray refracted into
+    // the water. The mesh has no rotation, so local and world agree.
+    const eye = normalize(cameraPosition.sub(positionWorld));
+    const normal = shadingNormalLocal;
+    const cosView = clamp(dot(normal, eye), 0, 1);
+    const refracted = refract(eye.negate(), normal, 1 / WATER_IOR);
+    const refractedCos = max(refracted.y.negate(), 0.1);
+
+    // The pixel's own water depth, from the scene's depth behind the surface:
+    // the point the view ray meets there, below this surface point.
+    const sceneViewZ = (uvNode: Node<'vec2'>): Node<'float'> =>
+      perspectiveDepthToViewZ(viewportDepthTexture(uvNode).r, cameraNear, cameraFar).negate();
+    const fragDistance = max(positionView.z.negate(), 1e-4);
+    const behindY = cameraPosition.y.add(
+      positionWorld.y.sub(cameraPosition.y).mul(sceneViewZ(screenUV).div(fragDistance)),
+    );
+    const pixelDepth = clamp(positionWorld.y.sub(behindY), 0, 200);
+
+    // Sky reflection: Schlick's reflectance of the sky tone at the reflected
+    // ray's height.
+    const fresnel = oneMinus(cosView)
+      .pow(5)
+      .mul(1 - FRESNEL_F0)
+      .add(FRESNEL_F0);
+    const reflectedRay = reflect(eye.negate(), normal);
+    const skyTone = mix(
+      this.skyHorizonUniform,
+      this.skyZenithUniform,
+      clamp(reflectedRay.y, 0, 1).sqrt(),
     );
 
-    // v2: analytic sky reflection — mirrors reflectedColor(cosView,
-    // depthColor, zenith, horizon) exactly: the sky tone itself slides
-    // horizon->zenith as cosView rises, then blends toward the base water
-    // color by (1-cosView) (a pure mirror, not a lit surface).
-    const skyTone = mix(this.skyHorizonUniform, this.skyZenithUniform, cosView);
-    const reflected = mix(baseColor, skyTone, oneMinus(cosView));
-
-    // Animated shoreline foam — mirrors foamStrength(depth, x, z, t)
-    // exactly: a shore-hugging envelope (linear falloff raised to
-    // FOAM_ENVELOPE_EXPONENT) times the product of two crossed, phase-warped
-    // scrolling waves (patchy pulses, not straight zebra bands), capped at
-    // FOAM_MAX and mixed toward white.
-    const foamEnvelope = clamp(oneMinus(depthAttr.div(SHORELINE_FOAM_DEPTH_M)), 0, 1).pow(
-      FOAM_ENVELOPE_EXPONENT,
+    // What shows through: one read of the frame behind the water, bent by the
+    // wave normal (not where the bent sample lies in front of the water),
+    // dimmed per colour by Beer-Lambert over the refracted path, the lost
+    // light replaced by the kind's scatter colour.
+    const normalView = transformNormalToView(normal);
+    const flatView = transformNormalToView(vec3(0, 1, 0));
+    const bend = vec2(normalView.x.sub(flatView.x), normalView.y.sub(flatView.y).negate()).mul(
+      REFRACTION_UV_PER_SLOPE,
     );
-    const foamPhaseA = worldX
-      .mul(FOAM_DIR_A_X)
-      .add(worldZ.mul(FOAM_DIR_A_Z))
-      .mul(TWO_PI / FOAM_WAVELENGTH_A)
-      .add(warpNode)
-      .add(this.timeUniform.mul(FOAM_SPEED_A));
-    const foamPhaseB = worldX
-      .mul(FOAM_DIR_B_X)
-      .add(worldZ.mul(FOAM_DIR_B_Z))
-      .mul(TWO_PI / FOAM_WAVELENGTH_B)
-      .add(warpNode.mul(0.7))
-      .add(this.timeUniform.mul(FOAM_SPEED_B));
-    const foamA = sin(foamPhaseA).mul(0.5).add(0.5);
-    const foamB = sin(foamPhaseB).mul(0.5).add(0.5);
-    const foam = foamEnvelope.mul(foamA.mul(foamB).pow(FOAM_PATTERN_EXPONENT)).mul(FOAM_MAX);
-    // The surface is lit by the scene's sun and sky like any other, so it
-    // carries the one night tint too and reads no brighter than the shore.
-    material.colorNode = mix(reflected, vec3(1, 1, 1), foam).mul(
+    const bentUv = screenUV.add(bend.mul(clamp(pixelDepth.div(REFRACTION_FULL_DEPTH_M), 0, 1)));
+    const bentBehind = smoothstep(
+      fragDistance.sub(0.05),
+      fragDistance.add(0.05),
+      sceneViewZ(bentUv),
+    );
+    const seenUv = mix(screenUV, bentUv, bentBehind);
+    const bed = viewportSharedTexture(seenUv).rgb;
+    const path = pixelDepth.div(refractedCos);
+    const absorb = vec3(...ABSORPTION_PER_M).add(murkAttr);
+    const transmission = exp(absorb.mul(path).negate());
+    const lost = oneMinus(transmission);
+
+    // Light on the bed: a moving net of bright lines where the refracted ray
+    // meets it, strongest in the shallows and by day.
+    const bedX = positionWorld.x.add(refracted.x.mul(path));
+    const bedZ = positionWorld.z.add(refracted.z.mul(path));
+    const t = this.timeUniform;
+    const noiseAt = (px: Node<'float'>, pz: Node<'float'>, scale: number, pw: Node<'float'>) =>
+      mx_noise_float(vec3(px.mul(scale), pz.mul(scale), pw));
+    const bedQx = bedX.add(noiseAt(bedX, bedZ, NET_WARP_K, t.mul(0.25)).mul(NET_WARP_M));
+    const bedQz = bedZ.add(noiseAt(bedX, bedZ, NET_WARP_K, t.mul(0.25).add(11.7)).mul(NET_WARP_M));
+    const netA = sin(bedQx.mul(0.8).add(bedQz.mul(0.6)).mul(NET_SCALE[0]).add(t.mul(0.9)));
+    const netB = sin(bedQx.mul(-0.6).add(bedQz.mul(0.8)).mul(NET_SCALE[1]).sub(t.mul(0.8)));
+    const net = clamp(
+      oneMinus(abs(netA))
+        .pow(8)
+        .add(oneMinus(abs(netB)).pow(8)),
+      0,
+      1,
+    );
+    const netFade = clamp(oneMinus(pixelDepth.div(NET_DEPTH_M)), 0, 1)
+      .mul(oneMinus(this.nightFactorUniform))
+      .mul(fadeNode(NET_WAVELENGTH_M));
+    const netGain = net.mul(netFade).mul(NET_GAIN).add(1);
+
+    // Foam. Surf: where a swell's height, lifted by shoaling, reaches the
+    // breaking ratio of the depth, a line just past each crest travels in with
+    // it and a trail behind fades over SURF_TRAIL_S; noise breaks both up.
+    let swellEnergy: Node<'float'> = float(0);
+    let lineMax: Node<'float'> = float(0);
+    let trailMax: Node<'float'> = float(0);
+    for (const part of parts) {
+      if (part.train.band !== SWELL_BAND) continue;
+      swellEnergy = swellEnergy.add(part.amplitude.mul(part.amplitude).mul(0.5));
+      const past = part.phase.div(TWO_PI).sub(0.25);
+      const v = past.sub(round(past));
+      const d = v.sub(SURF_LINE_CENTRE_TURNS).div(SURF_LINE_WIDTH_TURNS);
+      lineMax = max(lineMax, exp(d.mul(d).negate()));
+      const age = max(v.negate(), 0).mul((Math.PI * 2) / part.train.omega);
+      trailMax = max(
+        trailMax,
+        clamp(oneMinus(age.div(SURF_TRAIL_S)), 0, 1)
+          .mul(smoothstep(0, 0.03, v.negate()))
+          .mul(SURF_TRAIL_STRENGTH),
+      );
+    }
+    const breaking = smoothstep(
+      0.85,
+      1.05,
+      swellEnergy.sqrt().mul(4).div(max(pixelDepth, 1e-3).mul(BREAKING_RATIO)),
+    );
+    const raggedNoise = noiseAt(worldX, worldZ, 0.15, t.mul(0.2)).mul(0.5).add(0.5);
+    const surf = breaking.mul(
+      max(
+        lineMax.mul(smoothstep(SURF_LINE_NOISE[0], SURF_LINE_NOISE[1], raggedNoise)),
+        trailMax.mul(smoothstep(SURF_TRAIL_NOISE[0], SURF_TRAIL_NOISE[1], raggedNoise)),
+      ),
+    );
+
+    // Lapping: a thin band where the water is under LAP_DEPTH_M, its width
+    // breathing with slow noise.
+    const breath = noiseAt(worldX, worldZ, 0.11, t.mul(0.15).add(7.3)).mul(0.5).add(0.5);
+    const lapWidth = breath
+      .mul(LAP_BREATH)
+      .add(1 - LAP_BREATH)
+      .mul(LAP_DEPTH_M);
+    const lap = oneMinus(smoothstep(lapWidth.mul(0.5), lapWidth, pixelDepth)).mul(LAP_STRENGTH);
+
+    // River streaks: thin lines stretched along the flow and carried by it,
+    // two copies cross-faded as the ripples are.
+    const flowDirX = flowAttr.x.div(max(length(flowAttr), 1e-4));
+    const flowDirZ = flowAttr.y.div(max(length(flowAttr), 1e-4));
+    const streakCopy = (cyc: Node<'float'>, fadeIn: Node<'float'>): Node<'float'> => {
+      const drift = cyc.mul(RIPPLE_CYCLE_S);
+      const px = worldX.sub(flowAttr.x.mul(drift));
+      const pz = worldZ.sub(flowAttr.y.mul(drift));
+      const along = px.mul(flowDirX).add(pz.mul(flowDirZ));
+      const across = pz.mul(flowDirX).sub(px.mul(flowDirZ));
+      const ridge = oneMinus(
+        abs(mx_noise_float(vec3(along.div(STREAK_ALONG_M), across.div(STREAK_ACROSS_M), 5.3))),
+      );
+      return smoothstep(STREAK_RIDGE[0], STREAK_RIDGE[1], ridge).mul(fadeIn);
+    };
+    const streaks = streakCopy(cycleA, fadeA)
+      .add(streakCopy(cycleB, fadeB))
+      .mul(flowStrength.mul(flowStrength))
+      .mul(fadeNode(4))
+      .mul(STREAK_STRENGTH);
+    const foam = clamp(max(max(surf, lap), streaks), 0, 1);
+
+    // The colour: the water's own scatter (lit like any surface, so it carries
+    // the one night tint) under the sky reflection, fouling and foam over it;
+    // the bed seen through is the frame already lit, so it goes in unlit.
+    const foulK = clamp(foulAttr, 0, 1).sqrt();
+    const body = mix(scatterAttr.mul(lost), vec3(...FOUL_WATER_COLOR), foulK);
+    const water = body.mul(oneMinus(fresnel)).add(skyTone.mul(fresnel));
+    material.colorNode = mix(water, vec3(1, 1, 1), foam).mul(
       nightTintNode(this.nightFactorUniform),
     );
+    const throughSurface = bed
+      .mul(transmission)
+      .mul(netGain)
+      .mul(oneMinus(fresnel))
+      .mul(oneMinus(foulK))
+      .mul(oneMinus(foam));
 
     // Sun/moon glint: specular-ish sparkle along the light's half-vector,
     // tinted warm by day / pale by night, scaled by (1-nightFactor) with the
     // moon-glint fixed at MOON_GLINT_FRACTION of that at full night.
-    const worldViewDir = normalize(positionWorldDirection);
     const lightDir = normalize(this.lightDirUniform);
+    const worldViewDir = normalize(positionWorldDirection);
     const halfDir = normalize(lightDir.add(worldViewDir));
     const ndotH = clamp(dot(shadingNormalLocal, halfDir), 0, 1);
     // A tight lobe plus a second, wider/dimmer lobe — mirrors
     // glintSpecular's two-term sum exactly, so the glitter track survives a
-    // wide/distant RTS shot instead of collapsing to a single pinpoint.
-    const rough = removedVariance.mul(GLINT_ROUGHEN).add(1);
+    // wide/distant RTS shot instead of collapsing to a single pinpoint. A
+    // gust widens or narrows both by its square, as the slope variance it scales.
+    const rough = removedVariance.mul(GLINT_ROUGHEN).add(1).mul(gust).mul(gust);
     const specular = ndotH
       .pow(rough.reciprocal().mul(GLINT_SHININESS))
       .mul(GLINT_INTENSITY)
@@ -830,7 +939,7 @@ export class WaterRenderer {
       this.nightFactorUniform,
     );
     const glintScaleNode = oneMinus(this.nightFactorUniform.mul(1 - MOON_GLINT_FRACTION));
-    material.emissiveNode = glintColor.mul(specular).mul(glintScaleNode);
+    material.emissiveNode = throughSurface.add(glintColor.mul(specular).mul(glintScaleNode));
 
     return material;
   }

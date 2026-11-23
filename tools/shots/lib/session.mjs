@@ -60,7 +60,10 @@ export async function openSession(url, { fresh = false, seed = SEED } = {}) {
     [{ screen: 'playing', seed, mode: 'new' }, fresh],
   );
   await page.addInitScript(watchRefusals);
-  await page.goto(new URL('?nobloom', url).href, { waitUntil: 'domcontentloaded' });
+  // The post-process pass is skipped by default (it destabilises long headless runs);
+  // SHOTS_BLOOM=1 keeps it, for a frame that depends on what the pass does to the scene.
+  const query = process.env.SHOTS_BLOOM === '1' ? '' : '?nobloom';
+  await page.goto(new URL(query, url).href, { waitUntil: 'domcontentloaded' });
   await page.waitForSelector('#viewport canvas', { timeout: 60000 });
   await hooksReady(page);
 

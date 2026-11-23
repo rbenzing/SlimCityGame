@@ -9,6 +9,9 @@ const RIVER = 3;
 const NIGHT = 22 / 24;
 /** The wave clock every frame is taken at, seconds, so a run repeats. */
 const WAVE_CLOCK_S = 20;
+/** Seconds between the two frames of a river drift pair and of a lake gust pair. */
+const DRIFT_GAP_S = 2;
+const GUST_GAP_S = 10;
 /** Canal: three tiles wide and its floor, metres below sea level. */
 const CANAL_WIDTH = 3;
 const CANAL_FLOOR = -3;
@@ -218,10 +221,12 @@ async function scene(session) {
 }
 
 /** The wave clock held at a fixed time before the frame, and the day at noon. */
-const pinned = (extra) => async (session, s) => {
-  await session.page.evaluate((t) => window.__slimcity.pinWaterClock(t), WAVE_CLOCK_S);
-  if (extra) await extra(session, s);
-};
+const pinned =
+  (extra, clock = WAVE_CLOCK_S) =>
+  async (session, s) => {
+    await session.page.evaluate((t) => window.__slimcity.pinWaterClock(t), clock);
+    if (extra) await extra(session, s);
+  };
 
 /** The frames of one subject: from above, oblique, and optionally one low and close. */
 const frames = (subject, where, { above, oblique, close }) => [
@@ -321,6 +326,36 @@ export default defineSeries({
       setup: pinned(),
       camera: (s) => ({ ...at('beach')(s), distance: 300, yaw: 0, pitch: 1.45 }),
     },
+    {
+      subject: 'ocean',
+      view: 'beach-close',
+      shows:
+        'the shallows off the beach, 40 m across: the sand clear through the water, a moving net of light on it, a thin line of lapping at the waterline',
+      setup: pinned(),
+      camera: (s) => ({ ...at('beach')(s), distance: 45, yaw: 0.3, pitch: 1.1 }),
+    },
+    ...[
+      ['a', WAVE_CLOCK_S],
+      ['b', WAVE_CLOCK_S + DRIFT_GAP_S],
+    ].map(([part, clock]) => ({
+      subject: 'river',
+      view: `drift-${part}`,
+      shows:
+        'a straight reach from above on the water clock, the same view two seconds apart: the foam streaks and ripples have moved downstream',
+      setup: pinned(undefined, clock),
+      camera: (s) => ({ ...at('reach')(s), distance: 70, yaw: 0, pitch: 1.45 }),
+    })),
+    ...[
+      ['a', WAVE_CLOCK_S],
+      ['b', WAVE_CLOCK_S + GUST_GAP_S],
+    ].map(([part, clock]) => ({
+      subject: 'lake',
+      view: `gusts-${part}`,
+      shows:
+        'the largest lake from above on the water clock, the same view ten seconds apart: patches of ruffled and smooth water have drifted downwind',
+      setup: pinned(undefined, clock),
+      camera: (s) => ({ ...at('lake')(s), distance: 420, yaw: 0, pitch: 1.45 }),
+    })),
     {
       subject: 'ocean',
       view: 'night',
