@@ -1,5 +1,24 @@
 # Changelog
 
+## [1.102.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.101.0...slimcity-v1.102.0) (2026-11-23)
+
+
+### Features
+
+* **tools:** road classes, paint, bends and edges series; grade close boxes; along view starts inside the run ([6a2213c](https://github.com/rbenzing/SlimCityGame/commit/6a2213cc0b652718b45d1d3d4fef67577830a132))
+* **tools:** the curve, farm and first-game shots move into town series; the playthrough becomes a probe ([ac0d3b3](https://github.com/rbenzing/SlimCityGame/commit/ac0d3b31bd192f62bead2e0838f545e2a8c7525f))
+* **tools:** the measuring tools become probes, the dropped road audits come back, the old shot runner goes ([a891310](https://github.com/rbenzing/SlimCityGame/commit/a8913104002b574a98d504f3929e2b33e6a316fa))
+* **tools:** the street shot series (furniture, stops, power, transit) replace eight old tools ([0a2cbf1](https://github.com/rbenzing/SlimCityGame/commit/0a2cbf102290884e8913bae45c6a4d3a3f281c85))
+* **tools:** the town shot series: the grown town, every lens, buildings rising and lots, replacing four tools ([a76eee1](https://github.com/rbenzing/SlimCityGame/commit/a76eee1f2d52972aedfb0c3e443c6f01e951bce0))
+* **tools:** the views shot series (underground, night, ghosts, panels) replace six old tools ([21b5e9c](https://github.com/rbenzing/SlimCityGame/commit/21b5e9c944f959d2d07f489e6c706bb197e30c45))
+
+
+### Bug Fixes
+
+* **shots:** one-frame subjects flow five to a row on a contact sheet ([b278b02](https://github.com/rbenzing/SlimCityGame/commit/b278b024529d35986493b6b70f1a7b30579f2d84))
+* **tools:** the shot runner counts frames for street, views and town series ([b4581c9](https://github.com/rbenzing/SlimCityGame/commit/b4581c9220b443c861e58f00c4567b2ecf2d18c8))
+* **tools:** the street power series becomes supply, series names must be unique ([5508e28](https://github.com/rbenzing/SlimCityGame/commit/5508e2847a60b767d851b6d8cd341fc745d29464))
+
 ## [1.101.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.100.0...slimcity-v1.101.0) (2026-11-20)
 
 
