@@ -12,6 +12,8 @@ const WAVE_CLOCK_S = 20;
 /** Canal: three tiles wide and its floor, metres below sea level. */
 const CANAL_WIDTH = 3;
 const CANAL_FLOOR = -3;
+/** Land this close above sea level is beach (SAND_BAND_METERS in src/shared/constants.ts). */
+const SAND_BAND = 3;
 
 const tilesOf = (b, kind) => {
   const out = [];
@@ -67,7 +69,7 @@ async function digCanal(session, b) {
   const n = b.size;
   const lakes = tilesOf(b, LAKE).map((i) => runOf(b, i));
   const lake = lakes.reduce((a, l) => (l.length > a.length ? l : a), []);
-  const swelled = tilesOf(b, OCEAN).filter((i) => Math.hypot(b.swellX[i], b.swellZ[i]) > 0.9);
+  const swelled = tilesOf(b, OCEAN).filter((i) => b.swellAmp[i] > 0.5);
   if (lake.length === 0 || swelled.length === 0) throw new Error('the map has no lake and ocean');
   let best = null;
   for (const l of lake) {
@@ -159,13 +161,52 @@ async function scene(session) {
   const lakes = tilesOf(b, LAKE).map((i) => runOf(b, i));
   const bigLake = lakes.reduce((a, l) => (l.length > a.length ? l : a), []);
   const oceanTile = tilesOf(b, OCEAN)
-    .filter((i) => Math.hypot(b.swellX[i], b.swellZ[i]) > 0.9)
+    .filter((i) => b.swellAmp[i] > 0.5)
     .reduce((a, i) => {
       const d = (k) => Math.hypot((k % n) - mouth.x, Math.floor(k / n) - mouth.z);
       return a === null || d(i) < d(a) ? i : a;
     }, null);
 
+  // The widest sandy shore of the swelled ocean: the beach tile (dry land within
+  // the sand band of the sea) with the most beach tiles in a 15 x 15 window.
+  const grid = await page.evaluate(() => {
+    const g = window.__slimcity.readGrid();
+    return { height: g.height, water: g.water };
+  });
+  const isBeach = (x, z) => {
+    const i = z * n + x;
+    return grid.water[i] === 0 && grid.height[i] > 0 && grid.height[i] <= SAND_BAND;
+  };
+  const onSwelledShore = (x, z) =>
+    [
+      [1, 0],
+      [-1, 0],
+      [0, 1],
+      [0, -1],
+    ].some(([dx, dz]) => {
+      const j = (z + dz) * n + x + dx;
+      return b.kind[j] === OCEAN && b.swellAmp[j] > 0.5;
+    });
+  let beach = null;
+  let beachCount = 0;
+  const win = 7;
+  for (let z = win; z < n - win; z++) {
+    for (let x = win; x < n - win; x++) {
+      if (!isBeach(x, z) || !onSwelledShore(x, z)) continue;
+      let count = 0;
+      for (let dz = -win; dz <= win; dz++)
+        for (let dx = -win; dx <= win; dx++) if (isBeach(x + dx, z + dz)) count++;
+      if (count > beachCount) {
+        beachCount = count;
+        beach = { x, z };
+      }
+    }
+  }
+  if (!beach) throw new Error('the swelled ocean has no sandy shore');
+
   return {
+    beach,
+    beachCount,
     ocean: centre(runOf(b, oceanTile), n),
     lake: centre(bigLake, n),
     river: centre(riverRun, n),
@@ -272,6 +313,14 @@ export default defineSeries({
         shows: 'the river mouth at a slant: one surface across the join, no seam',
       },
     }),
+    {
+      subject: 'ocean',
+      view: 'beach-above',
+      shows:
+        'the widest sandy shore from above, 300 m across: swell fronts parallel to the beach, closer together as the water shoals',
+      setup: pinned(),
+      camera: (s) => ({ ...at('beach')(s), distance: 300, yaw: 0, pitch: 1.45 }),
+    },
     {
       subject: 'ocean',
       view: 'night',

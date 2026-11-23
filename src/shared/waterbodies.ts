@@ -5,7 +5,7 @@
  * mask always gives the same bodies and a terrain edit just rebuilds them.
  */
 
-import { TILE_METERS } from './constants';
+import { SEA_LEVEL, TILE_METERS } from './constants';
 
 export const WaterKind = { None: 0, Ocean: 1, Lake: 2, River: 3 } as const;
 export type WaterKindValue = (typeof WaterKind)[keyof typeof WaterKind];
@@ -29,20 +29,37 @@ export const WIND_TOWARD: Readonly<{ x: number; z: number }> = {
   z: WIND_RAW.z / WIND_LEN,
 };
 
+/** Gravity, for the speed of a swell in shallow water. */
+const GRAVITY = 9.81;
+/** A swell travels no slower than it would in this depth. */
+export const SWELL_MIN_DEPTH_M = 0.5;
+/** Depth at which a swell has its full height; shoaling water lifts it by (this / depth) to the quarter. */
+export const SWELL_REF_DEPTH_M = 8;
+
+/**
+ * Per tile: the kind, the wind fetch, the swell's travel time from the map
+ * edge (`swellTau`, seconds; -1 where no swell arrives) with its gradient
+ * (`swellSlowX/Z`, seconds per metre: the crests' direction over their speed)
+ * and height factor (`swellAmp`), and a river's current.
+ */
 export interface WaterBodies {
   readonly size: number;
   readonly kind: Uint8Array;
   readonly fetchM: Float32Array;
-  readonly swellX: Float32Array;
-  readonly swellZ: Float32Array;
+  readonly swellTau: Float32Array;
+  readonly swellSlowX: Float32Array;
+  readonly swellSlowZ: Float32Array;
+  readonly swellAmp: Float32Array;
   readonly flowX: Float32Array;
   readonly flowZ: Float32Array;
 }
 
 export interface WaterSample {
   readonly fetchM: number;
-  readonly swellX: number;
-  readonly swellZ: number;
+  readonly swellTau: number;
+  readonly swellSlowX: number;
+  readonly swellSlowZ: number;
+  readonly swellAmp: number;
   readonly flowX: number;
   readonly flowZ: number;
 }
@@ -51,9 +68,8 @@ const OPEN_RADIUS_TILES = CHANNEL_MAX_WIDTH_M / 2 / TILE_METERS;
 const BLUR_RADIUS_TILES = Math.round(SWELL_SHADOW_BLUR_M / TILE_METERS);
 const BANK_WINDOW_TILES = 8;
 const HALF_WIDTH_WINDOW_TILES = 5;
-const RAY_STEP_TILES = 0.5;
-const RAY_COUNT_EACH_SIDE = 3;
-const RAY_SPREAD_RAD = Math.PI / 4;
+const FETCH_RAYS_EACH_SIDE = 3;
+const FETCH_SPREAD_RAD = Math.PI / 4;
 
 const NEIGHBOURS_4: ReadonlyArray<readonly [number, number]> = [
   [1, 0],
@@ -432,58 +448,184 @@ function fillCurrents(
 /** Wind fetch of every water tile, in metres of water upwind of it. */
 function fillFetch(water: Uint8Array, size: number, kind: Uint8Array, fetchM: Float32Array): void {
   const upwind = Math.atan2(-WIND_TOWARD.z, -WIND_TOWARD.x);
-  const rays: Array<{ dx: number; dz: number; weight: number }> = [];
-  for (let k = -RAY_COUNT_EACH_SIDE; k <= RAY_COUNT_EACH_SIDE; k++) {
-    const off = (k / RAY_COUNT_EACH_SIDE) * RAY_SPREAD_RAD;
+  const n = size * size;
+  const along = new Float32Array(n);
+  const rays: Array<{ ux: number; uz: number; weight: number }> = [];
+  for (let k = -FETCH_RAYS_EACH_SIDE; k <= FETCH_RAYS_EACH_SIDE; k++) {
+    const off = (k / FETCH_RAYS_EACH_SIDE) * FETCH_SPREAD_RAD;
     rays.push({
-      dx: Math.cos(upwind + off) * RAY_STEP_TILES,
-      dz: Math.sin(upwind + off) * RAY_STEP_TILES,
+      ux: Math.cos(upwind + off),
+      uz: Math.sin(upwind + off),
       weight: Math.cos(off),
     });
   }
   const totalWeight = rays.reduce((s, r) => s + r.weight, 0);
-  const stepM = RAY_STEP_TILES * TILE_METERS;
-  for (let z = 0; z < size; z++) {
-    for (let x = 0; x < size; x++) {
-      const i = z * size + x;
-      if (water[i] === 0) continue;
-      let sum = 0;
-      for (const ray of rays) {
-        let px = x + 0.5;
-        let pz = z + 0.5;
-        let steps = 0;
-        let length: number;
-        for (;;) {
-          px += ray.dx;
-          pz += ray.dz;
-          steps++;
-          const tx = Math.floor(px);
-          const tz = Math.floor(pz);
-          if (tx < 0 || tz < 0 || tx >= size || tz >= size) {
-            length = kind[i] === WaterKind.Ocean ? OPEN_SEA_FETCH_M : steps * stepM;
-            break;
-          }
-          if (water[tz * size + tx] === 0) {
-            length = steps * stepM;
-            break;
-          }
+
+  // For each upwind direction, the fetch at a tile is one tile of water plus
+  // the fetch at the point one tile upwind, read bilinearly from the four
+  // tiles round it (land holds 0). A tile's own share of that point is solved
+  // for, and tiles are visited upwind-first so the rest is already known.
+  for (const ray of rays) {
+    along.fill(0);
+    // The upwind point is a fixed offset from every tile, so its four corner
+    // tiles and their weights are the same everywhere: the tile itself (its
+    // own share) and up to three others, as index offsets.
+    const ox = Math.floor(ray.ux);
+    const oz = Math.floor(ray.uz);
+    const fx = ray.ux - ox;
+    const fz = ray.uz - oz;
+    let self = 0;
+    const others: Array<{ offset: number; w: number }> = [];
+    for (let c = 0; c < 4; c++) {
+      const dx = ox + (c & 1);
+      const dz = oz + (c >> 1);
+      const w = ((c & 1) === 0 ? 1 - fx : fx) * (c >> 1 === 0 ? 1 - fz : fz);
+      if (w === 0) continue;
+      if (dx === 0 && dz === 0) self += w;
+      else others.push({ offset: dz * size + dx, w });
+    }
+    const solve = 1 / (1 - self);
+    const zFirst = ray.uz < 0 ? 0 : size - 1;
+    const zStep = ray.uz < 0 ? 1 : -1;
+    const xFirst = ray.ux < 0 ? 0 : size - 1;
+    const xStep = ray.ux < 0 ? 1 : -1;
+    const share = ray.weight / totalWeight;
+    for (let zi = 0, z = zFirst; zi < size; zi++, z += zStep) {
+      const outOfMapZ = z + ray.uz < 0 || z + ray.uz > size - 1;
+      for (let xi = 0, x = xFirst; xi < size; xi++, x += xStep) {
+        const i = z * size + x;
+        if (water[i] === 0) continue;
+        let reach: number;
+        if (outOfMapZ || x + ray.ux < 0 || x + ray.ux > size - 1) {
+          reach = kind[i] === WaterKind.Ocean ? OPEN_SEA_FETCH_M : TILE_METERS;
+        } else {
+          let rest = TILE_METERS;
+          for (const o of others) rest += o.w * along[i + o.offset]!;
+          reach = rest * solve;
         }
-        sum += length * ray.weight;
+        const fetch = Math.min(OPEN_SEA_FETCH_M, reach);
+        along[i] = fetch;
+        fetchM[i] = fetchM[i]! + fetch * share;
       }
-      fetchM[i] = sum / totalWeight;
     }
   }
 }
 
-/** Swell of every ocean tile: travel direction times exposure, blurred over the water near it. */
+/** Speed of a swell in water `depthM` deep, metres per second. */
+function swellSpeed(depthM: number): number {
+  return Math.sqrt(GRAVITY * Math.max(depthM, SWELL_MIN_DEPTH_M));
+}
+
+/**
+ * Travel time of the swell from `sources` through the tiles of `passable`, by
+ * the fast-marching method: each tile's time is solved from its two earliest
+ * neighbours, so fronts are round rather than octagonal. `tau` is -1 where
+ * the swell never arrives.
+ */
+function marchSwell(
+  size: number,
+  sources: readonly number[],
+  passable: (i: number) => boolean,
+  depthM: Float32Array,
+  tau: Float32Array,
+): void {
+  const n = size * size;
+  const best = new Float64Array(n).fill(Infinity);
+  const done = new Uint8Array(n);
+  const heapKey: number[] = [];
+  const heapTile: number[] = [];
+  const push = (key: number, tile: number): void => {
+    let c = heapKey.length;
+    heapKey.push(key);
+    heapTile.push(tile);
+    while (c > 0) {
+      const p = (c - 1) >> 1;
+      if (heapKey[p]! <= key) break;
+      heapKey[c] = heapKey[p]!;
+      heapTile[c] = heapTile[p]!;
+      c = p;
+    }
+    heapKey[c] = key;
+    heapTile[c] = tile;
+  };
+  const pop = (): void => {
+    const key = heapKey.pop()!;
+    const tile = heapTile.pop()!;
+    const last = heapKey.length;
+    if (last === 0) return;
+    let c = 0;
+    for (;;) {
+      let child = 2 * c + 1;
+      if (child >= last) break;
+      if (child + 1 < last && heapKey[child + 1]! < heapKey[child]!) child++;
+      if (heapKey[child]! >= key) break;
+      heapKey[c] = heapKey[child]!;
+      heapTile[c] = heapTile[child]!;
+      c = child;
+    }
+    heapKey[c] = key;
+    heapTile[c] = tile;
+  };
+  const known = (x: number, z: number): number =>
+    x >= 0 && z >= 0 && x < size && z < size && done[z * size + x] === 1
+      ? tau[z * size + x]!
+      : Infinity;
+
+  for (const s of sources) {
+    best[s] = 0;
+    push(0, s);
+  }
+  while (heapKey.length > 0) {
+    const t = heapKey[0]!;
+    const i = heapTile[0]!;
+    pop();
+    if (done[i] === 1) continue;
+    done[i] = 1;
+    tau[i] = t;
+    const x = i % size;
+    const z = (i - x) / size;
+    for (const [dx, dz] of NEIGHBOURS_4) {
+      const nx = x + dx;
+      const nz = z + dz;
+      if (nx < 0 || nz < 0 || nx >= size || nz >= size) continue;
+      const j = nz * size + nx;
+      if (done[j] === 1 || !passable(j)) continue;
+      const cross = TILE_METERS / swellSpeed(depthM[j]!);
+      const a = Math.min(known(nx - 1, nz), known(nx + 1, nz));
+      const b = Math.min(known(nx, nz - 1), known(nx, nz + 1));
+      const lo = Math.min(a, b);
+      const hi = Math.max(a, b);
+      const arrive =
+        hi - lo >= cross
+          ? lo + cross
+          : (lo + hi + Math.sqrt(2 * cross * cross - (hi - lo) ** 2)) / 2;
+      if (arrive < best[j]!) {
+        best[j] = arrive;
+        push(arrive, j);
+      }
+    }
+  }
+}
+
+/**
+ * Swell of every ocean tile: its travel time from the map edge it comes in by
+ * through water of the depth each tile has (a swell slows, shortens and turns
+ * to face the shore as the water shoals), the gradient of that time, and a
+ * height factor from how open the tile is to the sea, blurred over the water
+ * near it, lifted by Green's law as the water shoals.
+ */
 function fillSwell(
   water: Uint8Array,
   size: number,
   kind: Uint8Array,
-  swellX: Float32Array,
-  swellZ: Float32Array,
+  depthM: Float32Array,
+  swellTau: Float32Array,
+  swellSlowX: Float32Array,
+  swellSlowZ: Float32Array,
+  swellAmp: Float32Array,
 ): void {
   const n = size * size;
+  swellTau.fill(-1);
   // Each entry: the unit travel vector inland from one map edge.
   const edges: ReadonlyArray<readonly [number, number]> = [
     [1, 0],
@@ -517,8 +659,7 @@ function fillSwell(
     return out;
   };
 
-  const vx = new Float64Array(n);
-  const vz = new Float64Array(n);
+  const open = new Float64Array(n);
   const oceans = labelComponents(size, (i) => kind[i] === WaterKind.Ocean);
   for (const list of oceans.members) {
     const counts = [0, 0, 0, 0];
@@ -529,17 +670,41 @@ function fillSwell(
     for (let e = 1; e < 4; e++) if (counts[e]! > counts[edge]!) edge = e;
     if (counts[edge] === 0) continue;
     const exp = exposure(edge);
-    const [tx, tz] = edges[edge]!;
-    for (const i of list) {
-      vx[i] = tx * exp[i]!;
-      vz[i] = tz * exp[i]!;
+    for (const i of list) open[i] = exp[i]!;
+    marchSwell(
+      size,
+      list.filter((i) => edgeTile(edge, i)),
+      (i) => kind[i] === WaterKind.Ocean,
+      depthM,
+      swellTau,
+    );
+  }
+
+  // Gradient of the travel time (seconds per metre) by central differences
+  // over the tiles the swell reaches, one-sided at a coast.
+  const reached = (x: number, z: number): boolean =>
+    x >= 0 && z >= 0 && x < size && z < size && swellTau[z * size + x]! >= 0;
+  const slope = (x: number, z: number, dx: number, dz: number): number => {
+    const i = z * size + x;
+    const hasLo = reached(x - dx, z - dz);
+    const hasHi = reached(x + dx, z + dz);
+    const lo = hasLo ? swellTau[i - dz * size - dx]! : swellTau[i]!;
+    const hi = hasHi ? swellTau[i + dz * size + dx]! : swellTau[i]!;
+    const span = (hasLo ? 1 : 0) + (hasHi ? 1 : 0);
+    return span === 0 ? 0 : (hi - lo) / (span * TILE_METERS);
+  };
+  for (let z = 0; z < size; z++) {
+    for (let x = 0; x < size; x++) {
+      const i = z * size + x;
+      if (swellTau[i]! < 0) continue;
+      swellSlowX[i] = slope(x, z, 1, 0);
+      swellSlowZ[i] = slope(x, z, 0, 1);
     }
   }
 
-  // Prefix sums of the vector and the water count for a box blur.
+  // Prefix sums of the openness and the water count for a box blur.
   const w = size + 1;
-  const sumX = new Float64Array(w * w);
-  const sumZ = new Float64Array(w * w);
+  const sumO = new Float64Array(w * w);
   const sumW = new Float64Array(w * w);
   for (let z = 0; z < size; z++) {
     for (let x = 0; x < size; x++) {
@@ -548,8 +713,7 @@ function fillSwell(
       const up = z * w + (x + 1);
       const left = (z + 1) * w + x;
       const diag = z * w + x;
-      sumX[p] = vx[i]! + sumX[up]! + sumX[left]! - sumX[diag]!;
-      sumZ[p] = vz[i]! + sumZ[up]! + sumZ[left]! - sumZ[diag]!;
+      sumO[p] = open[i]! + sumO[up]! + sumO[left]! - sumO[diag]!;
       sumW[p] = (water[i] !== 0 ? 1 : 0) + sumW[up]! + sumW[left]! - sumW[diag]!;
     }
   }
@@ -565,15 +729,16 @@ function fillSwell(
       const z1 = Math.min(size - 1, z + BLUR_RADIUS_TILES);
       const count = box(sumW, x0, z0, x1, z1);
       if (count === 0) continue;
-      swellX[i] = box(sumX, x0, z0, x1, z1) / count;
-      swellZ[i] = box(sumZ, x0, z0, x1, z1) / count;
+      const shoal = Math.pow(SWELL_REF_DEPTH_M / Math.max(depthM[i]!, SWELL_MIN_DEPTH_M), 0.25);
+      swellAmp[i] = (box(sumO, x0, z0, x1, z1) / count) * shoal;
     }
   }
 }
 
 /**
  * Works out each water tile's kind, wind fetch, swell and river current.
- * `water` is non-zero where a tile is water; `heightAtTile` gives terrain height.
+ * `water` is non-zero where a tile is water; `heightAtTile` gives terrain
+ * height, from which each water tile's depth below sea level follows.
  */
 export function deriveWaterBodies(
   water: Uint8Array,
@@ -582,15 +747,23 @@ export function deriveWaterBodies(
 ): WaterBodies {
   const n = size * size;
   const kind = classify(water, size);
+  const depthM = new Float32Array(n);
+  for (let z = 0; z < size; z++) {
+    for (let x = 0; x < size; x++) {
+      if (water[z * size + x] !== 0) depthM[z * size + x] = SEA_LEVEL - heightAtTile(x, z);
+    }
+  }
   const fetchM = new Float32Array(n);
-  const swellX = new Float32Array(n);
-  const swellZ = new Float32Array(n);
+  const swellTau = new Float32Array(n);
+  const swellSlowX = new Float32Array(n);
+  const swellSlowZ = new Float32Array(n);
+  const swellAmp = new Float32Array(n);
   const flowX = new Float32Array(n);
   const flowZ = new Float32Array(n);
   fillFetch(water, size, kind, fetchM);
-  fillSwell(water, size, kind, swellX, swellZ);
+  fillSwell(water, size, kind, depthM, swellTau, swellSlowX, swellSlowZ, swellAmp);
   fillCurrents(water, size, kind, heightAtTile, flowX, flowZ);
-  return { size, kind, fetchM, swellX, swellZ, flowX, flowZ };
+  return { size, kind, fetchM, swellTau, swellSlowX, swellSlowZ, swellAmp, flowX, flowZ };
 }
 
 /** Bilinear sample of the per-tile fields at world metres (x, z). */
@@ -611,10 +784,34 @@ export function sampleWater(bodies: WaterBodies, x: number, z: number): WaterSam
       a[i + size + 1]! * fx * fz
     );
   };
+  // The swell's time and gradient blend only over the tiles it reaches: a
+  // tile it does not reach holds no time to blend with.
+  const corners = [
+    z0 * size + x0,
+    z0 * size + x0 + 1,
+    (z0 + 1) * size + x0,
+    (z0 + 1) * size + x0 + 1,
+  ];
+  const cornerWeights = [(1 - fx) * (1 - fz), fx * (1 - fz), (1 - fx) * fz, fx * fz];
+  let tau = 0;
+  let slowX = 0;
+  let slowZ = 0;
+  let reachedWeight = 0;
+  corners.forEach((c, k) => {
+    if (bodies.swellTau[c]! < 0) return;
+    const wt = cornerWeights[k]!;
+    tau += bodies.swellTau[c]! * wt;
+    slowX += bodies.swellSlowX[c]! * wt;
+    slowZ += bodies.swellSlowZ[c]! * wt;
+    reachedWeight += wt;
+  });
+  const norm = reachedWeight > 0 ? 1 / reachedWeight : 0;
   return {
     fetchM: at(bodies.fetchM),
-    swellX: at(bodies.swellX),
-    swellZ: at(bodies.swellZ),
+    swellTau: tau * norm,
+    swellSlowX: slowX * norm,
+    swellSlowZ: slowZ * norm,
+    swellAmp: at(bodies.swellAmp),
     flowX: at(bodies.flowX),
     flowZ: at(bodies.flowZ),
   };

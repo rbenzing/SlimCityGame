@@ -54,14 +54,31 @@ export function deepWaterLength(T: number): number {
 }
 
 const BAND_FETCHES_M = [100, 500, 2000, 5000, 20000] as const;
-const BAND_SIDE_RAD = 15 * DEG;
+/**
+ * The four trains of a wind band: a spread of directions about the wind, of
+ * periods about the band's, and of shares of its energy (they sum to 1), so
+ * the sea is a spread of wave directions and no two trains hold a fixed
+ * stripe. Each also scales the phase warp by its own factor, so they bend
+ * differently.
+ */
+const BAND_SPREAD: ReadonlyArray<{
+  readonly angleRad: number;
+  readonly periodFactor: number;
+  readonly energyShare: number;
+  readonly warpScale: number;
+}> = [
+  { angleRad: -32 * DEG, periodFactor: 0.88, energyShare: 0.2, warpScale: 0.6 },
+  { angleRad: -11 * DEG, periodFactor: 0.97, energyShare: 0.3, warpScale: 1.4 },
+  { angleRad: 9 * DEG, periodFactor: 1.05, energyShare: 0.3, warpScale: 0.85 },
+  { angleRad: 27 * DEG, periodFactor: 1.13, energyShare: 0.2, warpScale: 1.2 },
+];
 // Fixed phase offsets (radians) so the trains never line up.
-const BAND_PHASES: ReadonlyArray<readonly [number, number]> = [
-  [0.4, 2.1],
-  [3.7, 5.2],
-  [1.3, 4.4],
-  [5.9, 0.9],
-  [2.8, 3.3],
+const BAND_PHASES: ReadonlyArray<readonly [number, number, number, number]> = [
+  [0.4, 2.1, 4.9, 1.6],
+  [3.7, 5.2, 0.8, 2.9],
+  [1.3, 4.4, 3.1, 5.6],
+  [5.9, 0.9, 2.3, 4.0],
+  [2.8, 3.3, 5.5, 0.2],
 ];
 
 export interface WindBand {
@@ -90,15 +107,14 @@ export const WIND_BANDS: readonly WindBand[] = BAND_FETCHES_M.map((fetchM, i) =>
 export interface SwellTrain {
   readonly periodS: number;
   readonly amplitudeM: number;
-  /** Degrees off the swell's direction of travel. */
-  readonly angleDeg: number;
   readonly phase: number;
 }
 
+/** Three periods that beat into sets; each travels by the swell's own arrival time at a point. */
 export const SWELL_TRAINS: readonly SwellTrain[] = [
-  { periodS: 8, amplitudeM: 0.25, angleDeg: -12, phase: 1.1 },
-  { periodS: 9.5, amplitudeM: 0.2, angleDeg: 0, phase: 4.2 },
-  { periodS: 11, amplitudeM: 0.15, angleDeg: 12, phase: 2.6 },
+  { periodS: 8, amplitudeM: 0.25, phase: 1.1 },
+  { periodS: 9.5, amplitudeM: 0.2, phase: 4.2 },
+  { periodS: 11, amplitudeM: 0.15, phase: 2.6 },
 ];
 
 const windAngle = Math.atan2(WIND_TOWARD.z, WIND_TOWARD.x);
@@ -116,9 +132,6 @@ export function bandWeight(band: WindBand, fetchM: number): number {
 /** `band` of a train that belongs to the ocean swell rather than a wind band. */
 export const SWELL_BAND = -1;
 
-/** The two trains of a wind band run at these multiples of its period, so they never hold fixed stripes. */
-const PAIR_PERIOD_FACTORS = [0.94, 1.06] as const;
-
 /** One sine of the surface at its full weight. The drawn surface and the height of anything afloat are both built from the list of these. */
 export interface WaveTrain {
   /** Index into WIND_BANDS, or SWELL_BAND. */
@@ -129,11 +142,11 @@ export interface WaveTrain {
   readonly wavenumber: number;
   /** Radians per second. */
   readonly omega: number;
-  /** Wind trains: world direction of travel in radians. Swell trains: offset from the swell's own direction. */
+  /** Wind trains: world direction of travel in radians. Swell trains travel where the water's arrival time says, and hold 0. */
   readonly angleRad: number;
   readonly phase: number;
-  /** Whether the positional phase warp bends this train's crests. Swell is long-crested and takes none. */
-  readonly warped: boolean;
+  /** How strongly the positional phase warp bends this train's crests. Swell is long-crested and takes none (0). */
+  readonly warpScale: number;
 }
 
 const makeTrain = (
@@ -142,7 +155,7 @@ const makeTrain = (
   periodS: number,
   angleRad: number,
   phase: number,
-  warped: boolean,
+  warpScale: number,
 ): WaveTrain => ({
   band,
   amplitudeM,
@@ -150,57 +163,49 @@ const makeTrain = (
   omega: TWO_PI / periodS,
   angleRad,
   phase,
-  warped,
+  warpScale,
 });
 
-/** Every train of the surface: two a wind band, then one a swell period. */
+/** Every train of the surface: four a wind band, then one a swell period. */
 export const WAVE_TRAINS: readonly WaveTrain[] = [
-  ...WIND_BANDS.flatMap((band, i) => {
-    const a = band.amplitudeM / Math.SQRT2;
-    const phases = BAND_PHASES[i]!;
-    return [
+  ...WIND_BANDS.flatMap((band, i) =>
+    BAND_SPREAD.map((spread, j) =>
       makeTrain(
         i,
-        a,
-        band.periodS * PAIR_PERIOD_FACTORS[0],
-        windAngle - BAND_SIDE_RAD,
-        phases[0],
-        true,
+        band.amplitudeM * Math.sqrt(spread.energyShare),
+        band.periodS * spread.periodFactor,
+        windAngle + spread.angleRad,
+        BAND_PHASES[i]![j]!,
+        spread.warpScale,
       ),
-      makeTrain(
-        i,
-        a,
-        band.periodS * PAIR_PERIOD_FACTORS[1],
-        windAngle + BAND_SIDE_RAD,
-        phases[1],
-        true,
-      ),
-    ];
-  }),
-  ...SWELL_TRAINS.map((s) =>
-    makeTrain(SWELL_BAND, s.amplitudeM, s.periodS, s.angleDeg * DEG, s.phase, false),
+    ),
   ),
+  ...SWELL_TRAINS.map((s) => makeTrain(SWELL_BAND, s.amplitudeM, s.periodS, 0, s.phase, 0)),
 ];
-
-/** How much of a swell a sample carries, 0..1: the length of its swell vector. */
-export function swellExposure(sample: WaterSample): number {
-  return Math.min(1, Math.hypot(sample.swellX, sample.swellZ));
-}
 
 /** The share of a train's full amplitude present at a sample. */
 export function trainWeight(train: WaveTrain, sample: WaterSample): number {
   return train.band === SWELL_BAND
-    ? swellExposure(sample)
+    ? sample.swellAmp
     : bandWeight(WIND_BANDS[train.band]!, sample.fetchM);
 }
 
-/** World direction of a train at a sample: a wind train's own, a swell train's turned off the swell's direction. */
-function trainDirection(train: WaveTrain, sample: WaterSample): { x: number; z: number } {
-  const angle =
-    train.band === SWELL_BAND
-      ? Math.atan2(sample.swellZ, sample.swellX) + train.angleRad
-      : train.angleRad;
-  return { x: Math.cos(angle), z: Math.sin(angle) };
+/** Phase of a train at a point and time: a swell train rides the water's arrival time, a wind train its own direction and the warp. */
+function trainPhase(
+  train: WaveTrain,
+  x: number,
+  z: number,
+  t: number,
+  sample: WaterSample,
+  warp: number,
+): number {
+  if (train.band === SWELL_BAND) return train.omega * (sample.swellTau - t) + train.phase;
+  return (
+    train.wavenumber * (x * Math.cos(train.angleRad) + z * Math.sin(train.angleRad)) -
+    train.omega * t +
+    train.phase +
+    train.warpScale * warp
+  );
 }
 
 /** Factor that scales the whole sum so its significant height never passes the breaking ratio of the depth. */
@@ -230,13 +235,7 @@ function sumTrains(
   for (const train of WAVE_TRAINS) {
     const a = train.amplitudeM * trainWeight(train, sample);
     if (a === 0) continue;
-    const d = trainDirection(train, sample);
-    const phase =
-      train.wavenumber * (x * d.x + z * d.z) -
-      train.omega * t +
-      train.phase +
-      (train.warped ? warp : 0);
-    const h = a * Math.sin(phase);
+    const h = a * Math.sin(trainPhase(train, x, z, t, sample, warp));
     if (train.band === SWELL_BAND) swell += h;
     else wind += h;
     energy += (a * a) / 2;
@@ -320,15 +319,14 @@ export function waveSlopeAt(
         ? 1
         : pixelFade(TWO_PI / train.wavenumber, metresPerPixel);
     if (fade === 0) continue;
-    const d = trainDirection(train, sample);
-    const phase =
-      train.wavenumber * (x * d.x + z * d.z) -
-      train.omega * t +
-      train.phase +
-      (train.warped ? warp : 0);
-    const c = a * fade * Math.cos(phase);
-    sx += c * (train.wavenumber * d.x + (train.warped ? warpGradX : 0));
-    sz += c * (train.wavenumber * d.z + (train.warped ? warpGradZ : 0));
+    const c = a * fade * Math.cos(trainPhase(train, x, z, t, sample, warp));
+    if (train.band === SWELL_BAND) {
+      sx += c * train.omega * sample.swellSlowX;
+      sz += c * train.omega * sample.swellSlowZ;
+    } else {
+      sx += c * (train.wavenumber * Math.cos(train.angleRad) + train.warpScale * warpGradX);
+      sz += c * (train.wavenumber * Math.sin(train.angleRad) + train.warpScale * warpGradZ);
+    }
   }
   const scale = breakingScale(energy, depthM);
   return { x: sx * scale, z: sz * scale };

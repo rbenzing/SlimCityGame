@@ -1933,8 +1933,8 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       (hook as Record<string, unknown>).readWaterBodies = (): {
         size: number;
         kind: number[];
-        swellX: number[];
-        swellZ: number[];
+        swellTau: number[];
+        swellAmp: number[];
         flowX: number[];
         flowZ: number[];
       } => {
@@ -1942,8 +1942,8 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
         return {
           size: b.size,
           kind: Array.from(b.kind),
-          swellX: Array.from(b.swellX),
-          swellZ: Array.from(b.swellZ),
+          swellTau: Array.from(b.swellTau),
+          swellAmp: Array.from(b.swellAmp),
           flowX: Array.from(b.flowX),
           flowZ: Array.from(b.flowZ),
         };

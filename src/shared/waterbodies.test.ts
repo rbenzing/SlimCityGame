@@ -3,6 +3,7 @@ import { TILE_METERS } from './constants';
 import {
   deriveWaterBodies,
   sampleWater,
+  SWELL_REF_DEPTH_M,
   WaterKind,
   WIND_TOWARD,
   type WaterBodies,
@@ -160,31 +161,87 @@ describe('deriveWaterBodies fetch', () => {
 });
 
 describe('deriveWaterBodies swell', () => {
-  it('is 1 on open ocean and 0 on a lake', () => {
+  /** Water 8 m deep: the depth at which the swell has its reference height. */
+  const reference = (): number => -SWELL_REF_DEPTH_M;
+  const crossingS = TILE_METERS / Math.sqrt(9.81 * SWELL_REF_DEPTH_M);
+
+  it('is full height on open ocean, arrives later inland, and is absent on a lake', () => {
     const b = deriveWaterBodies(
       mask([
         [0, 0, 60, SIZE - 1],
         [70, 20, 90, 40],
       ]),
       SIZE,
-      flat,
+      reference,
     );
     const open = at(b, 30, 48);
-    expect(Math.hypot(b.swellX[open]!, b.swellZ[open]!)).toBeCloseTo(1, 5);
-    expect(b.swellX[open]!).toBeGreaterThan(0);
-    expect(b.swellX[at(b, 80, 30)]).toBe(0);
-    expect(b.swellZ[at(b, 80, 30)]).toBe(0);
+    expect(b.swellAmp[open]!).toBeCloseTo(1, 5);
+    expect(b.swellTau[at(b, 0, 48)]!).toBe(0);
+    // A front crossing a tile of 8 m water takes TILE_METERS / sqrt(g d) seconds.
+    expect(b.swellTau[open]!).toBeCloseTo(30 * crossingS, 1);
+    expect(b.swellSlowX[open]!).toBeCloseTo(crossingS / TILE_METERS, 4);
+    expect(b.swellAmp[at(b, 80, 30)]).toBe(0);
+    expect(b.swellTau[at(b, 80, 30)]).toBe(-1);
   });
 
-  it('is 0 behind a headland', () => {
+  it('spreads round from a gap in a breakwater: the diagonal takes the straight distance, not the grid steps', () => {
+    // A wall at x = 5 with a one-tile gap at z = 48; the swell fans out from the gap.
+    const water = mask([[0, 0, SIZE - 1, SIZE - 1]]);
+    for (let z = 0; z < SIZE; z++) if (z !== 48) water[z * SIZE + 5] = 0;
+    const b = deriveWaterBodies(water, SIZE, reference);
+    const gap = b.swellTau[at(b, 5, 48)]!;
+    const along = b.swellTau[at(b, 25, 48)]! - gap;
+    const diagonal = b.swellTau[at(b, 25, 68)]! - gap;
+    expect(along).toBeCloseTo(20 * crossingS, 1);
+    // 20 tiles each way is 28.3 tiles straight; steps along the grid would be 40.
+    expect(diagonal / along).toBeGreaterThan(1.3);
+    expect(diagonal / along).toBeLessThan(1.5);
+  });
+
+  it('is lowered and delayed behind a headland', () => {
     // Ocean along the west edge with a land block jutting in the middle of it.
     const water = mask([[0, 0, 70, SIZE - 1]]);
     for (let z = 20; z <= 75; z++) for (let x = 10; x <= 25; x++) water[z * SIZE + x] = 0;
-    const b = deriveWaterBodies(water, SIZE, flat);
+    const b = deriveWaterBodies(water, SIZE, reference);
     const shelter = at(b, 40, 48);
+    const open = at(b, 40, 5);
     expect(b.kind[shelter]).toBe(WaterKind.Ocean);
-    expect(Math.hypot(b.swellX[shelter]!, b.swellZ[shelter]!)).toBe(0);
-    expect(Math.hypot(b.swellX[at(b, 40, 5)]!, b.swellZ[at(b, 40, 5)]!)).toBeCloseTo(1, 5);
+    expect(b.swellAmp[shelter]!).toBeLessThan(0.2);
+    expect(b.swellAmp[open]!).toBeCloseTo(1, 5);
+    expect(b.swellTau[shelter]!).toBeGreaterThan(b.swellTau[open]!);
+  });
+
+  describe('on a straight beach', () => {
+    // The whole map is water, 8 m deep at the west edge and 1.5 m at the east: a long smooth shoal.
+    const depthAt = (tx: number): number => 8 - (6.5 * tx) / (SIZE - 1);
+    const b = deriveWaterBodies(mask([[0, 0, SIZE - 1, SIZE - 1]]), SIZE, (tx) => -depthAt(tx));
+    const period = 9.5;
+    const spacing = (tx: number): number => period / b.swellSlowX[at(b, tx, 48)]!;
+
+    it('runs the fronts parallel to the shore', () => {
+      for (const tx of [10, 40, 80]) {
+        expect(Math.abs(b.swellSlowZ[at(b, tx, 48)]!)).toBeLessThan(
+          0.01 * b.swellSlowX[at(b, tx, 48)]!,
+        );
+      }
+    });
+
+    it('spaces the crests period times the shallow-water speed, closer toward the shore', () => {
+      for (const tx of [10, 40, 80]) {
+        const want = period * Math.sqrt(9.81 * depthAt(tx));
+        expect(Math.abs(spacing(tx) - want) / want).toBeLessThan(0.1);
+      }
+      expect(spacing(80)).toBeLessThan(spacing(40));
+      expect(spacing(40)).toBeLessThan(spacing(10));
+    });
+
+    it('lifts the swell as the water shoals (Green law)', () => {
+      expect(b.swellAmp[at(b, 80, 48)]!).toBeGreaterThan(b.swellAmp[at(b, 10, 48)]!);
+      expect(b.swellAmp[at(b, 80, 48)]!).toBeCloseTo(
+        Math.pow(SWELL_REF_DEPTH_M / depthAt(80), 0.25),
+        1,
+      );
+    });
   });
 });
 

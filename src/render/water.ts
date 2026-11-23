@@ -157,10 +157,11 @@ interface RippleSet {
   readonly phase: number;
 }
 
-/** Ripples a river carries, 4 m and 1.5 m long, set across each other. Dials. */
+/** Ripples a river carries, 9 m, 4 m and 1.5 m long, set across each other. Dials. */
 export const RIPPLE_SETS: readonly RippleSet[] = [
-  { dirX: 0.8, dirZ: 0.6, wavelengthM: 4, slope: 0.06, phase: 0.7 },
-  { dirX: -0.6, dirZ: 0.8, wavelengthM: 1.5, slope: 0.04, phase: 3.1 },
+  { dirX: 0.8, dirZ: 0.6, wavelengthM: 4, slope: 0.12, phase: 0.7 },
+  { dirX: -0.6, dirZ: 0.8, wavelengthM: 1.5, slope: 0.08, phase: 3.1 },
+  { dirX: 0.95, dirZ: -0.31, wavelengthM: 9, slope: 0.05, phase: 5 },
 ];
 
 /** Seconds a ripple pattern drifts before it fades out and is replaced by a copy half a cycle on. */
@@ -287,16 +288,29 @@ export function glintScale(nightFactor: number): number {
 }
 
 /**
+ * How much both glint lobes widen per unit of slope variance the pixel fade
+ * took out of the normal: far water, whose small waves are too fine to shade,
+ * glitters evenly instead of showing stripes.
+ */
+export const GLINT_ROUGHEN = 400;
+
+/**
  * Two-lobe specular glint from ndotH (clamped dot of the shading normal and
  * the light/view half-vector, 0..1): a tight, bright sparkle lobe plus a
  * broader, dimmer lobe so the glitter
  * track is still visible well away from the tight lobe's pinpoint peak — the
- * spread that makes it read from RTS camera distance. Pure; day/night
+ * spread that makes it read from RTS camera distance. `variance` is the
+ * slope variance of the waves too fine to shade: each lobe's shininess is
+ * divided by 1 + GLINT_ROUGHEN * variance. Pure; day/night
  * tint/scale apply on top via glintColor/glintScale, not here.
  */
-export function glintSpecular(ndotH: number): number {
+export function glintSpecular(ndotH: number, variance = 0): number {
   const n = clamp01(ndotH);
-  return n ** GLINT_SHININESS * GLINT_INTENSITY + n ** GLINT_WIDE_SHININESS * GLINT_WIDE_INTENSITY;
+  const rough = 1 + GLINT_ROUGHEN * Math.max(0, variance);
+  return (
+    n ** (GLINT_SHININESS / rough) * GLINT_INTENSITY +
+    n ** (GLINT_WIDE_SHININESS / rough) * GLINT_WIDE_INTENSITY
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -441,7 +455,9 @@ export class WaterRenderer {
     const count = grid.positions.length / 3;
     const depth = new Float32Array(count);
     const fetch = new Float32Array(count);
-    const swell = new Float32Array(count * 2);
+    const swellTau = new Float32Array(count);
+    const swellSlow = new Float32Array(count * 2);
+    const swellAmp = new Float32Array(count);
     const flow = new Float32Array(count * 2);
     for (let i = 0; i < count; i++) {
       const x = grid.positions[i * 3]!;
@@ -450,8 +466,10 @@ export class WaterRenderer {
       const s = sampleWater(bodies, x, z);
       depth[i] = d;
       fetch[i] = s.fetchM;
-      swell[i * 2] = s.swellX;
-      swell[i * 2 + 1] = s.swellZ;
+      swellTau[i] = s.swellTau;
+      swellSlow[i * 2] = s.swellSlowX;
+      swellSlow[i * 2 + 1] = s.swellSlowZ;
+      swellAmp[i] = s.swellAmp;
       if (d > 0) {
         flow[i * 2] = s.flowX;
         flow[i * 2 + 1] = s.flowZ;
@@ -465,7 +483,9 @@ export class WaterRenderer {
     geometry.setAttribute('waterDepth', new THREE.BufferAttribute(depth, 1));
     geometry.setAttribute('waterFoul', foul);
     geometry.setAttribute('waterFetch', new THREE.BufferAttribute(fetch, 1));
-    geometry.setAttribute('waterSwell', new THREE.BufferAttribute(swell, 2));
+    geometry.setAttribute('waterSwellTau', new THREE.BufferAttribute(swellTau, 1));
+    geometry.setAttribute('waterSwellSlow', new THREE.BufferAttribute(swellSlow, 2));
+    geometry.setAttribute('waterSwellAmp', new THREE.BufferAttribute(swellAmp, 1));
     geometry.setAttribute('waterFlow', new THREE.BufferAttribute(flow, 2));
     return { geometry, bodies, foul };
   }
@@ -639,37 +659,33 @@ export class WaterRenderer {
     // from the vertex's fetch or swell, its direction (a swell train turned off
     // the swell's own), its phase, and the energy that sets the breaking cap.
     const fetchAttr = attribute<'float'>('waterFetch', 'float');
-    const swellAttr = attribute<'vec2'>('waterSwell', 'vec2');
-    const swellLength = length(swellAttr);
-    const swellUnit = swellAttr.div(max(swellLength, 1e-4));
-    const swellExposure = min(swellLength, 1);
+    const swellTauAttr = attribute<'float'>('waterSwellTau', 'float');
+    const swellSlowAttr = attribute<'vec2'>('waterSwellSlow', 'vec2');
+    const swellAmpAttr = attribute<'float'>('waterSwellAmp', 'float');
     let energy: Node<'float'> = float(0);
     const parts = WAVE_TRAINS.map((train) => {
       const weight: Node<'float'> =
         train.band === SWELL_BAND
-          ? swellExposure
+          ? swellAmpAttr
           : smoothstep(
               WIND_BANDS[train.band]!.prevFetchM,
               WIND_BANDS[train.band]!.fetchM,
               fetchAttr,
             );
       const amplitude = weight.mul(train.amplitudeM);
-      const c = Math.cos(train.angleRad);
-      const s = Math.sin(train.angleRad);
-      const dirX: Node<'float'> =
-        train.band === SWELL_BAND ? swellUnit.x.mul(c).sub(swellUnit.y.mul(s)) : float(c);
-      const dirZ: Node<'float'> =
-        train.band === SWELL_BAND ? swellUnit.x.mul(s).add(swellUnit.y.mul(c)) : float(s);
-      let phase = worldX
-        .mul(dirX)
-        .add(worldZ.mul(dirZ))
-        .mul(train.wavenumber)
-        .sub(this.timeUniform.mul(train.omega))
-        .add(train.phase);
-      if (train.warped) phase = phase.add(warpNode);
+      const phase: Node<'float'> =
+        train.band === SWELL_BAND
+          ? swellTauAttr.sub(this.timeUniform).mul(train.omega).add(train.phase)
+          : worldX
+              .mul(Math.cos(train.angleRad))
+              .add(worldZ.mul(Math.sin(train.angleRad)))
+              .mul(train.wavenumber)
+              .sub(this.timeUniform.mul(train.omega))
+              .add(train.phase)
+              .add(warpNode.mul(train.warpScale));
       energy = energy.add(amplitude.mul(amplitude).mul(0.5));
       this.graphTrainList.push(train);
-      return { train, amplitude, dirX, dirZ, phase };
+      return { train, amplitude, phase };
     });
     const significant = energy.sqrt().mul(4);
     const breakScale = min(float(1), depthAttr.mul(BREAKING_RATIO).div(max(significant, 1e-6)));
@@ -690,24 +706,28 @@ export class WaterRenderer {
       smoothstep(FADE_GONE_PX, FADE_FULL_PX, float(wavelengthM).div(max(metresPerPixel, 1e-6)));
     let slopeX: Node<'float'> = float(0);
     let slopeZ: Node<'float'> = float(0);
+    // The slope variance the fade takes out of the normal, half the square of
+    // each train's removed slope amplitude: the glint widens by it.
+    let removedVariance: Node<'float'> = float(0);
     for (const part of parts) {
       const { train } = part;
       const strength = cos(part.phase).mul(part.amplitude);
-      const faded =
-        train.band === SWELL_BAND
-          ? strength
-          : strength.mul(fadeNode((Math.PI * 2) / train.wavenumber));
-      let dx: Node<'float'> = part.dirX.mul(train.wavenumber);
-      let dz: Node<'float'> = part.dirZ.mul(train.wavenumber);
-      if (train.warped) {
-        dx = dx.add(warpGradX);
-        dz = dz.add(warpGradZ);
+      if (train.band === SWELL_BAND) {
+        slopeX = slopeX.add(strength.mul(train.omega).mul(swellSlowAttr.x));
+        slopeZ = slopeZ.add(strength.mul(train.omega).mul(swellSlowAttr.y));
+        continue;
       }
-      slopeX = slopeX.add(faded.mul(dx));
-      slopeZ = slopeZ.add(faded.mul(dz));
+      const fade = fadeNode((Math.PI * 2) / train.wavenumber);
+      const dx = warpGradX.mul(train.warpScale).add(train.wavenumber * Math.cos(train.angleRad));
+      const dz = warpGradZ.mul(train.warpScale).add(train.wavenumber * Math.sin(train.angleRad));
+      slopeX = slopeX.add(strength.mul(fade).mul(dx));
+      slopeZ = slopeZ.add(strength.mul(fade).mul(dz));
+      const removed = part.amplitude.mul(oneMinus(fade)).mul(dx.mul(dx).add(dz.mul(dz)).sqrt());
+      removedVariance = removedVariance.add(removed.mul(removed).mul(0.5));
     }
     slopeX = slopeX.mul(breakScale);
     slopeZ = slopeZ.mul(breakScale);
+    removedVariance = removedVariance.mul(breakScale).mul(breakScale);
 
     // River drift: two copies of the ripple pattern, each carried along the
     // flow and reset every cycle, half a cycle apart and cross-faded so the
@@ -729,13 +749,16 @@ export class WaterRenderer {
           .add(worldZ.sub(flowAttr.y.mul(drift)).mul(set.dirZ));
         return cos(along.mul(k).add(set.phase)).mul(fadeIn);
       };
+      const rippleFade = fadeNode(set.wavelengthM);
       const ripple = crest(cycleA, fadeA)
         .add(crest(cycleB, fadeB))
         .mul(flowStrength)
-        .mul(fadeNode(set.wavelengthM))
+        .mul(rippleFade)
         .mul(set.slope);
       slopeX = slopeX.add(ripple.mul(set.dirX));
       slopeZ = slopeZ.add(ripple.mul(set.dirZ));
+      const rippleRemoved = flowStrength.mul(oneMinus(rippleFade)).mul(set.slope);
+      removedVariance = removedVariance.add(rippleRemoved.mul(rippleRemoved).mul(0.5));
     }
     const shadingNormalLocal = normalize(vec3(slopeX.negate(), float(1), slopeZ.negate()));
     material.normalNode = transformNormalToView(shadingNormalLocal);
@@ -796,10 +819,11 @@ export class WaterRenderer {
     // A tight lobe plus a second, wider/dimmer lobe — mirrors
     // glintSpecular's two-term sum exactly, so the glitter track survives a
     // wide/distant RTS shot instead of collapsing to a single pinpoint.
+    const rough = removedVariance.mul(GLINT_ROUGHEN).add(1);
     const specular = ndotH
-      .pow(GLINT_SHININESS)
+      .pow(rough.reciprocal().mul(GLINT_SHININESS))
       .mul(GLINT_INTENSITY)
-      .add(ndotH.pow(GLINT_WIDE_SHININESS).mul(GLINT_WIDE_INTENSITY));
+      .add(ndotH.pow(rough.reciprocal().mul(GLINT_WIDE_SHININESS)).mul(GLINT_WIDE_INTENSITY));
     const glintColor = mix(
       vec3(...SUN_GLINT_COLOR),
       vec3(...MOON_GLINT_COLOR),

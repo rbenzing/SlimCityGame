@@ -25,6 +25,7 @@ import {
   glancingOpacity,
   glintScale,
   glintSpecular,
+  GLINT_ROUGHEN,
   reflectedColor,
 } from './water';
 import { WaterKind, deriveWaterBodies, sampleWater } from '../shared/waterbodies';
@@ -315,6 +316,19 @@ describe('glintSpecular', () => {
     expect(glintSpecular(-3)).toBe(glintSpecular(0));
     expect(glintSpecular(7)).toBeCloseTo(glintSpecular(1), 9);
   });
+
+  it('widens both lobes with the slope variance the fade removed, and keeps the peak', () => {
+    expect(glintSpecular(0.9, 0)).toBe(glintSpecular(0.9));
+    expect(glintSpecular(0.9, 0.01)).toBeGreaterThan(glintSpecular(0.9));
+    expect(glintSpecular(0.9, 0.05)).toBeGreaterThan(glintSpecular(0.9, 0.01));
+    expect(glintSpecular(1, 0.05)).toBeCloseTo(glintSpecular(1), 9);
+    // Each shininess is divided by 1 + GLINT_ROUGHEN * variance.
+    const rough = 1 + GLINT_ROUGHEN * 0.02;
+    expect(glintSpecular(0.8, 0.02)).toBeCloseTo(
+      0.8 ** (60 / rough) * 1.4 + 0.8 ** (12 / rough) * 0.15,
+      9,
+    );
+  });
 });
 
 describe('WaterRenderer', () => {
@@ -454,11 +468,15 @@ describe('WaterRenderer', () => {
     const geometry = (scene.children[0] as THREE.Mesh).geometry;
     const position = geometry.attributes.position!;
     const fetch = geometry.attributes.waterFetch!;
-    const swell = geometry.attributes.waterSwell!;
+    const swellTau = geometry.attributes.waterSwellTau!;
+    const swellSlow = geometry.attributes.waterSwellSlow!;
+    const swellAmp = geometry.attributes.waterSwellAmp!;
     const flow = geometry.attributes.waterFlow!;
     const depth = geometry.attributes.waterDepth!;
     expect(fetch.count).toBe(position.count);
-    expect(swell.itemSize).toBe(2);
+    expect(swellTau.itemSize).toBe(1);
+    expect(swellSlow.itemSize).toBe(2);
+    expect(swellAmp.itemSize).toBe(1);
     expect(flow.itemSize).toBe(2);
     const bodies = deriveWaterBodies(mask, size, (tx, tz) =>
       height((tx + 0.5) * TILE_METERS, (tz + 0.5) * TILE_METERS),
@@ -468,8 +486,10 @@ describe('WaterRenderer', () => {
     for (let i = 0; i < position.count; i++) {
       const s = sampleWater(bodies, position.getX(i), position.getZ(i));
       expect(Math.abs(fetch.getX(i) - s.fetchM)).toBeLessThanOrEqual(s.fetchM * 1e-6 + 1e-6);
-      expect(swell.getX(i)).toBeCloseTo(s.swellX, 5);
-      expect(swell.getY(i)).toBeCloseTo(s.swellZ, 5);
+      expect(swellTau.getX(i)).toBeCloseTo(s.swellTau, 3);
+      expect(swellSlow.getX(i)).toBeCloseTo(s.swellSlowX, 6);
+      expect(swellSlow.getY(i)).toBeCloseTo(s.swellSlowZ, 6);
+      expect(swellAmp.getX(i)).toBeCloseTo(s.swellAmp, 5);
       if (depth.getX(i) > 0) {
         expect(flow.getX(i)).toBeCloseTo(s.flowX, 5);
         expect(flow.getY(i)).toBeCloseTo(s.flowZ, 5);
@@ -477,7 +497,7 @@ describe('WaterRenderer', () => {
         expect(flow.getX(i)).toBe(0);
         expect(flow.getY(i)).toBe(0);
       }
-      if (Math.hypot(swell.getX(i), swell.getY(i)) > 0.5) sawSwell = true;
+      if (swellAmp.getX(i) > 0.5 && swellSlow.getX(i) > 0) sawSwell = true;
       if (Math.hypot(flow.getX(i), flow.getY(i)) > 0.1) sawFlow = true;
     }
     expect(sawSwell).toBe(true);
