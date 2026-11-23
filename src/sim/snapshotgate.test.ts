@@ -95,6 +95,48 @@ describe('snapshot gate: the worker posts the next snapshot once the page has th
     expect(h.lastSnapshot()!.buildings!.added.map((b) => b.x)).toContain(40);
   });
 
+  /** A town with one turbine, paused, then the turbine bulldozed: returns what each step posted. */
+  const pausedBulldoze = (h: Harness, ackBeforeResume: boolean) => {
+    run(h, 1, [turbine(40, 40)]);
+    h.ticks(200);
+    h.sim.handleMessage({ type: 'setSpeed', speed: 0 });
+    h.sim.pump(50);
+    const before = h.lastSnapshot()!.stats.happiness;
+    send(h, 2, [{ kind: 'bulldoze', tiles: [{ x: 40, z: 40 }] }]);
+    h.sim.pump(50);
+    if (ackBeforeResume) acknowledge(h);
+    const afterEdit = h.lastSnapshot()!.stats.happiness;
+    return { before, afterEdit };
+  };
+
+  it('refreshes the happiness average for a paused edit, gated or not', () => {
+    const free = sandboxed();
+    const a = pausedBulldoze(free, false);
+    expect(a.afterEdit).not.toBe(a.before);
+    const held = gated();
+    const b = pausedBulldoze(held, true);
+    expect(b.afterEdit).toBe(a.afterEdit);
+  });
+
+  it(
+    'saves the same after a paused edit and resume whenever the acknowledgement arrives',
+    () => {
+      const saves: Uint8Array[] = [];
+      for (const mode of ['free', 'ackFirst', 'ackAfter'] as const) {
+        const h = mode === 'free' ? sandboxed() : gated();
+        pausedBulldoze(h, mode === 'ackFirst');
+        h.sim.handleMessage({ type: 'setSpeed', speed: 1 });
+        h.ticks(100);
+        if (mode === 'ackAfter') acknowledge(h);
+        h.sim.handleMessage({ type: 'requestSave' });
+        saves.push(new Uint8Array(latestSaveData(h)));
+      }
+      expect(saves[1]).toEqual(saves[0]);
+      expect(saves[2]).toEqual(saves[0]);
+    },
+    GROWTH_TIMEOUT_MS,
+  );
+
   it('behaves as before while the page has never acknowledged', () => {
     const h = sandboxed();
     h.ticks(100);

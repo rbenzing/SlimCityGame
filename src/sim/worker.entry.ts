@@ -838,6 +838,7 @@ class SimWorld implements WorkerSim {
     if (this.utilitiesDirty) {
       this.recomputeUtilitiesNow();
     }
+    this.stats.happiness = this.averageHappiness();
     this.offerSnapshot();
   }
 
@@ -896,6 +897,7 @@ class SimWorld implements WorkerSim {
     this.recomputeUtilitiesNow();
     this.occupancy = this.economy.occupancy(this.registry.all());
     this.post({ type: 'ready' });
+    this.stats.happiness = this.averageHappiness();
     this.postSnapshot();
   }
 
@@ -1031,6 +1033,7 @@ class SimWorld implements WorkerSim {
     this.seweredDirty = true;
     this.waterFoulDirty = true;
 
+    this.stats.happiness = this.averageHappiness();
     this.postSnapshot();
   }
 
@@ -1614,9 +1617,6 @@ class SimWorld implements WorkerSim {
   }
 
   private postSnapshot(): void {
-    // A cadence snapshot's average was refreshed by the pump; any other post
-    // (a paused edit, a load) refreshes it here.
-    if (!this.snapshotDue) this.stats.happiness = this.averageHappiness();
     this.snapshotDue = false;
     this.snapshotInFlight = true;
     const vehicles = this.traffic.vehicleBuffer.slice();
