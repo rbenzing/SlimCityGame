@@ -114,4 +114,12 @@ Back to [the index](../GROUND-TRUTHS.md).
   option answers only its own checkbox. —
   [progression.md](../game-design/progression.md); `GrowthSystem` in
   `src/sim/growth.ts`
+- [R-architecture-018] Once the page has acknowledged a snapshot the worker keeps one in
+  flight and holds its deltas until the next acknowledgement. Nothing the sim
+  works out may depend on when a snapshot posts: what a tick reads is
+  refreshed where the sim moves (a cadence pump, a paused drain, a load),
+  never in `postSnapshot`. Twenty a second once queued behind a busy page
+  until a read-back waited 17 s. —
+  [the worker envelope](../engineering/interfaces/2-the-worker-envelope-maintoworker--workertomain.md);
+  `offerSnapshot` in `src/sim/worker.entry.ts`, `src/sim/snapshotgate.test.ts`
 

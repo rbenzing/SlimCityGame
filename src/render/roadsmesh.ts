@@ -8484,6 +8484,13 @@ export class RoadMeshRenderer {
    */
   private readonly kerbFaces = new Map<number, KerbFace | null>();
 
+  /**
+   * Chunks waiting for `drainQueued`, each with whether a junction control
+   * (true) or only a drive cut (false) asked for it.
+   */
+  private readonly queued = new Map<number, boolean>();
+  private queueing = false;
+
   // Median trees: a single trunk InstancedMesh + a single
   // canopy InstancedMesh, shared geometry/material built once and reused
   // across rebuilds; only created/added to the scene once at least one
@@ -8582,9 +8589,10 @@ export class RoadMeshRenderer {
    * Adds to `dirty` every chunk along the straight runs that leave tile
    * (x, z), and along the runs leaving the junction at each one's far end: a
    * block face's stalls are laid along its whole run, and which end its
-   * accessible stalls stand at is decided by the junctions at both.
+   * accessible stalls stand at is decided by the junctions at both. With
+   * `turn` off the runs stop at that far junction: it is not itself changed.
    */
-  private dirtyRuns(x: number, z: number, dirty: Set<number>): void {
+  private dirtyRuns(x: number, z: number, dirty: Set<number>, turn = true): void {
     const walk = (sx: number, sz: number, dx: number, dz: number, turn: boolean): void => {
       for (let tx = sx + dx, tz = sz + dz; ; tx += dx, tz += dz) {
         if (tx < 0 || tz < 0 || tx >= MAP_SIZE || tz >= MAP_SIZE) return;
@@ -8607,7 +8615,7 @@ export class RoadMeshRenderer {
       [0, 1],
       [0, -1],
     ] as const) {
-      walk(x, z, dx, dz, true);
+      walk(x, z, dx, dz, turn);
     }
   }
 
@@ -8677,7 +8685,7 @@ export class RoadMeshRenderer {
     // far back as the approach zone runs, and the parking along its arms.
     const moved = (i: number): void => {
       this.dirtyReaders(i % MAP_SIZE, Math.floor(i / MAP_SIZE), dirty);
-      this.dirtyRuns(i % MAP_SIZE, Math.floor(i / MAP_SIZE), dirty);
+      this.dirtyRuns(i % MAP_SIZE, Math.floor(i / MAP_SIZE), dirty, false);
     };
     for (const [i, control] of next) {
       if (this.junctionControls.get(i) !== control) moved(i);
@@ -8693,9 +8701,41 @@ export class RoadMeshRenderer {
     this.junctionLaneTurns = nextLaneTurns;
     if (dirty.size > 0) this.kerbFaces.clear();
 
+    if (this.queueing) {
+      for (const key of dirty) this.queued.set(key, true);
+      return dirty;
+    }
     for (const key of dirty) this.rebuildChunk(key);
     if (dirty.size > 0) this.rebuildInstancedParts();
     return dirty;
+  }
+
+  /**
+   * Holds the chunk rebuilds a junction control or a drive cut asks for until
+   * `drainQueued` takes them, so a caller can spread them over frames. Off by
+   * default: every change rebuilds at once.
+   */
+  setQueueing(on: boolean): void {
+    this.queueing = on;
+  }
+
+  /**
+   * Rebuilds up to `max` of the queued chunks, oldest first. `whole` answers
+   * those a junction control moved; `kerb` those a drive cut moved and nothing
+   * else did, whose only change is where the kerb stalls stand. `more`, when
+   * given, is asked before each chunk after the first and stops the drain on
+   * false, so a caller with a clock can pace it by time.
+   */
+  drainQueued(max: number, more?: () => boolean): { whole: Set<number>; kerb: Set<number> } {
+    const whole = new Set<number>();
+    const kerb = new Set<number>();
+    for (const [key, isWhole] of [...this.queued].slice(0, max)) {
+      if (more && whole.size + kerb.size > 0 && !more()) break;
+      this.rebuildChunk(key);
+      (isWhole ? whole : kerb).add(key);
+    }
+    if (whole.size > 0) this.rebuildInstancedParts();
+    return { whole, kerb };
   }
 
   /** Current median-tree instance count (test/inspection hook). */
@@ -8962,16 +9002,60 @@ export class RoadMeshRenderer {
       a.length === b.length &&
       a.every((c) => b.some((d) => d.side === c.side && d.from === c.from && d.to === c.to));
     const dirty = new Set<number>();
-    const moved = (i: number): void => {
-      this.dirtyReaders(i % MAP_SIZE, Math.floor(i / MAP_SIZE), dirty);
-      this.dirtyRuns(i % MAP_SIZE, Math.floor(i / MAP_SIZE), dirty);
-    };
+    const moved = (i: number): void =>
+      this.dirtyDriveFace(i % MAP_SIZE, Math.floor(i / MAP_SIZE), dirty);
     for (const [i, list] of next) if (!same(this.driveCuts.get(i), list)) moved(i);
     for (const i of this.driveCuts.keys()) if (!next.has(i)) moved(i);
     this.driveCuts = next;
-    if (dirty.size > 0) this.kerbFaces.clear();
+    if (this.queueing) {
+      for (const key of dirty) this.queued.set(key, this.queued.get(key) ?? false);
+      return dirty;
+    }
     for (const key of dirty) this.rebuildChunk(key);
     return dirty;
+  }
+
+  /**
+   * Adds to `dirty` the chunks along the straight run through tile (x, z),
+   * from junction to junction, and forgets the kerb faces laid along it. A
+   * drive's cut moves only the stalls of its own run: it changes no junction
+   * and no road, so the runs across it are untouched.
+   */
+  private dirtyDriveFace(x: number, z: number, dirty: Set<number>): void {
+    const forget = (tx: number, tz: number): void => {
+      dirty.add(chunkKeyOf(tx, tz));
+      this.kerbFaces.delete(tileIndex(tx, tz) * 2);
+      this.kerbFaces.delete(tileIndex(tx, tz) * 2 + 1);
+    };
+    forget(x, z);
+    const own = this.groundAt(x, z);
+    if (!own) return;
+    const axes: readonly (readonly [number, number])[] = !isStraightRunMask(own.mask)
+      ? [
+          [1, 0],
+          [-1, 0],
+          [0, 1],
+          [0, -1],
+        ]
+      : (own.mask & (EAST | WEST)) !== 0
+        ? [
+            [1, 0],
+            [-1, 0],
+          ]
+        : [
+            [0, 1],
+            [0, -1],
+          ];
+    for (const [dx, dz] of axes) {
+      for (let tx = x + dx, tz = z + dz; tx >= 0 && tz >= 0 && tx < MAP_SIZE && tz < MAP_SIZE;) {
+        const tile = this.groundAt(tx, tz);
+        const onAxis = tile && (tile.mask & (dx !== 0 ? EAST | WEST : NORTH | SOUTH)) !== 0;
+        if (!tile || !onAxis || !isStraightRunMask(tile.mask)) break;
+        forget(tx, tz);
+        tx += dx;
+        tz += dz;
+      }
+    }
   }
 
   /**
@@ -9583,6 +9667,7 @@ export class RoadMeshRenderer {
   }
 
   private rebuildChunk(key: number): void {
+    this.queued.delete(key);
     const chunk = this.chunks.get(key);
     if (!chunk) return;
 

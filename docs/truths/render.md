@@ -233,8 +233,10 @@ Back to [the index](../GROUND-TRUTHS.md).
   reaches. An instanced pool is never allocated for fewer than
   `MIN_INSTANCE_CAPACITY` instances: below about a thousand, three compiles
   the capacity into the shader, so every doubling compiled it again. A mesh
-  that is replaced is disposed. The page once stopped answering while a city
-  grew at 4×; its longest stall is now 1.1 s. —
+  that is replaced is disposed. A drive cut reaches its own block face and a
+  control change its arms to the next junction; only a road edit turns the
+  corner. The page twice stopped answering while a city grew at 4×; its
+  longest stall is now 0.7 s. —
   [performance-budget.md](../engineering/performance-budget.md#the-main-thread-while-a-city-grows);
   `onSnapshot` in `src/main.ts`
 - [R-render-038] A line's buses, trams and trains are drawn in every view while the line is

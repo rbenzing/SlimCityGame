@@ -1284,7 +1284,9 @@ export type MainToWorker =
   | { type: 'requestSave' }
   | { type: 'loadSave'; data: ArrayBuffer }
   | { type: 'select'; buildingId: number }
-  | { type: 'clearSelect' };
+  | { type: 'clearSelect' }
+  /** The page has applied the last snapshot and drawn the frame showing it; the first one turns the worker's one-in-flight gate on. */
+  | { type: 'snapshotApplied' };
 
 export type WorkerToMain =
   | { type: 'ready' }

@@ -56,8 +56,10 @@ target nobody currently checks by automation.
 The rule is `[R-render-037]`: a snapshot's cost follows what it changed.
 
 A snapshot falls due every `SNAPSHOT_TICKS` sim ticks, and the worker posts
-at most one a pump, after the pump's ticks have run. Deltas gather in the
-worker until a post drains them, so a pump of several ticks loses nothing:
+at most one a pump. Once the page has acknowledged one (`snapshotApplied`,
+sent after the frame that shows it) only one is in flight
+`[R-architecture-018]`. Deltas gather in the worker until a post drains
+them, so nothing is lost. The most it posts:
 
 | Speed | Ticks a second | Snapshots a second |
 | ----- | -------------- | ------------------ |
@@ -66,31 +68,32 @@ worker until a post drains them, so a pump of several ticks loses nothing:
 | 4×    | 106.7          | 20                 |
 
 Source: `TICK_RATE`, `SPEED_MULTIPLIERS` and `SNAPSHOT_HZ` in
-`src/shared/constants.ts`; `pump` in `src/sim/worker.entry.ts`. Before the
-one-a-pump rule 4× posted 53 a second, and any work a snapshot did over the
-whole city was done 53 times a second.
+`src/shared/constants.ts`; `pump` and `offerSnapshot` in
+`src/sim/worker.entry.ts`.
+
+What a snapshot leaves for the frame is paced (`flushDeferred` in
+`src/main.ts`): road chunks a drive cut or a junction control dirtied are
+rebuilt within `ROAD_DRAIN_BUDGET_MS` = 12 ms a frame, and the lamp and tree
+sweeps wait for a frame with no new snapshot, or `SWEEP_INTERVAL_MS` = 500 ms.
 
 **Target:** while `tools/probes/stall.mjs` grows its city of a hundred
 zoned blocks at 4×, no read-back from the page takes longer than 1 s. —
 _measured by that tool, which fails over `STALL_LIMIT_MS`, on any page error
 and on a read-back that never returns; no CI step runs it._
 
-**Not met.** Run again when the tool became a probe, the longest read-back
-was 16.9 s at a population of 544, and the old tool taken from history gave
-15.9 s at 647 people and 69 s at 1,857 before the page stopped answering.
-The "Now" column below is what was measured when the limit was set; what
-has slowed the page since is not traced.
+**Met.**
 
-| Measured on that city at 4×     | Before                                  | Now         |
-| ------------------------------- | --------------------------------------- | ----------- |
-| Longest read-back               | 57 s, then the page never came back     | 1.1 s       |
-| Page errors                     | 12,000 "Array buffer allocation failed" | 0           |
-| JS heap                         | 2.1 GB                                  | 0.6 GB      |
-| Snapshots taken while growing   | 50 a second                             | 20 a second |
-| Shader programs linked in a run | 280                                     | 64          |
+| Measured on that city at 4× | Unpaced                  | Paced     |
+| --------------------------- | ------------------------ | --------- |
+| Longest read-back           | 16.9 s at 544 people     | 0.7 s     |
+| JS heap                     | 3.5 GB                   | 0.3 GB    |
+| Town reached in 100 s       | about 600                | 2,451     |
 
-The target is missed by a tenth of a second: the longest read-back is 1.1 s
-and none passes 2 s. The 64 links left are first compiles.
+The wait was a queue. One new home's drive cut rebuilt the road chunks
+along its street and round the far corners, emptied the city's kerb-face
+cache, re-laid every building beside them and swept every lamp and tree,
+while 20 snapshots a second arrived behind that work; the heap was the
+queue. When the limit was first set the same city went from 57 s to 1.1 s.
 
 Where the main thread went before the first fix, from a CPU profile of that
 city growing to 4,800 people (408 s sampled):
@@ -105,6 +108,9 @@ city growing to 4,800 people (408 s sampled):
 
 What each cost was met with:
 
+- **A change's reach:** a drive cut redraws its own block face
+  (`dirtyDriveFace`), a control change its arms to the next junction; only a
+  road edit turns the corner (`dirtyRuns` in `src/render/roadsmesh.ts`).
 - **Kept per building:** the tiles a lot's drive crosses (`DrivewayTiles` in
   `src/render/drivewaytiles.ts`) and a walker's path
   (`PedestrianRenderer.apply`). A delta lays only what it names; a changed
