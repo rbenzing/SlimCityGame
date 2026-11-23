@@ -12,10 +12,11 @@ import {
   OPACITY_AT_NORMAL_INCIDENCE,
   SHALLOW_WATER_COLOR,
   SHORELINE_FOAM_DEPTH_M,
-  SWELL_AMPLITUDE_BUDGET_M,
-  SWELL_LAYERS,
-  WAVE_NORMAL_LAYERS,
+  WATER_REBUILD_SETTLE_S,
+  WATER_VERTEX_SPACING_M,
   WaterRenderer,
+  buildWaterGrid,
+  coveredTiles,
   depthColor,
   foamStrength,
   foulMix,
@@ -25,9 +26,9 @@ import {
   glintScale,
   glintSpecular,
   reflectedColor,
-  swellHeight,
-  waveNormalTilt,
 } from './water';
+import { WaterKind, deriveWaterBodies, sampleWater } from '../shared/waterbodies';
+import { WAVE_TRAINS } from '../shared/waves';
 
 describe('depthColor', () => {
   it('is the shallow anchor at depth 0', () => {
@@ -107,89 +108,21 @@ describe('vertexFouling', () => {
     expect(vertexFouling(layer, size, 0, 0)).toBe(0);
   });
 
+  it('reads only the tile a half-tile vertex stands inside, and both tiles on a shared edge', () => {
+    const size = 4;
+    const layer = new Uint8Array(size * size);
+    layer[1 * size + 1] = 255; // tile (1, 1)
+    expect(vertexFouling(layer, size, 0.5, 0.5)).toBe(0);
+    expect(vertexFouling(layer, size, 1.5, 1.5)).toBe(1);
+    expect(vertexFouling(layer, size, 1, 1.5)).toBe(1); // edge between tiles (0,1) and (1,1)
+    expect(vertexFouling(layer, size, 0.5, 1.5)).toBe(0);
+  });
+
   it('clamps at the map edge instead of reading off it', () => {
     const size = 2;
     const layer = new Uint8Array([255, 0, 0, 0]);
     expect(vertexFouling(layer, size, 0, 0)).toBe(1);
     expect(vertexFouling(layer, size, 2, 2)).toBe(0);
-  });
-});
-
-describe('swellHeight', () => {
-  it('is deterministic: identical inputs always produce the identical output', () => {
-    expect(swellHeight(12, 34, 5.6)).toBe(swellHeight(12, 34, 5.6));
-  });
-
-  it('stays within +-SWELL_AMPLITUDE_BUDGET_M across a broad scan of position and time (v2: budget raised 0.15m -> 0.35m by the added long-wavelength chop layer)', () => {
-    for (let t = 0; t < 20; t += 0.7) {
-      for (let x = 0; x < 300; x += 37) {
-        const h = swellHeight(x, x * 0.5, t);
-        expect(h).toBeGreaterThanOrEqual(-SWELL_AMPLITUDE_BUDGET_M - 1e-9);
-        expect(h).toBeLessThanOrEqual(SWELL_AMPLITUDE_BUDGET_M + 1e-9);
-      }
-    }
-  });
-
-  it('varies over time at a fixed position (an actual animation, not a static offset)', () => {
-    const values = new Set<string>();
-    for (let t = 0; t < 10; t += 0.3) values.add(swellHeight(10, 10, t).toFixed(6));
-    expect(values.size).toBeGreaterThan(1);
-  });
-
-  it('varies across space at a fixed time (not a uniform whole-plane bob)', () => {
-    const values = new Set<string>();
-    for (let x = 0; x < 400; x += 23) values.add(swellHeight(x, 0, 3.14).toFixed(6));
-    expect(values.size).toBeGreaterThan(1);
-  });
-});
-
-describe('SWELL_LAYERS (v2 long-wavelength chop layer)', () => {
-  it('has three layers whose amplitudes sum to exactly SWELL_AMPLITUDE_BUDGET_M', () => {
-    expect(SWELL_LAYERS.length).toBe(3);
-    const sum = SWELL_LAYERS.reduce((acc, layer) => acc + layer.amplitude, 0);
-    expect(sum).toBeCloseTo(SWELL_AMPLITUDE_BUDGET_M, 9);
-  });
-
-  it('includes a long-wavelength (35-60m) chop layer distinct from the original shorter layers', () => {
-    const longLayers = SWELL_LAYERS.filter(
-      (layer) => layer.wavelength >= 35 && layer.wavelength <= 60,
-    );
-    expect(longLayers.length).toBeGreaterThanOrEqual(1);
-  });
-});
-
-describe('waveNormalTilt', () => {
-  it('is deterministic: identical inputs always produce the identical output', () => {
-    expect(waveNormalTilt(5, 6, 1.2)).toEqual(waveNormalTilt(5, 6, 1.2));
-  });
-
-  it('varies over time at a fixed position', () => {
-    const values = new Set<string>();
-    for (let t = 0; t < 10; t += 0.3) values.add(waveNormalTilt(4, 4, t).join(','));
-    expect(values.size).toBeGreaterThan(1);
-  });
-
-  it('returns finite, bounded components', () => {
-    for (let t = 0; t < 8; t += 0.9) {
-      const [tiltX, tiltZ] = waveNormalTilt(11, 22, t);
-      expect(Number.isFinite(tiltX)).toBe(true);
-      expect(Number.isFinite(tiltZ)).toBe(true);
-      expect(Math.abs(tiltX)).toBeLessThanOrEqual(1);
-      expect(Math.abs(tiltZ)).toBeLessThanOrEqual(1);
-    }
-  });
-});
-
-describe('WAVE_NORMAL_LAYERS (v2 long-wavelength chop layer)', () => {
-  it('has three layers', () => {
-    expect(WAVE_NORMAL_LAYERS.length).toBe(3);
-  });
-
-  it('includes a long-wavelength (35-60m) chop layer distinct from the original 7-11m ripples', () => {
-    const longLayers = WAVE_NORMAL_LAYERS.filter(
-      (layer) => layer.wavelength >= 35 && layer.wavelength <= 60,
-    );
-    expect(longLayers.length).toBeGreaterThanOrEqual(1);
   });
 });
 
@@ -387,10 +320,22 @@ describe('glintSpecular', () => {
 describe('WaterRenderer', () => {
   const flatHeightAt = (): number => -5; // uniformly 5m underwater
   const mixedHeightAt = (x: number): number => (x < 32 ? -5 : 20);
+  const allWet = (): Uint8Array => new Uint8Array(16).fill(1);
+  /** The water mask a height field implies: a tile is water where its centre is below sea level. */
+  const maskOf = (height: (x: number, z: number) => number, size: number): Uint8Array => {
+    const mask = new Uint8Array(size * size);
+    for (let z = 0; z < size; z++) {
+      for (let x = 0; x < size; x++) {
+        mask[z * size + x] =
+          height((x + 0.5) * TILE_METERS, (z + 0.5) * TILE_METERS) < SEA_LEVEL ? 1 : 0;
+      }
+    }
+    return mask;
+  };
 
   it('adds exactly one named mesh to the scene, positioned at SEA_LEVEL', () => {
     const scene = new THREE.Scene();
-    new WaterRenderer(scene, flatHeightAt, 4);
+    new WaterRenderer(scene, flatHeightAt, allWet(), 4);
     expect(scene.children.length).toBe(1);
     const mesh = scene.children[0] as THREE.Mesh;
     expect(mesh.name).toBe('water-surface');
@@ -399,7 +344,7 @@ describe('WaterRenderer', () => {
 
   it('sizes the plane to mapSizeTiles * TILE_METERS', () => {
     const scene = new THREE.Scene();
-    new WaterRenderer(scene, flatHeightAt, 4);
+    new WaterRenderer(scene, flatHeightAt, allWet(), 4);
     const mesh = scene.children[0] as THREE.Mesh;
     const position = mesh.geometry.attributes.position!;
     let maxX = -Infinity;
@@ -414,7 +359,7 @@ describe('WaterRenderer', () => {
 
   it('retints its vertices from the fouling layer, and only the ones a fouled tile meets', () => {
     const scene = new THREE.Scene();
-    const renderer = new WaterRenderer(scene, flatHeightAt, 4);
+    const renderer = new WaterRenderer(scene, flatHeightAt, allWet(), 4);
     const mesh = scene.children[0] as THREE.Mesh;
     const foul = mesh.geometry.getAttribute('waterFoul');
     expect(foul).toBeDefined();
@@ -440,7 +385,9 @@ describe('WaterRenderer', () => {
 
   it('defaults mapSizeTiles to MAP_SIZE when omitted', () => {
     const scene = new THREE.Scene();
-    new WaterRenderer(scene, flatHeightAt);
+    const mask = new Uint8Array(MAP_SIZE * MAP_SIZE);
+    mask[MAP_SIZE * MAP_SIZE - 1] = 1; // the last tile
+    new WaterRenderer(scene, flatHeightAt, mask);
     const mesh = scene.children[0] as THREE.Mesh;
     const position = mesh.geometry.attributes.position!;
     let maxX = -Infinity;
@@ -448,9 +395,194 @@ describe('WaterRenderer', () => {
     expect(maxX).toBeCloseTo(MAP_SIZE * TILE_METERS, 5);
   });
 
-  it('bakes a waterDepth vertex attribute from the injected heightAt sampler', () => {
+  it('covers wet tiles and the ring of tiles round them, and nothing else', () => {
+    const size = 12;
+    const mask = new Uint8Array(size * size);
+    mask[5 * size + 5] = 1;
+    const covered = coveredTiles(mask, size);
+    for (let z = 0; z < size; z++) {
+      for (let x = 0; x < size; x++) {
+        const near = Math.abs(x - 5) <= 1 && Math.abs(z - 5) <= 1;
+        expect(covered[z * size + x]).toBe(near ? 1 : 0);
+      }
+    }
+    // 3 x 3 tiles of 2 x 2 squares: 6 x 6 squares, 7 x 7 vertices, two triangles a square.
+    const grid = buildWaterGrid(mask, size);
+    expect(grid.positions.length / 3).toBe(49);
+    expect(grid.indices.length / 3).toBe(72);
+    for (let i = 0; i < grid.positions.length; i += 3) {
+      expect(grid.positions[i]! % WATER_VERTEX_SPACING_M).toBe(0);
+      expect(grid.positions[i]!).toBeGreaterThanOrEqual(4 * TILE_METERS);
+      expect(grid.positions[i]!).toBeLessThanOrEqual(7 * TILE_METERS);
+      expect(grid.positions[i + 2]!).toBeGreaterThanOrEqual(4 * TILE_METERS);
+      expect(grid.positions[i + 2]!).toBeLessThanOrEqual(7 * TILE_METERS);
+    }
+  });
+
+  it('draws no mesh where there is no water', () => {
+    const grid = buildWaterGrid(new Uint8Array(64), 8);
+    expect(grid.positions.length).toBe(0);
+    expect(grid.indices.length).toBe(0);
+  });
+
+  it('faces every triangle up', () => {
+    const mask = new Uint8Array(36);
+    mask[2 * 6 + 3] = 1;
+    const grid = buildWaterGrid(mask, 6);
+    for (let t = 0; t < grid.indices.length; t += 3) {
+      const [a, b, c] = [grid.indices[t]!, grid.indices[t + 1]!, grid.indices[t + 2]!];
+      const ux = grid.positions[b * 3]! - grid.positions[a * 3]!;
+      const uz = grid.positions[b * 3 + 2]! - grid.positions[a * 3 + 2]!;
+      const vx = grid.positions[c * 3]! - grid.positions[a * 3]!;
+      const vz = grid.positions[c * 3 + 2]! - grid.positions[a * 3 + 2]!;
+      // y of cross(u, v) is uz*vx - ux*vz; positive faces up.
+      expect(uz * vx - ux * vz).toBeGreaterThan(0);
+    }
+  });
+
+  it('carries fetch, swell and flow attributes equal to the sampled water bodies', () => {
+    // A 3-wide strait with open sea on the west edge of a 40-tile map.
+    const size = 40;
+    const height = (x: number, z: number): number => {
+      const tx = Math.floor(x / TILE_METERS);
+      const tz = Math.floor(z / TILE_METERS);
+      return tx < 8 || (tx < 38 && tz >= 18 && tz <= 20) ? -4 : 10;
+    };
+    const mask = maskOf(height, size);
     const scene = new THREE.Scene();
-    new WaterRenderer(scene, mixedHeightAt, 4);
+    new WaterRenderer(scene, height, mask, size);
+    const geometry = (scene.children[0] as THREE.Mesh).geometry;
+    const position = geometry.attributes.position!;
+    const fetch = geometry.attributes.waterFetch!;
+    const swell = geometry.attributes.waterSwell!;
+    const flow = geometry.attributes.waterFlow!;
+    const depth = geometry.attributes.waterDepth!;
+    expect(fetch.count).toBe(position.count);
+    expect(swell.itemSize).toBe(2);
+    expect(flow.itemSize).toBe(2);
+    const bodies = deriveWaterBodies(mask, size, (tx, tz) =>
+      height((tx + 0.5) * TILE_METERS, (tz + 0.5) * TILE_METERS),
+    );
+    let sawSwell = false;
+    let sawFlow = false;
+    for (let i = 0; i < position.count; i++) {
+      const s = sampleWater(bodies, position.getX(i), position.getZ(i));
+      expect(Math.abs(fetch.getX(i) - s.fetchM)).toBeLessThanOrEqual(s.fetchM * 1e-6 + 1e-6);
+      expect(swell.getX(i)).toBeCloseTo(s.swellX, 5);
+      expect(swell.getY(i)).toBeCloseTo(s.swellZ, 5);
+      if (depth.getX(i) > 0) {
+        expect(flow.getX(i)).toBeCloseTo(s.flowX, 5);
+        expect(flow.getY(i)).toBeCloseTo(s.flowZ, 5);
+      } else {
+        expect(flow.getX(i)).toBe(0);
+        expect(flow.getY(i)).toBe(0);
+      }
+      if (Math.hypot(swell.getX(i), swell.getY(i)) > 0.5) sawSwell = true;
+      if (Math.hypot(flow.getX(i), flow.getY(i)) > 0.1) sawFlow = true;
+    }
+    expect(sawSwell).toBe(true);
+    expect(sawFlow).toBe(true);
+  });
+
+  it('builds its node graph from the exported train list, every train once', () => {
+    const scene = new THREE.Scene();
+    const renderer = new WaterRenderer(scene, flatHeightAt, allWet(), 4);
+    expect(renderer.graphTrains()).toEqual([...WAVE_TRAINS]);
+  });
+
+  describe('when the terrain changes the water', () => {
+    const size = 12;
+    let ground: Float32Array;
+    const heightOf = (x: number, z: number): number =>
+      ground[Math.floor(z / TILE_METERS) * size + Math.floor(x / TILE_METERS)] ?? 0;
+    const setup = (): { renderer: WaterRenderer; mask: Uint8Array; mesh: THREE.Mesh } => {
+      ground = new Float32Array(size * size).fill(5);
+      for (let z = 4; z < 8; z++) for (let x = 0; x < size; x++) ground[z * size + x] = -4;
+      const mask = maskOf(heightOf, size);
+      const scene = new THREE.Scene();
+      const renderer = new WaterRenderer(scene, heightOf, mask, size);
+      return { renderer, mask, mesh: scene.children[0] as THREE.Mesh };
+    };
+    /** Depth of the vertex standing on a tile's centre. */
+    const depthAtTile = (mesh: THREE.Mesh, tx: number, tz: number): number | undefined => {
+      const position = mesh.geometry.attributes.position!;
+      const depth = mesh.geometry.attributes.waterDepth!;
+      for (let i = 0; i < position.count; i++) {
+        if (
+          position.getX(i) === (tx + 0.5) * TILE_METERS &&
+          position.getZ(i) === (tz + 0.5) * TILE_METERS
+        )
+          return depth.getX(i);
+      }
+      return undefined;
+    };
+    /** A player digs the bank tile (6, 3) down to 6 m below sea level, as clientgrid does to heights and mask. */
+    const dig = (mask: Uint8Array): void => {
+      ground[3 * size + 6] = -6;
+      mask[3 * size + 6] = 1;
+    };
+
+    it('keeps the old depth until the edits settle, then draws the dug tile with its new depth and kind', () => {
+      const { renderer, mask, mesh } = setup();
+      expect(renderer.kindAt(6, 3)).toBe(WaterKind.None);
+      expect(depthAtTile(mesh, 6, 3)).toBe(0);
+
+      dig(mask);
+      renderer.markTerrainChanged();
+      renderer.update(WATER_REBUILD_SETTLE_S * 1000 * 0.9, 0);
+      expect(renderer.kindAt(6, 3)).toBe(WaterKind.None);
+      expect(depthAtTile(mesh, 6, 3)).toBe(0);
+
+      renderer.update(WATER_REBUILD_SETTLE_S * 1000 * 0.2, 0);
+      expect(renderer.kindAt(6, 3)).toBe(WaterKind.Lake);
+      expect(depthAtTile(mesh, 6, 3)).toBeCloseTo(6, 5);
+    });
+
+    it('waits for a further edit to settle too: each edit restarts the wait', () => {
+      const { renderer, mask, mesh } = setup();
+      dig(mask);
+      renderer.markTerrainChanged();
+      renderer.update(400, 0);
+      renderer.markTerrainChanged();
+      renderer.update(400, 0);
+      expect(depthAtTile(mesh, 6, 3)).toBe(0);
+      renderer.update(150, 0);
+      expect(depthAtTile(mesh, 6, 3)).toBeCloseTo(6, 5);
+    });
+
+    it('does not rebuild when nothing changed', () => {
+      const { renderer, mesh } = setup();
+      const before = mesh.geometry;
+      renderer.update(5000, 0);
+      expect(mesh.geometry).toBe(before);
+    });
+
+    it('keeps the fouling it was given across a rebuild', () => {
+      const { renderer, mask, mesh } = setup();
+      const foul = new Uint8Array(size * size);
+      foul[5 * size + 5] = 255;
+      renderer.setFouling(foul);
+      dig(mask);
+      renderer.markTerrainChanged();
+      renderer.update(600, 0);
+      const position = mesh.geometry.attributes.position!;
+      let stained = 0;
+      for (let i = 0; i < position.count; i++) {
+        if (renderer.foulingAtVertex(i) !== 1) continue;
+        stained++;
+        // Every stained vertex lies on the fouled tile, its boundary included.
+        expect(position.getX(i)).toBeGreaterThanOrEqual(5 * TILE_METERS);
+        expect(position.getX(i)).toBeLessThanOrEqual(6 * TILE_METERS);
+        expect(position.getZ(i)).toBeGreaterThanOrEqual(5 * TILE_METERS);
+        expect(position.getZ(i)).toBeLessThanOrEqual(6 * TILE_METERS);
+      }
+      expect(stained).toBe(9); // the tile's 3 x 3 vertices at half-tile spacing
+    });
+  });
+
+  it('carries a waterDepth vertex attribute from the injected heightAt sampler', () => {
+    const scene = new THREE.Scene();
+    new WaterRenderer(scene, mixedHeightAt, maskOf(mixedHeightAt, 4), 4);
     const mesh = scene.children[0] as THREE.Mesh;
     const position = mesh.geometry.attributes.position!;
     const depth = mesh.geometry.attributes.waterDepth!;
@@ -475,7 +607,7 @@ describe('WaterRenderer', () => {
 
   it('setVisible toggles the mesh visibility', () => {
     const scene = new THREE.Scene();
-    const water = new WaterRenderer(scene, flatHeightAt, 4);
+    const water = new WaterRenderer(scene, flatHeightAt, allWet(), 4);
     const mesh = scene.children[0] as THREE.Mesh;
     expect(mesh.visible).toBe(true);
     water.setVisible(false);
@@ -486,7 +618,7 @@ describe('WaterRenderer', () => {
 
   it('update() accumulates elapsed time from dtMs (in seconds)', () => {
     const scene = new THREE.Scene();
-    const water = new WaterRenderer(scene, flatHeightAt, 4);
+    const water = new WaterRenderer(scene, flatHeightAt, allWet(), 4);
     expect(water.elapsedSeconds()).toBe(0);
     water.update(500, 0);
     expect(water.elapsedSeconds()).toBeCloseTo(0.5, 9);
@@ -494,9 +626,21 @@ describe('WaterRenderer', () => {
     expect(water.elapsedSeconds()).toBeCloseTo(0.75, 9);
   });
 
+  it('pinClock holds the clock at a time, whatever frames pass, until it is released', () => {
+    const scene = new THREE.Scene();
+    const water = new WaterRenderer(scene, flatHeightAt, allWet(), 4);
+    water.pinClock(12.5);
+    water.update(1000, 0);
+    water.update(1000, 0);
+    expect(water.elapsedSeconds()).toBe(12.5);
+    water.pinClock(null);
+    water.update(500, 0);
+    expect(water.elapsedSeconds()).toBeCloseTo(13, 9);
+  });
+
   it('update() ignores negative dtMs rather than rewinding the clock', () => {
     const scene = new THREE.Scene();
-    const water = new WaterRenderer(scene, flatHeightAt, 4);
+    const water = new WaterRenderer(scene, flatHeightAt, allWet(), 4);
     water.update(1000, 0);
     const before = water.elapsedSeconds();
     water.update(-500, 0);
@@ -505,7 +649,7 @@ describe('WaterRenderer', () => {
 
   it('update() does not throw across in-range and out-of-range nightFactor values', () => {
     const scene = new THREE.Scene();
-    const water = new WaterRenderer(scene, flatHeightAt, 4);
+    const water = new WaterRenderer(scene, flatHeightAt, allWet(), 4);
     for (const nf of [-3, 0, 0.4, 1, 6]) {
       expect(() => water.update(16, nf)).not.toThrow();
     }
@@ -514,7 +658,7 @@ describe('WaterRenderer', () => {
   it('works without any DirectionalLight in the scene (falls back gracefully)', () => {
     const scene = new THREE.Scene();
     expect(() => {
-      const water = new WaterRenderer(scene, flatHeightAt, 4);
+      const water = new WaterRenderer(scene, flatHeightAt, allWet(), 4);
       water.update(16, 0.5);
     }).not.toThrow();
   });
@@ -525,13 +669,13 @@ describe('WaterRenderer', () => {
     sun.position.set(10, 20, 5);
     scene.add(sun.target);
     scene.add(sun);
-    const water = new WaterRenderer(scene, flatHeightAt, 4);
+    const water = new WaterRenderer(scene, flatHeightAt, allWet(), 4);
     expect(() => water.update(16, 0.1)).not.toThrow();
   });
 
   it('material is translucent and does not write depth (matches the flat-plane water it replaces)', () => {
     const scene = new THREE.Scene();
-    new WaterRenderer(scene, flatHeightAt, 4);
+    new WaterRenderer(scene, flatHeightAt, allWet(), 4);
     const mesh = scene.children[0] as THREE.Mesh;
     const material = mesh.material as THREE.Material;
     expect(material.transparent).toBe(true);
@@ -540,20 +684,20 @@ describe('WaterRenderer', () => {
 
   it('does not leak meshes across repeated update() calls', () => {
     const scene = new THREE.Scene();
-    const water = new WaterRenderer(scene, flatHeightAt, 4);
+    const water = new WaterRenderer(scene, flatHeightAt, allWet(), 4);
     for (let i = 0; i < 20; i++) water.update(16, 0.3);
     expect(scene.children.length).toBe(1);
   });
 
   it('setSkyColors accepts zenith/horizon RGB tuples without throwing', () => {
     const scene = new THREE.Scene();
-    const water = new WaterRenderer(scene, flatHeightAt, 4);
+    const water = new WaterRenderer(scene, flatHeightAt, allWet(), 4);
     expect(() => water.setSkyColors([0.1, 0.2, 0.9], [0.8, 0.85, 0.95])).not.toThrow();
   });
 
   it('setSkyColors can be called every frame alongside update() without throwing or leaking meshes', () => {
     const scene = new THREE.Scene();
-    const water = new WaterRenderer(scene, flatHeightAt, 4);
+    const water = new WaterRenderer(scene, flatHeightAt, allWet(), 4);
     for (let i = 0; i < 10; i++) {
       water.setSkyColors([0.05 * i, 0.2, 0.3], [0.5, 0.6, 0.05 * i]);
       water.update(16, i / 10);
@@ -563,7 +707,7 @@ describe('WaterRenderer', () => {
 
   it('setSkyColors does not throw for out-of-range (unclamped) color components', () => {
     const scene = new THREE.Scene();
-    const water = new WaterRenderer(scene, flatHeightAt, 4);
+    const water = new WaterRenderer(scene, flatHeightAt, allWet(), 4);
     expect(() => water.setSkyColors([-1, 2, 0], [3, -2, 1])).not.toThrow();
   });
 });

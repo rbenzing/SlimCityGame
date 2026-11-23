@@ -114,14 +114,18 @@ function labelComponents(
   return { label, members };
 }
 
-/** Breadth-first steps from `sources` through `passable` tiles; -1 where unreached. */
+/**
+ * Breadth-first steps from `sources` through `passable` tiles; -1 where
+ * unreached. A caller that runs many searches passes one `dist` buffer, filled
+ * with -1, and puts back every entry of `order` it used.
+ */
 function bfsDistance(
   size: number,
   sources: readonly number[],
   passable: (i: number) => boolean,
   neighbours: ReadonlyArray<readonly [number, number]>,
+  dist: Int32Array = new Int32Array(size * size).fill(-1),
 ): { dist: Int32Array; order: number[] } {
-  const dist = new Int32Array(size * size).fill(-1);
   const order: number[] = [];
   for (const s of sources) {
     dist[s] = 0;
@@ -193,8 +197,9 @@ function classify(water: Uint8Array, size: number): Uint8Array {
   }
 
   const channels = labelComponents(size, (i) => isWater(i) && open[i] === 0);
-  for (const list of channels.members) {
-    const inChannel = new Set(list);
+  const searchDist = new Int32Array(n).fill(-1);
+  const minTiles = RIVER_MIN_LENGTH_M / TILE_METERS;
+  channels.members.forEach((list, id) => {
     let touchesOcean = false;
     let touchesLake = false;
     let touchesEdge = false;
@@ -212,12 +217,25 @@ function classify(water: Uint8Array, size: number): Uint8Array {
         else touchesLake = true;
       }
     }
-    // Longest shortest path by a double sweep.
-    const inside = (i: number): boolean => inChannel.has(i);
-    const first = bfsDistance(size, [list[0]!], inside, NEIGHBOURS_4);
-    const far = first.order[first.order.length - 1]!;
-    const second = bfsDistance(size, [far], inside, NEIGHBOURS_4);
-    const lengthM = (second.dist[second.order[second.order.length - 1]!]! + 1) * TILE_METERS;
+    // A channel is as long as the straight distance between the ends of its
+    // longest run (found by a double sweep): steps along a fat bay would
+    // overcount by up to half again. One too small to span the minimum length
+    // is not searched.
+    let lengthM = 0;
+    if (list.length >= minTiles) {
+      const inside = (i: number): boolean => channels.label[i] === id;
+      const first = bfsDistance(size, [list[0]!], inside, NEIGHBOURS_4, searchDist);
+      const far = first.order[first.order.length - 1]!;
+      for (const i of first.order) searchDist[i] = -1;
+      const second = bfsDistance(size, [far], inside, NEIGHBOURS_4, searchDist);
+      const end = second.order[second.order.length - 1]!;
+      for (const i of second.order) searchDist[i] = -1;
+      const span = Math.hypot(
+        (far % size) - (end % size),
+        Math.floor(far / size) - Math.floor(end / size),
+      );
+      lengthM = (span + 1) * TILE_METERS;
+    }
     let k: WaterKindValue;
     if (lengthM >= RIVER_MIN_LENGTH_M && (touchesOcean || touchesLake || touchesEdge)) {
       k = WaterKind.River;
@@ -227,7 +245,7 @@ function classify(water: Uint8Array, size: number): Uint8Array {
       k = WaterKind.Lake;
     }
     for (const i of list) kind[i] = k;
-  }
+  });
   return kind;
 }
 

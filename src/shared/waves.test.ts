@@ -3,13 +3,20 @@ import type { WaterSample } from './waterbodies';
 import {
   BREAKING_RATIO,
   DESIGN_WIND_MPS,
+  SWELL_BAND,
   SWELL_TRAINS,
+  WAVE_TRAINS,
   WIND_BANDS,
   deepWaterLength,
+  pixelFade,
   smbHeight,
   smbPeriod,
   surfaceHeightAt,
+  swellHeightAt,
+  waveSlopeAt,
 } from './waves';
+
+const TWO_PI_OVER = (v: number): number => (2 * Math.PI) / v;
 
 const calm = (fetchM: number): WaterSample => ({
   fetchM,
@@ -97,5 +104,143 @@ describe('surfaceHeightAt', () => {
     const b = surfaceHeightAt(12.5, 99, 7.25, ocean, 3);
     expect(a).toBe(b);
     expect(surfaceHeightAt(12.5, 99, 8.25, ocean, 3)).not.toBe(a);
+  });
+});
+
+describe('the train list', () => {
+  const windTrains = WAVE_TRAINS.filter((t) => t.band !== SWELL_BAND);
+  const swellTrains = WAVE_TRAINS.filter((t) => t.band === SWELL_BAND);
+
+  it('holds two wind trains a band and one swell train a swell period', () => {
+    expect(windTrains.length).toBe(WIND_BANDS.length * 2);
+    expect(swellTrains.length).toBe(SWELL_TRAINS.length);
+  });
+
+  it('gives the two trains of a band periods 6% either side of the band period', () => {
+    WIND_BANDS.forEach((band, i) => {
+      const [a, b] = windTrains.filter((t) => t.band === i);
+      expect(TWO_PI_OVER(a!.omega)).toBeCloseTo(band.periodS * 0.94, 9);
+      expect(TWO_PI_OVER(b!.omega)).toBeCloseTo(band.periodS * 1.06, 9);
+      // Each train's length comes from its own period.
+      expect(TWO_PI_OVER(a!.wavenumber)).toBeCloseTo(deepWaterLength(band.periodS * 0.94), 9);
+      expect(TWO_PI_OVER(b!.wavenumber)).toBeCloseTo(deepWaterLength(band.periodS * 1.06), 9);
+    });
+  });
+
+  it('warps the phase of wind trains and never of swell', () => {
+    expect(windTrains.every((t) => t.warped)).toBe(true);
+    expect(swellTrains.every((t) => !t.warped)).toBe(true);
+  });
+
+  it('does not let two trains of a band cancel along a fixed stripe', () => {
+    // With one shared period the pair would cancel at fixed places for ever; with
+    // two periods the sum at one place still swings through its full range.
+    const sample = calm(20000);
+    let lo = Infinity;
+    let hi = -Infinity;
+    for (let t = 0; t < 600; t += 0.37) {
+      const h = surfaceHeightAt(0, 0, t, sample, 100);
+      lo = Math.min(lo, h);
+      hi = Math.max(hi, h);
+    }
+    expect(hi - lo).toBeGreaterThan(0.3);
+  });
+});
+
+describe('swellHeightAt', () => {
+  it('is the unwarped sum of the swell trains where the water is deep', () => {
+    const sample: WaterSample = { fetchM: 20000, swellX: 0, swellZ: 1, flowX: 0, flowZ: 0 };
+    const exposure = 1;
+    for (const [x, z, t] of [
+      [10, 20, 3],
+      [400.5, 97.25, 41.3],
+      [-30, 1500, 8],
+    ] as const) {
+      let want = 0;
+      for (const s of SWELL_TRAINS) {
+        const angle = Math.PI / 2 + (s.angleDeg * Math.PI) / 180;
+        const k = (2 * Math.PI) / deepWaterLength(s.periodS);
+        const w = (2 * Math.PI) / s.periodS;
+        want +=
+          s.amplitudeM *
+          exposure *
+          Math.sin(k * (x * Math.cos(angle) + z * Math.sin(angle)) - w * t + s.phase);
+      }
+      expect(swellHeightAt(x, z, t, sample, 100)).toBeCloseTo(want, 9);
+    }
+  });
+
+  it('is zero where there is no swell', () => {
+    expect(swellHeightAt(5, 6, 7, calm(20000), 100)).toBe(0);
+  });
+
+  it('plus the wind part is the whole surface in deep water', () => {
+    const wind = surfaceHeightAt(77, 31, 12.5, { ...ocean, swellX: 0 }, 100);
+    expect(swellHeightAt(77, 31, 12.5, ocean, 100) + wind).toBeCloseTo(
+      surfaceHeightAt(77, 31, 12.5, ocean, 100),
+      9,
+    );
+  });
+
+  it('is capped with the same breaking ratio as the whole surface', () => {
+    for (const depth of [0, 0.1, 0.5]) {
+      let peak = 0;
+      for (let t = 0; t < 200; t += 0.31) {
+        peak = Math.max(peak, Math.abs(swellHeightAt(40, 90, t, ocean, depth)));
+      }
+      // A swell of height 1 m in 0.5 m of water is cut to the ratio times the depth.
+      expect(peak).toBeLessThanOrEqual(BREAKING_RATIO * depth * 2.5 + 1e-9);
+    }
+    expect(Math.abs(swellHeightAt(40, 90, 3, ocean, 0))).toBe(0);
+  });
+});
+
+describe('waveSlopeAt', () => {
+  it('is the gradient of the surface, warp included', () => {
+    const e = 0.001;
+    for (const sample of [ocean, calm(3000)]) {
+      for (const [x, z, t] of [
+        [123.4, 56.7, 5.1],
+        [900, 40, 17],
+      ] as const) {
+        const dx =
+          (surfaceHeightAt(x + e, z, t, sample, 100) - surfaceHeightAt(x - e, z, t, sample, 100)) /
+          (2 * e);
+        const dz =
+          (surfaceHeightAt(x, z + e, t, sample, 100) - surfaceHeightAt(x, z - e, t, sample, 100)) /
+          (2 * e);
+        const slope = waveSlopeAt(x, z, t, sample, 100);
+        expect(slope.x).toBeCloseTo(dx, 4);
+        expect(slope.z).toBeCloseTo(dz, 4);
+      }
+    }
+  });
+
+  it('fades a wind train out of the slope as its crests near the pixel grid', () => {
+    const sample = calm(20000);
+    const fine = waveSlopeAt(10, 10, 2, sample, 100, 3);
+    const coarse = waveSlopeAt(10, 10, 2, sample, 100, 0.01);
+    expect(Math.hypot(fine.x, fine.z)).toBeLessThan(Math.hypot(coarse.x, coarse.z));
+    // At 30 m a pixel every wind wave is under two pixels wide: nothing is left.
+    const far = waveSlopeAt(10, 10, 2, sample, 100, 30);
+    expect(far.x).toBe(0);
+    expect(far.z).toBe(0);
+  });
+
+  it('keeps the swell slope at any pixel size', () => {
+    const far = waveSlopeAt(10, 10, 2, ocean, 100, 5);
+    expect(Math.hypot(far.x, far.z)).toBeGreaterThan(0);
+  });
+});
+
+describe('pixelFade', () => {
+  it('is full at four pixels a wavelength, gone at two, and between them in between', () => {
+    expect(pixelFade(8, 2)).toBe(1);
+    expect(pixelFade(20, 2)).toBe(1);
+    expect(pixelFade(4, 2)).toBe(0);
+    expect(pixelFade(1, 2)).toBe(0);
+    const mid = pixelFade(6, 2);
+    expect(mid).toBeGreaterThan(0);
+    expect(mid).toBeLessThan(1);
   });
 });

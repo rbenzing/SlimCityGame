@@ -352,7 +352,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
     clientGrid.deckSurfaceAt(wx, wz) ?? heightAt(wx, wz);
 
   // Animated water surface and cumulus layer; both tick in the frame loop below.
-  const water = new WaterRenderer(world.scene, heightAt);
+  const water = new WaterRenderer(world.scene, heightAt, clientGrid.water);
   const clouds = new CloudLayer(world.scene);
 
   const trees = new TreeRenderer(world.scene, heightAt);
@@ -1926,6 +1926,28 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
         const msg: MainToWorker = { type: 'devConstructionProgress', progress };
         worker.postMessage(msg);
       };
+      // Holds the water's wave clock (seconds; null releases it) so a frame of
+      // the waves repeats, and reads the kinds, swell and current each tile has.
+      (hook as Record<string, unknown>).pinWaterClock = (seconds: number | null): void =>
+        water.pinClock(seconds);
+      (hook as Record<string, unknown>).readWaterBodies = (): {
+        size: number;
+        kind: number[];
+        swellX: number[];
+        swellZ: number[];
+        flowX: number[];
+        flowZ: number[];
+      } => {
+        const b = water.waterBodies();
+        return {
+          size: b.size,
+          kind: Array.from(b.kind),
+          swellX: Array.from(b.swellX),
+          swellZ: Array.from(b.swellZ),
+          flowX: Array.from(b.flowX),
+          flowZ: Array.from(b.flowZ),
+        };
+      };
       (hook as Record<string, unknown>).soilAt = (x: number, z: number): number =>
         clientGrid.soil[z * clientGrid.size + x] ?? 0;
       (hook as Record<string, unknown>).ghostBounds = (): {
@@ -2644,6 +2666,8 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       pedestrianRenderer.redraw();
       terrain.applyHeightPatches(snap.heightPatches);
       clientGrid.applyHeightPatches(snap.heightPatches);
+      // The water mask just changed in place: the surface re-derives its depth and kinds.
+      water.markTerrainChanged();
       // The trees were scattered on the seed map: a riverbed sunk since loses
       // them, and raised ground carries them up with it.
       trees.applyHeightPatches(

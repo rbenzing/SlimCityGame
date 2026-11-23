@@ -1,54 +1,75 @@
 /**
- * Water surface renderer — the single owner
- * of water. One translucent
- * PlaneGeometry at SEA_LEVEL, animated entirely through TSL node material
- * graphs: three scrolling procedural wave-normal layers (shading-only ripple
- * detail; the third a long-wavelength "chop" layer), a sine-sum vertex
- * swell (amplitude <= 0.35m, with the same chop layer), depth-keyed color
- * sampled from the injected terrain heightAt (shallow teal near shores ->
- * deep navy over depth) fresnel-blended toward an analytic sky reflection
- * (zenith/horizon colors fed per-frame via setSkyColors), an animated
- * scrolling foam band brightening the shoreline where baked depth < ~0.8m,
- * glancing-angle (Fresnel-ish) opacity, and a two-lobe (tight + broad)
- * sun/moon glint scaled by the night-cycle's nightFactor. Every animated
- * quantity is driven by an accumulated time clock advanced from update()'s
- * dtMs — never Date.now/Math.random, matching the rest of the renderer.
+ * Water surface renderer: the single owner of water. One translucent mesh at
+ * SEA_LEVEL with a vertex every WATER_VERTEX_SPACING_M, only over water tiles
+ * and the ring of tiles round them. Each vertex carries its depth, fouling,
+ * wind fetch, swell and river flow, all read from the water bodies derived
+ * from the water mask and the terrain heights; a terrain change that alters
+ * the water marks the mesh dirty and it is rebuilt once the changes stop.
  *
- * Readability at RTS distance (~600m) comes from four features layered on the
- * base formula family: (a) a long (~42-55m) wavelength chop layer in both the
- * normal tilt and the swell, (b) the analytic sky reflection above, (c) the
- * animated shoreline foam above, and (d) the second, broader glint lobe below
- * — all four mirrored as pure tested formulas.
+ * The surface is drawn by a TSL node graph built from the one wave table in
+ * shared/waves.ts: the swell trains (long enough for the mesh to carry) lift
+ * the vertices, and every train, wind and swell, tilts the shading normal
+ * from its analytic slope. A wind train fades out of the normal as its crests
+ * near the pixel grid. Where a river flows, two crossed sets of short ripples
+ * are carried along by the current. Colour is keyed to depth and fouling,
+ * blended toward an analytic sky reflection, with shoreline foam and a
+ * two-lobe sun/moon glint. Every animated quantity runs off a clock advanced
+ * from update()'s dtMs: no wall clock and no random numbers.
  *
- * The pure math below (depthColor, swellHeight, waveNormalTilt,
- * glancingOpacity, reflectedColor, foamStrength, glintSpecular, glintScale)
- * is unit-tested directly; the TSL node graph in createMaterial() mirrors
- * those same formulas into the live shader, the same relationship facade.ts's
- * pure functions have to buildings.ts's TSL mirror.
+ * The pure math below (depthColor, glancingOpacity, reflectedColor,
+ * foamStrength, glintSpecular, glintScale) is unit-tested directly; the node
+ * graph mirrors those formulas into the live shader.
  */
 
 import * as THREE from 'three';
 import { MeshStandardNodeMaterial } from 'three/webgpu';
 import type { Node } from 'three/webgpu';
 import {
+  abs,
   attribute,
   clamp,
+  cos,
+  dFdx,
+  dFdy,
   dot,
   float,
+  fract,
+  length,
+  max,
+  min,
   mix,
   normalize,
   oneMinus,
-  positionLocal,
+  positionGeometry,
   positionViewDirection,
+  positionWorld,
   positionWorldDirection,
   sin,
+  smoothstep,
   transformNormalToView,
   uniform,
   vec3,
 } from 'three/tsl';
 import { nightTintNode } from './nightlook';
 import { MAP_SIZE, MAX_WATER_DEPTH_VIS, SEA_LEVEL, TILE_METERS } from '../shared/constants';
-import { PHASE_WARP_TERMS, phaseWarp } from '../shared/waves';
+import {
+  RIVER_SURFACE_SPEED_MPS,
+  WaterKind,
+  deriveWaterBodies,
+  sampleWater,
+} from '../shared/waterbodies';
+import type { WaterBodies } from '../shared/waterbodies';
+import {
+  BREAKING_RATIO,
+  FADE_FULL_PX,
+  FADE_GONE_PX,
+  PHASE_WARP_TERMS,
+  SWELL_BAND,
+  WAVE_TRAINS,
+  WIND_BANDS,
+  phaseWarp,
+} from '../shared/waves';
+import type { WaveTrain } from '../shared/waves';
 
 export type HeightSampler = (x: number, z: number) => number;
 
@@ -102,7 +123,8 @@ export function fouledColor(depth: number, foul: number): [number, number, numbe
 /**
  * The fouling a vertex carries, 0..1: the worst of the (up to four) tiles
  * that meet at it, so a stain never falls between vertices. `tx`/`tz` is the
- * tile corner the vertex stands on. Pure.
+ * vertex's place in tile units: a whole number is a tile corner, a fraction
+ * lies inside one tile. Pure.
  */
 export function vertexFouling(
   waterFoul: Uint8Array,
@@ -111,10 +133,8 @@ export function vertexFouling(
   tz: number,
 ): number {
   let worst = 0;
-  for (let dz = -1; dz <= 0; dz++) {
-    for (let dx = -1; dx <= 0; dx++) {
-      const x = tx + dx;
-      const z = tz + dz;
+  for (let z = Math.ceil(tz) - 1; z <= Math.floor(tz); z++) {
+    for (let x = Math.ceil(tx) - 1; x <= Math.floor(tx); x++) {
       if (x < 0 || z < 0 || x >= sizeTiles || z >= sizeTiles) continue;
       const v = waterFoul[z * sizeTiles + x] ?? 0;
       if (v > worst) worst = v;
@@ -124,92 +144,27 @@ export function vertexFouling(
 }
 
 // ---------------------------------------------------------------------------
-// Gentle sine-sum vertex swell (amplitude <= SWELL_AMPLITUDE_BUDGET_M total,
-// 0.35m) — the actual vertical bob of the surface, low
-// frequency/long wavelength.
+// River drift: two crossed sets of short ripples carried by the current.
+// Shading only: they tilt the normal and never move the mesh.
 // ---------------------------------------------------------------------------
 
-interface SwellLayer {
+interface RippleSet {
   readonly dirX: number;
   readonly dirZ: number;
-  readonly wavelength: number; // meters/cycle
-  readonly speed: number; // radians/second
-  readonly amplitude: number; // meters
+  readonly wavelengthM: number;
+  /** Peak slope of the set's crests (rise over run). */
+  readonly slope: number;
+  readonly phase: number;
 }
 
-/**
- * Total vertex-swell amplitude budget (<= 0.35m total). SWELL_LAYERS'
- * amplitudes must sum to exactly
- * this, so the exported budget stays honest as individual layers are tuned.
- */
-export const SWELL_AMPLITUDE_BUDGET_M = 0.35;
-
-/**
- * Three layers; amplitudes sum to exactly SWELL_AMPLITUDE_BUDGET_M. The third
- * (~55m wavelength) is the long-wavelength "chop" layer — slow and large
- * enough to visibly move the surface from RTS camera distance.
- */
-export const SWELL_LAYERS: readonly SwellLayer[] = [
-  { dirX: 0.891, dirZ: 0.454, wavelength: 85, speed: 0.9, amplitude: 0.09 },
-  { dirX: -0.454, dirZ: 0.891, wavelength: 44.3, speed: -1.35, amplitude: 0.06 },
-  { dirX: 0.326, dirZ: -0.945, wavelength: 57.7, speed: 0.7, amplitude: 0.2 },
+/** Ripples a river carries, 4 m and 1.5 m long, set across each other. Dials. */
+export const RIPPLE_SETS: readonly RippleSet[] = [
+  { dirX: 0.8, dirZ: 0.6, wavelengthM: 4, slope: 0.06, phase: 0.7 },
+  { dirX: -0.6, dirZ: 0.8, wavelengthM: 1.5, slope: 0.04, phase: 3.1 },
 ];
 
-function swellPhase(layer: SwellLayer, x: number, z: number, t: number): number {
-  const k = TWO_PI / layer.wavelength;
-  return (x * layer.dirX + z * layer.dirZ) * k + t * layer.speed + phaseWarp(x, z);
-}
-
-/** Deterministic vertical swell offset (meters) at world (x, z), animation time t (seconds). Pure; bounded to +-SWELL_AMPLITUDE_BUDGET_M. */
-export function swellHeight(x: number, z: number, t: number): number {
-  let h = 0;
-  for (const layer of SWELL_LAYERS) h += Math.sin(swellPhase(layer, x, z, t)) * layer.amplitude;
-  return h;
-}
-
-// ---------------------------------------------------------------------------
-// Three scrolling procedural wave-normal layers — shading-only ripple detail,
-// higher frequency/shorter wavelength than the swell (except the chop
-// layer, long-wavelength by design), perturbing only the normal used for
-// lighting/glint (no vertex displacement of their own).
-// ---------------------------------------------------------------------------
-
-interface NormalLayer {
-  readonly dirX: number;
-  readonly dirZ: number;
-  readonly wavelength: number;
-  readonly speed: number;
-  readonly strength: number; // dimensionless tilt magnitude
-}
-
-/**
- * Three layers: two short/tight ripple layers plus a
- * long-wavelength (~42m) chop layer whose tilt is large-scale and coherent
- * enough to read as visible tilt/shading from RTS camera distance, where the
- * 7-11m ripples alone read as flat noise.
- */
-export const WAVE_NORMAL_LAYERS: readonly NormalLayer[] = [
-  { dirX: 0.945, dirZ: 0.326, wavelength: 13.7, speed: 1.6, strength: 0.3 },
-  { dirX: -0.292, dirZ: 0.956, wavelength: 8.3, speed: -2.1, strength: 0.22 },
-  { dirX: 0.454, dirZ: 0.891, wavelength: 47, speed: 0.55, strength: 0.34 },
-];
-
-function normalLayerPhase(layer: NormalLayer, x: number, z: number, t: number): number {
-  const k = TWO_PI / layer.wavelength;
-  return (x * layer.dirX + z * layer.dirZ) * k + t * layer.speed + phaseWarp(x, z);
-}
-
-/** Combined XZ shading-normal tilt (dimensionless) from both scrolling wave-normal layers at world (x,z), time t. Pure; deterministic in t. */
-export function waveNormalTilt(x: number, z: number, t: number): [number, number] {
-  let tiltX = 0;
-  let tiltZ = 0;
-  for (const layer of WAVE_NORMAL_LAYERS) {
-    const s = Math.sin(normalLayerPhase(layer, x, z, t)) * layer.strength;
-    tiltX += s * layer.dirX;
-    tiltZ += s * layer.dirZ;
-  }
-  return [tiltX, tiltZ];
-}
+/** Seconds a ripple pattern drifts before it fades out and is replaced by a copy half a cycle on. */
+export const RIPPLE_CYCLE_S = 4;
 
 // ---------------------------------------------------------------------------
 // Glancing-angle (Fresnel-ish) opacity — more opaque/reflective at grazing
@@ -348,9 +303,72 @@ export function glintSpecular(ndotH: number): number {
 // WaterRenderer
 // ---------------------------------------------------------------------------
 
-/** Vertex-grid resolution of the water plane — cheap (GPU-animated), fine enough to carry the swell/normal detail. */
-const WATER_SEGMENTS = 128;
+/** Distance between mesh vertices: a 100 m swell spans ten of them. */
+export const WATER_VERTEX_SPACING_M = 10;
+/** Seconds of frame time with no further terrain change before the water is rebuilt. */
+export const WATER_REBUILD_SETTLE_S = 0.5;
+const CELLS_PER_TILE = TILE_METERS / WATER_VERTEX_SPACING_M;
 const DEFAULT_LIGHT_DIRECTION = new THREE.Vector3(0, 1, 0.15).normalize();
+
+/** Tiles the surface covers: every water tile and each of its eight neighbours. */
+export function coveredTiles(water: Uint8Array, size: number): Uint8Array {
+  const covered = new Uint8Array(size * size);
+  for (let z = 0; z < size; z++) {
+    for (let x = 0; x < size; x++) {
+      if (water[z * size + x] === 0) continue;
+      for (let dz = -1; dz <= 1; dz++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          const nx = x + dx;
+          const nz = z + dz;
+          if (nx >= 0 && nz >= 0 && nx < size && nz < size) covered[nz * size + nx] = 1;
+        }
+      }
+    }
+  }
+  return covered;
+}
+
+export interface WaterGrid {
+  /** x, 0, z of each vertex, in metres. */
+  readonly positions: Float32Array;
+  /** Triangles, three vertex indices each. */
+  readonly indices: Uint32Array;
+}
+
+/**
+ * The mesh's vertices and triangles: a vertex every WATER_VERTEX_SPACING_M and
+ * two triangles to each square of that size lying in a covered tile.
+ */
+export function buildWaterGrid(water: Uint8Array, size: number): WaterGrid {
+  const covered = coveredTiles(water, size);
+  const cells = size * CELLS_PER_TILE;
+  const stride = cells + 1;
+  const vertexOf = new Int32Array(stride * stride).fill(-1);
+  const positions: number[] = [];
+  const indices: number[] = [];
+  const vertex = (gx: number, gz: number): number => {
+    const key = gz * stride + gx;
+    let v = vertexOf[key]!;
+    if (v < 0) {
+      v = positions.length / 3;
+      vertexOf[key] = v;
+      positions.push(gx * WATER_VERTEX_SPACING_M, 0, gz * WATER_VERTEX_SPACING_M);
+    }
+    return v;
+  };
+  for (let cz = 0; cz < cells; cz++) {
+    for (let cx = 0; cx < cells; cx++) {
+      const tile = Math.floor(cz / CELLS_PER_TILE) * size + Math.floor(cx / CELLS_PER_TILE);
+      if (covered[tile] === 0) continue;
+      const a = vertex(cx, cz);
+      const b = vertex(cx + 1, cz);
+      const c = vertex(cx, cz + 1);
+      const d = vertex(cx + 1, cz + 1);
+      indices.push(a, c, b, b, c, d);
+    }
+  }
+  return { positions: new Float32Array(positions), indices: new Uint32Array(indices) };
+}
 
 function findDirectionalLight(scene: THREE.Scene): THREE.DirectionalLight | null {
   for (const child of scene.children) {
@@ -360,14 +378,21 @@ function findDirectionalLight(scene: THREE.Scene): THREE.DirectionalLight | null
 }
 
 /**
- * One translucent surface plane at SEA_LEVEL covering the whole map (opaque
- * terrain above sea level naturally depth-occludes it, exactly like the old
- * terrain.ts flat plane it replaces). `heightAt` is the terrain height
- * sampler (TerrainRenderer.heightAt) used once at construction to bake the
- * per-vertex depth attribute driving the depth-keyed color.
+ * One translucent surface mesh at SEA_LEVEL over the water tiles and their
+ * ring (opaque terrain above sea level depth-occludes it). `heightAt` is the
+ * terrain height sampler (TerrainRenderer.heightAt) and `water` the client
+ * grid's water mask, held by reference so a terrain edit that changes it is
+ * seen; call markTerrainChanged after one and the mesh, depth, kind, fetch
+ * and current are rebuilt once the edits stop.
  */
 export class WaterRenderer {
-  private readonly mesh: THREE.Mesh;
+  private mesh: THREE.Mesh;
+  private bodies: WaterBodies;
+  private dirty = false;
+  private idleS = 0;
+  private pinnedClockS: number | null = null;
+  private foulLayer: Uint8Array | null = null;
+  private readonly graphTrainList: WaveTrain[] = [];
   private readonly material: MeshStandardNodeMaterial;
   private readonly timeUniform = uniform(0);
   private readonly nightFactorUniform = uniform(0);
@@ -376,39 +401,21 @@ export class WaterRenderer {
   private readonly skyHorizonUniform = uniform(new THREE.Vector3(...DEFAULT_SKY_HORIZON_COLOR));
   private readonly sunLight: THREE.DirectionalLight | null;
   private readonly scratchLightDir = new THREE.Vector3();
-  private readonly foulAttribute: THREE.BufferAttribute;
-  private readonly sizeTiles: number;
+  private foulAttribute: THREE.BufferAttribute;
 
-  constructor(scene: THREE.Scene, heightAt: HeightSampler, mapSizeTiles: number = MAP_SIZE) {
+  constructor(
+    scene: THREE.Scene,
+    private readonly heightAt: HeightSampler,
+    private readonly water: Uint8Array,
+    private readonly sizeTiles: number = MAP_SIZE,
+  ) {
     this.sunLight = findDirectionalLight(scene);
-
-    const sizeMeters = mapSizeTiles * TILE_METERS;
-    const geometry = new THREE.PlaneGeometry(
-      sizeMeters,
-      sizeMeters,
-      WATER_SEGMENTS,
-      WATER_SEGMENTS,
-    );
-    geometry.rotateX(-Math.PI / 2);
-    geometry.translate(sizeMeters / 2, 0, sizeMeters / 2);
-
-    const position = geometry.attributes.position;
-    if (!position) throw new Error('water plane geometry is missing its position attribute');
-    const depths = new Float32Array(position.count);
-    for (let i = 0; i < position.count; i++) {
-      const worldX = position.getX(i);
-      const worldZ = position.getZ(i);
-      depths[i] = Math.max(0, SEA_LEVEL - heightAt(worldX, worldZ));
-    }
-    geometry.setAttribute('waterDepth', new THREE.BufferAttribute(depths, 1));
-    this.foulAttribute = new THREE.BufferAttribute(new Float32Array(position.count), 1);
-    this.foulAttribute.setUsage(THREE.DynamicDrawUsage);
-    geometry.setAttribute('waterFoul', this.foulAttribute);
-    this.sizeTiles = mapSizeTiles;
-
     this.material = this.createMaterial();
 
-    this.mesh = new THREE.Mesh(geometry, this.material);
+    const built = this.buildGeometry();
+    this.bodies = built.bodies;
+    this.foulAttribute = built.foul;
+    this.mesh = new THREE.Mesh(built.geometry, this.material);
     this.mesh.name = 'water-surface';
     this.mesh.userData['underground'] = 'keep';
     this.mesh.position.y = SEA_LEVEL;
@@ -418,25 +425,96 @@ export class WaterRenderer {
   }
 
   /**
-   * Advances the animation clock by dtMs (accumulated seconds — never
-   * Date.now) and refreshes the night-driven glint tint/scale and the
-   * live sun/moon direction (read from the scene's THREE.DirectionalLight,
-   * the same light the day/night cycle drives; falls back to a fixed
-   * overhead direction if the scene has none, e.g. in isolated tests).
+   * Derives the water bodies from the mask and the heights and lays the mesh
+   * over them: per vertex the depth, fetch, swell and flow read from those
+   * bodies, plus an empty fouling attribute.
    */
+  private buildGeometry(): {
+    geometry: THREE.BufferGeometry;
+    bodies: WaterBodies;
+    foul: THREE.BufferAttribute;
+  } {
+    const bodies = deriveWaterBodies(this.water, this.sizeTiles, (tx, tz) =>
+      this.heightAt((tx + 0.5) * TILE_METERS, (tz + 0.5) * TILE_METERS),
+    );
+    const grid = buildWaterGrid(this.water, this.sizeTiles);
+    const count = grid.positions.length / 3;
+    const depth = new Float32Array(count);
+    const fetch = new Float32Array(count);
+    const swell = new Float32Array(count * 2);
+    const flow = new Float32Array(count * 2);
+    for (let i = 0; i < count; i++) {
+      const x = grid.positions[i * 3]!;
+      const z = grid.positions[i * 3 + 2]!;
+      const d = Math.max(0, SEA_LEVEL - this.heightAt(x, z));
+      const s = sampleWater(bodies, x, z);
+      depth[i] = d;
+      fetch[i] = s.fetchM;
+      swell[i * 2] = s.swellX;
+      swell[i * 2 + 1] = s.swellZ;
+      if (d > 0) {
+        flow[i * 2] = s.flowX;
+        flow[i * 2 + 1] = s.flowZ;
+      }
+    }
+    const foul = new THREE.BufferAttribute(new Float32Array(count), 1);
+    foul.setUsage(THREE.DynamicDrawUsage);
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.BufferAttribute(grid.positions, 3));
+    geometry.setIndex(new THREE.BufferAttribute(grid.indices, 1));
+    geometry.setAttribute('waterDepth', new THREE.BufferAttribute(depth, 1));
+    geometry.setAttribute('waterFoul', foul);
+    geometry.setAttribute('waterFetch', new THREE.BufferAttribute(fetch, 1));
+    geometry.setAttribute('waterSwell', new THREE.BufferAttribute(swell, 2));
+    geometry.setAttribute('waterFlow', new THREE.BufferAttribute(flow, 2));
+    return { geometry, bodies, foul };
+  }
+
+  /** Tells the water that terrain heights, and so perhaps the water mask, changed. */
+  markTerrainChanged(): void {
+    this.dirty = true;
+    this.idleS = 0;
+  }
+
+  private rebuild(): void {
+    const built = this.buildGeometry();
+    const old = this.mesh.geometry;
+    this.mesh.geometry = built.geometry;
+    old.dispose();
+    this.bodies = built.bodies;
+    this.foulAttribute = built.foul;
+    this.dirty = false;
+    this.idleS = 0;
+    if (this.foulLayer) this.setFouling(this.foulLayer);
+  }
+
+  /** What kind of water the tile holds now (a WaterKind value). For tests and checks. */
+  kindAt(tx: number, tz: number): number {
+    return this.bodies.kind[tz * this.sizeTiles + tx] ?? WaterKind.None;
+  }
+
+  /** The wave trains the node graph was built from. */
+  graphTrains(): readonly WaveTrain[] {
+    return this.graphTrainList;
+  }
+
   /**
    * Retints the surface from the sim's fouling layer (0..255 per tile): each
    * vertex takes the worst of the tiles that meet at it. Called only when a
    * snapshot carries a new layer, so the attribute is rewritten rarely.
    */
   setFouling(waterFoul: Uint8Array): void {
+    this.foulLayer = waterFoul;
     const position = this.mesh.geometry.attributes.position;
     if (!position) return;
     const values = this.foulAttribute.array as Float32Array;
     for (let i = 0; i < position.count; i++) {
-      const tx = Math.round(position.getX(i) / TILE_METERS);
-      const tz = Math.round(position.getZ(i) / TILE_METERS);
-      values[i] = vertexFouling(waterFoul, this.sizeTiles, tx, tz);
+      values[i] = vertexFouling(
+        waterFoul,
+        this.sizeTiles,
+        position.getX(i) / TILE_METERS,
+        position.getZ(i) / TILE_METERS,
+      );
     }
     this.foulAttribute.needsUpdate = true;
   }
@@ -446,9 +524,22 @@ export class WaterRenderer {
     return (this.foulAttribute.array as Float32Array)[index] ?? 0;
   }
 
+  /**
+   * Advances the animation clock by dtMs (accumulated seconds, never a wall
+   * clock), rebuilds the mesh once terrain edits have stopped for
+   * WATER_REBUILD_SETTLE_S, and refreshes the night-driven glint tint and the
+   * live sun/moon direction (read from the scene's THREE.DirectionalLight, the
+   * same light the day/night cycle drives; a fixed overhead direction if the
+   * scene has none, e.g. in isolated tests).
+   */
   update(dtMs: number, nightFactor: number): void {
-    this.timeUniform.value += Math.max(0, dtMs) / 1000;
+    const dtS = Math.max(0, dtMs) / 1000;
+    if (this.pinnedClockS === null) this.timeUniform.value += dtS;
     this.nightFactorUniform.value = clamp01(nightFactor);
+    if (this.dirty) {
+      this.idleS += dtS;
+      if (this.idleS >= WATER_REBUILD_SETTLE_S) this.rebuild();
+    }
 
     const light = this.sunLight;
     if (light) {
@@ -487,6 +578,20 @@ export class WaterRenderer {
     return this.timeUniform.value;
   }
 
+  /**
+   * Holds the animation clock at `seconds` (null lets it run again), so a
+   * screenshot of the waves repeats from run to run.
+   */
+  pinClock(seconds: number | null): void {
+    this.pinnedClockS = seconds;
+    if (seconds !== null) this.timeUniform.value = seconds;
+  }
+
+  /** The derived water bodies the surface is drawn from. For checks and screenshot tools. */
+  waterBodies(): WaterBodies {
+    return this.bodies;
+  }
+
   private createMaterial(): MeshStandardNodeMaterial {
     const material = new MeshStandardNodeMaterial({
       transparent: true,
@@ -495,11 +600,12 @@ export class WaterRenderer {
       metalness: 0.05,
     });
 
-    const worldX = positionLocal.x;
-    const worldZ = positionLocal.z;
+    // The mesh sits at the origin in x and z, so the raw vertex position is world.
+    const worldX = positionGeometry.x;
+    const worldZ = positionGeometry.z;
 
-    // Baked per-vertex depth (meters) — reused below by the depth-keyed base
-    // color, the sky-reflection fresnel weight, and the shoreline foam.
+    // Per-vertex depth (meters) — reused below by the wave cap, the depth-keyed
+    // base color, the sky-reflection fresnel weight, and the shoreline foam.
     const depthAttr = attribute<'float'>('waterDepth', 'float');
 
     // Depth-keyed base color (shallow teal near shores -> deep navy over depth),
@@ -520,38 +626,118 @@ export class WaterRenderer {
       );
     }
 
-    // Sine-sum vertex swell (vertical displacement only) — three layers, the
-    // third (~55m) the long-wavelength chop.
-    let swell: Node<'float'> = float(0);
-    for (const layer of SWELL_LAYERS) {
-      const k = TWO_PI / layer.wavelength;
-      const phase = worldX
-        .mul(layer.dirX)
-        .add(worldZ.mul(layer.dirZ))
-        .mul(k)
-        .add(this.timeUniform.mul(layer.speed))
-        .add(warpNode);
-      swell = swell.add(sin(phase).mul(layer.amplitude));
+    // Warp gradient, for the chain rule on every warped train's slope.
+    let warpGradX: Node<'float'> = float(0);
+    let warpGradZ: Node<'float'> = float(0);
+    for (const term of PHASE_WARP_TERMS) {
+      const c = cos(worldX.mul(term.freqX).add(worldZ.mul(term.freqZ))).mul(term.amplitude);
+      warpGradX = warpGradX.add(c.mul(term.freqX));
+      warpGradZ = warpGradZ.add(c.mul(term.freqZ));
     }
-    material.positionNode = positionLocal.add(vec3(0, swell, 0));
 
-    // Scrolling wave-normal layers: shading-only XZ tilt (no displacement) —
-    // three layers, the third (~47m) the long-wavelength chop.
-    let tiltX: Node<'float'> = float(0);
-    let tiltZ: Node<'float'> = float(0);
-    for (const layer of WAVE_NORMAL_LAYERS) {
-      const k = TWO_PI / layer.wavelength;
-      const phase = worldX
-        .mul(layer.dirX)
-        .add(worldZ.mul(layer.dirZ))
-        .mul(k)
-        .add(this.timeUniform.mul(layer.speed))
-        .add(warpNode);
-      const s = sin(phase).mul(layer.strength);
-      tiltX = tiltX.add(s.mul(layer.dirX));
-      tiltZ = tiltZ.add(s.mul(layer.dirZ));
+    // The wave table, term for term as waves.ts sums it: each train's weight
+    // from the vertex's fetch or swell, its direction (a swell train turned off
+    // the swell's own), its phase, and the energy that sets the breaking cap.
+    const fetchAttr = attribute<'float'>('waterFetch', 'float');
+    const swellAttr = attribute<'vec2'>('waterSwell', 'vec2');
+    const swellLength = length(swellAttr);
+    const swellUnit = swellAttr.div(max(swellLength, 1e-4));
+    const swellExposure = min(swellLength, 1);
+    let energy: Node<'float'> = float(0);
+    const parts = WAVE_TRAINS.map((train) => {
+      const weight: Node<'float'> =
+        train.band === SWELL_BAND
+          ? swellExposure
+          : smoothstep(
+              WIND_BANDS[train.band]!.prevFetchM,
+              WIND_BANDS[train.band]!.fetchM,
+              fetchAttr,
+            );
+      const amplitude = weight.mul(train.amplitudeM);
+      const c = Math.cos(train.angleRad);
+      const s = Math.sin(train.angleRad);
+      const dirX: Node<'float'> =
+        train.band === SWELL_BAND ? swellUnit.x.mul(c).sub(swellUnit.y.mul(s)) : float(c);
+      const dirZ: Node<'float'> =
+        train.band === SWELL_BAND ? swellUnit.x.mul(s).add(swellUnit.y.mul(c)) : float(s);
+      let phase = worldX
+        .mul(dirX)
+        .add(worldZ.mul(dirZ))
+        .mul(train.wavenumber)
+        .sub(this.timeUniform.mul(train.omega))
+        .add(train.phase);
+      if (train.warped) phase = phase.add(warpNode);
+      energy = energy.add(amplitude.mul(amplitude).mul(0.5));
+      this.graphTrainList.push(train);
+      return { train, amplitude, dirX, dirZ, phase };
+    });
+    const significant = energy.sqrt().mul(4);
+    const breakScale = min(float(1), depthAttr.mul(BREAKING_RATIO).div(max(significant, 1e-6)));
+
+    // Only the swell moves the mesh: wind waves are shorter than the vertices
+    // can carry. Vertical displacement only.
+    let lift: Node<'float'> = float(0);
+    for (const part of parts) {
+      if (part.train.band === SWELL_BAND) lift = lift.add(part.amplitude.mul(sin(part.phase)));
     }
-    const shadingNormalLocal = normalize(vec3(tiltX, float(1), tiltZ));
+    material.positionNode = positionGeometry.add(vec3(0, lift.mul(breakScale), 0));
+
+    // Every train tilts the normal by its analytic slope; a wind train fades
+    // as its crests near the pixel grid (metres a pixel from the screen-space
+    // derivative of world position).
+    const metresPerPixel = max(length(dFdx(positionWorld)), length(dFdy(positionWorld)));
+    const fadeNode = (wavelengthM: number): Node<'float'> =>
+      smoothstep(FADE_GONE_PX, FADE_FULL_PX, float(wavelengthM).div(max(metresPerPixel, 1e-6)));
+    let slopeX: Node<'float'> = float(0);
+    let slopeZ: Node<'float'> = float(0);
+    for (const part of parts) {
+      const { train } = part;
+      const strength = cos(part.phase).mul(part.amplitude);
+      const faded =
+        train.band === SWELL_BAND
+          ? strength
+          : strength.mul(fadeNode((Math.PI * 2) / train.wavenumber));
+      let dx: Node<'float'> = part.dirX.mul(train.wavenumber);
+      let dz: Node<'float'> = part.dirZ.mul(train.wavenumber);
+      if (train.warped) {
+        dx = dx.add(warpGradX);
+        dz = dz.add(warpGradZ);
+      }
+      slopeX = slopeX.add(faded.mul(dx));
+      slopeZ = slopeZ.add(faded.mul(dz));
+    }
+    slopeX = slopeX.mul(breakScale);
+    slopeZ = slopeZ.mul(breakScale);
+
+    // River drift: two copies of the ripple pattern, each carried along the
+    // flow and reset every cycle, half a cycle apart and cross-faded so the
+    // pattern never winds up however the flow varies. Still where flow is zero.
+    const flowAttr = attribute<'vec2'>('waterFlow', 'vec2');
+    const flowStrength = clamp(length(flowAttr).div(RIVER_SURFACE_SPEED_MPS), 0, 1);
+    const cycle = this.timeUniform.div(RIPPLE_CYCLE_S);
+    const cycleA = fract(cycle);
+    const cycleB = fract(cycle.add(0.5));
+    const fadeA = oneMinus(abs(oneMinus(cycleA.mul(2))));
+    const fadeB = oneMinus(fadeA);
+    for (const set of RIPPLE_SETS) {
+      const k = (Math.PI * 2) / set.wavelengthM;
+      const crest = (cyc: Node<'float'>, fadeIn: Node<'float'>): Node<'float'> => {
+        const drift = cyc.mul(RIPPLE_CYCLE_S);
+        const along = worldX
+          .sub(flowAttr.x.mul(drift))
+          .mul(set.dirX)
+          .add(worldZ.sub(flowAttr.y.mul(drift)).mul(set.dirZ));
+        return cos(along.mul(k).add(set.phase)).mul(fadeIn);
+      };
+      const ripple = crest(cycleA, fadeA)
+        .add(crest(cycleB, fadeB))
+        .mul(flowStrength)
+        .mul(fadeNode(set.wavelengthM))
+        .mul(set.slope);
+      slopeX = slopeX.add(ripple.mul(set.dirX));
+      slopeZ = slopeZ.add(ripple.mul(set.dirZ));
+    }
+    const shadingNormalLocal = normalize(vec3(slopeX.negate(), float(1), slopeZ.negate()));
     material.normalNode = transformNormalToView(shadingNormalLocal);
 
     // Glancing-angle (Fresnel-ish) cosView — shared by opacity below and by

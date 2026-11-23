@@ -77,6 +77,30 @@ describe('deriveWaterBodies kinds', () => {
     expect(b.flowX[at(b, 45, 45)]).toBe(0);
   });
 
+  it('does not call a fat bay on the sea a river: it is under 400 m across its longest line', () => {
+    // 9 wide and 13 long: 20 steps corner to corner along the tiles, but 316 m straight.
+    const b = deriveWaterBodies(
+      mask([
+        [0, 0, 15, SIZE - 1],
+        [16, 40, 24, 52],
+      ]),
+      SIZE,
+      flat,
+    );
+    expect(b.kind[at(b, 20, 46)]).toBe(WaterKind.Ocean);
+    expect(b.flowX[at(b, 20, 46)]).toBe(0);
+  });
+
+  it('still calls a diagonal channel a river by its straight length', () => {
+    const water = new Uint8Array(SIZE * SIZE);
+    for (let i = 0; i < 24; i++) {
+      for (const d of [0, 1, 2]) water[(40 + i) * SIZE + (10 + i + d)] = 1;
+    }
+    for (let z = 0; z < SIZE; z++) for (let x = 0; x < 10; x++) water[z * SIZE + x] = 1;
+    const b = deriveWaterBodies(water, SIZE, flat);
+    expect(b.kind[at(b, 24, 53)]).toBe(WaterKind.River);
+  });
+
   it('flows a channel between two lakes to the larger one', () => {
     // Small lake in the west, large lake in the east; the channel runs to the east.
     const b = deriveWaterBodies(
