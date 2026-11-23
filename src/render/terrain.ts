@@ -14,16 +14,15 @@ import * as THREE from 'three';
 import { MeshStandardNodeMaterial, type MeshLambertNodeMaterial } from 'three/webgpu';
 import { uniform } from 'three/tsl';
 import { nightBodyMaterial, nightTintNode } from './nightlook';
+import { materialUnit } from './palette';
 import type { MapData, TilePoint } from '../shared/types';
 import {
   CHUNK_TILES,
   CHUNKS_PER_SIDE,
   MAP_SIZE,
   MAX_BUILD_SLOPE,
-  MAX_WATER_DEPTH_VIS,
   SAND_BAND_METERS,
   SEA_LEVEL,
-  SHORELINE_BAND_METERS,
   TILE_METERS,
 } from '../shared/constants';
 
@@ -36,12 +35,12 @@ const TREE_DARKEN_MAX = 0.35; // fraction darkened at full (255) tree density (c
 const SAND_COLOR: readonly [number, number, number] = [0.8, 0.74, 0.52];
 const ROCK_COLOR: readonly [number, number, number] = [0.45, 0.43, 0.4];
 
-// Water rendering — terrain-side seabed/shoreline treatment. The water
-// SURFACE itself (translucent plane, waves, glint) is water.ts's; this is
-// only the terrain color read through/around it.
-const SEABED_SHALLOW_COLOR: readonly [number, number, number] = [0.55, 0.52, 0.38]; // sandy seabed just under the surface
-const SEABED_DEEP_COLOR: readonly [number, number, number] = [0.02, 0.1, 0.15]; // deep blue-green, fully tinted at MAX_WATER_DEPTH_VIS
-const FOAM_COLOR: readonly [number, number, number] = [0.93, 0.91, 0.84]; // shoreline sand/foam highlight
+// The bed under water keeps a ground colour of its own; the water surface
+// (water.ts) draws the depth colour, foam and light over it.
+const SEABED_SAND_COLOR = materialUnit('seabedSand');
+const SEABED_SILT_COLOR = materialUnit('seabedSilt');
+/** Depth (metres below sea level) at which the bed has run from sand to silt. */
+export const SEABED_SILT_DEPTH_M = 3;
 
 // Ground cover — grass hue variants, dry patches, mown band.
 const GRASS_HUE_FRESH: readonly [number, number, number] = [0.32, 0.58, 0.26];
@@ -137,23 +136,11 @@ export function treeShadeFactor(treeDensity: number): number {
 }
 
 /**
- * Underwater seabed color ramp: sandy just under the surface, ramping to a
- * deep blue-green, fully tinted at MAX_WATER_DEPTH_VIS meters. `depth` is
- * meters below SEA_LEVEL (0 at the surface).
+ * The ground colour of the bed `depth` metres below SEA_LEVEL: wet sand at the
+ * waterline running to silt by SEABED_SILT_DEPTH_M, and no further. Pure.
  */
-export function seabedDepthColor(depth: number): [number, number, number] {
-  const t = clamp01(depth / MAX_WATER_DEPTH_VIS);
-  return lerp3(SEABED_SHALLOW_COLOR, SEABED_DEEP_COLOR, t);
-}
-
-/**
- * Shoreline foam/sand band weight (0..1, peaking at 1 exactly at SEA_LEVEL,
- * fading to 0 at SHORELINE_BAND_METERS away on either side): vertices within
- * SHORELINE_BAND_METERS of SEA_LEVEL get a sand/foam lightening band.
- */
-export function shorelineBandWeight(height: number): number {
-  const dist = Math.abs(height - SEA_LEVEL);
-  return clamp01(1 - dist / SHORELINE_BAND_METERS);
+export function seabedColor(depth: number): [number, number, number] {
+  return lerp3(SEABED_SAND_COLOR, SEABED_SILT_COLOR, clamp01(depth / SEABED_SILT_DEPTH_M));
 }
 
 /** 3-hue grass blend (fresh green / olive / yellow-green) from a single low-frequency noise value in [0,1). */
@@ -204,12 +191,10 @@ export function groundCoverTint(
 
 /**
  * Deterministic terrain vertex color:
- * - underwater (height < SEA_LEVEL): seabedDepthColor ramp by depth.
+ * - underwater (height < SEA_LEVEL): seabedColor, wet sand to silt by depth.
  * - on land: sand near SEA_LEVEL fading into the ground-cover tint
  *   (hue variants + dry patches + mown-near-road), blended to rock where
  *   local slope exceeds MAX_BUILD_SLOPE.
- * - a shoreline foam band is blended in wherever height sits within
- *   SHORELINE_BAND_METERS of SEA_LEVEL, on either side.
  * - dense tree cover darkens the final color (canopy-shadow read).
  * Pure and exported for tests; `slope` is in the same units as
  * MAX_BUILD_SLOPE (meters of height delta); `worldX`/`worldZ` are meters
@@ -227,7 +212,7 @@ export function vertexColorFor(
   let rgb: [number, number, number];
 
   if (height < SEA_LEVEL) {
-    rgb = seabedDepthColor(SEA_LEVEL - height);
+    rgb = seabedColor(SEA_LEVEL - height);
   } else {
     const sandT = clamp01((height - SEA_LEVEL) / SAND_BAND_METERS);
     const cover = groundCoverTint(worldX, worldZ, treeDensity, height, nearRoad);
@@ -236,9 +221,6 @@ export function vertexColorFor(
     const rockT = clamp01((slope - MAX_BUILD_SLOPE) / ROCK_BLEND_RANGE);
     rgb = lerp3(rgb, ROCK_COLOR, rockT);
   }
-
-  const shoreT = shorelineBandWeight(height);
-  rgb = lerp3(rgb, FOAM_COLOR, shoreT);
 
   const shade = treeShadeFactor(treeDensity);
   return [rgb[0] * shade, rgb[1] * shade, rgb[2] * shade];

@@ -30,7 +30,9 @@ import {
   FRESNEL_F0,
   LAP_BREATH,
   LAP_DEPTH_M,
+  LAP_MAX_DEPTH_M,
   LAP_STRENGTH,
+  LAP_WIDTH_M,
   NET_DEPTH_M,
   STREAK_STRENGTH,
   SURF_LINE_CENTRE_TURNS,
@@ -41,6 +43,7 @@ import {
   bedNet,
   bedNetGain,
   gustScale,
+  lapDepthFor,
   lapFoam,
   lookOf,
   schlick,
@@ -286,6 +289,25 @@ describe('foam', () => {
     for (let d = 0; d <= LAP_DEPTH_M; d += 0.01) {
       expect(lapFoam(d + 0.01, 0.5)).toBeLessThanOrEqual(lapFoam(d, 0.5) + 1e-9);
     }
+  });
+
+  it('laps a constant width of ground: the same 0.6 m of bed on a gentle shelf and a steep bank', () => {
+    const groundWidth = (slope: number): number => {
+      let edge = 0;
+      for (let d = 0; d <= 1; d += 0.0005) if (lapFoam(d, 1, slope) > 0) edge = d;
+      return edge / slope;
+    };
+    // Within the floor and cap: the edge sits LAP_WIDTH_M of ground out whatever the slope.
+    for (const slope of [0.1, 0.3, 0.8]) expect(groundWidth(slope)).toBeCloseTo(LAP_WIDTH_M, 1);
+    // A hair of depth on a flat shelf does not widen into tens of metres.
+    expect(lapDepthFor(0.002)).toBe(LAP_DEPTH_M);
+  });
+
+  it('keeps a line on a vertical bank and never floods a pixel across a bank edge', () => {
+    expect(lapDepthFor(Infinity)).toBe(LAP_MAX_DEPTH_M);
+    expect(lapDepthFor(0)).toBe(LAP_DEPTH_M);
+    expect(lapDepthFor(-1)).toBe(LAP_DEPTH_M);
+    expect(lapFoam(LAP_MAX_DEPTH_M * 1.01, 1, Infinity)).toBe(0);
   });
 
   it('breathes: the band is narrower when the noise is low than when it is high', () => {

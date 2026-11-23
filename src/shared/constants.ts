@@ -359,16 +359,6 @@ export const TERRAFORM_STRENGTH_MAX = 5;
  * funds-gated like every other edit.
  */
 export const TERRAFORM_COST_PER_METER_TILE = 0.5;
-/**
- * Depth in meters below SEA_LEVEL at which the underwater seabed tint
- * (blue-green vertex-color ramp) reaches full strength.
- */
-export const MAX_WATER_DEPTH_VIS = 12;
-/**
- * Shoreline foam band: vertices with |height − SEA_LEVEL| < this (meters)
- * draw the waterline, giving every coast a drawn edge.
- */
-export const SHORELINE_BAND_METERS = 0.4;
 
 // --- garbage & waste (§21) --------------------------------------------------
 /** Ticks between garbage generation + collection passes (staggered like the other periodic sim work). */

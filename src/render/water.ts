@@ -92,7 +92,9 @@ import {
   GUST_SCALES_M,
   LAP_BREATH,
   LAP_DEPTH_M,
+  LAP_MAX_DEPTH_M,
   LAP_STRENGTH,
+  LAP_WIDTH_M,
   NET_DEPTH_M,
   NET_GAIN,
   NET_SCALE,
@@ -984,13 +986,18 @@ export class WaterRenderer {
       ),
     );
 
-    // Lapping: a thin band where the water is under LAP_DEPTH_M, its width
-    // breathing with slow noise.
+    // Lapping: a band LAP_WIDTH_M wide on the ground. The bed's slope (depth
+    // change per metre of ground, from the screen-space derivatives) turns that
+    // width into a depth, kept between a floor and a cap; its width breathes
+    // with slow noise.
     const breath = noiseAt(worldX, worldZ, 0.11, t.mul(0.15).add(7.3)).mul(0.5).add(0.5);
+    const depthPerPixel = length(vec2(dFdx(depthAttr), dFdy(depthAttr)));
+    const bedSlope = depthPerPixel.div(max(metresPerPixel, 1e-6));
+    const lapDepth = clamp(bedSlope.mul(LAP_WIDTH_M), LAP_DEPTH_M, LAP_MAX_DEPTH_M);
     const lapWidth = breath
       .mul(LAP_BREATH)
       .add(1 - LAP_BREATH)
-      .mul(LAP_DEPTH_M);
+      .mul(lapDepth);
     const lap = oneMinus(smoothstep(lapWidth.mul(0.5), lapWidth, pixelDepth)).mul(LAP_STRENGTH);
 
     // River streaks: thin lines stretched along the flow and carried by it,

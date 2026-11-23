@@ -20,8 +20,11 @@ const TWO_PI = Math.PI * 2;
 // Foam
 // ---------------------------------------------------------------------------
 
-/** Depth under which the water laps at the shore, metres. Dial. */
-export const LAP_DEPTH_M = 0.04;
+/** Width of the lapping line on the ground, metres, however steep the bed. Dial. */
+export const LAP_WIDTH_M = 0.6;
+/** The least depth the lapping line reaches (a vertical bank still shows one) and the most (a pixel across a bank's edge does not flood), metres. */
+export const LAP_DEPTH_M = 0.01;
+export const LAP_MAX_DEPTH_M = 0.5;
 /** Share of the lapping band's width that breathes with the noise. */
 export const LAP_BREATH = 0.4;
 /** Peak brightness of the lapping band. */
@@ -87,9 +90,18 @@ export function surfFoam(breaking: number, line: number, trail: number, noise01:
   );
 }
 
-/** Lapping foam, 0..1: a thin band where the water is under LAP_DEPTH_M, its width breathing with `breath01`. */
-export function lapFoam(depthM: number, breath01: number): number {
-  const w = LAP_DEPTH_M * (1 - LAP_BREATH + LAP_BREATH * clamp01(breath01));
+/**
+ * The depth under which water laps, metres, for a bed that falls `slope` metres
+ * of depth per metre along the ground: the depth LAP_WIDTH_M of ground covers,
+ * kept between LAP_DEPTH_M and LAP_MAX_DEPTH_M.
+ */
+export function lapDepthFor(slope: number): number {
+  return Math.min(LAP_MAX_DEPTH_M, Math.max(LAP_DEPTH_M, LAP_WIDTH_M * Math.max(0, slope)));
+}
+
+/** Lapping foam, 0..1: a band LAP_WIDTH_M wide on the ground (lapDepthFor `slope`), its width breathing with `breath01`. */
+export function lapFoam(depthM: number, breath01: number, slope = 0): number {
+  const w = lapDepthFor(slope) * (1 - LAP_BREATH + LAP_BREATH * clamp01(breath01));
   return LAP_STRENGTH * (1 - smooth(0.5 * w, w, depthM));
 }
 
