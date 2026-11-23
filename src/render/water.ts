@@ -91,8 +91,7 @@ import {
   GUST_GAIN,
   GUST_SCALES_M,
   LAP_BREATH,
-  LAP_DEPTH_M,
-  LAP_MAX_DEPTH_M,
+  LAP_BREATH_RATE,
   LAP_STRENGTH,
   LAP_WIDTH_M,
   NET_DEPTH_M,
@@ -520,6 +519,7 @@ export class WaterRenderer {
     const grid = buildWaterGrid(this.water, this.sizeTiles);
     const count = grid.positions.length / 3;
     const depth = new Float32Array(count);
+    const bed = new Float32Array(count);
     const fetch = new Float32Array(count);
     const swellTau = new Float32Array(count);
     const swellSlow = new Float32Array(count * 2);
@@ -531,7 +531,9 @@ export class WaterRenderer {
     for (let i = 0; i < count; i++) {
       const x = grid.positions[i * 3]!;
       const z = grid.positions[i * 3 + 2]!;
-      const d = Math.max(0, SEA_LEVEL - this.heightAt(x, z));
+      const below = SEA_LEVEL - this.heightAt(x, z);
+      const d = Math.max(0, below);
+      bed[i] = below;
       const s = sampleWater(bodies, x, z);
       const look = vertexLook(looks, this.sizeTiles, x / TILE_METERS, z / TILE_METERS);
       murk[i] = look.murk;
@@ -553,6 +555,7 @@ export class WaterRenderer {
     geometry.setAttribute('position', new THREE.BufferAttribute(grid.positions, 3));
     geometry.setIndex(new THREE.BufferAttribute(grid.indices, 1));
     geometry.setAttribute('waterDepth', new THREE.BufferAttribute(depth, 1));
+    geometry.setAttribute('waterBed', new THREE.BufferAttribute(bed, 1));
     geometry.setAttribute('waterFoul', foul);
     geometry.setAttribute('waterFetch', new THREE.BufferAttribute(fetch, 1));
     geometry.setAttribute('waterSwellTau', new THREE.BufferAttribute(swellTau, 1));
@@ -986,19 +989,27 @@ export class WaterRenderer {
       ),
     );
 
-    // Lapping: a band LAP_WIDTH_M wide on the ground. The bed's slope (depth
-    // change per metre of ground, from the screen-space derivatives) turns that
-    // width into a depth, kept between a floor and a cap; its width breathes
-    // with slow noise.
-    const breath = noiseAt(worldX, worldZ, 0.11, t.mul(0.15).add(7.3)).mul(0.5).add(0.5);
-    const depthPerPixel = length(vec2(dFdx(depthAttr), dFdy(depthAttr)));
-    const bedSlope = depthPerPixel.div(max(metresPerPixel, 1e-6));
-    const lapDepth = clamp(bedSlope.mul(LAP_WIDTH_M), LAP_DEPTH_M, LAP_MAX_DEPTH_M);
+    // Lapping: a band at most LAP_WIDTH_M wide on the ground, measured from the
+    // waterline. The bed's signed depth, interpolated over the mesh (zero at the
+    // shore, no depth-buffer precision in it), over its slope along the ground
+    // is the distance to the shore. The band breathes in and out, out of step
+    // from place to place, and where a pixel is wider than the band it fades
+    // instead of widening.
+    const breathNoise = noiseAt(worldX, worldZ, 0.11, float(7.3)).mul(0.5).add(0.5);
+    const breath = sin(t.mul(LAP_BREATH_RATE).add(breathNoise.mul(TWO_PI)))
+      .mul(0.5)
+      .add(0.5);
+    const bedAttr = attribute<'float'>('waterBed', 'float');
+    const bedSlope = length(vec2(dFdx(bedAttr), dFdy(bedAttr))).div(max(metresPerPixel, 1e-6));
+    const shoreDistance = max(bedAttr, 0).div(max(bedSlope, 1e-6));
     const lapWidth = breath
       .mul(LAP_BREATH)
       .add(1 - LAP_BREATH)
-      .mul(lapDepth);
-    const lap = oneMinus(smoothstep(lapWidth.mul(0.5), lapWidth, pixelDepth)).mul(LAP_STRENGTH);
+      .mul(LAP_WIDTH_M);
+    const lapFill = min(float(1), float(LAP_WIDTH_M).div(max(metresPerPixel, 1e-6)));
+    const lap = oneMinus(smoothstep(0, lapWidth, shoreDistance))
+      .mul(lapFill)
+      .mul(LAP_STRENGTH);
 
     // River streaks: thin lines stretched along the flow and carried by it,
     // two copies cross-faded as the ripples are.

@@ -29,8 +29,7 @@ import {
   BED_LOST_TRANSMISSION,
   FRESNEL_F0,
   LAP_BREATH,
-  LAP_DEPTH_M,
-  LAP_MAX_DEPTH_M,
+  LAP_BREATH_RATE,
   LAP_STRENGTH,
   LAP_WIDTH_M,
   NET_DEPTH_M,
@@ -43,11 +42,12 @@ import {
   bedNet,
   bedNetGain,
   gustScale,
-  lapDepthFor,
+  lapBreath,
   lapFoam,
   lookOf,
   schlick,
   seenThrough,
+  shoreDistanceM,
   skyBlend,
   streakFoam,
   surfBreaking,
@@ -281,40 +281,66 @@ describe('foam', () => {
     expect(surfFoam(0, 1, 1, 0.9)).toBe(0);
   });
 
-  it('laps only inside the band: full at the waterline, none from LAP_DEPTH_M down', () => {
+  it('laps only inside the band: full at the waterline, none from LAP_WIDTH_M of ground out, soft between', () => {
     expect(lapFoam(0, 0)).toBeCloseTo(LAP_STRENGTH, 9);
     expect(lapFoam(0, 1)).toBeCloseTo(LAP_STRENGTH, 9);
-    expect(lapFoam(LAP_DEPTH_M, 1)).toBe(0);
-    expect(lapFoam(LAP_DEPTH_M * 3, 0.5)).toBe(0);
-    for (let d = 0; d <= LAP_DEPTH_M; d += 0.01) {
+    expect(lapFoam(LAP_WIDTH_M, 1)).toBe(0);
+    expect(lapFoam(LAP_WIDTH_M * 3, 0.5)).toBe(0);
+    // Inner edge soft: a steady fall, not a ruled strip.
+    const mid = lapFoam(LAP_WIDTH_M * 0.5, 1);
+    expect(mid).toBeGreaterThan(0);
+    expect(mid).toBeLessThan(LAP_STRENGTH);
+    for (let d = 0; d < LAP_WIDTH_M; d += 0.01) {
       expect(lapFoam(d + 0.01, 0.5)).toBeLessThanOrEqual(lapFoam(d, 0.5) + 1e-9);
     }
   });
 
-  it('laps a constant width of ground: the same 0.6 m of bed on a gentle shelf and a steep bank', () => {
-    const groundWidth = (slope: number): number => {
-      let edge = 0;
-      for (let d = 0; d <= 1; d += 0.0005) if (lapFoam(d, 1, slope) > 0) edge = d;
-      return edge / slope;
-    };
-    // Within the floor and cap: the edge sits LAP_WIDTH_M of ground out whatever the slope.
-    for (const slope of [0.1, 0.3, 0.8]) expect(groundWidth(slope)).toBeCloseTo(LAP_WIDTH_M, 1);
-    // A hair of depth on a flat shelf does not widen into tens of metres.
-    expect(lapDepthFor(0.002)).toBe(LAP_DEPTH_M);
+  it('shore distance is the bed depth over its slope: the same ground width on a gentle shelf and a steep bank', () => {
+    for (const slope of [0.002, 0.1, 0.8, 50]) {
+      const d = LAP_WIDTH_M * 0.5;
+      expect(shoreDistanceM(d * slope, slope)).toBeCloseTo(d, 9);
+      expect(lapFoam(shoreDistanceM(d * slope, slope), 1)).toBeCloseTo(lapFoam(d, 1), 9);
+      expect(lapFoam(shoreDistanceM(LAP_WIDTH_M * 1.01 * slope, slope), 1)).toBe(0);
+    }
+    expect(shoreDistanceM(-1, 0.3)).toBe(0);
+    expect(Number.isFinite(shoreDistanceM(1, 0))).toBe(true);
   });
 
-  it('keeps a line on a vertical bank and never floods a pixel across a bank edge', () => {
-    expect(lapDepthFor(Infinity)).toBe(LAP_MAX_DEPTH_M);
-    expect(lapDepthFor(0)).toBe(LAP_DEPTH_M);
-    expect(lapDepthFor(-1)).toBe(LAP_DEPTH_M);
-    expect(lapFoam(LAP_MAX_DEPTH_M * 1.01, 1, Infinity)).toBe(0);
+  it('fades with pixel size instead of widening: a pixel wider than the line shows it at the share it fills', () => {
+    expect(lapFoam(0, 1, LAP_WIDTH_M)).toBeCloseTo(LAP_STRENGTH, 9);
+    expect(lapFoam(0, 1, LAP_WIDTH_M * 4)).toBeCloseTo(LAP_STRENGTH / 4, 9);
+    expect(lapFoam(0, 1, LAP_WIDTH_M * 40)).toBeLessThan(lapFoam(0, 1, LAP_WIDTH_M * 4));
+    // The line's reach on the ground does not grow with the pixel.
+    expect(lapFoam(LAP_WIDTH_M * 1.01, 1, 50)).toBe(0);
   });
 
-  it('breathes: the band is narrower when the noise is low than when it is high', () => {
-    const depth = LAP_DEPTH_M * (1 - LAP_BREATH) * 0.9;
-    expect(lapFoam(depth, 0)).toBeGreaterThan(0);
-    expect(lapFoam(LAP_DEPTH_M * 0.9, 0)).toBe(0);
-    expect(lapFoam(LAP_DEPTH_M * 0.9, 1)).toBeGreaterThan(0);
+  it('never reaches past LAP_WIDTH_M of ground at any breath or pixel size', () => {
+    for (const breath of [0, 0.5, 1]) {
+      for (const pixelM of [0, 0.1, 5, 80]) {
+        for (let d = LAP_WIDTH_M; d < 10; d += 0.05) {
+          expect(lapFoam(d, breath, pixelM)).toBe(0);
+        }
+      }
+    }
+  });
+
+  it('breathes in and out with time, out of step by place', () => {
+    const at = (n: number, t: number): number => lapBreath(n, t);
+    const period = (2 * Math.PI) / LAP_BREATH_RATE;
+    expect(at(0.2, 0)).toBeCloseTo(at(0.2, period), 9);
+    expect(Math.abs(at(0.2, 0) - at(0.2, period / 2))).toBeGreaterThan(0.5);
+    expect(at(0.1, 0)).not.toBeCloseTo(at(0.3, 0), 2);
+    for (let t = 0; t < 20; t += 0.7) {
+      expect(at(0.3, t)).toBeGreaterThanOrEqual(0);
+      expect(at(0.3, t)).toBeLessThanOrEqual(1);
+    }
+  });
+
+  it('breathes: the band is narrower when the breath is low than when it is high', () => {
+    const d = LAP_WIDTH_M * (1 - LAP_BREATH) * 0.9;
+    expect(lapFoam(d, 0)).toBeGreaterThan(0);
+    expect(lapFoam(LAP_WIDTH_M * 0.9, 0)).toBe(0);
+    expect(lapFoam(LAP_WIDTH_M * 0.9, 1)).toBeGreaterThan(0);
   });
 
   it('river streaks are zero where the flow is zero, and strongest in the current', () => {

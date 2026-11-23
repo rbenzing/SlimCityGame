@@ -341,6 +341,14 @@ export default defineSeries({
       setup: pinned(),
       camera: (s) => ({ ...at('beach')(s), distance: 45, yaw: 0.3, pitch: 1.1 }),
     },
+    {
+      subject: 'ocean',
+      view: 'beach-close-later',
+      shows:
+        'the shallows off the beach as in beach-close, 3.5 s on the water clock (half a breath): the lapping line is wider or narrower than it was',
+      setup: pinned(undefined, WAVE_CLOCK_S + 3.5),
+      camera: (s) => ({ ...at('beach')(s), distance: 45, yaw: 0.3, pitch: 1.1 }),
+    },
     ...[
       ['a', WAVE_CLOCK_S],
       ['b', WAVE_CLOCK_S + DRIFT_GAP_S],

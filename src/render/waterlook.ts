@@ -22,11 +22,8 @@ const TWO_PI = Math.PI * 2;
 
 /** Width of the lapping line on the ground, metres, however steep the bed. Dial. */
 export const LAP_WIDTH_M = 0.6;
-/** The least depth the lapping line reaches (a vertical bank still shows one) and the most (a pixel across a bank's edge does not flood), metres. */
-export const LAP_DEPTH_M = 0.01;
-export const LAP_MAX_DEPTH_M = 0.5;
-/** Share of the lapping band's width that breathes with the noise. */
-export const LAP_BREATH = 0.4;
+/** Share of the lapping band's width that breathes. */
+export const LAP_BREATH = 0.6;
 /** Peak brightness of the lapping band. */
 export const LAP_STRENGTH = 0.85;
 /** The surf line's centre, in turns of phase past the crest's top, and its half-width. */
@@ -91,18 +88,30 @@ export function surfFoam(breaking: number, line: number, trail: number, noise01:
 }
 
 /**
- * The depth under which water laps, metres, for a bed that falls `slope` metres
- * of depth per metre along the ground: the depth LAP_WIDTH_M of ground covers,
- * kept between LAP_DEPTH_M and LAP_MAX_DEPTH_M.
+ * Metres of ground from the waterline, for a bed `bedDepthM` below the surface
+ * that falls `slope` metres of depth per metre along the ground. Both come from
+ * the mesh's interpolated signed depth, so the figure is exact for a linear bed.
  */
-export function lapDepthFor(slope: number): number {
-  return Math.min(LAP_MAX_DEPTH_M, Math.max(LAP_DEPTH_M, LAP_WIDTH_M * Math.max(0, slope)));
+export function shoreDistanceM(bedDepthM: number, slope: number): number {
+  return Math.max(0, bedDepthM) / Math.max(slope, 1e-6);
 }
 
-/** Lapping foam, 0..1: a band LAP_WIDTH_M wide on the ground (lapDepthFor `slope`), its width breathing with `breath01`. */
-export function lapFoam(depthM: number, breath01: number, slope = 0): number {
-  const w = lapDepthFor(slope) * (1 - LAP_BREATH + LAP_BREATH * clamp01(breath01));
-  return LAP_STRENGTH * (1 - smooth(0.5 * w, w, depthM));
+/** The lapping line's breath, 0..1: a slow in-and-out (radians a second), out of step from place to place by `noise01` (0..1). */
+export const LAP_BREATH_RATE = 0.9;
+export function lapBreath(noise01: number, timeS: number): number {
+  return 0.5 + 0.5 * Math.sin(LAP_BREATH_RATE * timeS + clamp01(noise01) * TWO_PI);
+}
+
+/**
+ * Lapping foam, 0..1: a band at most LAP_WIDTH_M wide on the ground, `distanceM`
+ * from the waterline, its width breathing with `breath01` and its inner edge
+ * soft. Where a pixel covers `pixelM` metres, more than the line is wide, the
+ * line fades by the share of the pixel it fills instead of widening.
+ */
+export function lapFoam(distanceM: number, breath01: number, pixelM = 0): number {
+  const w = LAP_WIDTH_M * (1 - LAP_BREATH + LAP_BREATH * clamp01(breath01));
+  const fill = pixelM > LAP_WIDTH_M ? LAP_WIDTH_M / pixelM : 1;
+  return LAP_STRENGTH * fill * (1 - smooth(0, w, distanceM));
 }
 
 /** River foam streak, 0..1: a thin line where `ridge` (1 at a noise zero-crossing, stretched along the flow) peaks, strongest where the current is, none where it is still. */
