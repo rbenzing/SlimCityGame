@@ -799,12 +799,15 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
         frameMs: number;
         geometries: number;
         textures: number;
+        programs: number;
       } => ({
         drawCalls: handle.renderer.info.render.drawCalls,
         triangles: handle.renderer.info.render.triangles,
         frameMs: lastFrameMs,
         geometries: handle.renderer.info.memory.geometries,
         textures: handle.renderer.info.memory.textures,
+        // Linked shader programs; -1 where the renderer does not list them.
+        programs: (handle.renderer.info as { programs?: unknown[] | null }).programs?.length ?? -1,
       }),
       setOverlay: (overlay: LensId | null): void => {
         useCityStore.getState().setOverlay(overlay);
@@ -1553,7 +1556,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
    * many snapshots arrived between: the drive cuts to hand the road mesh, the
    * kerbside furniture, and the sweep of trees off occupied ground.
    */
-  const ROAD_CHUNKS_PER_FRAME = 4;
+  const ROAD_DRAIN_BUDGET_MS = 12;
   roadsMesh.setQueueing(true);
   const deferred: {
     junctions: SimSnapshot['junctions'] | null;
@@ -2597,10 +2600,12 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       deferred.driveCuts = null;
       roadsMesh.setDriveCuts(cuts);
     }
-    // The road chunks those two queued are rebuilt a few a frame, and the
+    // The road chunks those two queued are rebuilt within a time budget a frame, and the
     // buildings beside each are laid again as it lands.
+    const drainStart = performance.now();
     const { whole, kerb } = roadsMesh.drainQueued(
-      everything ? Number.POSITIVE_INFINITY : ROAD_CHUNKS_PER_FRAME,
+      Number.POSITIVE_INFINITY,
+      everything ? undefined : () => performance.now() - drainStart < ROAD_DRAIN_BUDGET_MS,
     );
     relayBeside(whole, new Set(), false);
     relayBeside(kerb, new Set(), true);
@@ -3128,6 +3133,9 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
     );
   };
 
+  /** A snapshot has been applied and no frame has drawn it yet; the worker waits to hear it was. */
+  let snapshotToAcknowledge = false;
+
   worker.onmessage = (ev: MessageEvent<WorkerToMain>) => {
     const msg = ev.data;
     switch (msg.type) {
@@ -3138,6 +3146,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
         break;
       case 'snapshot':
         onSnapshot(msg.snap);
+        snapshotToAcknowledge = true;
         break;
       case 'field':
         overlays.setFieldData(msg.field, msg.data);
@@ -3568,6 +3577,12 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       bloomPipeline.render();
     } else {
       handle.renderer.render(world.scene, camera);
+    }
+    // The frame showing the last snapshot is drawn: the worker may post the next.
+    if (snapshotToAcknowledge) {
+      snapshotToAcknowledge = false;
+      const applied: MainToWorker = { type: 'snapshotApplied' };
+      worker.postMessage(applied);
     }
   });
 }

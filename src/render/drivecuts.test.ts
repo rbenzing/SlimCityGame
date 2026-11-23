@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
 import { RoadMeshRenderer } from './roadsmesh';
 import { RoadFlow, RoadTier } from '../shared/types';
-import type { RoadProfile } from '../shared/types';
+import type { JunctionControl, RoadProfile } from '../shared/types';
 import type { TileDriveCut } from '../shared/kerblayout';
 import { composeProfile, NO_EDITS, presetProfileForTier } from '../shared/roadprofile';
 import { CHUNK_TILES, MAP_SIZE, TILE_METERS } from '../shared/constants';
@@ -26,8 +26,8 @@ const tiles: { x: number; z: number }[] = [
   ...Array.from({ length: 33 }, (_, i) => ({ x: CROSS_X, z: 4 + i })).filter((t) => t.z !== ROW_Z),
 ];
 
-function lay(): { renderer: RoadMeshRenderer; scene: THREE.Scene } {
-  const at = new Set(tiles.map((t) => `${t.x},${t.z}`));
+function lay(layout = tiles): { renderer: RoadMeshRenderer; scene: THREE.Scene } {
+  const at = new Set(layout.map((t) => `${t.x},${t.z}`));
   const has = (x: number, z: number): boolean => at.has(`${x},${z}`);
   const scene = new THREE.Scene();
   const renderer = new RoadMeshRenderer(
@@ -36,7 +36,7 @@ function lay(): { renderer: RoadMeshRenderer; scene: THREE.Scene } {
     (id) => PROFILES.get(id) ?? null,
   );
   renderer.apply(
-    tiles.map((t) => ({
+    layout.map((t) => ({
       x: t.x,
       z: t.z,
       tier: RoadTier.TwoLane,
@@ -58,6 +58,8 @@ function drawn(scene: THREE.Scene): string[] {
   const out: string[] = [];
   for (const c of scene.children) {
     if (!(c instanceof THREE.Mesh)) continue;
+    // An instanced part emptied by a change stays in the scene with nothing to draw.
+    if (c instanceof THREE.InstancedMesh && c.count === 0) continue;
     const p = c.geometry.getAttribute('position');
     const col = c.geometry.getAttribute('color');
     let s = `${p.count}:`;
@@ -72,8 +74,8 @@ function drawn(scene: THREE.Scene): string[] {
 }
 
 /** The stalls of every tile's two kerbs. */
-function stalls(r: RoadMeshRenderer): string[] {
-  return tiles.flatMap((t) =>
+function stalls(r: RoadMeshRenderer, layout = tiles): string[] {
+  return layout.flatMap((t) =>
     (['low', 'high'] as const).map(
       (side) => `${t.x},${t.z},${side}:${JSON.stringify(r.parkingStallsAt(t.x, t.z, side))}`,
     ),
@@ -171,5 +173,59 @@ describe('RoadMeshRenderer — drive cuts laid one change at a time', () => {
     const cut = [cutOn(20, ROW_Z, 'high', m(20, 5), m(20, 8))];
     renderer.setDriveCuts(cut);
     expect(renderer.setDriveCuts(cut).size).toBe(0);
+  });
+});
+
+describe('RoadMeshRenderer — junction controls laid one change at a time', () => {
+  /** The street along z = 20 with a crossroads at x = 34, a tee up at x = 20 and a tee down at x = 48. */
+  const layout: { x: number; z: number }[] = [
+    ...tiles.filter((t) => t.x !== CROSS_X || t.z <= 36),
+    ...Array.from({ length: 14 }, (_, i) => ({ x: 20, z: 6 + i })),
+    ...Array.from({ length: 16 }, (_, i) => ({ x: 48, z: 21 + i })),
+  ];
+  const at = (x: number, z: number, control: JunctionControl, turns = 0) => ({
+    x,
+    z,
+    control,
+    turns,
+  });
+  const steps = [
+    [at(34, 20, 'signal')],
+    [at(34, 20, 'signal'), at(20, 20, 'stop'), at(48, 20, 'yield')],
+    [at(34, 20, 'allWayStop'), at(20, 20, 'stop', 0x11), at(48, 20, 'yield')],
+    [at(34, 20, 'allWayStop'), at(48, 20, 'signal')],
+    [],
+  ];
+
+  it('draws what a fresh renderer given the same controls draws, after every step', () => {
+    const live = lay(layout);
+    steps.forEach((controls, i) => {
+      stalls(live.renderer, layout);
+      live.renderer.setJunctionControls(controls);
+      const fresh = lay(layout);
+      fresh.renderer.setJunctionControls(controls);
+      expect(stalls(live.renderer, layout), `stalls at step ${i}`).toEqual(
+        stalls(fresh.renderer, layout),
+      );
+      expect(drawn(live.scene), `geometry at step ${i}`).toEqual(drawn(fresh.scene));
+    });
+  });
+
+  it('actually changes the drawing when a control comes and goes, so the guard can fail', () => {
+    const { renderer, scene } = lay(layout);
+    const before = drawn(scene);
+    renderer.setJunctionControls(steps[0]!);
+    expect(drawn(scene)).not.toEqual(before);
+    renderer.setJunctionControls([]);
+    expect(drawn(scene)).toEqual(before);
+  });
+
+  it('leaves alone the street that runs on past the next junction', () => {
+    const { renderer } = lay(layout);
+    const rebuilt = renderer.setJunctionControls([at(34, 20, 'signal')]);
+    // The far junction's own arm is not what the control changed.
+    expect(rebuilt.has(chunkOf(48, 36))).toBe(false);
+    expect(rebuilt.has(chunkOf(34, 4))).toBe(true);
+    expect(rebuilt.has(chunkOf(48, 20))).toBe(true);
   });
 });

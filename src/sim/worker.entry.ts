@@ -551,6 +551,12 @@ class SimWorld implements WorkerSim {
   private readonly timestep: FixedTimestep;
   /** A tick landed on the snapshot cadence; the pump posts once it has run its ticks. */
   private snapshotDue = false;
+  /** A tick landed on the cadence since the pump last refreshed the happiness average. */
+  private cadenceLanded = false;
+  /** The page has acknowledged a snapshot at least once, so it paces them; before that every one posts. */
+  private snapshotGateOn = false;
+  /** A snapshot has been posted and the page has not yet said it drew it. */
+  private snapshotInFlight = false;
   private speed: SimSpeed = 1;
   private tickNo = 0;
 
@@ -773,7 +779,24 @@ class SimWorld implements WorkerSim {
       case 'clearSelect':
         this.selectedId = null;
         break;
+      case 'snapshotApplied':
+        this.snapshotGateOn = true;
+        this.snapshotInFlight = false;
+        // Everything gathered while the page was busy goes out as one snapshot.
+        if (this.snapshotDue) this.postSnapshot();
+        break;
     }
+  }
+
+  /**
+   * A snapshot is owed: post it now, or, once the page paces them and still has
+   * the last one, leave it owed. The deltas keep gathering meanwhile, so the
+   * snapshot that follows the acknowledgement carries them all.
+   */
+  private offerSnapshot(): void {
+    this.snapshotDue = true;
+    if (this.snapshotGateOn && this.snapshotInFlight) return;
+    this.postSnapshot();
   }
 
   pump(elapsedMs: number): void {
@@ -786,9 +809,16 @@ class SimWorld implements WorkerSim {
     // (calm 1× = 0.5, exponential ×4 steps) — the timestep itself is a pure
     // multiplier driver.
     this.timestep.advance(elapsedMs, SPEED_MULTIPLIERS[this.speed]);
+    // Demand reads the happiness average, which is refreshed once a cadence
+    // lands whether or not the snapshot goes out: the sim must not depend on
+    // how fast the page draws.
+    if (this.cadenceLanded) {
+      this.cadenceLanded = false;
+      this.stats.happiness = this.averageHappiness();
+    }
     // A pump that ran several ticks posts once, after the last: every delta
     // accumulates across ticks until a post drains it, so nothing is lost.
-    if (this.snapshotDue) this.postSnapshot();
+    if (this.snapshotDue) this.offerSnapshot();
   }
 
   /**
@@ -808,7 +838,7 @@ class SimWorld implements WorkerSim {
     if (this.utilitiesDirty) {
       this.recomputeUtilitiesNow();
     }
-    this.postSnapshot();
+    this.offerSnapshot();
   }
 
   // -------------------------------------------------------------------------
@@ -1353,7 +1383,10 @@ class SimWorld implements WorkerSim {
 
     this.stats.tick = t;
 
-    if (t % SNAPSHOT_TICKS === 0) this.snapshotDue = true;
+    if (t % SNAPSHOT_TICKS === 0) {
+      this.snapshotDue = true;
+      this.cadenceLanded = true;
+    }
   }
 
   /** The street tile a facility's vehicles leave by, or null when no road is near its lot. */
@@ -1581,8 +1614,11 @@ class SimWorld implements WorkerSim {
   }
 
   private postSnapshot(): void {
+    // A cadence snapshot's average was refreshed by the pump; any other post
+    // (a paused edit, a load) refreshes it here.
+    if (!this.snapshotDue) this.stats.happiness = this.averageHappiness();
     this.snapshotDue = false;
-    this.stats.happiness = this.averageHappiness();
+    this.snapshotInFlight = true;
     const vehicles = this.traffic.vehicleBuffer.slice();
     // Service vehicles ride the SAME shared buffer: overlay dispatch's own
     // MAX_SERVICE_VEHICLES slots onto the TAIL of the 1024-slot pool (traffic's

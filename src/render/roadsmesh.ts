@@ -8589,9 +8589,10 @@ export class RoadMeshRenderer {
    * Adds to `dirty` every chunk along the straight runs that leave tile
    * (x, z), and along the runs leaving the junction at each one's far end: a
    * block face's stalls are laid along its whole run, and which end its
-   * accessible stalls stand at is decided by the junctions at both.
+   * accessible stalls stand at is decided by the junctions at both. With
+   * `turn` off the runs stop at that far junction: it is not itself changed.
    */
-  private dirtyRuns(x: number, z: number, dirty: Set<number>): void {
+  private dirtyRuns(x: number, z: number, dirty: Set<number>, turn = true): void {
     const walk = (sx: number, sz: number, dx: number, dz: number, turn: boolean): void => {
       for (let tx = sx + dx, tz = sz + dz; ; tx += dx, tz += dz) {
         if (tx < 0 || tz < 0 || tx >= MAP_SIZE || tz >= MAP_SIZE) return;
@@ -8614,7 +8615,7 @@ export class RoadMeshRenderer {
       [0, 1],
       [0, -1],
     ] as const) {
-      walk(x, z, dx, dz, true);
+      walk(x, z, dx, dz, turn);
     }
   }
 
@@ -8684,7 +8685,7 @@ export class RoadMeshRenderer {
     // far back as the approach zone runs, and the parking along its arms.
     const moved = (i: number): void => {
       this.dirtyReaders(i % MAP_SIZE, Math.floor(i / MAP_SIZE), dirty);
-      this.dirtyRuns(i % MAP_SIZE, Math.floor(i / MAP_SIZE), dirty);
+      this.dirtyRuns(i % MAP_SIZE, Math.floor(i / MAP_SIZE), dirty, false);
     };
     for (const [i, control] of next) {
       if (this.junctionControls.get(i) !== control) moved(i);
@@ -8721,12 +8722,15 @@ export class RoadMeshRenderer {
   /**
    * Rebuilds up to `max` of the queued chunks, oldest first. `whole` answers
    * those a junction control moved; `kerb` those a drive cut moved and nothing
-   * else did, whose only change is where the kerb stalls stand.
+   * else did, whose only change is where the kerb stalls stand. `more`, when
+   * given, is asked before each chunk after the first and stops the drain on
+   * false, so a caller with a clock can pace it by time.
    */
-  drainQueued(max: number): { whole: Set<number>; kerb: Set<number> } {
+  drainQueued(max: number, more?: () => boolean): { whole: Set<number>; kerb: Set<number> } {
     const whole = new Set<number>();
     const kerb = new Set<number>();
     for (const [key, isWhole] of [...this.queued].slice(0, max)) {
+      if (more && whole.size + kerb.size > 0 && !more()) break;
       this.rebuildChunk(key);
       (isWhole ? whole : kerb).add(key);
     }
