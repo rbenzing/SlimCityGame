@@ -87,9 +87,6 @@ again, update the figure here and nowhere else.
 - [Street furniture](specs/street-furniture.md) is built `[R-render-036]`;
   what it leaves is in its Open line: a power pole stands outside the
   footway and not in the strip, and a cleared tree is not put back.
-- At 4× a fast-growing city's longest stall is 1.1 s against a 1 s target
-  `[R-render-037]`. What was measured and what was done is in
-  [performance-budget.md](engineering/performance-budget.md#the-main-thread-while-a-city-grows).
 - The shipped industrial lots are too shallow for the yard the second pass
   gives the heavy kinds: a body fills 13.6 m of each 20 m lot tile, so no
   warehouse lot has the 18.7 m a 16 m van needs behind a dock door, and no
