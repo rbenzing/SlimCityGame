@@ -29,10 +29,48 @@ describe('layoutSheets', () => {
     expect(sheets.map((s) => s.length)).toEqual([ROWS_PER_SHEET, 1]);
   });
 
+  it('flows one-frame subjects together, five to a row, in order', () => {
+    const rows = Array.from({ length: 7 }, (_, i) => `s${i}`);
+    const { columns, sheets } = layoutSheets(
+      rows,
+      rows.map((r) => `${r}-full`),
+    );
+    expect(columns).toBe(5);
+    expect(sheets).toHaveLength(1);
+    expect(sheets[0]!.map((r) => r.cells)).toEqual([
+      ['s0-full', 's1-full', 's2-full', 's3-full', 's4-full'],
+      ['s5-full', 's6-full', null, null, null],
+    ]);
+  });
+
+  it('keeps a multi-frame subject on its own row between flowed one-frame rows', () => {
+    const { sheets } = layoutSheets(['a', 'b', 'c'], ['a-full', 'b-above', 'b-front', 'c-full']);
+    expect(sheets[0]!.map((r) => r.cells.filter(Boolean))).toEqual([
+      ['a-full'],
+      ['b-above', 'b-front'],
+      ['c-full'],
+    ]);
+  });
+
+  it('still holds at most the row limit of flowed rows a sheet', () => {
+    const rows = Array.from({ length: 5 * ROWS_PER_SHEET + 1 }, (_, i) => `s${i}`);
+    const { sheets } = layoutSheets(
+      rows,
+      rows.map((r) => `${r}-full`),
+    );
+    expect(sheets.map((s) => s.length)).toEqual([ROWS_PER_SHEET, 1]);
+  });
+
   it('gives a frame to the longest subject name that prefixes it', () => {
-    const { sheets } = layoutSheets(['hall', 'hall-east'], ['hall-above', 'hall-east-above']);
-    expect(sheets[0]!.find((r) => r.row === 'hall-east')!.cells).toEqual(['hall-east-above']);
-    expect(sheets[0]!.find((r) => r.row === 'hall')!.cells).toEqual(['hall-above']);
+    const { sheets } = layoutSheets(
+      ['hall', 'hall-east'],
+      ['hall-above', 'hall-front', 'hall-east-above', 'hall-east-front'],
+    );
+    expect(sheets[0]!.find((r) => r.row === 'hall-east')!.cells).toEqual([
+      'hall-east-above',
+      'hall-east-front',
+    ]);
+    expect(sheets[0]!.find((r) => r.row === 'hall')!.cells).toEqual(['hall-above', 'hall-front']);
   });
 
   it('refuses a frame no subject owns', () => {
