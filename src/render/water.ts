@@ -473,6 +473,7 @@ export class WaterRenderer {
   private foulLayer: Uint8Array | null = null;
   private readonly graphTrainList: WaveTrain[] = [];
   private readonly material: MeshStandardNodeMaterial;
+  private readonly blendedMaterial: MeshStandardNodeMaterial;
   private readonly timeUniform = uniform(0);
   private readonly nightFactorUniform = uniform(0);
   private readonly lightDirUniform = uniform(new THREE.Vector3().copy(DEFAULT_LIGHT_DIRECTION));
@@ -489,7 +490,8 @@ export class WaterRenderer {
     private readonly sizeTiles: number = MAP_SIZE,
   ) {
     this.sunLight = findDirectionalLight(scene);
-    this.material = this.createMaterial();
+    this.material = this.createMaterial(true);
+    this.blendedMaterial = this.createMaterial(false);
 
     const built = this.buildGeometry();
     this.bodies = built.bodies;
@@ -681,6 +683,26 @@ export class WaterRenderer {
     (this.skyHorizonUniform.value as THREE.Vector3).set(horizon[0], horizon[1], horizon[2]);
   }
 
+  /**
+   * Says whether the frame is drawn through a pipeline (true), so the frame
+   * behind the water can be read, or straight to the screen (false), where the
+   * water is a blended sheet instead. Cheap to call every frame.
+   */
+  setScreenRead(live: boolean): void {
+    const next = live ? this.material : this.blendedMaterial;
+    if (this.mesh.material !== next) this.mesh.material = next;
+  }
+
+  /** The material the mesh draws with now. For tests. */
+  activeMaterial(): MeshStandardNodeMaterial {
+    return this.mesh.material as MeshStandardNodeMaterial;
+  }
+
+  /** The blended material the mesh uses when no frame can be read. For tests. */
+  blendedSurfaceMaterial(): MeshStandardNodeMaterial {
+    return this.blendedMaterial;
+  }
+
   setVisible(visible: boolean): void {
     this.mesh.visible = visible;
   }
@@ -704,7 +726,13 @@ export class WaterRenderer {
     return this.bodies;
   }
 
-  private createMaterial(): MeshStandardNodeMaterial {
+  /**
+   * The surface material. `screenRead` shows the frame behind the water
+   * through it, bent and absorbed; without it (the frame is not drawn through
+   * a pipeline, so what is behind is already tone-mapped) the water is a
+   * blended sheet whose alpha comes from the transmittance.
+   */
+  private createMaterial(screenRead: boolean): MeshStandardNodeMaterial {
     const material = new MeshStandardNodeMaterial({
       transparent: true,
       depthWrite: false,
@@ -771,7 +799,7 @@ export class WaterRenderer {
               .add(train.phase)
               .add(warpNode.mul(train.warpScale));
       energy = energy.add(amplitude.mul(amplitude).mul(0.5));
-      this.graphTrainList.push(train);
+      if (screenRead) this.graphTrainList.push(train);
       return { train, amplitude, phase };
     });
     const significant = energy.sqrt().mul(4);
@@ -887,13 +915,18 @@ export class WaterRenderer {
 
     // The pixel's own water depth, from the scene's depth behind the surface:
     // the point the view ray meets there, below this surface point.
+    // Without the frame to read (the blended material) it is the depth the
+    // mesh carries per vertex.
     const sceneViewZ = (uvNode: Node<'vec2'>): Node<'float'> =>
       perspectiveDepthToViewZ(viewportDepthTexture(uvNode).r, cameraNear, cameraFar).negate();
     const fragDistance = max(positionView.z.negate(), 1e-4);
-    const behindY = cameraPosition.y.add(
-      positionWorld.y.sub(cameraPosition.y).mul(sceneViewZ(screenUV).div(fragDistance)),
-    );
-    const pixelDepth = clamp(positionWorld.y.sub(behindY), 0, 200);
+    const behindY = (): Node<'float'> =>
+      cameraPosition.y.add(
+        positionWorld.y.sub(cameraPosition.y).mul(sceneViewZ(screenUV).div(fragDistance)),
+      );
+    const pixelDepth: Node<'float'> = screenRead
+      ? clamp(positionWorld.y.sub(behindY()), 0, 200)
+      : depthAttr;
 
     // Sky reflection: Schlick's reflectance of the sky tone at the reflected
     // ray's height.
@@ -912,19 +945,20 @@ export class WaterRenderer {
     // wave normal (not where the bent sample lies in front of the water),
     // dimmed per colour by Beer-Lambert over the refracted path, the lost
     // light replaced by the kind's scatter colour.
-    const normalView = transformNormalToView(normal);
-    const flatView = transformNormalToView(vec3(0, 1, 0));
-    const bend = vec2(normalView.x.sub(flatView.x), normalView.y.sub(flatView.y).negate()).mul(
-      REFRACTION_UV_PER_SLOPE,
-    );
-    const bentUv = screenUV.add(bend.mul(clamp(pixelDepth.div(REFRACTION_FULL_DEPTH_M), 0, 1)));
-    const bentBehind = smoothstep(
-      fragDistance.sub(0.05),
-      fragDistance.add(0.05),
-      sceneViewZ(bentUv),
-    );
-    const seenUv = mix(screenUV, bentUv, bentBehind);
-    const bed = viewportSharedTexture(seenUv).rgb;
+    const readBed = (): Node<'vec3'> => {
+      const normalView = transformNormalToView(normal);
+      const flatView = transformNormalToView(vec3(0, 1, 0));
+      const bend = vec2(normalView.x.sub(flatView.x), normalView.y.sub(flatView.y).negate()).mul(
+        REFRACTION_UV_PER_SLOPE,
+      );
+      const bentUv = screenUV.add(bend.mul(clamp(pixelDepth.div(REFRACTION_FULL_DEPTH_M), 0, 1)));
+      const bentBehind = smoothstep(
+        fragDistance.sub(0.05),
+        fragDistance.add(0.05),
+        sceneViewZ(bentUv),
+      );
+      return viewportSharedTexture(mix(screenUV, bentUv, bentBehind)).rgb;
+    };
     const path = pixelDepth.div(refractedCos);
     const absorb = vec3(...ABSORPTION_PER_M).add(murkAttr);
     const transmission = exp(absorb.mul(path).negate());
@@ -1053,18 +1087,34 @@ export class WaterRenderer {
     // The colour: the water's own scatter (lit like any surface, so it carries
     // the one night tint) under the sky reflection, fouling and foam over it;
     // the bed seen through is the frame already lit, so it goes in unlit.
+    // The blended material has no frame to show through: its scatter colour is
+    // laid over the frame by an alpha from the transmittance instead.
     const foulK = clamp(foulAttr, 0, 1).sqrt();
-    const body = mix(scatterAttr.mul(lost), vec3(...FOUL_WATER_COLOR), foulK);
+    const body = mix(
+      screenRead ? scatterAttr.mul(lost) : scatterAttr,
+      vec3(...FOUL_WATER_COLOR),
+      foulK,
+    );
     const water = body.mul(oneMinus(fresnel)).add(skyTone.mul(fresnel));
     material.colorNode = mix(water, vec3(1, 1, 1), foam).mul(
       nightTintNode(this.nightFactorUniform),
     );
-    const throughSurface = bed
-      .mul(transmission)
-      .mul(netGain)
-      .mul(oneMinus(fresnel))
-      .mul(oneMinus(foulK))
-      .mul(oneMinus(foam));
+    const throughSurface = screenRead
+      ? readBed()
+          .mul(transmission)
+          .mul(netGain)
+          .mul(oneMinus(fresnel))
+          .mul(oneMinus(foulK))
+          .mul(oneMinus(foam))
+      : null;
+    if (!screenRead) {
+      const lostShare = lost.x.add(lost.y).add(lost.z).div(3);
+      material.opacityNode = clamp(
+        max(max(lostShare, fresnel), max(foam, foulK.mul(lostShare))),
+        0,
+        1,
+      );
+    }
 
     // Sun/moon glint: specular-ish sparkle along the light's half-vector,
     // tinted warm by day / pale by night, scaled by (1-nightFactor) with the
@@ -1098,7 +1148,8 @@ export class WaterRenderer {
       this.nightFactorUniform,
     );
     const glintScaleNode = oneMinus(this.nightFactorUniform.mul(1 - MOON_GLINT_FRACTION));
-    material.emissiveNode = throughSurface.add(glintColor.mul(specular).mul(glintScaleNode));
+    const glint = glintColor.mul(specular).mul(glintScaleNode);
+    material.emissiveNode = throughSurface ? throughSurface.add(glint) : glint;
 
     return material;
   }

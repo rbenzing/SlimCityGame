@@ -92,7 +92,7 @@ import { ROUNDABOUT_CODE } from './shared/roundabout';
 import { CUL_DE_SAC_CODE } from './shared/culdesac';
 import { isUnderground } from './shared/view';
 import { createRenderer, createWorldScene, timeOfDayColors } from './render/scene';
-import { createBloomPipeline, type BloomPipeline } from './render/bloom';
+import { createBloomPipeline, createScenePipeline, type BloomPipeline } from './render/bloom';
 import { CloudLayer } from './render/clouds';
 import { TerrainRenderer } from './render/terrain';
 import { WaterRenderer } from './render/water';
@@ -3455,6 +3455,28 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
   // glow from hotter emitters (lamps.ts), not from raising this — that would
   // blow out the windows this level is tuned for.
   const BLOOM_NIGHT_STRENGTH = 0.25;
+  // The scene-pass-only pipeline drawn through when bloom is off, built on
+  // first use; a failed build leaves the frame direct.
+  let scenePipeline: BloomPipeline | null = null;
+  const createScenePipelineGuarded = (): BloomPipeline | null => {
+    try {
+      return createScenePipeline(handle.renderer, world.scene, camera);
+    } catch (err) {
+      console.warn('SlimCity: scene pipeline unavailable, rendering directly:', err);
+      return null;
+    }
+  };
+  // Dev check: draws every frame straight to the screen, as a demoted pipeline would.
+  let forceDirectRender = false;
+  if (import.meta.env.DEV) {
+    const hook = (window as unknown as { __slimcity: Record<string, unknown> }).__slimcity;
+    hook.setDirectRender = (on: boolean): void => {
+      forceDirectRender = on;
+    };
+    // True while the water shows the frame behind it (a pipeline draws the frame).
+    hook.waterReadsScreen = (): boolean =>
+      water.activeMaterial() !== water.blendedSurfaceMaterial();
+  }
 
   // --- frame loop -------------------------------------------------------------------------
   let visualSeconds = 0; // elapsed visual time for the outline pulse / pin bob
@@ -3500,12 +3522,22 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       if (zoneGrid.isVisible() && overlay !== FieldId.LandValue) requestField(FieldId.LandValue);
     }
 
-    if (bloomPipeline && useCityStore.getState().settings.bloom) {
-      bloomPipeline.setStrength(lastNightFactor * BLOOM_NIGHT_STRENGTH);
-      bloomPipeline.render();
+    // Bloom on draws through the bloom pipeline; bloom off draws through the
+    // scene pass alone. Either way the water reads an untone-mapped frame. Only
+    // where no pipeline draws (a failed build, a demotion, `?nobloom`) is the
+    // frame direct, and then the water is a blended sheet.
+    const pipeline = useCityStore.getState().settings.bloom
+      ? bloomPipeline
+      : bloomDisabled
+        ? null
+        : (scenePipeline ??= createScenePipelineGuarded());
+    if (pipeline && !forceDirectRender) {
+      if (pipeline === bloomPipeline) pipeline.setStrength(lastNightFactor * BLOOM_NIGHT_STRENGTH);
+      pipeline.render();
     } else {
       handle.renderer.render(world.scene, camera);
     }
+    water.setScreenRead(pipeline !== null && pipeline.isActive && !forceDirectRender);
   });
 }
 

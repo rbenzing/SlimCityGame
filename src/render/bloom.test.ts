@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   clampBloomStrength,
   createBloomPipeline,
+  createScenePipeline,
   MAX_BLOOM_STRENGTH,
   MIN_BLOOM_STRENGTH,
 } from './bloom';
@@ -45,6 +46,31 @@ describe('clampBloomStrength (pure)', () => {
 
   it('clamps above MAX_BLOOM_STRENGTH down to MAX_BLOOM_STRENGTH', () => {
     expect(clampBloomStrength(999)).toBe(MAX_BLOOM_STRENGTH);
+  });
+});
+
+describe('createScenePipeline — the scene pass alone', () => {
+  it('builds a real pipeline, renders through it and ignores strength', () => {
+    const renderer = capableRendererStub();
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera();
+
+    const pipeline = createScenePipeline(renderer, scene, camera);
+    expect(pipeline.isActive).toBe(true);
+    pipeline.setStrength(2);
+    expect(() => pipeline.render()).not.toThrow();
+    expect(renderer.render).not.toHaveBeenCalledWith(scene, camera);
+  });
+
+  it('demotes to a direct scene render when a frame fails, like the bloom pipeline', () => {
+    const renderer = incompleteRendererStub();
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera();
+
+    const pipeline = createScenePipeline(renderer, scene, camera);
+    pipeline.render();
+    expect(pipeline.isActive).toBe(false);
+    expect(renderer.render).toHaveBeenCalledWith(scene, camera);
   });
 });
 

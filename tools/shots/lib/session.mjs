@@ -32,7 +32,7 @@ const watchRefusals = () => {
  * Returns `{ page, errors, send, refusals, close }`. `send(label, commands)`
  * runs one command batch through the game's own path.
  */
-export async function openSession(url, { fresh = false, seed = SEED } = {}) {
+export async function openSession(url, { fresh = false, seed = SEED, bloom = false } = {}) {
   const browser = await chromium.launch({ headless: true, args: ['--use-angle=default'] });
   const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
   const errors = [];
@@ -68,8 +68,8 @@ export async function openSession(url, { fresh = false, seed = SEED } = {}) {
       Object.defineProperty(Navigator.prototype, 'gpu', { get: () => undefined });
     });
   // The post-process pass is skipped by default (it destabilises long headless runs);
-  // SHOTS_BLOOM=1 keeps it, for a frame that depends on what the pass does to the scene.
-  const query = process.env.SHOTS_BLOOM === '1' ? '' : '?nobloom';
+  // `bloom: true` (or SHOTS_BLOOM=1) keeps it, for a frame that depends on what the pass does to the scene.
+  const query = bloom || process.env.SHOTS_BLOOM === '1' ? '' : '?nobloom';
   await page.goto(new URL(query, url).href, { waitUntil: 'domcontentloaded' });
   await page.waitForSelector('#viewport canvas', { timeout: 60000 });
   await hooksReady(page);

@@ -645,6 +645,59 @@ describe('WaterRenderer', () => {
     expect(renderer.graphTrains()).toEqual([...WAVE_TRAINS]);
   });
 
+  describe('the material for each way the frame is drawn', () => {
+    const readsViewport = (material: THREE.Material): boolean => {
+      const m = material as unknown as Record<
+        string,
+        { traverse?: (f: (n: object) => void) => void }
+      >;
+      let found = false;
+      for (const key of [
+        'colorNode',
+        'emissiveNode',
+        'opacityNode',
+        'normalNode',
+        'positionNode',
+      ]) {
+        m[key]?.traverse?.((n) => {
+          if (/Viewport/.test(n.constructor.name)) found = true;
+        });
+      }
+      return found;
+    };
+
+    it('draws with the screen-reading material while a pipeline draws the frame, and the blended one when none does', () => {
+      const renderer = new WaterRenderer(new THREE.Scene(), flatHeightAt, allWet(), 4);
+      const screenMaterial = renderer.activeMaterial();
+      expect(renderer.blendedSurfaceMaterial()).not.toBe(screenMaterial);
+
+      renderer.setScreenRead(false);
+      expect(renderer.activeMaterial()).toBe(renderer.blendedSurfaceMaterial());
+      renderer.setScreenRead(true);
+      expect(renderer.activeMaterial()).toBe(screenMaterial);
+      renderer.setScreenRead(true);
+      expect(renderer.activeMaterial()).toBe(screenMaterial);
+    });
+
+    it('reads the frame behind the water only in the screen-reading material', () => {
+      const renderer = new WaterRenderer(new THREE.Scene(), flatHeightAt, allWet(), 4);
+      expect(readsViewport(renderer.activeMaterial())).toBe(true);
+      expect(readsViewport(renderer.blendedSurfaceMaterial())).toBe(false);
+    });
+
+    it('lays the blended material over the frame by an alpha, not opaque', () => {
+      const blended = new WaterRenderer(
+        new THREE.Scene(),
+        flatHeightAt,
+        allWet(),
+        4,
+      ).blendedSurfaceMaterial();
+      expect(blended.transparent).toBe(true);
+      expect(blended.depthWrite).toBe(false);
+      expect(blended.opacityNode).toBeTruthy();
+    });
+  });
+
   describe('when the terrain changes the water', () => {
     const size = 12;
     let ground: Float32Array;

@@ -40,7 +40,8 @@
  *                        `setup(session, site)` optional, runs just before the frame
  *                        (a worn lawn, a vehicle moved up to the camera).
  *
- * Type `town` may also carry `session: { fresh, seed }` (open a player's first game, see
+ * Any series may carry `session: { bloom: true }` to draw through the post-process pass as a
+ * player does. Type `town` may also carry `session: { fresh, seed }` (open a player's first game, see
  * `openSession`) and `play(session, { capture })`, which plays that game itself and returns the
  * sheet rows (see `lib/playthrough.mjs`).
  *

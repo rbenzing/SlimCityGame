@@ -79,6 +79,32 @@ function buildBloomGraph(
 }
 
 /**
+ * The scene pass alone, no bloom node: what a frame is drawn through when bloom
+ * is off, so the water reads the same untone-mapped frame it does with bloom on.
+ */
+function buildSceneGraph(
+  renderer: WebGPURenderer,
+  scene: THREE.Scene,
+  camera: THREE.Camera,
+): BloomGraph {
+  const postProcessing = new RenderPipeline(renderer);
+  postProcessing.outputNode = pass(scene, camera).getTextureNode('output');
+  return { postProcessing, strengthUniform: { value: 0 } };
+}
+
+/**
+ * A pipeline of the scene pass alone, with the same demotion to a direct scene
+ * render as the bloom pipeline; its strength is ignored.
+ */
+export function createScenePipeline(
+  renderer: WebGPURenderer,
+  scene: THREE.Scene,
+  camera: THREE.Camera,
+): BloomPipeline {
+  return createBloomPipeline(renderer, scene, camera, buildSceneGraph);
+}
+
+/**
  * Factory for the bloom post-process pipeline. The
  * integrator drives `setStrength` from nightFactor and calls `render()`
  * once per frame in place of `renderer.render(scene, camera)`.

@@ -231,7 +231,10 @@ async function scene(session) {
 const pinned =
   (extra, clock = WAVE_CLOCK_S) =>
   async (session, s) => {
-    await session.page.evaluate((t) => window.__slimcity.pinWaterClock(t), clock);
+    await session.page.evaluate((t) => {
+      window.__slimcity.setDirectRender(false);
+      window.__slimcity.pinWaterClock(t);
+    }, clock);
     if (extra) await extra(session, s);
   };
 
@@ -272,6 +275,7 @@ export default defineSeries({
   purpose:
     'The three kinds of water read as what they are: swell rolls in from the ocean edge and dies behind land, a lake is calmer upwind than downwind, a river drifts toward its outlet and is still at its banks, and the surface meets every shore with no gap.',
   budgetS: 90,
+  session: { bloom: true },
   subjects: [{ id: 'ocean' }, { id: 'lake' }, { id: 'river' }, { id: 'mouth' }],
   scene,
   frames: [
@@ -340,6 +344,18 @@ export default defineSeries({
         'the shallows off the beach, 40 m across: the sand clear through the water, a moving net of light on it, a thin line of lapping at the waterline',
       setup: pinned(),
       camera: (s) => ({ ...at('beach')(s), distance: 45, yaw: 0.3, pitch: 1.1 }),
+    },
+    {
+      subject: 'ocean',
+      view: 'close-plain',
+      shows:
+        'the ocean low and close as in close, drawn straight to the screen with no pipeline, as after a failed post-process pass: the blended water sheet, with no bent bed',
+      setup: async (session, s) => {
+        await pinned()(session, s);
+        await session.page.evaluate(() => window.__slimcity.setDirectRender(true));
+        await settle(session.page);
+      },
+      camera: (s) => ({ ...at('ocean')(s), distance: 90, yaw: 0.3, pitch: 0.28 }),
     },
     {
       subject: 'ocean',
