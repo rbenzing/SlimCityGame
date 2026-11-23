@@ -5,7 +5,7 @@
 declares most of it; `src/main.ts:818-826` adds `screenToTile` and `audio`
 once they exist). **This is a test surface, not a product feature** — it is
 stripped from production builds by the `DEV` guard, and every browser-driven
-visual check (`tools/*-shots.mjs`) drives the game through it instead of
+visual check (the shot series under `tools/shots/`) drives the game through it instead of
 simulating real input.
 
 | Member                | Signature                                                | What it returns                                                                                                                                                                                                                                                                                                                                                                                     |

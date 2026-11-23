@@ -37,6 +37,16 @@ again, update the figure here and nowhere else.
 
 - What a review of every shot the tools write found wrong in the game is
   ranked in [open-visual-defects.md](roadmap/open-visual-defects.md).
+- The page stalls while a small town runs at 4×: a read-back took 16.9 s at
+  a population of 544, against a 1 s target
+  ([performance-budget.md](engineering/performance-budget.md)). Found when
+  the stall measurement was restored as a probe; the cause is not traced.
+- Three probes measure less than they claim: `growth-probe` and
+  `memory-probe` build a town that never gains a resident, `audio-check`
+  fails one run in two on "track plays", and the road audit's one-section
+  check judges no tile at a tee or a crossroads (its plots are too short).
+- The slow test files build one world a case; the land-value and
+  scatter-clearance files could share one a `describe`.
 - Growth, measured in a scripted town: a works levels only where it has
   free ground beside it, so on a built-up block two works in three stay at
   level 1, and chemical, paper and food plants never reach the levels that
@@ -132,7 +142,7 @@ again, update the figure here and nowhere else.
   windowed 95th percentile for that reason. A GPU timestamp query would read
   the frame itself.
 - Placing a district-edge column of road across the street rows in
-  `tools/frame-budget.mjs` logs about 27 "road network (command): tile(s)
+  `tools/probes/frame-budget.mjs` logs about 27 "road network (command): tile(s)
   derived differently … roadMask" errors at the junctions; the city stands,
   but the conversion disagrees with itself there. The `grade` shot series
   logs the same error at a crossroads on a slope of 1.9 m a tile.

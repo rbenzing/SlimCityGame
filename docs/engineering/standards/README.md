@@ -16,8 +16,8 @@ because reviewers keep upholding them.
 | [testing.md](testing.md)                           | Vitest conventions, unit vs. integration, determinism tests, and the standing screenshot-verification rule for render work |
 | [logging.md](logging.md)                           | What little logging convention exists, and where it doesn't                                                                |
 | [error-handling.md](error-handling.md)             | The command-ack/reason pattern, fail-soft storage access, what has no convention yet                                       |
-| [debugging.md](debugging.md)                       | `window.__slimcity` dev read-backs and the `tools/*-shots.mjs` visual harnesses                                            |
-| [shot-runs.md](shot-runs.md)                       | Running every shot harness with `npm run shots`, and what a frame must do to stay in a tool                                |
+| [debugging.md](debugging.md)                       | `window.__slimcity` dev read-backs, the shot library's guards and the probes                                               |
+| [shot-runs.md](shot-runs.md)                       | The shot series: types, the views every subject gets, sheets, budgets, and `npm run shots`                                 |
 
 ## How these relate to the rest of `docs/engineering/`
 

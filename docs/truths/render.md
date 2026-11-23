@@ -28,7 +28,7 @@ Back to [the index](../GROUND-TRUTHS.md).
   an instance in a shared bucket, and every piece of geometry has a triangle
   ceiling the geometry test holds. —
   [modeling-standards.md](../art/modeling-standards.md#geometry-budget);
-  `src/render/geometrybudget.test.ts`, `tools/frame-budget.mjs`
+  `src/render/geometrybudget.test.ts`, `tools/probes/frame-budget.mjs`
 - [R-render-005] No custom shaders: no `ShaderMaterial`, GLSL or `onBeforeCompile`. Effects
   come from stock materials, TSL node graphs on `MeshStandardNodeMaterial`,
   vertex colour and instance colour. — [shaders.md](../visual-render/shaders.md),
@@ -124,7 +124,7 @@ Back to [the index](../GROUND-TRUTHS.md).
   window panes and a kit's lit parts glow, and a lit pane keeps its colour
   rather than clipping to white; a garage door, porch, roof or wall never
   glows. — [lighting.md](../visual-render/lighting.md); `NIGHT_TINT` in
-  `src/render/nightlook.ts`, measured by `tools/nightlook-shots.mjs`
+  `src/render/nightlook.ts`, measured by the `night` shot series
 - [R-render-022] Anything laid on the ground (pad, apron, driveway, bay, lamp pool, grid)
   samples real terrain height per vertex and splits on the terrain's own
   diagonal. — [buildings.md](../art/buildings/README.md),

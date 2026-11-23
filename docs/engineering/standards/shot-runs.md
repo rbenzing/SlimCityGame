@@ -10,20 +10,20 @@ A **series** is one file that photographs one family of related things: the kits
 - A series says what a reviewer judges in it, in one sentence (`purpose`). A series with no purpose a reviewer could fail is deleted.
 - A series plops its subjects in a sandbox with the simulation paused. Only the `town` type grows anything.
 - A subject's size is read from the catalog, never typed into a series.
-- A measurement is not a series. Frame time, memory, growth figures and sound are probes; they write numbers, not frames.
+- A measurement is not a series. Frame time, memory, the road audit, a click-through of the interface and sound are probes (`tools/probes/`, `npm run probes`): they write numbers, not frames, and fail on a number. A check that needs pixels or page layout stays in its series as a `check` beside the frame it reads.
 
 ## Types
 
 | Type | What is judged | Series |
 | --- | --- | --- |
-| `roads` | The carriageway itself: surface, kerbs, paint, how pieces meet | junctions, changes (one road becoming another), ends, grade (bridges, ramps, the interchange, slopes); classes and bends to come |
-| `street` | What stands on and beside a street | furniture, power, transit, to come |
+| `roads` | The carriageway itself: surface, kerbs, paint, how pieces meet | classes, paint, bends, edges, junctions, changes (one road becoming another), ends, grade (bridges, ramps, the interchange, slopes) |
+| `street` | What stands on and beside a street | furniture, stops, supply (pole lines, buried cable, a substation's feed), transit |
 | `zoned` | What zones grow, every kind at each level | homes, attached, apartments; shops, plazas, roadside, offices, downtown; works, stores, plants, heavy; the three stacked series |
 | `civic` | What the player places | health, schools, safety, power, utilities, depots, parks, airport, farms |
-| `views` | How the game shows itself | underground, night, ghosts, narrow windows, the way out of a view |
-| `town` | Everything at once, in one small grown town | town, lenses |
+| `views` | How the game shows itself | underground, night, ghosts, panels (narrow windows, the services panel, the way out of a view) |
+| `town` | What only a running town shows | town (district by district), lenses, life (a building going up and standing derelict), lots (curved streets, yards, a cul-de-sac), firstgame (a new game through the interface) |
 
-A new family goes in the type that names what a reviewer judges. A seventh type needs a rule here first.
+A new family goes in the type that names what a reviewer judges. A seventh type needs a rule here first. A series' name is its folder of frames, so no two share one, whatever their types: the runner refuses to start when two do.
 
 ## The views every subject gets
 
@@ -33,7 +33,9 @@ A series lists subjects; the runner takes every view in the subject's set. A vie
 | --- | --- | --- |
 | A building or plot | `above`, `front`, `rear`, `left`, `right` | 5 |
 | A road piece | `above`, `along` (low, down the centreline), `oblique` | 3 |
-| A lens or panel | `full` | 1 |
+| A run of street with things on it | the road piece's three, and a detail for a single object | 3 |
+| A lens, a panel, a step of play | `full`: the page as the player sees it, after its `setup` | 1 |
+| A district of the grown town | `above`, `oblique` | 2 |
 | The series | `night`: its first subject at 22:00, the front view turned 30° | 1 |
 
 - `front` is the street side; `left` and `right` are the viewer's own, standing at the front.
@@ -42,7 +44,7 @@ A series lists subjects; the runner takes every view in the subject's set. A vie
 - A top is never cut. Where a model stands above its catalog height (a stack, a mast, a turbine's blade) the drawn top is listed in `tools/shots/lib/tops.mjs`; every entry there is a fault in the catalog's height.
 - A plot wider than the camera can frame is taken in named parts (`parts`), each with `above`, `front` and `rear`. The runner refuses a view it cannot frame.
 - Subjects stand far enough apart that no neighbour is between a camera and its subject.
-- Every series ends by laying its frames on **sheets**, one row a subject and one column a view: `sheet-<n>.png` beside the frames. A reviewer opens the sheets first, and a frame where a sheet shows something.
+- Every series ends by laying its frames on **sheets**, one row a subject and one column a view, subjects of a single frame five to a row: `sheet-<n>.png` beside the frames. A reviewer opens the sheets first, and a frame where a sheet shows something.
 - A **detail** is a frame the set cannot give: a doorway at 40 m, a stall row from straight above. It is declared with what it shows, and a subject has at most two; the runner refuses a third.
 - A frame is named `<subject>-<view>.png`, a detail `<subject>-<what>.png`, in `tools/shots/out/<series>/`. A doc cites a frame as `<series>/<frame>`.
 
@@ -50,15 +52,16 @@ A series lists subjects; the runner takes every view in the subject's set. A vie
 
 | Limit | Value |
 | --- | --- |
-| A plopped series, as the runner runs it | 60 s; the slowest takes 32 s for 92 frames |
-| A `town` series | 300 s |
-| A full run, two series at a time | 15 minutes; 28 series and 1,331 frames take 4 |
+| A plopped series, as the runner runs it | 60 s; the slowest takes 28 s for 98 frames |
+| A `town` series | 300 s; the slowest takes 76 s |
+| A full run, two series at a time | 15 minutes; 45 series and 1,875 frames take 7 to 8 |
 | A fixed wait | 1 s, and only where no condition exists |
 
 - A series declares its budget (`budgetS`). One over its budget is printed `slow` and fails the run; one at three times its budget is taken for hung and killed.
 - Two series run at a time, the largest first. Three at once fill the graphics card and every frame takes four times as long.
 - Wait on a condition: the subject standing, the frame drawn, the clock at an hour. Set the clock (`pinDay`); never wait for it. A paused simulation does not relight the scene by itself.
 - One page a series. Scenes stand side by side on one map and the camera moves; a series never reloads the page for its next subject.
+- A `town` series grows its own town once: the interaction tests' town (`tests/support/town.ts`), grown in the page, saved and loaded as the Load Game menu does. A building under construction cannot be saved, so `life` grows live and holds each stage.
 - Lay what a player would, and check it was accepted (`cleanShot`). Two rail rows laid side by side with joining on drew as rings, and a review read it as a fault in the game.
 
 ## Run them
@@ -72,7 +75,7 @@ npm run shots -- http://localhost:5173 health bends
 npm run shots -- --list
 ```
 
-A name is a type or a series; a series also runs alone, `node tools/shots/series/civic/health.mjs <url>`. Tools not yet moved to a series run with `npm run shots:old`. The runner prints one table when it ends: series, type, exit code, seconds, frames, sheets. It exits non-zero if any series failed, ran over, or wrote no frame or no sheet. Never edit `src/` while a run is going: the server reloads the page under it.
+A name is a type or a series; a series also runs alone, `node tools/shots/series/civic/health.mjs <url>`. The runner prints one table when it ends: series, type, exit code, seconds, frames, sheets. It exits non-zero if any series failed, ran over, or wrote no frame or no sheet. Never edit `src/` while a run is going: the server reloads the page under it.
 
 ## Adding or changing a series
 

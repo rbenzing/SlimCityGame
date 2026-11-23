@@ -40,8 +40,8 @@ the ~200 other source files.
 - **The `window.__slimcity` dev read-back surface**
   ([debugging.md](debugging.md)) is how a developer or a screenshot harness
   inspects live state — structural queries, not a log stream.
-- Playwright harnesses under `tools/*-shots.mjs` capture the browser's
-  `console` output themselves (e.g. `visual-smoke.mjs`'s
+- The shot series and the probes capture the browser's
+  `console` output themselves (e.g. `tools/probes/visual-smoke.mjs`'s
   `page.on('console', (m) => logs.push(...))`) — this captures whatever the
   page happens to emit during a harness run, which today is almost nothing,
   since the app itself barely logs.

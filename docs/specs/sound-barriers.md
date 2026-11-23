@@ -52,13 +52,13 @@
 - `src/render/soundwalls.ts`, `main.ts`: barrier, panels and posts, one `InstancedMesh` each; `palette.ts` colours.
 - `src/app/clientgrid.ts` `drawnAt`: the mirror's reader for `soundWallsAt`.
 - `src/ui/RoadToolOptions.tsx`: the Sound wall panel.
-- `tools/soundwall-shots.mjs`: the browser check.
+- The `edges` shot series: the browser check.
 
 **Tests:**
 
 - Unit — `soundWallsAt` each direction, each side, corridor halves, ramp mouths, corners, no wall over an arm; transmission and price figures; compose and read back; the room refusal; the diffusion's conservation and the cut across a wall. Tests lay a wall each way in each direction, since a road drawn south has its driver's left at the high offset.
 - Interaction — a busy motorway past homes, with and without a wall, through the real commands: noise lower behind it, land value higher, the road side no quieter, bulldoze and undo take the wall with the road.
-- `tools/soundwall-shots.mjs` — walled and open motorways, a ramp's gap, a corridor, a bridge and an interchange's gaps under the Noise lens, and the panel.
+- The `edges` shot series — a walled motorway and its far side, a ramp's gap, a six-lane corridor and a walled bridge. The Noise lens over an interchange's gaps and the Sound wall panel have no frame.
 
 **Open:** none. Not built, by choice: absorptive walls, berms, a wall drawn apart from a road, walls on streets or off-grid roads, walls over an overpass tile, the reflection to the far side.
 

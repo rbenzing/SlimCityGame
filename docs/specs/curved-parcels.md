@@ -63,7 +63,7 @@
 - `src/render/fencelines.ts` `trimFence`, `FenceBook`: a home's fence cut to its outline, its neighbours' lots, houses and drives, and roads; one fence on a shared line.
 - `src/render/parked.ts`, `pedestrians.ts`: the car on the drive and the walker's home anchor read the frame.
 - `src/render/zonegrid.ts`: the lens draws a framed parcel's outline turned.
-- `tools/curve-shots.mjs`: an S-bend zoned, shot from above, close on a drive, and through the lens.
+- The `lots` shot series: an S-bend zoned, shot from above and through the lens.
 
 **Tests:**
 
@@ -73,7 +73,7 @@
 - `src/sim/growth.test.ts` — a house spawns on a framed parcel with `frame` and rotation 0, claims its tiles and frees them on bulldoze; a save round-trips `frame`.
 - `src/render/frontage.test.ts`, `src/render/houselot.test.ts`, `src/shared/kerblayout.test.ts` — a framed building's body, drive kerb end and roof lie in the frame's rectangle; the kerb credit follows the parking lane.
 - `src/render/fencelines.test.ts` — turned lots on an inner and an outer bend: no fence crosses a neighbour's outline, house, drive or fence; a shared line draws one run; arrival order changes nothing.
-- Browser check, `tools/curve-shots.mjs` — an S-bend zoned both sides from above, close on a drive, through the lens, with a grid street beside it unchanged.
+- Browser check, the `lots` shot series — an S-bend zoned both sides from above and through the lens.
 
 **Open:**
 

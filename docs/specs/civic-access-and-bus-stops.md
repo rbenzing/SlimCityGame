@@ -59,7 +59,7 @@
 - `src/shared/civicaccess.ts` `CIVIC_ACCESS_BY_ID`, `civicAccessFor`, `civicCrossingWidth`, `CivicAccess`, `CivicSpan`: the span table, one entry per civic catalog id.
 - `src/render/civiccrossing.ts` `civicSiteFor`, `civicCrossingRects`, `civicCutTiles`, `crossingsOf`, `civicEdgeSide`: the crossing laid from the span table; `curbCutTileFor` covers the civic cuts.
 - `src/shared/parkingcode.ts` `lotParkingRequirement`, `src/shared/lotparking.ts` `lotLayoutFor`: the lot layout the civic drive reuses; `findRoadFacingEdge` for the migration.
-- `tools/busstop-shots.mjs`: browser check of stops. A civic building's way in shows in its `front` and `above` frames in the `civic` shot series.
+- The `stops` shot series: browser check of stops. A civic building's way in shows in its `front` and `above` frames in the `civic` shot series.
 
 **Tests:**
 
