@@ -21,7 +21,7 @@ A **series** is one file that photographs one family of related things: the kits
 | `zoned` | What zones grow, every kind at each level | homes, attached, apartments; shops, plazas, roadside, offices, downtown; works, stores, plants, heavy; the three stacked series |
 | `civic` | What the player places | health, schools, safety, power, utilities, depots, parks, airport, farms |
 | `views` | How the game shows itself | underground, night, ghosts, panels (narrow windows, the services panel, the way out of a view), water (ocean, lake, river and a river's mouth) |
-| `town` | What only a running town shows | town (district by district), lenses, life (a building going up and standing derelict), lots (curved streets, yards, a cul-de-sac), firstgame (a new game through the interface) |
+| `town` | What only a running town shows | town (district by district), lenses, life (a building going up and standing derelict), lots (curved streets, yards, a cul-de-sac), circles (an offset and a centred cul-de-sac with homes grown round them), firstgame (a new game through the interface) |
 
 A new family goes in the type that names what a reviewer judges. A seventh type needs a rule here first. A series' name is its folder of frames, so no two share one, whatever their types: the runner refuses to start when two do.
 
