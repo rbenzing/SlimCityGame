@@ -64,6 +64,12 @@ again, update the figure here and nowhere else.
   request:
   harbours and boats (marinas, docks, shipyards), deferred in
   [DESIGN.md](DESIGN.md).
+- A new map holds little water for that surface to show on. Over 40 new-game
+  seeds (2026-11-24) a map was 3.4% water: all had lakes, 26 had any ocean,
+  often a few hundred tiles in a corner, and 8 had a river. The map
+  generator makes no coast or river on purpose.
+- [Centred circles](specs/centred-circles.md) are proposed and not built: a
+  cul-de-sac and a roundabout on the road's own centre line.
 - A bend turns at its kerb return's radius, not its class's minimum curve
   radius `[R-roads-081]`: the wider sweep leaves the tiles the road holds, so
   lots, traffic and saves would have to follow it. Not yet bends: a one-way
