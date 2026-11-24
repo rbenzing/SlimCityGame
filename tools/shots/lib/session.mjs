@@ -22,6 +22,9 @@ const WEBGPU_ARGS = [
 /** A console error from three's WebGPU renderer or a GPU validation failure: the frame is not what the game draws. */
 const GPU_FAULT = /THREE\.WebGPURenderer|GPUValidationError/;
 
+/** A console warning that names WebGPU, a pipeline, validation or a render pass: logged, not fatal. */
+const GPU_WARNING = /WebGPU|pipeline|validation|RenderPassEncoder/i;
+
 /** Titles of the toasts the game raised for a refused command, recorded as they appear. */
 const watchRefusals = () => {
   window.__refused = [];
@@ -61,6 +64,8 @@ export async function openSession(
   page.on('console', (m) => {
     if (m.type() === 'error') console.log('[console.error]', m.text());
     if (m.type() === 'error' && GPU_FAULT.test(m.text())) errors.push(m.text());
+    if (m.type() === 'warning' && GPU_WARNING.test(m.text()))
+      console.log('[gpu warning]', m.text().split('\n')[0]);
     if (process.env.SHOTS_WEBGL === '1' && /WebGL ?2|WebGPU/i.test(m.text()))
       console.log('[renderer]', m.text());
   });
