@@ -255,6 +255,10 @@ const RIVER_SIDE_MARGIN = 8;
 /** Valley: level this many tiles each bank at VALLEY_FLOOR metres, then rising 1 m a tile. */
 const VALLEY_LEVEL_TILES = 3;
 const VALLEY_FLOOR = 0.6;
+/** The valley's side rises this far (the terrain's ceiling) before it can no longer lower a hill. */
+const VALLEY_REACH_RISE = MAX_TERRAIN_HEIGHT;
+/** Spacing of the points the river's line is stamped at, in tiles along the edge. */
+const RIVER_STEP_TILES = 0.25;
 
 /** Smoothstep of v across [lo, hi]. */
 function smoothstep(lo: number, hi: number, v: number): number {
@@ -304,38 +308,60 @@ function shapeCoast(seed: number, hills: Float32Array): Float32Array {
       const [d, t] = inFromEdge(x, z);
       const s = d - shoreAt(t);
       if (s < 0) {
-        height[i] = Math.max(
-          MIN_TERRAIN_HEIGHT,
-          Math.min(height[i]!, -PLAIN_START + s * SEA_BED_SLOPE),
-        );
+        // The sea bed is the slope itself: a hollow of the hills never drops a cliff off the shore.
+        height[i] = Math.max(MIN_TERRAIN_HEIGHT, -PLAIN_START + s * SEA_BED_SLOPE);
       } else {
-        // A hollow within the plain fills to it; hills stay, and the plain fades out inland.
+        // The land fades from the plain at the shore to the hills 40 tiles in: a hollow fills and a
+        // hill rises out of it, so no hill meets the sea in a cliff.
         const plain = PLAIN_START + Math.min(s, PLAIN_TILES) * PLAIN_SLOPE;
         const keep = smoothstep(0, PLAIN_TILES, s);
-        height[i] = keep * height[i]! + (1 - keep) * Math.max(height[i]!, plain);
+        height[i] = keep * height[i]! + (1 - keep) * plain;
       }
     }
   }
 
-  for (let z = 0; z < size; z++) {
-    for (let x = 0; x < size; x++) {
-      const i = z * size + x;
-      const [d, t] = inFromEdge(x, z);
-      const s = d - mouthIn;
-      if (s < -RIVER_INLAND_TILES) continue;
-      const halfWidth =
-        (RIVER_INLAND_TILES +
-          (RIVER_MOUTH_TILES - RIVER_INLAND_TILES) * (1 - smoothstep(0, RIVER_WIDEN_TILES, s))) /
-        2;
-      // Distance across the channel, not along the edge: a leaning reach is no wider than a straight one.
-      const run = (riverAt(d + 1) - riverAt(d - 1)) / 2;
-      const across = Math.abs(t - riverAt(d)) / Math.sqrt(1 + run * run);
-      if (across < halfWidth) {
-        height[i] = Math.min(height[i]!, RIVER_BED);
-      } else {
-        const rise = Math.max(0, across - halfWidth - VALLEY_LEVEL_TILES);
-        height[i] = Math.min(height[i]!, VALLEY_FLOOR + rise);
+  // Each tile's distance to the river's line, and the channel's half width at the point nearest it:
+  // the line is stamped as points a quarter tile apart along the edge, each over the tiles it reaches.
+  // (Measured along the edge instead, a hairpin bend drags the valley across the land beside it.)
+  const reach = Math.ceil(RIVER_MOUTH_TILES / 2 + VALLEY_LEVEL_TILES + VALLEY_REACH_RISE);
+  const nearest = new Float32Array(size * size).fill(Infinity);
+  const halfAt = new Float32Array(size * size);
+  for (let d = mouthIn - RIVER_INLAND_TILES; d <= size - 1; d += RIVER_STEP_TILES) {
+    const t = riverAt(d);
+    const half =
+      (RIVER_INLAND_TILES +
+        (RIVER_MOUTH_TILES - RIVER_INLAND_TILES) *
+          (1 - smoothstep(0, RIVER_WIDEN_TILES, d - mouthIn))) /
+      2;
+    // The point in grid tiles, so the loops below run along rows.
+    const px = edge === 0 ? d : edge === 1 ? size - 1 - d : t;
+    const pz = edge === 2 ? d : edge === 3 ? size - 1 - d : t;
+    const x0 = Math.max(0, Math.floor(px) - reach);
+    const x1 = Math.min(size - 1, Math.ceil(px) + reach);
+    for (
+      let z = Math.max(0, Math.floor(pz) - reach);
+      z <= Math.min(size - 1, Math.ceil(pz) + reach);
+      z++
+    ) {
+      const dz2 = (z - pz) * (z - pz);
+      for (let i = z * size + x0, x = x0; x <= x1; x++, i++) {
+        const dist = (x - px) * (x - px) + dz2;
+        if (dist < nearest[i]!) {
+          nearest[i] = dist;
+          halfAt[i] = half;
+        }
       }
+    }
+  }
+  for (let i = 0; i < size * size; i++) {
+    if (nearest[i] === Infinity) continue;
+    const across = Math.sqrt(nearest[i]!);
+    const half = halfAt[i]!;
+    if (across < half) {
+      height[i] = Math.min(height[i]!, RIVER_BED);
+    } else {
+      const rise = Math.max(0, across - half - VALLEY_LEVEL_TILES);
+      height[i] = Math.min(height[i]!, VALLEY_FLOOR + rise);
     }
   }
   return height;

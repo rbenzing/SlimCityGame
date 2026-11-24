@@ -143,3 +143,85 @@ describe('what every coast map is promised, over 200 seeds', () => {
     120_000,
   );
 });
+
+describe('the shapes the sea and the river leave', () => {
+  const dirs = [
+    [1, 0],
+    [-1, 0],
+    [0, 1],
+    [0, -1],
+  ] as const;
+
+  it('puts no cliff on the sea shore and none on a river bank', () => {
+    const bad: string[] = [];
+    for (const seed of SEEDS.slice(0, 12)) {
+      const m = generateMap(MapGenerator.Coast, seed, 'Coast');
+      const n = m.size;
+      const bodies = deriveWaterBodies(m.water, n, (x, z) => m.height[z * n + x]!);
+      for (let i = 0; i < n * n; i++) {
+        const kind = bodies.kind[i];
+        if (kind !== WaterKind.Ocean && kind !== WaterKind.River) continue;
+        const x = i % n;
+        const z = (i - x) / n;
+        for (const [dx, dz] of dirs) {
+          const j = (z + dz) * n + x + dx;
+          if (x + dx < 0 || z + dz < 0 || x + dx >= n || z + dz >= n || m.water[j]) continue;
+          if (!terrainBuildable(n, m.height, m.water, x + dx, z + dz)) {
+            bad.push(
+              `${seed}: a bank of ${kind === WaterKind.Ocean ? 'the sea' : 'the river'} at ${x + dx},${z + dz}`,
+            );
+          }
+        }
+      }
+    }
+    expect(bad.slice(0, 5)).toEqual([]);
+    expect(bad).toHaveLength(0);
+  });
+
+  /** Straight-line distance in tiles from each tile to the nearest tile `inSet` marks (chamfer, within 4%). */
+  function distanceTo(n: number, inSet: (i: number) => boolean): Float32Array {
+    const d = new Float32Array(n * n).fill(1e9);
+    for (let i = 0; i < n * n; i++) if (inSet(i)) d[i] = 0;
+    const relax = (x: number, z: number, dx: number, dz: number, w: number): void => {
+      const nx = x + dx;
+      const nz = z + dz;
+      if (nx < 0 || nz < 0 || nx >= n || nz >= n) return;
+      const i = z * n + x;
+      d[i] = Math.min(d[i]!, d[nz * n + nx]! + w);
+    };
+    for (let z = 0; z < n; z++)
+      for (let x = 0; x < n; x++) {
+        relax(x, z, -1, 0, 1);
+        relax(x, z, 0, -1, 1);
+        relax(x, z, -1, -1, Math.SQRT2);
+        relax(x, z, 1, -1, Math.SQRT2);
+      }
+    for (let z = n - 1; z >= 0; z--)
+      for (let x = n - 1; x >= 0; x--) {
+        relax(x, z, 1, 0, 1);
+        relax(x, z, 0, 1, 1);
+        relax(x, z, 1, 1, Math.SQRT2);
+        relax(x, z, -1, 1, Math.SQRT2);
+      }
+    return d;
+  }
+
+  it('lowers land for the river only near it: a bend never drags its valley across the land beside it', () => {
+    const bad: string[] = [];
+    for (const seed of SEEDS.slice(0, 6)) {
+      const hills = generateProceduralMap(seed, 'Hills');
+      const m = generateMap(MapGenerator.Coast, seed, 'Coast');
+      const n = m.size;
+      const bodies = deriveWaterBodies(m.water, n, (x, z) => m.height[z * n + x]!);
+      const fromRiver = distanceTo(n, (i) => bodies.kind[i] === WaterKind.River);
+      const fromSea = distanceTo(n, (i) => bodies.kind[i] === WaterKind.Ocean);
+      for (let i = 0; i < n * n; i++) {
+        // Past the beach plain, only the valley lowers a hill, and it never reaches far over level ground.
+        if (fromSea[i]! < 45 || m.height[i]! >= hills.height[i]! - 0.01 || m.water[i]) continue;
+        const allowed = m.height[i]! - 0.6 + 6;
+        if (fromRiver[i]! > allowed) bad.push(`${seed}: tile ${i % n},${Math.floor(i / n)}`);
+      }
+    }
+    expect(bad.slice(0, 5)).toEqual([]);
+  });
+});
