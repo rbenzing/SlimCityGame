@@ -6,7 +6,7 @@
  */
 
 import { createNoise2D, type NoiseFunction2D } from 'simplex-noise';
-import { MAP_SIZE, MAX_BUILD_SLOPE, SEA_LEVEL } from '../shared/constants';
+import { MAP_SIZE, MAX_BUILD_SLOPE, SAND_BAND_METERS, SEA_LEVEL } from '../shared/constants';
 import { MapGenerator } from '../shared/types';
 import type { MapData, TilePoint } from '../shared/types';
 
@@ -232,8 +232,15 @@ const COAST_WAVES: ReadonlyArray<readonly [amplitude: number, wavelength: number
 ];
 /** The sea bed falls this many metres a tile from the shore, to the terrain floor. */
 const SEA_BED_SLOPE = 0.25;
-/** The beach plain starts this far above sea level and rises PLAIN_SLOPE a tile for PLAIN_TILES. */
+/**
+ * Banks stand this high: just over the sand band, so a bank is sand only where it climbs from the
+ * water and the ground behind it is grass.
+ */
+const BANK_HEIGHT = SAND_BAND_METERS + 0.2;
+/** The beach starts this far above sea level and climbs to BANK_HEIGHT within BEACH_TILES of the shore. */
 const PLAIN_START = 0.5;
+const BEACH_TILES = 4;
+/** From there the plain rises PLAIN_SLOPE a tile, and fades into the hills by PLAIN_TILES. */
 const PLAIN_SLOPE = 0.15;
 const PLAIN_TILES = 40;
 /** River width in tiles at the mouth and far inland, and how far the widening eases. */
@@ -252,11 +259,17 @@ const RIVER_EASE_TILES = 30;
 const RIVER_LEAN = 0.25;
 /** The river keeps this far from the map's side edges. */
 const RIVER_SIDE_MARGIN = 8;
-/** Valley: level this many tiles each bank at VALLEY_FLOOR metres, then rising 1 m a tile. */
+/**
+ * Banks: the ground climbs from the water's edge to BANK_HEIGHT over BANK_TILES (2 m a tile, so a
+ * bank beside the bed is still a slope a lot can stand on), stays level for VALLEY_LEVEL_TILES as
+ * the floodplain, then rises 1 m a tile.
+ */
+const BANK_TILES = 1.7;
 const VALLEY_LEVEL_TILES = 3;
-const VALLEY_FLOOR = 0.6;
 /** The valley's side rises this far (the terrain's ceiling) before it can no longer lower a hill. */
 const VALLEY_REACH_RISE = MAX_TERRAIN_HEIGHT;
+/** Ground this near a lake is not raised to the floodplain. */
+const LAKE_CLEAR_TILES = 2;
 /** Spacing of the points the river's line is stamped at, in tiles along the edge. */
 const RIVER_STEP_TILES = 0.25;
 
@@ -302,6 +315,9 @@ function shapeCoast(seed: number, hills: Float32Array): Float32Array {
     );
   };
 
+  const seaBed = new Uint8Array(size * size);
+  // The beach's own height within BEACH_TILES of the shore: a bank never stands higher than it there.
+  const shoreCap = new Float32Array(size * size).fill(Infinity);
   for (let z = 0; z < size; z++) {
     for (let x = 0; x < size; x++) {
       const i = z * size + x;
@@ -310,10 +326,15 @@ function shapeCoast(seed: number, hills: Float32Array): Float32Array {
       if (s < 0) {
         // The sea bed is the slope itself: a hollow of the hills never drops a cliff off the shore.
         height[i] = Math.max(MIN_TERRAIN_HEIGHT, -PLAIN_START + s * SEA_BED_SLOPE);
+        seaBed[i] = 1;
       } else {
-        // The land fades from the plain at the shore to the hills 40 tiles in: a hollow fills and a
-        // hill rises out of it, so no hill meets the sea in a cliff.
-        const plain = PLAIN_START + Math.min(s, PLAIN_TILES) * PLAIN_SLOPE;
+        // The land fades from the beach and plain at the shore to the hills 40 tiles in: a hollow
+        // fills and a hill rises out of it, so no hill meets the sea in a cliff.
+        const plain =
+          s < BEACH_TILES
+            ? PLAIN_START + ((BANK_HEIGHT - PLAIN_START) * s) / BEACH_TILES
+            : BANK_HEIGHT + (Math.min(s, PLAIN_TILES) - BEACH_TILES) * PLAIN_SLOPE;
+        if (s < BEACH_TILES) shoreCap[i] = plain;
         const keep = smoothstep(0, PLAIN_TILES, s);
         height[i] = keep * height[i]! + (1 - keep) * plain;
       }
@@ -323,7 +344,9 @@ function shapeCoast(seed: number, hills: Float32Array): Float32Array {
   // Each tile's distance to the river's line, and the channel's half width at the point nearest it:
   // the line is stamped as points a quarter tile apart along the edge, each over the tiles it reaches.
   // (Measured along the edge instead, a hairpin bend drags the valley across the land beside it.)
-  const reach = Math.ceil(RIVER_MOUTH_TILES / 2 + VALLEY_LEVEL_TILES + VALLEY_REACH_RISE);
+  const reach = Math.ceil(
+    RIVER_MOUTH_TILES / 2 + BANK_TILES + VALLEY_LEVEL_TILES + VALLEY_REACH_RISE,
+  );
   const nearest = new Float32Array(size * size).fill(Infinity);
   const halfAt = new Float32Array(size * size);
   for (let d = mouthIn - RIVER_INLAND_TILES; d <= size - 1; d += RIVER_STEP_TILES) {
@@ -353,15 +376,41 @@ function shapeCoast(seed: number, hills: Float32Array): Float32Array {
       }
     }
   }
+  // Water the hills hold that is not the river's channel (a lake): ground beside it is left as it
+  // is, so a raised bank never drops a cliff into it.
+  const lake = new Uint8Array(size * size);
+  for (let i = 0; i < size * size; i++) {
+    const inChannel = nearest[i] !== Infinity && Math.sqrt(nearest[i]!) < halfAt[i]!;
+    if (height[i]! < SEA_LEVEL && !seaBed[i] && !inChannel) lake[i] = 1;
+  }
+  const besideLake = (i: number): boolean => {
+    const x = i % size;
+    const z = (i - x) / size;
+    for (let dz = -LAKE_CLEAR_TILES; dz <= LAKE_CLEAR_TILES; dz++)
+      for (let dx = -LAKE_CLEAR_TILES; dx <= LAKE_CLEAR_TILES; dx++) {
+        const nx = x + dx;
+        const nz = z + dz;
+        if (nx >= 0 && nz >= 0 && nx < size && nz < size && lake[nz * size + nx]) return true;
+      }
+    return false;
+  };
   for (let i = 0; i < size * size; i++) {
     if (nearest[i] === Infinity) continue;
     const across = Math.sqrt(nearest[i]!);
     const half = halfAt[i]!;
     if (across < half) {
       height[i] = Math.min(height[i]!, RIVER_BED);
-    } else {
-      const rise = Math.max(0, across - half - VALLEY_LEVEL_TILES);
-      height[i] = Math.min(height[i]!, VALLEY_FLOOR + rise);
+    } else if (!seaBed[i]) {
+      const beyond = across - half;
+      if (beyond < BANK_TILES + VALLEY_LEVEL_TILES && height[i]! >= SEA_LEVEL) {
+        // Bank and floodplain are the river's own ground, whatever the hills were; beside a lake the
+        // ground is only ever lowered to it, so no bank is raised into a cliff over the lake.
+        const bank = Math.min(BANK_HEIGHT, (BANK_HEIGHT * beyond) / BANK_TILES, shoreCap[i]!);
+        height[i] = besideLake(i) ? Math.min(height[i]!, bank) : bank;
+      } else {
+        const rise = Math.max(0, beyond - BANK_TILES - VALLEY_LEVEL_TILES);
+        height[i] = Math.min(height[i]!, BANK_HEIGHT + rise);
+      }
     }
   }
   return height;

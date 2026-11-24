@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
+import { SAND_BAND_METERS } from '../shared/constants';
 import { MapGenerator } from '../shared/types';
 import type { MapData } from '../shared/types';
 import { WaterKind, deriveWaterBodies } from '../shared/waterbodies';
@@ -206,6 +207,60 @@ describe('the shapes the sea and the river leave', () => {
     return d;
   }
 
+  /** The tiles of the biggest ocean on the map: the coast's sea, not a pool of the hills that touches an edge. */
+  function largestOcean(kind: Uint8Array, n: number): Set<number> {
+    const seen = new Set<number>();
+    let best: number[] = [];
+    for (let start = 0; start < n * n; start++) {
+      if (kind[start] !== WaterKind.Ocean || seen.has(start)) continue;
+      const list = [start];
+      seen.add(start);
+      for (let h = 0; h < list.length; h++) {
+        const x = list[h]! % n;
+        const z = (list[h]! - x) / n;
+        for (const [dx, dz] of dirs) {
+          const nx = x + dx;
+          const nz = z + dz;
+          if (nx < 0 || nz < 0 || nx >= n || nz >= n) continue;
+          const j = nz * n + nx;
+          if (kind[j] === WaterKind.Ocean && !seen.has(j)) {
+            seen.add(j);
+            list.push(j);
+          }
+        }
+      }
+      if (list.length > best.length) best = list;
+    }
+    return new Set(best);
+  }
+
+  it('lifts the banks and the beach out of the sand band: bare sand is a strip, not a plain', () => {
+    const low: string[] = [];
+    for (const seed of SEEDS.slice(0, 8)) {
+      const m = generateMap(MapGenerator.Coast, seed, 'Coast');
+      const n = m.size;
+      const bodies = deriveWaterBodies(m.water, n, (x, z) => m.height[z * n + x]!);
+      const fromRiver = distanceTo(n, (i) => m.height[i] === -2); // the channel the coast carves
+      const sea = largestOcean(bodies.kind, n);
+      const fromSea = distanceTo(n, (i) => sea.has(i));
+      const hills = generateProceduralMap(seed, 'Hills');
+      // The hills' own pools, not the river's channel (2 m down): ground beside one follows the pool, not the bank.
+      const fromPool = distanceTo(n, (i) => hills.height[i]! < 0 && m.height[i] !== -2);
+      for (let i = 0; i < n * n; i++) {
+        const edge = Math.min(i % n, Math.floor(i / n), n - 1 - (i % n), n - 1 - Math.floor(i / n));
+        if (m.water[i] || edge < 4) continue; // a lake on the map edge shapes its own shore
+        // Past 3 tiles of the river (its bank is 2 tiles of climb), on its floodplain; past 5 of the
+        // sea, up to the 12 where the hills begin to show through the plain.
+        const floodplain =
+          fromPool[i]! >= 7 && fromRiver[i]! >= 3 && fromRiver[i]! <= 4.5 && fromSea[i]! > 5;
+        const plain = fromPool[i]! > 7 && fromRiver[i]! > 5 && fromSea[i]! > 5 && fromSea[i]! <= 12;
+        if ((floodplain || plain) && m.height[i]! < SAND_BAND_METERS)
+          low.push(`${seed}: ${i % n},${Math.floor(i / n)} at ${m.height[i]!.toFixed(2)} m`);
+      }
+    }
+    expect(low.slice(0, 5)).toEqual([]);
+  });
+
   it('lowers land for the river only near it: a bend never drags its valley across the land beside it', () => {
     const bad: string[] = [];
     for (const seed of SEEDS.slice(0, 6)) {
@@ -218,7 +273,7 @@ describe('the shapes the sea and the river leave', () => {
       for (let i = 0; i < n * n; i++) {
         // Past the beach plain, only the valley lowers a hill, and it never reaches far over level ground.
         if (fromSea[i]! < 45 || m.height[i]! >= hills.height[i]! - 0.01 || m.water[i]) continue;
-        const allowed = m.height[i]! - 0.6 + 6;
+        const allowed = m.height[i]! - SAND_BAND_METERS + 8;
         if (fromRiver[i]! > allowed) bad.push(`${seed}: tile ${i % n},${Math.floor(i / n)}`);
       }
     }
