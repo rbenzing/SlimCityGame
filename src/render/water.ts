@@ -520,14 +520,9 @@ export class WaterRenderer {
     );
     const grid = buildWaterGrid(this.water, this.sizeTiles);
     const count = grid.positions.length / 3;
-    const depth = new Float32Array(count);
-    const bed = new Float32Array(count);
-    const fetch = new Float32Array(count);
-    const swellTau = new Float32Array(count);
-    const swellSlow = new Float32Array(count * 2);
-    const swellAmp = new Float32Array(count);
+    const shape = new Float32Array(count * 4);
+    const swell = new Float32Array(count * 4);
     const flow = new Float32Array(count * 2);
-    const murk = new Float32Array(count);
     const scatter = new Float32Array(count * 3);
     const looks = blurWaterLooks(bodies.kind, this.sizeTiles);
     for (let i = 0; i < count; i++) {
@@ -535,17 +530,17 @@ export class WaterRenderer {
       const z = grid.positions[i * 3 + 2]!;
       const below = SEA_LEVEL - this.heightAt(x, z);
       const d = Math.max(0, below);
-      bed[i] = below;
       const s = sampleWater(bodies, x, z);
       const look = vertexLook(looks, this.sizeTiles, x / TILE_METERS, z / TILE_METERS);
-      murk[i] = look.murk;
+      shape[i * 4] = d;
+      shape[i * 4 + 1] = below;
+      shape[i * 4 + 2] = s.fetchM;
+      shape[i * 4 + 3] = look.murk;
       scatter.set(look.scatter, i * 3);
-      depth[i] = d;
-      fetch[i] = s.fetchM;
-      swellTau[i] = s.swellTau;
-      swellSlow[i * 2] = s.swellSlowX;
-      swellSlow[i * 2 + 1] = s.swellSlowZ;
-      swellAmp[i] = s.swellAmp;
+      swell[i * 4] = s.swellTau;
+      swell[i * 4 + 1] = s.swellSlowX;
+      swell[i * 4 + 2] = s.swellSlowZ;
+      swell[i * 4 + 3] = s.swellAmp;
       if (d > 0) {
         flow[i * 2] = s.flowX;
         flow[i * 2 + 1] = s.flowZ;
@@ -556,15 +551,12 @@ export class WaterRenderer {
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position', new THREE.BufferAttribute(grid.positions, 3));
     geometry.setIndex(new THREE.BufferAttribute(grid.indices, 1));
-    geometry.setAttribute('waterDepth', new THREE.BufferAttribute(depth, 1));
-    geometry.setAttribute('waterBed', new THREE.BufferAttribute(bed, 1));
+    // Packed into few buffers: WebGPU accepts at most 8 vertex buffers per pipeline.
+    // waterShape: depth, bed, fetch, murk. waterSwell: tau, slow x, slow z, amp.
+    geometry.setAttribute('waterShape', new THREE.BufferAttribute(shape, 4));
+    geometry.setAttribute('waterSwell', new THREE.BufferAttribute(swell, 4));
     geometry.setAttribute('waterFoul', foul);
-    geometry.setAttribute('waterFetch', new THREE.BufferAttribute(fetch, 1));
-    geometry.setAttribute('waterSwellTau', new THREE.BufferAttribute(swellTau, 1));
-    geometry.setAttribute('waterSwellSlow', new THREE.BufferAttribute(swellSlow, 2));
-    geometry.setAttribute('waterSwellAmp', new THREE.BufferAttribute(swellAmp, 1));
     geometry.setAttribute('waterFlow', new THREE.BufferAttribute(flow, 2));
-    geometry.setAttribute('waterMurk', new THREE.BufferAttribute(murk, 1));
     geometry.setAttribute('waterScatter', new THREE.BufferAttribute(scatter, 3));
     return { geometry, bodies, foul };
   }
@@ -746,9 +738,11 @@ export class WaterRenderer {
 
     // Per-vertex depth (metres), interpolated: the wave cap and the swell's
     // lift use it. The colour and foam use the pixel's own depth, below.
-    const depthAttr = attribute<'float'>('waterDepth', 'float');
+    const shapeAttr = attribute<'vec4'>('waterShape', 'vec4');
+    const depthAttr = shapeAttr.x;
+    const bedAttr = shapeAttr.y;
+    const murkAttr = shapeAttr.w;
     const foulAttr = attribute<'float'>('waterFoul', 'float');
-    const murkAttr = attribute<'float'>('waterMurk', 'float');
     const scatterAttr = attribute<'vec3'>('waterScatter', 'vec3');
 
     // Positional phase warp shared by every wind-wave phase below —
@@ -773,10 +767,11 @@ export class WaterRenderer {
     // The wave table, term for term as waves.ts sums it: each train's weight
     // from the vertex's fetch or swell, its direction (a swell train turned off
     // the swell's own), its phase, and the energy that sets the breaking cap.
-    const fetchAttr = attribute<'float'>('waterFetch', 'float');
-    const swellTauAttr = attribute<'float'>('waterSwellTau', 'float');
-    const swellSlowAttr = attribute<'vec2'>('waterSwellSlow', 'vec2');
-    const swellAmpAttr = attribute<'float'>('waterSwellAmp', 'float');
+    const fetchAttr = shapeAttr.z;
+    const swellAttr = attribute<'vec4'>('waterSwell', 'vec4');
+    const swellTauAttr = swellAttr.x;
+    const swellSlowAttr = swellAttr.yz;
+    const swellAmpAttr = swellAttr.w;
     let energy: Node<'float'> = float(0);
     const parts = WAVE_TRAINS.map((train) => {
       const weight: Node<'float'> =
@@ -1033,7 +1028,6 @@ export class WaterRenderer {
     const breath = sin(t.mul(LAP_BREATH_RATE).add(breathNoise.mul(TWO_PI)))
       .mul(0.5)
       .add(0.5);
-    const bedAttr = attribute<'float'>('waterBed', 'float');
     const bedSlope = length(vec2(dFdx(bedAttr), dFdy(bedAttr))).div(max(metresPerPixel, 1e-6));
     const shoreDistance = max(bedAttr, 0).div(max(bedSlope, 1e-6));
     const lapWidth = breath
