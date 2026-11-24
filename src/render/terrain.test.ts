@@ -6,20 +6,19 @@ import {
   CHUNKS_PER_SIDE,
   MAP_SIZE,
   MAX_BUILD_SLOPE,
-  MAX_WATER_DEPTH_VIS,
   SEA_LEVEL,
-  SHORELINE_BAND_METERS,
   TILE_METERS,
   tileToWorld,
 } from '../shared/constants';
+import { materialUnit } from './palette';
 import {
+  SEABED_SILT_DEPTH_M,
   SKIRT_SIDE_COUNT,
   TerrainRenderer,
   chunkOfTile,
   dirtColorAt,
   groundCoverTint,
-  seabedDepthColor,
-  shorelineBandWeight,
+  seabedColor,
   skirtColorAt,
   treeShadeFactor,
   valueNoise2D,
@@ -141,21 +140,30 @@ describe('vertexColorFor', () => {
     }
   });
 
-  it('underwater vertices use the seabedDepthColor ramp keyed by depth below SEA_LEVEL', () => {
-    const height = -6;
-    const expected = seabedDepthColor(SEA_LEVEL - height);
+  it('underwater vertices use the seabedColor ramp keyed by depth below SEA_LEVEL', () => {
+    const height = -2;
+    const expected = seabedColor(SEA_LEVEL - height);
     const actual = vertexColorFor(height, 0, 0, 0, 0, false);
     expect(actual[0]).toBeCloseTo(expected[0], 9);
     expect(actual[1]).toBeCloseTo(expected[1], 9);
     expect(actual[2]).toBeCloseTo(expected[2], 9);
   });
 
-  it('is exactly the foam color at SEA_LEVEL (shoreline band fully saturated)', () => {
-    const c = vertexColorFor(SEA_LEVEL, 0, 0, 0, 0, false);
-    const foamAgain = vertexColorFor(SEA_LEVEL, 0, 0, 999, 12345, false);
-    // Foam fully overrides both the seabed/ground-cover branch AND any
-    // position-dependent noise at the exact waterline.
-    expect(c).toEqual(foamAgain);
+  it('paints no foam at the waterline: a shelf a few centimetres either side of SEA_LEVEL is bed or ground, not near white', () => {
+    for (const h of [
+      SEA_LEVEL - 0.2,
+      SEA_LEVEL - 0.01,
+      SEA_LEVEL,
+      SEA_LEVEL + 0.01,
+      SEA_LEVEL + 0.2,
+    ]) {
+      const c = vertexColorFor(h, 0, 0, 500, 700, false);
+      expect(Math.min(...c)).toBeLessThan(0.7);
+    }
+    // Under water the colour does not depend on where the vertex lies.
+    expect(vertexColorFor(-1, 0, 0, 0, 0, false)).toEqual(
+      vertexColorFor(-1, 0, 0, 999, 12345, false),
+    );
   });
 
   it('renders a uniform mown color near a road, independent of the noise position (tree density held fixed — it still legitimately darkens mown tiles too, per treeShadeFactor)', () => {
@@ -167,59 +175,36 @@ describe('vertexColorFor', () => {
   });
 });
 
-describe('seabedDepthColor', () => {
-  it('is the sandy shallow anchor at depth 0', () => {
-    const c = seabedDepthColor(0);
-    expect(c[0]).toBeCloseTo(0.55, 5);
-    expect(c[1]).toBeCloseTo(0.52, 5);
-    expect(c[2]).toBeCloseTo(0.38, 5);
+describe('seabedColor', () => {
+  const sand = materialUnit('seabedSand');
+  const silt = materialUnit('seabedSilt');
+
+  it('is the wet sand at depth 0', () => {
+    expect(seabedColor(0)).toEqual([...sand]);
   });
 
-  it('is the deep blue-green anchor at depth === MAX_WATER_DEPTH_VIS (12m)', () => {
-    const c = seabedDepthColor(MAX_WATER_DEPTH_VIS);
-    expect(c[0]).toBeCloseTo(0.02, 5);
-    expect(c[1]).toBeCloseTo(0.1, 5);
-    expect(c[2]).toBeCloseTo(0.15, 5);
+  it('is the silt at SEABED_SILT_DEPTH_M (3 m) and stays silt below it', () => {
+    expect(seabedColor(SEABED_SILT_DEPTH_M)).toEqual([...silt]);
+    expect(seabedColor(SEABED_SILT_DEPTH_M * 10)).toEqual([...silt]);
   });
 
-  it('is the exact midpoint at half depth (6m)', () => {
-    const shallow = seabedDepthColor(0);
-    const deep = seabedDepthColor(MAX_WATER_DEPTH_VIS);
-    const mid = seabedDepthColor(MAX_WATER_DEPTH_VIS / 2);
-    expect(mid[0]).toBeCloseTo((shallow[0] + deep[0]) / 2, 5);
-    expect(mid[1]).toBeCloseTo((shallow[1] + deep[1]) / 2, 5);
-    expect(mid[2]).toBeCloseTo((shallow[2] + deep[2]) / 2, 5);
+  it('is the exact midpoint at half the silt depth', () => {
+    const mid = seabedColor(SEABED_SILT_DEPTH_M / 2);
+    for (let c = 0; c < 3; c++) expect(mid[c]).toBeCloseTo((sand[c]! + silt[c]!) / 2, 9);
   });
 
-  it('saturates to the deep color beyond MAX_WATER_DEPTH_VIS', () => {
-    const at12 = seabedDepthColor(MAX_WATER_DEPTH_VIS);
-    const beyond = seabedDepthColor(MAX_WATER_DEPTH_VIS * 10);
-    expect(beyond).toEqual(at12);
+  it('darkens with depth, and a negative depth is the sand', () => {
+    const lum = (c: readonly number[]): number => c[0]! + c[1]! + c[2]!;
+    expect(lum(seabedColor(1))).toBeLessThan(lum(seabedColor(0.5)));
+    expect(lum(seabedColor(3))).toBeLessThan(lum(seabedColor(1)));
+    expect(seabedColor(-5)).toEqual(seabedColor(0));
   });
 
-  it('clamps negative depth to the shallow anchor', () => {
-    expect(seabedDepthColor(-5)).toEqual(seabedDepthColor(0));
-  });
-});
-
-describe('shorelineBandWeight', () => {
-  it('peaks at 1 exactly at SEA_LEVEL', () => {
-    expect(shorelineBandWeight(SEA_LEVEL)).toBe(1);
-  });
-
-  it('is 0 at the band edge and beyond, above and below SEA_LEVEL', () => {
-    expect(shorelineBandWeight(SEA_LEVEL + SHORELINE_BAND_METERS)).toBeCloseTo(0, 9);
-    expect(shorelineBandWeight(SEA_LEVEL - SHORELINE_BAND_METERS)).toBeCloseTo(0, 9);
-    expect(shorelineBandWeight(SEA_LEVEL + SHORELINE_BAND_METERS * 5)).toBe(0);
-    expect(shorelineBandWeight(SEA_LEVEL - SHORELINE_BAND_METERS * 5)).toBe(0);
-  });
-
-  it('is symmetric around SEA_LEVEL and strictly between 0 and 1 inside the band', () => {
-    const above = shorelineBandWeight(SEA_LEVEL + SHORELINE_BAND_METERS / 2);
-    const below = shorelineBandWeight(SEA_LEVEL - SHORELINE_BAND_METERS / 2);
-    expect(above).toBeCloseTo(below, 9);
-    expect(above).toBeGreaterThan(0);
-    expect(above).toBeLessThan(1);
+  it('is never a blue-green water tint: the bed leaves the colour of the water to the surface', () => {
+    for (const d of [0, 1, 3, 12]) {
+      const [r, , b] = seabedColor(d);
+      expect(b).toBeLessThanOrEqual(r);
+    }
   });
 });
 

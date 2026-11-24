@@ -11,9 +11,6 @@ import { describe, expect, it } from 'vitest';
 
 import type { BrushSettings, CityStats, Command, CommandAck, SimSnapshot } from './types';
 import {
-  MAX_WATER_DEPTH_VIS,
-  SEA_LEVEL,
-  SHORELINE_BAND_METERS,
   TERRAFORM_BRUSH_MAX,
   TERRAFORM_BRUSH_MIN,
   TERRAFORM_COST_PER_METER_TILE,
@@ -202,18 +199,5 @@ describe('terraform & water constants (UI-SPEC §6.11)', () => {
   it('terraform costs ¢0.5 per meter of |Δheight| per tile', () => {
     expect(TERRAFORM_COST_PER_METER_TILE).toBe(0.5);
     expect(TERRAFORM_COST_PER_METER_TILE).toBeGreaterThan(0);
-  });
-
-  it('seabed tint saturates 12 m below the surface', () => {
-    expect(MAX_WATER_DEPTH_VIS).toBe(12);
-    expect(MAX_WATER_DEPTH_VIS).toBeGreaterThan(0);
-  });
-
-  it('shoreline foam band is a ±0.4 m sliver around sea level', () => {
-    expect(SHORELINE_BAND_METERS).toBe(0.4);
-    expect(SHORELINE_BAND_METERS).toBeGreaterThan(0);
-    expect(SHORELINE_BAND_METERS).toBeLessThan(MAX_WATER_DEPTH_VIS);
-    // The band brackets SEA_LEVEL: |height − SEA_LEVEL| < SHORELINE_BAND_METERS.
-    expect(SEA_LEVEL).toBe(0);
   });
 });

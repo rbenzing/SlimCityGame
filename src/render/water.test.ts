@@ -1,87 +1,66 @@
 import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
-import { MAP_SIZE, MAX_WATER_DEPTH_VIS, SEA_LEVEL, TILE_METERS } from '../shared/constants';
+import { MAP_SIZE, SEA_LEVEL, TILE_METERS } from '../shared/constants';
 import { timeOfDayColors } from './scene';
 import {
-  DEEP_WATER_COLOR,
   DEFAULT_SKY_HORIZON_COLOR,
   DEFAULT_SKY_ZENITH_COLOR,
   FOUL_WATER_COLOR,
   MOON_GLINT_FRACTION,
-  OPACITY_AT_GRAZING_ANGLE,
-  OPACITY_AT_NORMAL_INCIDENCE,
-  SHALLOW_WATER_COLOR,
-  SHORELINE_FOAM_DEPTH_M,
-  SWELL_AMPLITUDE_BUDGET_M,
-  SWELL_LAYERS,
-  WAVE_NORMAL_LAYERS,
+  WATER_REBUILD_SETTLE_S,
+  WATER_VERTEX_SPACING_M,
   WaterRenderer,
-  depthColor,
-  foamStrength,
+  buildWaterGrid,
+  coveredTiles,
   foulMix,
-  fouledColor,
   vertexFouling,
-  glancingOpacity,
+  vertexLook,
+  blurWaterLooks,
+  glintLobe,
   glintScale,
+  glintShininess,
   glintSpecular,
-  reflectedColor,
-  swellHeight,
-  waveNormalTilt,
+  GLINT_BASE_VARIANCE,
+  GLINT_MAX,
+  GLINT_MAX_SHININESS,
+  GLINT_MIN_SHININESS,
 } from './water';
+import {
+  BED_LOST_TRANSMISSION,
+  FRESNEL_F0,
+  LAP_BREATH,
+  LAP_BREATH_RATE,
+  LAP_STRENGTH,
+  LAP_WIDTH_M,
+  NET_DEPTH_M,
+  STREAK_STRENGTH,
+  SURF_LINE_CENTRE_TURNS,
+  SURF_LINE_STRENGTH,
+  SURF_TRAIL_S,
+  SURF_TRAIL_STRENGTH,
+  WATER_IOR,
+  bedNet,
+  bedNetGain,
+  gustScale,
+  lapBreath,
+  lapFoam,
+  lookOf,
+  schlick,
+  seenThrough,
+  shoreDistanceM,
+  skyBlend,
+  streakFoam,
+  surfBreaking,
+  surfCrest,
+  surfFoam,
+  transmission,
+  waterPath,
+} from './waterlook';
+import { WaterKind, deriveWaterBodies, sampleWater } from '../shared/waterbodies';
+import { WAVE_TRAINS } from '../shared/waves';
 
-describe('depthColor', () => {
-  it('is the shallow anchor at depth 0', () => {
-    expect(depthColor(0)).toEqual([
-      SHALLOW_WATER_COLOR[0],
-      SHALLOW_WATER_COLOR[1],
-      SHALLOW_WATER_COLOR[2],
-    ]);
-  });
-
-  it('is the deep anchor at depth === MAX_WATER_DEPTH_VIS', () => {
-    const c = depthColor(MAX_WATER_DEPTH_VIS);
-    expect(c[0]).toBeCloseTo(DEEP_WATER_COLOR[0], 9);
-    expect(c[1]).toBeCloseTo(DEEP_WATER_COLOR[1], 9);
-    expect(c[2]).toBeCloseTo(DEEP_WATER_COLOR[2], 9);
-  });
-
-  it('is the exact midpoint at half depth', () => {
-    const mid = depthColor(MAX_WATER_DEPTH_VIS / 2);
-    expect(mid[0]).toBeCloseTo((SHALLOW_WATER_COLOR[0] + DEEP_WATER_COLOR[0]) / 2, 5);
-    expect(mid[1]).toBeCloseTo((SHALLOW_WATER_COLOR[1] + DEEP_WATER_COLOR[1]) / 2, 5);
-    expect(mid[2]).toBeCloseTo((SHALLOW_WATER_COLOR[2] + DEEP_WATER_COLOR[2]) / 2, 5);
-  });
-
-  it('saturates to the deep anchor beyond MAX_WATER_DEPTH_VIS', () => {
-    expect(depthColor(MAX_WATER_DEPTH_VIS * 5)).toEqual(depthColor(MAX_WATER_DEPTH_VIS));
-  });
-
-  it('clamps negative depth to the shallow anchor', () => {
-    expect(depthColor(-3)).toEqual(depthColor(0));
-  });
-});
-
-describe('fouledColor', () => {
-  const closeTo = (
-    got: readonly [number, number, number],
-    want: readonly [number, number, number],
-  ): void => {
-    for (let i = 0; i < 3; i++) expect(got[i]).toBeCloseTo(want[i]!, 9);
-  };
-
-  it('is the depth colour on clean water and the foul brown on water fully fouled', () => {
-    closeTo(fouledColor(0, 0), SHALLOW_WATER_COLOR);
-    closeTo(fouledColor(MAX_WATER_DEPTH_VIS, 0), DEEP_WATER_COLOR);
-    closeTo(fouledColor(3, 1), FOUL_WATER_COLOR);
-    closeTo(fouledColor(3, 2), FOUL_WATER_COLOR);
-  });
-
+describe('foulMix', () => {
   it('mixes by the square root of the fouling, so a quarter fouled is half brown and a smudge still shows', () => {
-    const clean = depthColor(3);
-    const quarter = fouledColor(3, 0.25);
-    for (let i = 0; i < 3; i++) {
-      expect(quarter[i]).toBeCloseTo((clean[i]! + FOUL_WATER_COLOR[i]!) / 2, 9);
-    }
     expect(foulMix(0.25)).toBeCloseTo(0.5, 9);
     // Two units of 255 are under 1% of the scale and about 9% of the mix.
     expect(foulMix(2 / 255)).toBeGreaterThan(0.08);
@@ -107,109 +86,21 @@ describe('vertexFouling', () => {
     expect(vertexFouling(layer, size, 0, 0)).toBe(0);
   });
 
+  it('reads only the tile a half-tile vertex stands inside, and both tiles on a shared edge', () => {
+    const size = 4;
+    const layer = new Uint8Array(size * size);
+    layer[1 * size + 1] = 255; // tile (1, 1)
+    expect(vertexFouling(layer, size, 0.5, 0.5)).toBe(0);
+    expect(vertexFouling(layer, size, 1.5, 1.5)).toBe(1);
+    expect(vertexFouling(layer, size, 1, 1.5)).toBe(1); // edge between tiles (0,1) and (1,1)
+    expect(vertexFouling(layer, size, 0.5, 1.5)).toBe(0);
+  });
+
   it('clamps at the map edge instead of reading off it', () => {
     const size = 2;
     const layer = new Uint8Array([255, 0, 0, 0]);
     expect(vertexFouling(layer, size, 0, 0)).toBe(1);
     expect(vertexFouling(layer, size, 2, 2)).toBe(0);
-  });
-});
-
-describe('swellHeight', () => {
-  it('is deterministic: identical inputs always produce the identical output', () => {
-    expect(swellHeight(12, 34, 5.6)).toBe(swellHeight(12, 34, 5.6));
-  });
-
-  it('stays within +-SWELL_AMPLITUDE_BUDGET_M across a broad scan of position and time (v2: budget raised 0.15m -> 0.35m by the added long-wavelength chop layer)', () => {
-    for (let t = 0; t < 20; t += 0.7) {
-      for (let x = 0; x < 300; x += 37) {
-        const h = swellHeight(x, x * 0.5, t);
-        expect(h).toBeGreaterThanOrEqual(-SWELL_AMPLITUDE_BUDGET_M - 1e-9);
-        expect(h).toBeLessThanOrEqual(SWELL_AMPLITUDE_BUDGET_M + 1e-9);
-      }
-    }
-  });
-
-  it('varies over time at a fixed position (an actual animation, not a static offset)', () => {
-    const values = new Set<string>();
-    for (let t = 0; t < 10; t += 0.3) values.add(swellHeight(10, 10, t).toFixed(6));
-    expect(values.size).toBeGreaterThan(1);
-  });
-
-  it('varies across space at a fixed time (not a uniform whole-plane bob)', () => {
-    const values = new Set<string>();
-    for (let x = 0; x < 400; x += 23) values.add(swellHeight(x, 0, 3.14).toFixed(6));
-    expect(values.size).toBeGreaterThan(1);
-  });
-});
-
-describe('SWELL_LAYERS (v2 long-wavelength chop layer)', () => {
-  it('has three layers whose amplitudes sum to exactly SWELL_AMPLITUDE_BUDGET_M', () => {
-    expect(SWELL_LAYERS.length).toBe(3);
-    const sum = SWELL_LAYERS.reduce((acc, layer) => acc + layer.amplitude, 0);
-    expect(sum).toBeCloseTo(SWELL_AMPLITUDE_BUDGET_M, 9);
-  });
-
-  it('includes a long-wavelength (35-60m) chop layer distinct from the original shorter layers', () => {
-    const longLayers = SWELL_LAYERS.filter(
-      (layer) => layer.wavelength >= 35 && layer.wavelength <= 60,
-    );
-    expect(longLayers.length).toBeGreaterThanOrEqual(1);
-  });
-});
-
-describe('waveNormalTilt', () => {
-  it('is deterministic: identical inputs always produce the identical output', () => {
-    expect(waveNormalTilt(5, 6, 1.2)).toEqual(waveNormalTilt(5, 6, 1.2));
-  });
-
-  it('varies over time at a fixed position', () => {
-    const values = new Set<string>();
-    for (let t = 0; t < 10; t += 0.3) values.add(waveNormalTilt(4, 4, t).join(','));
-    expect(values.size).toBeGreaterThan(1);
-  });
-
-  it('returns finite, bounded components', () => {
-    for (let t = 0; t < 8; t += 0.9) {
-      const [tiltX, tiltZ] = waveNormalTilt(11, 22, t);
-      expect(Number.isFinite(tiltX)).toBe(true);
-      expect(Number.isFinite(tiltZ)).toBe(true);
-      expect(Math.abs(tiltX)).toBeLessThanOrEqual(1);
-      expect(Math.abs(tiltZ)).toBeLessThanOrEqual(1);
-    }
-  });
-});
-
-describe('WAVE_NORMAL_LAYERS (v2 long-wavelength chop layer)', () => {
-  it('has three layers', () => {
-    expect(WAVE_NORMAL_LAYERS.length).toBe(3);
-  });
-
-  it('includes a long-wavelength (35-60m) chop layer distinct from the original 7-11m ripples', () => {
-    const longLayers = WAVE_NORMAL_LAYERS.filter(
-      (layer) => layer.wavelength >= 35 && layer.wavelength <= 60,
-    );
-    expect(longLayers.length).toBeGreaterThanOrEqual(1);
-  });
-});
-
-describe('glancingOpacity', () => {
-  it('is OPACITY_AT_NORMAL_INCIDENCE straight-on (cosViewAngle=1)', () => {
-    expect(glancingOpacity(1)).toBeCloseTo(OPACITY_AT_NORMAL_INCIDENCE, 9);
-  });
-
-  it('is OPACITY_AT_GRAZING_ANGLE at grazing incidence (cosViewAngle=0)', () => {
-    expect(glancingOpacity(0)).toBeCloseTo(OPACITY_AT_GRAZING_ANGLE, 9);
-  });
-
-  it('decreases monotonically as the view angle moves from grazing to straight-on', () => {
-    const vals = [0, 0.25, 0.5, 0.75, 1].map((c) => glancingOpacity(c));
-    for (let i = 1; i < vals.length; i++) expect(vals[i]!).toBeLessThanOrEqual(vals[i - 1]!);
-  });
-
-  it('clamps out-of-range cosViewAngle', () => {
-    expect(glancingOpacity(-5)).toBeCloseTo(OPACITY_AT_GRAZING_ANGLE, 9);
-    expect(glancingOpacity(5)).toBeCloseTo(OPACITY_AT_NORMAL_INCIDENCE, 9);
   });
 });
 
@@ -225,110 +116,239 @@ describe('DEFAULT_SKY_ZENITH_COLOR / DEFAULT_SKY_HORIZON_COLOR', () => {
   });
 });
 
-describe('reflectedColor', () => {
-  const sampleDepthColor: [number, number, number] = [0.1, 0.2, 0.3];
-  const zenith = DEFAULT_SKY_ZENITH_COLOR;
-  const horizon = DEFAULT_SKY_HORIZON_COLOR;
-
-  it('is deterministic: identical inputs always produce the identical output', () => {
-    expect(reflectedColor(0.4, sampleDepthColor, zenith, horizon)).toEqual(
-      reflectedColor(0.4, sampleDepthColor, zenith, horizon),
-    );
+describe('Schlick reflection', () => {
+  it('is 0.02 looking straight down (the index of water, 1.33) and 1 at grazing', () => {
+    expect(WATER_IOR).toBe(1.33);
+    expect(FRESNEL_F0).toBeCloseTo(0.02, 2);
+    expect(schlick(1)).toBeCloseTo(FRESNEL_F0, 12);
+    expect(schlick(0)).toBeCloseTo(1, 12);
   });
 
-  it('is exactly the depth color straight down (cosView=1: no sky contribution, a mirror at zero grazing)', () => {
-    const c = reflectedColor(1, sampleDepthColor, zenith, horizon);
-    expect(c[0]).toBeCloseTo(sampleDepthColor[0], 9);
-    expect(c[1]).toBeCloseTo(sampleDepthColor[1], 9);
-    expect(c[2]).toBeCloseTo(sampleDepthColor[2], 9);
+  it('rises monotonically toward grazing and clamps out-of-range cosines', () => {
+    const vals = [1, 0.8, 0.6, 0.4, 0.2, 0].map(schlick);
+    for (let i = 1; i < vals.length; i++) expect(vals[i]!).toBeGreaterThan(vals[i - 1]!);
+    expect(schlick(-3)).toBe(schlick(0));
+    expect(schlick(4)).toBe(schlick(1));
   });
 
-  it('is exactly the horizon color at grazing incidence (cosView=0: full mirror weight)', () => {
-    const c = reflectedColor(0, sampleDepthColor, zenith, horizon);
-    expect(c[0]).toBeCloseTo(horizon[0], 9);
-    expect(c[1]).toBeCloseTo(horizon[1], 9);
-    expect(c[2]).toBeCloseTo(horizon[2], 9);
+  it('follows F0 + (1 - F0)(1 - cos)^5 at a hand-worked angle', () => {
+    expect(schlick(0.5)).toBeCloseTo(FRESNEL_F0 + (1 - FRESNEL_F0) / 32, 12);
   });
 
-  it('matches a hand-computed lerp at cosView=0.5', () => {
-    // sky = lerp(horizon, zenith, 0.5); result = lerp(depthColor, sky, 0.5)
-    const sky: [number, number, number] = [
-      (horizon[0] + zenith[0]) / 2,
-      (horizon[1] + zenith[1]) / 2,
-      (horizon[2] + zenith[2]) / 2,
-    ];
-    const expected: [number, number, number] = [
-      (sampleDepthColor[0] + sky[0]) / 2,
-      (sampleDepthColor[1] + sky[1]) / 2,
-      (sampleDepthColor[2] + sky[2]) / 2,
-    ];
-    const c = reflectedColor(0.5, sampleDepthColor, zenith, horizon);
-    expect(c[0]).toBeCloseTo(expected[0], 9);
-    expect(c[1]).toBeCloseTo(expected[1], 9);
-    expect(c[2]).toBeCloseTo(expected[2], 9);
-  });
-
-  it('trends from bright sky-mirror tones toward the plain depth color as the view steepens from grazing to overhead', () => {
-    const nearGrazing = reflectedColor(0.01, sampleDepthColor, zenith, horizon);
-    const mid = reflectedColor(0.5, sampleDepthColor, zenith, horizon);
-    const nearOverhead = reflectedColor(0.99, sampleDepthColor, zenith, horizon);
-    // Default sky horizon is much brighter than the sample depth color on
-    // every channel, so the red channel alone is a monotone proxy here.
-    expect(nearGrazing[0]).toBeGreaterThan(mid[0]);
-    expect(mid[0]).toBeGreaterThan(nearOverhead[0]);
-  });
-
-  it('clamps out-of-range cosView', () => {
-    expect(reflectedColor(-5, sampleDepthColor, zenith, horizon)).toEqual(
-      reflectedColor(0, sampleDepthColor, zenith, horizon),
-    );
-    expect(reflectedColor(5, sampleDepthColor, zenith, horizon)).toEqual(
-      reflectedColor(1, sampleDepthColor, zenith, horizon),
-    );
+  it('takes its sky tone from the reflected ray: the horizon at level, the zenith overhead', () => {
+    expect(skyBlend(0)).toBe(0);
+    expect(skyBlend(1)).toBe(1);
+    expect(skyBlend(-0.5)).toBe(0);
+    expect(skyBlend(0.25)).toBeGreaterThan(0.25);
   });
 });
 
-describe('foamStrength', () => {
-  it('is deterministic: identical inputs always produce the identical output', () => {
-    expect(foamStrength(0.3, 5, 6, 1.2)).toBe(foamStrength(0.3, 5, 6, 1.2));
+describe('what shows through the water', () => {
+  it('loses red first, then green, then blue, with the pure-water absorption', () => {
+    const t = transmission(5, 0);
+    expect(t[0]).toBeCloseTo(Math.exp(-0.34 * 5), 12);
+    expect(t[1]).toBeCloseTo(Math.exp(-0.0565 * 5), 12);
+    expect(t[2]).toBeCloseTo(Math.exp(-0.0092 * 5), 12);
+    expect(t[0]).toBeLessThan(t[1]);
+    expect(t[1]).toBeLessThan(t[2]);
+    expect(transmission(0, 3)).toEqual([1, 1, 1]);
   });
 
-  it('is exactly 0 at and beyond SHORELINE_FOAM_DEPTH_M, for any position/time', () => {
-    for (let t = 0; t < 10; t += 1.3) {
-      for (let x = 0; x < 100; x += 17) {
-        expect(foamStrength(SHORELINE_FOAM_DEPTH_M, x, x * 0.7, t)).toBe(0);
-        expect(foamStrength(SHORELINE_FOAM_DEPTH_M + 5, x, x * 0.7, t)).toBe(0);
+  it('loses the bed where each kind says: blue is down to BED_LOST_TRANSMISSION at 8 m (ocean), 4 m (lake), 1.5 m (river)', () => {
+    for (const [kind, lostAt] of [
+      [WaterKind.Ocean, 8],
+      [WaterKind.Lake, 4],
+      [WaterKind.River, 1.5],
+    ] as const) {
+      const blue = transmission(lostAt, lookOf(kind).murk)[2];
+      expect(blue).toBeCloseTo(BED_LOST_TRANSMISSION, 9);
+      expect(transmission(lostAt / 2, lookOf(kind).murk)[2]).toBeGreaterThan(blue);
+    }
+    // A muddier water loses the bed sooner.
+    expect(lookOf(WaterKind.River).murk).toBeGreaterThan(lookOf(WaterKind.Lake).murk);
+    expect(lookOf(WaterKind.Lake).murk).toBeGreaterThan(lookOf(WaterKind.Ocean).murk);
+  });
+
+  it('takes the path along the refracted ray: longer slanted, never past 10 times the depth', () => {
+    expect(waterPath(2, 1)).toBe(2);
+    expect(waterPath(2, 0.5)).toBe(4);
+    expect(waterPath(2, 0)).toBe(20);
+    expect(waterPath(-1, 1)).toBe(0);
+  });
+
+  it('shows the bed in the shallows and the kind scatter colour where the light is lost', () => {
+    const bed: [number, number, number] = [0.8, 0.7, 0.5];
+    const scatter = lookOf(WaterKind.Ocean).scatter;
+    expect(seenThrough(bed, transmission(0, 0.5), scatter)).toEqual(bed);
+    const deep = seenThrough(bed, transmission(40, lookOf(WaterKind.Ocean).murk), scatter);
+    for (let i = 0; i < 3; i++) expect(deep[i]).toBeCloseTo(scatter[i]!, 3);
+  });
+
+  it('gives each kind its own scatter: ocean blue, lake green-blue, river olive', () => {
+    const [or, og, ob] = lookOf(WaterKind.Ocean).scatter;
+    const [lr, lg, lb] = lookOf(WaterKind.Lake).scatter;
+    const [rr, rg, rb] = lookOf(WaterKind.River).scatter;
+    expect(ob).toBeGreaterThan(og);
+    expect(og).toBeGreaterThan(or);
+    expect(lg).toBeGreaterThanOrEqual(lb);
+    expect(lg).toBeGreaterThan(lr);
+    // A river is a dark green-teal, so brown fouling still shows on it.
+    expect(rg).toBeGreaterThan(rb);
+    expect(rb).toBeGreaterThan(rr);
+    expect(FOUL_WATER_COLOR[0]).toBeGreaterThan(rr * 3);
+    expect(lookOf(WaterKind.None)).toEqual(lookOf(WaterKind.Ocean));
+  });
+});
+
+describe('gusts and the net of light on the bed', () => {
+  it('scales the wind waves between 0.5 and 1.5 and leaves a still field alone', () => {
+    expect(gustScale(0)).toBe(1);
+    expect(gustScale(-5)).toBe(0.5);
+    expect(gustScale(5)).toBe(1.5);
+  });
+
+  it('widens the glint in a ruffled patch and narrows it in a calm one', () => {
+    expect(glintSpecular(0.99, 0.8, 0, 1.5)).toBeGreaterThan(glintSpecular(0.99, 0.8, 0, 1));
+    expect(glintSpecular(0.99, 0.8, 0, 0.5)).toBeLessThan(glintSpecular(0.99, 0.8, 0, 1));
+    expect(glintShininess(0, 1.5)).toBeLessThan(glintShininess(0, 1));
+  });
+
+  it('draws the net only in the shallows, by day: gone at NET_DEPTH_M and at night, moving with time', () => {
+    expect(bedNetGain(1, NET_DEPTH_M, 0)).toBe(1);
+    expect(bedNetGain(1, NET_DEPTH_M + 2, 0)).toBe(1);
+    expect(bedNetGain(1, 0.5, 1)).toBe(1);
+    expect(bedNetGain(1, 0.5, 0, 0)).toBe(1); // lines under a few pixels are faded out
+    expect(bedNetGain(1, 0.5, 0)).toBeGreaterThan(1);
+    expect(bedNetGain(1, 0.5, 0)).toBeGreaterThan(bedNetGain(1, 2, 0));
+    expect(bedNetGain(0, 0.5, 0)).toBe(1);
+    const at = new Set<string>();
+    for (let t = 0; t < 6; t += 0.7) at.add(bedNet(3, 4, t, 0.3, -0.2).toFixed(5));
+    expect(at.size).toBeGreaterThan(1);
+    const across = new Set<string>();
+    for (let x = 0; x < 20; x += 0.9) across.add(bedNet(x, 2, 1, 0.3, -0.2).toFixed(5));
+    expect(across.size).toBeGreaterThan(5);
+    for (let x = 0; x < 20; x += 0.37) {
+      expect(bedNet(x, 5, 2, Math.sin(x), Math.cos(x))).toBeGreaterThanOrEqual(0);
+      expect(bedNet(x, 5, 2, Math.sin(x), Math.cos(x))).toBeLessThanOrEqual(1);
+    }
+  });
+});
+
+describe('foam', () => {
+  it('surf only where the cap bites: none for a swell far under the breaking depth, all of it past', () => {
+    // 1 m of swell meets the cap (0.8 of the depth) in water 1.25 m deep.
+    expect(surfBreaking(1, 10)).toBe(0);
+    expect(surfBreaking(1, 2)).toBe(0);
+    expect(surfBreaking(1, 1.25)).toBeGreaterThan(0);
+    expect(surfBreaking(1, 1.25)).toBeLessThan(1);
+    expect(surfBreaking(1, 1)).toBe(1);
+    expect(surfBreaking(1, 0.1)).toBe(1);
+  });
+
+  it('no surf on a lake: no swell, no breaking, whatever the depth', () => {
+    for (const depth of [0.01, 0.1, 0.5, 2]) expect(surfBreaking(0, depth)).toBe(0);
+    expect(surfFoam(surfBreaking(0, 0.1), 1, 1, 1)).toBe(0);
+  });
+
+  it('puts the surf line just past the crest and a fainter trail behind it, gone after SURF_TRAIL_S', () => {
+    const top = Math.PI / 2; // the sine's crest
+    const turns = (t: number): number => top + t * Math.PI * 2;
+    const atTop = surfCrest(top, 8);
+    const justPast = surfCrest(turns(SURF_LINE_CENTRE_TURNS), 8);
+    expect(justPast.line).toBeCloseTo(1, 6);
+    expect(justPast.line).toBeGreaterThan(atTop.line);
+    // 1 s behind the crest on an 8 s swell is 0.125 turns.
+    const behind = surfCrest(turns(-0.125), 8);
+    expect(behind.line).toBeLessThan(0.01);
+    expect(behind.trail).toBeGreaterThan(0);
+    expect(behind.trail).toBeLessThan(justPast.line);
+    expect(behind.trail).toBeCloseTo(SURF_TRAIL_STRENGTH * (1 - 1 / SURF_TRAIL_S), 6);
+    // 4 s behind (half a period) it has faded out.
+    expect(surfCrest(turns(-0.5), 8).trail).toBeCloseTo(0, 6);
+    // Ahead of the line there is neither.
+    const ahead = surfCrest(turns(0.2), 8);
+    expect(ahead.line).toBeLessThan(0.01);
+    expect(ahead.trail).toBe(0);
+  });
+
+  it('breaks the surf line up with noise: ragged, never a ruled stripe', () => {
+    expect(surfFoam(1, 1, 0, 0.1)).toBe(0);
+    expect(surfFoam(1, 1, 0, 0.9)).toBe(SURF_LINE_STRENGTH);
+    expect(SURF_LINE_STRENGTH).toBeLessThan(1);
+    expect(surfFoam(1, 1, 0, 0.4)).toBeGreaterThan(0);
+    expect(surfFoam(1, 1, 0, 0.4)).toBeLessThan(SURF_LINE_STRENGTH);
+    // Nothing breaks, nothing shows.
+    expect(surfFoam(0, 1, 1, 0.9)).toBe(0);
+  });
+
+  it('laps only inside the band: full at the waterline, none from LAP_WIDTH_M of ground out, soft between', () => {
+    expect(lapFoam(0, 0)).toBeCloseTo(LAP_STRENGTH, 9);
+    expect(lapFoam(0, 1)).toBeCloseTo(LAP_STRENGTH, 9);
+    expect(lapFoam(LAP_WIDTH_M, 1)).toBe(0);
+    expect(lapFoam(LAP_WIDTH_M * 3, 0.5)).toBe(0);
+    // Inner edge soft: a steady fall, not a ruled strip.
+    const mid = lapFoam(LAP_WIDTH_M * 0.5, 1);
+    expect(mid).toBeGreaterThan(0);
+    expect(mid).toBeLessThan(LAP_STRENGTH);
+    for (let d = 0; d < LAP_WIDTH_M; d += 0.01) {
+      expect(lapFoam(d + 0.01, 0.5)).toBeLessThanOrEqual(lapFoam(d, 0.5) + 1e-9);
+    }
+  });
+
+  it('shore distance is the bed depth over its slope: the same ground width on a gentle shelf and a steep bank', () => {
+    for (const slope of [0.002, 0.1, 0.8, 50]) {
+      const d = LAP_WIDTH_M * 0.5;
+      expect(shoreDistanceM(d * slope, slope)).toBeCloseTo(d, 9);
+      expect(lapFoam(shoreDistanceM(d * slope, slope), 1)).toBeCloseTo(lapFoam(d, 1), 9);
+      expect(lapFoam(shoreDistanceM(LAP_WIDTH_M * 1.01 * slope, slope), 1)).toBe(0);
+    }
+    expect(shoreDistanceM(-1, 0.3)).toBe(0);
+    expect(Number.isFinite(shoreDistanceM(1, 0))).toBe(true);
+  });
+
+  it('fades with pixel size instead of widening: a pixel wider than the line shows it at the share it fills', () => {
+    expect(lapFoam(0, 1, LAP_WIDTH_M)).toBeCloseTo(LAP_STRENGTH, 9);
+    expect(lapFoam(0, 1, LAP_WIDTH_M * 4)).toBeCloseTo(LAP_STRENGTH / 4, 9);
+    expect(lapFoam(0, 1, LAP_WIDTH_M * 40)).toBeLessThan(lapFoam(0, 1, LAP_WIDTH_M * 4));
+    // The line's reach on the ground does not grow with the pixel.
+    expect(lapFoam(LAP_WIDTH_M * 1.01, 1, 50)).toBe(0);
+  });
+
+  it('never reaches past LAP_WIDTH_M of ground at any breath or pixel size', () => {
+    for (const breath of [0, 0.5, 1]) {
+      for (const pixelM of [0, 0.1, 5, 80]) {
+        for (let d = LAP_WIDTH_M; d < 10; d += 0.05) {
+          expect(lapFoam(d, breath, pixelM)).toBe(0);
+        }
       }
     }
   });
 
-  it('stays within [0,1] across a broad scan of depth/position/time', () => {
-    for (let depth = 0; depth <= 1; depth += 0.1) {
-      for (let t = 0; t < 6; t += 1.1) {
-        const s = foamStrength(depth, 11, 22, t);
-        expect(s).toBeGreaterThanOrEqual(0);
-        expect(s).toBeLessThanOrEqual(1 + 1e-9);
-      }
+  it('breathes in and out with time, out of step by place', () => {
+    const at = (n: number, t: number): number => lapBreath(n, t);
+    const period = (2 * Math.PI) / LAP_BREATH_RATE;
+    expect(at(0.2, 0)).toBeCloseTo(at(0.2, period), 9);
+    expect(Math.abs(at(0.2, 0) - at(0.2, period / 2))).toBeGreaterThan(0.5);
+    expect(at(0.1, 0)).not.toBeCloseTo(at(0.3, 0), 2);
+    for (let t = 0; t < 20; t += 0.7) {
+      expect(at(0.3, t)).toBeGreaterThanOrEqual(0);
+      expect(at(0.3, t)).toBeLessThanOrEqual(1);
     }
   });
 
-  it('is non-increasing in depth at a fixed position/time (the envelope fades toward the depth limit)', () => {
-    const depths = [0, 0.2, 0.4, 0.6, 0.8, 1.0];
-    const values = depths.map((d) => foamStrength(d, 3, 4, 2.5));
-    for (let i = 1; i < values.length; i++)
-      expect(values[i]!).toBeLessThanOrEqual(values[i - 1]! + 1e-9);
+  it('breathes: the band is narrower when the breath is low than when it is high', () => {
+    const d = LAP_WIDTH_M * (1 - LAP_BREATH) * 0.9;
+    expect(lapFoam(d, 0)).toBeGreaterThan(0);
+    expect(lapFoam(LAP_WIDTH_M * 0.9, 0)).toBe(0);
+    expect(lapFoam(LAP_WIDTH_M * 0.9, 1)).toBeGreaterThan(0);
   });
 
-  it('varies over time at a fixed shallow position (an actual scroll, not a static band)', () => {
-    const values = new Set<string>();
-    for (let t = 0; t < 10; t += 0.3) values.add(foamStrength(0.2, 10, 10, t).toFixed(6));
-    expect(values.size).toBeGreaterThan(1);
-  });
-
-  it('varies across space at a fixed shallow depth/time (a scrolling band, not a uniform wash)', () => {
-    const values = new Set<string>();
-    for (let x = 0; x < 40; x += 3) values.add(foamStrength(0.2, x, 0, 1.5).toFixed(6));
-    expect(values.size).toBeGreaterThan(1);
+  it('river streaks are zero where the flow is zero, and strongest in the current', () => {
+    expect(streakFoam(0, 1)).toBe(0);
+    expect(streakFoam(1, 0.5)).toBe(0);
+    expect(streakFoam(1, 1)).toBeCloseTo(STREAK_STRENGTH, 9);
+    expect(streakFoam(0.5, 1)).toBeLessThan(streakFoam(1, 1));
+    expect(streakFoam(1, 1)).toBeLessThan(LAP_STRENGTH);
   });
 });
 
@@ -353,44 +373,81 @@ describe('glintScale', () => {
 });
 
 describe('glintSpecular', () => {
-  it('is exactly 0 at ndotH=0 (both lobes vanish)', () => {
-    expect(glintSpecular(0)).toBe(0);
-  });
-
-  it('is deterministic: identical inputs always produce the identical output', () => {
-    expect(glintSpecular(0.6)).toBe(glintSpecular(0.6));
-  });
-
-  it('increases monotonically as ndotH rises from 0 to 1', () => {
-    const vals = [0, 0.2, 0.4, 0.6, 0.8, 1].map((n) => glintSpecular(n));
+  it('is zero where the half-vector is far from the normal and peaks at the mirror direction', () => {
+    expect(glintSpecular(0, 0.7)).toBe(0);
+    expect(glintSpecular(0.9, 0.7)).toBeLessThan(1e-6);
+    const vals = [0.9, 0.99, 0.999, 1].map((n) => glintSpecular(n, 0.7));
     for (let i = 1; i < vals.length; i++) expect(vals[i]!).toBeGreaterThanOrEqual(vals[i - 1]!);
+    expect(glintSpecular(1, 0.7)).toBeGreaterThan(0.1);
   });
 
-  it('is the peak of the sampled domain at ndotH=1', () => {
-    const vals = [0, 0.2, 0.4, 0.6, 0.8, 0.99].map((n) => glintSpecular(n));
-    for (const v of vals) expect(glintSpecular(1)).toBeGreaterThanOrEqual(v);
+  it('is deterministic and clamps out-of-range inputs', () => {
+    expect(glintSpecular(0.99, 0.5)).toBe(glintSpecular(0.99, 0.5));
+    expect(glintSpecular(-3, 0.5)).toBe(glintSpecular(0, 0.5));
+    expect(glintSpecular(7, 0.5)).toBeCloseTo(glintSpecular(1, 0.5), 9);
   });
 
-  it('is meaningfully non-zero well away from the peak (v2: the broader lobe reads before the tight lobe would)', () => {
-    // A single tight (~60-shininess) lobe would be utterly negligible at
-    // ndotH=0.7 (0.7**60 ~ 5e-10); v2's added broad lobe keeps the glint
-    // track visible here, which is the whole point of the second lobe.
-    expect(glintSpecular(0.7)).toBeGreaterThan(1e-4);
+  it('never exceeds GLINT_MAX, at the sharpest lobe and the grazing view', () => {
+    expect(glintSpecular(1, 0, 0, 0.5)).toBeLessThanOrEqual(GLINT_MAX);
+    expect(glintSpecular(1, 0, 0, 0.5)).toBe(GLINT_MAX);
   });
 
-  it('clamps out-of-range ndotH', () => {
-    expect(glintSpecular(-3)).toBe(glintSpecular(0));
-    expect(glintSpecular(7)).toBeCloseTo(glintSpecular(1), 9);
+  it('is zero at the night scale of zero and follows the scale otherwise', () => {
+    expect(glintSpecular(1, 0.7, 0, 1, 0)).toBe(0);
+    expect(glintSpecular(1, 0.7, 0, 1, 0.2)).toBeCloseTo(0.2 * glintSpecular(1, 0.7), 9);
+  });
+
+  it('reflects more at a grazing view than from straight above (Schlick)', () => {
+    expect(glintSpecular(0.999, 0.1)).toBeGreaterThan(glintSpecular(0.999, 1));
+  });
+
+  it('keeps its energy as it narrows: the lobe integrates to about the same over the half-vector sphere', () => {
+    const energy = (n: number): number => {
+      let sum = 0;
+      const steps = 20000;
+      for (let i = 0; i < steps; i++) {
+        const theta = ((i + 0.5) / steps) * (Math.PI / 2);
+        sum +=
+          glintLobe(Math.cos(theta), n) * Math.sin(theta) * (Math.PI / 2 / steps) * 2 * Math.PI;
+      }
+      return sum;
+    };
+    const wide = energy(glintShininess(0.05, 1));
+    const narrow = energy(glintShininess(0, 1));
+    expect(glintShininess(0, 1)).toBeGreaterThan(glintShininess(0.05, 1) * 4);
+    expect(narrow / wide).toBeGreaterThan(0.7);
+    expect(narrow / wide).toBeLessThan(1.3);
+    expect(energy(GLINT_MAX_SHININESS)).toBeLessThan(2);
+  });
+
+  it('narrows with a calmer surface and widens with the slope variance the pixel fade removed', () => {
+    expect(glintShininess(0.05)).toBeLessThan(glintShininess(0.01));
+    expect(glintShininess(0.01)).toBeLessThan(glintShininess(0));
+    expect(glintShininess(10)).toBe(GLINT_MIN_SHININESS);
+    expect(glintShininess(0, 0.01)).toBe(GLINT_MAX_SHININESS);
+    expect(glintShininess(0)).toBeCloseTo(2 / GLINT_BASE_VARIANCE, 9);
   });
 });
 
 describe('WaterRenderer', () => {
   const flatHeightAt = (): number => -5; // uniformly 5m underwater
   const mixedHeightAt = (x: number): number => (x < 32 ? -5 : 20);
+  const allWet = (): Uint8Array => new Uint8Array(16).fill(1);
+  /** The water mask a height field implies: a tile is water where its centre is below sea level. */
+  const maskOf = (height: (x: number, z: number) => number, size: number): Uint8Array => {
+    const mask = new Uint8Array(size * size);
+    for (let z = 0; z < size; z++) {
+      for (let x = 0; x < size; x++) {
+        mask[z * size + x] =
+          height((x + 0.5) * TILE_METERS, (z + 0.5) * TILE_METERS) < SEA_LEVEL ? 1 : 0;
+      }
+    }
+    return mask;
+  };
 
   it('adds exactly one named mesh to the scene, positioned at SEA_LEVEL', () => {
     const scene = new THREE.Scene();
-    new WaterRenderer(scene, flatHeightAt, 4);
+    new WaterRenderer(scene, flatHeightAt, allWet(), 4);
     expect(scene.children.length).toBe(1);
     const mesh = scene.children[0] as THREE.Mesh;
     expect(mesh.name).toBe('water-surface');
@@ -399,7 +456,7 @@ describe('WaterRenderer', () => {
 
   it('sizes the plane to mapSizeTiles * TILE_METERS', () => {
     const scene = new THREE.Scene();
-    new WaterRenderer(scene, flatHeightAt, 4);
+    new WaterRenderer(scene, flatHeightAt, allWet(), 4);
     const mesh = scene.children[0] as THREE.Mesh;
     const position = mesh.geometry.attributes.position!;
     let maxX = -Infinity;
@@ -414,7 +471,7 @@ describe('WaterRenderer', () => {
 
   it('retints its vertices from the fouling layer, and only the ones a fouled tile meets', () => {
     const scene = new THREE.Scene();
-    const renderer = new WaterRenderer(scene, flatHeightAt, 4);
+    const renderer = new WaterRenderer(scene, flatHeightAt, allWet(), 4);
     const mesh = scene.children[0] as THREE.Mesh;
     const foul = mesh.geometry.getAttribute('waterFoul');
     expect(foul).toBeDefined();
@@ -440,7 +497,9 @@ describe('WaterRenderer', () => {
 
   it('defaults mapSizeTiles to MAP_SIZE when omitted', () => {
     const scene = new THREE.Scene();
-    new WaterRenderer(scene, flatHeightAt);
+    const mask = new Uint8Array(MAP_SIZE * MAP_SIZE);
+    mask[MAP_SIZE * MAP_SIZE - 1] = 1; // the last tile
+    new WaterRenderer(scene, flatHeightAt, mask);
     const mesh = scene.children[0] as THREE.Mesh;
     const position = mesh.geometry.attributes.position!;
     let maxX = -Infinity;
@@ -448,9 +507,315 @@ describe('WaterRenderer', () => {
     expect(maxX).toBeCloseTo(MAP_SIZE * TILE_METERS, 5);
   });
 
-  it('bakes a waterDepth vertex attribute from the injected heightAt sampler', () => {
+  it('covers wet tiles and the ring of tiles round them, and nothing else', () => {
+    const size = 12;
+    const mask = new Uint8Array(size * size);
+    mask[5 * size + 5] = 1;
+    const covered = coveredTiles(mask, size);
+    for (let z = 0; z < size; z++) {
+      for (let x = 0; x < size; x++) {
+        const near = Math.abs(x - 5) <= 1 && Math.abs(z - 5) <= 1;
+        expect(covered[z * size + x]).toBe(near ? 1 : 0);
+      }
+    }
+    // 3 x 3 tiles of 2 x 2 squares: 6 x 6 squares, 7 x 7 vertices, two triangles a square.
+    const grid = buildWaterGrid(mask, size);
+    expect(grid.positions.length / 3).toBe(49);
+    expect(grid.indices.length / 3).toBe(72);
+    for (let i = 0; i < grid.positions.length; i += 3) {
+      expect(grid.positions[i]! % WATER_VERTEX_SPACING_M).toBe(0);
+      expect(grid.positions[i]!).toBeGreaterThanOrEqual(4 * TILE_METERS);
+      expect(grid.positions[i]!).toBeLessThanOrEqual(7 * TILE_METERS);
+      expect(grid.positions[i + 2]!).toBeGreaterThanOrEqual(4 * TILE_METERS);
+      expect(grid.positions[i + 2]!).toBeLessThanOrEqual(7 * TILE_METERS);
+    }
+  });
+
+  it('draws no mesh where there is no water', () => {
+    const grid = buildWaterGrid(new Uint8Array(64), 8);
+    expect(grid.positions.length).toBe(0);
+    expect(grid.indices.length).toBe(0);
+  });
+
+  it('faces every triangle up', () => {
+    const mask = new Uint8Array(36);
+    mask[2 * 6 + 3] = 1;
+    const grid = buildWaterGrid(mask, 6);
+    for (let t = 0; t < grid.indices.length; t += 3) {
+      const [a, b, c] = [grid.indices[t]!, grid.indices[t + 1]!, grid.indices[t + 2]!];
+      const ux = grid.positions[b * 3]! - grid.positions[a * 3]!;
+      const uz = grid.positions[b * 3 + 2]! - grid.positions[a * 3 + 2]!;
+      const vx = grid.positions[c * 3]! - grid.positions[a * 3]!;
+      const vz = grid.positions[c * 3 + 2]! - grid.positions[a * 3 + 2]!;
+      // y of cross(u, v) is uz*vx - ux*vz; positive faces up.
+      expect(uz * vx - ux * vz).toBeGreaterThan(0);
+    }
+  });
+
+  it('carries fetch, swell and flow attributes equal to the sampled water bodies', () => {
+    // A 3-wide strait with open sea on the west edge of a 40-tile map.
+    const size = 40;
+    const height = (x: number, z: number): number => {
+      const tx = Math.floor(x / TILE_METERS);
+      const tz = Math.floor(z / TILE_METERS);
+      return tx < 8 || (tx < 38 && tz >= 18 && tz <= 20) ? -4 : 10;
+    };
+    const mask = maskOf(height, size);
     const scene = new THREE.Scene();
-    new WaterRenderer(scene, mixedHeightAt, 4);
+    new WaterRenderer(scene, height, mask, size);
+    const geometry = (scene.children[0] as THREE.Mesh).geometry;
+    const position = geometry.attributes.position!;
+    const fetch = geometry.attributes.waterFetch!;
+    const swellTau = geometry.attributes.waterSwellTau!;
+    const swellSlow = geometry.attributes.waterSwellSlow!;
+    const swellAmp = geometry.attributes.waterSwellAmp!;
+    const flow = geometry.attributes.waterFlow!;
+    const depth = geometry.attributes.waterDepth!;
+    expect(fetch.count).toBe(position.count);
+    expect(swellTau.itemSize).toBe(1);
+    expect(swellSlow.itemSize).toBe(2);
+    expect(swellAmp.itemSize).toBe(1);
+    expect(flow.itemSize).toBe(2);
+    const bodies = deriveWaterBodies(mask, size, (tx, tz) =>
+      height((tx + 0.5) * TILE_METERS, (tz + 0.5) * TILE_METERS),
+    );
+    let sawSwell = false;
+    let sawFlow = false;
+    for (let i = 0; i < position.count; i++) {
+      const s = sampleWater(bodies, position.getX(i), position.getZ(i));
+      expect(Math.abs(fetch.getX(i) - s.fetchM)).toBeLessThanOrEqual(s.fetchM * 1e-6 + 1e-6);
+      expect(swellTau.getX(i)).toBeCloseTo(s.swellTau, 3);
+      expect(swellSlow.getX(i)).toBeCloseTo(s.swellSlowX, 6);
+      expect(swellSlow.getY(i)).toBeCloseTo(s.swellSlowZ, 6);
+      expect(swellAmp.getX(i)).toBeCloseTo(s.swellAmp, 5);
+      if (depth.getX(i) > 0) {
+        expect(flow.getX(i)).toBeCloseTo(s.flowX, 5);
+        expect(flow.getY(i)).toBeCloseTo(s.flowZ, 5);
+      } else {
+        expect(flow.getX(i)).toBe(0);
+        expect(flow.getY(i)).toBe(0);
+      }
+      if (swellAmp.getX(i) > 0.5 && swellSlow.getX(i) > 0) sawSwell = true;
+      if (Math.hypot(flow.getX(i), flow.getY(i)) > 0.1) sawFlow = true;
+    }
+    expect(sawSwell).toBe(true);
+    expect(sawFlow).toBe(true);
+  });
+
+  it('blurs murk and scatter over the water tiles so one kind runs into the next', () => {
+    // A row of 12 tiles: river on the left, ocean on the right, one dry tile beside them.
+    const size = 12;
+    const kind = new Uint8Array(size * size);
+    for (let x = 0; x < size; x++) kind[x] = x < 6 ? WaterKind.River : WaterKind.Ocean;
+    kind[size] = WaterKind.None;
+    const looks = blurWaterLooks(kind, size, 3);
+    const river = lookOf(WaterKind.River);
+    const ocean = lookOf(WaterKind.Ocean);
+    // Far from the join a tile keeps its own look; at the join it is between the two.
+    expect(looks.murk[0]).toBeCloseTo(river.murk, 6);
+    expect(looks.murk[size - 1]).toBeCloseTo(ocean.murk, 6);
+    expect(looks.murk[5]!).toBeLessThan(river.murk);
+    expect(looks.murk[5]!).toBeGreaterThan(looks.murk[6]!);
+    expect(looks.murk[6]!).toBeGreaterThan(ocean.murk);
+    for (let x = 0; x < size - 1; x++)
+      expect(looks.murk[x]!).toBeGreaterThanOrEqual(looks.murk[x + 1]! - 1e-5);
+    // A dry tile carries no look and never darkens its neighbours.
+    expect(looks.wet[size]).toBe(0);
+    expect(looks.murk[size]).toBe(0);
+    // Vertices average the wet tiles that meet there, and open water where there is none.
+    const mid = vertexLook(looks, size, 6, 1);
+    expect(mid.murk).toBeCloseTo((looks.murk[5]! + looks.murk[6]!) / 2, 6);
+    expect(vertexLook(looks, size, 0.5, 6.5).murk).toBeCloseTo(ocean.murk, 6);
+
+    const scene = new THREE.Scene();
+    new WaterRenderer(scene, flatHeightAt, allWet(), 4);
+    const geometry = (scene.children[0] as THREE.Mesh).geometry;
+    const murk = geometry.attributes.waterMurk!;
+    const scatter = geometry.attributes.waterScatter!;
+    expect(murk.count).toBe(geometry.attributes.position!.count);
+    for (let i = 0; i < murk.count; i++) {
+      expect(murk.getX(i)).toBeCloseTo(ocean.murk, 6);
+      expect(scatter.getZ(i)).toBeCloseTo(ocean.scatter[2], 6);
+    }
+  });
+
+  it('builds its node graph from the exported train list, every train once', () => {
+    const scene = new THREE.Scene();
+    const renderer = new WaterRenderer(scene, flatHeightAt, allWet(), 4);
+    expect(renderer.graphTrains()).toEqual([...WAVE_TRAINS]);
+  });
+
+  describe('the material for each way the frame is drawn', () => {
+    const readsViewport = (material: THREE.Material): boolean => {
+      const m = material as unknown as Record<
+        string,
+        { traverse?: (f: (n: object) => void) => void }
+      >;
+      let found = false;
+      for (const key of [
+        'colorNode',
+        'emissiveNode',
+        'opacityNode',
+        'normalNode',
+        'positionNode',
+      ]) {
+        m[key]?.traverse?.((n) => {
+          if (/Viewport/.test(n.constructor.name)) found = true;
+        });
+      }
+      return found;
+    };
+
+    it('draws with the screen-reading material while a pipeline draws the frame, and the blended one when none does', () => {
+      const renderer = new WaterRenderer(new THREE.Scene(), flatHeightAt, allWet(), 4);
+      const screenMaterial = renderer.activeMaterial();
+      expect(renderer.blendedSurfaceMaterial()).not.toBe(screenMaterial);
+
+      renderer.setScreenRead(false);
+      expect(renderer.activeMaterial()).toBe(renderer.blendedSurfaceMaterial());
+      renderer.setScreenRead(true);
+      expect(renderer.activeMaterial()).toBe(screenMaterial);
+      renderer.setScreenRead(true);
+      expect(renderer.activeMaterial()).toBe(screenMaterial);
+    });
+
+    it('reads the frame behind the water only in the screen-reading material', () => {
+      const renderer = new WaterRenderer(new THREE.Scene(), flatHeightAt, allWet(), 4);
+      expect(readsViewport(renderer.activeMaterial())).toBe(true);
+      expect(readsViewport(renderer.blendedSurfaceMaterial())).toBe(false);
+    });
+
+    it('lays the blended material over the frame by an alpha, not opaque', () => {
+      const blended = new WaterRenderer(
+        new THREE.Scene(),
+        flatHeightAt,
+        allWet(),
+        4,
+      ).blendedSurfaceMaterial();
+      expect(blended.transparent).toBe(true);
+      expect(blended.depthWrite).toBe(false);
+      expect(blended.opacityNode).toBeTruthy();
+    });
+  });
+
+  describe('when the terrain changes the water', () => {
+    const size = 12;
+    let ground: Float32Array;
+    const heightOf = (x: number, z: number): number =>
+      ground[Math.floor(z / TILE_METERS) * size + Math.floor(x / TILE_METERS)] ?? 0;
+    const setup = (): { renderer: WaterRenderer; mask: Uint8Array; mesh: THREE.Mesh } => {
+      ground = new Float32Array(size * size).fill(5);
+      for (let z = 4; z < 8; z++) for (let x = 0; x < size; x++) ground[z * size + x] = -4;
+      const mask = maskOf(heightOf, size);
+      const scene = new THREE.Scene();
+      const renderer = new WaterRenderer(scene, heightOf, mask, size);
+      return { renderer, mask, mesh: scene.children[0] as THREE.Mesh };
+    };
+    /** Depth of the vertex standing on a tile's centre. */
+    const depthAtTile = (mesh: THREE.Mesh, tx: number, tz: number): number | undefined => {
+      const position = mesh.geometry.attributes.position!;
+      const depth = mesh.geometry.attributes.waterDepth!;
+      for (let i = 0; i < position.count; i++) {
+        if (
+          position.getX(i) === (tx + 0.5) * TILE_METERS &&
+          position.getZ(i) === (tz + 0.5) * TILE_METERS
+        )
+          return depth.getX(i);
+      }
+      return undefined;
+    };
+    /** A player digs the bank tile (6, 3) down to 6 m below sea level, as clientgrid does to heights and mask. */
+    const dig = (mask: Uint8Array): void => {
+      ground[3 * size + 6] = -6;
+      mask[3 * size + 6] = 1;
+    };
+
+    const dug = [{ x: 6, z: 3, w: 1, h: 1 }];
+
+    it('does not rebuild for a patch with no water in or beside it', () => {
+      const { renderer, mesh } = setup();
+      const before = mesh.geometry;
+      renderer.markTerrainChanged([{ x: 0, z: 0, w: 3, h: 2 }]);
+      renderer.update(5000, 0);
+      expect(mesh.geometry).toBe(before);
+    });
+
+    it('rebuilds for a patch beside water, and for one over water that has just become land', () => {
+      const { renderer, mask, mesh } = setup();
+      const before = mesh.geometry;
+      renderer.markTerrainChanged([{ x: 0, z: 3, w: 1, h: 1 }]);
+      renderer.update(600, 0);
+      expect(mesh.geometry).not.toBe(before);
+
+      const filled = mesh.geometry;
+      ground[5 * size + 5] = 5;
+      mask[5 * size + 5] = 0;
+      renderer.markTerrainChanged([{ x: 5, z: 5, w: 1, h: 1 }]);
+      renderer.update(600, 0);
+      expect(mesh.geometry).not.toBe(filled);
+    });
+
+    it('keeps the old depth until the edits settle, then draws the dug tile with its new depth and kind', () => {
+      const { renderer, mask, mesh } = setup();
+      expect(renderer.kindAt(6, 3)).toBe(WaterKind.None);
+      expect(depthAtTile(mesh, 6, 3)).toBe(0);
+
+      dig(mask);
+      renderer.markTerrainChanged(dug);
+      renderer.update(WATER_REBUILD_SETTLE_S * 1000 * 0.9, 0);
+      expect(renderer.kindAt(6, 3)).toBe(WaterKind.None);
+      expect(depthAtTile(mesh, 6, 3)).toBe(0);
+
+      renderer.update(WATER_REBUILD_SETTLE_S * 1000 * 0.2, 0);
+      expect(renderer.kindAt(6, 3)).toBe(WaterKind.Lake);
+      expect(depthAtTile(mesh, 6, 3)).toBeCloseTo(6, 5);
+    });
+
+    it('waits for a further edit to settle too: each edit restarts the wait', () => {
+      const { renderer, mask, mesh } = setup();
+      dig(mask);
+      renderer.markTerrainChanged(dug);
+      renderer.update(400, 0);
+      renderer.markTerrainChanged(dug);
+      renderer.update(400, 0);
+      expect(depthAtTile(mesh, 6, 3)).toBe(0);
+      renderer.update(150, 0);
+      expect(depthAtTile(mesh, 6, 3)).toBeCloseTo(6, 5);
+    });
+
+    it('does not rebuild when nothing changed', () => {
+      const { renderer, mesh } = setup();
+      const before = mesh.geometry;
+      renderer.update(5000, 0);
+      expect(mesh.geometry).toBe(before);
+    });
+
+    it('keeps the fouling it was given across a rebuild', () => {
+      const { renderer, mask, mesh } = setup();
+      const foul = new Uint8Array(size * size);
+      foul[5 * size + 5] = 255;
+      renderer.setFouling(foul);
+      dig(mask);
+      renderer.markTerrainChanged(dug);
+      renderer.update(600, 0);
+      const position = mesh.geometry.attributes.position!;
+      let stained = 0;
+      for (let i = 0; i < position.count; i++) {
+        if (renderer.foulingAtVertex(i) !== 1) continue;
+        stained++;
+        // Every stained vertex lies on the fouled tile, its boundary included.
+        expect(position.getX(i)).toBeGreaterThanOrEqual(5 * TILE_METERS);
+        expect(position.getX(i)).toBeLessThanOrEqual(6 * TILE_METERS);
+        expect(position.getZ(i)).toBeGreaterThanOrEqual(5 * TILE_METERS);
+        expect(position.getZ(i)).toBeLessThanOrEqual(6 * TILE_METERS);
+      }
+      expect(stained).toBe(9); // the tile's 3 x 3 vertices at half-tile spacing
+    });
+  });
+
+  it('carries a waterDepth vertex attribute from the injected heightAt sampler', () => {
+    const scene = new THREE.Scene();
+    new WaterRenderer(scene, mixedHeightAt, maskOf(mixedHeightAt, 4), 4);
     const mesh = scene.children[0] as THREE.Mesh;
     const position = mesh.geometry.attributes.position!;
     const depth = mesh.geometry.attributes.waterDepth!;
@@ -475,7 +840,7 @@ describe('WaterRenderer', () => {
 
   it('setVisible toggles the mesh visibility', () => {
     const scene = new THREE.Scene();
-    const water = new WaterRenderer(scene, flatHeightAt, 4);
+    const water = new WaterRenderer(scene, flatHeightAt, allWet(), 4);
     const mesh = scene.children[0] as THREE.Mesh;
     expect(mesh.visible).toBe(true);
     water.setVisible(false);
@@ -486,7 +851,7 @@ describe('WaterRenderer', () => {
 
   it('update() accumulates elapsed time from dtMs (in seconds)', () => {
     const scene = new THREE.Scene();
-    const water = new WaterRenderer(scene, flatHeightAt, 4);
+    const water = new WaterRenderer(scene, flatHeightAt, allWet(), 4);
     expect(water.elapsedSeconds()).toBe(0);
     water.update(500, 0);
     expect(water.elapsedSeconds()).toBeCloseTo(0.5, 9);
@@ -494,9 +859,21 @@ describe('WaterRenderer', () => {
     expect(water.elapsedSeconds()).toBeCloseTo(0.75, 9);
   });
 
+  it('pinClock holds the clock at a time, whatever frames pass, until it is released', () => {
+    const scene = new THREE.Scene();
+    const water = new WaterRenderer(scene, flatHeightAt, allWet(), 4);
+    water.pinClock(12.5);
+    water.update(1000, 0);
+    water.update(1000, 0);
+    expect(water.elapsedSeconds()).toBe(12.5);
+    water.pinClock(null);
+    water.update(500, 0);
+    expect(water.elapsedSeconds()).toBeCloseTo(13, 9);
+  });
+
   it('update() ignores negative dtMs rather than rewinding the clock', () => {
     const scene = new THREE.Scene();
-    const water = new WaterRenderer(scene, flatHeightAt, 4);
+    const water = new WaterRenderer(scene, flatHeightAt, allWet(), 4);
     water.update(1000, 0);
     const before = water.elapsedSeconds();
     water.update(-500, 0);
@@ -505,7 +882,7 @@ describe('WaterRenderer', () => {
 
   it('update() does not throw across in-range and out-of-range nightFactor values', () => {
     const scene = new THREE.Scene();
-    const water = new WaterRenderer(scene, flatHeightAt, 4);
+    const water = new WaterRenderer(scene, flatHeightAt, allWet(), 4);
     for (const nf of [-3, 0, 0.4, 1, 6]) {
       expect(() => water.update(16, nf)).not.toThrow();
     }
@@ -514,7 +891,7 @@ describe('WaterRenderer', () => {
   it('works without any DirectionalLight in the scene (falls back gracefully)', () => {
     const scene = new THREE.Scene();
     expect(() => {
-      const water = new WaterRenderer(scene, flatHeightAt, 4);
+      const water = new WaterRenderer(scene, flatHeightAt, allWet(), 4);
       water.update(16, 0.5);
     }).not.toThrow();
   });
@@ -525,13 +902,13 @@ describe('WaterRenderer', () => {
     sun.position.set(10, 20, 5);
     scene.add(sun.target);
     scene.add(sun);
-    const water = new WaterRenderer(scene, flatHeightAt, 4);
+    const water = new WaterRenderer(scene, flatHeightAt, allWet(), 4);
     expect(() => water.update(16, 0.1)).not.toThrow();
   });
 
   it('material is translucent and does not write depth (matches the flat-plane water it replaces)', () => {
     const scene = new THREE.Scene();
-    new WaterRenderer(scene, flatHeightAt, 4);
+    new WaterRenderer(scene, flatHeightAt, allWet(), 4);
     const mesh = scene.children[0] as THREE.Mesh;
     const material = mesh.material as THREE.Material;
     expect(material.transparent).toBe(true);
@@ -540,20 +917,20 @@ describe('WaterRenderer', () => {
 
   it('does not leak meshes across repeated update() calls', () => {
     const scene = new THREE.Scene();
-    const water = new WaterRenderer(scene, flatHeightAt, 4);
+    const water = new WaterRenderer(scene, flatHeightAt, allWet(), 4);
     for (let i = 0; i < 20; i++) water.update(16, 0.3);
     expect(scene.children.length).toBe(1);
   });
 
   it('setSkyColors accepts zenith/horizon RGB tuples without throwing', () => {
     const scene = new THREE.Scene();
-    const water = new WaterRenderer(scene, flatHeightAt, 4);
+    const water = new WaterRenderer(scene, flatHeightAt, allWet(), 4);
     expect(() => water.setSkyColors([0.1, 0.2, 0.9], [0.8, 0.85, 0.95])).not.toThrow();
   });
 
   it('setSkyColors can be called every frame alongside update() without throwing or leaking meshes', () => {
     const scene = new THREE.Scene();
-    const water = new WaterRenderer(scene, flatHeightAt, 4);
+    const water = new WaterRenderer(scene, flatHeightAt, allWet(), 4);
     for (let i = 0; i < 10; i++) {
       water.setSkyColors([0.05 * i, 0.2, 0.3], [0.5, 0.6, 0.05 * i]);
       water.update(16, i / 10);
@@ -563,7 +940,7 @@ describe('WaterRenderer', () => {
 
   it('setSkyColors does not throw for out-of-range (unclamped) color components', () => {
     const scene = new THREE.Scene();
-    const water = new WaterRenderer(scene, flatHeightAt, 4);
+    const water = new WaterRenderer(scene, flatHeightAt, allWet(), 4);
     expect(() => water.setSkyColors([-1, 2, 0], [3, -2, 1])).not.toThrow();
   });
 });

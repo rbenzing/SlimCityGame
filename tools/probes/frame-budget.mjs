@@ -3,8 +3,11 @@
  * Builds a SYNTHETIC city by command, not by growth: a grid of two-lane
  * streets over the dry ground of a generated map, then ~10,000 zoned buildings
  * at their catalog footprints in the catalog's real mix (the table below), and
- * one of every ploppable kit with a few of the biggest. The same four camera
- * views are read over the empty map first, so the city's cost is a difference.
+ * one of every ploppable kit with a few of the biggest. The same camera views
+ * are read over the empty map first, so the city's cost is a difference. Views
+ * 1 to 4 look at the dry ground; 5-water is the default oblique centred on the
+ * deepest tile of the largest body of water (found from the tile water mask),
+ * so the water surface fills the frame.
  *
  * Frame time is read from requestAnimationFrame deltas with the browser's
  * frame cap off, and the draw calls and triangles of the last frame from the
@@ -365,6 +368,73 @@ function planCity(water, N, total, kitSites) {
   return plan;
 }
 
+/** The wettest tile of the largest 4-connected body of water: the water tile farthest from any dry tile (by steps over the grid), so a view centred on it looks over open water. Null when the map has no water. */
+function deepestWater(water, N) {
+  const body = new Int32Array(N * N).fill(-1);
+  const sizes = [];
+  const stack = [];
+  for (let start = 0; start < N * N; start++) {
+    if (!water[start] || body[start] >= 0) continue;
+    const id = sizes.length;
+    let size = 0;
+    body[start] = id;
+    stack.push(start);
+    while (stack.length) {
+      const i = stack.pop();
+      size++;
+      const x = i % N;
+      const z = (i - x) / N;
+      for (const [nx, nz] of [
+        [x + 1, z],
+        [x - 1, z],
+        [x, z + 1],
+        [x, z - 1],
+      ]) {
+        if (nx < 0 || nz < 0 || nx >= N || nz >= N) continue;
+        const n = nz * N + nx;
+        if (water[n] && body[n] < 0) {
+          body[n] = id;
+          stack.push(n);
+        }
+      }
+    }
+    sizes.push(size);
+  }
+  if (sizes.length === 0) return null;
+  const largest = sizes.indexOf(Math.max(...sizes));
+  // Steps from the nearest dry tile, by breadth-first sweep; water meeting the map edge is open sea, not a shore.
+  const dist = new Int32Array(N * N).fill(-1);
+  let frontier = [];
+  for (let i = 0; i < N * N; i++) {
+    const x = i % N;
+    const z = (i - x) / N;
+    if (body[i] !== largest) continue;
+    const inland = x > 0 && z > 0 && x < N - 1 && z < N - 1;
+    if (inland && [i + 1, i - 1, i + N, i - N].some((n) => body[n] !== largest)) {
+      dist[i] = 1;
+      frontier.push(i);
+    }
+  }
+  let best = frontier[0] ?? body.indexOf(largest);
+  let depth = 1;
+  while (frontier.length) {
+    best = frontier[0];
+    const next = [];
+    for (const i of frontier) {
+      const x = i % N;
+      for (const n of [x < N - 1 ? i + 1 : -1, x > 0 ? i - 1 : -1, i + N, i - N]) {
+        if (n >= 0 && n < N * N && body[n] === largest && dist[n] < 0) {
+          dist[n] = depth + 1;
+          next.push(n);
+        }
+      }
+    }
+    frontier = next;
+    depth++;
+  }
+  return { x: best % N, z: (best - (best % N)) / N, tiles: sizes[largest] };
+}
+
 /** Runs of consecutive dry tiles along a row or column, cut to chunks short enough that one refusal costs little. */
 function roadRuns(plan, water) {
   const { N } = plan;
@@ -544,6 +614,8 @@ try {
     x: Math.round((bounds.x0 + bounds.x1) / 2),
     z: Math.round((Math.min(...usedRows) + Math.max(...usedRows)) / 2),
   };
+  const lake = deepestWater(water, N);
+  if (!lake) console.log('no water on this map: the 5-water view is skipped');
   const VIEWS = [
     {
       name: '1-street',
@@ -585,6 +657,20 @@ try {
       pitch: 0.7,
       night: true,
     },
+    ...(lake
+      ? [
+          {
+            name: '5-water',
+            label: 'default oblique over the largest body of water',
+            tx: lake.x,
+            tz: lake.z,
+            distance: 380,
+            yaw: 0,
+            pitch: 0.7,
+            night: false,
+          },
+        ]
+      : []),
   ];
   result.views = VIEWS.map(({ name, label, tx, tz, distance }) => ({
     name,

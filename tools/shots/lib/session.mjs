@@ -32,13 +32,15 @@ const watchRefusals = () => {
  * Returns `{ page, errors, send, refusals, close }`. `send(label, commands)`
  * runs one command batch through the game's own path.
  */
-export async function openSession(url, { fresh = false, seed = SEED } = {}) {
+export async function openSession(url, { fresh = false, seed = SEED, bloom = false } = {}) {
   const browser = await chromium.launch({ headless: true, args: ['--use-angle=default'] });
   const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
   const errors = [];
   page.on('pageerror', (e) => errors.push(e.message));
   page.on('console', (m) => {
     if (m.type() === 'error') console.log('[console.error]', m.text());
+    if (process.env.SHOTS_WEBGL === '1' && /WebGL ?2|WebGPU/i.test(m.text()))
+      console.log('[renderer]', m.text());
   });
   // A `fresh` game is a player's first: no sandbox, no unlimited money, no unlocked rungs. Only
   // the first load starts a new game; a save loaded from the menu reloads the page with its own
@@ -60,7 +62,15 @@ export async function openSession(url, { fresh = false, seed = SEED } = {}) {
     [{ screen: 'playing', seed, mode: 'new' }, fresh],
   );
   await page.addInitScript(watchRefusals);
-  await page.goto(new URL('?nobloom', url).href, { waitUntil: 'domcontentloaded' });
+  // SHOTS_WEBGL=1 hides WebGPU before the page loads, so the game takes its WebGL2 fallback.
+  if (process.env.SHOTS_WEBGL === '1')
+    await page.addInitScript(() => {
+      Object.defineProperty(Navigator.prototype, 'gpu', { get: () => undefined });
+    });
+  // The post-process pass is skipped by default (it destabilises long headless runs);
+  // `bloom: true` (or SHOTS_BLOOM=1) keeps it, for a frame that depends on what the pass does to the scene.
+  const query = bloom || process.env.SHOTS_BLOOM === '1' ? '' : '?nobloom';
+  await page.goto(new URL(query, url).href, { waitUntil: 'domcontentloaded' });
   await page.waitForSelector('#viewport canvas', { timeout: 60000 });
   await hooksReady(page);
 

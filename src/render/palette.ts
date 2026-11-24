@@ -57,6 +57,11 @@ export const MATERIALS = {
 
   sand: [119, 102, 85],
   mud: [47, 42, 40],
+  // Not chart swatches: the bed under water. Sand wetted and darkened a little
+  // from the chart's sand so it meets the beach without a step, running down
+  // to a silt between the chart's mud and its sand.
+  seabedSand: [136, 122, 90],
+  seabedSilt: [66, 60, 50],
   dirt: [67, 59, 54],
 
   darkAsphalt: [37, 36, 36],

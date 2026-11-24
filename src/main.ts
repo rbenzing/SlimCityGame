@@ -92,7 +92,7 @@ import { ROUNDABOUT_CODE } from './shared/roundabout';
 import { CUL_DE_SAC_CODE } from './shared/culdesac';
 import { isUnderground } from './shared/view';
 import { createRenderer, createWorldScene, timeOfDayColors } from './render/scene';
-import { createBloomPipeline, type BloomPipeline } from './render/bloom';
+import { createBloomPipeline, createScenePipeline, type BloomPipeline } from './render/bloom';
 import { CloudLayer } from './render/clouds';
 import { TerrainRenderer } from './render/terrain';
 import { WaterRenderer } from './render/water';
@@ -352,7 +352,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
     clientGrid.deckSurfaceAt(wx, wz) ?? heightAt(wx, wz);
 
   // Animated water surface and cumulus layer; both tick in the frame loop below.
-  const water = new WaterRenderer(world.scene, heightAt);
+  const water = new WaterRenderer(world.scene, heightAt, clientGrid.water);
   const clouds = new CloudLayer(world.scene);
 
   const trees = new TreeRenderer(world.scene, heightAt);
@@ -1948,6 +1948,28 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
         const msg: MainToWorker = { type: 'devConstructionProgress', progress };
         worker.postMessage(msg);
       };
+      // Holds the water's wave clock (seconds; null releases it) so a frame of
+      // the waves repeats, and reads the kinds, swell and current each tile has.
+      (hook as Record<string, unknown>).pinWaterClock = (seconds: number | null): void =>
+        water.pinClock(seconds);
+      (hook as Record<string, unknown>).readWaterBodies = (): {
+        size: number;
+        kind: number[];
+        swellTau: number[];
+        swellAmp: number[];
+        flowX: number[];
+        flowZ: number[];
+      } => {
+        const b = water.waterBodies();
+        return {
+          size: b.size,
+          kind: Array.from(b.kind),
+          swellTau: Array.from(b.swellTau),
+          swellAmp: Array.from(b.swellAmp),
+          flowX: Array.from(b.flowX),
+          flowZ: Array.from(b.flowZ),
+        };
+      };
       (hook as Record<string, unknown>).soilAt = (x: number, z: number): number =>
         clientGrid.soil[z * clientGrid.size + x] ?? 0;
       (hook as Record<string, unknown>).ghostBounds = (): {
@@ -2762,6 +2784,8 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       pedestrianRenderer.redraw();
       terrain.applyHeightPatches(snap.heightPatches);
       clientGrid.applyHeightPatches(snap.heightPatches);
+      // The water mask just changed in place: the surface re-derives its depth and kinds.
+      water.markTerrainChanged(snap.heightPatches);
       // The trees were scattered on the seed map: a riverbed sunk since loses
       // them, and raised ground carries them up with it.
       trees.applyHeightPatches(
@@ -3526,6 +3550,28 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
   // glow from hotter emitters (lamps.ts), not from raising this — that would
   // blow out the windows this level is tuned for.
   const BLOOM_NIGHT_STRENGTH = 0.25;
+  // The scene-pass-only pipeline drawn through when bloom is off, built on
+  // first use; a failed build leaves the frame direct.
+  let scenePipeline: BloomPipeline | null = null;
+  const createScenePipelineGuarded = (): BloomPipeline | null => {
+    try {
+      return createScenePipeline(handle.renderer, world.scene, camera);
+    } catch (err) {
+      console.warn('SlimCity: scene pipeline unavailable, rendering directly:', err);
+      return null;
+    }
+  };
+  // Dev check: draws every frame straight to the screen, as a demoted pipeline would.
+  let forceDirectRender = false;
+  if (import.meta.env.DEV) {
+    const hook = (window as unknown as { __slimcity: Record<string, unknown> }).__slimcity;
+    hook.setDirectRender = (on: boolean): void => {
+      forceDirectRender = on;
+    };
+    // True while the water shows the frame behind it (a pipeline draws the frame).
+    hook.waterReadsScreen = (): boolean =>
+      water.activeMaterial() !== water.blendedSurfaceMaterial();
+  }
 
   // --- frame loop -------------------------------------------------------------------------
   let visualSeconds = 0; // elapsed visual time for the outline pulse / pin bob
@@ -3572,12 +3618,22 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       if (zoneGrid.isVisible() && overlay !== FieldId.LandValue) requestField(FieldId.LandValue);
     }
 
-    if (bloomPipeline && useCityStore.getState().settings.bloom) {
-      bloomPipeline.setStrength(lastNightFactor * BLOOM_NIGHT_STRENGTH);
-      bloomPipeline.render();
+    // Bloom on draws through the bloom pipeline; bloom off draws through the
+    // scene pass alone. Either way the water reads an untone-mapped frame. Only
+    // where no pipeline draws (a failed build, a demotion, `?nobloom`) is the
+    // frame direct, and then the water is a blended sheet.
+    const pipeline = useCityStore.getState().settings.bloom
+      ? bloomPipeline
+      : bloomDisabled
+        ? null
+        : (scenePipeline ??= createScenePipelineGuarded());
+    if (pipeline && !forceDirectRender) {
+      if (pipeline === bloomPipeline) pipeline.setStrength(lastNightFactor * BLOOM_NIGHT_STRENGTH);
+      pipeline.render();
     } else {
       handle.renderer.render(world.scene, camera);
     }
+    water.setScreenRead(pipeline !== null && pipeline.isActive && !forceDirectRender);
     // The frame showing the last snapshot is drawn: the worker may post the next.
     if (snapshotToAcknowledge) {
       snapshotToAcknowledge = false;

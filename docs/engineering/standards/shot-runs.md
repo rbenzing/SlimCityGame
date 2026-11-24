@@ -20,7 +20,7 @@ A **series** is one file that photographs one family of related things: the kits
 | `street` | What stands on and beside a street | furniture, stops, supply (pole lines, buried cable, a substation's feed), transit |
 | `zoned` | What zones grow, every kind at each level | homes, attached, apartments; shops, plazas, roadside, offices, downtown; works, stores, plants, heavy; the three stacked series |
 | `civic` | What the player places | health, schools, safety, power, utilities, depots, parks, airport, farms |
-| `views` | How the game shows itself | underground, night, ghosts, panels (narrow windows, the services panel, the way out of a view) |
+| `views` | How the game shows itself | underground, night, ghosts, panels (narrow windows, the services panel, the way out of a view), water (ocean, lake, river and a river's mouth) |
 | `town` | What only a running town shows | town (district by district), lenses, life (a building going up and standing derelict), lots (curved streets, yards, a cul-de-sac), firstgame (a new game through the interface) |
 
 A new family goes in the type that names what a reviewer judges. A seventh type needs a rule here first. A series' name is its folder of frames, so no two share one, whatever their types: the runner refuses to start when two do.
@@ -76,6 +76,8 @@ npm run shots -- --list
 ```
 
 A name is a type or a series; a series also runs alone, `node tools/shots/series/civic/health.mjs <url>`. The runner prints one table when it ends: series, type, exit code, seconds, frames, sheets. It exits non-zero if any series failed, ran over, or wrote no frame or no sheet. Never edit `src/` while a run is going: the server reloads the page under it.
+
+A series draws without the bloom pass unless its session asks for it (`bloom: true`, as `water` does, since the water reads the frame the pass draws); `SHOTS_BLOOM=1` asks for it in any series. `SHOTS_WEBGL=1` hides WebGPU, so the page takes its WebGL2 backend. A settle waits for the page's queued street work before it counts frames.
 
 ## Adding or changing a series
 

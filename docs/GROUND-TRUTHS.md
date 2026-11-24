@@ -23,7 +23,7 @@ How to use it:
 | Utilities and services                 | [services.md](truths/services.md)             | 44    | `R-services-001` to `R-services-044` |
 | Saves and the data model               | [saves.md](truths/saves.md)                   | 13    | `R-saves-001` to `R-saves-013`       |
 | Architecture and the thread boundary   | [architecture.md](truths/architecture.md)     | 18    | `R-architecture-001` to `R-architecture-018` |
-| Rendering and art                      | [render.md](truths/render.md)                 | 53    | `R-render-001` to `R-render-053`     |
+| Rendering and art                      | [render.md](truths/render.md)                 | 54    | `R-render-001` to `R-render-054`     |
 | Game design and interface              | [design.md](truths/design.md)                 | 23    | `R-design-001` to `R-design-023`     |
 | Process                                | [process.md](truths/process.md)               | 10    | `R-process-001` to `R-process-010`   |
 

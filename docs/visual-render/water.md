@@ -1,65 +1,64 @@
 # Water rendering specification
 
-What is drawn today. Seas, lakes and dug canals are one surface: a plane at
-sea level, with the terrain continuing visibly beneath it. There is no
-separate river geometry and no flow.
+What the water looks like from the camera. The rules, the wave figures and
+their sources are [the water surface](../specs/water-surface.md); this page
+is the picture.
+
+Seas, lakes, rivers and dug canals share one sea level. The surface is a
+mesh over the wet tiles and their neighbours, a vertex every 10 m, drawn
+after the land with the terrain continuing beneath it.
+
+## What each water shows
+
+- **Ocean** — deep blue offshore. A swell rolls in from the open edge in
+  long lines that close up and turn to face the beach, break into ragged
+  surf with a fading trail, and die behind a headland. Between them a wind
+  sea of short crossing waves.
+- **Lake** — clear at the rim, darker in the middle, with a thin lapping
+  line at the shore. Its waves are too small to see from above; what moves
+  is the gust patches, ruffled and smooth water drifting downwind.
+- **River and canal** — green-teal and murkier, the bed lost by 1.5 m. Soft
+  ripples and faint streaks drift toward the outlet, fastest mid-channel.
+  Where it meets open water its colour runs out over about 100 m.
 
 ## The surface
 
-- **Seabed**: the terrain continues visibly under the surface — underwater
-  vertex colours ramp blue-green with depth, fully tinted at a maximum visible
-  depth of 12 m — so the land-to-water line reads under the surface exactly as
-  it does above it.
-- **Shoreline**: a static foam band draws every coastline where the height is
-  within 0.4 m of sea level, and a second, animated band of scrolling foam
-  brightens and pulses against it wherever the baked depth is under roughly
-  0.8 m.
-- **Surface animation**: three scrolling wave/normal layers — two shorter ones
-  plus a long, ~35–60 m wavelength chop layer — combine with a sine-sum vertex
-  swell (total swell amplitude budget ≤0.35 m) so the surface visibly moves at
-  the default RTS camera distance (~600 m). Colour is depth-keyed (shallow teal
-  to deep navy) with glancing-angle opacity and a broad, two-lobe sun glint
-  tied to the day/night ramp — see [lighting.md](lighting.md).
-- **Sky reflection**: an analytic, fresnel-weighted blend of the sky's zenith
-  and horizon colours into the water's own colour, fed every frame from the
-  same time-of-day ramp — no render pass, no cubemap.
-- **Fouling**: where the city's drains empty, the surface goes from its
-  depth-keyed colour toward a murky brown. Each vertex (one every two tiles)
-  carries the worst fouling of the tiles that meet at it, 0..1, from the
-  sim's derived `waterFoul` layer, and the base colour is mixed toward the
-  foul colour by the **square root** of it before the sky reflection, so a
-  village's few units out of 255 read as a visible smudge and a saturated
-  outfall is fully brown; the sim's own figure stays linear. The attribute
-  is rewritten only when a snapshot carries a new layer. It is the one thing
-  on the water the player can change, and it reads from the air without a
-  lens — see [the sewage model](../world-sim/utilities-model.md#the-fouled-water).
+- **The bed** keeps the ground's own colour: sand at the shore running to
+  silt 3 m down (`seabedColor` in `src/render/terrain.ts`). The terrain
+  paints no depth tint and no foam; both are the water's.
+- **Through the surface** the bed is bent by the waves and dimmed by depth,
+  red first, then green. A light net moves over the bed to 3 m down by day.
+- **Reflection** is the sky's own colour at the mirrored ray's height, weak
+  looking straight down and strong at a glancing view. There is no
+  reflection pass.
+- **Glint** is one patch round the sun's mirror direction, wider where the
+  water is rougher, pale and faint under the moon.
+- **Fouling**: where the city's drains empty, the water turns toward a murky
+  brown by the square root of the sim's `waterFoul` layer, so a village's
+  few units read as a smudge and a saturated outfall is fully brown — see
+  [the sewage model](../world-sim/utilities-model.md#the-fouled-water).
+- **Night**: the surface takes the one night tint, like the land beside it —
+  see [lighting.md](lighting.md).
 
-The long-wavelength chop layer is the one that matters most and the least
-obvious: without it the surface animates at wavelengths too short to read from
-the default camera distance, and the water looks like a flat slate sheet.
+A canal dug after the map loads becomes a river half a second after the
+digging stops: kind, depth and current are worked out again.
 
-All of this is a TSL node graph on a `MeshStandardNodeMaterial`: waves, foam
-and glint are arithmetic on position and time, with no image texture — see
-[shaders.md](shaders.md).
+## How it is made
 
-The depth each vertex carries is baked when the surface is built and is not
-refreshed when terrain is dug, so a new canal draws with the depth of the
-ground it replaced.
-
-## Agreed, not built
-
-[The water surface](../specs/water-surface.md) replaces this page's surface:
-ocean, lake and river told apart by shape, waves sized by fetch, swell on an
-ocean, a drawn current on a river, and one height function a boat can read.
+One TSL node graph on a `MeshStandardNodeMaterial`, arithmetic on position,
+time and a few per-vertex figures, with no image texture — see
+[shaders.md](shaders.md). It reads the frame behind the water once, colour
+and depth, on both the WebGPU and the WebGL2 backend. With bloom off the
+frame is still drawn through a pass of the scene alone, so the read is the
+same. Only where no pass can be built is the water a plain blended sheet:
+no bent bed and no light net, the rest as above.
 
 ## Not built
 
 **Dynamic fluid flow** — water that moves between tiles, a flood simulation —
-is deferred. A heightfield flow model is a performance tar pit, and the
-derived sea-level model already covers seas, lakes and dug canals. A river's
-drawn current moves no water.
+is deferred. A river's drawn current moves no water.
 
-**Planar reflections** (a true mirror render pass) are designed for but not
-built; the analytic sky blend above stands in for them.
+**Planar reflections** (a true mirror render pass) are not built; the sky's
+colour stands in for them.
 
 [../DESIGN.md](../DESIGN.md) owns both decisions and their reasoning.

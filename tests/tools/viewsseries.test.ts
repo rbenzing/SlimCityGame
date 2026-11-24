@@ -45,7 +45,13 @@ const frame = (over: Partial<Frame> = {}): Frame => ({
 describe('views series', () => {
   it('are all of type views, with unique names, each subject shown and each frame named once', async () => {
     const series = await readSeries();
-    expect(series.map((s) => s.name).sort()).toEqual(['ghosts', 'night', 'panels', 'underground']);
+    expect(series.map((s) => s.name).sort()).toEqual([
+      'ghosts',
+      'night',
+      'panels',
+      'underground',
+      'water',
+    ]);
     for (const s of series) {
       expect(s.type).toBe('views');
       const names = s.frames.map((f) => `${f.subject}-${f.view}`);

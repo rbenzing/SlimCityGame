@@ -324,11 +324,17 @@ Back to [the index](../GROUND-TRUTHS.md).
 - [R-render-051] A water's kind is derived from its shape and never stored: open water on
   the map edge is ocean, enclosed open water a lake, a narrow run a river.
   Depth, kind, fetch and current are rebuilt when terrain changes water. —
-  [water-surface.md](../specs/water-surface.md)
+  [water-surface.md](../specs/water-surface.md); `src/shared/waterbodies.ts`
 - [R-render-052] One wave table draws the surface and gives the height a floating thing
   reads. A wind wave's size comes from the fetch upwind; only an ocean
-  carries swell. — [water-surface.md](../specs/water-surface.md)
+  carries swell, at the speed its depth allows. —
+  [water-surface.md](../specs/water-surface.md); `src/shared/waves.ts`
 - [R-render-053] Water's waves, current, foam and light are arithmetic in a TSL node
   graph: no image texture, no per-frame upload, and nothing in the
   simulation flows. — [water-surface.md](../specs/water-surface.md)
+- [R-render-054] Under water the terrain keeps the ground's own colour; depth colour and
+  foam are drawn once, by the water. The terrain's white band within 0.4 m of
+  sea level lay tens of metres wide on a flat shelf under the water's own
+  foam. — [water-surface.md](../specs/water-surface.md); `seabedColor` in
+  `src/render/terrain.ts`
 
