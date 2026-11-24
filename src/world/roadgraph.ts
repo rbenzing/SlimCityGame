@@ -32,11 +32,19 @@ import {
 } from '../shared/roadprofile';
 import { controlFromCode, warrantedControl } from '../shared/junction';
 import { culDeSacTiles, type CulDeSac } from '../shared/culdesac';
-import { effectiveControlCode, type RoundaboutBlock } from '../shared/roundabout';
+import { type RoundaboutBlock } from '../shared/roundabout';
+import { ringControlCode, type CentredRingFound } from '../shared/centredring';
 import { culDeSacsIn, routeRoundCulDeSacs, shapeCulDeSacs, withoutBulbIslands } from './culdesacs';
 import { ARMS_PER_TILE } from './grid';
 import { cellRoute, cellTile, cellWeight, neighbours, roadCellsOf } from './roadnet';
-import { compactRoundaboutsIn, gridRingReader, shapeRoundabouts } from './roundabouts';
+import {
+  centredRoundaboutsIn,
+  compactRoundaboutsIn,
+  gridRingReader,
+  shapeCentredRoundabouts,
+  shapeRoundabouts,
+  withoutRingIslands,
+} from './roundabouts';
 import type { RoadCells } from './roadnet';
 import type { NetworkTiers, RoadKey } from './roads';
 import type {
@@ -432,6 +440,7 @@ export class RoadNetwork implements RoadNetworkApi {
   private nodes: GraphNode[] = [];
   private edges: GraphEdge[] = [];
   private roundabouts: RoundaboutBlock[] = [];
+  private centredRoundabouts: CentredRingFound[] = [];
   private culDeSacs: CulDeSac[] = [];
   private grid: GridState | null = null;
   private dirty = false;
@@ -507,15 +516,21 @@ export class RoadNetwork implements RoadNetworkApi {
     if (!grid) return;
     this.builtFrom = grid.roads?.version ?? null;
     this.culDeSacs = culDeSacsIn(grid);
+    this.centredRoundabouts = centredRoundaboutsIn(grid);
     const built = buildGraph(
       roadCellsOf(grid),
-      withoutBulbIslands(this.shape, this.culDeSacs, grid.size),
+      withoutRingIslands(
+        withoutBulbIslands(this.shape, this.culDeSacs, grid.size),
+        this.centredRoundabouts,
+        grid.size,
+      ),
       (id) => this.resolveProfile(id),
     );
     this.nodes = built.nodes;
     this.edges = built.edges;
     this.roundabouts = compactRoundaboutsIn(grid);
     shapeRoundabouts(this.nodes, this.edges, this.roundabouts);
+    shapeCentredRoundabouts(this.nodes, this.edges, this.centredRoundabouts);
     shapeCulDeSacs(this.nodes, this.edges, this.culDeSacs);
     this.tileEdge = null;
     this.dirty = false;
@@ -547,7 +562,7 @@ export class RoadNetwork implements RoadNetworkApi {
       const override = inBulb
         ? 'none'
         : rings
-          ? controlFromCode(effectiveControlCode(node.x, node.z, rings))
+          ? controlFromCode(ringControlCode(node.x, node.z, rings))
           : null;
       // The warrant is worked out either way, so the inspector can say what
       // handing the junction back to it would mean.
@@ -706,6 +721,12 @@ export class RoadNetwork implements RoadNetworkApi {
   getNodes(): readonly GraphNode[] {
     this.ensureFresh();
     return this.nodes;
+  }
+
+  /** Every centred roundabout the graph was shaped round, by row and then column. */
+  getCentredRoundabouts(): readonly CentredRingFound[] {
+    this.ensureFresh();
+    return this.centredRoundabouts;
   }
 
   /** Every compact roundabout the graph was shaped round, by row and then column. */

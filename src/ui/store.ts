@@ -120,7 +120,7 @@ export interface SelectedJunction {
    * tile. Its control, turns and lanes are the roundabout's, and the only
    * thing the panel offers is taking it out.
    */
-  roundabout?: { x: number; z: number };
+  roundabout?: { x: number; z: number; centred?: true };
 }
 
 export function createInitialToolFlags(): ToolFlags {

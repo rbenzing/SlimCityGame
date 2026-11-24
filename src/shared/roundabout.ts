@@ -350,7 +350,7 @@ export const ROUNDABOUT_REFUSALS = {
 } as const;
 
 /** Why a road may not be part of a roundabout, as a leg or a corner, or null. */
-function roadRefusal(road: RoundaboutRoad, corner: boolean): string | null {
+export function roadRefusal(road: RoundaboutRoad, corner: boolean): string | null {
   if (road.tier === RoadTier.Highway) return ROUNDABOUT_REFUSALS.motorway;
   if (corner && road.tier === RoadTier.Ramp) return ROUNDABOUT_REFUSALS.slipRoad;
   if (isTramTrack(road.tier, road.profile)) return ROUNDABOUT_REFUSALS.tramway;
