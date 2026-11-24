@@ -224,3 +224,9 @@ Back to [the index](../GROUND-TRUTHS.md).
   spawn and drove on over bare grass. —
   [traffic](../engineering/systems/traffic/the-model.md);
   `dropVehiclesOffRoad` in `src/sim/traffic.ts`
+- [R-world-069] A terrain generator, once shipped, gives the same heights for a seed for
+  ever: a saved city is rebuilt on them. New terrain is a new generator with
+  its own id, appended. The newest one promises every new game a sea coast, a
+  river running to it, lakes, a start point on dry ground and room for a town
+  on that point's own bank; no first-town step depends on the coast or the
+  river. — [map-generation.md](../specs/map-generation.md)

@@ -65,4 +65,9 @@ Back to [the index](../GROUND-TRUTHS.md).
   leaves the drawer. A grown footprint would claim tiles a save gave to
   something else. — [airports.md](../specs/airports.md);
   `src/data/catalog.json`
+- [R-saves-014] A save's header names the terrain generator that made its map, as an
+  optional field, and loading rebuilds the terrain with that generator and
+  the saved seed. A save with no such field was made by generator 1. The
+  field is additive: no save version is spent on it. —
+  [map-generation.md](../specs/map-generation.md)
 
