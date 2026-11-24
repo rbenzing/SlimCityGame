@@ -1,6 +1,6 @@
 # Centred circles
 
-- **Status:** Agreed
+- **Status:** Built
 
 **Owns:** the centred forms of the two circles: a cul-de-sac whose bulb sits on its street's centre line, and a compact roundabout whose ring sits on the junction's own tile. The offset forms stay in [cul-de-sacs.md](cul-de-sacs.md) and [roundabouts.md](roundabouts.md).
 
@@ -27,16 +27,16 @@
 | Leg inside the block | 12, at no offset from the ring's centre line | m | derived: 30 − 18 |
 | Kerb returns | entry 10, exit 15 | m | the low end of the entry radius and the exit radius the roundabouts Numbers table cites; both fit the 12 m of leg |
 | Crosswalk and splitter | unchanged; the crosswalk lies inside the block, the splitter runs 3 past it | m | derived: 18 + 6.1 = 24.1; 18 + 15 = 33 |
-| `CENTRED_ZONE_M`, the pointer's middle zone | under 5 from the centre line (bulb); under 5 from the tile's centre both ways (ring); 5 itself is a side | m | dial: half the tile's width, a quarter of its area |
+| `CENTRED_ZONE_M`, `CENTRED_RING_ZONE_M`, the pointer's middle zone | under 5 from the centre line (bulb); under 5 from the tile's centre both ways (ring); 5 itself is a side | m | dial: half the tile's width, a quarter of its area |
 | Kerb return at a centred mouth | 5 at most, swung outward on both sides | m | dial: the offset bulb's cap; the mouth opens wider than the street |
 | Codes | 8 centred roundabout, read as a roundabout; 9 centred cul-de-sac, never a control | byte | appended in the junction-control layer |
 | Tiles laid, and paid for at the street's price | ring 4 on a crossroads, 5 on a T; bulb 6 | tiles | derived: the ring's corners and a side with no arm |
 
-**Code:** the bulb is built, the ring is not. `src/shared/culdesac.ts` `culDeSacBlockOf`, `centredCulDeSacAtEnd`, `pointerOnCentreLine`, `culDeSacTiles`, `culDeSacCentre` — one predicate and plan for both bulbs; `src/world/culdesacs.ts` `withoutBulbIslands` — the loop; `src/render/culdesacmesh.ts` — the block drawn whole.
+**Code:** `src/shared/culdesac.ts` `culDeSacBlockOf`, `centredCulDeSacAtEnd`, `pointerOnCentreLine` — both bulbs' predicate and plan; `src/shared/centredring.ts` `centredRingAt`, `centredRingPlan`, `ringControlCode`, `pointerOnJunctionCentre` — the ring's; `src/world/culdesacs.ts`, `roundabouts.ts` — the loops; `src/world/zonable.ts` — no frontage on a ring; `src/render/culdesacmesh.ts`, `roadsmesh.ts` — each block drawn whole.
 
-**Tests:** the offset bulb's files, each with the centred shape: `src/shared/culdesac.test.ts`, `tests/interaction/culdesacs.test.ts`, `src/render/culdesacmesh.test.ts`, `src/render/culdesaclots.test.ts`, `src/world/zonable.test.ts`, `src/tools/tools.test.ts`. Frames: the `ends` and `circles` shot series.
+**Tests:** each offset form's files, with the centred shape: `src/shared/culdesac.test.ts`, `roundabout.test.ts`, `tests/interaction/culdesacs.test.ts`, `roundabouts.test.ts`, `src/world/roundabouts.test.ts`, `zonable.test.ts`, `src/render/culdesacmesh.test.ts`, `culdesaclots.test.ts`, `roadsmesh.test.ts`, `lamps.test.ts`, `src/tools/tools.test.ts`. Frames: the `ends`, `circles` and `junctions` shot series.
 
-**Open:** the centred roundabout is not built; a circle with two arms on a plain road, for which no design guide was found; a centred bulb's flanks, 13.5 m of plain grass.
+**Open:** a circle with two arms on a plain road, for which no design guide was found; a centred bulb's flanks, 13.5 m of plain grass; the placing preview of a centred roundabout was never looked at.
 
 ## Why the rules are what they are
 
@@ -68,6 +68,16 @@ The ring keeps its size. The first form's 2×2 block was chosen because 60 m is 
 
 On a 2×2 block every leg meets the ring half a tile off its centre, two of four on the side the guides like least. A centred leg has no offset. Its kerbs curve in on both sides alike, with room for a 10 m entry return where the 2×2 block holds 3 m.
 
+### How the ring is drawn and driven
+
+The middle tile draws the whole roundabout, as four wedges, one a side. The other eight tiles draw nothing of their own: what the ring and its legs do not cover is the terrain's grass.
+
+A side with no arm, on a T, is plain ring with its footway running on round it.
+
+To traffic the middle tile does not exist. The road graph drops it, and the ring runs one way round its centre at the compact ring's radius, each leg joining it head on. A car pays the entry delay on entering and nothing on the way round.
+
+A road that stops at a side's middle tile, with no tile beyond the block, is not a leg. The stamp refuses it as an arm that does not run straight.
+
 ### Why nothing fronts a centred roundabout
 
 The ring stands at least 12 m inside its block, and a drive across that ground would open onto the circulating road. The guide the roundabout spec cites advises against a driveway into a ring. Lots beside the block front its legs. On a T, the three tiles facing the side with no arm need another street.
@@ -91,5 +101,6 @@ The centred bulb's block lies three across its street, and the street joins the 
 - The ring on a 3×3 block at 36 m, over a plus of five tiles: a plus keeps the corner lots only if the ring shrinks to about 24 m.
 - The commands carry the shape as an optional field, over a second pair of commands: with the field absent a recorded batch still lays the offset bulb.
 - Any bulb's code on a tile refuses another bulb there, of either shape.
+- The page's copy of the grid keeps the control layer for the centred roundabout's code alone, over none: its zoning lens must agree with what the world will let grow.
 - Three or four legs, as the offset ring: a ring with two arms on a plain road waits for a source.
 - The offset forms stay: they take less land, and the offset ring goes on a built-up junction without clearing its corners.

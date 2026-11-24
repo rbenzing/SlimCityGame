@@ -25,7 +25,7 @@ current behavior only and carry no dates of their own._
 
 ## Status (2026-09-29)
 
-**Test suite:** 11,679 tests passing across 335 test files, run 2026-11-24.
+**Test suite:** 11,753 tests passing across 335 test files, run 2026-11-24.
 This is the only test count in the documentation set. When the suite changes
 again, update the figure here and nowhere else.
 
@@ -68,9 +68,10 @@ again, update the figure here and nowhere else.
   seeds (2026-11-24) a map was 3.4% water: all had lakes, 26 had any ocean,
   often a few hundred tiles in a corner, and 8 had a river. The map
   generator makes no coast or river on purpose.
-- [Centred circles](specs/centred-circles.md): the centred cul-de-sac is
-  built; the centred roundabout is agreed and not built. A circle with two
-  arms on a plain road waits for a source.
+- [Centred circles](specs/centred-circles.md) are built. What they leave: a
+  circle with two arms on a plain road waits for a source; the placing
+  preview of a centred roundabout was never looked at; a centred ring on a
+  one-way or bus-lane street was never drawn in a frame.
 - A bend turns at its kerb return's radius, not its class's minimum curve
   radius `[R-roads-081]`: the wider sweep leaves the tiles the road holds, so
   lots, traffic and saves would have to follow it. Not yet bends: a one-way
