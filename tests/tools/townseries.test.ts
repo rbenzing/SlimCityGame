@@ -38,6 +38,7 @@ describe('town series', () => {
   it('stay inside the town type budget and name each subject once', async () => {
     const series = await readSeries();
     expect(series.map((s) => s.name).sort()).toEqual([
+      'circles',
       'firstgame',
       'lenses',
       'life',
