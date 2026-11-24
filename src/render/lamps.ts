@@ -25,6 +25,7 @@ import { uniform } from 'three/tsl';
 import { nightBodyMaterial } from './nightlook';
 import { RoadFlow, RoadTier } from '../shared/types';
 import { RING_OUTER_RADIUS_M, ringCentre, type RoundaboutBlock } from '../shared/roundabout';
+import { centredRingCentre } from '../shared/centredring';
 import {
   LAMP_SPACING_TILES,
   LAMP_SPACING_WIDE_TILES,
@@ -677,7 +678,10 @@ export function standsOf(placement: LampPlacement): LampStand[] {
 
 /** A compact roundabout as its lamps are placed: where its roads come in, and whether it has power. */
 export interface RingLampSite {
+  /** The block's north-west tile: a 2×2 block's, or with `centred` a 3×3's. */
   block: RoundaboutBlock;
+  /** The centred form, whose ring is centred on the middle tile and whose roads meet it down their own centre lines. */
+  centred?: true;
   /** Each road into the ring: the corner it joins and the side of the block it meets. */
   arms: readonly { from: TilePoint; side: RoadFlow }[];
   /** The cross-section of the roads, which sets the pole's height, spacing and distance behind the kerb. */
@@ -700,12 +704,21 @@ export function ringLampStands(site: RingLampSite): LampStand[] {
   const rule = lampRuleOf(site.profile);
   const half = carriagewayHalfWidthOf(site.profile);
   const poleRadius = RING_OUTER_RADIUS_M + lampLateralOffset(undefined, site.profile) - half;
-  const centre = ringCentre(site.block);
+  const centre = site.centred ? centredRingCentre(site.block) : ringCentre(site.block);
   const lineOffset = TILE_METERS / 2;
   const along = Math.sqrt(RING_OUTER_RADIUS_M ** 2 - lineOffset ** 2);
   // Where each road's centre line meets the ring, as an angle about its centre.
   const angles = site.arms
     .map(({ from, side }) => {
+      if (site.centred) {
+        return side === RoadFlow.North
+          ? -Math.PI / 2
+          : side === RoadFlow.South
+            ? Math.PI / 2
+            : side === RoadFlow.West
+              ? Math.PI
+              : 0;
+      }
       const across = (from.x === site.block.x ? -1 : 1) * lineOffset;
       const acrossZ = (from.z === site.block.z ? -1 : 1) * lineOffset;
       switch (side) {

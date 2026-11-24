@@ -94,7 +94,8 @@ import { materialUnit } from './palette';
 import { allMovements, pathAt, trackPaths } from './trackpaths';
 import type { TrackPath, TrackSide } from './trackpaths';
 import { MIN_INSTANCE_CAPACITY, setInstanceCount } from './groundquad';
-import type { CulDeSacMark, JunctionControl, TilePoint } from '../shared/types';
+import type { CulDeSacMark, JunctionControl, RoundaboutMark, TilePoint } from '../shared/types';
+import { centredRingTiles } from '../shared/centredring';
 import type { RoadProfile } from '../shared/types';
 import {
   TILE_METERS,
@@ -4797,12 +4798,25 @@ const RING_EXIT_RADIUS_M = 15;
  * square, half a tile off it, and has room only for a kerb return.
  */
 const RING_ENTRY_KERB_RADIUS_M = 3;
+/**
+ * A centred ring's road meets it with no offset and 12 m of leg, room for the low
+ * end of the entry radius FHWA asks: 10 m.
+ */
+const RING_CENTRED_ENTRY_RADIUS_M = 10;
 /** Below this a kerb meets the ring at a corner rather than a curve. */
 const RING_KERB_FILLET_MIN_M = 0.5;
 /** The kerb return turning the corner between two roads into one corner tile. */
 const RING_CORNER_RETURN_M = 3;
 /** Segments round that return. */
 const CORNER_RETURN_SEGMENTS = 8;
+
+/** The four sides of a tile: the mask bit, the step out, the side, and the way a road arriving on it is heading. */
+const SIDE_STEPS = [
+  [NORTH, 0, -1, RoadFlow.North, RoadFlow.South],
+  [EAST, 1, 0, RoadFlow.East, RoadFlow.West],
+  [SOUTH, 0, 1, RoadFlow.South, RoadFlow.North],
+  [WEST, -1, 0, RoadFlow.West, RoadFlow.East],
+] as const;
 
 /** One road into a compact roundabout, as the corner tile it joins draws it. */
 export interface RingLeg {
@@ -4825,8 +4839,20 @@ export interface RingLeg {
 
 /** What a corner tile of a compact roundabout draws: its block, and the roads into it on its sides. */
 export interface RingQuarter {
+  /**
+   * The block the ring is centred by: the corner its four tiles share. For a
+   * centred roundabout, a block whose own centre is the drawing tile's, so the
+   * ring stands on that tile.
+   */
   block: RoundaboutBlock;
   legs: readonly RingLeg[];
+  /**
+   * Set for a centred roundabout, whose ring is drawn from its middle tile a
+   * wedge at a time: the side the wedge faces, which is where its one road
+   * (if any) comes in, straight down the tile's centre line from the block's
+   * edge three tiles' reach out.
+   */
+  centred?: RoadFlow;
 }
 
 /**
@@ -4857,7 +4883,8 @@ export function roundaboutQuarterVertices(
   // The ring's centre, from the tile's own.
   const rcx = (quarter.block.x + 1) * TILE_METERS - centerX;
   const rcz = (quarter.block.z + 1) * TILE_METERS - centerZ;
-  const mid = Math.atan2(-rcz, -rcx);
+  const centredStep = quarter.centred !== undefined ? stepForFlow(quarter.centred) : null;
+  const mid = centredStep ? Math.atan2(centredStep.dz, centredStep.dx) : Math.atan2(-rcz, -rcx);
   const a0 = mid - Math.PI / 4;
   const a1 = mid + Math.PI / 4;
   const outer = RING_OUTER_RADIUS_M;
@@ -4867,7 +4894,12 @@ export function roundaboutQuarterVertices(
     rcx + r * Math.cos(a),
     rcz + r * Math.sin(a),
   ];
-  const angleOf = (p: readonly [number, number]): number => Math.atan2(p[1] - rcz, p[0] - rcx);
+  // Taken the way round that keeps it beside the wedge's own angles, so a wedge that
+  // straddles the half-turn (the one facing west) compares them on one side of it.
+  const angleOf = (p: readonly [number, number]): number => {
+    const a = Math.atan2(p[1] - rcz, p[0] - rcx);
+    return mid + Math.atan2(Math.sin(a - mid), Math.cos(a - mid));
+  };
 
   /** An annular band of the quarter, between two radii and two angles. */
   const band = (
@@ -4923,7 +4955,9 @@ export function roundaboutQuarterVertices(
   band(island, roadway, a0, a1, CURB_Y_OFFSET, RING_APRON_COLOR);
   band(roadway, outer, a0, a1, ROAD_Y_OFFSET, plateColor);
 
-  const edge = TILE_HALF;
+  // Where a road enters the drawing: a tile's edge for a corner of a compact ring, the block's
+  // edge (one and a half tiles from the middle) for a centred one.
+  const edge = centredStep ? 3 * TILE_HALF : TILE_HALF;
   /** A road into the ring, laid out along its own line: `s` out from the tile's centre, `t` across. */
   const frameOf = (leg: RingLeg) => {
     const { dx, dz } = stepForFlow(leg.side);
@@ -5123,11 +5157,19 @@ export function roundaboutQuarterVertices(
       // The other kerbs curve into the ring: the one away from the ring's
       // centre wide, as an exit is, and the one toward it as tight as the
       // offset leaves room for.
-      const awayFromCentre = sign * f.centreAcross < 0;
+      // A centred ring's road is square to it, so there is no side toward the centre: the kerb
+      // on the side traffic enters by takes the entry return, the other the exit's.
+      const enteringSide = leg.entering ? Math.sign(leg.entering.from + leg.entering.to) : 0;
+      const centredEntry = !leg.entering ? false : !leg.leaving || enteringSide === sign;
+      const awayFromCentre = centredStep ? !centredEntry : sign * f.centreAcross < 0;
       const fillet = filletOf(
         f,
         sign,
-        awayFromCentre ? RING_EXIT_RADIUS_M : RING_ENTRY_KERB_RADIUS_M,
+        awayFromCentre
+          ? RING_EXIT_RADIUS_M
+          : centredStep
+            ? RING_CENTRED_ENTRY_RADIUS_M
+            : RING_ENTRY_KERB_RADIUS_M,
       );
       const arc = (radius: number): Point[] => {
         if (!fillet) return [];
@@ -8831,15 +8873,22 @@ export class RoadMeshRenderer {
 
   /** Each compact roundabout, by the tile index of each of its four tiles. */
   private roundabouts: ReadonlyMap<number, RoundaboutBlock> = new Map();
+  /** Each centred roundabout, by the tile index of each of its nine tiles. */
+  private centredRings: ReadonlyMap<number, RoundaboutBlock> = new Map();
 
   /**
    * Takes the sim's compact roundabouts and redraws what their change reaches:
    * their four tiles, and the roads into them, which read the ring ahead.
    */
-  setRoundabouts(blocks: readonly TilePoint[]): void {
+  setRoundabouts(blocks: readonly RoundaboutMark[]): void {
     const next = new Map<number, RoundaboutBlock>();
+    const nextCentred = new Map<number, RoundaboutBlock>();
     for (const b of blocks) {
       const block = { x: b.x, z: b.z };
+      if (b.centred) {
+        for (const t of centredRingTiles(block)) nextCentred.set(tileIndex(t.x, t.z), block);
+        continue;
+      }
       for (const [dx, dz] of [
         [0, 0],
         [1, 0],
@@ -8856,7 +8905,12 @@ export class RoadMeshRenderer {
       a?.x === b?.x && a?.z === b?.z;
     for (const [i, block] of next) if (!sameBlock(this.roundabouts.get(i), block)) moved(i);
     for (const i of this.roundabouts.keys()) if (!next.has(i)) moved(i);
+    for (const [i, block] of nextCentred) {
+      if (!sameBlock(this.centredRings.get(i), block)) moved(i);
+    }
+    for (const i of this.centredRings.keys()) if (!nextCentred.has(i)) moved(i);
     this.roundabouts = next;
+    this.centredRings = nextCentred;
     if (dirty.size > 0) this.kerbFaces.clear();
     for (const key of dirty) this.rebuildChunk(key);
     if (dirty.size > 0) this.rebuildInstancedParts();
@@ -8925,29 +8979,62 @@ export class RoadMeshRenderer {
     const block = this.roundabouts.get(tileIndex(tile.x, tile.z));
     if (!block) return null;
     const legs: RingLeg[] = [];
-    for (const [bit, dx, dz, side, toward] of [
-      [NORTH, 0, -1, RoadFlow.North, RoadFlow.South],
-      [EAST, 1, 0, RoadFlow.East, RoadFlow.West],
-      [SOUTH, 0, 1, RoadFlow.South, RoadFlow.North],
-      [WEST, -1, 0, RoadFlow.West, RoadFlow.East],
-    ] as const) {
+    for (const [bit, dx, dz, side, toward] of SIDE_STEPS) {
       if ((tile.mask & bit) === 0) continue;
       const nx = tile.x + dx;
       const nz = tile.z + dz;
       if (this.roundabouts.get(tileIndex(nx, nz)) === block) continue;
-      const profile = this.profileAt(nx, nz);
-      if (!profile) continue;
-      const half = carriagewayHalfWidthOf(profile);
-      legs.push({
-        side,
-        half,
-        kerb: hasKerbs(profile) ? Math.min(kerbWidthOf(profile), TILE_HALF - half) : 0,
-        footway: hasFootway(profile),
-        entering: this.approachSpanAt(nx, nz, toward) ?? null,
-        leaving: (this.approachSpanAt(nx, nz, side) ?? null) !== null,
-      });
+      const leg = this.ringLegAt(nx, nz, side, toward);
+      if (leg) legs.push(leg);
     }
     return { block, legs };
+  }
+
+  /** The road at (nx, nz) as a leg of a ring it enters on `side` of its tile, or null where its section is not read yet. */
+  private ringLegAt(nx: number, nz: number, side: RoadFlow, toward: RoadFlow): RingLeg | null {
+    const profile = this.profileAt(nx, nz);
+    if (!profile) return null;
+    const half = carriagewayHalfWidthOf(profile);
+    return {
+      side,
+      half,
+      kerb: hasKerbs(profile) ? Math.min(kerbWidthOf(profile), TILE_HALF - half) : 0,
+      footway: hasFootway(profile),
+      entering: this.approachSpanAt(nx, nz, toward) ?? null,
+      leaving: (this.approachSpanAt(nx, nz, side) ?? null) !== null,
+    };
+  }
+
+  /**
+   * What the middle tile of a centred roundabout draws for its whole block: the
+   * ring, a wedge for each side, and the road coming in on each side down its
+   * centre line. Nothing else of the block is drawn; its corners are the terrain's.
+   */
+  private centredRingGround(
+    tile: RoadTileDelta,
+    block: RoundaboutBlock,
+  ): { positions: number[]; colors: number[] } {
+    const own = this.ownProfileFor(tile) ?? presetProfileForTier(tile.tier);
+    const positions: number[] = [];
+    const colors: number[] = [];
+    for (const [bit, dx, dz, side, toward] of SIDE_STEPS) {
+      const sideMiddle = this.groundAt(tile.x + dx, tile.z + dz);
+      const leg =
+        sideMiddle && (sideMiddle.mask & bit) !== 0
+          ? this.ringLegAt(tile.x + 2 * dx, tile.z + 2 * dz, side, toward)
+          : null;
+      const drawn = roundaboutQuarterVertices(
+        tile.x,
+        tile.z,
+        { block: { x: block.x + 0.5, z: block.z + 0.5 }, legs: leg ? [leg] : [], centred: side },
+        this.heightFor(tile),
+        surfaceColor(own),
+        hasKerbs(own),
+      );
+      for (const n of drawn.positions) positions.push(n);
+      for (const n of drawn.colors) colors.push(n);
+    }
+    return { positions, colors };
   }
 
   /** Who gives way at each junction tile, by tile index. Absent = the sim controls it with nothing. */
@@ -9123,7 +9210,8 @@ export class RoadMeshRenderer {
    * than bending to whatever road the corner's tile happens to be.
    */
   private halfAlong(x: number, z: number, axis: 'x' | 'z'): number {
-    if (this.roundabouts.has(tileIndex(x, z)) || this.culDeSacs.has(tileIndex(x, z))) return 0;
+    const at = tileIndex(x, z);
+    if (this.roundabouts.has(at) || this.centredRings.has(at) || this.culDeSacs.has(at)) return 0;
     const over = overAlong(x, z, axis, this.surroundings);
     if (!over) return this.halfAt(x, z);
     return carriagewayHalfWidthOf(this.overProfileOf(over));
@@ -9691,6 +9779,23 @@ export class RoadMeshRenderer {
         if (bulb) {
           for (const n of bulb.positions) positions.push(n);
           for (const n of bulb.colors) colors.push(n);
+        }
+        const over = overTileOf(tile);
+        if (over) {
+          const lifted = this.overpassVertices(over);
+          for (const n of lifted.positions) positions.push(n);
+          for (const n of lifted.colors) colors.push(n);
+        }
+        continue;
+      }
+      // A tile of a centred roundabout draws nothing of its own road: the
+      // middle tile draws the whole ring and the roads' last stretch into it.
+      const centredRing = this.centredRings.get(tileIndex(tile.x, tile.z));
+      if (centredRing) {
+        if (tile.x === centredRing.x + 1 && tile.z === centredRing.z + 1) {
+          const drawn = this.centredRingGround(tile, centredRing);
+          for (const n of drawn.positions) positions.push(n);
+          for (const n of drawn.colors) colors.push(n);
         }
         const over = overTileOf(tile);
         if (over) {

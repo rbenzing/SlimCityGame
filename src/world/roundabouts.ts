@@ -16,9 +16,20 @@ import {
   type RoundaboutBlock,
   type RoundaboutGround,
 } from '../shared/roundabout';
+import {
+  CENTRED_ROUNDABOUT_CODE,
+  centredRingArc,
+  centredRingPoint,
+  centredRingRunTiles,
+  centredRingsAmong,
+  centredRingTiles,
+  centredRunsRound,
+  type CentredRingFound,
+} from '../shared/centredring';
 import { corridorHalfOf, isStreetTier, RoadTier } from '../shared/types';
 import type { GraphEdge, GraphNode, GridState, RoadProfile, TilePoint } from '../shared/types';
 import { isRoadBuildable } from './grid';
+import type { NetworkShape } from './roadgraph';
 
 /** The road layers a roundabout's site is read from. */
 export type RoundaboutLayers = Pick<
@@ -159,4 +170,85 @@ export function compactRoundaboutsIn(g: GridState): RoundaboutBlock[] {
       coded.push({ x: i % g.size, z: Math.floor(i / g.size) });
   }
   return compactRoundaboutsAmong(coded, gridRingReader(g));
+}
+
+/** Every centred roundabout on the world's grid, by row and then column. */
+export function centredRoundaboutsIn(g: GridState): CentredRingFound[] {
+  const coded: TilePoint[] = [];
+  for (let i = 0; i < g.junctionControl.length; i++) {
+    if (g.junctionControl[i] === CENTRED_ROUNDABOUT_CODE)
+      coded.push({ x: i % g.size, z: Math.floor(i / g.size) });
+  }
+  return centredRingsAmong(coded, gridRingReader(g));
+}
+
+/**
+ * `shape` without the middle tile of each centred roundabout: the island no
+ * car crosses, so the graph sees no road through it. What is left of the block
+ * is its ring, the outer eight tiles, with the roads joining it at the middles
+ * of its sides.
+ */
+export function withoutRingIslands(
+  shape: NetworkShape,
+  rings: readonly CentredRingFound[],
+  size: number,
+): NetworkShape {
+  if (rings.length === 0) return shape;
+  const middles = new Set(rings.map((r) => (r.z + 1) * size + r.x + 1));
+  return {
+    ...shape,
+    tier: (cells, id, profileFor) =>
+      middles.has(id) ? RoadTier.None : shape.tier(cells, id, profileFor),
+    links: (cells, id, profileFor) =>
+      shape.links(cells, id, profileFor).filter((next) => !middles.has(next)),
+  };
+}
+
+/**
+ * Shapes the graph round every centred roundabout in `rings`, as
+ * `shapeRoundabouts` does the compact ones: a run along the ring is one lane
+ * driven only the way round, on the circle; a leg ends at its side's point on
+ * the ring, straight down its own centre line; the side-middle tiles that are
+ * nodes are marked as the ring's.
+ */
+export function shapeCentredRoundabouts(
+  nodes: GraphNode[],
+  edges: GraphEdge[],
+  rings: readonly CentredRingFound[],
+): void {
+  if (rings.length === 0) return;
+  const ringAt = new Map<string, CentredRingFound>();
+  for (const ring of rings) for (const t of centredRingTiles(ring)) ringAt.set(keyOf(t), ring);
+  const nodeById = new Map(nodes.map((n) => [n.id, n]));
+  for (const node of nodes) if (ringAt.has(keyOf(node))) node.ring = true;
+  const ringOf = (nodeId: number): CentredRingFound | undefined => {
+    const node = nodeById.get(nodeId);
+    return node ? ringAt.get(keyOf(node)) : undefined;
+  };
+
+  for (const edge of edges) {
+    const tiles = edge.tiles;
+    const ring = ringAt.get(keyOf(tiles[0]!));
+    const onRing =
+      ring !== undefined && tiles.length >= 2 && tiles.every((t) => ringAt.get(keyOf(t)) === ring);
+    if (onRing) {
+      const forward = centredRunsRound(ring, tiles[0]!, tiles[1]!);
+      edge.lanes = 1;
+      edge.lanesAtoB = forward ? 1 : 0;
+      edge.lanesBtoA = forward ? 0 : 1;
+      edge.forwardAtoB = forward;
+      delete edge.pocketAtoB;
+      delete edge.pocketBtoA;
+      edge.circulating = true;
+      edge.route = centredRingArc(ring, tiles);
+      edge.length = centredRingRunTiles(ring, tiles);
+      continue;
+    }
+    const route = edge.route;
+    if (!route || route.length === 0) continue;
+    const atA = ringOf(edge.a);
+    if (atA) route[0] = centredRingPoint(atA, tiles[0]!);
+    const atB = ringOf(edge.b);
+    if (atB) route[route.length - 1] = centredRingPoint(atB, tiles[tiles.length - 1]!);
+  }
 }

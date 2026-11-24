@@ -6404,6 +6404,254 @@ describe('a compact roundabout', () => {
   });
 });
 
+describe('a centred roundabout', () => {
+  // The 3x3 block at (19, 19): its ring is centred on the middle tile (20, 20).
+  const block = { x: 19, z: 19 };
+  const centre = { x: 20.5 * TILE_METERS, z: 20.5 * TILE_METERS };
+  const asphalt: readonly [number, number, number] = [0.3, 0.3, 0.32];
+  const frame = { x: 19.5, z: 19.5 };
+  /** A two-lane street in on `side`, arriving traffic on the driver's right: facing the ring, that is `from..to` across. */
+  const street = (side: RoadFlow, entering: RingLeg['entering'], footway = true): RingLeg => ({
+    side,
+    half: 3.75,
+    kerb: 1.875,
+    footway,
+    entering,
+    leaving: true,
+  });
+  // Entering the ring heading east, west's driver's right is south (+z); and so round.
+  const legs = {
+    [RoadFlow.West]: street(RoadFlow.West, { from: 0, to: 3.75 }),
+    [RoadFlow.North]: street(RoadFlow.North, { from: -3.75, to: 0 }),
+    [RoadFlow.East]: street(RoadFlow.East, { from: -3.75, to: 0 }),
+    [RoadFlow.South]: street(RoadFlow.South, { from: 0, to: 3.75 }),
+  } as const;
+  const SIDES = [RoadFlow.North, RoadFlow.East, RoadFlow.South, RoadFlow.West] as const;
+  type Drawn = { positions: number[]; colors: number[] };
+  /** The whole ring as the middle tile draws it: a wedge for each side, with the road on it if any. */
+  const ring = (present: readonly RoadFlow[] = SIDES, kerbed = true): Drawn => {
+    const positions: number[] = [];
+    const colors: number[] = [];
+    for (const side of SIDES) {
+      const leg = present.includes(side) ? [legs[side as keyof typeof legs]] : [];
+      const d = roundaboutQuarterVertices(
+        20,
+        20,
+        { block: frame, legs: leg, centred: side },
+        flatHeightAt,
+        asphalt,
+        kerbed,
+      );
+      positions.push(...d.positions);
+      colors.push(...d.colors);
+    }
+    return { positions, colors };
+  };
+  const points = (d: Drawn, pred: (c: readonly number[]) => boolean) => {
+    const pos = toTriples(d.positions);
+    return toTriples(d.colors).flatMap((c, i) => (pred(c) ? [pos[i]!] : []));
+  };
+  const radius = (p: readonly number[]): number => Math.hypot(p[0]! - centre.x, p[2]! - centre.z);
+  const isAsphalt = (c: readonly number[]): boolean =>
+    c.every((v, k) => Math.abs(v - asphalt[k]!) < 1e-6);
+
+  it('draws the ring whole from the middle: roadway to the full radius, island and apron inside', () => {
+    const d = ring();
+    const island = RING_OUTER_RADIUS_M - RING_ROADWAY_WIDTH_M - RING_APRON_WIDTH_M;
+    const grass = points(d, isMedianGrass).filter((p) => radius(p) < RING_OUTER_RADIUS_M - 0.01);
+    expect(grass.length).toBeGreaterThan(0);
+    for (const p of grass) expect(radius(p)).toBeLessThanOrEqual(island + 1e-6);
+    // Asphalt right round the ring, in every eighth of it.
+    const round = points(d, isAsphalt).filter((p) => radius(p) <= RING_OUTER_RADIUS_M + 1e-6);
+    const eighths = new Set(
+      round.map((p) =>
+        Math.min(
+          7,
+          Math.floor(((Math.atan2(p[2]! - centre.z, p[0]! - centre.x) + Math.PI) / Math.PI) * 4),
+        ),
+      ),
+    );
+    expect(eighths.size).toBe(8);
+    expect(Math.max(...round.map(radius))).toBeCloseTo(RING_OUTER_RADIUS_M, 3);
+  });
+
+  it('carries each road in 12 m from the block edge to the ring, no further than the splitter’s nose', () => {
+    const d = ring();
+    const edge = 1.5 * TILE_METERS;
+    const splitterEnd = RING_OUTER_RADIUS_M + 15;
+    for (const [i, p] of toTriples(d.positions).entries()) {
+      const colour = toTriples(d.colors)[i]!;
+      const reach = Math.max(Math.abs(p[0]! - centre.x), Math.abs(p[2]! - centre.z));
+      expect(reach).toBeLessThanOrEqual(splitterEnd + 1e-6);
+      // Past the block's edge only the splitter reaches, 3 m of it, on the leg's tile.
+      if (reach > edge + 1e-6) {
+        expect(isMedianGrass(colour) || isConcreteBand(colour) || isMarkingYellow(colour)).toBe(
+          true,
+        );
+      }
+    }
+    const west = points(d, isAsphalt).filter((p) => p[0]! < centre.x - RING_OUTER_RADIUS_M);
+    expect(Math.min(...west.map((p) => p[0]!))).toBeCloseTo(centre.x - edge, 3);
+  });
+
+  it('meets the ring head on: each road’s carriageway is centred on the ring’s axis at the block edge', () => {
+    const d = ring();
+    const edge = 1.5 * TILE_METERS;
+    const atEdge = (axis: 0 | 2, across: 0 | 2) =>
+      points(d, isAsphalt)
+        .filter(
+          (p) =>
+            Math.abs(Math.abs(p[axis]! - centre[axis === 0 ? 'x' : 'z']) - edge) < 0.05 && true,
+        )
+        .map((p) => p[across]! - centre[across === 0 ? 'x' : 'z']);
+    for (const [axis, across] of [
+      [0, 2],
+      [2, 0],
+    ] as const) {
+      const offsets = atEdge(axis, across);
+      expect(offsets.length).toBeGreaterThan(0);
+      expect(Math.min(...offsets)).toBeCloseTo(-3.75, 2);
+      expect(Math.max(...offsets)).toBeCloseTo(3.75, 2);
+    }
+  });
+
+  it('gives way across every road into it, alike on each side, and across none that only leaves', () => {
+    const yields = (d: Drawn): number =>
+      points(d, isMarkingWhite).filter(
+        (p) => radius(p) >= RING_OUTER_RADIUS_M && radius(p) < RING_OUTER_RADIUS_M + 1.5,
+      ).length;
+    const all = yields(ring());
+    const three = yields(ring([RoadFlow.North, RoadFlow.East, RoadFlow.South]));
+    expect(three).toBeGreaterThan(0);
+    expect(all).toBeGreaterThan(three);
+    expect(all).toBe(4 * (all / 4));
+    const one = (side: RoadFlow): number => yields(ring([side]));
+    expect(one(RoadFlow.North)).toBe(one(RoadFlow.East));
+    expect(one(RoadFlow.North)).toBe(one(RoadFlow.South));
+    expect(one(RoadFlow.North)).toBe(one(RoadFlow.West));
+    expect(yields(ring([]))).toBe(0);
+  });
+
+  it('marks one crosswalk across each road with footways, 20 ft back from the ring and inside the block', () => {
+    const d = ring([RoadFlow.West]);
+    const near = centre.x - RING_OUTER_RADIUS_M - 6.1;
+    const bars = points(d, isMarkingWhite).filter((p) => radius(p) > RING_OUTER_RADIUS_M + 1.5);
+    expect(bars.length).toBeGreaterThan(0);
+    for (const p of bars) {
+      expect(p[0]!).toBeLessThanOrEqual(near + 1e-6);
+      expect(p[0]!).toBeGreaterThanOrEqual(centre.x - 1.5 * TILE_METERS);
+      expect(Math.abs(p[2]! - centre.z)).toBeLessThanOrEqual(3.75 + 1e-6);
+    }
+    expect(Math.max(...bars.map((p) => p[0]!))).toBeCloseTo(near, 6);
+    const none = ring([RoadFlow.West].map((s) => s)).positions.length;
+    const bare = roundaboutQuarterVertices(
+      20,
+      20,
+      {
+        block: frame,
+        legs: [street(RoadFlow.West, { from: 0, to: 3.75 }, false)],
+        centred: RoadFlow.West,
+      },
+      flatHeightAt,
+      asphalt,
+      true,
+    );
+    expect(none).toBeGreaterThan(0);
+    expect(
+      points(bare, isMarkingWhite).filter((p) => radius(p) > RING_OUTER_RADIUS_M + 1.5),
+    ).toHaveLength(0);
+  });
+
+  it('runs the splitter 15 m from the ring, 3 m of it on the leg’s tile, and the footway all round', () => {
+    const d = ring();
+    const splitter = points(d, (c) => isMedianGrass(c) || isConcreteBand(c)).filter(
+      (p) => p[0]! < centre.x - RING_OUTER_RADIUS_M,
+    );
+    // Its nose stands on the leg's tile, past the block's edge, and no further than 15 m from the ring.
+    const nose = centre.x - Math.min(...splitter.map((p) => p[0]!));
+    expect(nose).toBeGreaterThan(1.5 * TILE_METERS + 1);
+    expect(nose).toBeLessThanOrEqual(RING_OUTER_RADIUS_M + 15 + 1e-6);
+    const walk = points(d, (c) => c.every((v, k) => Math.abs(v - SIDEWALK_COLOR[k]!) < 0.01));
+    const around = new Set(
+      walk
+        .filter((p) => radius(p) < RING_OUTER_RADIUS_M + 2)
+        .map((p) =>
+          Math.min(
+            7,
+            Math.floor(((Math.atan2(p[2]! - centre.z, p[0]! - centre.x) + Math.PI) / Math.PI) * 4),
+          ),
+        ),
+    );
+    expect(around.size).toBe(8);
+    expect(
+      points(ring(SIDES, false), (c) => c.every((v, k) => Math.abs(v - SIDEWALK_COLOR[k]!) < 0.01)),
+    ).toHaveLength(0);
+  });
+
+  it('turns each kerb in with a return, 10 m on the side traffic enters by and 15 m on the side it leaves by', () => {
+    const d = ring([RoadFlow.West]);
+    const road = points(d, isAsphalt).filter(
+      (p) => p[0]! < centre.x - RING_OUTER_RADIUS_M - 0.5 && Math.abs(p[2]! - centre.z) < 22,
+    );
+    // The west road is driven east on its south side (+z): that kerb takes the tighter return.
+    // Where the carriageway first widens past the straight kerb to curve into the ring.
+    // The wider exit return has swung the kerb further out 8 m from the ring than the entry's tighter one.
+    const widthAt = (sign: 1 | -1, back: number): number =>
+      Math.max(
+        ...road
+          .filter((p) => Math.abs(centre.x - p[0]! - back) < 0.6)
+          .map((p) => sign * (p[2]! - centre.z)),
+      );
+    const at = RING_OUTER_RADIUS_M + 4;
+    expect(widthAt(1, at)).toBeGreaterThan(3.75 + 0.3);
+    expect(widthAt(-1, at)).toBeGreaterThan(widthAt(1, at) + 0.2);
+    // Both are back to the street's own kerb at the block's edge.
+    expect(widthAt(1, 1.5 * TILE_METERS - 0.3)).toBeLessThan(3.75 + 0.2);
+    expect(widthAt(-1, 1.5 * TILE_METERS - 0.3)).toBeLessThan(3.75 + 0.2);
+  });
+
+  it('is drawn by the middle tile alone once the world says the block is one', () => {
+    const scene = new THREE.Scene();
+    const renderer = new RoadMeshRenderer(scene, flatHeightAt);
+    const tiles = [] as ReturnType<typeof makeDelta>[];
+    for (const t of [
+      [19, 19, E | S],
+      [20, 19, E | S | W],
+      [21, 19, S | W],
+      [19, 20, N | E | S],
+      [20, 20, N | E | S | W],
+      [21, 20, N | S | W],
+      [19, 21, N | E],
+      [20, 21, N | E | W],
+      [21, 21, N | W],
+    ] as const) {
+      tiles.push(makeDelta(t[0], t[1], RoadTier.TwoLane, t[2]));
+    }
+    for (const t of [
+      [18, 20, E | W],
+      [22, 20, E | W],
+      [20, 18, N | S],
+      [20, 22, N | S],
+    ] as const) {
+      tiles.push(makeDelta(t[0], t[1], RoadTier.TwoLane, t[2]));
+    }
+    renderer.apply(tiles);
+    const grass = (): number =>
+      scene.children
+        .filter((c): c is THREE.Mesh => c instanceof THREE.Mesh)
+        .reduce(
+          (n, m) =>
+            n + countWhere(Array.from(m.geometry.getAttribute('color').array), isMedianGrass),
+          0,
+        );
+    expect(grass()).toBe(0);
+    renderer.setRoundabouts([{ ...block, centred: true }]);
+    expect(grass()).toBeGreaterThan(0);
+    renderer.setRoundabouts([]);
+    expect(grass()).toBe(0);
+  });
+});
+
 describe('roadTileVertices — the far side of a T is the kerb of the road running past', () => {
   // A two-lane street meeting a T from the north; the street runs east-west
   // and its far side is the south. Either through arm may arrive with a turn

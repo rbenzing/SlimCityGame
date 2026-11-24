@@ -17,6 +17,26 @@ ring's centre; jog each one a tile before the ring, so it comes in to the
 left of the centre as drivers see it, and you have the pinwheel the guides
 prefer. Click any of its tiles to take it out again.
 
+### Centred on the junction
+
+Point at the middle of the junction instead, under 5 m from its centre, and
+the same ring previews on the junction's own tile: a **centred roundabout**,
+every road meeting it head on.
+
+| | Compact | Centred |
+| --- | --- | --- |
+| Ring | 36 m across | the same |
+| Tiles | 4 (two by two) | 9 (three by three) |
+| Road it lays | up to 3 tiles | 4 on a crossroads, 5 on a T |
+| Roads meet the ring | half a tile off its centre | on its centre |
+| Homes | may front it | none take a drive from it; they front its roads |
+
+It takes three or four streets of one lane each way, each running straight
+for two tiles from the junction. The four corners, and the side of a T with
+no road, must be open ground: no building, water or road. In a built-up
+town that means clearing the corner lots first, and the compact ring is the
+one that fits without it.
+
 ## The cul-de-sac
 
 A street that simply stops is fronted along its two sides only: nothing

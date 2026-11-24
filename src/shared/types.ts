@@ -25,6 +25,11 @@ export interface TilePoint {
  */
 export type CentredAxis = 'x' | 'z';
 
+/** A roundabout's block as the world reports it: its north-west tile, and whether it is the 3×3 centred form. */
+export interface RoundaboutMark extends TilePoint {
+  centred?: true;
+}
+
 /** A cul-de-sac's block as the world reports it: its north-west tile, and the axis of a centred one. */
 export interface CulDeSacMark extends TilePoint {
   centred?: CentredAxis;
@@ -639,14 +644,22 @@ export type Command =
    * (`roundaboutRefusal`). Inverse: `removeRoundabout` carrying what the four
    * tiles held before.
    */
-  | { kind: 'buildRoundabout'; x: number; z: number }
+  | { kind: 'buildRoundabout'; x: number; z: number; centred?: true }
   /**
    * Takes out the compact roundabout whose north-west tile is (x, z), writing
    * `junctions` to its four tiles (north-west, north-east, south-west,
    * south-east), or clearing all four when it is absent. Rejected unless a
-   * compact roundabout stands there. Inverse: `buildRoundabout`.
+   * compact roundabout stands there. Inverse: `buildRoundabout`. With
+   * `centred` it is the 3×3 centred roundabout instead, whose nine tiles
+   * (row by row) carry the junctions; `buildRoundabout` takes the same field.
    */
-  | { kind: 'removeRoundabout'; x: number; z: number; junctions?: RoundaboutJunction[] }
+  | {
+      kind: 'removeRoundabout';
+      x: number;
+      z: number;
+      centred?: true;
+      junctions?: RoundaboutJunction[];
+    }
   /**
    * Makes the 2×2 block whose north-west tile is (x, z) a cul-de-sac: the
    * cul-de-sac code on its four tiles, and no turn or lane restriction on
@@ -1193,7 +1206,7 @@ export interface SimSnapshot {
    * Every compact roundabout, by the north-west tile of its block. The whole
    * list travels whenever any of it changes; absent means nothing has.
    */
-  roundabouts?: TilePoint[];
+  roundabouts?: RoundaboutMark[];
   /**
    * Every cul-de-sac, by the north-west tile of its block, each saying which
    * shape it is. The whole list travels whenever any of it changes; absent

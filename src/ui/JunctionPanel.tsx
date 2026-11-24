@@ -136,7 +136,7 @@ export function JunctionPanel(): JSX.Element | null {
             <div className="flex items-center gap-2">
               <Icon name="roads" className="h-5 w-5 shrink-0 text-white/70" />
               <div className="font-semibold">
-                Compact roundabout{' '}
+                {ring.centred ? 'Centred roundabout' : 'Compact roundabout'}{' '}
                 <span className="font-normal text-white/50">
                   · {junction.x}, {junction.z}
                 </span>
@@ -158,7 +158,12 @@ export function JunctionPanel(): JSX.Element | null {
             type="button"
             onClick={() =>
               bound?.sendCommands('Take out roundabout', [
-                { kind: 'removeRoundabout', x: ring.x, z: ring.z },
+                {
+                  kind: 'removeRoundabout',
+                  x: ring.x,
+                  z: ring.z,
+                  ...(ring.centred ? { centred: true as const } : {}),
+                },
               ])
             }
             className={`${CARD_RADIUS} bg-white/5 px-2 py-1.5 text-left text-white/80 transition-colors hover:bg-white/10`}

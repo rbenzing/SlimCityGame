@@ -3901,6 +3901,74 @@ describe('the Roundabout tool', () => {
     tm.pointerUp(20, 20, 0);
     expect(sent).toHaveLength(0);
   });
+
+  describe('over the middle of the junction tile', () => {
+    it('previews the nine tiles, priced as the four corners laid, labelled so', () => {
+      const { tm, previews } = withRoundabout(crossing(), 10, 10);
+      tm.pointerMove(20, 20, 0);
+      const preview = previews.at(-1)!;
+      expect(preview).toMatchObject({ valid: true, label: 'Centred roundabout' });
+      expect(preview.tiles).toHaveLength(9);
+      expect(preview.tiles[0]).toEqual({ x: 19, z: 19 });
+      expect(preview.tiles[8]).toEqual({ x: 21, z: 21 });
+      expect(preview.cost).toBe(4 * ROAD_SPECS[RoadTier.TwoLane]!.costPerTile);
+    });
+
+    it('lays the four corners and the centred roundabout, as one batch', () => {
+      const { tm, sent } = withRoundabout(crossing(), 10, 10);
+      tm.pointerMove(20, 20, 0);
+      tm.pointerDown(20, 20, 0);
+      tm.pointerUp(20, 20, 0);
+      expect(sent).toHaveLength(1);
+      expect(sent[0]!.label).toBe('Centred roundabout');
+      expect(sent[0]!.commands[0]).toMatchObject({ kind: 'buildRoad', tier: RoadTier.TwoLane });
+      expect((sent[0]!.commands[0] as { tiles: unknown[] }).tiles).toHaveLength(4);
+      expect(sent[0]!.commands[1]).toEqual({
+        kind: 'buildRoundabout',
+        x: 19,
+        z: 19,
+        centred: true,
+      });
+    });
+
+    it('picks the form by the pointer: inside 5 m of the centre on both axes is centred, else a quarter', () => {
+      const label = (dx: number, dz: number): string | undefined => {
+        const { tm, previews } = withRoundabout(crossing(), dx, dz);
+        tm.pointerMove(20, 20, 0);
+        return previews.at(-1)!.label;
+      };
+      expect(label(10, 10)).toBe('Centred roundabout');
+      expect(label(5.5, 14.5)).toBe('Centred roundabout');
+      expect(label(5, 10)).toBe('Compact roundabout');
+      expect(label(10, 15)).toBe('Compact roundabout');
+      expect(label(2, 10)).toBe('Compact roundabout');
+    });
+
+    it('shows red with its reason where the ground refuses it, and never falls back to a quarter', () => {
+      const world = crossing();
+      applyRoad(world, [{ x: 19, z: 19 }], RoadTier.TwoLane);
+      const { tm, previews, sent } = withRoundabout(world, 10, 10);
+      tm.pointerMove(20, 20, 0);
+      expect(previews.at(-1)).toMatchObject({
+        valid: false,
+        label: 'Centred roundabout',
+        invalidReason: expect.stringContaining('open ground'),
+      });
+      tm.pointerDown(20, 20, 0);
+      tm.pointerUp(20, 20, 0);
+      expect(sent).toHaveLength(0);
+    });
+
+    it('sends nothing it cannot pay for', () => {
+      const { tm, previews, sent, env } = withRoundabout(crossing(), 10, 10);
+      env.funds = () => 1;
+      tm.pointerMove(20, 20, 0);
+      expect(previews.at(-1)?.invalidReason).toBe('Insufficient funds');
+      tm.pointerDown(20, 20, 0);
+      tm.pointerUp(20, 20, 0);
+      expect(sent).toHaveLength(0);
+    });
+  });
 });
 
 describe('the Cul-de-sac tool', () => {

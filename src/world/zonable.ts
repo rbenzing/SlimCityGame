@@ -29,6 +29,8 @@
 import { RoadTier, ZoneType, isStreetTier } from '../shared/types';
 import type { RoadNet } from '../shared/types';
 import { isFarmable } from '../shared/soil';
+import { CENTRED_ROUNDABOUT_CODE, centredRingAt, centredRingTiles } from '../shared/centredring';
+import type { RingReader } from '../shared/roundabout';
 import { MAX_BUILD_SLOPE, ROAD_CHECK_RADIUS, TILE_METERS } from '../shared/constants';
 import { isGridSegment, sampleCentreLine } from '../shared/roadgeom';
 import type { MPoint, SegmentGeom } from '../shared/roadgeom';
@@ -72,6 +74,41 @@ export interface ZonableGridSource {
   roadFootprint?: Uint8Array;
   /** Each tile's SoilGrade. A source without it has no farmland. */
   soil?: Uint8Array;
+  /**
+   * The control layer and the roads' neighbour masks, which together say where
+   * a centred roundabout stands: nothing fronts its nine tiles. A source
+   * without either has none.
+   */
+  junctionControl?: Uint8Array;
+  roadMask?: Uint8Array;
+}
+
+/** The tiles of every intact centred roundabout in the source: no lot takes its drive or walk from one. */
+function centredRingTilesIn(g: ZonableGridSource): Set<number> | null {
+  const { junctionControl, roadMask, size } = g;
+  if (!junctionControl || !roadMask) return null;
+  const reader: RingReader = {
+    codeAt: (x, z) =>
+      x >= 0 && z >= 0 && x < size && z < size ? (junctionControl[z * size + x] ?? 0) : 0,
+    groundStreetAt: (x, z) =>
+      x >= 0 &&
+      z >= 0 &&
+      x < size &&
+      z < size &&
+      isStreetTier(g.roadTier[z * size + x]!) &&
+      (g.roadElevation?.[z * size + x] ?? 0) === 0,
+    maskAt: (x, z) =>
+      x >= 0 && z >= 0 && x < size && z < size ? (roadMask[z * size + x] ?? 0) : 0,
+  };
+  let found: Set<number> | null = null;
+  for (let i = 0; i < junctionControl.length; i++) {
+    if (junctionControl[i] !== CENTRED_ROUNDABOUT_CODE) continue;
+    const ring = centredRingAt(i % size, Math.floor(i / size), reader);
+    if (!ring) continue;
+    found ??= new Set();
+    for (const t of centredRingTiles(ring)) found.add(t.z * size + t.x);
+  }
+  return found;
 }
 
 /** How deep farmland runs back from its dirt road: fields go further back than a house lot. */
@@ -195,11 +232,13 @@ function marchFrontage(
 ): Uint8Array {
   const { size } = g;
   const mask = new Uint8Array(size * size);
+  const noFrontage = centredRingTilesIn(g);
 
   for (let z = 0; z < size; z++) {
     for (let x = 0; x < size; x++) {
       // Only drivable streets provide zoning frontage — rail is not a street.
       if (!fronts(g.roadTier[z * size + x]! as RoadTier)) continue;
+      if (noFrontage?.has(z * size + x)) continue;
       // Nor does a bridge deck: there is no way onto a lot from a road passing
       // overhead, so an elevated tile fronts nothing.
       if ((g.roadElevation?.[z * size + x] ?? 0) > 0) continue;

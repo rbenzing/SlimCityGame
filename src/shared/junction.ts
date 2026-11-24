@@ -417,9 +417,15 @@ const CONTROL_BY_CODE: readonly JunctionControl[] = [
 export const CUL_DE_SAC_CODE = 7;
 
 /**
- * The byte the six tiles of a centred cul-de-sac hold. Code 8 is reserved for
- * the centred roundabout, so this one is appended after it; like the others it
- * is never a control.
+ * The byte the nine tiles of a centred roundabout hold. Never a control: a
+ * block of them that is intact reads as a roundabout to everything beside it
+ * (`effectiveControlCode`), and a broken one as no override at all.
+ */
+export const CENTRED_ROUNDABOUT_CODE = 8;
+
+/**
+ * The byte the six tiles of a centred cul-de-sac hold, appended after the
+ * centred roundabout's; like the others it is never a control.
  */
 export const CENTRED_CUL_DE_SAC_CODE = 9;
 

@@ -49,6 +49,7 @@ import { decodeRoadNetwork } from '../world/roadnet';
 import { axisOfFlow } from '../shared/overpass';
 import { blockTiles, roundaboutLegs } from '../shared/roundabout';
 import { culDeSacMarkOf, culDeSacTiles } from '../shared/culdesac';
+import { CENTRED_ROUNDABOUT_CODE, centredRingLegs, centredRingTiles } from '../shared/centredring';
 import type { RingLampSite } from '../render/lamps';
 import type {
   BuildingCatalogEntry,
@@ -57,6 +58,7 @@ import type {
   CulDeSacMark,
   JunctionControl,
   MapData,
+  RoundaboutMark,
   OverRoadState,
   RoadNet,
   SimSnapshot,
@@ -141,6 +143,11 @@ export class ClientGridMirror {
   private junctionControls = new Map<number, JunctionSnapshot>();
   /** Tile index -> the compact roundabout it is a corner of, as the world last said. */
   private roundabouts = new Map<number, TilePoint>();
+  /** Tile index -> the centred roundabout it is a tile of, by its north-west tile. */
+  private centredRoundabouts = new Map<number, TilePoint>();
+  private centredRoundaboutTiles: number[] = [];
+  /** The centred roundabouts' code on their tiles, which is all the frontage rule reads of the control layer. */
+  readonly junctionControl: Uint8Array;
   /** Tile index -> the cul-de-sac it is a corner of, as the world last said. */
   private culDeSacs = new Map<number, CulDeSacMark>();
 
@@ -153,6 +160,7 @@ export class ClientGridMirror {
     this.zone = new Uint8Array(n);
     this.roadTier = new Uint8Array(n);
     this.roadMask = new Uint8Array(n);
+    this.junctionControl = new Uint8Array(n);
     this.roadElevation = new Float32Array(n);
     this.overTier = new Uint8Array(n);
     this.roadProfile = new Uint16Array(n);
@@ -320,10 +328,20 @@ export class ClientGridMirror {
   }
 
   /** Replaces the mirror's compact roundabouts with the worker's full list, each by its north-west tile. */
-  applyRoundabouts(blocks: readonly TilePoint[]): void {
+  applyRoundabouts(blocks: readonly RoundaboutMark[]): void {
     const next = new Map<number, TilePoint>();
+    const centred = new Map<number, TilePoint>();
+    for (const t of this.centredRoundaboutTiles) this.junctionControl[t] = 0;
     for (const b of blocks) {
       const block = { x: b.x, z: b.z };
+      if (b.centred) {
+        for (const t of centredRingTiles(block)) {
+          if (!this.inBounds(t.x, t.z)) continue;
+          centred.set(this.idx(t.x, t.z), block);
+          this.junctionControl[this.idx(t.x, t.z)] = CENTRED_ROUNDABOUT_CODE;
+        }
+        continue;
+      }
       for (const [dx, dz] of [
         [0, 0],
         [1, 0],
@@ -334,6 +352,14 @@ export class ClientGridMirror {
       }
     }
     this.roundabouts = next;
+    this.centredRoundabouts = centred;
+    this.centredRoundaboutTiles = [...centred.keys()];
+  }
+
+  /** The centred roundabout (x, z) is a tile of, by its north-west tile, or null. */
+  centredRoundaboutAt(x: number, z: number): TilePoint | null {
+    if (!this.inBounds(x, z)) return null;
+    return this.centredRoundabouts.get(this.idx(x, z)) ?? null;
   }
 
   /** Replaces the mirror's cul-de-sacs with the worker's full list, each by its north-west tile. */
@@ -380,6 +406,26 @@ export class ClientGridMirror {
         arms: legs.map(({ from, side }) => ({ from, side })),
         profile,
         powered: blockTiles(block).some((t) => this.poweredAt(t.x, t.z)),
+      });
+    }
+    const seenCentred = new Set<number>();
+    for (const block of this.centredRoundabouts.values()) {
+      const key = this.idx(block.x, block.z);
+      if (seenCentred.has(key)) continue;
+      seenCentred.add(key);
+      const maskAt = (x: number, z: number): number =>
+        this.inBounds(x, z) ? (this.roadMask[this.idx(x, z)] ?? 0) : 0;
+      const legs = centredRingLegs(block, maskAt);
+      const profile = legs
+        .map((leg) => this.drawnProfileAt(leg.tile.x, leg.tile.z))
+        .find((p): p is RoadProfile => p !== null);
+      if (!profile) continue;
+      sites.push({
+        block,
+        centred: true,
+        arms: legs.map(({ from, side }) => ({ from, side })),
+        profile,
+        powered: centredRingTiles(block).some((t) => this.poweredAt(t.x, t.z)),
       });
     }
     return sites;
@@ -891,7 +937,9 @@ export class ClientGridMirror {
           ...(profileId === 0 ? {} : { profileId }),
           // A corner of a compact roundabout is its ring, and of a cul-de-sac its
           // turning circle, which nothing stands in.
-          ...(this.roundabouts.has(i) || this.culDeSacs.has(i) ? { ring: true as const } : {}),
+          ...(this.roundabouts.has(i) || this.centredRoundabouts.has(i) || this.culDeSacs.has(i)
+            ? { ring: true as const }
+            : {}),
         };
         const junction = this.junctionControls.get(i);
         tiles.push(junction ? { ...tile, control: junction.control } : tile);

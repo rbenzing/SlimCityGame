@@ -1,13 +1,25 @@
 import { describe, expect, it } from 'vitest';
+import {
+  CENTRED_ROUNDABOUT_CODE,
+  centredRingCentre,
+  centredRingTiles,
+  centredRunsRound,
+} from '../shared/centredring';
 import { codeForControl } from '../shared/junction';
-import { blockTiles, ringPoint, runsRound } from '../shared/roundabout';
+import {
+  blockTiles,
+  ringArcTiles,
+  ringPoint,
+  RING_ROUTE_RADIUS_M,
+  runsRound,
+} from '../shared/roundabout';
 import { RoadTier } from '../shared/types';
 import type { GraphEdge, GraphNode, GridState, TilePoint } from '../shared/types';
 import { createGrid } from './grid';
 import { junctionDelay, turnAllowed } from './pathfind';
 import { RoadNetwork } from './roadgraph';
 import { applyRoad } from './roads';
-import { compactRoundaboutsIn } from './roundabouts';
+import { centredRoundaboutsIn, compactRoundaboutsIn } from './roundabouts';
 
 const row = (z: number, from: number, to: number): TilePoint[] =>
   Array.from({ length: to - from + 1 }, (_, i) => ({ x: from + i, z }));
@@ -177,5 +189,114 @@ describe('a mini roundabout’s entry gives way to what goes round it', () => {
     expect(delayWith(north)).toBeGreaterThan(delayWith(east));
     expect(delayWith(east)).toBeGreaterThan(quiet);
     expect(delayWith(south)).toBeCloseTo(quiet, 9);
+  });
+});
+
+// --- The graph round a centred roundabout ----------------------------------------------
+
+const CENTRED = { x: 9, z: 9 };
+
+/** A crossroads at (10, 10) with the centred block laid round it, optionally dropping the south arm into a tee. */
+function centred(options: { coded?: boolean; tee?: boolean } = {}): GridState {
+  const { coded = true, tee = false } = options;
+  const g = createGrid(21);
+  applyRoad(g, row(10, 2, 18), RoadTier.TwoLane);
+  applyRoad(g, column(10, 2, tee ? 10 : 18), RoadTier.TwoLane);
+  const corners = centredRingTiles(CENTRED).filter((t) => !(t.x === 10 || t.z === 10));
+  applyRoad(g, [...corners, ...(tee ? [{ x: 10, z: 11 }] : [])], RoadTier.TwoLane);
+  if (coded) {
+    for (const t of centredRingTiles(CENTRED))
+      g.junctionControl[t.z * g.size + t.x] = CENTRED_ROUNDABOUT_CODE;
+  }
+  return g;
+}
+
+const inCentred = (t: TilePoint): boolean =>
+  t.x >= CENTRED.x && t.x <= CENTRED.x + 2 && t.z >= CENTRED.z && t.z <= CENTRED.z + 2;
+
+describe('the graph round a centred roundabout', () => {
+  it('finds the roundabout only where all nine tiles carry the code and the block is intact', () => {
+    expect(centredRoundaboutsIn(centred())).toMatchObject([CENTRED]);
+    expect(centredRoundaboutsIn(centred({ coded: false }))).toEqual([]);
+    expect(compactRoundaboutsIn(centred())).toEqual([]);
+  });
+
+  it('leaves out the middle tile, which no car crosses', () => {
+    const { nodes, edges } = graph(centred());
+    expect(nodes.some((n) => n.x === 10 && n.z === 10)).toBe(false);
+    expect(edges.some((e) => e.tiles.some((t) => t.x === 10 && t.z === 10))).toBe(false);
+  });
+
+  it('makes each stretch of the ring one lane, driven only the way round, on the circle about the middle tile', () => {
+    const { edges } = graph(centred());
+    const ring = edges.filter((e) => e.circulating);
+    expect(ring).toHaveLength(4);
+    const centre = centredRingCentre(CENTRED);
+    for (const e of ring) {
+      expect(e.tiles.every(inCentred)).toBe(true);
+      expect(e.tiles).toHaveLength(3);
+      expect(e.lanes).toBe(1);
+      const forward = centredRunsRound(CENTRED, e.tiles[0]!, e.tiles[1]!);
+      expect(e.lanesAtoB).toBe(forward ? 1 : 0);
+      expect(e.lanesBtoA).toBe(forward ? 0 : 1);
+      expect(e.forwardAtoB).toBe(forward);
+      expect(e.length).toBeCloseTo(ringArcTiles(1), 9);
+      for (const p of e.route ?? []) {
+        expect(Math.hypot(p.x - centre.x, p.z - centre.z)).toBeCloseTo(RING_ROUTE_RADIUS_M, 6);
+      }
+    }
+  });
+
+  it('runs the open side of a tee on as one stretch, two quarters long', () => {
+    const { edges } = graph(centred({ tee: true }));
+    const ring = edges.filter((e) => e.circulating);
+    expect(ring).toHaveLength(3);
+    expect(ring.map((e) => e.tiles.length).sort()).toEqual([3, 3, 5]);
+    const long = ring.find((e) => e.tiles.length === 5)!;
+    expect(long.length).toBeCloseTo(ringArcTiles(2), 9);
+  });
+
+  it('ends every road in at its side’s point on the ring, straight down its centre line', () => {
+    const { nodes, edges } = graph(centred());
+    const centre = centredRingCentre(CENTRED);
+    const ringNodes = nodes.filter((n) => n.ring);
+    expect(ringNodes).toHaveLength(4);
+    for (const n of ringNodes) {
+      const leg = edges.find((e) => !e.circulating && (e.a === n.id || e.b === n.id))!;
+      const route = leg.route!;
+      const end = leg.a === n.id ? route[0]! : route[route.length - 1]!;
+      expect(Math.hypot(end.x - centre.x, end.z - centre.z)).toBeCloseTo(RING_ROUTE_RADIUS_M, 6);
+      // On the axis through the centre: either x or z matches it.
+      expect(Math.min(Math.abs(end.x - centre.x), Math.abs(end.z - centre.z))).toBeCloseTo(0, 6);
+    }
+  });
+
+  it('reads as a roundabout at each leg’s node, and a broken block as plain road', () => {
+    const g = centred();
+    const net = new RoadNetwork();
+    net.rebuild(g);
+    expect(
+      net
+        .getNodes()
+        .filter((n) => n.ring)
+        .every((n) => n.control === 'roundabout'),
+    ).toBe(true);
+    g.roadTier[11 * g.size + 11] = RoadTier.None;
+    const broken = new RoadNetwork();
+    broken.rebuild(g);
+    expect(broken.getNodes().some((n) => n.ring)).toBe(false);
+    expect(broken.getCentredRoundabouts()).toEqual([]);
+  });
+
+  it('gives way on entry only: a driver arriving on a leg pays, one already on the ring does not', () => {
+    const { nodes, edges } = graph(centred());
+    const node = nodes.find((n) => n.x === 9 && n.z === 10)!;
+    const byId = (id: number): GraphEdge | undefined => edges.find((e) => e.id === id);
+    const leg = edges.find((e) => !e.circulating && (e.a === node.id || e.b === node.id))!;
+    const ringEdges = edges.filter((e) => e.circulating && (e.a === node.id || e.b === node.id));
+    const into = ringEdges.find((e) => (e.a === node.id ? e.lanesAtoB : e.lanesBtoA) === 1)!;
+    const onto = ringEdges.find((e) => e !== into)!;
+    expect(junctionDelay(node, leg, into, byId)).toBeGreaterThan(0);
+    expect(junctionDelay(node, onto, into, byId)).toBeCloseTo(0, 9);
   });
 });

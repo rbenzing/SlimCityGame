@@ -107,6 +107,12 @@ import {
   type InterchangeLayout,
 } from '../shared/interchange';
 import {
+  centredRingAtJunction,
+  centredRingCommands,
+  centredRingTiles,
+  pointerOnJunctionCentre,
+} from '../shared/centredring';
+import {
   centredCulDeSacAtEnd,
   CUL_DE_SAC_RADIUS_M,
   culDeSacAtEnd,
@@ -121,7 +127,6 @@ import {
   roundaboutAtJunction,
   roundaboutCommands,
   type RoundaboutGround,
-  type RoundaboutPlan,
 } from '../shared/roundabout';
 import {
   atOneLevel,
@@ -521,6 +526,9 @@ export interface InterchangeOptions {
 
 /** The name a compact roundabout is laid, and undone, under. */
 export const ROUNDABOUT_LABEL = 'Compact roundabout';
+
+/** The name a roundabout on the junction's own tile is laid, and undone, under. */
+export const CENTRED_ROUNDABOUT_LABEL = 'Centred roundabout';
 
 /** The name a cul-de-sac is laid, and undone, under. */
 export const CUL_DE_SAC_LABEL = 'Cul-de-sac';
@@ -2674,20 +2682,22 @@ export class ToolManager {
    */
   private judgeRoundabout(at: TilePoint): {
     preview: ToolPreview;
-    plan: RoundaboutPlan;
-    tier: RoadTier;
-    profile?: number;
+    commands: Command[];
   } | null {
     const ground = this.env.roundaboutGround?.();
     if (!ground) return null;
     const p = this.hoverPoint;
     const east = p ? p.x / 100 >= (at.x + 0.5) * TILE_METERS : true;
     const south = p ? p.z / 100 >= (at.z + 0.5) * TILE_METERS : true;
-    const plan = roundaboutAtJunction(at, east, south, ground);
+    // Over the middle of the junction's tile the ring stands on it; in a quarter, on that corner.
+    const centred = p ? pointerOnJunctionCentre(at, { x: p.x / 100, z: p.z / 100 }) : false;
+    const plan = centred
+      ? centredRingAtJunction(at, ground)
+      : roundaboutAtJunction(at, east, south, ground);
     const tier = ground.roadAt(at.x, at.z)?.tier ?? RoadTierValue.TwoLane;
     const spec = this.env.roadSpec(tier);
     const cost = plan.toLay.length * spec.costPerTile;
-    const tiles = blockTiles(plan.block);
+    const tiles = centred ? centredRingTiles(plan.block) : blockTiles(plan.block);
     const judged = this.evaluate(
       tiles,
       cost,
@@ -2700,10 +2710,14 @@ export class ToolManager {
       tiles,
       valid: plan.refusal === null && judged.valid,
       cost,
-      label: ROUNDABOUT_LABEL,
+      label: centred ? CENTRED_ROUNDABOUT_LABEL : ROUNDABOUT_LABEL,
       ...(reason !== undefined ? { invalidReason: reason } : {}),
     };
-    return { preview, plan, tier, ...(id !== 0 && id !== tier ? { profile: id } : {}) };
+    const profile = id !== 0 && id !== tier ? id : undefined;
+    const commands = centred
+      ? centredRingCommands(plan, tier, profile)
+      : roundaboutCommands(plan, tier, profile);
+    return { preview, commands };
   }
 
   /**
@@ -2769,10 +2783,7 @@ export class ToolManager {
       // Asked again as it is laid, and nothing sent unless all of it can be.
       const judged = this.judgeRoundabout(end);
       if (judged?.preview.valid) {
-        this.env.send(
-          ROUNDABOUT_LABEL,
-          roundaboutCommands(judged.plan, judged.tier, judged.profile),
-        );
+        this.env.send(judged.preview.label ?? ROUNDABOUT_LABEL, judged.commands);
       }
       return;
     }
