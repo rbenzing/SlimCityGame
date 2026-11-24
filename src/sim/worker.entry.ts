@@ -95,6 +95,7 @@ import type {
   RoundaboutJunction,
   CentredAxis,
   CulDeSacMark,
+  RoundaboutMark,
   ServiceKind,
   ServiceLoad,
   SimSnapshot,
@@ -184,10 +185,17 @@ import { gridRingReader, roundaboutGroundOf } from '../world/roundabouts';
 import {
   blockTiles,
   compactRoundaboutAt,
-  effectiveControlCode,
   roundaboutPlan,
   type RoundaboutBlock,
 } from '../shared/roundabout';
+import {
+  CENTRED_ROUNDABOUT_CODE,
+  centredRingAt,
+  centredRingPlan,
+  centredRingTiles,
+  ringControlCode,
+  type CentredRingFound,
+} from '../shared/centredring';
 import {
   culDeSacBlockOf,
   culDeSacCodeOf,
@@ -1584,7 +1592,7 @@ class SimWorld implements WorkerSim {
         warranted: node.warranted ?? 'none',
         turns: node.turns ?? 0,
         ...(lanes ? { laneTurns: lanes } : {}),
-        auto: effectiveControlCode(node.x, node.z, rings) === 0,
+        auto: ringControlCode(node.x, node.z, rings) === 0,
       });
     }
     const unchanged =
@@ -1608,9 +1616,14 @@ class SimWorld implements WorkerSim {
   }
 
   /** Every compact roundabout, or null when the set has not moved since the last snapshot. */
-  private changedRoundabouts(): TilePoint[] | null {
-    const now = this.network.getRoundabouts().map((r) => ({ x: r.x, z: r.z }));
-    const key = now.map((r) => `${r.x},${r.z}`).join(';');
+  private changedRoundabouts(): RoundaboutMark[] | null {
+    const now: RoundaboutMark[] = [
+      ...this.network.getRoundabouts().map((r) => ({ x: r.x, z: r.z })),
+      ...this.network
+        .getCentredRoundabouts()
+        .map((r) => ({ x: r.x, z: r.z, centred: true as const })),
+    ];
+    const key = now.map((r) => `${r.x},${r.z},${r.centred ? 'c' : ''}`).join(';');
     if (key === this.lastRoundabouts) return null;
     this.lastRoundabouts = key;
     return now;
@@ -2493,7 +2506,7 @@ class SimWorld implements WorkerSim {
     const rejected = { ok: false, cost: 0, inverse: [], reason: 'invalid' as const };
     if (!inBounds(x, z)) return rejected;
     // A roundabout is one junction on four tiles, taken out whole or not at all.
-    if (this.ringAt(x, z)) return rejected;
+    if (this.ringAt(x, z) || this.centredRingAt(x, z)) return rejected;
     // A cul-de-sac is one turning circle: nobody gives way in it.
     if (this.culDeSacAt(x, z)) return rejected;
     // Three arms or more. A dead end is a graph node too, but it has nothing
@@ -2550,7 +2563,7 @@ class SimWorld implements WorkerSim {
     const rejected = { ok: false, cost: 0, inverse: [], reason: 'invalid' as const };
     if (!inBounds(x, z)) return rejected;
     // A roundabout's every entry does one thing: turn onto the ring.
-    if (this.ringAt(x, z) || this.culDeSacAt(x, z)) return rejected;
+    if (this.ringAt(x, z) || this.centredRingAt(x, z) || this.culDeSacAt(x, z)) return rejected;
     if (!Number.isInteger(lane) || lane < 0 || lane >= MAX_EDITABLE_LANES) return rejected;
     const node = this.network.getNodes().find((n) => n.x === x && n.z === z);
     if (!node || node.edges.length < 3) return rejected;
@@ -2597,7 +2610,7 @@ class SimWorld implements WorkerSim {
     const rejected = { ok: false, cost: 0, inverse: [], reason: 'invalid' as const };
     if (!inBounds(x, z)) return rejected;
     // A roundabout's every entry does one thing: turn onto the ring.
-    if (this.ringAt(x, z) || this.culDeSacAt(x, z)) return rejected;
+    if (this.ringAt(x, z) || this.centredRingAt(x, z) || this.culDeSacAt(x, z)) return rejected;
     const node = this.network.getNodes().find((n) => n.x === x && n.z === z);
     if (!node || node.edges.length < 3) return rejected;
     const step = stepForFlow(arm);
@@ -2675,7 +2688,8 @@ class SimWorld implements WorkerSim {
    * turn onto the ring. Refused, with the reason, unless every tile is laid
    * and the block is a roundabout's site.
    */
-  private cmdBuildRoundabout(x: number, z: number): CommandResult {
+  private cmdBuildRoundabout(x: number, z: number, centred?: true): CommandResult {
+    if (centred) return this.cmdBuildCentredRing(x, z);
     const block = { x, z };
     const plan = roundaboutPlan(block, this.roundaboutGround());
     if (plan.refusal !== null || plan.toLay.length > 0) {
@@ -2699,9 +2713,11 @@ class SimWorld implements WorkerSim {
   private cmdRemoveRoundabout(
     x: number,
     z: number,
+    centred: true | undefined,
     junctions: readonly RoundaboutJunction[] | undefined,
   ): CommandResult {
     const rejected = { ok: false, cost: 0, inverse: [], reason: 'invalid' as const };
+    if (centred) return this.cmdRemoveCentredRing(x, z, junctions);
     const ring = this.ringAt(x, z);
     if (!ring || ring.x !== x || ring.z !== z) return rejected;
     if (junctions && junctions.length !== 4) return rejected;
@@ -2713,6 +2729,64 @@ class SimWorld implements WorkerSim {
     );
     this.network.invalidateRegion(x, z, x + 1, z + 1);
     return { ok: true, cost: 0, inverse: [{ kind: 'buildRoundabout', x, z }] };
+  }
+
+  /** The centred roundabout (x, z) is a tile of, or null. */
+  private centredRingAt(x: number, z: number): CentredRingFound | null {
+    return centredRingAt(x, z, gridRingReader(this.grid));
+  }
+
+  /**
+   * Makes the 3×3 block whose north-west tile is (x, z) a centred roundabout:
+   * the centred code on all nine tiles, and no turn or lane restriction left on
+   * any of them. Refused, with the reason, unless every tile is laid and the
+   * block is a centred roundabout's site.
+   */
+  private cmdBuildCentredRing(x: number, z: number): CommandResult {
+    const block = { x, z };
+    const plan = centredRingPlan(block, this.roundaboutGround());
+    if (plan.refusal !== null) {
+      return { ok: false, cost: 0, inverse: [], reason: plan.refusal };
+    }
+    const tiles = centredRingTiles(block);
+    const before = tiles.map((t) => this.junctionStateAt(t));
+    for (const t of tiles) {
+      this.grid.junctionControl[tileIndex(t.x, t.z)] = CENTRED_ROUNDABOUT_CODE;
+      this.grid.junctionTurns[tileIndex(t.x, t.z)] = 0;
+      for (let arm = 0; arm < ARMS_PER_TILE; arm++) {
+        this.grid.junctionLaneTurns[tileIndex(t.x, t.z) * ARMS_PER_TILE + arm] = 0;
+      }
+    }
+    this.network.invalidateRegion(x, z, x + 2, z + 2);
+    return {
+      ok: true,
+      cost: 0,
+      inverse: [{ kind: 'removeRoundabout', x, z, centred: true, junctions: before }],
+    };
+  }
+
+  /**
+   * Takes out the centred roundabout whose north-west tile is (x, z), leaving
+   * its nine tiles with `junctions`, row by row, or with nothing the player has
+   * said about them. The street stays. Refused unless one stands there.
+   */
+  private cmdRemoveCentredRing(
+    x: number,
+    z: number,
+    junctions: readonly RoundaboutJunction[] | undefined,
+  ): CommandResult {
+    const rejected = { ok: false, cost: 0, inverse: [], reason: 'invalid' as const };
+    const ring = this.centredRingAt(x, z);
+    if (!ring || ring.x !== x || ring.z !== z) return rejected;
+    if (junctions && junctions.length !== 9) return rejected;
+    centredRingTiles(ring).forEach((t, i) =>
+      this.writeJunctionState(
+        t,
+        junctions?.[i] ?? { control: null, turns: 0, laneTurns: [0, 0, 0, 0] },
+      ),
+    );
+    this.network.invalidateRegion(x, z, x + 2, z + 2);
+    return { ok: true, cost: 0, inverse: [{ kind: 'buildRoundabout', x, z, centred: true }] };
   }
 
   /** The cul-de-sac (x, z) is a corner of, or null. */
@@ -2952,9 +3026,9 @@ class SimWorld implements WorkerSim {
           command.allowed,
         );
       case 'buildRoundabout':
-        return this.cmdBuildRoundabout(command.x, command.z);
+        return this.cmdBuildRoundabout(command.x, command.z, command.centred);
       case 'removeRoundabout':
-        return this.cmdRemoveRoundabout(command.x, command.z, command.junctions);
+        return this.cmdRemoveRoundabout(command.x, command.z, command.centred, command.junctions);
       case 'buildCulDeSac':
         return this.cmdBuildCulDeSac(command.x, command.z, command.centred);
       case 'removeCulDeSac':
@@ -3876,6 +3950,17 @@ class SimWorld implements WorkerSim {
         this.writeJunctionState(t, { control: null, turns: 0, laneTurns: [0, 0, 0, 0] });
       }
     }
+    // The centred form likewise, on its nine.
+    const centredRings = new Map<number, CentredRingFound>();
+    for (const t of inBoundsTiles) {
+      const ring = this.centredRingAt(t.x, t.z);
+      if (ring) centredRings.set(tileIndex(ring.x, ring.z), ring);
+    }
+    for (const ring of centredRings.values()) {
+      for (const t of centredRingTiles(ring)) {
+        this.writeJunctionState(t, { control: null, turns: 0, laneTurns: [0, 0, 0, 0] });
+      }
+    }
 
     // Capture pre-state for the inverse before anything mutates.
     const zonesByType = new Map<number, TilePoint[]>();
@@ -3954,6 +4039,8 @@ class SimWorld implements WorkerSim {
     // After the roads, so the tile is a junction again by the time this lands.
     for (const ring of rings.values())
       inverse.push({ kind: 'buildRoundabout', x: ring.x, z: ring.z });
+    for (const ring of centredRings.values())
+      inverse.push({ kind: 'buildRoundabout', x: ring.x, z: ring.z, centred: true });
     for (const cul of culs.values()) {
       inverse.push({
         kind: 'buildCulDeSac',

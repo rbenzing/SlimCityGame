@@ -89,6 +89,7 @@ import { platOf, platSourceOf, type Parcel, type Plat, type PlatSource } from '.
 import { parcelWithYard, yardRowsBehind, yardTilesOf } from './world/yard';
 import { buildRoadCells, type RoadCells } from './world/roadnet';
 import { ROUNDABOUT_CODE } from './shared/roundabout';
+import { CENTRED_ROUNDABOUT_CODE } from './shared/centredring';
 import { culDeSacCentre, culDeSacCodeOf, culDeSacTiles } from './shared/culdesac';
 import { isUnderground } from './shared/view';
 import { createRenderer, createWorldScene, timeOfDayColors } from './render/scene';
@@ -2216,6 +2217,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
         clientGrid,
         (x, z) => {
           if (clientGrid.roundaboutAt(x, z)) return ROUNDABOUT_CODE;
+          if (clientGrid.centredRoundaboutAt(x, z)) return CENTRED_ROUNDABOUT_CODE;
           const cul = clientGrid.culDeSacAt(x, z);
           return cul ? culDeSacCodeOf(cul) : 0;
         },
@@ -2890,7 +2892,10 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       setLatestRoadTiles(clientGrid.roadTiles());
       rebuildLamps();
       if (snap.roundabouts) {
-        for (const block of snap.roundabouts) markPolesAt(block.x, block.z);
+        for (const block of snap.roundabouts) {
+          markPolesAt(block.x, block.z);
+          if (block.centred) markPolesAt(block.x + 2, block.z + 2);
+        }
       }
       if (snap.culDeSacs) {
         for (const block of snap.culDeSacs) {
@@ -3244,7 +3249,9 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
   const selectedJunctionAt = (x: number, z: number): SelectedJunction | null => {
     const junction = clientGrid.junctionAt(x, z);
     if (!junction) return null;
-    const ring = clientGrid.roundaboutAt(x, z);
+    const compact = clientGrid.roundaboutAt(x, z);
+    const centredRing = clientGrid.centredRoundaboutAt(x, z);
+    const ring = compact ?? (centredRing ? { ...centredRing, centred: true as const } : null);
     const arms = (
       [
         [0, -1, RoadFlow.North],

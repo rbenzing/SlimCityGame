@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { RoadTier, ZoneType, type GridState } from '../shared/types';
+import { CENTRED_ROUNDABOUT_CODE } from '../shared/centredring';
+import { ROUNDABOUT_CODE } from '../shared/roundabout';
 import { MAX_BUILD_SLOPE, ROAD_CHECK_RADIUS, TILE_METERS } from '../shared/constants';
 import { presetProfileForTier } from '../shared/roadprofile';
 import { deriveRoadFootprint, halfWidthOf } from './freeroads';
@@ -197,6 +199,78 @@ describe('computeZonableTiles — a centred cul-de-sac block fronts every outer 
     const set = coordSet(computeZonableTiles(withBlock(false)));
     expect(set.has('5,7')).toBe(false);
     expect(set.has('5,9')).toBe(false);
+  });
+});
+
+describe('computeZonableTiles — nothing fronts a centred roundabout', () => {
+  const size = 20;
+  /** The neighbour mask a road tile would carry: a bit for each road beside it. */
+  const maskOf = (g: ZonableGridSource): Uint8Array => {
+    const m = new Uint8Array(size * size);
+    for (let z = 0; z < size; z++) {
+      for (let x = 0; x < size; x++) {
+        if (g.roadTier[idx(size, x, z)] === RoadTier.None) continue;
+        const at = (dx: number, dz: number): boolean =>
+          g.roadTier[idx(size, x + dx, z + dz)] !== RoadTier.None;
+        m[idx(size, x, z)] =
+          (at(0, -1) ? 1 : 0) | (at(1, 0) ? 2 : 0) | (at(0, 1) ? 4 : 0) | (at(-1, 0) ? 8 : 0);
+      }
+    }
+    return m;
+  };
+  /**
+   * A tee: a street along row 8 from x = 4 to 12 and a road down column 8 from the north to the
+   * junction, with the 3x3 block (7..9, 7..9) laid round it, the south side open ring.
+   */
+  function tee(code: number | null): ZonableGridSource {
+    const g = makeGrid(size);
+    for (let x = 4; x <= 12; x++) g.roadTier[idx(size, x, 8)] = RoadTier.TwoLane;
+    for (let z = 4; z <= 8; z++) g.roadTier[idx(size, 8, z)] = RoadTier.TwoLane;
+    for (let z = 7; z <= 9; z++) {
+      for (let x = 7; x <= 9; x++) g.roadTier[idx(size, x, z)] = RoadTier.TwoLane;
+    }
+    const control = new Uint8Array(size * size);
+    if (code !== null) {
+      for (let z = 7; z <= 9; z++) for (let x = 7; x <= 9; x++) control[idx(size, x, z)] = code;
+    }
+    return { ...g, junctionControl: control, roadMask: maskOf(g) };
+  }
+
+  it('zones the ground below the open side of the ring only where the block is no roundabout', () => {
+    const plain = coordSet(computeZonableTiles(tee(null)));
+    for (const key of ['7,10', '8,10', '9,10']) expect(plain.has(key), key).toBe(true);
+    const ring = coordSet(computeZonableTiles(tee(CENTRED_ROUNDABOUT_CODE)));
+    for (const key of ['7,10', '8,10', '9,10']) {
+      expect(ring.has(key), key).toBe(false);
+    }
+  });
+
+  it('still fronts the roads into it: the ground beside a leg is zonable', () => {
+    const ring = coordSet(computeZonableTiles(tee(CENTRED_ROUNDABOUT_CODE)));
+    for (const key of ['7,5', '9,5', '5,7', '5,9', '11,7', '11,9']) {
+      expect(ring.has(key), key).toBe(true);
+    }
+  });
+
+  it('treats a block that is not intact as the plain road it is', () => {
+    const g = tee(CENTRED_ROUNDABOUT_CODE);
+    g.roadTier[idx(size, 9, 9)] = RoadTier.None;
+    const broken = coordSet(computeZonableTiles({ ...g, roadMask: maskOf(g) }));
+    expect(broken.has('8,10')).toBe(true);
+  });
+
+  it('leaves a compact roundabout’s frontage as it was', () => {
+    const plain = tee(null);
+    const compact = tee(null);
+    for (const [x, z] of [
+      [8, 8],
+      [9, 8],
+      [8, 9],
+      [9, 9],
+    ] as const) {
+      compact.junctionControl![idx(size, x, z)] = ROUNDABOUT_CODE;
+    }
+    expect(Array.from(computeZonableMask(compact))).toEqual(Array.from(computeZonableMask(plain)));
   });
 });
 

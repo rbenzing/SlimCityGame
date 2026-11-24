@@ -198,6 +198,8 @@ function helpers(origin, page, catalogBox, tile) {
       rotation,
     }),
     roundabout: (x, z) => ({ kind: 'buildRoundabout', ...at(x, z) }),
+    /** The centred roundabout on the junction at (x, z): its block is the 3 by 3 round that tile. */
+    centredRoundabout: (x, z) => ({ kind: 'buildRoundabout', ...at(x - 1, z - 1), centred: true }),
   };
 }
 

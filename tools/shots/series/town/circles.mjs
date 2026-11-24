@@ -126,6 +126,10 @@ export default defineSeries({
         until: [
           homesIn(box(END_X - 4, NORTH_Z - 4, END_X + 7, NORTH_Z + 5), 6),
           homesIn(box(END_X - 4, SOUTH_Z - 4, END_X + 7, SOUTH_Z + 5), 6),
+          // A home on each flank and at the far end of the centred block, which grow at random.
+          homesIn(box(CENTRED.x, CENTRED.z - 3, CENTRED.x + 1, CENTRED.z - 1), 1),
+          homesIn(box(CENTRED.x, CENTRED.z + 3, CENTRED.x + 1, CENTRED.z + 5), 1),
+          homesIn(box(CENTRED.x + 2, CENTRED.z, CENTRED.x + 4, CENTRED.z + 2), 2),
         ],
       },
     ],
