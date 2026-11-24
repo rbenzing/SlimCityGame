@@ -125,12 +125,23 @@ async function scene(session) {
   );
   const inland = { x: mouth.x - seaTile.x, z: mouth.z - seaTile.z };
 
+  // The coast's sea: the biggest ocean, not a pool of the hills that touches an edge.
+  const seen = new Set();
+  let sea = [];
+  for (const i of oceans) {
+    if (seen.has(i)) continue;
+    const run = runOf(b, i);
+    run.forEach((j) => seen.add(j));
+    if (run.length > sea.length) sea = run;
+  }
+  const seaSet = new Set(sea);
+
   // The widest beach: dry land within the sand band of the ocean, most such tiles in a 15 x 15 window.
   const isBeach = (x, z) => {
     const i = z * n + x;
     return grid.water[i] === 0 && grid.height[i] > 0 && grid.height[i] <= SAND_BAND;
   };
-  const onShore = (x, z) => DIRS.some(([dx, dz]) => b.kind[(z + dz) * n + x + dx] === OCEAN);
+  const onShore = (x, z) => DIRS.some(([dx, dz]) => seaSet.has((z + dz) * n + x + dx));
   let beach = null;
   let beachCount = 0;
   const win = 7;
@@ -147,7 +158,23 @@ async function scene(session) {
     }
   }
   if (!beach) throw new Error('the ocean has no sandy shore');
-  const sea = xz(nearest(oceans, beach));
+  const seaNear = xz(nearest(sea, beach));
+
+  // Where the ocean meets the map's edge: the edge tile nearest the beach, and the way out past it.
+  const edgeTiles = sea.filter((i) => {
+    const { x, z } = xz(i);
+    return x === 0 || z === 0 || x === n - 1 || z === n - 1;
+  });
+  if (edgeTiles.length === 0) throw new Error('the ocean does not reach the map edge');
+  const edgeAt = xz(nearest(edgeTiles, beach));
+  const out =
+    edgeAt.x === 0
+      ? { x: -1, z: 0 }
+      : edgeAt.x === n - 1
+        ? { x: 1, z: 0 }
+        : edgeAt.z === 0
+          ? { x: 0, z: -1 }
+          : { x: 0, z: 1 };
 
   // Mid-map: the river tile nearest the map's middle.
   const mid = xz(nearest(river, { x: n / 2, z: n / 2 }));
@@ -237,7 +264,7 @@ async function scene(session) {
 
   return {
     beach,
-    sea,
+    sea: seaNear,
     mouth,
     inland,
     mid,
@@ -248,6 +275,8 @@ async function scene(session) {
     along: { x: cx, z: cz },
     waterTiles,
     siteDistance: site.distance,
+    edge: edgeAt,
+    out,
   };
 }
 
@@ -259,9 +288,10 @@ export default defineSeries({
   purpose:
     'The new coast map reads as a coast: a beach that slopes into the sea, a river that holds its width to a clean mouth in a valley with level banks, a lake cut by nothing, a street that bridges the river, and room beside the spawn for a town; and six seeds laid side by side differ in which edge is sea and how the river winds.',
   budgetS: 180,
-  session: { bloom: true, generator: GENERATOR, seed: SEED },
+  session: { bloom: true, generator: GENERATOR, seed: SEED, webgpu: true },
   subjects: [
     { id: 'beach' },
+    { id: 'edge' },
     { id: 'mouth' },
     { id: 'valley' },
     { id: 'lake' },
@@ -271,6 +301,30 @@ export default defineSeries({
   ],
   scene,
   frames: [
+    {
+      subject: 'edge',
+      view: 'above',
+      shows:
+        "the sea at the map's edge from above: the surface carries on past the edge, same colour, no seam, no white",
+      camera: (s) => ({
+        ...at('edge')(s),
+        distance: 900,
+        yaw: yawToward(s.out.x, s.out.z),
+        pitch: 1.2,
+      }),
+    },
+    {
+      subject: 'edge',
+      view: 'along',
+      shows:
+        "looking out over the map's edge from the shore side, low: the sea runs to the horizon",
+      camera: (s) => ({
+        ...at('edge')(s),
+        distance: 500,
+        yaw: yawToward(s.out.x, s.out.z),
+        pitch: 0.25,
+      }),
+    },
     {
       subject: 'beach',
       view: 'above',

@@ -15,7 +15,8 @@
  * directory as result.json and result.md beside one PNG per view.
  *
  * Usage: node tools/probes/frame-budget.mjs [baseUrl] [--buildings N] [--out dir]
- *        [--seed N] [--frames N]       (a dev server must be running) */
+ *        [--seed N] [--frames N] [--generator N]   (a dev server must be running;
+ *        the terrain generator is the first unless one is named) */
 import { chromium } from 'playwright';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { hooksReady, tileCamera } from '../shots/lib/camera.mjs';
@@ -96,7 +97,7 @@ const flag = (name, fallback) => {
   const at = args.indexOf(`--${name}`);
   return at >= 0 ? args[at + 1] : fallback;
 };
-const flagValues = new Set(['--buildings', '--out', '--seed', '--frames']);
+const flagValues = new Set(['--buildings', '--out', '--seed', '--frames', '--generator']);
 const base =
   args.find((a, i) => !a.startsWith('--') && !flagValues.has(args[i - 1] ?? '')) ??
   'http://localhost:5173';
@@ -104,6 +105,7 @@ const TARGET = Number(flag('buildings', 10000));
 const out = flag('out', 'tools/shots-framebudget');
 const SEED = Number(flag('seed', 7));
 const FRAMES = Number(flag('frames', 240));
+const GENERATOR = flag('generator', undefined);
 const WARMUP = 30;
 mkdirSync(out, { recursive: true });
 
@@ -524,7 +526,14 @@ await page.addInitScript(
       void e;
     }
   },
-  [{ screen: 'playing', seed: SEED, mode: 'new' }],
+  [
+    {
+      screen: 'playing',
+      seed: SEED,
+      mode: 'new',
+      ...(GENERATOR === undefined ? {} : { generator: Number(GENERATOR) }),
+    },
+  ],
 );
 
 const result = { seed: SEED, target: TARGET, frames: FRAMES };
