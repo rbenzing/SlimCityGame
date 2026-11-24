@@ -331,6 +331,8 @@ export function centredRingPlan(
     if (laying && (ground.maskAt(mid.x, mid.z) & s.bit) === 0)
       return plan(CENTRED_RING_REFUSALS.touches);
     const out = (ground.maskAt(from.x, from.z) & s.bit) !== 0;
+    // A road that stops at the side's middle tile has no leg: the arm is one tile, not two.
+    if (!out && laying) return plan(CENTRED_RING_REFUSALS.armBends);
     if (!out) continue;
     if (!inMap(tile.x, tile.z) || !ground.roadAt(tile.x, tile.z))
       return plan(CENTRED_RING_REFUSALS.armBends);

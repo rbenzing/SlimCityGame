@@ -129,6 +129,70 @@ describe('ringLampStands', () => {
     expect(ringLampStands(site(fourWay, false))).toHaveLength(0);
     expect(ringLampStands(site([]))).toHaveLength(0);
   });
+
+  describe('on a centred roundabout', () => {
+    // The 3x3 block at (19, 19): the ring is centred on the middle tile's centre.
+    const cBlock = { x: 19, z: 19 };
+    const cCentre = { x: 20.5 * TILE_METERS, z: 20.5 * TILE_METERS };
+    const cArms = [
+      arm(20, 19, RoadFlow.North),
+      arm(21, 20, RoadFlow.East),
+      arm(20, 21, RoadFlow.South),
+      arm(19, 20, RoadFlow.West),
+    ];
+    const cSite = (arms = cArms, powered = true) => ({
+      block: cBlock,
+      centred: true as const,
+      arms,
+      profile: two,
+      powered,
+    });
+    const radius = (s: { x: number; z: number }): number =>
+      Math.hypot(s.x - cCentre.x, s.z - cCentre.z);
+    const angle = (s: { x: number; z: number }): number =>
+      Math.atan2(s.z - cCentre.z, s.x - cCentre.x);
+
+    it('stands lamps outside the ring, behind its footway, reaching in over it', () => {
+      const stands = ringLampStands(cSite());
+      expect(stands.length).toBeGreaterThan(0);
+      for (const s of stands) {
+        expect(radius(s)).toBeCloseTo(
+          RING_OUTER_RADIUS_M + lampLateralOffset(undefined, two) - carriagewayHalfWidthOf(two),
+          6,
+        );
+        expect((cCentre.x - s.x) * s.reachX + (cCentre.z - s.z) * s.reachZ).toBeGreaterThan(0);
+      }
+    });
+
+    it('keeps clear of every road, which meets the ring on an axis through its centre', () => {
+      for (const s of ringLampStands(cSite())) {
+        for (const a of [-Math.PI / 2, 0, Math.PI / 2, Math.PI]) {
+          const apart = Math.abs(Math.atan2(Math.sin(angle(s) - a), Math.cos(angle(s) - a)));
+          expect(apart * radius(s)).toBeGreaterThan(carriagewayHalfWidthOf(two));
+        }
+      }
+    });
+
+    it('stands in the arcs between the roads, evenly either side of each axis', () => {
+      const stands = ringLampStands(cSite());
+      // Four equal arcs each with the same count, so the lamps are the same set turned a quarter.
+      const turned = stands.map((s) => ({
+        x: cCentre.x - (s.z - cCentre.z),
+        z: cCentre.z + (s.x - cCentre.x),
+      }));
+      for (const t of turned) {
+        expect(stands.some((s) => Math.hypot(s.x - t.x, s.z - t.z) < 1e-6)).toBe(true);
+      }
+    });
+
+    it('stands none on an unpowered street, and a tee leaves the open side as one longer arc', () => {
+      expect(ringLampStands(cSite(cArms, false))).toHaveLength(0);
+      const tee = ringLampStands(cSite(cArms.slice(0, 3)));
+      expect(tee.length).toBeGreaterThanOrEqual(ringLampStands(cSite()).length - 1);
+      // The road from the west is the one missing: its side, round the half-turn, takes a lamp.
+      expect(tee.some((s) => Math.abs(angle(s)) > (3 * Math.PI) / 4)).toBe(true);
+    });
+  });
 });
 
 describe('computeLampPlacements (pure)', () => {
