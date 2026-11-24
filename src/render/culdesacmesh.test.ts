@@ -147,6 +147,113 @@ describe("the street's lines in the block", () => {
   });
 });
 
+describe('the centred turning circle drawn', () => {
+  const cases: [string, BulbStreet][] = [
+    ['street from the north', street(RoadFlow.North, 0)],
+    ['street from the south', street(RoadFlow.South, 0)],
+    ['street from the east', street(RoadFlow.East, 0)],
+    ['street from the west', street(RoadFlow.West, 0)],
+  ];
+
+  it.each(cases)('stays inside the block’s 40 m along the street: %s', (_name, s) => {
+    const g = culDeSacVertices(0, 0, s, flat, STYLE);
+    expect(g.positions.length).toBeGreaterThan(0);
+    for (let i = 0; i < g.positions.length; i += 3) {
+      expect(Math.abs(g.positions[i]!)).toBeLessThanOrEqual(20 + 1e-6);
+      expect(Math.abs(g.positions[i + 2]!)).toBeLessThanOrEqual(20 + 1e-6);
+    }
+  });
+
+  it.each(cases)('is asphalt to its full radius, and footway only beyond it: %s', (_name, s) => {
+    const g = culDeSacVertices(0, 0, s, flat, STYLE);
+    const radius = (t: number[][]): number => Math.max(...t.map(([x, z]) => Math.hypot(x!, z!)));
+    expect(Math.max(...trianglesOf(g, STYLE.plate).map(radius))).toBeGreaterThan(
+      CUL_DE_SAC_RADIUS_M - 0.2,
+    );
+    const ring = trianglesOf(g, STYLE.footway).filter((t) =>
+      t.every(([x, z]) => Math.hypot(x!, z!) < 17),
+    );
+    expect(ring.length).toBeGreaterThan(0);
+    for (const t of ring)
+      for (const [x, z] of t)
+        expect(Math.hypot(x!, z!)).toBeGreaterThan(CUL_DE_SAC_RADIUS_M - 0.01);
+  });
+
+  it.each(cases)('draws the same on either side of the street: %s', (_name, s) => {
+    const g = culDeSacVertices(0, 0, s, flat, STYLE);
+    const across = s.side === RoadFlow.North || s.side === RoadFlow.South ? 0 : 1;
+    for (const colour of [STYLE.plate, STYLE.footway]) {
+      const points = trianglesOf(g, colour).flat();
+      // Every vertex has its mirror image across the street's centre line.
+      for (const [x, z] of points) {
+        const mx = across === 0 ? -x! : x!;
+        const mz = across === 0 ? z! : -z!;
+        const found = points.some(([px, pz]) => Math.hypot(px! - mx, pz! - mz) < 1e-6);
+        expect(found, `${x!.toFixed(3)},${z!.toFixed(3)}`).toBe(true);
+      }
+    }
+  });
+
+  it.each(cases)('leaves the mouth open with a kerb return on each side: %s', (_name, s) => {
+    const g = culDeSacVertices(0, 0, s, flat, STYLE);
+    const out =
+      s.side === RoadFlow.North
+        ? ([0, -1] as const)
+        : s.side === RoadFlow.South
+          ? ([0, 1] as const)
+          : s.side === RoadFlow.East
+            ? ([1, 0] as const)
+            : ([-1, 0] as const);
+    const along = ([x, z]: number[]): number => x! * out[0] + z! * out[1];
+    const sideways = ([x, z]: number[]): number => x! * out[1] + z! * -out[0];
+    const walk = trianglesOf(g, STYLE.footway).flat();
+    // Footway beside the street outside the ring: on both sides of it.
+    const beside = walk.filter((p) => along(p) > 16.5 && Math.abs(sideways(p)) < 12);
+    expect(beside.some((p) => sideways(p) > 0)).toBe(true);
+    expect(beside.some((p) => sideways(p) < 0)).toBe(true);
+    // None of it lies across the street's own carriageway, so the mouth is open from kerb to kerb.
+    expect(walk.filter((p) => along(p) > 0 && Math.abs(sideways(p)) < 4 - 1e-6)).toEqual([]);
+    // The ring's footway runs on the far side of the circle, all the way round to the returns.
+    expect(walk.some((p) => along(p) < -15)).toBe(true);
+    expect(walk.some((p) => sideways(p) > 10 && Math.abs(along(p)) < 8)).toBe(true);
+    expect(walk.some((p) => sideways(p) < -10 && Math.abs(along(p)) < 8)).toBe(true);
+  });
+
+  it('swings each kerb return out from the street, tangent to the ring', () => {
+    const r = kerbReturnOf(4, true)!;
+    expect(r).not.toBeNull();
+    expect(r.u).toBeCloseTo(4 + r.radius, 9);
+    expect(Math.hypot(r.s, r.u)).toBeCloseTo(CUL_DE_SAC_RADIUS_M + r.radius, 9);
+    expect(r.s).toBeLessThanOrEqual(20);
+    // The ring meets it clear of the street's own kerb, so the mouth is wider than the street.
+    const tangent = (CUL_DE_SAC_RADIUS_M * r.u) / (CUL_DE_SAC_RADIUS_M + r.radius);
+    expect(tangent).toBeGreaterThan(4);
+  });
+
+  it('draws no verge, so the corners keep the terrain colour', () => {
+    const g = culDeSacVertices(0, 0, street(RoadFlow.North, 0), flat, STYLE);
+    const drawn = [STYLE.plate, STYLE.footway].reduce(
+      (n, c) => n + trianglesOf(g, c).length * 3,
+      0,
+    );
+    expect(drawn).toBe(g.colors.length / 3);
+    for (let i = 0; i < g.positions.length; i += 3) {
+      const inCorner = Math.abs(g.positions[i]!) > 16.5 && Math.abs(g.positions[i + 2]!) > 16.5;
+      expect(inCorner).toBe(false);
+    }
+  });
+
+  it('paints the street’s lines on in the block, at their own offsets from the centre line', () => {
+    const s = street(RoadFlow.South, 0);
+    const run = bulbLineRun(s, 0)!;
+    expect(run.u).toBe(0);
+    expect(run.s0).toBeCloseTo(CUL_DE_SAC_RADIUS_M, 9);
+    expect(run.s1).toBe(20);
+    expect(bulbLineRun(s, -1.9)!.u).toBeCloseTo(-1.9, 9);
+    expect(bulbLineRun(s, 1.9)!.u).toBeCloseTo(1.9, 9);
+  });
+});
+
 describe('the kerb return', () => {
   it('stands inside the block where the street meets the circle', () => {
     const r = kerbReturnOf(6);

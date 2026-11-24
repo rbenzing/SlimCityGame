@@ -1,6 +1,8 @@
 /**
- * The ground a cul-de-sac is drawn on: one turning circle on a 2×2 block, the
- * street running in half a tile off its middle, and the footway round both. The
+ * The ground a cul-de-sac is drawn on: one turning circle on its block, the
+ * street running in, and the footway round both. On a 2×2 block the street
+ * meets the circle half a tile off its middle, with one kerb return; on a
+ * centred block it meets it on its centre line, with a return on each side. The
  * block's corners are left to the terrain, which colours a road tile's verge.
  * The block is drawn whole from here and by no tile.
  *
@@ -8,10 +10,14 @@
  * from the circle's centre and `u` across it with the street at positive `u`,
  * and set down in world metres round the centre. Pure: numbers in, vertices out.
  */
-import { CUL_DE_SAC_RADIUS_M } from '../shared/culdesac';
+import {
+  CUL_DE_SAC_RADIUS_M,
+  culDeSacCentre,
+  culDeSacLegs,
+  type CulDeSacBlock,
+} from '../shared/culdesac';
 import { TILE_METERS } from '../shared/constants';
 import { hasKerbs, carriagewayHalfWidthOf, kerbWidthOf } from '../shared/roadprofile';
-import { roundaboutLegs, type RoundaboutBlock } from '../shared/roundabout';
 import { RoadFlow, stepForFlow, type RoadProfile } from '../shared/types';
 import { wrapAngle, type BulbFront } from './bulbfront';
 
@@ -56,13 +62,19 @@ export interface BulbGeometry {
 }
 
 /**
- * Where the kerb return stands: its radius and its centre in the street's
- * frame, or null where the block has no room for one.
+ * Where the kerb return stands for the kerb line `line` metres off the circle's
+ * axis: its radius and its centre in the street's frame, or null where the block
+ * has no room for one. An offset street's inner kerb has its ground on the axis
+ * side, so the return's centre lies nearer the axis than the kerb; a centred
+ * street's kerbs have it on the far side (`outside`).
  */
-export function kerbReturnOf(inner: number): { radius: number; s: number; u: number } | null {
+export function kerbReturnOf(
+  line: number,
+  outside = false,
+): { radius: number; s: number; u: number } | null {
   const R = CUL_DE_SAC_RADIUS_M;
   for (let r = KERB_RETURN_MAX_M; r >= KERB_RETURN_MIN_M; r -= 0.5) {
-    const u = inner - r;
+    const u = outside ? line + r : line - r;
     const reach = (R + r) ** 2 - u * u;
     if (reach <= 0) continue;
     const s = Math.sqrt(reach);
@@ -79,8 +91,16 @@ function streetFrame(street: BulbStreet): (s: number, u: number) => Point {
   return (s, u) => [out.dx * s + across.x * flip * u, out.dz * s + across.z * flip * u];
 }
 
-/** The street's inner and outer kerb lines, across the street from the circle's axis. */
+/** Whether the street meets the circle on its own centre line, with a kerb return on each side. */
+const isCentred = (street: BulbStreet): boolean => street.lateral === 0;
+
+/**
+ * The street's two kerb lines across it from the circle's axis. On an offset
+ * street the inner one is nearer the axis and carries the kerb return; on a
+ * centred street they are the same distance either side and both do.
+ */
 function kerbLines(street: BulbStreet): { tIn: number; tOut: number } {
+  if (isCentred(street)) return { tIn: street.half, tOut: -street.half };
   const t0 = Math.abs(street.lateral);
   return { tIn: t0 - street.half, tOut: t0 + street.half };
 }
@@ -88,16 +108,18 @@ function kerbLines(street: BulbStreet): { tIn: number; tOut: number } {
 /**
  * The angles round the circle, in the street's frame, between which the street
  * meets it: where the inner kerb return ends on the ring, and where the outer
- * kerb meets it. The footway round the circle runs everywhere else.
+ * kerb meets it (a centred street's other return ends, mirrored). The footway
+ * round the circle runs everywhere else.
  */
 function mouthAngles(street: BulbStreet): { phiReturn: number; phiOut: number } {
   const R = CUL_DE_SAC_RADIUS_M;
   const { tIn, tOut } = kerbLines(street);
   const sArc = (u: number): number => Math.sqrt(Math.max(0, R * R - u * u));
-  const turn = kerbReturnOf(tIn);
+  const turn = kerbReturnOf(tIn, isCentred(street));
+  const phiReturn = turn ? Math.atan2(turn.u, turn.s) : Math.atan2(tIn, sArc(tIn));
   return {
-    phiReturn: turn ? Math.atan2(turn.u, turn.s) : Math.atan2(tIn, sArc(tIn)),
-    phiOut: Math.atan2(Math.min(tOut, R), sArc(tOut)),
+    phiReturn,
+    phiOut: isCentred(street) ? -phiReturn : Math.atan2(Math.min(tOut, R), sArc(tOut)),
   };
 }
 
@@ -142,22 +164,24 @@ export function bulbFrontOf(cx: number, cz: number, street: BulbStreet): BulbFro
  * ring by. Null where the block's one street, or its section, is not read yet.
  */
 export function bulbStreetOf(
-  block: RoundaboutBlock,
+  block: CulDeSacBlock,
   maskAt: (x: number, z: number) => number,
   profileAt: (x: number, z: number) => RoadProfile | null,
 ): BulbStreet | null {
-  const leg = roundaboutLegs(block, maskAt)[0];
+  const leg = culDeSacLegs(block, maskAt)[0];
   if (!leg) return null;
   const profile = profileAt(leg.tile.x, leg.tile.z);
   if (!profile) return null;
   const half = carriagewayHalfWidthOf(profile);
+  // How far the street's centre line stands from the circle's centre, metres: none for a centred block.
+  const centre = culDeSacCentre(block);
   const lateral =
     leg.side === RoadFlow.North || leg.side === RoadFlow.South
-      ? leg.from.x - block.x - 0.5
-      : leg.from.z - block.z - 0.5;
+      ? (leg.from.x + 0.5) * TILE_METERS - centre.x
+      : (leg.from.z + 0.5) * TILE_METERS - centre.z;
   return {
     side: leg.side,
-    lateral: lateral * TILE_METERS,
+    lateral,
     half,
     kerb: hasKerbs(profile) ? Math.min(kerbWidthOf(profile), TILE_METERS / 2 - half) : 0,
   };
@@ -217,11 +241,19 @@ export function culDeSacVertices(
     }
     return pts;
   };
-  /** Points round a circle of radius `r` about the centre, from angle `a0` to `a1` in the street's frame. */
-  const round = (r: number, a0: number, a1: number, steps: number): Point[] =>
+  /** The street's frame turned over across the street, for the second return of a centred street. */
+  const mirrored = (s: number, u: number): Point => world(s, -u);
+  /** Points round a circle of radius `r` about the centre, from angle `a0` to `a1` in a frame, the street's by default. */
+  const round = (
+    r: number,
+    a0: number,
+    a1: number,
+    steps: number,
+    frame: (s: number, u: number) => Point = world,
+  ): Point[] =>
     Array.from({ length: steps + 1 }, (_, k) => {
       const a = a0 + ((a1 - a0) * k) / steps;
-      return world(r * Math.cos(a), r * Math.sin(a));
+      return frame(r * Math.cos(a), r * Math.sin(a));
     });
   /** A band between two radii and two angles round the circle's centre. */
   const band = (
@@ -248,7 +280,7 @@ export function culDeSacVertices(
   // The street, from the circle's chord out to the block's edge.
   const sInner = sArc(tIn);
   const sOuter = sArc(tOut);
-  const cols = Math.max(1, Math.ceil((tOut - tIn) / MAX_CELL_M));
+  const cols = Math.max(1, Math.ceil(Math.abs(tOut - tIn) / MAX_CELL_M));
   const rows = Math.max(1, Math.ceil((BLOCK_HALF_M - Math.min(sInner, sOuter)) / MAX_CELL_M));
   const lineAt = (v: number): Point[] =>
     Array.from({ length: cols + 1 }, (_, i) => {
@@ -261,56 +293,75 @@ export function culDeSacVertices(
     strip(lineAt(j / rows), lineAt((j + 1) / rows), style.roadY, style.plate);
 
   // The kerb return: the inner kerb curves into the circle instead of meeting it at a corner.
-  const turn = kerbReturnOf(tIn);
-  const { phiReturn } = mouthAngles(street);
-  if (turn) {
-    const centre: Point = [turn.s, turn.u];
-    const from = Math.PI / 2;
-    let to = Math.atan2(-turn.u, -turn.s);
-    if (to < from) to += 2 * Math.PI;
-    const arc = (radius: number): Point[] =>
-      Array.from({ length: RETURN_SEGMENTS + 1 }, (_, k) => {
-        const a = from + ((to - from) * k) / RETURN_SEGMENTS;
-        return world(centre[0] + radius * Math.cos(a), centre[1] + radius * Math.sin(a));
-      });
-    const phiInner = Math.atan2(tIn, sInner);
-    const side = [world(sInner, tIn), world(turn.s, tIn), ...arc(turn.radius).slice(1)];
-    const rim = round(R, phiInner, phiReturn, RETURN_SEGMENTS);
-    strip(resample(side, 24), resample(rim, 24), style.roadY, style.plate);
-    if (street.kerb > 0) {
+  // A centred street has one on each side, the second drawn in the mirrored frame; their
+  // ground lies beyond the kerb, so the return swings out from it rather than in.
+  const centred = isCentred(street);
+  const turn = kerbReturnOf(tIn, centred);
+  const { phiReturn, phiOut } = mouthAngles(street);
+  /** Which way from its kerb line the ground beside the street lies, along `u`. */
+  const beyond = centred ? 1 : -1;
+  const layReturn = (frame: (s: number, u: number) => Point): void => {
+    if (turn) {
+      const centre: Point = [turn.s, turn.u];
+      const from = (beyond * -Math.PI) / 2;
+      let to = Math.atan2(-turn.u, -turn.s);
+      if (!centred && to < from) to += 2 * Math.PI;
+      const arc = (radius: number): Point[] =>
+        Array.from({ length: RETURN_SEGMENTS + 1 }, (_, k) => {
+          const a = from + ((to - from) * k) / RETURN_SEGMENTS;
+          return frame(centre[0] + radius * Math.cos(a), centre[1] + radius * Math.sin(a));
+        });
+      const phiInner = Math.atan2(tIn, sInner);
+      const side = [frame(sInner, tIn), frame(turn.s, tIn), ...arc(turn.radius).slice(1)];
+      const rim = round(R, phiInner, phiReturn, RETURN_SEGMENTS, frame);
+      strip(resample(side, 24), resample(rim, 24), style.roadY, style.plate);
+      if (street.kerb > 0) {
+        strip(
+          arc(turn.radius),
+          arc(Math.max(0, turn.radius - street.kerb)),
+          style.curbY,
+          style.footway,
+        );
+        strip(
+          [frame(BLOCK_HALF_M, tIn), frame(turn.s, tIn)],
+          [
+            frame(BLOCK_HALF_M, tIn + beyond * street.kerb),
+            frame(turn.s, tIn + beyond * street.kerb),
+          ],
+          style.curbY,
+          style.footway,
+        );
+      }
+    } else if (street.kerb > 0) {
       strip(
-        arc(turn.radius),
-        arc(Math.max(0, turn.radius - street.kerb)),
-        style.curbY,
-        style.footway,
-      );
-      strip(
-        [world(BLOCK_HALF_M, tIn), world(turn.s, tIn)],
-        [world(BLOCK_HALF_M, tIn - street.kerb), world(turn.s, tIn - street.kerb)],
+        [frame(BLOCK_HALF_M, tIn), frame(sInner, tIn)],
+        [
+          frame(BLOCK_HALF_M, tIn + beyond * street.kerb),
+          frame(sInner, tIn + beyond * street.kerb),
+        ],
         style.curbY,
         style.footway,
       );
     }
-  } else if (street.kerb > 0) {
-    strip(
-      [world(BLOCK_HALF_M, tIn), world(sInner, tIn)],
-      [world(BLOCK_HALF_M, tIn - street.kerb), world(sInner, tIn - street.kerb)],
-      style.curbY,
-      style.footway,
-    );
-  }
+  };
+  layReturn(world);
+  if (centred) layReturn(mirrored);
 
   if (street.kerb > 0) {
-    // The street's outer footway runs in to the circle's.
-    strip(
-      [world(BLOCK_HALF_M, tOut), world(sOuter, tOut)],
-      [world(BLOCK_HALF_M, tOut + street.kerb), world(sOuter, tOut + street.kerb)],
-      style.curbY,
-      style.footway,
-    );
-    // The footway round the circle, everywhere the street does not cross it.
-    const { phiOut } = mouthAngles(street);
-    band(R, R + street.kerb, phiOut, 2 * Math.PI + phiReturn, style.curbY, style.footway);
+    if (centred) {
+      // The footway round the circle, between the two returns.
+      band(R, R + street.kerb, phiReturn, 2 * Math.PI + phiOut, style.curbY, style.footway);
+    } else {
+      // The street's outer footway runs in to the circle's.
+      strip(
+        [world(BLOCK_HALF_M, tOut), world(sOuter, tOut)],
+        [world(BLOCK_HALF_M, tOut + street.kerb), world(sOuter, tOut + street.kerb)],
+        style.curbY,
+        style.footway,
+      );
+      // The footway round the circle, everywhere the street does not cross it.
+      band(R, R + street.kerb, phiOut, 2 * Math.PI + phiReturn, style.curbY, style.footway);
+    }
   }
 
   return { positions, colors };

@@ -18,6 +18,18 @@ export interface TilePoint {
   z: number;
 }
 
+/**
+ * The axis a centred cul-de-sac's block is three tiles long on: `'x'` for a
+ * block three wide and two deep (its street runs north-south), `'z'` for one
+ * two wide and three deep (its street runs east-west).
+ */
+export type CentredAxis = 'x' | 'z';
+
+/** A cul-de-sac's block as the world reports it: its north-west tile, and the axis of a centred one. */
+export interface CulDeSacMark extends TilePoint {
+  centred?: CentredAxis;
+}
+
 export const ZoneType = {
   None: 0,
   ResLow: 1,
@@ -641,16 +653,25 @@ export type Command =
    * any of them. Rejected, with the reason, unless the four tiles are laid
    * street of one lane each way, joined round the square, with exactly one
    * street leaving them. Inverse: `removeCulDeSac` carrying what the four
-   * tiles held before.
+   * tiles held before. With `centred` the block is instead the centred form:
+   * six tiles, three along the named axis and two along the other, coded the
+   * same way; absent, it is the 2×2 offset form.
    */
-  | { kind: 'buildCulDeSac'; x: number; z: number }
+  | { kind: 'buildCulDeSac'; x: number; z: number; centred?: CentredAxis }
   /**
    * Takes out the cul-de-sac whose north-west tile is (x, z), writing
    * `junctions` to its four tiles (north-west, north-east, south-west,
-   * south-east), or clearing all four when it is absent. The street stays.
-   * Rejected unless a cul-de-sac stands there. Inverse: `buildCulDeSac`.
+   * south-east; the six of a centred one in row order), or clearing them all
+   * when it is absent. The street stays. Rejected unless a cul-de-sac of that
+   * shape stands there. Inverse: `buildCulDeSac`.
    */
-  | { kind: 'removeCulDeSac'; x: number; z: number; junctions?: RoundaboutJunction[] }
+  | {
+      kind: 'removeCulDeSac';
+      x: number;
+      z: number;
+      centred?: CentredAxis;
+      junctions?: RoundaboutJunction[];
+    }
   /**
    * Clears road/building/zone/trees. On a crossing tile it takes only the road
    * passing over, the one on top; `layer: 'over'` asks for exactly that and
@@ -1174,10 +1195,11 @@ export interface SimSnapshot {
    */
   roundabouts?: TilePoint[];
   /**
-   * Every cul-de-sac, by the north-west tile of its block. The whole list
-   * travels whenever any of it changes; absent means nothing has.
+   * Every cul-de-sac, by the north-west tile of its block, each saying which
+   * shape it is. The whole list travels whenever any of it changes; absent
+   * means nothing has.
    */
-  culDeSacs?: TilePoint[];
+  culDeSacs?: CulDeSacMark[];
   /**
    * How hard each service kind is being leaned on (see ServiceLoad): ten
    * numbers, cheap at the snapshot rate, and the only thing that makes a

@@ -89,7 +89,7 @@ import { platOf, platSourceOf, type Parcel, type Plat, type PlatSource } from '.
 import { parcelWithYard, yardRowsBehind, yardTilesOf } from './world/yard';
 import { buildRoadCells, type RoadCells } from './world/roadnet';
 import { ROUNDABOUT_CODE } from './shared/roundabout';
-import { CUL_DE_SAC_CODE } from './shared/culdesac';
+import { culDeSacCentre, culDeSacCodeOf, culDeSacTiles } from './shared/culdesac';
 import { isUnderground } from './shared/view';
 import { createRenderer, createWorldScene, timeOfDayColors } from './render/scene';
 import { createBloomPipeline, createScenePipeline, type BloomPipeline } from './render/bloom';
@@ -335,9 +335,8 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
         (tx, tz) => (inBounds(tx, tz) ? (clientGrid.roadMask[tz * clientGrid.size + tx] ?? 0) : 0),
         (tx, tz) => clientGrid.profileAt(tx, tz),
       );
-      return ring
-        ? bulbFrontOf((block.x + 1) * TILE_METERS, (block.z + 1) * TILE_METERS, ring)
-        : null;
+      const centre = culDeSacCentre(block);
+      return ring ? bulbFrontOf(centre.x, centre.z, ring) : null;
     },
   );
 
@@ -2215,12 +2214,11 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
     roundaboutGround: () =>
       roundaboutGroundOf(
         clientGrid,
-        (x, z) =>
-          clientGrid.roundaboutAt(x, z)
-            ? ROUNDABOUT_CODE
-            : clientGrid.culDeSacAt(x, z)
-              ? CUL_DE_SAC_CODE
-              : 0,
+        (x, z) => {
+          if (clientGrid.roundaboutAt(x, z)) return ROUNDABOUT_CODE;
+          const cul = clientGrid.culDeSacAt(x, z);
+          return cul ? culDeSacCodeOf(cul) : 0;
+        },
         (id) => clientGrid.profileById(id),
       ),
     // The worker's own deck solver, run against the mirror, so the ghost
@@ -2895,7 +2893,9 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
         for (const block of snap.roundabouts) markPolesAt(block.x, block.z);
       }
       if (snap.culDeSacs) {
-        for (const block of snap.culDeSacs) markPolesAt(block.x, block.z);
+        for (const block of snap.culDeSacs) {
+          for (const t of culDeSacTiles(block)) markPolesAt(t.x, t.z);
+        }
       }
     }
     // The yards behind a new home's lot read the zone, so it lands before the homes do.

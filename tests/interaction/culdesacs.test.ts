@@ -1,12 +1,17 @@
 import { describe, expect, it } from 'vitest';
 import { tileIndex } from '../../src/shared/constants';
 import {
+  CENTRED_CUL_DE_SAC_CODE,
+  centredCulDeSacAtEnd,
   CUL_DE_SAC_CODE,
   CUL_DE_SAC_RADIUS_M,
   CUL_DE_SAC_REFUSALS,
   CUL_DE_SAC_ROUTE_RADIUS_M,
   culDeSacAtEnd,
+  culDeSacCentre,
   culDeSacCommands,
+  culDeSacTiles,
+  type CulDeSacBlock,
 } from '../../src/shared/culdesac';
 import { isPresetProfileId, presetProfileForTier } from '../../src/shared/roadprofile';
 import { blockTiles, ringCentre } from '../../src/shared/roundabout';
@@ -271,5 +276,244 @@ describe('a cul-de-sac laid beyond a dead end', () => {
     h2.sim.handleMessage({ type: 'loadSave', data: saved.data });
     h2.ticks(2);
     expect(network(h2).getCulDeSacs()).toMatchObject([BLOCK]);
+  });
+});
+
+// --- The centred form: six tiles, the circle on the street's own centre line -------
+
+// The same street; the block beyond its end is three tiles across it and two along.
+const CENTRED: CulDeSacBlock = { x: X - 1, z: Z + 1, centred: 'x' };
+const CENTRED_TILES = culDeSacTiles(CENTRED);
+const MOUTH = { x: X, z: Z + 1 };
+
+function stampCentred(h: Harness, seq: number): ReturnType<typeof run> {
+  const plan = centredCulDeSacAtEnd(END, groundOf(h));
+  expect(plan.refusal).toBeNull();
+  return run(h, seq, culDeSacCommands(plan, RoadTier.TwoLane));
+}
+
+describe('a centred cul-de-sac laid beyond a dead end', () => {
+  it('is laid in one batch for six tiles of street, and stored as the centred code on those tiles', () => {
+    const h = deadEndStreet();
+    const laid = stampCentred(h, 2);
+    expect(laid.ok, laid.reason).toBe(true);
+    expect(laid.cost).toBe(6 * twoLaneSpec.costPerTile);
+    const g = grid(h);
+    for (const t of CENTRED_TILES) {
+      expect(g.junctionControl[tileIndex(t.x, t.z)]).toBe(CENTRED_CUL_DE_SAC_CODE);
+      expect(g.roadTier[tileIndex(t.x, t.z)]).toBe(RoadTier.TwoLane);
+    }
+    const snaps = h.messages.flatMap((m) => (m.type === 'snapshot' ? [m.snap as SimSnapshot] : []));
+    expect(
+      snaps.some((s) =>
+        s.culDeSacs?.some((c) => c.x === CENTRED.x && c.z === CENTRED.z && c.centred === 'x'),
+      ),
+    ).toBe(true);
+    expect(network(h).getCulDeSacs()).toMatchObject([CENTRED]);
+  });
+
+  it('is taken away whole by one undo, leaving the street as it was', () => {
+    const h = deadEndStreet();
+    const before = grid(h);
+    const laid = stampCentred(h, 2);
+    expect(laid.ok).toBe(true);
+    expect(run(h, 3, laid.inverse).ok).toBe(true);
+    const after = grid(h);
+    expect(Array.from(after.roadTier)).toEqual(Array.from(before.roadTier));
+    expect(Array.from(after.roadMask)).toEqual(Array.from(before.roadMask));
+    expect(Array.from(after.junctionControl)).toEqual(Array.from(before.junctionControl));
+    expect(network(h).getCulDeSacs()).toEqual([]);
+  });
+
+  it('is taken out, and put back, by its own commands, each the other’s exact inverse', () => {
+    const h = deadEndStreet();
+    expect(stampCentred(h, 2).ok).toBe(true);
+    const out = run(h, 3, [{ kind: 'removeCulDeSac', x: CENTRED.x, z: CENTRED.z, centred: 'x' }]);
+    expect(out.ok).toBe(true);
+    expect(out.inverse[0]).toEqual({
+      kind: 'buildCulDeSac',
+      x: CENTRED.x,
+      z: CENTRED.z,
+      centred: 'x',
+    });
+    expect(network(h).getCulDeSacs()).toEqual([]);
+    expect(grid(h).roadTier[tileIndex(CENTRED.x, CENTRED.z)]).toBe(RoadTier.TwoLane);
+    const back = run(h, 4, out.inverse);
+    expect(back.ok).toBe(true);
+    expect(back.inverse[0]).toMatchObject({
+      kind: 'removeCulDeSac',
+      x: CENTRED.x,
+      z: CENTRED.z,
+      centred: 'x',
+    });
+    expect((back.inverse[0] as { junctions: unknown[] }).junctions).toHaveLength(6);
+    expect(network(h).getCulDeSacs()).toMatchObject([CENTRED]);
+  });
+
+  it('is not taken out by a command that names the other shape, or the wrong tile', () => {
+    const h = deadEndStreet();
+    expect(stampCentred(h, 2).ok).toBe(true);
+    expect(run(h, 3, [{ kind: 'removeCulDeSac', x: CENTRED.x, z: CENTRED.z }]).ok).toBe(false);
+    expect(
+      run(h, 4, [{ kind: 'removeCulDeSac', x: CENTRED.x + 1, z: CENTRED.z, centred: 'x' }]).ok,
+    ).toBe(false);
+    expect(network(h).getCulDeSacs()).toMatchObject([CENTRED]);
+  });
+
+  it('is one thing: a control, a turn or a lane turn set on one of its tiles is refused', () => {
+    const h = deadEndStreet();
+    expect(stampCentred(h, 2).ok).toBe(true);
+    for (const t of CENTRED_TILES) {
+      expect(
+        run(h, 10, [{ kind: 'setJunctionControl', x: t.x, z: t.z, control: 'signal' }]).ok,
+      ).toBe(false);
+      expect(
+        run(h, 11, [
+          { kind: 'setJunctionTurns', x: t.x, z: t.z, arm: RoadFlow.North, allowed: 0b0010 },
+        ]).ok,
+      ).toBe(false);
+      expect(grid(h).junctionControl[tileIndex(t.x, t.z)]).toBe(CENTRED_CUL_DE_SAC_CODE);
+    }
+  });
+
+  it('is not warranted a control where its street joins the circle', () => {
+    const h = deadEndStreet();
+    expect(stampCentred(h, 2).ok).toBe(true);
+    const nodes = network(h)
+      .getNodes()
+      .filter((n) => CENTRED_TILES.some((t) => t.x === n.x && t.z === n.z));
+    expect(nodes).toHaveLength(1);
+    expect(nodes[0]).toMatchObject({ x: MOUTH.x, z: MOUTH.z, control: 'none', warranted: 'none' });
+  });
+
+  it.each(CENTRED_TILES.map((t, i) => [i, t] as const))(
+    'goes whole when its tile %i is bulldozed, and comes back whole with the undo',
+    (_, tile) => {
+      const h = deadEndStreet();
+      expect(stampCentred(h, 2).ok).toBe(true);
+      const before = grid(h);
+      const razed = run(h, 3, [{ kind: 'bulldoze', tiles: [tile] }]);
+      expect(razed.ok).toBe(true);
+      const g = grid(h);
+      for (const t of CENTRED_TILES) {
+        expect(g.roadTier[tileIndex(t.x, t.z)]).toBe(RoadTier.None);
+        expect(g.junctionControl[tileIndex(t.x, t.z)]).toBe(0);
+      }
+      expect(network(h).getCulDeSacs()).toEqual([]);
+      expect(run(h, 4, razed.inverse).ok).toBe(true);
+      const back = grid(h);
+      expect(Array.from(back.roadTier)).toEqual(Array.from(before.roadTier));
+      expect(Array.from(back.roadMask)).toEqual(Array.from(before.roadMask));
+      expect(Array.from(back.junctionControl)).toEqual(Array.from(before.junctionControl));
+      expect(network(h).getCulDeSacs()).toMatchObject([CENTRED]);
+    },
+  );
+
+  it('reads as plain road once the street that met it is bulldozed', () => {
+    const h = deadEndStreet();
+    expect(stampCentred(h, 2).ok).toBe(true);
+    expect(run(h, 3, [{ kind: 'bulldoze', tiles: [END] }]).ok).toBe(true);
+    expect(network(h).getCulDeSacs()).toEqual([]);
+  });
+
+  it('is refused by the world where the six tiles are not laid, with the reason', () => {
+    const h = deadEndStreet();
+    const open = run(h, 2, [{ kind: 'buildCulDeSac', x: CENTRED.x, z: CENTRED.z, centred: 'x' }]);
+    expect(open.ok).toBe(false);
+    expect(open.reason).toBe(CUL_DE_SAC_REFUSALS.centredNotLaid);
+  });
+
+  it('is refused as an offset one over the tiles a centred one holds', () => {
+    const h = deadEndStreet();
+    expect(stampCentred(h, 2).ok).toBe(true);
+    const again = run(h, 3, [{ kind: 'buildCulDeSac', x: X, z: Z + 1 }]);
+    expect(again.ok).toBe(false);
+    expect(again.reason).toBe(CUL_DE_SAC_REFUSALS.already);
+  });
+
+  it('keeps its circle for cars: one lane round the new centre, anticlockwise, no road across the island', () => {
+    const h = deadEndStreet();
+    expect(stampCentred(h, 2).ok).toBe(true);
+    const cars = network(h);
+    const inside = (t: TilePoint): boolean => CENTRED_TILES.some((c) => c.x === t.x && c.z === t.z);
+    const loops = cars.getEdges().filter((e) => e.a === e.b);
+    expect(loops).toHaveLength(1);
+    const loop = loops[0]!;
+    expect(loop.tiles).toHaveLength(7);
+    const centre = culDeSacCentre(CENTRED);
+    for (const p of loop.route ?? []) {
+      expect(Math.hypot(p.x - centre.x, p.z - centre.z)).toBeLessThan(CUL_DE_SAC_RADIUS_M - 3);
+    }
+    expect((loop.lanesAtoB ?? 0) + (loop.lanesBtoA ?? 0)).toBe(1);
+    expect(loop.length).toBeCloseTo((2 * Math.PI * CUL_DE_SAC_ROUTE_RADIUS_M) / 20, 6);
+    // Nothing the graph holds runs straight from the mouth to the tile across the island.
+    const across = cars.getEdges().filter((e) => e.tiles.length === 2 && e.tiles.every(inside));
+    expect(across).toEqual([]);
+    expect(cars.findPath({ x: X, z: Z - 8 }, { x: X, z: Z + 2 })).not.toBeNull();
+    expect(cars.findPath({ x: X, z: Z + 2 }, { x: X, z: Z - 8 })).not.toBeNull();
+  });
+
+  describe('a car bound for, or leaving, a home round the circle', () => {
+    const centre = culDeSacCentre(CENTRED);
+    const radiusOf = (p: { x: number; z: number }): number =>
+      Math.hypot(p.x - centre.x, p.z - centre.z);
+    const angleOf = (p: { x: number; z: number }): number =>
+      Math.atan2(p.z - centre.z, p.x - centre.x);
+    const onBlock = (route: { x: number; z: number }[]): { x: number; z: number }[] =>
+      route.filter((p) => radiusOf(p) <= CUL_DE_SAC_RADIUS_M);
+    const turnOf = (pts: { x: number; z: number }[]): number => {
+      let total = 0;
+      for (let i = 1; i < pts.length; i++) {
+        let d = angleOf(pts[i]!) - angleOf(pts[i - 1]!);
+        while (d > Math.PI) d -= 2 * Math.PI;
+        while (d <= -Math.PI) d += 2 * Math.PI;
+        total += d;
+      }
+      return total;
+    };
+    const home = { x: CENTRED.x + 3, z: CENTRED.z + 1 };
+    const away = { x: X, z: Z - 8 };
+
+    function routeOf(from: TilePoint, to: TilePoint): { x: number; z: number }[] {
+      const h = deadEndStreet();
+      expect(stampCentred(h, 2).ok).toBe(true);
+      const path = network(h).findPath(from, to);
+      expect(path?.route).toBeDefined();
+      return path!.route!;
+    }
+
+    it('drives round the circle on its route line, anticlockwise, to a home on the far side', () => {
+      const block = onBlock(routeOf(away, home));
+      expect(block.length).toBeGreaterThan(9);
+      for (const p of block) {
+        expect(Math.abs(radiusOf(p) - CUL_DE_SAC_ROUTE_RADIUS_M)).toBeLessThan(1);
+      }
+      expect(turnOf(block)).toBeLessThan(-Math.PI / 4);
+    });
+
+    it('drives out the same way from a home round the circle, ending on the street', () => {
+      const route = routeOf(home, away);
+      const block = onBlock(route);
+      expect(block.length).toBeGreaterThan(9);
+      for (const p of block) {
+        expect(Math.abs(radiusOf(p) - CUL_DE_SAC_ROUTE_RADIUS_M)).toBeLessThan(1);
+      }
+      expect(turnOf(block)).toBeLessThan(-Math.PI / 4);
+      expect(radiusOf(route[route.length - 1]!)).toBeGreaterThan(CUL_DE_SAC_RADIUS_M);
+    });
+  });
+
+  it('survives a save, which carries nothing new but the code', () => {
+    const h = deadEndStreet();
+    expect(stampCentred(h, 2).ok).toBe(true);
+    h.sim.handleMessage({ type: 'requestSave' });
+    const saved = h.messages.filter((m) => m.type === 'save').pop();
+    expect(saved?.type).toBe('save');
+    if (!saved || saved.type !== 'save') return;
+    const h2 = sandboxed();
+    h2.sim.handleMessage({ type: 'loadSave', data: saved.data });
+    h2.ticks(2);
+    expect(network(h2).getCulDeSacs()).toMatchObject([CENTRED]);
+    expect(Array.from(grid(h2).junctionControl)).toEqual(Array.from(grid(h).junctionControl));
   });
 });

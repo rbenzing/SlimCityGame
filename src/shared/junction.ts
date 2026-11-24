@@ -416,6 +416,13 @@ const CONTROL_BY_CODE: readonly JunctionControl[] = [
  */
 export const CUL_DE_SAC_CODE = 7;
 
+/**
+ * The byte the six tiles of a centred cul-de-sac hold. Code 8 is reserved for
+ * the centred roundabout, so this one is appended after it; like the others it
+ * is never a control.
+ */
+export const CENTRED_CUL_DE_SAC_CODE = 9;
+
 /** The byte a stored override holds; 0 for no override. */
 export function codeForControl(control: JunctionControl | null): number {
   if (control === null) return 0;
