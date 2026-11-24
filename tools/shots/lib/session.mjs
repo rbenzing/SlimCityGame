@@ -12,6 +12,19 @@ const NOON = 0.5;
 /** Frames drawn after a move or a command before the page is judged still. */
 const SETTLE_FRAMES = 3;
 
+/** Playwright's full Chromium with WebGPU switched on: the bundled headless shell cannot give three a WebGPU canvas. */
+const WEBGPU_ARGS = [
+  '--enable-unsafe-webgpu',
+  '--ignore-gpu-blocklist',
+  '--use-angle=d3d11',
+  '--enable-features=WebGPU',
+];
+/** A console error from three's WebGPU renderer or a GPU validation failure: the frame is not what the game draws. */
+const GPU_FAULT = /THREE\.WebGPURenderer|GPUValidationError/;
+
+/** A console warning that names WebGPU, a pipeline, validation or a render pass: logged, not fatal. */
+const GPU_WARNING = /WebGPU|pipeline|validation|RenderPassEncoder/i;
+
 /** Titles of the toasts the game raised for a refused command, recorded as they appear. */
 const watchRefusals = () => {
   window.__refused = [];
@@ -29,16 +42,30 @@ const watchRefusals = () => {
 /**
  * Open the game ready to place things.
  *
- * Returns `{ page, errors, send, refusals, close }`. `send(label, commands)`
+ * Returns `{ page, backend, errors, send, refusals, close }`; `backend` is 'webgpu' or 'webgl2'.
+ * `webgpu: true` (or SHOTS_WEBGPU=1) runs the real WebGPU backend; a THREE.WebGPURenderer or
+ * GPUValidationError console error lands in `errors` on any backend and fails the series. `send(label, commands)`
  * runs one command batch through the game's own path.
  */
-export async function openSession(url, { fresh = false, seed = SEED, bloom = false } = {}) {
-  const browser = await chromium.launch({ headless: true, args: ['--use-angle=default'] });
+export async function openSession(
+  url,
+  { fresh = false, seed = SEED, bloom = false, webgpu = false } = {},
+) {
+  // SHOTS_WEBGL=1 asks for the WebGL2 fallback and wins; SHOTS_WEBGPU=1 asks every series for WebGPU.
+  const wantGpu = process.env.SHOTS_WEBGL !== '1' && (webgpu || process.env.SHOTS_WEBGPU === '1');
+  const browser = await chromium.launch(
+    wantGpu
+      ? { headless: true, channel: 'chromium', args: WEBGPU_ARGS }
+      : { headless: true, args: ['--use-angle=default'] },
+  );
   const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
   const errors = [];
   page.on('pageerror', (e) => errors.push(e.message));
   page.on('console', (m) => {
     if (m.type() === 'error') console.log('[console.error]', m.text());
+    if (m.type() === 'error' && GPU_FAULT.test(m.text())) errors.push(m.text());
+    if (m.type() === 'warning' && GPU_WARNING.test(m.text()))
+      console.log('[gpu warning]', m.text().split('\n')[0]);
     if (process.env.SHOTS_WEBGL === '1' && /WebGL ?2|WebGPU/i.test(m.text()))
       console.log('[renderer]', m.text());
   });
@@ -73,6 +100,10 @@ export async function openSession(url, { fresh = false, seed = SEED, bloom = fal
   await page.goto(new URL(query, url).href, { waitUntil: 'domcontentloaded' });
   await page.waitForSelector('#viewport canvas', { timeout: 60000 });
   await hooksReady(page);
+  const backend = await page.evaluate(() => window.__slimcity.backend());
+  console.log(`[backend] ${backend}`);
+  if (wantGpu && backend !== 'webgpu')
+    errors.push(`WebGPU was asked for but the page drew with ${backend}`);
 
   const send = (label, commands) =>
     page.evaluate(([l, c]) => window.__slimcity.cmd(l, c), [label, commands]);
@@ -99,6 +130,7 @@ export async function openSession(url, { fresh = false, seed = SEED, bloom = fal
   return {
     browser,
     page,
+    backend,
     errors,
     send,
     pinDay,

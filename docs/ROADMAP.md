@@ -25,7 +25,7 @@ current behavior only and carry no dates of their own._
 
 ## Status (2026-09-29)
 
-**Test suite:** 11,753 tests passing across 335 test files, run 2026-11-24.
+**Test suite:** 11,754 tests passing across 335 test files, run 2026-11-24.
 This is the only test count in the documentation set. When the suite changes
 again, update the figure here and nowhere else.
 
@@ -64,13 +64,19 @@ again, update the figure here and nowhere else.
   request:
   harbours and boats (marinas, docks, shipyards), deferred in
   [DESIGN.md](DESIGN.md).
+- Frames are still taken on the WebGL2 fallback, which players' browsers do
+  not use, in every shot series but `water` `[R-process-011]`. On WebGPU the
+  `lots` series failed twice for want of a farm it looks for, unexplained;
+  a building's instanced mesh may reach 9 vertex buffers, never seen
+  refused; a 404 and an empty draw call in the console are untraced.
 - A new map holds little water for that surface to show on. Over 40 new-game
   seeds (2026-11-24) a map was 3.4% water: all had lakes, 26 had any ocean,
   often a few hundred tiles in a corner, and 8 had a river. Proposed and
   not built: [a coast and a river on every new map](specs/map-generation.md).
 - [Centred circles](specs/centred-circles.md) are built. What they leave: a
   circle with two arms on a plain road waits for a source; the placing
-  preview of a centred roundabout was never looked at; a centred ring on a
+  preview of either roundabout is its tiles and a label, not the ring; a
+  centred ring on a
   one-way or bus-lane street was never drawn in a frame.
 - A bend turns at its kerb return's radius, not its class's minimum curve
   radius `[R-roads-081]`: the wider sweep leaves the tiles the road holds, so

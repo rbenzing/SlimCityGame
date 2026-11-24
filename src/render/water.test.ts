@@ -59,6 +59,9 @@ import {
 import { WaterKind, deriveWaterBodies, sampleWater } from '../shared/waterbodies';
 import { WAVE_TRAINS } from '../shared/waves';
 
+/** WebGPU's default maxVertexBuffers; a pipeline reading more fails to build and draws nothing. */
+const WEBGPU_MAX_VERTEX_BUFFERS = 8;
+
 describe('foulMix', () => {
   it('mixes by the square root of the fouling, so a quarter fouled is half brown and a smudge still shows', () => {
     expect(foulMix(0.25)).toBeCloseTo(0.5, 9);
@@ -565,16 +568,12 @@ describe('WaterRenderer', () => {
     new WaterRenderer(scene, height, mask, size);
     const geometry = (scene.children[0] as THREE.Mesh).geometry;
     const position = geometry.attributes.position!;
-    const fetch = geometry.attributes.waterFetch!;
-    const swellTau = geometry.attributes.waterSwellTau!;
-    const swellSlow = geometry.attributes.waterSwellSlow!;
-    const swellAmp = geometry.attributes.waterSwellAmp!;
+    const shape = geometry.attributes.waterShape!;
+    const swell = geometry.attributes.waterSwell!;
     const flow = geometry.attributes.waterFlow!;
-    const depth = geometry.attributes.waterDepth!;
-    expect(fetch.count).toBe(position.count);
-    expect(swellTau.itemSize).toBe(1);
-    expect(swellSlow.itemSize).toBe(2);
-    expect(swellAmp.itemSize).toBe(1);
+    expect(shape.count).toBe(position.count);
+    expect(shape.itemSize).toBe(4);
+    expect(swell.itemSize).toBe(4);
     expect(flow.itemSize).toBe(2);
     const bodies = deriveWaterBodies(mask, size, (tx, tz) =>
       height((tx + 0.5) * TILE_METERS, (tz + 0.5) * TILE_METERS),
@@ -583,19 +582,19 @@ describe('WaterRenderer', () => {
     let sawFlow = false;
     for (let i = 0; i < position.count; i++) {
       const s = sampleWater(bodies, position.getX(i), position.getZ(i));
-      expect(Math.abs(fetch.getX(i) - s.fetchM)).toBeLessThanOrEqual(s.fetchM * 1e-6 + 1e-6);
-      expect(swellTau.getX(i)).toBeCloseTo(s.swellTau, 3);
-      expect(swellSlow.getX(i)).toBeCloseTo(s.swellSlowX, 6);
-      expect(swellSlow.getY(i)).toBeCloseTo(s.swellSlowZ, 6);
-      expect(swellAmp.getX(i)).toBeCloseTo(s.swellAmp, 5);
-      if (depth.getX(i) > 0) {
+      expect(Math.abs(shape.getZ(i) - s.fetchM)).toBeLessThanOrEqual(s.fetchM * 1e-6 + 1e-6);
+      expect(swell.getX(i)).toBeCloseTo(s.swellTau, 3);
+      expect(swell.getY(i)).toBeCloseTo(s.swellSlowX, 6);
+      expect(swell.getZ(i)).toBeCloseTo(s.swellSlowZ, 6);
+      expect(swell.getW(i)).toBeCloseTo(s.swellAmp, 5);
+      if (shape.getX(i) > 0) {
         expect(flow.getX(i)).toBeCloseTo(s.flowX, 5);
         expect(flow.getY(i)).toBeCloseTo(s.flowZ, 5);
       } else {
         expect(flow.getX(i)).toBe(0);
         expect(flow.getY(i)).toBe(0);
       }
-      if (swellAmp.getX(i) > 0.5 && swellSlow.getX(i) > 0) sawSwell = true;
+      if (swell.getW(i) > 0.5 && swell.getY(i) > 0) sawSwell = true;
       if (Math.hypot(flow.getX(i), flow.getY(i)) > 0.1) sawFlow = true;
     }
     expect(sawSwell).toBe(true);
@@ -630,13 +629,25 @@ describe('WaterRenderer', () => {
     const scene = new THREE.Scene();
     new WaterRenderer(scene, flatHeightAt, allWet(), 4);
     const geometry = (scene.children[0] as THREE.Mesh).geometry;
-    const murk = geometry.attributes.waterMurk!;
+    const shape = geometry.attributes.waterShape!;
     const scatter = geometry.attributes.waterScatter!;
-    expect(murk.count).toBe(geometry.attributes.position!.count);
-    for (let i = 0; i < murk.count; i++) {
-      expect(murk.getX(i)).toBeCloseTo(ocean.murk, 6);
+    expect(shape.count).toBe(geometry.attributes.position!.count);
+    for (let i = 0; i < shape.count; i++) {
+      expect(shape.getW(i)).toBeCloseTo(ocean.murk, 6);
       expect(scatter.getZ(i)).toBeCloseTo(ocean.scatter[2], 6);
     }
+  });
+
+  it('draws from at most 8 vertex buffers, the most a WebGPU pipeline accepts', () => {
+    const scene = new THREE.Scene();
+    new WaterRenderer(scene, flatHeightAt, allWet(), 4);
+    const geometry = (scene.children[0] as THREE.Mesh).geometry;
+    const buffers = new Set(
+      Object.values(geometry.attributes).map(
+        (a) => (a as THREE.InterleavedBufferAttribute).data ?? a,
+      ),
+    );
+    expect(buffers.size).toBeLessThanOrEqual(WEBGPU_MAX_VERTEX_BUFFERS);
   });
 
   it('builds its node graph from the exported train list, every train once', () => {
@@ -714,7 +725,7 @@ describe('WaterRenderer', () => {
     /** Depth of the vertex standing on a tile's centre. */
     const depthAtTile = (mesh: THREE.Mesh, tx: number, tz: number): number | undefined => {
       const position = mesh.geometry.attributes.position!;
-      const depth = mesh.geometry.attributes.waterDepth!;
+      const depth = mesh.geometry.attributes.waterShape!;
       for (let i = 0; i < position.count; i++) {
         if (
           position.getX(i) === (tx + 0.5) * TILE_METERS &&
@@ -813,12 +824,12 @@ describe('WaterRenderer', () => {
     });
   });
 
-  it('carries a waterDepth vertex attribute from the injected heightAt sampler', () => {
+  it('carries the depth, in the first slot of waterShape, from the injected heightAt sampler', () => {
     const scene = new THREE.Scene();
     new WaterRenderer(scene, mixedHeightAt, maskOf(mixedHeightAt, 4), 4);
     const mesh = scene.children[0] as THREE.Mesh;
     const position = mesh.geometry.attributes.position!;
-    const depth = mesh.geometry.attributes.waterDepth!;
+    const depth = mesh.geometry.attributes.waterShape!;
     expect(depth.count).toBe(position.count);
 
     let sawDeep = false;
