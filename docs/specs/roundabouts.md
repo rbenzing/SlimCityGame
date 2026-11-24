@@ -179,6 +179,7 @@ Every figure in the Numbers table above is sourced and scaled to the 20 m tile t
 - Stamp on a laid junction, quarter nearest the pointer, over laying a square and converting it with the inspector: a laid square reads as four junctions until converted.
 - Store nothing new, over a roundabout layer: it would need a save version for what the control layer already records.
 - A 2×2 block, over 3×3 with radial legs: 60 m is a two-lane roundabout's diameter, not a compact one's.
+- A ring with radial legs is a second shape on a 3×3 block, at this ring's size: [centred-circles.md](centred-circles.md).
 - Legs stay where the roads are, over having the stamp move them; a pinwheel the player lays is accepted.
 - The ring is the four tiles' own roads read as a roundabout through the control, not a new kind of road.
 - Not built: a two-lane roundabout (a two-lane road or two-tile corridor would need one), a roundabout-ahead sign, a tramway crossing.

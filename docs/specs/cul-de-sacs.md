@@ -73,4 +73,5 @@ The ring is nearer a lot at the middle of a block side than at its corner, so a 
 - Real radius on a 2×2 block, over a one-tile circle of 8 m: 8 m is below every street code found and no fire engine turns in it.
 - No length cap on a dead-end street and no rule that a long one must end in a turnaround: codes differ (150 ft, 600 ft), and the player's street is the player's choice.
 - No paint in the bulb: a local street's lines run to the circle's edge and stop.
+- A bulb on the street's centre line is a second shape, not a change to this one: [centred-circles.md](centred-circles.md).
 - The code shares the junction-control byte and is no control: no new grid layer, no save version, and an old save loads unchanged.

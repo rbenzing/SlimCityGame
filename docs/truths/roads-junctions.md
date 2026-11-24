@@ -259,3 +259,19 @@ Back to [the index](../GROUND-TRUTHS.md).
   back of the kerb (PROWAG R305). The stop line keeps 1.2 m before it. —
   [furniture](../world-sim/road-model/furniture-and-what-gates-it.md);
   `junctionArmLayout` in `src/shared/junctionpaint.ts`
+- [R-roads-097] A centred cul-de-sac is the centred cul-de-sac code on all six tiles of an
+  intact block of street tiles, three across its street and two along, beyond
+  a dead end that joins the middle tile of a long side; nothing else is
+  stored. Its circle is the offset bulb's, centred on the street's centre
+  line where the two rows meet. It is one thing as the offset bulb is
+  ([R-roads-086]), every outer side is frontage, and no road but its street
+  touches the block. — [centred-circles.md](../specs/centred-circles.md)
+- [R-roads-098] A centred roundabout is the centred roundabout code on all nine tiles of
+  an intact 3×3 block of street tiles on the ground, the junction's tile in
+  the middle; nothing else is stored, and the code is never read as the
+  compact roundabout's. Its ring is the compact ring, centred on the middle
+  tile, and each of its three or four legs enters through the middle of a
+  side on the ring's centre line. It is one thing as the compact roundabout
+  is ([R-roads-071]), with its paint and entry capacity ([R-roads-070],
+  [R-roads-072]). No lot fronts any of its tiles, and no road but a leg
+  touches the block. — [centred-circles.md](../specs/centred-circles.md)
