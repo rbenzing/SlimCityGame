@@ -67,7 +67,7 @@ Swell in 8 m of water runs 8.9 m/s and 71 to 97 m long; in 1 m, 3.1 m/s and 25 t
 - `src/shared/waterbodies.ts` `deriveWaterBodies`, `sampleWater`, `WaterKind` — kind, fetch, swell arrival and current from the water mask and the heights.
 - `src/shared/waves.ts` `WAVE_TRAINS`, `surfaceHeightAt`, `swellHeightAt`, `waveSlopeAt` — the one table and its three readers.
 - `src/render/waterlook.ts` — foam, reflection, absorption, gusts and the bed's net as pure functions, with every dial.
-- `src/render/water.ts` `WaterRenderer`, `buildWaterGrid`, `markTerrainChanged`, `setScreenRead` — the mesh over wet tiles, the two node graphs, the rebuild.
+- `src/render/water.ts` `WaterRenderer`, `buildWaterGrid`, `markTerrainChanged`, `setScreenRead` — the mesh over wet tiles, the two node graphs, the rebuild; its per-vertex data packed into 6 vertex buffers `[R-render-055]`.
 - `src/render/bloom.ts` `createScenePipeline` — the pass the frame is drawn through when bloom is off, so the water's read is the same.
 - `tools/shots/series/views/water.mjs` — the frames.
 
