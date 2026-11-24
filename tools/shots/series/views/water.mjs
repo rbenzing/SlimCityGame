@@ -275,7 +275,7 @@ export default defineSeries({
   purpose:
     'The three kinds of water read as what they are: swell rolls in from the ocean edge and dies behind land, a lake is calmer upwind than downwind, a river drifts toward its outlet and is still at its banks, and the surface meets every shore with no gap.',
   budgetS: 90,
-  session: { bloom: true },
+  session: { bloom: true, webgpu: true },
   subjects: [{ id: 'ocean' }, { id: 'lake' }, { id: 'river' }, { id: 'mouth' }],
   scene,
   frames: [
