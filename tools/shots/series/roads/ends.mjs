@@ -60,18 +60,22 @@ const avenue = (id, blocked) => ({
   ],
 });
 
-/** A two-lane street with a cul-de-sac laid beyond its end by the game's tool, on the south half of the end tile or the north. */
-const culdesac = (id, south) => ({
+/**
+ * A two-lane street with a cul-de-sac laid beyond its end by the game's tool, the pointer `across`
+ * of the way down the end tile (across the street): to the south half or the north half it lays
+ * the offset form on that side, over the middle the centred one. `rows` are the block's rows
+ * beyond the end, as offsets from the street's own row.
+ */
+const culdesac = (id, across, rows) => ({
   id,
   pad: { w: LENGTH, h: 2 * ROW + 1 },
   view: { x0: HOMES_FROM - 2, z0: 0, length: 11, width: 2 * ROW + 1 },
   close: atEnd(ROW, 6),
   lay: (p) => [p.road(TIER.twoLane, p.row(ROW, 0, LAST)), ...lining(p, ROW, HOMES_FROM, LAST - 1)],
   after: async (p, { page, aim, clickTool }) => {
-    await clickTool(page, aim, 'culdesac', p.at(LAST, ROW), [0.5, south ? 0.85 : 0.15]);
-    // The block of four tiles beyond the end, on the side the tool was pointed at.
-    const top = south ? ROW : ROW - 1;
-    return [0, 1].flatMap((dx) => [0, 1].map((dz) => p.at(LAST + 1 + dx, top + dz)));
+    await clickTool(page, aim, 'culdesac', p.at(LAST, ROW), [0.5, across]);
+    // The block beyond the end, on the side the tool was pointed at.
+    return [0, 1].flatMap((dx) => rows.map((dz) => p.at(LAST + 1 + dx, ROW + dz)));
   },
 });
 
@@ -141,7 +145,8 @@ export default defineSeries({
         return [];
       },
     },
-    culdesac('culdesac-south', true),
-    culdesac('culdesac-north', false),
+    culdesac('culdesac-south', 0.85, [0, 1]),
+    culdesac('culdesac-north', 0.15, [-1, 0]),
+    culdesac('culdesac-centred', 0.5, [-1, 0, 1]),
   ],
 });
