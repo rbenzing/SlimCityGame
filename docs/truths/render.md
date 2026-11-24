@@ -337,4 +337,7 @@ Back to [the index](../GROUND-TRUTHS.md).
   sea level lay tens of metres wide on a flat shelf under the water's own
   foam. — [water-surface.md](../specs/water-surface.md); `seabedColor` in
   `src/render/terrain.ts`
+- [R-render-055] A mesh uses at most 8 vertex buffers, WebGPU's limit: pack scalars into
+  `vec4` attributes. WebGL2 allows 16, so only a WebGPU run shows the fault.
+  — [water-surface.md](../specs/water-surface.md)
 

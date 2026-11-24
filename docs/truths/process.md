@@ -55,3 +55,8 @@ Back to [the index](../GROUND-TRUTHS.md).
   that order, and a render change adds a looked-at screenshot. —
   [testing.md](../engineering/standards/testing.md),
   [branching.md](../engineering/standards/branching.md)
+- [R-process-011] A render change is looked at on the WebGPU backend, the one players'
+  browsers use, with the console read: an error from the renderer or a GPU
+  validation error fails the check. The bundled headless browser falls back
+  to WebGL2 without saying so in the frame; the water shipped invisible on
+  WebGPU that way. — [shot-runs.md](../engineering/standards/shot-runs.md)

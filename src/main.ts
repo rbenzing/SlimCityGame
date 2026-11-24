@@ -3577,6 +3577,11 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
     hook.setDirectRender = (on: boolean): void => {
       forceDirectRender = on;
     };
+    // Which graphics backend draws the page: 'webgpu', or 'webgl2' on the fallback.
+    hook.backend = (): string =>
+      (handle.renderer.backend as { isWebGPUBackend?: boolean }).isWebGPUBackend
+        ? 'webgpu'
+        : 'webgl2';
     // True while the water shows the frame behind it (a pipeline draws the frame).
     hook.waterReadsScreen = (): boolean =>
       water.activeMaterial() !== water.blendedSurfaceMaterial();

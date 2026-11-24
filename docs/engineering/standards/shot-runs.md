@@ -77,7 +77,9 @@ npm run shots -- --list
 
 A name is a type or a series; a series also runs alone, `node tools/shots/series/civic/health.mjs <url>`. The runner prints one table when it ends: series, type, exit code, seconds, frames, sheets. It exits non-zero if any series failed, ran over, or wrote no frame or no sheet. Never edit `src/` while a run is going: the server reloads the page under it.
 
-A series draws without the bloom pass unless its session asks for it (`bloom: true`, as `water` does, since the water reads the frame the pass draws); `SHOTS_BLOOM=1` asks for it in any series. `SHOTS_WEBGL=1` hides WebGPU, so the page takes its WebGL2 backend. A settle waits for the page's queued street work before it counts frames.
+A series draws without the bloom pass unless its session asks for it (`bloom: true`, as `water` does, since the water reads the frame the pass draws); `SHOTS_BLOOM=1` asks for it in any series. `SHOTS_WEBGL=1` hides WebGPU, so the page takes its WebGL2 backend.
+
+**Which backend a series runs on.** The bundled headless browser cannot give the page a WebGPU canvas, so by default a series runs on the WebGL2 fallback, which players' browsers do not use. `webgpu: true` on the session, or `SHOTS_WEBGPU=1` for any series, launches full Chromium with WebGPU on; the run prints `[backend] webgpu` or `webgl2`, and fails if it asked for WebGPU and did not get it. The `water` series asks for it. On either backend a console error from the renderer, or a GPU validation error, fails the series with the message `[R-process-011]`. Open: every other series still runs on WebGL2 unless the switch is set. A settle waits for the page's queued street work before it counts frames.
 
 ## Adding or changing a series
 

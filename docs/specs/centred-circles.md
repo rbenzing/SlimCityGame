@@ -36,7 +36,7 @@
 
 **Tests:** each offset form's files, with the centred shape: `src/shared/culdesac.test.ts`, `roundabout.test.ts`, `tests/interaction/culdesacs.test.ts`, `roundabouts.test.ts`, `src/world/roundabouts.test.ts`, `zonable.test.ts`, `src/render/culdesacmesh.test.ts`, `culdesaclots.test.ts`, `roadsmesh.test.ts`, `lamps.test.ts`, `src/tools/tools.test.ts`. Frames: the `ends`, `circles` and `junctions` shot series.
 
-**Open:** a circle with two arms on a plain road, for which no design guide was found; a centred bulb's flanks, 13.5 m of plain grass; the placing preview of a centred roundabout was never looked at.
+**Open:** a circle with two arms on a plain road, for which no design guide was found; a centred bulb's flanks, 13.5 m of plain grass; the placing preview of a roundabout, compact or centred, is its tiles and a label, not the ring.
 
 ## Why the rules are what they are
 
