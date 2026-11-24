@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.104.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.103.0...slimcity-v1.104.0) (2026-11-24)
+
+
+### Features
+
+* **shots:** log WebGPU warnings from a series run on WebGPU ([2625bd0](https://github.com/rbenzing/SlimCityGame/commit/2625bd04e27e6421ab7b9ccd9038ee4bbf5cbf92))
+* **shots:** run a series on the real WebGPU backend and fail on WebGPU errors ([33d8f24](https://github.com/rbenzing/SlimCityGame/commit/33d8f244cf63788c690bea53c34db25918e7fb37))
+
+
+### Bug Fixes
+
+* **render:** the water surface draws on WebGPU with 6 vertex buffers, not 11 ([8c048a9](https://github.com/rbenzing/SlimCityGame/commit/8c048a9f90b5031e453677bab3fb59367b9a3ce0))
+* the water draws on WebGPU (it was invisible in browsers since 1.103.0) ([71f57d6](https://github.com/rbenzing/SlimCityGame/commit/71f57d642a8988b76278caebf63f287eae4343fa))
+
 ## [1.103.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.102.1...slimcity-v1.103.0) (2026-11-24)
 
 
