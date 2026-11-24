@@ -29,10 +29,16 @@ const watchRefusals = () => {
 /**
  * Open the game ready to place things.
  *
+ * The terrain is the first generator's for `seed` unless `generator` names another
+ * (2 is the coast), so a series keeps the ground it was written on.
+ *
  * Returns `{ page, errors, send, refusals, close }`. `send(label, commands)`
  * runs one command batch through the game's own path.
  */
-export async function openSession(url, { fresh = false, seed = SEED, bloom = false } = {}) {
+export async function openSession(
+  url,
+  { fresh = false, seed = SEED, bloom = false, generator } = {},
+) {
   const browser = await chromium.launch({ headless: true, args: ['--use-angle=default'] });
   const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
   const errors = [];
@@ -59,7 +65,10 @@ export async function openSession(url, { fresh = false, seed = SEED, bloom = fal
         void e;
       }
     },
-    [{ screen: 'playing', seed, mode: 'new' }, fresh],
+    [
+      { screen: 'playing', seed, mode: 'new', ...(generator === undefined ? {} : { generator }) },
+      fresh,
+    ],
   );
   await page.addInitScript(watchRefusals);
   // SHOTS_WEBGL=1 hides WebGPU before the page loads, so the game takes its WebGL2 fallback.

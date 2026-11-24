@@ -291,3 +291,22 @@ describe('solveElevationProfile over a road it crosses', () => {
     expect(result.elevations[0]).toBeLessThanOrEqual(BRIDGE_MAX_GRADE);
   });
 });
+
+describe('a river the width the coast map draws', () => {
+  it('is crossed in one drag with three dry tiles of ramp each side, whatever the road', () => {
+    const g = makeGrid(40);
+    const z = 10;
+    for (let x = 0; x < g.size; x++) g.height[idx(g.size, x, z)] = 0.6;
+    carveRiver(g, z, 15, 20, 2); // six tiles of water, bed 2 m down
+    const ok = solveElevationProfile(g, run(z, 12, 23));
+    expect(ok.ok).toBe(true);
+    if (!ok.ok) return;
+    expect(Math.max(...ok.elevations)).toBe(BRIDGE_CLEARANCE_M + 2);
+    expect(ok.cost).toBe(
+      Math.round(ok.elevations.reduce((s, e) => s + e, 0) * BRIDGE_COST_PER_METER_TILE),
+    );
+    // Two dry tiles a side are too few for the ramp to land.
+    const short = solveElevationProfile(g, run(z, 13, 22));
+    expect(short.ok).toBe(false);
+  });
+});

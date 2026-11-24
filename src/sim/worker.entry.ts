@@ -57,6 +57,7 @@ import {
   TRASH_UNIT_SAVE_VERSION,
   BuildingState,
   FieldId,
+  MapGenerator,
   PowerLineKind,
   Problem,
   flowsAlong,
@@ -88,6 +89,7 @@ import type {
   JunctionControl,
   MainToWorker,
   MapData,
+  MapGeneratorId,
   RoadClassId,
   RoadProfile,
   RoadSpec,
@@ -579,6 +581,8 @@ class SimWorld implements WorkerSim {
 
   private initialized = false;
   private seed = 0;
+  /** The terrain generator that made this map from the seed; saved so a load rebuilds the same ground. */
+  private generator: MapGeneratorId = MapGenerator.Hills;
   private mapName = '';
 
   private grid: GridState = createGrid(MAP_SIZE);
@@ -759,7 +763,7 @@ class SimWorld implements WorkerSim {
 
   handleMessage(msg: MainToWorker): void {
     if (msg.type === 'init') {
-      this.init(msg.seed, msg.map);
+      this.init(msg.seed, msg.map, msg.generator ?? MapGenerator.Hills);
       return;
     }
     if (!this.initialized) return;
@@ -863,11 +867,12 @@ class SimWorld implements WorkerSim {
   // Lifecycle
   // -------------------------------------------------------------------------
 
-  private init(seed: number, map: MapData): void {
+  private init(seed: number, map: MapData, generator: MapGeneratorId): void {
     if (map.size !== MAP_SIZE) {
       throw new Error(`worker init: map size ${map.size} != MAP_SIZE ${MAP_SIZE}`);
     }
     this.seed = seed;
+    this.generator = generator;
     this.mapName = map.name;
     this.grid = createGrid(MAP_SIZE);
     this.grid.roads = createRoadNetwork();
@@ -955,6 +960,7 @@ class SimWorld implements WorkerSim {
     );
     this.stats = cloneStats(payload.meta.stats);
     this.seed = payload.header.seed;
+    this.generator = payload.header.generator ?? MapGenerator.Hills;
     soilGrades(this.grid, this.seed, this.grid.soil);
     this.mapName = payload.header.mapName;
     this.tickNo = payload.header.tick;
@@ -2087,6 +2093,7 @@ class SimWorld implements WorkerSim {
       header: {
         version: SAVE_VERSION,
         seed: this.seed,
+        generator: this.generator,
         tick: this.tickNo,
         mapName: this.mapName,
         savedAt: 0, // stamped by the main thread (persist.storeSave) — no Date.now in the worker

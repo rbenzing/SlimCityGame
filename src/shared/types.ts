@@ -516,6 +516,15 @@ export interface GridState {
 // Map packs (AI-generated raster maps) & procedural fallback
 // ---------------------------------------------------------------------------
 
+/**
+ * The terrain generators, by the id a save records. A shipped generator gives
+ * the same terrain for a seed forever: new terrain is a new id, appended.
+ */
+export const MapGenerator = { Hills: 1, Coast: 2 } as const;
+export type MapGeneratorId = (typeof MapGenerator)[keyof typeof MapGenerator];
+/** The generator a new game uses. */
+export const NEWEST_MAP_GENERATOR: MapGeneratorId = MapGenerator.Coast;
+
 export interface MapData {
   name: string;
   size: number; // tiles per side, MAP_SIZE
@@ -1308,7 +1317,8 @@ export interface CityNotification {
 export type SimSpeed = 0 | 1 | 2 | 4;
 
 export type MainToWorker =
-  | { type: 'init'; seed: number; map: MapData }
+  /** `generator` is the terrain generator that made `map` (absent: the first), written into every save. */
+  | { type: 'init'; seed: number; map: MapData; generator?: MapGeneratorId }
   | { type: 'commands'; seq: number; commands: Command[] }
   | { type: 'setSpeed'; speed: SimSpeed }
   /** Dev builds only: holds every construction countdown where it is until released. The worker ignores it in production. */
@@ -2048,6 +2058,8 @@ export const TRASH_UNIT_SAVE_VERSION = 15;
 export interface SaveHeader {
   version: number;
   seed: number;
+  /** The terrain generator that made the map from `seed`. Optional: a save without it was made by the first. */
+  generator?: MapGeneratorId;
   tick: number;
   mapName: string;
   savedAt: number; // epoch ms, stamped by the main thread

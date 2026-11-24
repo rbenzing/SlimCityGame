@@ -7,6 +7,7 @@
 
 import { createNoise2D, type NoiseFunction2D } from 'simplex-noise';
 import { MAP_SIZE, MAX_BUILD_SLOPE, SEA_LEVEL } from '../shared/constants';
+import { MapGenerator } from '../shared/types';
 import type { MapData, TilePoint } from '../shared/types';
 
 const clamp = (v: number, lo: number, hi: number): number => Math.min(hi, Math.max(lo, v));
@@ -60,7 +61,7 @@ function fbm(
 // directly against the raw height/water arrays.
 // ---------------------------------------------------------------------------
 
-function terrainBuildable(
+export function terrainBuildable(
   size: number,
   height: Float32Array,
   water: Uint8Array,
@@ -146,7 +147,26 @@ const TREE_GAIN = 0.5;
 // derived from the same seed.
 const TREE_SEED_SALT = 0x9e3779b9;
 
+const treeNoiseFor = (seed: number): NoiseFunction2D =>
+  createNoise2D(mulberry32((seed ^ TREE_SEED_SALT) >>> 0));
+
+/** Tree density 0..255 at a land tile. */
+function treeDensityAt(treeNoise: NoiseFunction2D, x: number, z: number): number {
+  const t = fbm(
+    treeNoise,
+    x * TREE_FREQUENCY,
+    z * TREE_FREQUENCY,
+    TREE_OCTAVES,
+    TREE_LACUNARITY,
+    TREE_GAIN,
+  );
+  return clamp(Math.round(((t + 1) / 2) * 255), 0, 255);
+}
+
 /**
+ * Generator 1, the hills. Frozen: a seed gives these exact arrays for good,
+ * because a save rebuilds its terrain by running this again.
+ *
  * Deterministic simplex-noise FBM terrain: heights roughly -8..40m, water
  * where height < SEA_LEVEL, tree density from a second noise field on land,
  * spawn placed on the most-buildable tile near the map center.
@@ -156,7 +176,7 @@ export function generateProceduralMap(seed: number, name: string): MapData {
   const n = size * size;
 
   const terrainNoise = createNoise2D(mulberry32(seed));
-  const treeNoise = createNoise2D(mulberry32((seed ^ TREE_SEED_SALT) >>> 0));
+  const treeNoise = treeNoiseFor(seed);
 
   const height = new Float32Array(n);
   const water = new Uint8Array(n);
@@ -187,15 +207,7 @@ export function generateProceduralMap(seed: number, name: string): MapData {
       if (isWater) {
         trees[i] = 0;
       } else {
-        const t = fbm(
-          treeNoise,
-          x * TREE_FREQUENCY,
-          z * TREE_FREQUENCY,
-          TREE_OCTAVES,
-          TREE_LACUNARITY,
-          TREE_GAIN,
-        );
-        trees[i] = clamp(Math.round(((t + 1) / 2) * 255), 0, 255);
+        trees[i] = treeDensityAt(treeNoise, x, z);
       }
     }
   }
@@ -203,6 +215,165 @@ export function generateProceduralMap(seed: number, name: string): MapData {
   const spawn = findSpawn(size, height, water);
 
   return { name, size, height, water, trees, seaLevel: SEA_LEVEL, spawn };
+}
+
+// ---------------------------------------------------------------------------
+// Generator 2: the hills with a sea coast along one edge and a river across.
+// ---------------------------------------------------------------------------
+
+// Separates the coast's number stream from the hills' and the trees'.
+const COAST_SEED_SALT = 0x51ed270b;
+/** Mean width of the sea along its edge, in tiles (13% of the map). */
+const SEA_TILES = 34;
+/** Coastline wobble: amplitude and wavelength in tiles, two waves. */
+const COAST_WAVES: ReadonlyArray<readonly [amplitude: number, wavelength: number]> = [
+  [10, 180],
+  [5, 67],
+];
+/** The sea bed falls this many metres a tile from the shore, to the terrain floor. */
+const SEA_BED_SLOPE = 0.25;
+/** The beach plain starts this far above sea level and rises PLAIN_SLOPE a tile for PLAIN_TILES. */
+const PLAIN_START = 0.5;
+const PLAIN_SLOPE = 0.15;
+const PLAIN_TILES = 40;
+/** River width in tiles at the mouth and far inland, and how far the widening eases. */
+const RIVER_MOUTH_TILES = 6;
+const RIVER_INLAND_TILES = 4;
+const RIVER_WIDEN_TILES = 120;
+/** The river's bed, in metres below sea level. */
+const RIVER_BED = -2;
+/** Winding: two waves, in tiles, eased in over the first RIVER_EASE_TILES from the mouth. */
+const RIVER_WAVES: ReadonlyArray<readonly [amplitude: number, wavelength: number]> = [
+  [18, 90],
+  [6, 37],
+];
+const RIVER_EASE_TILES = 30;
+/** The river's line leans by up to this many tiles across per tile along (14 degrees). */
+const RIVER_LEAN = 0.25;
+/** The river keeps this far from the map's side edges. */
+const RIVER_SIDE_MARGIN = 8;
+/** Valley: level this many tiles each bank at VALLEY_FLOOR metres, then rising 1 m a tile. */
+const VALLEY_LEVEL_TILES = 3;
+const VALLEY_FLOOR = 0.6;
+
+/** Smoothstep of v across [lo, hi]. */
+function smoothstep(lo: number, hi: number, v: number): number {
+  const t = clamp((v - lo) / (hi - lo), 0, 1);
+  return t * t * (3 - 2 * t);
+}
+
+/** Generator 1's heights with a sea bed and beach along one edge and a river with its valley across. */
+function shapeCoast(seed: number, hills: Float32Array): Float32Array {
+  const size = MAP_SIZE;
+  const rng = mulberry32((seed ^ COAST_SEED_SALT) >>> 0);
+  const height = Float32Array.from(hills);
+  const edge = Math.floor(rng() * 4);
+  const coastPhases = COAST_WAVES.map(() => rng() * Math.PI * 2);
+  const mouthAlong = (0.25 + rng() * 0.5) * size;
+  const riverPhases = RIVER_WAVES.map(() => rng() * Math.PI * 2);
+  const lean = (rng() - 0.5) * 2 * RIVER_LEAN;
+
+  // Each tile as (d, t): how far in from the sea's edge, and how far along it.
+  const inFromEdge = (x: number, z: number): [number, number] =>
+    edge === 0 ? [x, z] : edge === 1 ? [size - 1 - x, z] : edge === 2 ? [z, x] : [size - 1 - z, x];
+  const shoreAt = (t: number): number =>
+    SEA_TILES +
+    COAST_WAVES.reduce(
+      (sum, [amp, len], k) => sum + amp * Math.sin((t * 2 * Math.PI) / len + coastPhases[k]!),
+      0,
+    );
+
+  const mouthIn = shoreAt(mouthAlong);
+  const riverAt = (d: number): number => {
+    const s = d - mouthIn;
+    const ease = smoothstep(0, RIVER_EASE_TILES, s);
+    const swing = RIVER_WAVES.reduce(
+      (sum, [amp, len], k) => sum + amp * Math.sin((s * 2 * Math.PI) / len + riverPhases[k]!),
+      0,
+    );
+    return clamp(
+      mouthAlong + ease * swing + lean * s,
+      RIVER_SIDE_MARGIN,
+      size - 1 - RIVER_SIDE_MARGIN,
+    );
+  };
+
+  for (let z = 0; z < size; z++) {
+    for (let x = 0; x < size; x++) {
+      const i = z * size + x;
+      const [d, t] = inFromEdge(x, z);
+      const s = d - shoreAt(t);
+      if (s < 0) {
+        height[i] = Math.max(
+          MIN_TERRAIN_HEIGHT,
+          Math.min(height[i]!, -PLAIN_START + s * SEA_BED_SLOPE),
+        );
+      } else {
+        // A hollow within the plain fills to it; hills stay, and the plain fades out inland.
+        const plain = PLAIN_START + Math.min(s, PLAIN_TILES) * PLAIN_SLOPE;
+        const keep = smoothstep(0, PLAIN_TILES, s);
+        height[i] = keep * height[i]! + (1 - keep) * Math.max(height[i]!, plain);
+      }
+    }
+  }
+
+  for (let z = 0; z < size; z++) {
+    for (let x = 0; x < size; x++) {
+      const i = z * size + x;
+      const [d, t] = inFromEdge(x, z);
+      const s = d - mouthIn;
+      if (s < -RIVER_INLAND_TILES) continue;
+      const halfWidth =
+        (RIVER_INLAND_TILES +
+          (RIVER_MOUTH_TILES - RIVER_INLAND_TILES) * (1 - smoothstep(0, RIVER_WIDEN_TILES, s))) /
+        2;
+      // Distance across the channel, not along the edge: a leaning reach is no wider than a straight one.
+      const run = (riverAt(d + 1) - riverAt(d - 1)) / 2;
+      const across = Math.abs(t - riverAt(d)) / Math.sqrt(1 + run * run);
+      if (across < halfWidth) {
+        height[i] = Math.min(height[i]!, RIVER_BED);
+      } else {
+        const rise = Math.max(0, across - halfWidth - VALLEY_LEVEL_TILES);
+        height[i] = Math.min(height[i]!, VALLEY_FLOOR + rise);
+      }
+    }
+  }
+  return height;
+}
+
+/**
+ * Generator 2, the coast: generator 1's hills and lakes with one sea along an
+ * edge the seed picks and one river winding across to it, in a valley.
+ * Water, trees and the spawn are worked out again over the shaped heights.
+ */
+export function generateCoastMap(seed: number, name: string): MapData {
+  const size = MAP_SIZE;
+  const hills = generateProceduralMap(seed, name);
+  const height = shapeCoast(seed, hills.height);
+  const water = new Uint8Array(size * size);
+  const trees = new Uint8Array(size * size);
+  const treeNoise = treeNoiseFor(seed);
+  for (let z = 0; z < size; z++) {
+    for (let x = 0; x < size; x++) {
+      const i = z * size + x;
+      if (height[i]! < SEA_LEVEL) water[i] = 1;
+      else trees[i] = treeDensityAt(treeNoise, x, z);
+    }
+  }
+  const spawn = findSpawn(size, height, water);
+  return { name, size, height, water, trees, seaLevel: SEA_LEVEL, spawn };
+}
+
+/** The terrain of `generator` for `seed`. An id no generator has is refused, never defaulted. */
+export function generateMap(generator: number, seed: number, name: string): MapData {
+  switch (generator) {
+    case MapGenerator.Hills:
+      return generateProceduralMap(seed, name);
+    case MapGenerator.Coast:
+      return generateCoastMap(seed, name);
+    default:
+      throw new Error(`unknown map generator ${generator}`);
+  }
 }
 
 // ---------------------------------------------------------------------------
