@@ -17,11 +17,11 @@ How to use it:
 | Roads: junctions, signs, ramps         | [roads-junctions.md](truths/roads-junctions.md) | 33  | `R-roads-029–036, 056, 061–067, 070–075, 078, 079, 083–086, 093–095, 097, 098` |
 | Roads: markings and kerb parking       | [roads-markings.md](truths/roads-markings.md) | 13    | `R-roads-044–050, 068, 069, 087, 089–091` |
 | Roads: rail, tram and transit          | [roads-transit.md](truths/roads-transit.md)   | 12    | `R-roads-007, 008, 011–014, 037–039, 082, 088, 096` |
-| World: grid and simulation core        | [world-grid.md](truths/world-grid.md)         | 25    | `R-world-001–006, 019–024, 027, 030–035, 049–054` |
+| World: grid and simulation core        | [world-grid.md](truths/world-grid.md)         | 26    | `R-world-001–006, 019–024, 027, 030–035, 049–054, 069` |
 | World: growth and population           | [world-growth.md](truths/world-growth.md)     | 36    | `R-world-007–018, 025, 026, 028, 029, 036, 043–048, 055–063, 065–068` |
 | World: lots and parcels                | [world-lots.md](truths/world-lots.md)         | 7     | `R-world-037–042, 064`               |
 | Utilities and services                 | [services.md](truths/services.md)             | 44    | `R-services-001` to `R-services-044` |
-| Saves and the data model               | [saves.md](truths/saves.md)                   | 13    | `R-saves-001` to `R-saves-013`       |
+| Saves and the data model               | [saves.md](truths/saves.md)                   | 14    | `R-saves-001` to `R-saves-014`       |
 | Architecture and the thread boundary   | [architecture.md](truths/architecture.md)     | 18    | `R-architecture-001` to `R-architecture-018` |
 | Rendering and art                      | [render.md](truths/render.md)                 | 54    | `R-render-001` to `R-render-054`     |
 | Game design and interface              | [design.md](truths/design.md)                 | 23    | `R-design-001` to `R-design-023`     |
