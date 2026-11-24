@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.103.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.102.1...slimcity-v1.103.0) (2026-11-24)
+
+
+### Features
+
+* **roads:** the centred cul-de-sac, a turning circle on its street's own centre line ([f19cf84](https://github.com/rbenzing/SlimCityGame/commit/f19cf84f3131a9ae654b21a8b838fadf9ad3f723))
+* **roads:** the centred roundabout drawn, picked by the tool, and framed ([4dc96b4](https://github.com/rbenzing/SlimCityGame/commit/4dc96b4b24cbde3b2dd5e18ad5665956b883c3b6))
+* **roads:** the centred roundabout in the sim: code, plan, commands, graph and frontage ([a7462c6](https://github.com/rbenzing/SlimCityGame/commit/a7462c6fc6215e5b25c189b0a447670ce1a7ac91))
+
 ## [1.102.1](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.102.0...slimcity-v1.102.1) (2026-11-23)
 
 
