@@ -93,6 +93,8 @@ import type {
   RoadSpec,
   RoadTileDelta,
   RoundaboutJunction,
+  CentredAxis,
+  CulDeSacMark,
   ServiceKind,
   ServiceLoad,
   SimSnapshot,
@@ -186,7 +188,14 @@ import {
   roundaboutPlan,
   type RoundaboutBlock,
 } from '../shared/roundabout';
-import { CUL_DE_SAC_CODE, culDeSacBlockOf, culDeSacPlan, type CulDeSac } from '../shared/culdesac';
+import {
+  culDeSacBlockOf,
+  culDeSacCodeOf,
+  culDeSacMarkOf,
+  culDeSacPlan,
+  culDeSacTiles,
+  type CulDeSac,
+} from '../shared/culdesac';
 import {
   clearOverRoad,
   liftToOverLayer,
@@ -1608,9 +1617,9 @@ class SimWorld implements WorkerSim {
   }
 
   /** Every cul-de-sac, or null when the set has not moved since the last snapshot. */
-  private changedCulDeSacs(): TilePoint[] | null {
-    const now = this.network.getCulDeSacs().map((c) => ({ x: c.x, z: c.z }));
-    const key = now.map((c) => `${c.x},${c.z}`).join(';');
+  private changedCulDeSacs(): CulDeSacMark[] | null {
+    const now = this.network.getCulDeSacs().map(culDeSacMarkOf);
+    const key = now.map((c) => `${c.x},${c.z},${c.centred ?? ''}`).join(';');
     if (key === this.lastCulDeSacs) return null;
     this.lastCulDeSacs = key;
     return now;
@@ -2717,48 +2726,62 @@ class SimWorld implements WorkerSim {
    * Refused, with the reason, unless every tile is laid street and the block is
    * the end of exactly one street.
    */
-  private cmdBuildCulDeSac(x: number, z: number): CommandResult {
-    const block = { x, z };
+  private cmdBuildCulDeSac(x: number, z: number, centred?: CentredAxis): CommandResult {
+    const block = { x, z, ...(centred ? { centred } : {}) };
     const plan = culDeSacPlan(block, this.roundaboutGround());
     if (plan.refusal !== null) {
       return { ok: false, cost: 0, inverse: [], reason: plan.refusal };
     }
-    const tiles = blockTiles(block);
+    const tiles = culDeSacTiles(block);
     const before = tiles.map((t) => this.junctionStateAt(t));
     for (const t of tiles) {
-      this.grid.junctionControl[tileIndex(t.x, t.z)] = CUL_DE_SAC_CODE;
+      this.grid.junctionControl[tileIndex(t.x, t.z)] = culDeSacCodeOf(block);
       this.grid.junctionTurns[tileIndex(t.x, t.z)] = 0;
       for (let arm = 0; arm < ARMS_PER_TILE; arm++) {
         this.grid.junctionLaneTurns[tileIndex(t.x, t.z) * ARMS_PER_TILE + arm] = 0;
       }
     }
-    this.network.invalidateRegion(x, z, x + 1, z + 1);
-    return { ok: true, cost: 0, inverse: [{ kind: 'removeCulDeSac', x, z, junctions: before }] };
+    const last = tiles[tiles.length - 1]!;
+    this.network.invalidateRegion(x, z, last.x, last.z);
+    return {
+      ok: true,
+      cost: 0,
+      inverse: [
+        { kind: 'removeCulDeSac', x, z, ...(centred ? { centred } : {}), junctions: before },
+      ],
+    };
   }
 
   /**
-   * Takes out the cul-de-sac whose north-west tile is (x, z), leaving its four
+   * Takes out the cul-de-sac whose north-west tile is (x, z), leaving its
    * tiles with `junctions`, one each in the block's order, or with nothing
    * the player has said about them. The street stays. Refused unless a
-   * cul-de-sac stands there.
+   * cul-de-sac of that shape stands there.
    */
   private cmdRemoveCulDeSac(
     x: number,
     z: number,
+    centred: CentredAxis | undefined,
     junctions: readonly RoundaboutJunction[] | undefined,
   ): CommandResult {
     const rejected = { ok: false, cost: 0, inverse: [], reason: 'invalid' as const };
     const cul = this.culDeSacAt(x, z);
-    if (!cul || cul.x !== x || cul.z !== z) return rejected;
-    if (junctions && junctions.length !== 4) return rejected;
-    blockTiles(cul).forEach((t, i) =>
+    if (!cul || cul.x !== x || cul.z !== z || cul.centred !== centred) return rejected;
+    const tiles = culDeSacTiles(cul);
+    if (junctions && junctions.length !== tiles.length) return rejected;
+    tiles.forEach((t, i) =>
       this.writeJunctionState(
         t,
         junctions?.[i] ?? { control: null, turns: 0, laneTurns: [0, 0, 0, 0] },
       ),
     );
-    this.network.invalidateRegion(x, z, x + 1, z + 1);
-    return { ok: true, cost: 0, inverse: [{ kind: 'buildCulDeSac', x, z }] };
+    const last = tiles[tiles.length - 1]!;
+    this.network.invalidateRegion(x, z, last.x, last.z);
+    return {
+      ok: true,
+      cost: 0,
+      inverse: [{ kind: 'buildCulDeSac', x, z, ...(centred ? { centred } : {}) }],
+    };
   }
 
   // -------------------------------------------------------------------------
@@ -2933,9 +2956,9 @@ class SimWorld implements WorkerSim {
       case 'removeRoundabout':
         return this.cmdRemoveRoundabout(command.x, command.z, command.junctions);
       case 'buildCulDeSac':
-        return this.cmdBuildCulDeSac(command.x, command.z);
+        return this.cmdBuildCulDeSac(command.x, command.z, command.centred);
       case 'removeCulDeSac':
-        return this.cmdRemoveCulDeSac(command.x, command.z, command.junctions);
+        return this.cmdRemoveCulDeSac(command.x, command.z, command.centred, command.junctions);
       case 'bulldoze':
         return this.cmdBulldoze(command.tiles, command.layer);
       case 'buildSegment':
@@ -3795,7 +3818,7 @@ class SimWorld implements WorkerSim {
   private cmdBulldoze(tiles: TilePoint[], layer?: 'over'): CommandResult {
     const g = this.grid;
     const reachable = tiles.filter((t) => inBounds(t.x, t.z));
-    // A cul-de-sac is one thing: taking any of its tiles takes all four, and
+    // A cul-de-sac is one thing: taking any of its tiles takes all of them, and
     // undo lays the street back and then the cul-de-sac.
     const culs = new Map<number, CulDeSac>();
     if (layer !== 'over') {
@@ -3805,7 +3828,7 @@ class SimWorld implements WorkerSim {
       }
       const asked = new Set(reachable.map((t) => tileIndex(t.x, t.z)));
       for (const cul of culs.values()) {
-        for (const t of blockTiles(cul)) {
+        for (const t of culDeSacTiles(cul)) {
           if (!asked.has(tileIndex(t.x, t.z))) reachable.push(t);
         }
       }
@@ -3931,7 +3954,14 @@ class SimWorld implements WorkerSim {
     // After the roads, so the tile is a junction again by the time this lands.
     for (const ring of rings.values())
       inverse.push({ kind: 'buildRoundabout', x: ring.x, z: ring.z });
-    for (const cul of culs.values()) inverse.push({ kind: 'buildCulDeSac', x: cul.x, z: cul.z });
+    for (const cul of culs.values()) {
+      inverse.push({
+        kind: 'buildCulDeSac',
+        x: cul.x,
+        z: cul.z,
+        ...(cul.centred ? { centred: cul.centred } : {}),
+      });
+    }
     for (const j of setJunctions) inverse.push({ kind: 'setJunctionControl', ...j });
     for (const [zone, zoneTiles] of zonesByType) {
       inverse.push({ kind: 'paintZone', zone: zone as ZoneType, tiles: zoneTiles, restore: true });

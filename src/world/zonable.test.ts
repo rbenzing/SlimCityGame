@@ -164,6 +164,42 @@ describe('computeZonableTiles — a cul-de-sac block fronts every outer side', (
   });
 });
 
+describe('computeZonableTiles — a centred cul-de-sac block fronts every outer side', () => {
+  const size = 16;
+  // A street down x=5, z=2..6, then a 3x2 block of road beyond its end: (4..6, 7..8).
+  function withBlock(block: boolean): ZonableGridSource {
+    const g = makeGrid(size);
+    for (let z = 2; z <= 6; z++) g.roadTier[idx(size, 5, z)] = RoadTier.TwoLane;
+    if (block) {
+      for (let z = 7; z <= 8; z++) {
+        for (let x = 4; x <= 6; x++) g.roadTier[idx(size, x, z)] = RoadTier.TwoLane;
+      }
+    }
+    return g;
+  }
+
+  it('zones the ground on the seven sides: two a flank and three beyond the far row', () => {
+    const set = coordSet(computeZonableTiles(withBlock(true)));
+    for (const key of ['3,7', '3,8', '7,7', '7,8', '4,9', '5,9', '6,9']) {
+      expect(set.has(key), key).toBe(true);
+    }
+  });
+
+  it('never zones the block itself, nor the ground its street meets the block on', () => {
+    const set = coordSet(computeZonableTiles(withBlock(true)));
+    for (let z = 7; z <= 8; z++) {
+      for (let x = 4; x <= 6; x++) expect(set.has(`${x},${z}`), `${x},${z}`).toBe(false);
+    }
+    expect(set.has('5,6')).toBe(false);
+  });
+
+  it('leaves the block’s own ground and its far side alone without the block', () => {
+    const set = coordSet(computeZonableTiles(withBlock(false)));
+    expect(set.has('5,7')).toBe(false);
+    expect(set.has('5,9')).toBe(false);
+  });
+});
+
 describe('computeZonableTiles — direct access (blocking obstacles)', () => {
   const size = 12;
 

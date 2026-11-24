@@ -48,11 +48,13 @@ import { deriveRoadFootprint } from '../world/freeroads';
 import { decodeRoadNetwork } from '../world/roadnet';
 import { axisOfFlow } from '../shared/overpass';
 import { blockTiles, roundaboutLegs } from '../shared/roundabout';
+import { culDeSacMarkOf, culDeSacTiles } from '../shared/culdesac';
 import type { RingLampSite } from '../render/lamps';
 import type {
   BuildingCatalogEntry,
   BuildingDelta,
   BuildingInstance,
+  CulDeSacMark,
   JunctionControl,
   MapData,
   OverRoadState,
@@ -140,7 +142,7 @@ export class ClientGridMirror {
   /** Tile index -> the compact roundabout it is a corner of, as the world last said. */
   private roundabouts = new Map<number, TilePoint>();
   /** Tile index -> the cul-de-sac it is a corner of, as the world last said. */
-  private culDeSacs = new Map<number, TilePoint>();
+  private culDeSacs = new Map<number, CulDeSacMark>();
 
   constructor(map: MapData, seed = 0) {
     this.size = map.size;
@@ -335,19 +337,19 @@ export class ClientGridMirror {
   }
 
   /** Replaces the mirror's cul-de-sacs with the worker's full list, each by its north-west tile. */
-  applyCulDeSacs(blocks: readonly TilePoint[]): void {
-    const next = new Map<number, TilePoint>();
+  applyCulDeSacs(blocks: readonly CulDeSacMark[]): void {
+    const next = new Map<number, CulDeSacMark>();
     for (const b of blocks) {
-      const block = { x: b.x, z: b.z };
-      for (const t of blockTiles(block)) {
+      const block = culDeSacMarkOf(b);
+      for (const t of culDeSacTiles(block)) {
         if (this.inBounds(t.x, t.z)) next.set(this.idx(t.x, t.z), block);
       }
     }
     this.culDeSacs = next;
   }
 
-  /** The cul-de-sac (x, z) is a corner of, by its north-west tile, or null. */
-  culDeSacAt(x: number, z: number): TilePoint | null {
+  /** The cul-de-sac (x, z) is a tile of, by its north-west tile and shape, or null. */
+  culDeSacAt(x: number, z: number): CulDeSacMark | null {
     if (!this.inBounds(x, z)) return null;
     return this.culDeSacs.get(this.idx(x, z)) ?? null;
   }

@@ -3989,6 +3989,96 @@ describe('the Cul-de-sac tool', () => {
     tm.pointerUp(20, 20, 0);
     expect(sent).toHaveLength(0);
   });
+
+  describe('over the middle of the street', () => {
+    // The street's centre line is 10 m into its tile.
+    it('previews the centred block, six tiles priced as six of street, labelled so', () => {
+      const { tm, previews } = withCulDeSac(dead(), 10, 15);
+      tm.pointerMove(20, 20, 0);
+      const preview = previews.at(-1)!;
+      expect(preview).toMatchObject({ valid: true, label: 'Centred cul-de-sac' });
+      expect(preview.tiles).toEqual([
+        { x: 19, z: 21 },
+        { x: 20, z: 21 },
+        { x: 21, z: 21 },
+        { x: 19, z: 22 },
+        { x: 20, z: 22 },
+        { x: 21, z: 22 },
+      ]);
+      expect(preview.cost).toBe(6 * ROAD_SPECS[RoadTier.TwoLane]!.costPerTile);
+    });
+
+    it('previews the circle on the street centre line, 20 m beyond the end tile', () => {
+      const { tm, previews } = withCulDeSac(dead(), 10, 15);
+      tm.pointerMove(20, 20, 0);
+      expect(previews.at(-1)!.disc).toEqual({
+        x: 20 * TILE_METERS + 10,
+        z: 22 * TILE_METERS,
+        radiusM: 14.6,
+      });
+    });
+
+    it('lays the six tiles of street and then the centred cul-de-sac, as one batch', () => {
+      const { tm, sent } = withCulDeSac(dead(), 10, 15);
+      tm.pointerMove(20, 20, 0);
+      tm.pointerDown(20, 20, 0);
+      tm.pointerUp(20, 20, 0);
+      expect(sent).toHaveLength(1);
+      expect(sent[0]!.label).toBe('Centred cul-de-sac');
+      expect(sent[0]!.commands).toHaveLength(2);
+      expect(sent[0]!.commands[0]).toMatchObject({ kind: 'buildRoad', tier: RoadTier.TwoLane });
+      expect((sent[0]!.commands[0] as { tiles: unknown[] }).tiles).toHaveLength(6);
+      expect(sent[0]!.commands[1]).toEqual({
+        kind: 'buildCulDeSac',
+        x: 19,
+        z: 21,
+        centred: 'x',
+      });
+    });
+
+    it('picks the form by the pointer: inside 5 m of the line is centred, 5 m or more is a side', () => {
+      const label = (dx: number): string | undefined => {
+        const { tm, previews } = withCulDeSac(dead(), dx, 15);
+        tm.pointerMove(20, 20, 0);
+        return previews.at(-1)!.label;
+      };
+      expect(label(10)).toBe('Centred cul-de-sac');
+      expect(label(5.5)).toBe('Centred cul-de-sac');
+      expect(label(14.5)).toBe('Centred cul-de-sac');
+      expect(label(5)).toBe('Cul-de-sac');
+      expect(label(15)).toBe('Cul-de-sac');
+      expect(label(19)).toBe('Cul-de-sac');
+    });
+
+    it('shows red with its reason where the ground refuses it, and never falls back to a side', () => {
+      const world = dead();
+      applyRoad(world, [{ x: 22, z: 21 }], RoadTier.TwoLane);
+      const { tm, previews, sent } = withCulDeSac(world, 10, 15);
+      tm.pointerMove(20, 20, 0);
+      expect(previews.at(-1)).toMatchObject({
+        valid: false,
+        label: 'Centred cul-de-sac',
+        invalidReason: expect.stringContaining('would touch the centred cul-de-sac'),
+      });
+      tm.pointerDown(20, 20, 0);
+      tm.pointerUp(20, 20, 0);
+      expect(sent).toHaveLength(0);
+      // The same ground takes the side form with the pointer to one side.
+      const side = withCulDeSac(world, 5, 15);
+      side.tm.pointerMove(20, 20, 0);
+      expect(side.previews.at(-1)).toMatchObject({ label: 'Cul-de-sac' });
+    });
+
+    it('sends nothing it cannot pay for', () => {
+      const { tm, previews, sent, env } = withCulDeSac(dead(), 10, 15);
+      env.funds = () => 1;
+      tm.pointerMove(20, 20, 0);
+      expect(previews.at(-1)?.invalidReason).toBe('Insufficient funds');
+      tm.pointerDown(20, 20, 0);
+      tm.pointerUp(20, 20, 0);
+      expect(sent).toHaveLength(0);
+    });
+  });
 });
 
 describe('the Interchange tool, before its roads are unlocked', () => {

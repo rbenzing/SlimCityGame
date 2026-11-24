@@ -31,9 +31,9 @@ import {
   worldOrderedProfile,
 } from '../shared/roadprofile';
 import { controlFromCode, warrantedControl } from '../shared/junction';
-import type { CulDeSac } from '../shared/culdesac';
-import { blockTiles, effectiveControlCode, type RoundaboutBlock } from '../shared/roundabout';
-import { culDeSacsIn, routeRoundCulDeSacs, shapeCulDeSacs } from './culdesacs';
+import { culDeSacTiles, type CulDeSac } from '../shared/culdesac';
+import { effectiveControlCode, type RoundaboutBlock } from '../shared/roundabout';
+import { culDeSacsIn, routeRoundCulDeSacs, shapeCulDeSacs, withoutBulbIslands } from './culdesacs';
 import { ARMS_PER_TILE } from './grid';
 import { cellRoute, cellTile, cellWeight, neighbours, roadCellsOf } from './roadnet';
 import { compactRoundaboutsIn, gridRingReader, shapeRoundabouts } from './roundabouts';
@@ -506,12 +506,16 @@ export class RoadNetwork implements RoadNetworkApi {
     const grid = this.grid;
     if (!grid) return;
     this.builtFrom = grid.roads?.version ?? null;
-    const built = buildGraph(roadCellsOf(grid), this.shape, (id) => this.resolveProfile(id));
+    this.culDeSacs = culDeSacsIn(grid);
+    const built = buildGraph(
+      roadCellsOf(grid),
+      withoutBulbIslands(this.shape, this.culDeSacs, grid.size),
+      (id) => this.resolveProfile(id),
+    );
     this.nodes = built.nodes;
     this.edges = built.edges;
     this.roundabouts = compactRoundaboutsIn(grid);
     shapeRoundabouts(this.nodes, this.edges, this.roundabouts);
-    this.culDeSacs = culDeSacsIn(grid);
     shapeCulDeSacs(this.nodes, this.edges, this.culDeSacs);
     this.tileEdge = null;
     this.dirty = false;
@@ -534,7 +538,9 @@ export class RoadNetwork implements RoadNetworkApi {
     const lookup = (id: number): GraphEdge | undefined => byId.get(id);
     const grid = this.grid;
     const rings = grid ? gridRingReader(grid) : null;
-    const bulbs = new Set(this.culDeSacs.flatMap((c) => blockTiles(c).map((t) => `${t.x},${t.z}`)));
+    const bulbs = new Set(
+      this.culDeSacs.flatMap((c) => culDeSacTiles(c).map((t) => `${t.x},${t.z}`)),
+    );
     for (const node of this.nodes) {
       // The tiles of a cul-de-sac are one turning circle, whose street has nobody to give way to.
       const inBulb = bulbs.has(`${node.x},${node.z}`);

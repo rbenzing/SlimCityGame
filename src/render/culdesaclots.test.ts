@@ -190,6 +190,108 @@ describe('a lot fronting a turning circle', () => {
   });
 });
 
+// A centred circle on tiles 9..11 by 10..11, its street arriving from the north down the
+// middle column: the circle's centre is on the street's centre line, at (210, 220).
+const C_X = 10.5 * TILE_METERS;
+const C_Z = 11 * TILE_METERS;
+const C_STREET: BulbStreet = { side: RoadFlow.North, lateral: 0, half: 4.4, kerb: 1.9 };
+const C_FRONT = bulbFrontOf(C_X, C_Z, C_STREET);
+const inCentred = (x: number, z: number): boolean => x >= 9 && x <= 11 && z >= 10 && z <= 11;
+const centredStreet: StreetLookup = (x, z) =>
+  inCentred(x, z) ? { vergeM: 3.8, sidewalkM: 1.9, bulb: C_FRONT } : null;
+
+/** The seven places a lot fronts a centred circle, as the lot's north-west tile and its footprint. */
+const SEVEN = [
+  { name: 'west flank, mouth row', at: { x: 7, z: 10 }, footprint: { w: 2, d: 1 } },
+  { name: 'west flank, far row', at: { x: 7, z: 11 }, footprint: { w: 2, d: 1 } },
+  { name: 'east flank, mouth row', at: { x: 12, z: 10 }, footprint: { w: 2, d: 1 } },
+  { name: 'east flank, far row', at: { x: 12, z: 11 }, footprint: { w: 2, d: 1 } },
+  { name: 'far corner, west', at: { x: 9, z: 12 }, footprint: { w: 1, d: 2 } },
+  { name: 'far middle', at: { x: 10, z: 12 }, footprint: { w: 1, d: 2 } },
+  { name: 'far corner, east', at: { x: 11, z: 12 }, footprint: { w: 1, d: 2 } },
+];
+
+describe('lots fronting a centred turning circle', () => {
+  it('has seven lots round it, each reaching the back of the ring along a line through the centre', () => {
+    expect(SEVEN).toHaveLength(7);
+    for (const lot of SEVEN) {
+      const narrow = entry({ footprint: lot.footprint });
+      let reached = 0;
+      for (let id = 1; id <= 30; id++) {
+        const scene = new THREE.Scene();
+        new LotRenderer(scene, () => 0, [narrow], inCentred, centredStreet).apply({
+          added: [building({ id, ...lot.at })],
+          updated: [],
+          removed: [],
+        });
+        const mesh = scene.children[0] as THREE.Mesh | undefined;
+        if (!mesh) continue;
+        const p = mesh.geometry.getAttribute('position');
+        for (let i = 0; i < p.count; i++) {
+          const x = p.getX(i);
+          const z = p.getZ(i);
+          const r = Math.hypot(x - C_X, z - C_Z);
+          const over = x > 9 * TILE_METERS + 1e-6 && x < 12 * TILE_METERS - 1e-6;
+          if (!over || z <= 10 * TILE_METERS + 1e-6 || z >= 12 * TILE_METERS - 1e-6) continue;
+          expect(r, lot.name).toBeGreaterThanOrEqual(C_FRONT.ringM - 1e-3);
+          if (r < C_FRONT.ringM + 1e-3) reached++;
+        }
+      }
+      expect(reached, lot.name).toBeGreaterThan(0);
+    }
+  });
+
+  it('puts the footway 13.5 m off a flank, 3.5 m off the far side and 11.8 m off its corners', () => {
+    const reachAtMiddle = (x: number, z: number): number => {
+      const q = bulbRingPoint(C_FRONT, x, z);
+      return Math.hypot(q.x - x, q.z - z);
+    };
+    // The middle of a flank lot's own edge, a lot a tile tall; of the far middle; of a far corner.
+    expect(reachAtMiddle(8 * TILE_METERS + TILE_METERS, 10.5 * TILE_METERS)).toBeCloseTo(15.1, 1);
+    expect(reachAtMiddle(10.5 * TILE_METERS, 12 * TILE_METERS)).toBeCloseTo(3.5, 1);
+    expect(reachAtMiddle(9.5 * TILE_METERS, 12 * TILE_METERS)).toBeCloseTo(11.8, 1);
+    // Straight across from the centre the flank's ground is 13.5 m wide.
+    expect(reachAtMiddle(9 * TILE_METERS, 11 * TILE_METERS)).toBeCloseTo(13.5, 1);
+  });
+
+  it('opens the mouth evenly either side of the street, on its centre line', () => {
+    const north = -Math.PI / 2;
+    const at = (a: number): { x: number; z: number } => ({
+      x: C_X + 40 * Math.cos(a),
+      z: C_Z + 40 * Math.sin(a),
+    });
+    expect(bulbMouthGapM(C_FRONT, at(north).x, at(north).z)).toBe(0);
+    for (const d of [0.05, 0.2, 0.5, 1.0]) {
+      const left = bulbMouthGapM(C_FRONT, at(north - d).x, at(north - d).z);
+      const right = bulbMouthGapM(C_FRONT, at(north + d).x, at(north + d).z);
+      expect(left).toBeCloseTo(right, 9);
+    }
+    // Round the far side of the ring is plain footway.
+    expect(bulbMouthGapM(C_FRONT, at(Math.PI / 2).x, at(Math.PI / 2).z)).toBeGreaterThan(20);
+  });
+
+  it('keeps every drive 3 m from the mouth, on the flank beside it', () => {
+    let drives = 0;
+    const narrow = entry({ footprint: { w: 2, d: 1 } });
+    for (let id = 1; id <= 60; id++) {
+      for (const at of [
+        { x: 7, z: 10 },
+        { x: 12, z: 10 },
+      ]) {
+        const plan = planHouseGround(building({ id, ...at }), narrow, inCentred, centredStreet)!;
+        for (const drive of plan.drives) {
+          drives++;
+          for (const u of [drive.rect.u0, drive.rect.u1]) {
+            const p = lotToWorld(plan.frame, u, 0);
+            expect(bulbMouthGapM(C_FRONT, p.x, p.z)).toBeGreaterThanOrEqual(DRIVE_END_CLEARANCE_M);
+          }
+        }
+      }
+    }
+    expect(drives).toBeGreaterThan(0);
+  });
+});
+
 describe('the ground from a lot edge to the ring', () => {
   const at = (u: number): { x: number; z: number } => ({ x: CENTRE - 20 + u, z: CENTRE - 20 });
 

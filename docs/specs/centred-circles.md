@@ -1,6 +1,6 @@
 # Centred circles
 
-- **Status:** Proposed
+- **Status:** Agreed
 
 **Owns:** the centred forms of the two circles: a cul-de-sac whose bulb sits on its street's centre line, and a compact roundabout whose ring sits on the junction's own tile. The offset forms stay in [cul-de-sacs.md](cul-de-sacs.md) and [roundabouts.md](roundabouts.md).
 
@@ -20,23 +20,23 @@
 
 | Constant | Value | Unit | Source |
 | --- | --- | --- | --- |
-| Centred bulb's block | 3 across × 2 along, 60 × 40 | m | dial: the 20 m tile; a circle 33 m across on a tile's centre line overhangs that tile by 6.5 m a side |
-| Bulb's centre | on the centre line, 20 beyond the end tile's far edge | m | dial: the same distance along as the offset bulb |
+| Centred bulb's block and centre | 3 across × 2 along, 60 × 40; centre on the line, 20 beyond the end tile's far edge | m | dial: a circle 33 m across on a tile's centre line overhangs that tile by 6.5 m a side; the offset bulb's distance along |
 | Ground beside the footway | 13.5 a flank; 3.5 at the mouth and the far end | m | derived: 30 − 16.5 and 20 − 16.5 |
 | Lots on a centred bulb, and each one's distance to the footway | 7: two a flank at 15.1, far middle at 3.5, two far corners at 11.8 | m | derived: the offset bulb has 6 lots at 5.9 |
 | Centred ring's block | 3×3, 60 × 60 | m | dial: a ring 36 m across on a tile's centre overhangs it by 8 m a side |
 | Leg inside the block | 12, at no offset from the ring's centre line | m | derived: 30 − 18 |
 | Kerb returns | entry 10, exit 15 | m | the low end of the entry radius and the exit radius the roundabouts Numbers table cites; both fit the 12 m of leg |
 | Crosswalk and splitter | unchanged; the crosswalk lies inside the block, the splitter runs 3 past it | m | derived: 18 + 6.1 = 24.1; 18 + 15 = 33 |
-| Pointer's middle zone | within 5 of the centre line (bulb); within 5 of the tile's centre both ways (ring) | m | dial: half the tile's width, a quarter of its area |
+| `CENTRED_ZONE_M`, the pointer's middle zone | under 5 from the centre line (bulb); under 5 from the tile's centre both ways (ring); 5 itself is a side | m | dial: half the tile's width, a quarter of its area |
+| Kerb return at a centred mouth | 5 at most, swung outward on both sides | m | dial: the offset bulb's cap; the mouth opens wider than the street |
 | Codes | 8 centred roundabout, read as a roundabout; 9 centred cul-de-sac, never a control | byte | appended in the junction-control layer |
 | Tiles laid, and paid for at the street's price | ring 4 on a crossroads, 5 on a T; bulb 6 | tiles | derived: the ring's corners and a side with no arm |
 
-**Code:** not built. It will stand beside `src/shared/culdesac.ts` and `src/shared/roundabout.ts`, whose block finders, plans and commands gain the second shape.
+**Code:** the bulb is built, the ring is not. `src/shared/culdesac.ts` `culDeSacBlockOf`, `centredCulDeSacAtEnd`, `pointerOnCentreLine`, `culDeSacTiles`, `culDeSacCentre` — one predicate and plan for both bulbs; `src/world/culdesacs.ts` `withoutBulbIslands` — the loop; `src/render/culdesacmesh.ts` — the block drawn whole.
 
-**Tests:** not built. Each offset form's test file gains the centred shape: predicate, refusals, round trips, saves, the loop a car drives, lots on the bulb, no lot on the ring.
+**Tests:** the offset bulb's files, each with the centred shape: `src/shared/culdesac.test.ts`, `tests/interaction/culdesacs.test.ts`, `src/render/culdesacmesh.test.ts`, `src/render/culdesaclots.test.ts`, `src/world/zonable.test.ts`, `src/tools/tools.test.ts`. Frames: the `ends` and `circles` shot series.
 
-**Open:** a circle with two arms on a plain road, for which no design guide was found; a centred bulb's flanks, 13.5 m of plain grass.
+**Open:** the centred roundabout is not built; a circle with two arms on a plain road, for which no design guide was found; a centred bulb's flanks, 13.5 m of plain grass.
 
 ## Why the rules are what they are
 
@@ -51,6 +51,10 @@ The preview names what it will lay, "Centred cul-de-sac" or "Centred roundabout"
 A road runs down a tile's centre. The offset bulb puts its circle on a corner four tiles share, so it fits two tiles across and sits half a tile to one side. A circle on the centre line cannot fit two tiles across: it needs the street's own column and part of the column on each side. A side column cannot be shared with a lot, because a lot is whole tiles. So the block is three across.
 
 Along the street nothing changes. The centre stays where the block's two rows meet, so the circle clears the mouth and the far end by the offset bulb's own margin.
+
+The mouth is symmetric too. On the offset bulb one kerb return curves in toward the circle; on a street this narrow a return curving in would cross the centre line. Both returns of a centred mouth curve outward instead, so the street opens into the circle like a funnel.
+
+To traffic the bulb is a loop, as the offset one is. The block's two middle tiles are road like the rest, but the road graph does not join them, so no route crosses the middle of the circle.
 
 The cost is land and a longer walk to the kerb. The block takes six tiles for four, and the homes on its flanks stand 13.5 m further from the ring across plain grass. It gains one lot.
 
@@ -85,5 +89,7 @@ The centred bulb's block lies three across its street, and the street joins the 
 - Picked by the pointer, over a second pair of cards or a switch on the card: both circles already take their side from the pointer.
 - The bulb on a 3×2 block, over 3×3: the circle fits two tiles along the street, and the third row would be 1,200 m² of grass.
 - The ring on a 3×3 block at 36 m, over a plus of five tiles: a plus keeps the corner lots only if the ring shrinks to about 24 m.
+- The commands carry the shape as an optional field, over a second pair of commands: with the field absent a recorded batch still lays the offset bulb.
+- Any bulb's code on a tile refuses another bulb there, of either shape.
 - Three or four legs, as the offset ring: a ring with two arms on a plain road waits for a source.
 - The offset forms stay: they take less land, and the offset ring goes on a built-up junction without clearing its corners.

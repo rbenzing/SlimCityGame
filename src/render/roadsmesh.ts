@@ -94,7 +94,7 @@ import { materialUnit } from './palette';
 import { allMovements, pathAt, trackPaths } from './trackpaths';
 import type { TrackPath, TrackSide } from './trackpaths';
 import { MIN_INSTANCE_CAPACITY, setInstanceCount } from './groundquad';
-import type { JunctionControl, TilePoint } from '../shared/types';
+import type { CulDeSacMark, JunctionControl, TilePoint } from '../shared/types';
 import type { RoadProfile } from '../shared/types';
 import {
   TILE_METERS,
@@ -152,10 +152,10 @@ import {
   RING_APRON_WIDTH_M,
   RING_OUTER_RADIUS_M,
   RING_ROADWAY_WIDTH_M,
-  roundaboutLegs,
   SPLITTER_WIDTH_M,
   type RoundaboutBlock,
 } from '../shared/roundabout';
+import { culDeSacCentre, culDeSacLegs, culDeSacMarkOf, culDeSacTiles } from '../shared/culdesac';
 import { bulbLineRun, bulbStreetOf, culDeSacVertices, type BulbStreet } from './culdesacmesh';
 import { axisOfFlow } from '../shared/overpass';
 import type { TaperStep } from '../shared/taper';
@@ -8862,32 +8862,25 @@ export class RoadMeshRenderer {
     if (dirty.size > 0) this.rebuildInstancedParts();
   }
 
-  /** Each cul-de-sac, by the tile index of each of its four tiles. */
-  private culDeSacs: ReadonlyMap<number, RoundaboutBlock> = new Map();
+  /** Each cul-de-sac, by the tile index of each of its tiles. */
+  private culDeSacs: ReadonlyMap<number, CulDeSacMark> = new Map();
 
   /**
    * Takes the sim's cul-de-sacs and redraws what their change reaches: their
-   * four tiles, and the street into them, which reads the block ahead.
+   * tiles, and the street into them, which reads the block ahead.
    */
-  setCulDeSacs(blocks: readonly TilePoint[]): number[] {
-    const next = new Map<number, RoundaboutBlock>();
+  setCulDeSacs(blocks: readonly CulDeSacMark[]): number[] {
+    const next = new Map<number, CulDeSacMark>();
     for (const b of blocks) {
-      const block = { x: b.x, z: b.z };
-      for (const [dx, dz] of [
-        [0, 0],
-        [1, 0],
-        [0, 1],
-        [1, 1],
-      ] as const) {
-        next.set(tileIndex(block.x + dx, block.z + dz), block);
-      }
+      const block = culDeSacMarkOf(b);
+      for (const t of culDeSacTiles(block)) next.set(tileIndex(t.x, t.z), block);
     }
     const dirty = new Set<number>();
     const moved = (i: number): void =>
       this.dirtyReaders(i % MAP_SIZE, Math.floor(i / MAP_SIZE), dirty);
     for (const [i, block] of next) {
       const was = this.culDeSacs.get(i);
-      if (was?.x !== block.x || was?.z !== block.z) moved(i);
+      if (was?.x !== block.x || was?.z !== block.z || was?.centred !== block.centred) moved(i);
     }
     for (const i of this.culDeSacs.keys()) if (!next.has(i)) moved(i);
     this.culDeSacs = next;
@@ -8913,7 +8906,7 @@ export class RoadMeshRenderer {
     if (!street) return null;
     const own = this.ownProfileFor(tile) ?? presetProfileForTier(tile.tier);
     const hAt = this.heightFor(tile);
-    const centre = { x: (block.x + 1) * TILE_METERS, z: (block.z + 1) * TILE_METERS };
+    const centre = culDeSacCentre(block);
     const ground = culDeSacVertices(centre.x, centre.z, street, hAt, {
       plate: surfaceColor(own),
       footway: SIDEWALK_COLOR,
@@ -8921,7 +8914,7 @@ export class RoadMeshRenderer {
       curbY: CURB_Y_OFFSET,
     });
     // The street's lines run on in the block to the circle's edge, where they end.
-    const leg = roundaboutLegs(block, (x, z) => this.groundAt(x, z)?.mask ?? 0)[0];
+    const leg = culDeSacLegs(block, (x, z) => this.groundAt(x, z)?.mask ?? 0)[0];
     const plan = leg ? this.planAt(leg.tile.x, leg.tile.z) : null;
     if (plan) paintBulbStreet(ground, plan, street, centre, hAt);
     return ground;

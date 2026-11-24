@@ -107,9 +107,13 @@ import {
   type InterchangeLayout,
 } from '../shared/interchange';
 import {
+  centredCulDeSacAtEnd,
   CUL_DE_SAC_RADIUS_M,
   culDeSacAtEnd,
+  culDeSacCentre,
   culDeSacCommands,
+  culDeSacTiles,
+  pointerOnCentreLine,
   type CulDeSacPlan,
 } from '../shared/culdesac';
 import {
@@ -520,6 +524,9 @@ export const ROUNDABOUT_LABEL = 'Compact roundabout';
 
 /** The name a cul-de-sac is laid, and undone, under. */
 export const CUL_DE_SAC_LABEL = 'Cul-de-sac';
+
+/** The name a cul-de-sac on its street's centre line is laid, and undone, under. */
+export const CENTRED_CUL_DE_SAC_LABEL = 'Centred cul-de-sac';
 
 /** The name an interchange of each form is laid, and undone, under. */
 export const INTERCHANGE_LABEL: Readonly<Record<InterchangeForm, string>> = {
@@ -2716,11 +2723,16 @@ export class ToolManager {
     const p = this.hoverPoint;
     const east = p ? p.x / 100 >= (at.x + 0.5) * TILE_METERS : true;
     const south = p ? p.z / 100 >= (at.z + 0.5) * TILE_METERS : true;
-    const plan = culDeSacAtEnd(at, east, south, ground);
+    // Over the middle of the street the bulb stands on its centre line; to a side, offset that way.
+    const centred = p ? pointerOnCentreLine(at, { x: p.x / 100, z: p.z / 100 }, ground) : false;
+    const plan = centred
+      ? centredCulDeSacAtEnd(at, ground)
+      : culDeSacAtEnd(at, east, south, ground);
     const tier = ground.roadAt(at.x, at.z)?.tier ?? RoadTierValue.TwoLane;
     const spec = this.env.roadSpec(tier);
     const cost = plan.toLay.length * spec.costPerTile;
-    const tiles = blockTiles(plan.block);
+    const tiles = culDeSacTiles(plan.block);
+    const centre = culDeSacCentre(plan.block);
     const judged = this.evaluate(
       tiles,
       cost,
@@ -2733,12 +2745,8 @@ export class ToolManager {
       tiles,
       valid: plan.refusal === null && judged.valid,
       cost,
-      label: CUL_DE_SAC_LABEL,
-      disc: {
-        x: (plan.block.x + 1) * TILE_METERS,
-        z: (plan.block.z + 1) * TILE_METERS,
-        radiusM: CUL_DE_SAC_RADIUS_M,
-      },
+      label: centred ? CENTRED_CUL_DE_SAC_LABEL : CUL_DE_SAC_LABEL,
+      disc: { x: centre.x, z: centre.z, radiusM: CUL_DE_SAC_RADIUS_M },
       ...(reason !== undefined ? { invalidReason: reason } : {}),
     };
     return { preview, plan, tier, ...(id !== 0 && id !== tier ? { profile: id } : {}) };
@@ -2750,7 +2758,10 @@ export class ToolManager {
       // Asked again as it is laid, and nothing sent unless all of it can be.
       const judged = this.judgeCulDeSac(end);
       if (judged?.preview.valid) {
-        this.env.send(CUL_DE_SAC_LABEL, culDeSacCommands(judged.plan, judged.tier, judged.profile));
+        this.env.send(
+          judged.preview.label ?? CUL_DE_SAC_LABEL,
+          culDeSacCommands(judged.plan, judged.tier, judged.profile),
+        );
       }
       return;
     }

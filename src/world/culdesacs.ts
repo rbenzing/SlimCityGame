@@ -3,16 +3,18 @@
  * and laid into its road graph.
  */
 import {
-  CUL_DE_SAC_CODE,
   culDeSacArc,
-  culDeSacArcTiles,
   culDeSacPoint,
+  culDeSacRunTiles,
+  culDeSacSize,
   culDeSacsAmong,
+  culDeSacTiles,
+  isCulDeSacCode,
   loopRunsRound,
   type CulDeSac,
 } from '../shared/culdesac';
-import { blockTiles } from '../shared/roundabout';
 import type { GraphEdge, GraphNode, GridState, TilePoint } from '../shared/types';
+import type { NetworkShape } from './roadgraph';
 import { gridRingReader } from './roundabouts';
 
 const keyOf = (t: TilePoint): string => `${t.x},${t.z}`;
@@ -21,17 +23,47 @@ const keyOf = (t: TilePoint): string => `${t.x},${t.z}`;
 export function culDeSacsIn(g: GridState): CulDeSac[] {
   const coded: TilePoint[] = [];
   for (let i = 0; i < g.junctionControl.length; i++) {
-    if (g.junctionControl[i] === CUL_DE_SAC_CODE)
+    if (isCulDeSacCode(g.junctionControl[i] ?? 0))
       coded.push({ x: i % g.size, z: Math.floor(i / g.size) });
   }
   return culDeSacsAmong(coded, gridRingReader(g));
 }
 
+/**
+ * `shape` with the two middle tiles of each centred cul-de-sac no longer
+ * joined: they stand either side of the circle's island, which no car crosses,
+ * and leaving them joined would give the graph a road straight over it. What
+ * is left is the offset block's shape, one run round the circle that starts and
+ * ends where the street joins.
+ */
+export function withoutBulbIslands(
+  shape: NetworkShape,
+  culs: readonly CulDeSac[],
+  size: number,
+): NetworkShape {
+  const across = new Map<number, number>();
+  for (const c of culs) {
+    if (!c.centred) continue;
+    const near = c.leg.from.z * size + c.leg.from.x;
+    const far = (2 * c.leg.from.z - c.leg.tile.z) * size + (2 * c.leg.from.x - c.leg.tile.x);
+    across.set(near, far);
+    across.set(far, near);
+  }
+  if (across.size === 0) return shape;
+  return {
+    ...shape,
+    links: (cells, id, profileFor) =>
+      shape.links(cells, id, profileFor).filter((next) => across.get(id) !== next),
+  };
+}
+
 /** How far outside a block's tiles a trip's end still counts as a home round its circle, in tiles. */
 const HOME_REACH_TILES = 3;
 
-const inBlock = (cul: CulDeSac, t: TilePoint): boolean =>
-  t.x >= cul.x && t.x <= cul.x + 1 && t.z >= cul.z && t.z <= cul.z + 1;
+const inBlock = (cul: CulDeSac, t: TilePoint): boolean => {
+  const { w, d } = culDeSacSize(cul);
+  return t.x >= cul.x && t.x < cul.x + w && t.z >= cul.z && t.z < cul.z + d;
+};
 
 /**
  * Carries a path whose end lies round a cul-de-sac on round it. The graph ends
@@ -60,11 +92,12 @@ export function routeRoundCulDeSacs(
     end: TilePoint,
   ): { cul: CulDeSac; drive: TilePoint[]; corner: number } | null => {
     for (const cul of culs) {
+      const { w, d } = culDeSacSize(cul);
       const near =
         end.x >= cul.x - HOME_REACH_TILES &&
-        end.x <= cul.x + 1 + HOME_REACH_TILES &&
+        end.x <= cul.x + w - 1 + HOME_REACH_TILES &&
         end.z >= cul.z - HOME_REACH_TILES &&
-        end.z <= cul.z + 1 + HOME_REACH_TILES;
+        end.z <= cul.z + d - 1 + HOME_REACH_TILES;
       if (!near) continue;
       const loop = edges.find(
         (e) => e.a === nodeId && e.b === nodeId && e.tiles.every((t) => inBlock(cul, t)),
@@ -112,7 +145,7 @@ export function shapeCulDeSacs(
 ): void {
   if (culs.length === 0) return;
   const blockAt = new Map<string, CulDeSac>();
-  for (const c of culs) for (const t of blockTiles(c)) blockAt.set(keyOf(t), c);
+  for (const c of culs) for (const t of culDeSacTiles(c)) blockAt.set(keyOf(t), c);
   const nodeById = new Map(nodes.map((n) => [n.id, n]));
   const culOf = (nodeId: number): CulDeSac | undefined => {
     const node = nodeById.get(nodeId);
@@ -132,7 +165,7 @@ export function shapeCulDeSacs(
       delete edge.pocketAtoB;
       delete edge.pocketBtoA;
       edge.route = culDeSacArc(cul, tiles);
-      edge.length = culDeSacArcTiles(tiles.length - 1);
+      edge.length = culDeSacRunTiles(cul, tiles);
       continue;
     }
     const route = edge.route;
