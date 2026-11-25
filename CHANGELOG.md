@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.105.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.104.0...slimcity-v1.105.0) (2026-11-25)
+
+
+### Features
+
+* **render:** the sea past the edge is its own cheap mesh; no lapping line on a river ([3bebab4](https://github.com/rbenzing/SlimCityGame/commit/3bebab462d404037bbc457f0e2644568711a84be))
+
+
+### Bug Fixes
+
+* **sim:** ground beside a deck is not smoothed away from under it ([d12e95a](https://github.com/rbenzing/SlimCityGame/commit/d12e95a694ff969969f85a3f124370d3d64fc374))
+
+
+### Performance Improvements
+
+* **render:** the sea past the edge is opaque and writes no depth ([3ae4fdc](https://github.com/rbenzing/SlimCityGame/commit/3ae4fdc65ddaaa971bc5eaad07fb47f510e15674))
+
 ## [1.104.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.103.0...slimcity-v1.104.0) (2026-11-24)
 
 
