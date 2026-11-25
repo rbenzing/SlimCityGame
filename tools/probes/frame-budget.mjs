@@ -915,6 +915,11 @@ try {
   result.buildMs = Date.now() - started;
 
   const standing = await page.evaluate(() => window.__slimcity.readBuildings());
+  if (args.includes('--build-only')) {
+    console.log('standing', standing.length, 'of target', TARGET);
+    await browser.close();
+    process.exit(0);
+  }
   const at = new Set(standing.map((b) => `${b.catalogId}@${b.x},${b.z}`));
   const missing = all.filter((p) => !at.has(`${p.catalogId}@${p.x},${p.z}`));
   const tally = (list) => {
