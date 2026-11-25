@@ -17,7 +17,17 @@
  * Usage: node tools/probes/frame-budget.mjs [baseUrl] [--buildings N] [--out dir]
  *        [--seed N] [--frames N] [--generator N] [--webgpu]   (a dev server must be running;
  *        the terrain generator is the first unless one is named; --webgpu runs full Chromium on
- *        the WebGPU backend instead of the headless shell's WebGL2 fallback) */
+ *        the WebGPU backend instead of the headless shell's WebGL2 fallback)
+ *
+ * Cost mode (dev server only, set SHOTS_DISCRETE_GPU=1 for the discrete card):
+ *   --ablate       after the city is built, measure each view with one cost switched off at a
+ *                  time, `--runs N` passes (default 3), every case interleaved with the baseline;
+ *   --cases a,b    only these cases (see CASES); --views 1-street,3-overview only these views;
+ *   --noaa         load the page with antialiasing off (a fresh renderer, so a separate run);
+ *   --census       list the triangles each group and the five largest meshes submit, and how many
+ *                  instances are in view;
+ *   --profile      a CPU profile of the main thread over the baseline oblique and street views;
+ *   --tag name     names the files written to the out directory (ablate-name.json / .md). */
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { hooksReady, tileCamera } from '../shots/lib/camera.mjs';
 import { launchBrowser } from '../shots/lib/session.mjs';
@@ -98,7 +108,17 @@ const flag = (name, fallback) => {
   const at = args.indexOf(`--${name}`);
   return at >= 0 ? args[at + 1] : fallback;
 };
-const flagValues = new Set(['--buildings', '--out', '--seed', '--frames', '--generator']);
+const flagValues = new Set([
+  '--buildings',
+  '--out',
+  '--seed',
+  '--frames',
+  '--generator',
+  '--cases',
+  '--views',
+  '--runs',
+  '--tag',
+]);
 const base =
   args.find((a, i) => !a.startsWith('--') && !flagValues.has(args[i - 1] ?? '')) ??
   'http://localhost:5173';
@@ -108,6 +128,14 @@ const SEED = Number(flag('seed', 7));
 const FRAMES = Number(flag('frames', 240));
 const GENERATOR = flag('generator', undefined);
 const WEBGPU = args.includes('--webgpu');
+const ABLATE = args.includes('--ablate');
+const NOAA = args.includes('--noaa');
+const CENSUS = args.includes('--census');
+const PROFILE = args.includes('--profile');
+const RUNS = Number(flag('runs', 3));
+const TAG = flag('tag', 'run');
+const ONLY_CASES = flag('cases', undefined)?.split(',');
+const ONLY_VIEWS = flag('views', undefined)?.split(',');
 const WARMUP = 30;
 mkdirSync(out, { recursive: true });
 
@@ -537,7 +565,9 @@ await page.addInitScript(
 
 const result = { seed: SEED, target: TARGET, frames: FRAMES };
 try {
-  await page.goto(base, { waitUntil: 'domcontentloaded' });
+  await page.goto(NOAA ? `${base.replace(/\/$/, '')}/?noaa` : base, {
+    waitUntil: 'domcontentloaded',
+  });
   await page.waitForSelector('#viewport canvas', { timeout: 60000 });
   await hooksReady(page);
   await page.evaluate(() => {
@@ -689,10 +719,11 @@ try {
   }));
 
   const camera = tileCamera(page);
-  const measure = () =>
+  const measure = (frames = FRAMES) =>
     page.evaluate(
       ([frames, warm]) =>
         new Promise((resolve) => {
+          window.__slimcity.takeFrameJs();
           const dts = [];
           let last = performance.now();
           const tick = (now) => {
@@ -713,7 +744,13 @@ try {
               windows.sort((a, b) => a - b);
               const mean = s.reduce((a, b) => a + b, 0) / s.length;
               const info = window.__slimcity.renderInfo();
+              // Main-thread time of the frame callback and of the render call inside it, over the frames just timed.
+              const js = window.__slimcity.takeFrameJs();
+              const meanOf = (list) =>
+                list.length ? list.reduce((a, b) => a + b, 0) / list.length : 0;
               resolve({
+                jsFrameMs: meanOf(js.frame.slice(-timed.length)),
+                jsRenderMs: meanOf(js.render.slice(-timed.length)),
                 meanMs: mean,
                 p50Ms: s[Math.floor(s.length * 0.5)],
                 p95Ms: s[Math.floor(s.length * 0.95)],
@@ -727,7 +764,7 @@ try {
           };
           requestAnimationFrame(tick);
         }),
-      [FRAMES, WARMUP],
+      [frames, WARMUP],
     );
 
   // Every refused placement raises a toast, which would cover the shot.
@@ -869,6 +906,236 @@ try {
   result.city = await readViews('city');
   result.errors = errors.slice(0, 20);
   result.errorCount = errors.length;
+
+  // --- cost mode: one switch off at a time, census, profile ---
+  const hook = (fn, ...a) =>
+    page.evaluate(([name, params]) => window.__slimcity[name](...params), [fn, a]);
+  const defaultRatio = await page.evaluate(() => Math.min(window.devicePixelRatio || 1, 2));
+  const hide = (group) => ({
+    on: () => hook('setGroupHidden', group, true),
+    off: () => hook('setGroupHidden', group, false),
+  });
+  const CASES = {
+    base: { on: async () => {}, off: async () => {} },
+    'shadows-off': { on: () => hook('setShadows', false), off: () => hook('setShadows', true) },
+    'shadow-2048': {
+      on: () => hook('setShadows', true, 2048),
+      off: () => hook('setShadows', true, 4096),
+    },
+    'shadow-1024': {
+      on: () => hook('setShadows', true, 1024),
+      off: () => hook('setShadows', true, 4096),
+    },
+    'post-off': {
+      on: () => hook('setDirectRender', true),
+      off: () => hook('setDirectRender', false),
+    },
+    'bloom-off': { on: () => hook('setBloom', false), off: () => hook('setBloom', true) },
+    'ratio-1': {
+      on: () => hook('setPixelRatio', 1),
+      off: () => hook('setPixelRatio', defaultRatio),
+    },
+    'ratio-2': {
+      on: () => hook('setPixelRatio', 2),
+      off: () => hook('setPixelRatio', defaultRatio),
+    },
+    'scale-0.75': {
+      on: () => hook('setPixelRatio', 0.75 * defaultRatio),
+      off: () => hook('setPixelRatio', defaultRatio),
+    },
+    'scale-0.5': {
+      on: () => hook('setPixelRatio', 0.5 * defaultRatio),
+      off: () => hook('setPixelRatio', defaultRatio),
+    },
+    ...Object.fromEntries(
+      [
+        'terrain',
+        'water',
+        'sea',
+        'trees',
+        'roads',
+        'furniture',
+        'buildings',
+        'lots',
+        'vehicles',
+        'power',
+      ].map((g) => [`hide-${g}`, hide(g)]),
+    ),
+  };
+  const stat = (xs) => {
+    const mean = xs.reduce((a, b) => a + b, 0) / xs.length;
+    const sd = Math.sqrt(xs.reduce((a, b) => a + (b - mean) ** 2, 0) / Math.max(1, xs.length - 1));
+    return { mean, sd, min: Math.min(...xs), max: Math.max(...xs), n: xs.length };
+  };
+  const costViews = VIEWS.filter((v) => !ONLY_VIEWS || ONLY_VIEWS.includes(v.name));
+  // The renderers lay their chunks over the frames after a build; the first reads include that work, so the cost runs wait it out.
+  if (ABLATE || CENSUS || PROFILE) await page.waitForTimeout(20000);
+
+  if (ABLATE) {
+    const names = (ONLY_CASES ?? Object.keys(CASES)).filter((n) => n in CASES);
+    const samples = {};
+    const keep = (view, name, m) => {
+      const s = (samples[`${view}|${name}`] ??= []);
+      s.push(m);
+    };
+    for (let run = 0; run < RUNS; run++) {
+      for (const v of costViews) {
+        await setPhase(v.night ? 0.96 : 0.5);
+        await camera(v.tx, v.tz, v.distance, v.yaw, v.pitch);
+        await page.waitForTimeout(2500);
+        await dismissToasts();
+        const order = ['base', ...names.filter((n) => n !== 'base'), 'base'];
+        for (const name of order) {
+          await CASES[name].on();
+          await page.waitForTimeout(700);
+          const m = await measure(Math.min(FRAMES, 120));
+          await CASES[name].off();
+          keep(v.name, name, m);
+          console.log('run', run, v.name, name, JSON.stringify({ mean: m.meanMs, p95: m.p95Ms }));
+        }
+      }
+    }
+    const table = {};
+    for (const [key, list] of Object.entries(samples)) {
+      const [view, name] = key.split('|');
+      const last = list[list.length - 1];
+      (table[view] ??= {})[name] = {
+        meanMs: stat(list.map((m) => m.meanMs)),
+        p95Ms: stat(list.map((m) => m.p95Ms)),
+        jsFrameMs: stat(list.map((m) => m.jsFrameMs)),
+        jsRenderMs: stat(list.map((m) => m.jsRenderMs)),
+        drawCalls: last.drawCalls,
+        triangles: last.triangles,
+      };
+    }
+    result.ablate = { runs: RUNS, noaa: NOAA, defaultRatio, table };
+    const lines = [
+      `# Ablation (${TAG}, ${standing.length} buildings, ${RUNS} runs${NOAA ? ', no antialiasing' : ''})`,
+      '',
+      '| View | Case | mean ms (sd) | p95 ms (sd) | js frame ms | js render ms | draw calls | triangles |',
+      '| ---- | ---- | ------------ | ----------- | ----------- | ----------- | ---------- | --------- |',
+    ];
+    for (const [view, cases] of Object.entries(table))
+      for (const [name, r] of Object.entries(cases))
+        lines.push(
+          `| ${view} | ${name} | ${r.meanMs.mean.toFixed(1)} (${r.meanMs.sd.toFixed(1)}) | ${r.p95Ms.mean.toFixed(1)} (${r.p95Ms.sd.toFixed(1)}) | ${r.jsFrameMs.mean.toFixed(1)} | ${r.jsRenderMs.mean.toFixed(1)} | ${r.drawCalls} | ${r.triangles} |`,
+        );
+    writeFileSync(`${out}/ablate-${TAG}.md`, `${lines.join('\n')}\n`);
+    writeFileSync(`${out}/ablate-${TAG}.json`, `${JSON.stringify(result.ablate, null, 2)}\n`);
+    console.log(lines.join('\n'));
+  }
+
+  if (CENSUS) {
+    const census = {};
+    for (const v of costViews) {
+      await setPhase(v.night ? 0.96 : 0.5);
+      await camera(v.tx, v.tz, v.distance, v.yaw, v.pitch);
+      await page.waitForTimeout(2500);
+      await dismissToasts();
+      const rows = await hook('meshCensus');
+      const full = await measure(30);
+      await hook('setShadows', false);
+      await page.waitForTimeout(700);
+      const noShadow = await measure(30);
+      await hook('setShadows', true, 4096);
+      const byGroup = {};
+      for (const r of rows) {
+        const g = (byGroup[r.group] ??= {
+          meshes: 0,
+          instances: 0,
+          inView: 0,
+          trianglesSubmitted: 0,
+          trianglesInView: 0,
+          uncullable: 0,
+        });
+        g.meshes++;
+        g.instances += r.instances;
+        g.inView += r.inView;
+        g.trianglesSubmitted += r.instances * r.trianglesEach;
+        g.trianglesInView += r.inView * r.trianglesEach;
+        if (!r.frustumCulled) g.uncullable++;
+      }
+      const top = rows
+        .map((r) => ({ ...r, submitted: r.instances * r.trianglesEach }))
+        .sort((a, b) => b.submitted - a.submitted)
+        .slice(0, 8);
+      census[v.name] = {
+        rendererTriangles: full.triangles,
+        rendererTrianglesNoShadow: noShadow.triangles,
+        drawCalls: full.drawCalls,
+        drawCallsNoShadow: noShadow.drawCalls,
+        sceneMeshes: rows.length,
+        sceneTriangles: rows.reduce((a, r) => a + r.instances * r.trianglesEach, 0),
+        sceneTrianglesInView: rows.reduce((a, r) => a + r.inView * r.trianglesEach, 0),
+        byGroup,
+        top,
+      };
+      console.log('census', v.name, JSON.stringify(census[v.name]));
+    }
+    result.census = census;
+    writeFileSync(`${out}/census-${TAG}.json`, `${JSON.stringify(census, null, 2)}\n`);
+  }
+
+  if (PROFILE) {
+    const cdp = await page.context().newCDPSession(page);
+    await cdp.send('Profiler.enable');
+    await cdp.send('Profiler.setSamplingInterval', { interval: 500 });
+    const profiles = {};
+    for (const v of costViews.filter((x) => x.name === '2-oblique' || x.name === '1-street')) {
+      await setPhase(0.5);
+      await camera(v.tx, v.tz, v.distance, v.yaw, v.pitch);
+      await page.waitForTimeout(2500);
+      await cdp.send('Profiler.start');
+      const m = await measure(Math.min(FRAMES, 150));
+      const { profile } = await cdp.send('Profiler.stop');
+      const self = new Map();
+      const byId = new Map(profile.nodes.map((n) => [n.id, n]));
+      const parentOf = new Map();
+      for (const n of profile.nodes) for (const c of n.children ?? []) parentOf.set(c, n.id);
+      const nameOf = (id) => {
+        const fn = byId.get(id).callFrame;
+        return `${fn.functionName || '(anonymous)'} ${fn.url.split('/').slice(-2).join('/')}:${fn.lineNumber}`;
+      };
+      // Self time of the busiest non-idle function, split by the three callers above it.
+      const chains = new Map();
+      profile.samples.forEach((id, i) => {
+        const key = nameOf(id);
+        self.set(key, (self.get(key) ?? 0) + (profile.timeDeltas[i] ?? 0));
+        if (key.startsWith('writeBuffer')) {
+          const up = [
+            parentOf.get(id),
+            parentOf.get(parentOf.get(id)),
+            parentOf.get(parentOf.get(parentOf.get(id))),
+          ];
+          const chain = up
+            .filter((x) => x !== undefined)
+            .map(nameOf)
+            .join(' < ');
+          chains.set(chain, (chains.get(chain) ?? 0) + (profile.timeDeltas[i] ?? 0));
+        }
+      });
+      const total = [...self.values()].reduce((a, b) => a + b, 0);
+      const idle = (self.get('(idle) :-1') ?? 0) + (self.get('(program) :-1') ?? 0);
+      profiles[v.name] = {
+        frameMs: m.meanMs,
+        jsFrameMs: m.jsFrameMs,
+        jsRenderMs: m.jsRenderMs,
+        sampledMs: total / 1000,
+        idleOrProgramMs: idle / 1000,
+        top: [...self.entries()]
+          .sort((a, b) => b[1] - a[1])
+          .slice(0, 12)
+          .map(([k, us]) => [k, us / 1000]),
+        writeBufferCallers: [...chains.entries()]
+          .sort((a, b) => b[1] - a[1])
+          .slice(0, 5)
+          .map(([k, us]) => [k, us / 1000]),
+      };
+      console.log('profile', v.name, JSON.stringify(profiles[v.name]));
+    }
+    result.profile = profiles;
+    writeFileSync(`${out}/profile-${TAG}.json`, `${JSON.stringify(profiles, null, 2)}\n`);
+  }
 
   // --- report ---
   const f = (n) => n.toFixed(1);
