@@ -9,9 +9,20 @@
  * localStorage so they survive across games and reloads.
  */
 
+import { MapGenerator, NEWEST_MAP_GENERATOR } from '../shared/types';
+import type { MapGeneratorId } from '../shared/types';
+
 /** What the next boot should show. Persisted in sessionStorage (per tab). */
 export type AppSession =
-  { screen: 'menu' } | { screen: 'playing'; seed: number; mode: 'new' | 'load'; saveId?: number };
+  | { screen: 'menu' }
+  | {
+      screen: 'playing';
+      seed: number;
+      /** The terrain generator a new game is made with; absent is the first, so a session written without one keeps its terrain. */
+      generator?: MapGeneratorId;
+      mode: 'new' | 'load';
+      saveId?: number;
+    };
 
 const SESSION_KEY = 'slimcity.session';
 const SETTINGS_KEY = 'slimcity.settings';
@@ -38,6 +49,18 @@ export function writeAppSession(session: AppSession): void {
   }
 }
 
+/**
+ * The seed and generator a boot builds its terrain from: a loaded save's own
+ * header, else the session's. A header or session with no generator is the first.
+ */
+export function terrainSource(
+  session: { seed: number; generator?: MapGeneratorId },
+  saved?: { seed: number; generator?: MapGeneratorId },
+): { seed: number; generator: MapGeneratorId } {
+  const from = saved ?? session;
+  return { seed: from.seed, generator: from.generator ?? MapGenerator.Hills };
+}
+
 /** A fresh 32-bit seed for New Game (app-layer entropy — never in the sim tick). */
 export function randomSeed(): number {
   const buf = new Uint32Array(1);
@@ -47,7 +70,12 @@ export function randomSeed(): number {
 
 /** Writes "start a fresh random city" intent and reloads into gameplay. */
 export function startNewGame(): void {
-  writeAppSession({ screen: 'playing', seed: randomSeed(), mode: 'new' });
+  writeAppSession({
+    screen: 'playing',
+    seed: randomSeed(),
+    generator: NEWEST_MAP_GENERATOR,
+    mode: 'new',
+  });
   location.reload();
 }
 

@@ -9,8 +9,12 @@ import {
   MOON_GLINT_FRACTION,
   WATER_REBUILD_SETTLE_S,
   WATER_VERTEX_SPACING_M,
+  SEA_OVERLAP_M,
+  SEA_REACH_M,
   WaterRenderer,
+  buildSeaSkirt,
   buildWaterGrid,
+  riverShare,
   coveredTiles,
   foulMix,
   vertexFouling,
@@ -448,13 +452,14 @@ describe('WaterRenderer', () => {
     return mask;
   };
 
-  it('adds exactly one named mesh to the scene, positioned at SEA_LEVEL', () => {
+  it('adds the surface mesh and the sea past the edge, named, at SEA_LEVEL', () => {
     const scene = new THREE.Scene();
     new WaterRenderer(scene, flatHeightAt, allWet(), 4);
-    expect(scene.children.length).toBe(1);
+    expect(scene.children.length).toBe(2);
     const mesh = scene.children[0] as THREE.Mesh;
     expect(mesh.name).toBe('water-surface');
     expect(mesh.position.y).toBe(SEA_LEVEL);
+    expect((scene.children[1] as THREE.Mesh).name).toBe('water-sea');
   });
 
   it('sizes the plane to mapSizeTiles * TILE_METERS', () => {
@@ -555,6 +560,142 @@ describe('WaterRenderer', () => {
     }
   });
 
+  describe('the sea past the map edge', () => {
+    const size = 12;
+    const kindOf = (tiles: Array<[number, number]>): Uint8Array => {
+      const kind = new Uint8Array(size * size);
+      for (const [x, z] of tiles) kind[z * size + x] = WaterKind.Ocean;
+      return kind;
+    };
+    const bounds = (positions: Float32Array): { x: number[]; z: number[] } => {
+      const x: number[] = [];
+      const z: number[] = [];
+      for (let i = 0; i < positions.length; i += 3) {
+        x.push(positions[i]!);
+        z.push(positions[i + 2]!);
+      }
+      return { x, z };
+    };
+
+    it('adds nothing where no ocean touches an edge', () => {
+      const kind = kindOf([[5, 5]]);
+      kind[5 * size + 4] = WaterKind.Lake;
+      kind[0 * size + 3] = WaterKind.Lake;
+      expect(buildSeaSkirt(kind, size).positions.length).toBe(0);
+    });
+
+    it('runs on from the edge to the reach, starting a hair inside the edge so the meshes overlap', () => {
+      const skirt = buildSeaSkirt(
+        kindOf([
+          [0, 4],
+          [0, 5],
+          [0, 6],
+        ]),
+        size,
+      );
+      const { x, z } = bounds(skirt.positions);
+      expect(Math.max(...x)).toBe(SEA_OVERLAP_M);
+      expect(Math.min(...x)).toBe(-SEA_REACH_M);
+      // Along that first row the vertices sit on the main mesh's own spacing, all along the edge.
+      const onEdge = z
+        .filter((_, i) => x[i] === SEA_OVERLAP_M)
+        .filter((v) => v >= 0 && v <= size * TILE_METERS);
+      expect(onEdge).toHaveLength(size * 2 + 1);
+      onEdge.forEach((v, i) => expect(v).toBe(i * WATER_VERTEX_SPACING_M));
+      // Every vertex looks to the nearest ocean tile of the edge for its water.
+      for (let i = 0; i < skirt.anchors.length; i += 2) {
+        expect(skirt.anchors[i]).toBe(0);
+        expect(skirt.anchors[i + 1]!).toBeGreaterThanOrEqual(4 * TILE_METERS);
+        expect(skirt.anchors[i + 1]!).toBeLessThanOrEqual(7 * TILE_METERS);
+      }
+    });
+
+    it('faces every triangle up on every edge', () => {
+      const tiles: Array<[number, number]> = [
+        [0, 5],
+        [size - 1, 5],
+        [5, 0],
+        [5, size - 1],
+      ];
+      const skirt = buildSeaSkirt(kindOf(tiles), size);
+      expect(skirt.indices.length).toBeGreaterThan(0);
+      for (let t = 0; t < skirt.indices.length; t += 3) {
+        const [a, b, c] = [skirt.indices[t]!, skirt.indices[t + 1]!, skirt.indices[t + 2]!];
+        const ux = skirt.positions[b * 3]! - skirt.positions[a * 3]!;
+        const uz = skirt.positions[b * 3 + 2]! - skirt.positions[a * 3 + 2]!;
+        const vx = skirt.positions[c * 3]! - skirt.positions[a * 3]!;
+        const vz = skirt.positions[c * 3 + 2]! - skirt.positions[a * 3 + 2]!;
+        expect(uz * vx - ux * vz).toBeGreaterThan(0);
+      }
+    });
+
+    it('runs along the whole edge and past both corners, taking its water from the nearest ocean tile', () => {
+      const run = buildSeaSkirt(
+        kindOf([
+          [0, 4],
+          [0, 5],
+        ]),
+        size,
+      );
+      const { x, z } = bounds(run.positions);
+      expect(Math.min(...z)).toBe(-SEA_REACH_M);
+      expect(Math.max(...z)).toBe(size * TILE_METERS + SEA_REACH_M);
+      // Two stretches of ocean on one edge are one strip, not two laid over each other.
+      const two = buildSeaSkirt(
+        kindOf([
+          [0, 2],
+          [0, 9],
+        ]),
+        size,
+      );
+      expect(two.positions.length).toBe(run.positions.length);
+      expect(x.length).toBe(run.positions.length / 3);
+      for (let i = 0; i < two.anchors.length; i += 2) {
+        expect(
+          [2, 9].some(
+            (t) =>
+              two.anchors[i + 1]! >= t * TILE_METERS &&
+              two.anchors[i + 1]! <= (t + 1) * TILE_METERS,
+          ),
+        ).toBe(true);
+      }
+    });
+
+    it('is a mesh of its own with its own cheap material and few vertex buffers', () => {
+      const scene = new THREE.Scene();
+      const mask = new Uint8Array(MAP_SIZE * MAP_SIZE);
+      for (let z = 10; z < 30; z++) for (let x = 0; x < 6; x++) mask[z * MAP_SIZE + x] = 1;
+      const water = new WaterRenderer(scene, () => -10, mask);
+      const main = scene.children[0] as THREE.Mesh;
+      const sea = scene.children[1] as THREE.Mesh;
+      expect(sea.name).toBe('water-sea');
+      expect(sea.visible).toBe(true);
+      expect(sea.material).not.toBe(main.material);
+      expect(sea.material).not.toBe(water.blendedSurfaceMaterial());
+      const position = sea.geometry.attributes.position!;
+      let minX = Infinity;
+      for (let i = 0; i < position.count; i++) minX = Math.min(minX, position.getX(i));
+      expect(minX).toBe(-SEA_REACH_M);
+      // The main mesh keeps the map's own extent.
+      const mainPosition = main.geometry.attributes.position!;
+      let mainMinX = Infinity;
+      for (let i = 0; i < mainPosition.count; i++)
+        mainMinX = Math.min(mainMinX, mainPosition.getX(i));
+      expect(mainMinX).toBe(0);
+      // position, seaSwell, seaScatter; the main mesh's six: both under WebGPU's 8.
+      expect(Object.keys(sea.geometry.attributes)).toHaveLength(3);
+      expect(Object.keys(main.geometry.attributes)).toHaveLength(6);
+    });
+
+    it('is hidden where no ocean touches an edge', () => {
+      const scene = new THREE.Scene();
+      const mask = new Uint8Array(MAP_SIZE * MAP_SIZE);
+      for (let z = 100; z < 104; z++) for (let x = 100; x < 104; x++) mask[z * MAP_SIZE + x] = 1;
+      new WaterRenderer(scene, () => -10, mask);
+      expect((scene.children[1] as THREE.Mesh).visible).toBe(false);
+    });
+  });
+
   it('carries fetch, swell and flow attributes equal to the sampled water bodies', () => {
     // A 3-wide strait with open sea on the west edge of a 40-tile map.
     const size = 40;
@@ -574,13 +715,18 @@ describe('WaterRenderer', () => {
     expect(shape.count).toBe(position.count);
     expect(shape.itemSize).toBe(4);
     expect(swell.itemSize).toBe(4);
-    expect(flow.itemSize).toBe(2);
+    expect(flow.itemSize).toBe(3);
     const bodies = deriveWaterBodies(mask, size, (tx, tz) =>
       height((tx + 0.5) * TILE_METERS, (tz + 0.5) * TILE_METERS),
     );
     let sawSwell = false;
     let sawFlow = false;
     for (let i = 0; i < position.count; i++) {
+      // The sea past the edge takes its look from the edge point: it is checked on its own. (the edge line itself is the strip's first row)
+      const inMap = [position.getX(i), position.getZ(i)].every(
+        (c) => c > 0 && c < size * TILE_METERS,
+      );
+      if (!inMap) continue;
       const s = sampleWater(bodies, position.getX(i), position.getZ(i));
       expect(Math.abs(shape.getZ(i) - s.fetchM)).toBeLessThanOrEqual(s.fetchM * 1e-6 + 1e-6);
       expect(swell.getX(i)).toBeCloseTo(s.swellTau, 3);
@@ -599,6 +745,43 @@ describe('WaterRenderer', () => {
     }
     expect(sawSwell).toBe(true);
     expect(sawFlow).toBe(true);
+  });
+
+  it('weights the lapping line out of a river and only a river: the share rides the flow attribute', () => {
+    // The strait of the test above: sea on the west, lake in the east, a river between.
+    const size = 40;
+    const height = (x: number, z: number): number => {
+      const tx = Math.floor(x / TILE_METERS);
+      const tz = Math.floor(z / TILE_METERS);
+      return tx < 8 || (tx < 38 && tz >= 18 && tz <= 20) ? -4 : 10;
+    };
+    const mask = maskOf(height, size);
+    const scene = new THREE.Scene();
+    new WaterRenderer(scene, height, mask, size);
+    const geometry = (scene.children[0] as THREE.Mesh).geometry;
+    const position = geometry.attributes.position!;
+    const flow = geometry.attributes.waterFlow!;
+    const bodies = deriveWaterBodies(mask, size, (tx, tz) =>
+      height((tx + 0.5) * TILE_METERS, (tz + 0.5) * TILE_METERS),
+    );
+    let inRiver = 0;
+    let inOcean = 0;
+    for (let i = 0; i < position.count; i++) {
+      const tx = position.getX(i) / TILE_METERS;
+      const tz = position.getZ(i) / TILE_METERS;
+      expect(flow.getZ(i)).toBeCloseTo(riverShare(bodies.kind, size, tx, tz), 6);
+      const tile = Math.min(size - 1, Math.floor(tz)) * size + Math.min(size - 1, Math.floor(tx));
+      if (bodies.kind[tile] === WaterKind.River && Number.isInteger(tx) === false) {
+        if (flow.getZ(i) === 1) inRiver++;
+      }
+      if (bodies.kind[tile] === WaterKind.Ocean && tx < 6) {
+        expect(flow.getZ(i)).toBe(0);
+        inOcean++;
+      }
+    }
+    expect(inRiver).toBeGreaterThan(0);
+    expect(inOcean).toBeGreaterThan(0);
+    expect(riverShare(new Uint8Array(4), 2, 1, 1)).toBe(0);
   });
 
   it('blurs murk and scatter over the water tiles so one kind runs into the next', () => {
@@ -930,7 +1113,7 @@ describe('WaterRenderer', () => {
     const scene = new THREE.Scene();
     const water = new WaterRenderer(scene, flatHeightAt, allWet(), 4);
     for (let i = 0; i < 20; i++) water.update(16, 0.3);
-    expect(scene.children.length).toBe(1);
+    expect(scene.children.length).toBe(2);
   });
 
   it('setSkyColors accepts zenith/horizon RGB tuples without throwing', () => {
@@ -946,7 +1129,7 @@ describe('WaterRenderer', () => {
       water.setSkyColors([0.05 * i, 0.2, 0.3], [0.5, 0.6, 0.05 * i]);
       water.update(16, i / 10);
     }
-    expect(scene.children.length).toBe(1);
+    expect(scene.children.length).toBe(2);
   });
 
   it('setSkyColors does not throw for out-of-range (unclamped) color components', () => {

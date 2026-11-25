@@ -456,6 +456,10 @@ export function createWorldScene(): WorldScene {
    * is looking. Cheap — just repositions the existing sun/target, no allocation.
    */
   const setShadowFocus = (x: number, z: number): void => {
+    // The sky and stars stand round the camera's target, so looking out past a map edge over the
+    // sea still meets sky: a dome fixed at the map's corner ends in white from the far side.
+    sky.follow(x, z);
+    stars.points.position.set(x, 0, z);
     if (x === shadowFocus.x && z === shadowFocus.z) return;
     shadowFocus.set(x, 0, z);
     placeSun();

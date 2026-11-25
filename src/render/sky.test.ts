@@ -33,6 +33,14 @@ describe('SkyDome', () => {
     expect(dome.mesh.frustumCulled).toBe(false);
   });
 
+  it('follows a ground point, so the sky surrounds a camera far from where it was built', () => {
+    const scene = new THREE.Scene();
+    const dome = new SkyDome(scene, 500);
+    dome.follow(4000, -300);
+    const centre = new THREE.Vector3().setFromMatrixPosition(dome.mesh.matrix);
+    expect(centre.toArray()).toEqual([4000, 0, -300]);
+  });
+
   it('paints the top-pole vertex the zenith color and the bottom-pole vertex the horizon color', () => {
     const scene = new THREE.Scene();
     const dome = new SkyDome(scene, 500);

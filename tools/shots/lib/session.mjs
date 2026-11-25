@@ -40,7 +40,22 @@ const watchRefusals = () => {
 };
 
 /**
+ * Launches the browser a session or a probe runs in: the bundled headless shell on its WebGL2
+ * fallback, or full Chromium with WebGPU on when `webgpu` is set. `extraArgs` go to either.
+ */
+export function launchBrowser(webgpu, extraArgs = []) {
+  return chromium.launch(
+    webgpu
+      ? { headless: true, channel: 'chromium', args: [...WEBGPU_ARGS, ...extraArgs] }
+      : { headless: true, args: ['--use-angle=default', ...extraArgs] },
+  );
+}
+
+/**
  * Open the game ready to place things.
+ *
+ * The terrain is the first generator's for `seed` unless `generator` names another
+ * (2 is the coast), so a series keeps the ground it was written on.
  *
  * Returns `{ page, backend, errors, send, refusals, close }`; `backend` is 'webgpu' or 'webgl2'.
  * `webgpu: true` (or SHOTS_WEBGPU=1) runs the real WebGPU backend; a THREE.WebGPURenderer or
@@ -49,15 +64,11 @@ const watchRefusals = () => {
  */
 export async function openSession(
   url,
-  { fresh = false, seed = SEED, bloom = false, webgpu = false } = {},
+  { fresh = false, seed = SEED, bloom = false, webgpu = false, generator } = {},
 ) {
   // SHOTS_WEBGL=1 asks for the WebGL2 fallback and wins; SHOTS_WEBGPU=1 asks every series for WebGPU.
   const wantGpu = process.env.SHOTS_WEBGL !== '1' && (webgpu || process.env.SHOTS_WEBGPU === '1');
-  const browser = await chromium.launch(
-    wantGpu
-      ? { headless: true, channel: 'chromium', args: WEBGPU_ARGS }
-      : { headless: true, args: ['--use-angle=default'] },
-  );
+  const browser = await launchBrowser(wantGpu);
   const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
   const errors = [];
   page.on('pageerror', (e) => errors.push(e.message));
@@ -86,7 +97,10 @@ export async function openSession(
         void e;
       }
     },
-    [{ screen: 'playing', seed, mode: 'new' }, fresh],
+    [
+      { screen: 'playing', seed, mode: 'new', ...(generator === undefined ? {} : { generator }) },
+      fresh,
+    ],
   );
   await page.addInitScript(watchRefusals);
   // SHOTS_WEBGL=1 hides WebGPU before the page loads, so the game takes its WebGL2 fallback.

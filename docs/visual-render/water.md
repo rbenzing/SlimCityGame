@@ -13,12 +13,14 @@ after the land with the terrain continuing beneath it.
 - **Ocean** — deep blue offshore. A swell rolls in from the open edge in
   long lines that close up and turn to face the beach, break into ragged
   surf with a fading trail, and die behind a headland. Between them a wind
-  sea of short crossing waves.
+  sea of short crossing waves. Past the map's edge the sea runs on to the
+  horizon, calm and plain, under a sky that follows the camera.
 - **Lake** — clear at the rim, darker in the middle, with a thin lapping
   line at the shore. Its waves are too small to see from above; what moves
   is the gust patches, ruffled and smooth water drifting downwind.
 - **River and canal** — green-teal and murkier, the bed lost by 1.5 m. Soft
-  ripples and faint streaks drift toward the outlet, fastest mid-channel.
+  ripples and faint streaks drift toward the outlet, fastest mid-channel;
+  no lapping line at its banks.
   Where it meets open water its colour runs out over about 100 m.
 
 ## The surface

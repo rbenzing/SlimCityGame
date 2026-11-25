@@ -76,6 +76,12 @@ export class SkyDome {
     this.setTimeOfDay(0.5);
   }
 
+  /** Centres the dome on a ground point, so the sky surrounds whoever looks from near it. */
+  follow(x: number, z: number): void {
+    this.mesh.position.set(x, 0, z);
+    this.mesh.updateMatrix();
+  }
+
   /** Repaints every vertex from the current time-of-day's zenith/horizon colors. */
   setTimeOfDay(t: number): void {
     const c = timeOfDayColors(t);

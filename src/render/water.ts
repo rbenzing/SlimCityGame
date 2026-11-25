@@ -86,6 +86,7 @@ import {
 import type { WaveTrain } from '../shared/waves';
 import {
   ABSORPTION_PER_M,
+  BED_LOST_TRANSMISSION,
   FRESNEL_F0,
   GUST_DRIFT_MPS,
   GUST_GAIN,
@@ -122,6 +123,10 @@ import {
 export type HeightSampler = (x: number, z: number) => number;
 
 const clamp01 = (v: number): number => Math.min(1, Math.max(0, v));
+const smoothstep01 = (v: number): number => {
+  const t = clamp01(v);
+  return t * t * (3 - 2 * t);
+};
 
 const TWO_PI = Math.PI * 2;
 
@@ -351,6 +356,144 @@ export function buildWaterGrid(water: Uint8Array, size: number): WaterGrid {
   return { positions: new Float32Array(positions), indices: new Uint32Array(indices) };
 }
 
+/** How far the sea runs on past a map edge, in metres: to the horizon, inside the camera's far plane. */
+export const SEA_REACH_M = 15000;
+/** Past the edge the swell fades out over this many metres. */
+export const SEA_CALM_M = 400;
+/** The sea strip reaches this far back inside the map's edge, over the main mesh, to hide the seam. */
+export const SEA_OVERLAP_M = 0.5;
+
+export interface SeaSkirt {
+  /** x, 0, z of each vertex, in metres. */
+  readonly positions: Float32Array;
+  /** Triangles, three vertex indices each. */
+  readonly indices: Uint32Array;
+  /** Where each vertex's look is taken from: the nearest point of the map's edge, x then z, in metres. */
+  readonly anchors: Float32Array;
+}
+
+/** Positions from 0 to `reach` that start `first` apart and double each step. */
+function reachSteps(first: number, reach: number): number[] {
+  const out = [0];
+  let at = 0;
+  let step = first;
+  while (at < reach) {
+    at = Math.min(reach, at + step);
+    out.push(at);
+    step *= 2;
+  }
+  return out;
+}
+
+/**
+ * The sea past the map's edge: along an edge an ocean tile touches, a strip of
+ * the surface carries on from the whole edge to SEA_REACH_M, and past its two
+ * corners, so the sea has no side wall. Along the edge the vertices are
+ * WATER_VERTEX_SPACING_M apart, as the main mesh's are, so the two meet without
+ * a crack; outward the spacing doubles.
+ */
+export function buildSeaSkirt(kind: Uint8Array, size: number): SeaSkirt {
+  const edgeLen = size * TILE_METERS;
+  const positions: number[] = [];
+  const anchors: number[] = [];
+  const indices: number[] = [];
+  // The strip starts SEA_OVERLAP_M inside the edge, so the two meshes overlap and no crack shows between them.
+  const outward = reachSteps(WATER_VERTEX_SPACING_M, SEA_REACH_M).map((v, k) =>
+    k === 0 ? -SEA_OVERLAP_M : v,
+  );
+  // Per edge: the world point at (u along the edge, v out from it).
+  const edges: ReadonlyArray<{
+    at: (i: number) => number;
+    point: (u: number, v: number) => [number, number];
+    edge: (u: number) => [number, number];
+  }> = [
+    { at: (i) => i * size, point: (u, v) => [0 - v, u], edge: (u) => [0, u] },
+    {
+      at: (i) => i * size + size - 1,
+      point: (u, v) => [edgeLen + v, u],
+      edge: (u) => [edgeLen, u],
+    },
+    { at: (i) => i, point: (u, v) => [u, 0 - v], edge: (u) => [u, 0] },
+    {
+      at: (i) => (size - 1) * size + i,
+      point: (u, v) => [u, edgeLen + v],
+      edge: (u) => [u, edgeLen],
+    },
+  ];
+  for (const e of edges) {
+    const oceanTiles: number[] = [];
+    for (let i = 0; i < size; i++) if (kind[e.at(i)] === WaterKind.Ocean) oceanTiles.push(i);
+    if (oceanTiles.length === 0) continue;
+    // One strip along the whole edge, so two stretches of ocean on it never overlap; it carries on
+    // past both corners, and takes its water from the nearest ocean tile of the edge.
+    const reach = reachSteps(WATER_VERTEX_SPACING_M, SEA_REACH_M).slice(1);
+    const along: number[] = [...reach.map((d) => -d).reverse()];
+    for (let u = 0; u <= edgeLen + 1e-6; u += WATER_VERTEX_SPACING_M) along.push(u);
+    for (const d of reach) along.push(edgeLen + d);
+    const anchorTile = (u: number): number => {
+      const t = Math.min(size - 1, Math.max(0, Math.floor(u / TILE_METERS)));
+      let best = oceanTiles[0]!;
+      for (const o of oceanTiles) if (Math.abs(o - t) < Math.abs(best - t)) best = o;
+      return best;
+    };
+    {
+      const base = positions.length / 3;
+      const anchorAt = along.map((u) => {
+        const t = anchorTile(u);
+        return e.edge(Math.min((t + 1) * TILE_METERS, Math.max(t * TILE_METERS, u)));
+      });
+      for (const v of outward) {
+        along.forEach((u, k) => {
+          const [x, z] = e.point(u, v);
+          positions.push(x, 0, z);
+          anchors.push(...anchorAt[k]!);
+        });
+      }
+      const w = along.length;
+      for (let r = 0; r + 1 < outward.length; r++) {
+        for (let c = 0; c + 1 < w; c++) {
+          const a = base + r * w + c;
+          const b = a + 1;
+          const cc = a + w;
+          const d = cc + 1;
+          // Wind each square so it faces up whichever way the edge runs.
+          const ax = positions[a * 3]!;
+          const az = positions[a * 3 + 2]!;
+          const cross =
+            (positions[cc * 3 + 2]! - az) * (positions[b * 3]! - ax) -
+            (positions[cc * 3]! - ax) * (positions[b * 3 + 2]! - az);
+          if (cross > 0) indices.push(a, cc, b, b, cc, d);
+          else indices.push(a, b, cc, b, d, cc);
+        }
+      }
+    }
+  }
+  return {
+    positions: new Float32Array(positions),
+    indices: new Uint32Array(indices),
+    anchors: new Float32Array(anchors),
+  };
+}
+
+/**
+ * The share of the water tiles meeting at a vertex (`tx`, `tz` in tile units) that are river:
+ * 1 inside a river, 0 in a lake or the sea or on dry ground, between where they meet.
+ */
+export function riverShare(kind: Uint8Array, size: number, tx: number, tz: number): number {
+  let wet = 0;
+  let river = 0;
+  for (let z = Math.ceil(tz) - 1; z <= Math.floor(tz); z++) {
+    for (let x = Math.ceil(tx) - 1; x <= Math.floor(tx); x++) {
+      if (x < 0 || z < 0 || x >= size || z >= size) continue;
+      const k = kind[z * size + x] ?? WaterKind.None;
+      if (k === WaterKind.None) continue;
+      wet++;
+      if (k === WaterKind.River) river++;
+    }
+  }
+  return wet === 0 ? 0 : river / wet;
+}
+
 /** Tiles either side over which a water tile's murk and scatter are averaged with its water neighbours', so one kind runs into the next over about this distance. */
 export const LOOK_BLUR_TILES = 3;
 
@@ -466,6 +609,9 @@ function findDirectionalLight(scene: THREE.Scene): THREE.DirectionalLight | null
  */
 export class WaterRenderer {
   private mesh: THREE.Mesh;
+  /** The sea past the map's edge: a cheap surface of its own. */
+  private seaMesh: THREE.Mesh;
+  private readonly seaMaterial: MeshStandardNodeMaterial;
   private bodies: WaterBodies;
   private dirty = false;
   private idleS = 0;
@@ -503,6 +649,20 @@ export class WaterRenderer {
     this.mesh.receiveShadow = true;
     this.mesh.castShadow = false;
     scene.add(this.mesh);
+    this.seaMaterial = this.createSeaMaterial();
+    this.seaMesh = this.makeSeaMesh(built.sea);
+    scene.add(this.seaMesh);
+  }
+
+  private makeSeaMesh(geometry: THREE.BufferGeometry | null): THREE.Mesh {
+    const mesh = new THREE.Mesh(geometry ?? new THREE.BufferGeometry(), this.seaMaterial);
+    mesh.name = 'water-sea';
+    mesh.userData['underground'] = 'keep';
+    mesh.position.y = SEA_LEVEL;
+    mesh.castShadow = false;
+    mesh.receiveShadow = false;
+    mesh.visible = geometry !== null;
+    return mesh;
   }
 
   /**
@@ -514,6 +674,7 @@ export class WaterRenderer {
     geometry: THREE.BufferGeometry;
     bodies: WaterBodies;
     foul: THREE.BufferAttribute;
+    sea: THREE.BufferGeometry | null;
   } {
     const bodies = deriveWaterBodies(this.water, this.sizeTiles, (tx, tz) =>
       this.heightAt((tx + 0.5) * TILE_METERS, (tz + 0.5) * TILE_METERS),
@@ -522,7 +683,7 @@ export class WaterRenderer {
     const count = grid.positions.length / 3;
     const shape = new Float32Array(count * 4);
     const swell = new Float32Array(count * 4);
-    const flow = new Float32Array(count * 2);
+    const flow = new Float32Array(count * 3);
     const scatter = new Float32Array(count * 3);
     const looks = blurWaterLooks(bodies.kind, this.sizeTiles);
     for (let i = 0; i < count; i++) {
@@ -542,10 +703,12 @@ export class WaterRenderer {
       swell[i * 4 + 2] = s.swellSlowZ;
       swell[i * 4 + 3] = s.swellAmp;
       if (d > 0) {
-        flow[i * 2] = s.flowX;
-        flow[i * 2 + 1] = s.flowZ;
+        flow[i * 3] = s.flowX;
+        flow[i * 3 + 1] = s.flowZ;
       }
+      flow[i * 3 + 2] = riverShare(bodies.kind, this.sizeTiles, x / TILE_METERS, z / TILE_METERS);
     }
+    const sea = this.buildSeaGeometry(bodies, looks);
     const foul = new THREE.BufferAttribute(new Float32Array(count), 1);
     foul.setUsage(THREE.DynamicDrawUsage);
     const geometry = new THREE.BufferGeometry();
@@ -556,9 +719,44 @@ export class WaterRenderer {
     geometry.setAttribute('waterShape', new THREE.BufferAttribute(shape, 4));
     geometry.setAttribute('waterSwell', new THREE.BufferAttribute(swell, 4));
     geometry.setAttribute('waterFoul', foul);
-    geometry.setAttribute('waterFlow', new THREE.BufferAttribute(flow, 2));
+    geometry.setAttribute('waterFlow', new THREE.BufferAttribute(flow, 3));
     geometry.setAttribute('waterScatter', new THREE.BufferAttribute(scatter, 3));
-    return { geometry, bodies, foul };
+    return { geometry, bodies, foul, sea };
+  }
+
+  /**
+   * The sea past the map's edge as a mesh of its own: positions, the scatter of the ocean beside
+   * it and its swell (tau, slope, amplitude), the swell carried on along its gradient and faded
+   * out over SEA_CALM_M. Null where no ocean touches an edge.
+   */
+  private buildSeaGeometry(bodies: WaterBodies, looks: WaterLooks): THREE.BufferGeometry | null {
+    const skirt = buildSeaSkirt(bodies.kind, this.sizeTiles);
+    const count = skirt.positions.length / 3;
+    if (count === 0) return null;
+    const swell = new Float32Array(count * 4);
+    const scatter = new Float32Array(count * 3);
+    for (let i = 0; i < count; i++) {
+      const x = skirt.positions[i * 3]!;
+      const z = skirt.positions[i * 3 + 2]!;
+      const ax = skirt.anchors[i * 2]!;
+      const az = skirt.anchors[i * 2 + 1]!;
+      const calm = smoothstep01(Math.hypot(x - ax, z - az) / SEA_CALM_M);
+      const s = sampleWater(bodies, ax, az);
+      scatter.set(
+        vertexLook(looks, this.sizeTiles, ax / TILE_METERS, az / TILE_METERS).scatter,
+        i * 3,
+      );
+      swell[i * 4] = s.swellTau + s.swellSlowX * (x - ax) + s.swellSlowZ * (z - az);
+      swell[i * 4 + 1] = s.swellSlowX;
+      swell[i * 4 + 2] = s.swellSlowZ;
+      swell[i * 4 + 3] = s.swellAmp * (1 - calm);
+    }
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.BufferAttribute(skirt.positions, 3));
+    geometry.setIndex(new THREE.BufferAttribute(skirt.indices, 1));
+    geometry.setAttribute('seaSwell', new THREE.BufferAttribute(swell, 4));
+    geometry.setAttribute('seaScatter', new THREE.BufferAttribute(scatter, 3));
+    return geometry;
   }
 
   /**
@@ -587,6 +785,9 @@ export class WaterRenderer {
     const old = this.mesh.geometry;
     this.mesh.geometry = built.geometry;
     old.dispose();
+    this.seaMesh.geometry.dispose();
+    this.seaMesh.geometry = built.sea ?? new THREE.BufferGeometry();
+    this.seaMesh.visible = built.sea !== null && this.mesh.visible;
     this.bodies = built.bodies;
     this.foulAttribute = built.foul;
     this.dirty = false;
@@ -697,6 +898,7 @@ export class WaterRenderer {
 
   setVisible(visible: boolean): void {
     this.mesh.visible = visible;
+    this.seaMesh.visible = visible && this.seaMesh.geometry.getAttribute('position') !== undefined;
   }
 
   /** Accumulated animation clock, in seconds. For tests/introspection. */
@@ -869,7 +1071,10 @@ export class WaterRenderer {
     // River drift: two copies of the ripple pattern, each carried along the
     // flow and reset every cycle, half a cycle apart and cross-faded so the
     // pattern never winds up however the flow varies. Still where flow is zero.
-    const flowAttr = attribute<'vec2'>('waterFlow', 'vec2');
+    // waterFlow: the current x and z, and the share of the water at the vertex that is a river.
+    const flowFull = attribute<'vec3'>('waterFlow', 'vec3');
+    const flowAttr = flowFull.xy;
+    const riverShareAttr = flowFull.z;
     const flowStrength = clamp(length(flowAttr).div(RIVER_SURFACE_SPEED_MPS), 0, 1);
     const cycle = this.timeUniform.div(RIPPLE_CYCLE_S);
     const cycleA = fract(cycle);
@@ -1035,9 +1240,12 @@ export class WaterRenderer {
       .add(1 - LAP_BREATH)
       .mul(LAP_WIDTH_M);
     const lapFill = min(float(1), float(LAP_WIDTH_M).div(max(metresPerPixel, 1e-6)));
+    // A river is still at its banks and its steep sides cross the waterline at tile corners: no
+    // lapping line there, on a lake or the ocean exactly as before.
     const lap = oneMinus(smoothstep(0, lapWidth, shoreDistance))
       .mul(lapFill)
-      .mul(LAP_STRENGTH);
+      .mul(LAP_STRENGTH)
+      .mul(oneMinus(riverShareAttr));
 
     // River streaks: thin lines stretched along the flow and carried by it,
     // two copies cross-faded as the ripples are.
@@ -1113,6 +1321,23 @@ export class WaterRenderer {
     // Sun/moon glint: specular-ish sparkle along the light's half-vector,
     // tinted warm by day / pale by night, scaled by (1-nightFactor) with the
     // moon-glint fixed at MOON_GLINT_FRACTION of that at full night.
+    const glint = this.glintNode(eye, swellSlopeX, swellSlopeZ, shortVariance, gust);
+    material.emissiveNode = throughSurface ? throughSurface.add(glint) : glint;
+
+    return material;
+  }
+
+  /**
+   * The sun or moon glint: one normalised lobe along the light's half-vector over the swell's own
+   * slope, widened by the slope variance of everything shorter, tinted by day or night.
+   */
+  private glintNode(
+    eye: Node<'vec3'>,
+    swellSlopeX: Node<'float'>,
+    swellSlopeZ: Node<'float'>,
+    shortVariance: Node<'float'>,
+    gust: Node<'float'>,
+  ): Node<'vec3'> {
     const lightDir = normalize(this.lightDirUniform);
     const halfDir = normalize(lightDir.add(eye));
     const glintNormal = normalize(vec3(swellSlopeX.negate(), float(1), swellSlopeZ.negate()));
@@ -1142,9 +1367,56 @@ export class WaterRenderer {
       this.nightFactorUniform,
     );
     const glintScaleNode = oneMinus(this.nightFactorUniform.mul(1 - MOON_GLINT_FRACTION));
-    const glint = glintColor.mul(specular).mul(glintScaleNode);
-    material.emissiveNode = throughSurface ? throughSurface.add(glint) : glint;
+    return glintColor.mul(specular).mul(glintScaleNode);
+  }
 
+  /**
+   * The sea past the map's edge, drawn cheaply: no frame or depth read, no bed, gusts, foam or net.
+   * Its colour is the deep-water limit of the full surface: the ocean's scatter with BED_LOST_TRANSMISSION
+   * of the bed left, under Schlick's sky reflection, with the swell's slope and lift and the glint.
+   */
+  private createSeaMaterial(): MeshStandardNodeMaterial {
+    // Opaque but writing no depth: where it overlaps the surface at the map's edge, the surface never
+    // finds this sheet behind it and reads a shore there.
+    const material = new MeshStandardNodeMaterial({
+      depthWrite: false,
+      roughness: 0.5,
+      metalness: 0,
+    });
+    const swellAttr = attribute<'vec4'>('seaSwell', 'vec4');
+    const scatterAttr = attribute<'vec3'>('seaScatter', 'vec3');
+    let lift: Node<'float'> = float(0);
+    let slopeX: Node<'float'> = float(0);
+    let slopeZ: Node<'float'> = float(0);
+    for (const train of WAVE_TRAINS) {
+      if (train.band !== SWELL_BAND) continue;
+      const amplitude = swellAttr.w.mul(train.amplitudeM);
+      const phase = swellAttr.x.sub(this.timeUniform).mul(train.omega).add(train.phase);
+      lift = lift.add(amplitude.mul(sin(phase)));
+      const strength = cos(phase).mul(amplitude).mul(train.omega);
+      slopeX = slopeX.add(strength.mul(swellAttr.y));
+      slopeZ = slopeZ.add(strength.mul(swellAttr.z));
+    }
+    material.positionNode = positionGeometry.add(vec3(0, lift, 0));
+    const normal = normalize(vec3(slopeX.negate(), float(1), slopeZ.negate()));
+    material.normalNode = transformNormalToView(normal);
+
+    const eye = normalize(cameraPosition.sub(positionWorld));
+    const cosView = clamp(dot(normal, eye), 0, 1);
+    const fresnel = oneMinus(cosView)
+      .pow(5)
+      .mul(1 - FRESNEL_F0)
+      .add(FRESNEL_F0);
+    const reflectedRay = reflect(eye.negate(), normal);
+    const skyTone = mix(
+      this.skyHorizonUniform,
+      this.skyZenithUniform,
+      clamp(reflectedRay.y, 0, 1).sqrt(),
+    );
+    const body = scatterAttr.mul(1 - BED_LOST_TRANSMISSION);
+    const water = body.mul(oneMinus(fresnel)).add(skyTone.mul(fresnel));
+    material.colorNode = water.mul(nightTintNode(this.nightFactorUniform));
+    material.emissiveNode = this.glintNode(eye, slopeX, slopeZ, float(0), float(1));
     return material;
   }
 }

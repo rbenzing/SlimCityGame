@@ -1,6 +1,6 @@
 # Map generation
 
-- **Status:** Proposed
+- **Status:** Built
 
 **Owns:** the terrain a new game starts on: which generator makes it, what every new map is promised to hold, and how a save keeps the terrain it was made with.
 
@@ -19,22 +19,22 @@
 
 | Constant | Value | Unit | Source |
 | --- | --- | --- | --- |
-| Generator ids | 1 hills (the first), 2 coast | id | appended; never reused |
-| Sea's mean width along its edge | 34 tiles, 680 | m | dial: 13% of the map's width |
-| Coastline wobble | ±15 tiles, on waves 180 and 67 tiles long | tiles | dial |
-| Sea bed and beach plain | the bed falls 0.25 a tile from the shore, to −8; the plain rises 0.15 a tile for 40 tiles, hollows filling to it and hills staying | m | dial: the terrain's own floor; a 0.75% grade |
-| River's width | 4 tiles inland, 6 at the mouth; 80 to 120 | m | dial: under the 200 m a channel may be |
-| River's bed | 2 below sea level | m | dial: deeper than the 1.5 m at which a river's bed is lost to sight |
-| River's course | from the coast to the far edge, swinging ±24 tiles about a line leaning up to 14° | tiles | dial |
-| Valley | level for 3 tiles each bank, then rising 1 a tile | m | dial: a 5% side, a quarter of `MAX_BUILD_SLOPE` |
+| `MapGenerator` | 1 hills (the first), 2 coast | id | appended; never reused |
+| `SEA_TILES`, the sea's mean width along its edge | 34 tiles, 680, wandering ±15 tiles on waves 180 and 67 tiles long | m | dial: 13% of the map's width |
+| `SEA_BED_SLOPE` | the bed falls 0.25 a tile from the shore, to −8 | m | dial: the terrain's own floor |
+| `BANK_HEIGHT`, a bank's and a beach's top | 3.2 | m | dial: 0.2 over the 3 m below which ground draws as sand |
+| Beach and plain | up to the bank's top within 4 tiles of the shore, then 0.15 a tile, fading into the hills by 40 tiles | m | dial: a beach 80 m wide |
+| River's width across its channel, and `RIVER_BED` | 4 tiles inland, 6 at the mouth, 80 to 120; the bed 2 below sea level | m | dial: under the 200 m a channel may be; deeper than the 1.5 m at which a river's bed is lost to sight |
+| River's course | coast to far edge, swinging ±24 tiles about a line leaning up to 14°, 8 tiles clear of the side edges | tiles | dial |
+| River's bank and valley | up to the bank's top in 1.7 tiles, level for 3, then rising 1 a tile | m | dial: 1.7 keeps the first dry tile within `MAX_BUILD_SLOPE` of the water |
 | Hills and lakes | the first generator's, untouched 40 tiles in from the shore and outside the valley | — | `generateProceduralMap` |
-| Water, and buildable ground, on a map | 17.7% and 82.0% (the first generator: 3.3% and 96.7%) | share | measured over 24 seeds on a prototype |
-| Maps with ocean, river, lake | 24, 24, 24 of 24 (the first generator: 14, 4, 24) | maps | same measurement |
-| Room on the start's bank | at least 10,000 buildable tiles, 4 | km² | dial: to be measured over 200 seeds when built |
+| Water and buildable ground on a map; maps with ocean, river, lake | 18.0% and 82.0%; 200, 200, 200 of 200 (the first generator: 3.3% and 96.7%; 14, 4, 24 of 24) | share, maps | measured over 40 seeds; the promise tests |
+| Room on the start's bank | least 22,535, median 32,920 buildable tiles; 9 and 13 | km² | the promise tests, 200 seeds |
+| A street's bridge over the river | one drag; 2 dry tiles of ramp a bank; 199 for 4 tiles of water, 360 for 8 | cost | measured; any road class, no longest span |
 
-**Code:** not built. `src/world/maps.ts` `generateProceduralMap` is generator 1 and stays as it is.
+**Code:** `src/world/maps.ts` `generateMap`, `generateCoastMap`, `generateProceduralMap` (generator 1, frozen); `src/shared/types.ts` `MapGenerator`, `SaveHeader.generator`; `src/app/session.ts` `terrainSource` — which generator a new or loaded game gets.
 
-**Tests:** not built. To pin: generator 1 gives today's heights for a seed; generator 2's promises over many seeds (coast, river that is a River by shape, lakes, start on dry ground, room on its bank); a save round trip keeps each generator's terrain; a save with no id loads on generator 1.
+**Tests:** `src/world/maps.coast.test.ts` — generator 1 by hash for three seeds, the promises over 200 seeds, no cliff on a shore or bank, banks above the sand; `tests/interaction/mapgen.test.ts` — save round trips, a first town on a coast map; `src/world/bridges.test.ts` — the crossing. Frames: the `coast` shot series.
 
 **Open:** a choice of map kinds at New Game; a second river, islands and a harbour bay; the land's three other edges still end at the map's edge.
 
@@ -48,7 +48,7 @@ So the three kinds of water are on every map from the first minute: swell and su
 
 ### What it costs
 
-Land. Buildable ground falls from 96.7% of the map to 82.0%, still 21 km². The river cuts the map in two, so a growing city bridges it. A road already bridges water on its own, at a price by the deck's height, and the valley keeps both banks low.
+Land. Buildable ground falls from 96.7% of the map to 82.0%, still 21 km². The river cuts the map in two, so a growing city bridges it. A road of any class bridges water on its own, in one drag and with no longest span. Over the river it needs two dry tiles of ramp on each bank and costs 199 for four tiles of water, 360 for eight.
 
 The first town is not asked for anything new. It starts on dry ground with room on its own bank, and a pumping station has more shore to choose from than before.
 
@@ -64,9 +64,17 @@ The new terrain starts from the first generator's heights and then shapes them: 
 
 Which edge the sea takes, where the river meets it and how it winds all come from the seed, by a stream of numbers separate from the hills' own.
 
+### Why a bank climbs out of the sand
+
+Ground under 3 m draws as sand. A valley floor just over the water, and a beach rising 0.15 m a tile, left 120 m of bare sand on each river bank and 400 m behind the shore. So a bank climbs to 3.2 m within 1.7 tiles of the river and a beach within 4 tiles of the sea: a strip of sand, then grass.
+
+A bank is never raised into a cliff. It is capped by the beach near the shore, it only ever lowers ground beside one of the hills' own pools, and no dry tile stands more than a buildable step above the tile beside it.
+
+The valley is measured from the river's true line, not along the coast. Measured along the coast, a tile beside one limb of a hairpin read as near the other limb, and the valley ran off every bend in tongues.
+
 ### Why the sea runs past the edge
 
-A coast on every map puts the map's edge beside water on every map. Today that edge ends in a white void, which is rare enough to live with on 3% water. The sea's surface is carried out to the horizon beyond the edge, calm and without detail, so the coast reads as a coast. The land's other three edges are left as they are.
+A coast on every map puts the map's edge beside water on every map. That edge used to end in a white void, rare enough to live with on 3% water. The sea is now carried out to the horizon beyond the edge, calm and plain, so the coast reads as a coast; [the water surface](water-surface.md) says how it is drawn. The sky's dome follows the camera, since a dome fixed over the map left white above a far horizon. The land's other three edges are left as they are.
 
 ### Why the river is the width it is
 
@@ -79,3 +87,6 @@ Water draws as a river when its channel is under 200 m wide and at least 400 m l
 - A river across the whole map, over one that rises mid-map: a river 5 km long does not start inside the map.
 - The generator's id in the save's header as an optional field, over a save version: older saves load unchanged, as they do for the header's other optional fields.
 - The city's name stays as it is: naming maps is not part of this.
+- The river's width is measured across its channel, over along the coast: a leaning reach would otherwise be narrower than its tile count.
+- The river keeps 8 tiles from the map's side edges, over free drift: it always reaches the far edge and never leaves by a side.
+- The coast's and river's numbers come from the seed by their own stream, salted apart from the hills' and the trees'.

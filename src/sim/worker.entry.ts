@@ -57,6 +57,7 @@ import {
   TRASH_UNIT_SAVE_VERSION,
   BuildingState,
   FieldId,
+  MapGenerator,
   PowerLineKind,
   Problem,
   flowsAlong,
@@ -88,6 +89,7 @@ import type {
   JunctionControl,
   MainToWorker,
   MapData,
+  MapGeneratorId,
   RoadClassId,
   RoadProfile,
   RoadSpec,
@@ -579,6 +581,8 @@ class SimWorld implements WorkerSim {
 
   private initialized = false;
   private seed = 0;
+  /** The terrain generator that made this map from the seed; saved so a load rebuilds the same ground. */
+  private generator: MapGeneratorId = MapGenerator.Hills;
   private mapName = '';
 
   private grid: GridState = createGrid(MAP_SIZE);
@@ -759,7 +763,7 @@ class SimWorld implements WorkerSim {
 
   handleMessage(msg: MainToWorker): void {
     if (msg.type === 'init') {
-      this.init(msg.seed, msg.map);
+      this.init(msg.seed, msg.map, msg.generator ?? MapGenerator.Hills);
       return;
     }
     if (!this.initialized) return;
@@ -863,11 +867,12 @@ class SimWorld implements WorkerSim {
   // Lifecycle
   // -------------------------------------------------------------------------
 
-  private init(seed: number, map: MapData): void {
+  private init(seed: number, map: MapData, generator: MapGeneratorId): void {
     if (map.size !== MAP_SIZE) {
       throw new Error(`worker init: map size ${map.size} != MAP_SIZE ${MAP_SIZE}`);
     }
     this.seed = seed;
+    this.generator = generator;
     this.mapName = map.name;
     this.grid = createGrid(MAP_SIZE);
     this.grid.roads = createRoadNetwork();
@@ -955,6 +960,7 @@ class SimWorld implements WorkerSim {
     );
     this.stats = cloneStats(payload.meta.stats);
     this.seed = payload.header.seed;
+    this.generator = payload.header.generator ?? MapGenerator.Hills;
     soilGrades(this.grid, this.seed, this.grid.soil);
     this.mapName = payload.header.mapName;
     this.tickNo = payload.header.tick;
@@ -2087,6 +2093,7 @@ class SimWorld implements WorkerSim {
       header: {
         version: SAVE_VERSION,
         seed: this.seed,
+        generator: this.generator,
         tick: this.tickNo,
         mapName: this.mapName,
         savedAt: 0, // stamped by the main thread (persist.storeSave) — no Date.now in the worker
@@ -4549,6 +4556,21 @@ class SimWorld implements WorkerSim {
     for (const t of roadTiles) {
       if (!inBounds(t.x, t.z)) continue;
       rSet.set(tileIndex(t.x, t.z), t);
+    }
+    // A tile that stands beside a deck is where the deck lands. The deck was solved against this
+    // ground, so it is left as it is: smoothing it moves the ground a step the deck cannot follow,
+    // and the road reads as two roads that never meet.
+    for (const [idx, t] of [...rSet]) {
+      const landing = APRON_NEIGHBOR_OFFSETS.some(([ox, oz]) => {
+        const nx = t.x + ox;
+        const nz = t.z + oz;
+        if (!inBounds(nx, nz)) return false;
+        const n = tileIndex(nx, nz);
+        return (
+          g.roadTier[n] !== RoadTier.None && (g.roadElevation[n] ?? 0) >= GROUND_HUGGING_LIFT_M
+        );
+      });
+      if (landing) rSet.delete(idx);
     }
     if (rSet.size === 0) return null;
 

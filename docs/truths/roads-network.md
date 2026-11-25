@@ -42,6 +42,11 @@ MUTCD citations below use 11th-edition section numbers.
   to the ground, and no structure is wider than the deck. —
   [overpasses.md](../world-sim/overpasses.md); `GROUND_HUGGING_LIFT_M` in
   `src/sim/worker.entry.ts`, `src/render/bridges.ts`
+- [R-roads-099] A road tile beside a deck lifted 0.5 m or more is not smoothed by a later
+  road's levelling: the deck was solved against that ground. Moved, the step
+  to the deck passed the joining limit, and the network split a street the
+  grid had joined. — [overpasses.md](../world-sim/overpasses.md);
+  `tests/interaction/roadlanding.test.ts`
 - [R-roads-005] A rail tile between two street tiles
   is a break in the street, not a crossing, and rail laid through a street in
   replace mode severs it: the track draws running straight through and the street ends

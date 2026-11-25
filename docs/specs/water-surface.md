@@ -67,7 +67,7 @@ Swell in 8 m of water runs 8.9 m/s and 71 to 97 m long; in 1 m, 3.1 m/s and 25 t
 - `src/shared/waterbodies.ts` `deriveWaterBodies`, `sampleWater`, `WaterKind` — kind, fetch, swell arrival and current from the water mask and the heights.
 - `src/shared/waves.ts` `WAVE_TRAINS`, `surfaceHeightAt`, `swellHeightAt`, `waveSlopeAt` — the one table and its three readers.
 - `src/render/waterlook.ts` — foam, reflection, absorption, gusts and the bed's net as pure functions, with every dial.
-- `src/render/water.ts` `WaterRenderer`, `buildWaterGrid`, `markTerrainChanged`, `setScreenRead` — the mesh over wet tiles, the two node graphs, the rebuild; its per-vertex data packed into 6 vertex buffers `[R-render-055]`.
+- `src/render/water.ts` `WaterRenderer`, `buildWaterGrid`, `markTerrainChanged`, `setScreenRead` — the mesh over wet tiles, the two node graphs, the rebuild; its per-vertex data packed into 6 vertex buffers `[R-render-055]`; `SEA_REACH_M`, `SEA_CALM_M`, `SEA_OVERLAP_M` — the plain sea past the map's edge.
 - `src/render/bloom.ts` `createScenePipeline` — the pass the frame is drawn through when bloom is off, so the water's read is the same.
 - `tools/shots/series/views/water.mjs` — the frames.
 
@@ -113,7 +113,9 @@ A boat must sit on the water that is drawn. The node graph and `surfaceHeightAt`
 
 ### Foam and light
 
-Surf is a line on a breaking swell's crest and a trail behind it. Still water has a thin lapping line; a river has faint streaks carried by its drift.
+Surf is a line on a breaking swell's crest and a trail behind it. Still water has a thin lapping line; a river has faint streaks carried by its drift, and no lapping line: on a steep bank the line zig-zagged along the tile corners.
+
+Where an ocean touches the map's edge the sea carries on to the horizon, 15 km out, as a second mesh with a material of its own. It is opaque and plain: the ocean's deep colour, the sky's reflection, the sun's glint and a swell that fades out over 400 m. It reads nothing from the frame, so in the view that is half far sea it costs under 0.5 ms a frame on WebGL2 and at most 0.8 on WebGPU, where the full surface run that far cost 2.7. The two meshes overlap by half a metre, and the far one writes no depth, so no line shows at the join.
 
 The surface reflects the sky by Schlick's law and lets the rest through. What comes back from the bed is bent by the waves and loses red first, then green; each kind adds its own murk and its own colour, blurred where two kinds meet.
 

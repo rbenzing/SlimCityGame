@@ -30,6 +30,7 @@ import type {
   GrowthWaiting,
   ParcelFrame,
   RoadProfile,
+  SaveHeader,
   Incident,
   ZonedUnserved,
   LensId,
@@ -71,7 +72,7 @@ import { laneMovementsFor, pocketLaneMovements } from './shared/approach';
 import catalogData from './data/catalog.json';
 import roadsData from './data/roads.json';
 import { CommandQueue } from './core/commands';
-import { generateProceduralMap } from './world/maps';
+import { generateMap } from './world/maps';
 import {
   gridRunRefusalAfter,
   nearestRoadEnd,
@@ -234,7 +235,7 @@ import { mountUi } from './ui/App';
 import { AutoSaver, getSaveById, loadLatest, saveNow, storeSave } from './app/persist';
 import { CursorChipStack } from './app/cursorchip';
 import { ClientGridMirror } from './app/clientgrid';
-import { readAppSession, type AppSession, type GameSettings } from './app/session';
+import { readAppSession, terrainSource, type AppSession, type GameSettings } from './app/session';
 import { audioRuntime } from './app/audioruntime';
 import { ambientMix } from './app/audio';
 
@@ -284,21 +285,22 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
   // Seed + optional load payload: a Load Game intent carries no fresh seed of
   // its own (session.seed is 0 — see session.ts's startLoadGame), so the
   // stored save's header seed is what actually rebuilds the same terrain.
-  let seed = session.seed;
+  let loadHeader: SaveHeader | undefined;
   let loadData: ArrayBuffer | null = null;
   if (session.mode === 'load' && session.saveId != null) {
     const entry = await getSaveById(session.saveId);
     if (entry) {
-      seed = entry.header.seed;
+      loadHeader = entry.header;
       loadData = entry.data;
     }
   }
+  const { seed, generator } = terrainSource(session, loadHeader);
 
   // --- renderer, scene, world ------------------------------------------------
   const handle = await createRenderer(viewport);
   const world = createWorldScene();
 
-  const map = generateProceduralMap(seed, MAP_NAME);
+  const map = generateMap(generator, seed, MAP_NAME);
 
   const terrain = new TerrainRenderer(world.scene);
   terrain.build(map);
@@ -1419,7 +1421,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
 
   // --- sim worker --------------------------------------------------------------
   const worker = new Worker(new URL('./sim/worker.entry.ts', import.meta.url), { type: 'module' });
-  const initMsg: MainToWorker = { type: 'init', seed, map };
+  const initMsg: MainToWorker = { type: 'init', seed, map, generator };
   worker.postMessage(initMsg);
   if (loadData) {
     const loadMsg: MainToWorker = { type: 'loadSave', data: loadData };
