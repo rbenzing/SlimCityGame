@@ -1,0 +1,587 @@
+{
+  "seed": 7,
+  "target": 6000,
+  "frames": 90,
+  "machine": {
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/149.0.0.0 Safari/537.36",
+    "cores": 16,
+    "webgpuAdapter": {
+      "vendor": "intel",
+      "architecture": "xe-lpg",
+      "device": "0x7d51",
+      "description": "Intel(R) Arc(TM) Pro 140T GPU (32GB)"
+    },
+    "webglRenderer": "ANGLE (Intel, Intel(R) Arc(TM) Pro 140T GPU (32GB) (0x00007D51) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+    "webglVendor": "Google Inc. (Intel)",
+    "devicePixelRatio": 1
+  },
+  "views": [
+    {
+      "name": "1-street",
+      "label": "street level, residential grid",
+      "tx": 35,
+      "tz": 128,
+      "distance": 40
+    },
+    {
+      "name": "2-oblique",
+      "label": "default oblique, mixed block",
+      "tx": 66,
+      "tz": 128,
+      "distance": 380
+    },
+    {
+      "name": "3-overview",
+      "label": "high overview, whole city",
+      "tx": 128,
+      "tz": 118,
+      "distance": 3000
+    },
+    {
+      "name": "4-oblique-night",
+      "label": "default oblique at night",
+      "tx": 66,
+      "tz": 128,
+      "distance": 380
+    },
+    {
+      "name": "5-water",
+      "label": "default oblique over the largest body of water",
+      "tx": 185,
+      "tz": 0,
+      "distance": 380
+    }
+  ],
+  "baseline": [
+    {
+      "view": "1-street",
+      "label": "street level, residential grid",
+      "jsFrameMs": 7.523333334757222,
+      "jsRenderMs": 7.370000000794729,
+      "meanMs": 7.728888888888873,
+      "p50Ms": 7.600000000000364,
+      "p95Ms": 8.900000000001455,
+      "frames": 90,
+      "slowAt": [],
+      "p95Of8Ms": 7.987500000000182,
+      "drawCalls": 60,
+      "triangles": 9332161,
+      "gpuMs": 3.8167479999999996,
+      "uploadMs": 0.18083333397905033,
+      "uploadMB": 1.358575439453125,
+      "uploadCalls": 61
+    },
+    {
+      "view": "2-oblique",
+      "label": "default oblique, mixed block",
+      "jsFrameMs": 7.564444444576899,
+      "jsRenderMs": 7.442222221361266,
+      "meanMs": 7.780000000000008,
+      "p50Ms": 7.700000000000728,
+      "p95Ms": 9,
+      "frames": 90,
+      "slowAt": [],
+      "p95Of8Ms": 7.962500000000091,
+      "drawCalls": 79,
+      "triangles": 9343937,
+      "gpuMs": 3.8920580000000005,
+      "uploadMs": 0.15416666666666667,
+      "uploadMB": 1.358575439453125,
+      "uploadCalls": 61
+    },
+    {
+      "view": "3-overview",
+      "label": "high overview, whole city",
+      "jsFrameMs": 7.91333333303531,
+      "jsRenderMs": 7.767777778208256,
+      "meanMs": 8.226666666666642,
+      "p50Ms": 8.200000000000728,
+      "p95Ms": 9.799999999999272,
+      "frames": 90,
+      "slowAt": [],
+      "p95Of8Ms": 8.474999999999909,
+      "drawCalls": 164,
+      "triangles": 9388481,
+      "gpuMs": 4.414972000000001,
+      "uploadMs": 5.336666665102045,
+      "uploadMB": 1.358575439453125,
+      "uploadCalls": 61
+    },
+    {
+      "view": "4-oblique-night",
+      "label": "default oblique at night",
+      "jsFrameMs": 7.572222221725517,
+      "jsRenderMs": 7.458888888855776,
+      "meanMs": 7.787777777777794,
+      "p50Ms": 7.700000000000728,
+      "p95Ms": 9.19999999999709,
+      "frames": 90,
+      "slowAt": [],
+      "p95Of8Ms": 7.900000000000091,
+      "drawCalls": 79,
+      "triangles": 9343937,
+      "gpuMs": 3.894869000000001,
+      "uploadMs": 0.13083333286146323,
+      "uploadMB": 1.358575439453125,
+      "uploadCalls": 61
+    },
+    {
+      "view": "5-water",
+      "label": "default oblique over the largest body of water",
+      "jsFrameMs": 9.573333333267106,
+      "jsRenderMs": 9.431111111905839,
+      "meanMs": 9.775555555555506,
+      "p50Ms": 9.69999999999709,
+      "p95Ms": 11.19999999999709,
+      "frames": 90,
+      "slowAt": [],
+      "p95Of8Ms": 10.550000000000182,
+      "drawCalls": 56,
+      "triangles": 9331137,
+      "gpuMs": 5.793664999999998,
+      "uploadMs": 0.1458333327124516,
+      "uploadMB": 1.358575439453125,
+      "uploadCalls": 61
+    }
+  ],
+  "roads": {
+    "tilesPlanned": 6366,
+    "tilesBuilt": 6307
+  },
+  "buildMs": 49774,
+  "buildings": {
+    "planned": 6061,
+    "standing": 2812,
+    "refused": 3249,
+    "plannedByDistrict": {
+      "residential": 3655,
+      "downtown": 1565,
+      "industrial": 780,
+      "kit": 61
+    },
+    "refusedByDistrict": {
+      "residential": 1921,
+      "downtown": 842,
+      "industrial": 429,
+      "kit": 57
+    },
+    "refusedExamples": [
+      "res-half-2@4,4",
+      "res-normal-1@5,4",
+      "res-half-2@6,4",
+      "res-estate-t-3@7,4",
+      "res-medium-row-t-3@10,4",
+      "res-low-1@12,4",
+      "res-normal-t-1@14,4",
+      "res-half-3@16,4"
+    ],
+    "kitMisses": [
+      "district-park"
+    ],
+    "standingByCatalogId": {
+      "res-normal-3": 22,
+      "res-normal-t-1": 215,
+      "res-normal-1": 252,
+      "res-normal-2": 77,
+      "res-half-1": 357,
+      "res-half-2": 121,
+      "res-low-1": 202,
+      "res-fourplex-t-1": 5,
+      "res-estate-t-1": 71,
+      "res-low-2": 65,
+      "res-estate-t-2": 33,
+      "res-normal-t-3": 37,
+      "res-half-3": 39,
+      "res-normal-t-2": 63,
+      "res-duplex-t-2": 2,
+      "res-low-3": 36,
+      "res-medium-row-t-1": 11,
+      "res-fourplex-t-2": 4,
+      "res-duplex-h-1": 11,
+      "res-fourplex-1": 11,
+      "res-multiplex-1": 11,
+      "res-fourplex-h-1": 8,
+      "res-duplex-1": 10,
+      "res-duplex-h-2": 5,
+      "res-estate-t-3": 12,
+      "res-fourplex-h-2": 2,
+      "res-medium-row-1": 11,
+      "res-duplex-h-3": 2,
+      "res-duplex-t-1": 9,
+      "res-multiplex-3": 1,
+      "res-medium-row-t-3": 1,
+      "res-duplex-2": 3,
+      "res-medium-row-2": 3,
+      "res-medium-2": 3,
+      "res-medium-row-t-2": 6,
+      "res-medium-1": 4,
+      "res-multiplex-2": 2,
+      "res-fourplex-2": 3,
+      "res-medium-3": 2,
+      "res-fourplex-h-3": 1,
+      "res-duplex-3": 1,
+      "com-strip-1": 33,
+      "com-restaurant-3-up2x2": 4,
+      "com-high-1": 236,
+      "com-low-1": 84,
+      "com-restaurant-1": 67,
+      "com-market-1": 8,
+      "mixed-1": 17,
+      "com-office-2": 29,
+      "com-office-2-up4x4": 22,
+      "com-high-2-up3x3": 8,
+      "com-fuel-1": 24,
+      "com-hotel-2-up3x3": 3,
+      "com-office-2-up2x2": 29,
+      "com-strip-3": 4,
+      "com-low-2": 2,
+      "com-hotel-1": 22,
+      "com-hotel-2-up2x2": 3,
+      "com-restaurant-2": 4,
+      "com-restaurant-2-up2x2": 6,
+      "com-shop-2-up1x2": 14,
+      "com-fuel-2": 10,
+      "com-market-3": 1,
+      "com-strip-2": 6,
+      "res-high-1": 2,
+      "com-high-2": 10,
+      "com-high-2-up4x4": 7,
+      "mixed-2": 3,
+      "com-shop-2": 6,
+      "com-restaurant-3-up3x2": 3,
+      "res-high-2-up2x2": 1,
+      "com-low-2-up1x2": 4,
+      "com-fuel-3": 4,
+      "com-shop-2-up1x1": 11,
+      "mixed-2-up2x2": 2,
+      "mixed-3-up2x2": 2,
+      "com-restaurant-2-up1x2": 8,
+      "mixed-2-up1x2": 1,
+      "com-low-2-up1x1": 3,
+      "com-hotel-3-up2x2": 1,
+      "com-low-2-up2x2": 6,
+      "res-high-3-up2x2": 1,
+      "com-market-2": 2,
+      "com-hotel-2": 3,
+      "res-tower-2": 2,
+      "com-hotel-3": 2,
+      "com-hotel-3-up3x3": 1,
+      "com-restaurant-3": 1,
+      "mixed-3": 1,
+      "heavy-food-1": 59,
+      "heavy-chem-1": 54,
+      "ind-warehouse-2": 19,
+      "ind-3": 2,
+      "ind-flex-1": 13,
+      "ind-flex-2": 6,
+      "heavy-food-2": 15,
+      "ind-factory-3": 4,
+      "heavy-food-3": 11,
+      "ind-1": 35,
+      "ind-warehouse-1": 69,
+      "ind-workshop-3": 7,
+      "heavy-chem-2": 6,
+      "ind-warehouse-3": 10,
+      "ind-2": 4,
+      "heavy-metals-1": 6,
+      "heavy-paper-1": 9,
+      "ind-factory-1": 10,
+      "heavy-paper-2": 4,
+      "heavy-metals-2": 3,
+      "ind-workshop-2": 3,
+      "heavy-metals-3": 1,
+      "heavy-chem-3": 1,
+      "water-pump": 1,
+      "water-drain": 1,
+      "solar-farm": 1,
+      "wind-turbine": 1
+    }
+  },
+  "lots": {
+    "sampled": 321,
+    "withLotPlan": 321
+  },
+  "settle": [
+    {
+      "secondsAfterBuild": 10,
+      "meanMs": 28.3875,
+      "jsRenderMs": 13.737499999254942,
+      "gpuMs": 14.292985
+    },
+    {
+      "secondsAfterBuild": 17,
+      "meanMs": 23.317499999999928,
+      "jsRenderMs": 22.784999999403954,
+      "gpuMs": 14.151108999999998
+    },
+    {
+      "secondsAfterBuild": 24,
+      "meanMs": 23.1875,
+      "jsRenderMs": 22.7375,
+      "gpuMs": 14.382773999999998
+    },
+    {
+      "secondsAfterBuild": 31,
+      "meanMs": 23.192499999999928,
+      "jsRenderMs": 22.58500000052154,
+      "gpuMs": 14.238243999999998
+    }
+  ],
+  "settleSeconds": 31,
+  "city": [
+    {
+      "view": "1-street",
+      "label": "street level, residential grid",
+      "jsFrameMs": 20.793333332737287,
+      "jsRenderMs": 20.58333333250549,
+      "meanMs": 21.168888888888855,
+      "p50Ms": 21.29999999998836,
+      "p95Ms": 23.19999999999709,
+      "frames": 90,
+      "slowAt": [],
+      "p95Of8Ms": 22.375,
+      "drawCalls": 439,
+      "triangles": 21095789,
+      "gpuMs": 12.273046999999996,
+      "uploadMs": 0.37499999925494193,
+      "uploadMB": 2.0826184590657553,
+      "uploadCalls": 199.26666666666668
+    },
+    {
+      "view": "2-oblique",
+      "label": "default oblique, mixed block",
+      "jsFrameMs": 22.88000000019868,
+      "jsRenderMs": 22.62000000046359,
+      "meanMs": 23.214444444444315,
+      "p50Ms": 23.199999999982538,
+      "p95Ms": 25.400000000023283,
+      "frames": 90,
+      "slowAt": [],
+      "p95Of8Ms": 23.962499999997817,
+      "drawCalls": 575,
+      "triangles": 21756093,
+      "gpuMs": 14.295694000000001,
+      "uploadMs": 0.4174999982118607,
+      "uploadMB": 2.231420135498047,
+      "uploadCalls": 233.83333333333334
+    },
+    {
+      "view": "3-overview",
+      "label": "high overview, whole city",
+      "jsFrameMs": 32.186666665474576,
+      "jsRenderMs": 31.924444444974263,
+      "meanMs": 32.56999999999987,
+      "p50Ms": 32.29999999998836,
+      "p95Ms": 49.5,
+      "frames": 90,
+      "slowAt": [],
+      "p95Of8Ms": 33.462500000001455,
+      "drawCalls": 1120,
+      "triangles": 24376784,
+      "gpuMs": 22.78017,
+      "uploadMs": 21.08333333345751,
+      "uploadMB": 2.3227612813313803,
+      "uploadCalls": 256.2
+    },
+    {
+      "view": "4-oblique-night",
+      "label": "default oblique at night",
+      "jsFrameMs": 22.85888888835907,
+      "jsRenderMs": 22.61777777688371,
+      "meanMs": 23.340000000000064,
+      "p50Ms": 23.20000000001164,
+      "p95Ms": 26.300000000017462,
+      "frames": 90,
+      "slowAt": [],
+      "p95Of8Ms": 24.51249999999709,
+      "drawCalls": 576,
+      "triangles": 21831693,
+      "gpuMs": 14.573087,
+      "uploadMs": 0.4008333341528972,
+      "uploadMB": 2.231420135498047,
+      "uploadCalls": 233.83333333333334
+    },
+    {
+      "view": "5-water",
+      "label": "default oblique over the largest body of water",
+      "jsFrameMs": 19.076666667395166,
+      "jsRenderMs": 18.830000000033113,
+      "meanMs": 19.367777777777842,
+      "p50Ms": 19.5,
+      "p95Ms": 28.5,
+      "frames": 90,
+      "slowAt": [],
+      "p95Of8Ms": 21.587500000001455,
+      "drawCalls": 335,
+      "triangles": 18833189,
+      "gpuMs": 12.26836,
+      "uploadMs": 13.885000000149011,
+      "uploadMB": 1.672948455810547,
+      "uploadCalls": 131.15
+    }
+  ],
+  "errors": [
+    "road network (command): 2 tile(s) derived differently — tile (30, 78) derived a different roadMask; tile (31, 78) derived a different roadMask",
+    "road network (command): 2 tile(s) derived differently — tile (54, 198) derived a different roadMask; tile (55, 198) derived a different roadMask"
+  ],
+  "errorCount": 2,
+  "ablate": {
+    "runs": 3,
+    "noaa": true,
+    "defaultRatio": 1,
+    "buildingsStanding": 2812,
+    "settle": [
+      {
+        "secondsAfterBuild": 10,
+        "meanMs": 28.3875,
+        "jsRenderMs": 13.737499999254942,
+        "gpuMs": 14.292985
+      },
+      {
+        "secondsAfterBuild": 17,
+        "meanMs": 23.317499999999928,
+        "jsRenderMs": 22.784999999403954,
+        "gpuMs": 14.151108999999998
+      },
+      {
+        "secondsAfterBuild": 24,
+        "meanMs": 23.1875,
+        "jsRenderMs": 22.7375,
+        "gpuMs": 14.382773999999998
+      },
+      {
+        "secondsAfterBuild": 31,
+        "meanMs": 23.192499999999928,
+        "jsRenderMs": 22.58500000052154,
+        "gpuMs": 14.238243999999998
+      }
+    ],
+    "settleSeconds": 31,
+    "table": {
+      "1-street": {
+        "base": {
+          "meanMs": {
+            "mean": 20.924444444444465,
+            "sd": 0.2917143876304281,
+            "min": 20.63888888888889,
+            "max": 21.409999999999936,
+            "n": 6
+          },
+          "p95Ms": {
+            "mean": 22.616666666673456,
+            "sd": 0.2041241452324068,
+            "min": 22.39999999999418,
+            "max": 23,
+            "n": 6
+          },
+          "jsFrameMs": {
+            "mean": 20.627037037026,
+            "sd": 0.3004660300678595,
+            "min": 20.32222222255336,
+            "max": 21.13111111058129,
+            "n": 6
+          },
+          "jsRenderMs": {
+            "mean": 20.350555555356873,
+            "sd": 0.2719538354725261,
+            "min": 20.050000000165568,
+            "max": 20.79666666570637,
+            "n": 6
+          },
+          "gpuMs": {
+            "mean": 12.239489666666666,
+            "sd": 0.20996086286798077,
+            "min": 12.063467,
+            "max": 12.529346000000002,
+            "n": 6
+          },
+          "uploadMs": {
+            "mean": 0.36097222196145196,
+            "sd": 0.01425381742208933,
+            "min": 0.341666666418314,
+            "max": 0.37916666803260646,
+            "n": 6
+          },
+          "uploadMB": {
+            "mean": 2.0826184590657557,
+            "sd": 4.864753555590494e-16,
+            "min": 2.0826184590657553,
+            "max": 2.0826184590657553,
+            "n": 6
+          },
+          "uploadCalls": {
+            "mean": 199.26666666666668,
+            "sd": 0,
+            "min": 199.26666666666668,
+            "max": 199.26666666666668,
+            "n": 6
+          },
+          "drawCalls": 439,
+          "triangles": 21095789
+        }
+      },
+      "3-overview": {
+        "base": {
+          "meanMs": {
+            "mean": 31.956481481481536,
+            "sd": 0.23681989475428966,
+            "min": 31.66333333333314,
+            "max": 32.31999999999987,
+            "n": 6
+          },
+          "p95Ms": {
+            "mean": 36.88333333332654,
+            "sd": 4.875824716561634,
+            "min": 34.40000000002328,
+            "max": 46.79999999998836,
+            "n": 6
+          },
+          "jsFrameMs": {
+            "mean": 31.523333333018755,
+            "sd": 0.26276591484235745,
+            "min": 31.25444444451067,
+            "max": 31.975555555356873,
+            "n": 6
+          },
+          "jsRenderMs": {
+            "mean": 31.273148148037773,
+            "sd": 0.25761720757700585,
+            "min": 31.00444444351726,
+            "max": 31.712222221990427,
+            "n": 6
+          },
+          "gpuMs": {
+            "mean": 23.012408166666663,
+            "sd": 0.35407148340154,
+            "min": 22.550950999999998,
+            "max": 23.404802999999998,
+            "n": 6
+          },
+          "uploadMs": {
+            "mean": 21.313749999511572,
+            "sd": 0.27234615876173734,
+            "min": 20.94249999995033,
+            "max": 21.74166666418314,
+            "n": 6
+          },
+          "uploadMB": {
+            "mean": 2.3227612813313807,
+            "sd": 4.864753555590494e-16,
+            "min": 2.3227612813313803,
+            "max": 2.3227612813313803,
+            "n": 6
+          },
+          "uploadCalls": {
+            "mean": 256.2,
+            "sd": 0,
+            "min": 256.2,
+            "max": 256.2,
+            "n": 6
+          },
+          "drawCalls": 1120,
+          "triangles": 24376784
+        }
+      }
+    }
+  }
+}

@@ -108,6 +108,80 @@ GPU ms grows with the buildings and the triangle count; at 6,000 the overview fr
 
 The shares overlap (the shadow pass and the vehicles and trees it draws are counted in each) and do not sum to 100%. The integrated card shows no sensitivity to pixel count (0.5 to 2 ratio all inside the spread), so its time is per-triangle and per-sample work, not fill.
 
+## At 5,023 standing (target 13,700)
+
+Target found by `--build-only`: 8,000 stood 3,739; 10,700 stood 4,499; 12,000 stood 4,670; 13,700 stood 5,023 (10,716 planned). Each run below waits for the render-call time to stop falling (read every ~5 s, at most 120 s) before it reads; the 5,023 city settled flat after 32 s on the integrated card and 21 s on the discrete card, the 2,812 city after 33 s. Frames here are above the 17.4 ms cap, so frame ms ranks directly. Spread is the sd over six readings in brackets.
+
+Baseline, integrated:
+
+| View | GPU ms | render call ms | upload ms | upload calls | frame mean ms | frame p95 ms | draw calls | triangles |
+| ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- |
+| street | 19.6 (2.5) | 22.4 (3.5) | 9.4 | 163 | 23.2 (3.2) | 34.7 | 434 | 24.28M |
+| oblique | 20.2 (1.3) | 20.7 (2.1) | 7.8 | 223 | 21.9 (1.6) | 35.3 | 615 | 24.59M |
+| overview | 33.2 (2.4) | 34.2 (2.4) | 10.5 | 232 | 34.9 (2.3) | 41.9 | 1016 | 27.70M |
+| night | 20.4 (1.4) | 21.0 (2.4) | 8.2 | 224 | 22.1 (1.8) | 35.4 | 615 | 24.59M |
+| water | 19.2 (1.5) | 16.7 (6.3) | 0.5 | 151 | 20.1 (2.3) | 29.6 | 444 | 24.01M |
+
+Baseline, discrete:
+
+| View | GPU ms | render call ms | upload ms | upload calls | frame mean ms | frame p95 ms | draw calls | triangles |
+| ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- |
+| street | 7.1 (0.2) | 11.1 (0.4) | 2.9 | 183 | 11.6 (0.4) | 13.3 | 447 | 24.28M |
+| oblique | 7.3 (0.2) | 11.3 (0.4) | 2.7 | 248 | 11.8 (0.3) | 14.2 | 628 | 24.59M |
+| overview | 10.7 (0.4) | 15.1 (0.6) | 1.5 | 256 | 15.7 (0.7) | 25.1 | 1029 | 27.70M |
+| night | 7.1 (0.1) | 11.1 (0.3) | 2.6 | 248 | 11.7 (0.3) | 14.1 | 628 | 24.59M |
+| water | 7.5 (0.2) | 11.4 (0.3) | 3.7 | 175 | 12.0 (0.3) | 13.8 | 457 | 24.01M |
+
+On the discrete card the frame is below the cap in every view and the render call (11 to 15 ms) is larger than the GPU (7 to 11 ms): the page is the limit there.
+
+Integrated, every case, street and overview:
+
+| Case | street GPU | street render call | street upload ms / calls | street frame (p95) | overview GPU | overview render call | overview upload ms / calls | overview frame (p95) |
+| ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- |
+| base | 19.6 | 22.4 | 9.4 / 163 | 23.2 (34.7) | 33.2 | 34.2 | 10.5 / 232 | 34.9 (41.9) |
+| shadows off | 10.0 (sd 8.2) | 11.5 (sd 13.0) | 18.2 / 94 | 20.7 (22.0) | 26.4 | 15.1 | 26.3 / 139 | 21.4 (35.4) |
+| bloom off | 18.7 | 18.2 | 15.7 / 160 | 21.9 (34.9) | 32.8 | 33.5 | 10.0 / 233 | 34.4 (41.5) |
+| hide vehicles | 11.8 | 6.2 | 0.2 / 131 | 17.5 (18.3) | 24.0 | 24.7 | 13.4 / 203 | 25.3 (35.7) |
+| hide trees | 18.2 | 8.2 | 0.4 / 155 | 17.8 (23.8) | 31.0 | 31.8 | 19.8 / 231 | 32.8 (42.2) |
+| hide buildings | 16.2 | 6.9 (sd 7.1) | 0.2 / 41 | 17.8 (18.5) | 27.6 | 28.1 | 4.3 / 45 | 28.7 (36.1) |
+| hide lots | 19.5 | 15.5 (sd 8.1) | 7.8 / 159 | 20.0 (29.5) | 24.8 | 26.7 | 6.0 / 233 | 27.4 (35.7) |
+| hide roads | 19.6 | 20.5 | 13.8 / 156 | 21.0 (35.5) | 27.0 | 28.1 | 0.5 / 229 | 28.8 (35.9) |
+| hide everything | 0.2 | 0.9 | 0.0 / 6 | 17.8 (18.6) | 0.2 | 0.9 | 0.0 / 6 | 18.0 (18.7) |
+
+Antialiasing off (separate page load, integrated, 5,023 standing; GPU / render call / frame ms): street 15.9 / 24.5 / 25.1, oblique 15.5 / 24.9 / 25.5, overview 26.9 / 36.3 / 37.0, night 15.2 / 24.7 / 25.3, water 14.7 / 23.6 / 24.2. GPU falls 3.7 to 6.3 ms; the render call and the frame do not fall (they read higher).
+
+Census at this size, integrated (submitted in one pass against in view). The renderer reports 24.3M triangles in the street view (12.8M with shadows off) and 27.7M in the overview (16.0M); the scene submits 20.29M and has 1.31M in view in the street, 6.55M in the overview.
+
+| Group | instances | triangles submitted | street: instances in view | street: triangles in view | overview: instances in view | overview: triangles in view |
+| ---- | ---- | ---- | ---- | ---- | ---- | ---- |
+| vehicles | 30,059 | 5.99M | 481 | 0.096M | 6,079 | 1.216M |
+| lots | 728 | 4.60M | 26 | 0.411M | 245 | 2.088M |
+| roads | 254 | 3.29M | 23 | 0.370M | 111 | 1.544M |
+| buildings | 202,711 | 2.96M | 15,535 | 0.229M | 62,971 | 0.987M |
+| trees | 42,889 | 2.78M | 1,366 | 0.089M | 7,077 | 0.437M |
+| furniture | 2,077 | 0.47M | 160 | 0.036M | 695 | 0.157M |
+| terrain, water, sea | 262 | 0.20M | 27 | 0.075M | 115 | 0.123M |
+
+## At 2,812 standing (target 6,000)
+
+Settled flat after 33 s (render call by reading: 16, 26, 27, 26 ms; the earlier scale row for this size read in the tail and is superseded by this one). Integrated.
+
+| Case | street GPU | street render call | street upload ms / calls | street frame (p95) | overview GPU | overview render call | overview upload ms / calls | overview frame (p95) |
+| ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- |
+| base | 15.4 (1.3) | 9.0 (7.3) | 0.3 / 177 | 18.7 (19.7) | 26.9 (0.4) | 28.1 (0.1) | 15.8 / 232 | 28.8 (36.0) |
+| shadows off | 7.9 (6.3) | 8.0 | 15.0 / 101 | 17.8 (23.9) | 21.7 | 6.8 | 37.1 / 137 | 17.6 (18.4) |
+| bloom off | 14.0 (2.6) | 10.5 | 15.8 / 175 | 18.5 (23.8) | 28.6 (2.5) | 27.5 | 27.3 / 233 | 28.7 (35.8) |
+| hide vehicles | 9.2 | 5.1 | 0.2 / 147 | 17.5 (18.1) | 18.5 | 19.6 | 8.9 / 203 | 20.3 (35.0) |
+| hide trees | 13.8 | 6.1 | 0.3 / 171 | 17.5 (18.3) | 24.8 | 26.5 | 15.5 / 231 | 27.2 (35.8) |
+| hide buildings | 12.9 | 2.0 | 0.1 / 41 | 17.5 (18.2) | 23.9 | 23.4 | 1.6 / 45 | 24.0 (35.5) |
+| hide lots | 15.4 | 5.5 | 0.3 / 173 | 17.5 (18.4) | 19.5 | 20.7 | 1.3 / 233 | 21.2 (35.3) |
+| hide roads | 15.3 | 5.5 | 0.3 / 169 | 17.4 (18.2) | 23.3 | 24.8 | 12.4 / 229 | 25.4 (35.7) |
+| hide everything | 0.2 | 0.8 | 0.0 / 6 | 17.9 (18.6) | 0.2 | 0.8 | 0.0 / 6 | 18.0 (18.6) |
+
+Draw calls (street / overview): base 426 / 1,107; hide buildings 83 / 612. Triangles: base 21.10M / 24.38M. Antialiasing off (GPU / frame ms): street 12.2 / 20.9, overview 23.0 / 32.0.
+
+In the overview the render call equals the GPU time plus about 1 ms (28.1 against 26.9), so the call is waiting on the GPU there and the GPU sets the frame; in the street view the GPU (15.4) is under the cap and the frame is at it. The street render-call baseline of 23.8 ms in the scale table above is a read taken inside the post-build tail.
+
 ## Not measured
 
 - A live simulation: the sim is paused, so traffic and walkers do not move and no snapshots arrive. The 29 to 47 ms of a played city may include per-frame buffer updates from motion that this run does not have.
