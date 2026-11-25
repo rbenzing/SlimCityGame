@@ -174,6 +174,23 @@ describe('GhostRenderer construction', () => {
     expect(vertCount(inner)).toBe(0);
     expect(renderer.volumeBox().visible).toBe(false);
   });
+
+  it('draws no layer while it has nothing to show: an empty mesh is hidden, not drawn with no vertices', () => {
+    const renderer = new GhostRenderer(new THREE.Scene(), flatHeightAt);
+    const meshes = (): THREE.Mesh[] => {
+      const { base, fill, border, inner } = renderer.layers();
+      return [base, fill, border, inner];
+    };
+    expect(meshes().map((m) => m.visible)).toEqual([false, false, false, false]);
+
+    renderer.setPreview([{ x: 3, z: 3 }], true, 'road');
+    const { base, fill } = renderer.layers();
+    expect(base.visible).toBe(true);
+    expect(fill.visible).toBe(false); // a road preview leaves the zone fill empty
+
+    renderer.clear();
+    expect(meshes().map((m) => m.visible)).toEqual([false, false, false, false]);
+  });
 });
 
 describe('GhostRenderer.setPreview — road kind', () => {
