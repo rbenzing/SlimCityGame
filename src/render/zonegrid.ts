@@ -32,9 +32,10 @@
  *    elsewhere must not forget previously-painted zones).
  *  - `setVisible(v)`: all layers together (the grid, like the
  *    zoning it reflects, is only meaningful while a zone tool is selected).
- *    Neither `rebuild` nor `applyZonePatches` ever touches mesh.visible —
- *    `setVisible` is the ONLY mutator, so the hide-when-idle flag survives
- *    any number of rebuilds/patches while a non-zone tool is in hand.
+ *    `setVisible` is the only thing that shows a layer: a rebuild or patch
+ *    swaps geometry and keeps the flag, so hide-when-idle survives any
+ *    number of them while a non-zone tool is in hand. A layer with no
+ *    vertices stays hidden even while shown.
  */
 import * as THREE from 'three';
 import { ZoneType, type FramedParcel, type ZonePatch } from '../shared/types';
@@ -366,6 +367,8 @@ export class ZoneGridRenderer {
   private readonly tintMesh: THREE.Mesh;
   private readonly platMesh: THREE.Mesh;
 
+  /** Whether a zone tool is in hand: the layers show only then, and only where they have vertices. */
+  private shown = false;
   private gridSize = 0;
   private parcels: readonly Parcel[] = [];
   private framedParcels: readonly FramedParcel[] = [];
@@ -471,15 +474,22 @@ export class ZoneGridRenderer {
   }
 
   isVisible(): boolean {
-    return this.fillMesh.visible;
+    return this.shown;
   }
 
-  /** Shows/hides the zonable grid (fill + lines) and the painted-zone tint layer together. */
+  /**
+   * Shows/hides the zonable grid (fill + lines) and the painted-zone tint layer together. A
+   * layer with nothing to draw stays hidden whatever this says: an empty mesh would still be
+   * issued to the GPU as a draw of no vertices.
+   */
   setVisible(v: boolean): void {
-    this.fillMesh.visible = v;
-    this.lineMesh.visible = v;
-    this.tintMesh.visible = v;
-    this.platMesh.visible = v;
+    this.shown = v;
+    for (const mesh of [this.fillMesh, this.lineMesh, this.tintMesh, this.platMesh])
+      this.syncVisible(mesh);
+  }
+
+  private syncVisible(mesh: THREE.Mesh): void {
+    mesh.visible = this.shown && (mesh.geometry.getAttribute('position')?.count ?? 0) > 0;
   }
 
   /** Folds SimSnapshot.zones patches into the cached zone-per-tile state,
@@ -564,6 +574,7 @@ export class ZoneGridRenderer {
     }
     mesh.geometry.dispose();
     mesh.geometry = geometry;
+    this.syncVisible(mesh);
   }
 
   /** Live layer meshes (fill, lines, tint), for renderOrder tuning or inspection. */

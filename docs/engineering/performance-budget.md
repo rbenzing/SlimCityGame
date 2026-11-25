@@ -148,6 +148,18 @@ come from the dev hook `window.__slimcity.renderInfo()`. The sim stays paused
 throughout: a running sim clears a city that has no power, water or zones. A
 frame time on an empty map is a CPU-submission rate and reads far under what the
 GPU takes, so only the city's figures are a frame time.
+
+The probe reads the WebGL2 fallback unless given `--webgpu`. On WebGPU, with 3,000 buildings, mean frame time on one laptop was:
+
+| View | Integrated card (what Chrome picks) | Discrete card |
+| --- | --- | --- |
+| Street | 29.3 ms | 13.2 ms |
+| Oblique | 30.9 ms | 14.7 ms |
+| Overview | 47.1 ms | 19.4 ms |
+| Night | 30.8 ms | 14.8 ms |
+| Water | 28.8 ms | 14.6 ms |
+
+So on that laptop's default card the 60 fps target is not met: 21 to 34 frames a second.
 `src/render/geometrybudget.test.ts` is the other half: it counts triangles per
 kit and per zoned building, over everything on the lot, and holds each to its
 tier in [../art/modeling-standards.md](../art/modeling-standards.md#geometry-budget),

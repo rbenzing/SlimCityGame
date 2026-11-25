@@ -1043,6 +1043,15 @@ describe('WaterRenderer', () => {
     expect(mesh.visible).toBe(true);
   });
 
+  it('hides a surface with nothing to draw, even when asked to show it', () => {
+    const scene = new THREE.Scene();
+    const water = new WaterRenderer(scene, flatHeightAt, new Uint8Array(MAP_SIZE * MAP_SIZE), 4);
+    const mesh = scene.children[0] as THREE.Mesh;
+    expect(mesh.visible).toBe(false);
+    water.setVisible(true);
+    expect(mesh.visible).toBe(false);
+  });
+
   it('update() accumulates elapsed time from dtMs (in seconds)', () => {
     const scene = new THREE.Scene();
     const water = new WaterRenderer(scene, flatHeightAt, allWet(), 4);
