@@ -4557,6 +4557,21 @@ class SimWorld implements WorkerSim {
       if (!inBounds(t.x, t.z)) continue;
       rSet.set(tileIndex(t.x, t.z), t);
     }
+    // A tile that stands beside a deck is where the deck lands. The deck was solved against this
+    // ground, so it is left as it is: smoothing it moves the ground a step the deck cannot follow,
+    // and the road reads as two roads that never meet.
+    for (const [idx, t] of [...rSet]) {
+      const landing = APRON_NEIGHBOR_OFFSETS.some(([ox, oz]) => {
+        const nx = t.x + ox;
+        const nz = t.z + oz;
+        if (!inBounds(nx, nz)) return false;
+        const n = tileIndex(nx, nz);
+        return (
+          g.roadTier[n] !== RoadTier.None && (g.roadElevation[n] ?? 0) >= GROUND_HUGGING_LIFT_M
+        );
+      });
+      if (landing) rSet.delete(idx);
+    }
     if (rSet.size === 0) return null;
 
     // A tile provides road continuity if it is in R or already carries road —
