@@ -31,7 +31,9 @@ export interface RendererHandle {
 export async function createRenderer(container: HTMLElement): Promise<RendererHandle> {
   // Dev only: `?noaa` builds the renderer without antialiasing, to measure what it costs.
   const antialias = !(import.meta.env.DEV && new URLSearchParams(location.search).has('noaa'));
-  const renderer = new WebGPURenderer({ antialias });
+  // Dev only: `?gputime` asks for GPU timestamp queries, read through the `takeGpuMs` hook.
+  const trackTimestamp = import.meta.env.DEV && new URLSearchParams(location.search).has('gputime');
+  const renderer = new WebGPURenderer({ antialias, trackTimestamp });
   await renderer.init();
   renderer.shadowMap.enabled = true;
   // Filmic tone mapping so the night city's emissive windows/

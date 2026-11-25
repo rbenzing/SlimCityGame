@@ -3581,6 +3581,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
   let forceDirectRender = false;
   const frameJsMs: number[] = [];
   const renderJsMs: number[] = [];
+  let framesRun = 0;
   if (import.meta.env.DEV) {
     const hook = (window as unknown as { __slimcity: Record<string, unknown> }).__slimcity;
     hook.setDirectRender = (on: boolean): void => {
@@ -3634,7 +3635,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
   // --- frame loop -------------------------------------------------------------------------
   let visualSeconds = 0; // elapsed visual time for the outline pulse / pin bob
   let signalSeconds = 0; // elapsed TRAFFIC time, which is what the signal cycle runs on
-  handle.start((dtMs) => {
+  const frameStep = (dtMs: number): void => {
     const jsStart = import.meta.env.DEV ? performance.now() : 0;
     lastFrameMs = dtMs;
     flushDeferred();
@@ -3707,8 +3708,28 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
     if (import.meta.env.DEV) {
       frameJsMs.push(performance.now() - jsStart);
       if (frameJsMs.length > 2000) frameJsMs.shift();
+      framesRun++;
     }
-  });
+  };
+  handle.start(frameStep);
+  if (import.meta.env.DEV) {
+    // GPU time of the frames drawn since the last call, from timestamp queries: only on a page
+    // loaded with `?gputime` and a card that supports them (null otherwise).
+    const hook = (window as unknown as { __slimcity: Record<string, unknown> }).__slimcity;
+    hook.sampleGpuMs = async (samples: number): Promise<number[] | null> => {
+      if (!(handle.renderer.backend as { trackTimestamp?: boolean }).trackTimestamp) return null;
+      const out: number[] = [];
+      await handle.renderer.resolveTimestampsAsync('render');
+      for (let i = 0; i < samples; i++) {
+        framesRun = 0;
+        await new Promise<void>((done) => requestAnimationFrame(() => done()));
+        const frames = framesRun;
+        const ms = await handle.renderer.resolveTimestampsAsync('render');
+        if (typeof ms === 'number' && frames > 0) out.push(ms / frames);
+      }
+      return out;
+    };
+  }
 }
 
 async function main(): Promise<void> {

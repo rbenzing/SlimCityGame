@@ -534,13 +534,35 @@ function siteFor(occ, water, N, w, d, shore, zFrom) {
 
 // --- the page ---------------------------------------------------------------
 
-const browser = await launchBrowser(WEBGPU, ['--disable-gpu-vsync', '--disable-frame-rate-limit']);
+const browser = await launchBrowser(WEBGPU, [
+  '--disable-gpu-vsync',
+  '--disable-frame-rate-limit',
+  // Timestamp queries are an unsafe-API feature in Chromium; the cost mode reads GPU time from them.
+  ...(ABLATE || CENSUS || PROFILE
+    ? ['--enable-webgpu-developer-features', '--enable-dawn-features=allow_unsafe_apis']
+    : []),
+]);
 const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
 const errors = [];
 page.on('pageerror', (e) => errors.push(e.message));
 page.on('console', (m) => {
   if (m.type() === 'error') errors.push(m.text());
 });
+// The cost mode counts the buffer writes the page makes: calls, bytes and the time inside the call.
+if (ABLATE || CENSUS || PROFILE)
+  await page.addInitScript(() => {
+    window.__upload = { calls: 0, bytes: 0, ms: 0 };
+    if (typeof GPUQueue === 'undefined') return;
+    const write = GPUQueue.prototype.writeBuffer;
+    GPUQueue.prototype.writeBuffer = function (buffer, offset, data, ...rest) {
+      const t = performance.now();
+      const result = write.call(this, buffer, offset, data, ...rest);
+      window.__upload.ms += performance.now() - t;
+      window.__upload.calls++;
+      window.__upload.bytes += data.byteLength ?? 0;
+      return result;
+    };
+  });
 await page.addInitScript(
   ([session]) => {
     try {
@@ -565,7 +587,10 @@ await page.addInitScript(
 
 const result = { seed: SEED, target: TARGET, frames: FRAMES };
 try {
-  await page.goto(NOAA ? `${base.replace(/\/$/, '')}/?noaa` : base, {
+  const query = [NOAA ? 'noaa' : '', ABLATE || CENSUS || PROFILE ? 'gputime' : '']
+    .filter(Boolean)
+    .join('&');
+  await page.goto(query ? `${base.replace(/\/$/, '')}/?${query}` : base, {
     waitUntil: 'domcontentloaded',
   });
   await page.waitForSelector('#viewport canvas', { timeout: 60000 });
@@ -719,7 +744,7 @@ try {
   }));
 
   const camera = tileCamera(page);
-  const measure = (frames = FRAMES) =>
+  const measurePaced = (frames) =>
     page.evaluate(
       ([frames, warm]) =>
         new Promise((resolve) => {
@@ -766,6 +791,27 @@ try {
         }),
       [frames, WARMUP],
     );
+
+  // The page's own frame times, and the GPU's own time per frame from timestamp queries
+  // (gpuMs is null where the card gives none).
+  const measure = async (frames = FRAMES) => {
+    await page.evaluate(() => {
+      window.__upload = { calls: 0, bytes: 0, ms: 0 };
+    });
+    const paced = await measurePaced(frames);
+    // Buffer writes the page made during those frames (warm-up included), per frame.
+    const up = await page.evaluate(() => window.__upload);
+    const drawn = frames + WARMUP;
+    const samples = await page.evaluate(() => window.__slimcity.sampleGpuMs(12));
+    const sorted = (samples ?? []).sort((a, b) => a - b);
+    return {
+      ...paced,
+      gpuMs: sorted.length ? sorted[sorted.length >> 1] : null,
+      uploadMs: up.ms / drawn,
+      uploadMB: up.bytes / drawn / 1048576,
+      uploadCalls: up.calls / drawn,
+    };
+  };
 
   // Every refused placement raises a toast, which would cover the shot.
   const dismissToasts = () =>
@@ -902,6 +948,24 @@ try {
   console.log('buildings', JSON.stringify({ ...result.buildings, standingByCatalogId: undefined }));
   console.log('lots', JSON.stringify(result.lots), 'build ms', result.buildMs);
 
+  // Frame and render-call time every few seconds from the moment the build settles, in the oblique view: the work the renderers still owe a fresh city.
+  if (ABLATE || CENSUS || PROFILE) {
+    const v = VIEWS[1];
+    await setPhase(0.5);
+    await camera(v.tx, v.tz, v.distance, v.yaw, v.pitch);
+    result.settle = [];
+    const t0 = Date.now();
+    for (let i = 0; i < 12; i++) {
+      const m = await measure(60);
+      result.settle.push({
+        secondsAfterBuild: Math.round((Date.now() - t0) / 1000),
+        meanMs: m.meanMs,
+        jsRenderMs: m.jsRenderMs,
+      });
+      console.log('settle', JSON.stringify(result.settle[i]));
+      await page.waitForTimeout(1000);
+    }
+  }
   await page.waitForTimeout(3000);
   result.city = await readViews('city');
   result.errors = errors.slice(0, 20);
@@ -915,6 +979,18 @@ try {
     on: () => hook('setGroupHidden', group, true),
     off: () => hook('setGroupHidden', group, false),
   });
+  const GROUPS = [
+    'terrain',
+    'water',
+    'sea',
+    'trees',
+    'roads',
+    'furniture',
+    'buildings',
+    'lots',
+    'vehicles',
+    'power',
+  ];
   const CASES = {
     base: { on: async () => {}, off: async () => {} },
     'shadows-off': { on: () => hook('setShadows', false), off: () => hook('setShadows', true) },
@@ -947,20 +1023,14 @@ try {
       on: () => hook('setPixelRatio', 0.5 * defaultRatio),
       off: () => hook('setPixelRatio', defaultRatio),
     },
-    ...Object.fromEntries(
-      [
-        'terrain',
-        'water',
-        'sea',
-        'trees',
-        'roads',
-        'furniture',
-        'buildings',
-        'lots',
-        'vehicles',
-        'power',
-      ].map((g) => [`hide-${g}`, hide(g)]),
-    ),
+    ...Object.fromEntries(GROUPS.map((g) => [`hide-${g}`, hide(g)])),
+    // Every group at once: the sky, the post pass and the page's own work are what is left.
+    'hide-all': {
+      on: async () => {
+        for (const g of GROUPS) await hook('setGroupHidden', g, true);
+      },
+      off: () => hook('showAllGroups'),
+    },
   };
   const stat = (xs) => {
     const mean = xs.reduce((a, b) => a + b, 0) / xs.length;
@@ -969,6 +1039,7 @@ try {
   };
   const costViews = VIEWS.filter((v) => !ONLY_VIEWS || ONLY_VIEWS.includes(v.name));
   // The renderers lay their chunks over the frames after a build; the first reads include that work, so the cost runs wait it out.
+  // The renderers lay their chunks over the frames after a build; the cost runs wait it out.
   if (ABLATE || CENSUS || PROFILE) await page.waitForTimeout(20000);
 
   if (ABLATE) {
@@ -1004,21 +1075,32 @@ try {
         p95Ms: stat(list.map((m) => m.p95Ms)),
         jsFrameMs: stat(list.map((m) => m.jsFrameMs)),
         jsRenderMs: stat(list.map((m) => m.jsRenderMs)),
+        gpuMs: stat(list.map((m) => m.gpuMs ?? NaN)),
+        uploadMs: stat(list.map((m) => m.uploadMs)),
+        uploadMB: stat(list.map((m) => m.uploadMB)),
+        uploadCalls: stat(list.map((m) => m.uploadCalls)),
         drawCalls: last.drawCalls,
         triangles: last.triangles,
       };
     }
-    result.ablate = { runs: RUNS, noaa: NOAA, defaultRatio, table };
+    result.ablate = {
+      runs: RUNS,
+      noaa: NOAA,
+      defaultRatio,
+      buildingsStanding: standing.length,
+      settle: result.settle,
+      table,
+    };
     const lines = [
       `# Ablation (${TAG}, ${standing.length} buildings, ${RUNS} runs${NOAA ? ', no antialiasing' : ''})`,
       '',
-      '| View | Case | mean ms (sd) | p95 ms (sd) | js frame ms | js render ms | draw calls | triangles |',
-      '| ---- | ---- | ------------ | ----------- | ----------- | ----------- | ---------- | --------- |',
+      '| View | Case | GPU ms (sd) | js render ms | frame mean ms (sd) | frame p95 ms (sd) | upload ms | upload MB | draw calls | triangles |',
+      '| ---- | ---- | ----------- | ------------ | ------------------ | ----------------- | --------- | --------- | ---------- | --------- |',
     ];
     for (const [view, cases] of Object.entries(table))
       for (const [name, r] of Object.entries(cases))
         lines.push(
-          `| ${view} | ${name} | ${r.meanMs.mean.toFixed(1)} (${r.meanMs.sd.toFixed(1)}) | ${r.p95Ms.mean.toFixed(1)} (${r.p95Ms.sd.toFixed(1)}) | ${r.jsFrameMs.mean.toFixed(1)} | ${r.jsRenderMs.mean.toFixed(1)} | ${r.drawCalls} | ${r.triangles} |`,
+          `| ${view} | ${name} | ${r.gpuMs.mean.toFixed(1)} (${r.gpuMs.sd.toFixed(1)}) | ${r.jsRenderMs.mean.toFixed(1)} | ${r.meanMs.mean.toFixed(1)} (${r.meanMs.sd.toFixed(1)}) | ${r.p95Ms.mean.toFixed(1)} (${r.p95Ms.sd.toFixed(1)}) | ${r.uploadMs.mean.toFixed(1)} | ${r.uploadMB.mean.toFixed(2)} | ${r.drawCalls} | ${r.triangles} |`,
         );
     writeFileSync(`${out}/ablate-${TAG}.md`, `${lines.join('\n')}\n`);
     writeFileSync(`${out}/ablate-${TAG}.json`, `${JSON.stringify(result.ablate, null, 2)}\n`);
