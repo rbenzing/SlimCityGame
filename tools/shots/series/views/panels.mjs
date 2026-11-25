@@ -294,6 +294,8 @@ export default defineSeries({
   purpose:
     'The HUD stays usable and says where the player is: the Services panel reads at its own size, every view shows a chip with its way out, and from 360 px wide every control is reachable and every panel inside the window.',
   budgetS: 60,
+  // The one series on the WebGL2 fallback, so the fallback a browser without WebGPU takes keeps running.
+  session: { webgl2: true },
   subjects: [{ id: 'services' }, { id: 'exit' }, ...WIDTHS.map((w) => ({ id: `narrow-${w}` }))],
   scene,
   frames: [...servicesFrames, ...exitFrames, ...WIDTHS.flatMap(narrowFrames)],

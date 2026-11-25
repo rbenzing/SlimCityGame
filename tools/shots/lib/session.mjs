@@ -25,6 +25,12 @@ const GPU_FAULT = /THREE\.WebGPURenderer|GPUValidationError/;
 /** A console warning that names WebGPU, a pipeline, validation or a render pass: logged, not fatal. */
 const GPU_WARNING = /WebGPU|pipeline|validation|RenderPassEncoder/i;
 
+/** Runs in the page: the GPU adapter WebGPU hands out, as "vendor architecture description". */
+const gpuAdapter = async () => {
+  const info = (await navigator.gpu?.requestAdapter())?.info;
+  return info ? [info.vendor, info.architecture, info.description].filter(Boolean).join(' ') : '';
+};
+
 /** Titles of the toasts the game raised for a refused command, recorded as they appear. */
 const watchRefusals = () => {
   window.__refused = [];
@@ -58,16 +64,17 @@ export function launchBrowser(webgpu, extraArgs = []) {
  * (2 is the coast), so a series keeps the ground it was written on.
  *
  * Returns `{ page, backend, errors, send, refusals, close }`; `backend` is 'webgpu' or 'webgl2'.
- * `webgpu: true` (or SHOTS_WEBGPU=1) runs the real WebGPU backend; a THREE.WebGPURenderer or
- * GPUValidationError console error lands in `errors` on any backend and fails the series. `send(label, commands)`
- * runs one command batch through the game's own path.
+ * The page runs on the real WebGPU backend, as a player's browser does, and the session fails if it
+ * did not get it. `webgl2: true` (or SHOTS_WEBGL=1) takes the WebGL2 fallback instead. A
+ * THREE.WebGPURenderer or GPUValidationError console error lands in `errors` on either backend and
+ * fails the series. `send(label, commands)` runs one command batch through the game's own path.
  */
 export async function openSession(
   url,
-  { fresh = false, seed = SEED, bloom = false, webgpu = false, generator } = {},
+  { fresh = false, seed = SEED, bloom = false, webgl2 = false, generator } = {},
 ) {
-  // SHOTS_WEBGL=1 asks for the WebGL2 fallback and wins; SHOTS_WEBGPU=1 asks every series for WebGPU.
-  const wantGpu = process.env.SHOTS_WEBGL !== '1' && (webgpu || process.env.SHOTS_WEBGPU === '1');
+  const fallback = webgl2 || process.env.SHOTS_WEBGL === '1';
+  const wantGpu = !fallback;
   const browser = await launchBrowser(wantGpu);
   const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
   const errors = [];
@@ -77,7 +84,7 @@ export async function openSession(
     if (m.type() === 'error' && GPU_FAULT.test(m.text())) errors.push(m.text());
     if (m.type() === 'warning' && GPU_WARNING.test(m.text()))
       console.log('[gpu warning]', m.text().split('\n')[0]);
-    if (process.env.SHOTS_WEBGL === '1' && /WebGL ?2|WebGPU/i.test(m.text()))
+    if (fallback && /WebGL ?2|WebGPU/i.test(m.text()))
       console.log('[renderer]', m.text());
   });
   // A `fresh` game is a player's first: no sandbox, no unlimited money, no unlocked rungs. Only
@@ -103,8 +110,8 @@ export async function openSession(
     ],
   );
   await page.addInitScript(watchRefusals);
-  // SHOTS_WEBGL=1 hides WebGPU before the page loads, so the game takes its WebGL2 fallback.
-  if (process.env.SHOTS_WEBGL === '1')
+  // The fallback hides WebGPU before the page loads, so the game takes its WebGL2 backend.
+  if (fallback)
     await page.addInitScript(() => {
       Object.defineProperty(Navigator.prototype, 'gpu', { get: () => undefined });
     });
@@ -115,7 +122,8 @@ export async function openSession(
   await page.waitForSelector('#viewport canvas', { timeout: 60000 });
   await hooksReady(page);
   const backend = await page.evaluate(() => window.__slimcity.backend());
-  console.log(`[backend] ${backend}`);
+  const adapter = wantGpu ? await page.evaluate(gpuAdapter) : '';
+  console.log(`[backend] ${backend}${adapter ? ` ${adapter}` : ''}`);
   if (wantGpu && backend !== 'webgpu')
     errors.push(`WebGPU was asked for but the page drew with ${backend}`);
 

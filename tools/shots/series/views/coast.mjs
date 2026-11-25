@@ -288,7 +288,7 @@ export default defineSeries({
   purpose:
     'The new coast map reads as a coast: a beach that slopes into the sea, a river that holds its width to a clean mouth in a valley with level banks, a lake cut by nothing, a street that bridges the river, and room beside the spawn for a town; and six seeds laid side by side differ in which edge is sea and how the river winds.',
   budgetS: 180,
-  session: { bloom: true, generator: GENERATOR, seed: SEED, webgpu: true },
+  session: { bloom: true, generator: GENERATOR, seed: SEED },
   subjects: [
     { id: 'beach' },
     { id: 'edge' },
