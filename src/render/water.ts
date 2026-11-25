@@ -657,7 +657,6 @@ export class WaterRenderer {
   private makeSeaMesh(geometry: THREE.BufferGeometry | null): THREE.Mesh {
     const mesh = new THREE.Mesh(geometry ?? new THREE.BufferGeometry(), this.seaMaterial);
     mesh.name = 'water-sea';
-    mesh.renderOrder = 1;
     mesh.userData['underground'] = 'keep';
     mesh.position.y = SEA_LEVEL;
     mesh.castShadow = false;
@@ -1377,10 +1376,9 @@ export class WaterRenderer {
    * of the bed left, under Schlick's sky reflection, with the swell's slope and lift and the glint.
    */
   private createSeaMaterial(): MeshStandardNodeMaterial {
-    // Drawn after the surface and writing no depth, like it: where the two overlap the surface never
+    // Opaque but writing no depth: where it overlaps the surface at the map's edge, the surface never
     // finds this sheet behind it and reads a shore there.
     const material = new MeshStandardNodeMaterial({
-      transparent: true,
       depthWrite: false,
       roughness: 0.5,
       metalness: 0,
