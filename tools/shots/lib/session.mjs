@@ -84,8 +84,7 @@ export async function openSession(
     if (m.type() === 'error' && GPU_FAULT.test(m.text())) errors.push(m.text());
     if (m.type() === 'warning' && GPU_WARNING.test(m.text()))
       console.log('[gpu warning]', m.text().split('\n')[0]);
-    if (fallback && /WebGL ?2|WebGPU/i.test(m.text()))
-      console.log('[renderer]', m.text());
+    if (fallback && /WebGL ?2|WebGPU/i.test(m.text())) console.log('[renderer]', m.text());
   });
   // A `fresh` game is a player's first: no sandbox, no unlimited money, no unlocked rungs. Only
   // the first load starts a new game; a save loaded from the menu reloads the page with its own
