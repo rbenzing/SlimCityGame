@@ -46,11 +46,13 @@ describe('views series', () => {
   it('are all of type views, with unique names, each subject shown and each frame named once', async () => {
     const series = await readSeries();
     expect(series.map((s) => s.name).sort()).toEqual([
+      'coast',
       'ghosts',
       'night',
       'panels',
       'underground',
       'water',
+      'watercoast',
     ]);
     for (const s of series) {
       expect(s.type).toBe('views');
