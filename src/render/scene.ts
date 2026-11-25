@@ -31,7 +31,7 @@ export interface RendererHandle {
 export async function createRenderer(container: HTMLElement): Promise<RendererHandle> {
   // Dev only: `?noaa` builds the renderer without antialiasing, to measure what it costs.
   const antialias = !(import.meta.env.DEV && new URLSearchParams(location.search).has('noaa'));
-  // Dev only: `?gputime` asks for GPU timestamp queries, read through the `takeGpuMs` hook.
+  // Dev only: `?gputime` asks for GPU timestamp queries, read through the `sampleGpuMs` hook.
   const trackTimestamp = import.meta.env.DEV && new URLSearchParams(location.search).has('gputime');
   const renderer = new WebGPURenderer({ antialias, trackTimestamp });
   await renderer.init();

@@ -955,16 +955,24 @@ try {
     await camera(v.tx, v.tz, v.distance, v.yaw, v.pitch);
     result.settle = [];
     const t0 = Date.now();
-    for (let i = 0; i < 12; i++) {
-      const m = await measure(60);
-      result.settle.push({
+    // Read every five seconds or so until the render-call time stops falling (the last three
+    // readings within 1.5 ms of each other), at most 120 s.
+    while (Date.now() - t0 < 120000) {
+      const m = await measure(40);
+      const row = {
         secondsAfterBuild: Math.round((Date.now() - t0) / 1000),
         meanMs: m.meanMs,
         jsRenderMs: m.jsRenderMs,
-      });
-      console.log('settle', JSON.stringify(result.settle[i]));
-      await page.waitForTimeout(1000);
+        gpuMs: m.gpuMs,
+      };
+      result.settle.push(row);
+      console.log('settle', JSON.stringify(row));
+      const last = result.settle.slice(-3).map((s) => s.jsRenderMs);
+      if (last.length === 3 && Math.max(...last) - Math.min(...last) < 1.5) break;
+      await page.waitForTimeout(2000);
     }
+    result.settleSeconds = Math.round((Date.now() - t0) / 1000);
+    console.log('settled flat after', result.settleSeconds, 's');
   }
   await page.waitForTimeout(3000);
   result.city = await readViews('city');
@@ -1089,6 +1097,7 @@ try {
       defaultRatio,
       buildingsStanding: standing.length,
       settle: result.settle,
+      settleSeconds: result.settleSeconds,
       table,
     };
     const lines = [
