@@ -40,3 +40,4 @@ One spec a built feature, card first; the template is [_template.md](_template.m
 | [purpose-built-kinds.md](purpose-built-kinds.md) | The auto shop, the store, the pharmacy, the bank and the other purpose-built kinds, their lanes, and how a lot's plan varies |
 | [map-generation.md](map-generation.md) | A sea coast, a river and lakes on every new map, and how a save keeps the terrain it was made on |
 | [water-surface.md](water-surface.md) | Which water is ocean, lake or river, the waves and current each carries, the light in it, and the height a boat reads |
+| [frame-cost.md](frame-cost.md) | The frame-time target for a city of 5,000 on the card a browser picks, where a frame goes, and the cuts proposed |
