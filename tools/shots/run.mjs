@@ -103,6 +103,15 @@ const killTree = (child) => {
   else child.kill('SIGKILL');
 };
 
+/** The lines a series printed about its page: the backend and adapter, console errors, GPU warnings, once each with a count. */
+const pageLines = (log) => {
+  const counts = new Map();
+  for (const line of log.split('\n'))
+    if (/^\[(backend|console\.error|gpu warning)\]/.test(line))
+      counts.set(line.trim(), (counts.get(line.trim()) ?? 0) + 1);
+  return [...counts].map(([line, n]) => (n > 1 ? `${line} (x${n})` : line));
+};
+
 const runOne = (series) =>
   new Promise((resolve) => {
     const started = Date.now();
@@ -110,8 +119,10 @@ const runOne = (series) =>
       stdio: ['ignore', 'pipe', 'pipe'],
     });
     let tail = '';
+    let log = '';
     const keep = (chunk) => {
-      tail = (tail + chunk.toString()).slice(-800);
+      log += chunk.toString();
+      tail = log.slice(-800);
     };
     child.stdout.on('data', keep);
     child.stderr.on('data', keep);
@@ -135,6 +146,7 @@ const runOne = (series) =>
         frames: framesSince(series.name, started),
         sheets: framesSince(series.name, started, true),
         tail,
+        page: pageLines(log),
       };
       console.log(
         `done ${series.name}: exit ${result.exit}, ${result.seconds}s, ${result.frames} frames, ${result.sheets} sheets`,
@@ -159,6 +171,8 @@ for (const r of results)
   console.log(
     `${pad(r.name, 18)}${pad(r.type, 10)}${pad(r.exit, 8)}${pad(r.seconds, 9)}${pad(r.frames, 8)}${r.sheets}`,
   );
+console.log('\npage:');
+for (const r of results) for (const line of r.page) console.log(`  ${pad(r.name, 16)}${line}`);
 const failed = results.filter((r) => r.exit !== '0' || r.frames === 0 || r.sheets === 0);
 const total = results.reduce((n, r) => n + r.frames, 0);
 console.log(

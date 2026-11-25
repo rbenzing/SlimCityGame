@@ -1002,6 +1002,8 @@ export class GhostRenderer {
     this.innerMesh = new THREE.Mesh(emptyGeometry(), this.innerMaterial);
     this.volumeMesh = new THREE.Mesh(this.volumeGeometry, this.volumeMaterial);
     this.volumeMesh.visible = false;
+    for (const mesh of [this.baseMesh, this.fillMesh, this.borderMesh, this.innerMesh])
+      mesh.visible = false;
 
     // Fixed scene order (base, fill, stripe, then border/inner/volume) —
     // tests rely on it; keep it if you add another layer. The arrow layer is
@@ -1204,6 +1206,7 @@ export class GhostRenderer {
     geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
     mesh.geometry.dispose();
     mesh.geometry = geometry;
+    mesh.visible = positions.length > 0; // a mesh with no vertices would still be issued as a draw
   }
 
   private writeBase(

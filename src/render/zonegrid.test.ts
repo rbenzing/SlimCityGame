@@ -426,6 +426,10 @@ describe('ZoneGridRenderer.setVisible', () => {
   it('toggles all three layers together', () => {
     const scene = new THREE.Scene();
     const renderer = new ZoneGridRenderer(scene, flatHeightAt);
+    renderer.rebuild(gridWithStraightRoad(9, 4, 2, 6));
+    renderer.applyZonePatches([
+      { x: 0, z: 0, w: 1, h: 1, data: Uint8Array.from([ZoneType.ResLow]) },
+    ]);
     renderer.setVisible(true);
     expect(renderer.layers().fill.visible).toBe(true);
     expect(renderer.layers().lines.visible).toBe(true);
@@ -629,10 +633,22 @@ describe('ZoneGridRenderer.setParcels', () => {
 
   it('shows and hides the plat with the rest of the grid', () => {
     const renderer = new ZoneGridRenderer(new THREE.Scene(), flatHeightAt);
+    renderer.setParcels([{ x: 0, z: 0, w: 1, d: 1, lot: 'normal', front: 'N' }]);
     expect(renderer.isVisible()).toBe(false);
+    expect(renderer.layers().plat.visible).toBe(false);
     renderer.setVisible(true);
     expect(renderer.layers().plat.visible).toBe(true);
     expect(renderer.isVisible()).toBe(true);
+  });
+
+  it('keeps an empty plat hidden while the grid is shown, and shows it when parcels arrive', () => {
+    const renderer = new ZoneGridRenderer(new THREE.Scene(), flatHeightAt);
+    renderer.setVisible(true);
+    expect(renderer.layers().plat.visible).toBe(false);
+    renderer.setParcels([{ x: 0, z: 0, w: 1, d: 1, lot: 'normal', front: 'N' }]);
+    expect(renderer.layers().plat.visible).toBe(true);
+    renderer.setParcels([]);
+    expect(renderer.layers().plat.visible).toBe(false);
   });
 
   describe('a parcel cut along a curved kerb', () => {

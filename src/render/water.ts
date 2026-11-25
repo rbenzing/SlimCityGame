@@ -613,6 +613,8 @@ export class WaterRenderer {
   private seaMesh: THREE.Mesh;
   private readonly seaMaterial: MeshStandardNodeMaterial;
   private bodies: WaterBodies;
+  /** Whether the water is shown at all (the underground lens hides it); empty meshes stay hidden regardless. */
+  private shown = true;
   private dirty = false;
   private idleS = 0;
   private pinnedClockS: number | null = null;
@@ -652,6 +654,15 @@ export class WaterRenderer {
     this.seaMaterial = this.createSeaMaterial();
     this.seaMesh = this.makeSeaMesh(built.sea);
     scene.add(this.seaMesh);
+    this.syncVisible();
+  }
+
+  /** Shows each mesh only while the water is shown and it has something to draw: an empty mesh is still issued to the GPU as a draw of nothing. */
+  private syncVisible(): void {
+    const drawn = (m: THREE.Mesh): boolean =>
+      (m.geometry.index?.count ?? m.geometry.getAttribute('position')?.count ?? 0) > 0;
+    this.mesh.visible = this.shown && drawn(this.mesh);
+    this.seaMesh.visible = this.shown && drawn(this.seaMesh);
   }
 
   private makeSeaMesh(geometry: THREE.BufferGeometry | null): THREE.Mesh {
@@ -787,7 +798,7 @@ export class WaterRenderer {
     old.dispose();
     this.seaMesh.geometry.dispose();
     this.seaMesh.geometry = built.sea ?? new THREE.BufferGeometry();
-    this.seaMesh.visible = built.sea !== null && this.mesh.visible;
+    this.syncVisible();
     this.bodies = built.bodies;
     this.foulAttribute = built.foul;
     this.dirty = false;
@@ -897,8 +908,8 @@ export class WaterRenderer {
   }
 
   setVisible(visible: boolean): void {
-    this.mesh.visible = visible;
-    this.seaMesh.visible = visible && this.seaMesh.geometry.getAttribute('position') !== undefined;
+    this.shown = visible;
+    this.syncVisible();
   }
 
   /** Accumulated animation clock, in seconds. For tests/introspection. */

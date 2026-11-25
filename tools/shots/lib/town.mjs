@@ -158,6 +158,9 @@ async function loadSave(session, url, saveId) {
   await page.goto(new URL('?nobloom', url).href, { waitUntil: 'domcontentloaded' });
   await page.waitForSelector('#viewport canvas', { timeout: 60000 });
   await hooksReady(page);
+  // A loaded sim runs at speed 1 until told otherwise, so stop it before anything else is waited
+  // on: every wall second spent below is town time, and a slower frame would age the grown town.
+  await page.evaluate(() => window.__slimcity.setSpeed(0));
   // The saved map is flat at 5 m; the new game that booted first has terrain.
   await page.waitForFunction(
     () => {
