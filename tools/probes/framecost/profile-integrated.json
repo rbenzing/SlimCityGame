@@ -1,0 +1,136 @@
+{
+  "1-street": {
+    "frameMs": 23.487777777776742,
+    "jsFrameMs": 19.54222222301695,
+    "jsRenderMs": 19.344444444113307,
+    "sampledMs": 9991.008,
+    "idleOrProgramMs": 1722.754,
+    "top": [
+      [
+        "setPipeline :-1",
+        3887.6
+      ],
+      [
+        "createCommandEncoder :-1",
+        1453.325
+      ],
+      [
+        "(idle) :-1",
+        1126.066
+      ],
+      [
+        "writeBuffer :-1",
+        740.398
+      ],
+      [
+        "(program) :-1",
+        596.688
+      ],
+      [
+        "updateAttribute deps/three_webgpu.js?v=b3a47cdc:21139",
+        164.144
+      ],
+      [
+        "_projectObject deps/three_webgpu.js?v=b3a47cdc:42992",
+        153.305
+      ],
+      [
+        "_update deps/three_webgpu.js?v=b3a47cdc:22245",
+        143.828
+      ],
+      [
+        "updateMatrixWorld deps/three.core-BSRHhj7W.js?v=a8d44557:9908",
+        137.14
+      ],
+      [
+        "updateForRender deps/three_webgpu.js?v=b3a47cdc:38854",
+        111.234
+      ],
+      [
+        "setVertexBuffer :-1",
+        106.218
+      ],
+      [
+        "(garbage collector) :-1",
+        105.581
+      ]
+    ],
+    "writeBufferCallers": [
+      [
+        "GPUQueue.writeBuffer :5 < updateBinding deps/three_webgpu.js?v=b3a47cdc:55289 < _update deps/three_webgpu.js?v=b3a47cdc:22245",
+        738.363
+      ],
+      [
+        "GPUQueue.writeBuffer :5 < updateAttribute deps/three_webgpu.js?v=b3a47cdc:54971 < updateAttribute deps/three_webgpu.js?v=b3a47cdc:58067",
+        2.035
+      ]
+    ]
+  },
+  "2-oblique": {
+    "frameMs": 21.68111111111163,
+    "jsFrameMs": 20.423333332439263,
+    "jsRenderMs": 20.203333332803513,
+    "sampledMs": 8231.271,
+    "idleOrProgramMs": 1891.067,
+    "top": [
+      [
+        "writeBuffer :-1",
+        1817.024
+      ],
+      [
+        "(idle) :-1",
+        1462.353
+      ],
+      [
+        "createCommandEncoder :-1",
+        1089.597
+      ],
+      [
+        "setVertexBuffer :-1",
+        876.178
+      ],
+      [
+        "(program) :-1",
+        428.714
+      ],
+      [
+        "updateAttribute deps/three_webgpu.js?v=b3a47cdc:21139",
+        212.801
+      ],
+      [
+        "_update deps/three_webgpu.js?v=b3a47cdc:22245",
+        186.497
+      ],
+      [
+        "setPipeline :-1",
+        184.012
+      ],
+      [
+        "_projectObject deps/three_webgpu.js?v=b3a47cdc:42992",
+        155.533
+      ],
+      [
+        "updateForRender deps/three_webgpu.js?v=b3a47cdc:38854",
+        145.622
+      ],
+      [
+        "get deps/three_webgpu.js?v=b3a47cdc:20744",
+        131.306
+      ],
+      [
+        "setBindGroup :-1",
+        118.989
+      ]
+    ],
+    "writeBufferCallers": [
+      [
+        "GPUQueue.writeBuffer :5 < updateBinding deps/three_webgpu.js?v=b3a47cdc:55289 < _update deps/three_webgpu.js?v=b3a47cdc:22245",
+        1813.094
+      ],
+      [
+        "GPUQueue.writeBuffer :5 < updateAttribute deps/three_webgpu.js?v=b3a47cdc:54971 < updateAttribute deps/three_webgpu.js?v=b3a47cdc:58067",
+        3.93
+      ]
+    ]
+  }
+}
