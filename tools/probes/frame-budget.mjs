@@ -15,11 +15,12 @@
  * directory as result.json and result.md beside one PNG per view.
  *
  * Usage: node tools/probes/frame-budget.mjs [baseUrl] [--buildings N] [--out dir]
- *        [--seed N] [--frames N] [--generator N]   (a dev server must be running;
- *        the terrain generator is the first unless one is named) */
-import { chromium } from 'playwright';
+ *        [--seed N] [--frames N] [--generator N] [--webgpu]   (a dev server must be running;
+ *        the terrain generator is the first unless one is named; --webgpu runs full Chromium on
+ *        the WebGPU backend instead of the headless shell's WebGL2 fallback) */
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { hooksReady, tileCamera } from '../shots/lib/camera.mjs';
+import { launchBrowser } from '../shots/lib/session.mjs';
 
 // --- the mix ----------------------------------------------------------------
 
@@ -106,6 +107,7 @@ const out = flag('out', 'tools/shots-framebudget');
 const SEED = Number(flag('seed', 7));
 const FRAMES = Number(flag('frames', 240));
 const GENERATOR = flag('generator', undefined);
+const WEBGPU = args.includes('--webgpu');
 const WARMUP = 30;
 mkdirSync(out, { recursive: true });
 
@@ -504,10 +506,7 @@ function siteFor(occ, water, N, w, d, shore, zFrom) {
 
 // --- the page ---------------------------------------------------------------
 
-const browser = await chromium.launch({
-  headless: true,
-  args: ['--use-angle=default', '--disable-gpu-vsync', '--disable-frame-rate-limit'],
-});
+const browser = await launchBrowser(WEBGPU, ['--disable-gpu-vsync', '--disable-frame-rate-limit']);
 const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
 const errors = [];
 page.on('pageerror', (e) => errors.push(e.message));
