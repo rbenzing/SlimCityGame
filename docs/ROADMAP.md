@@ -25,7 +25,7 @@ current behavior only and carry no dates of their own._
 
 ## Status (2026-09-29)
 
-**Test suite:** 11,754 tests passing across 335 test files, run 2026-11-24.
+**Test suite:** 11,782 tests passing across 338 test files, run 2026-11-25.
 This is the only test count in the documentation set. When the suite changes
 again, update the figure here and nowhere else.
 
@@ -59,8 +59,8 @@ again, update the figure here and nowhere else.
 - [The water surface](specs/water-surface.md) is built; what it leaves: a
   wind wave never moves the mesh, so close water is flat between swells; a
   strait flows out of both ends; the wind never turns; a dug canal's banks
-  draw grey; the map's edge still ends in a white void beside the sea; its
-  cost is measured on one discrete GPU only. Behind it, at the player's
+  draw grey; from straight above, a faint change of texture shows where the
+  far sea joins the map's; its cost is measured on one machine only. Behind it, at the player's
   request:
   harbours and boats (marinas, docks, shipyards), deferred in
   [DESIGN.md](DESIGN.md).
@@ -69,10 +69,15 @@ again, update the figure here and nowhere else.
   `lots` series failed twice for want of a farm it looks for, unexplained;
   a building's instanced mesh may reach 9 vertex buffers, never seen
   refused; a 404 and an empty draw call in the console are untraced.
-- A new map holds little water for that surface to show on. Over 40 new-game
-  seeds (2026-11-24) a map was 3.4% water: all had lakes, 26 had any ocean,
-  often a few hundred tiles in a corner, and 8 had a river. Proposed and
-  not built: [a coast and a river on every new map](specs/map-generation.md).
+- A street laid in two drags down a hill can still be split by its own
+  levelling where a deck lifted under 0.5 m lands: the network reads two
+  roads, the grid one `[R-roads-099]`. On hills seed 7: row 78, x 3 to 27,
+  then 27 to 36.
+- [A coast and a river on every new map](specs/map-generation.md) are built.
+  What they leave: no choice of map kinds at New Game; one river, no island
+  and no harbour bay; the land's other three edges still end at the map's
+  edge; the highest camera view shows under half the map (2.4 km of 5.1), so
+  a player never sees the coast and the river whole.
 - [Centred circles](specs/centred-circles.md) are built. What they leave: a
   circle with two arms on a plain road waits for a source; the placing
   preview of either roundabout is its tiles and a label, not the ring; a
