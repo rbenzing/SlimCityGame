@@ -50,9 +50,17 @@ const watchRefusals = () => {
  * fallback, or full Chromium with WebGPU on when `webgpu` is set. `extraArgs` go to either.
  */
 export function launchBrowser(webgpu, extraArgs = []) {
+  // Chromium takes the integrated adapter on a laptop with two, as a player's browser does until
+  // the system is told otherwise; SHOTS_DISCRETE_GPU=1 asks for the discrete card.
+  const adapterArgs =
+    process.env.SHOTS_DISCRETE_GPU === '1' ? ['--force_high_performance_gpu'] : [];
   return chromium.launch(
     webgpu
-      ? { headless: true, channel: 'chromium', args: [...WEBGPU_ARGS, ...extraArgs] }
+      ? {
+          headless: true,
+          channel: 'chromium',
+          args: [...WEBGPU_ARGS, ...adapterArgs, ...extraArgs],
+        }
       : { headless: true, args: ['--use-angle=default', ...extraArgs] },
   );
 }
