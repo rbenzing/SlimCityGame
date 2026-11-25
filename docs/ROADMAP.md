@@ -25,7 +25,7 @@ current behavior only and carry no dates of their own._
 
 ## Status (2026-09-29)
 
-**Test suite:** 11,782 tests passing across 338 test files, run 2026-11-25.
+**Test suite:** 11,785 tests passing across 338 test files, run 2026-11-25.
 This is the only test count in the documentation set. When the suite changes
 again, update the figure here and nowhere else.
 
@@ -64,11 +64,11 @@ again, update the figure here and nowhere else.
   request:
   harbours and boats (marinas, docks, shipyards), deferred in
   [DESIGN.md](DESIGN.md).
-- Frames are still taken on the WebGL2 fallback, which players' browsers do
-  not use, in every shot series but `water` `[R-process-011]`. On WebGPU the
-  `lots` series failed twice for want of a farm it looks for, unexplained;
-  a building's instanced mesh may reach 9 vertex buffers, never seen
-  refused; a 404 and an empty draw call in the console are untraced.
+- On a laptop's integrated card, the one Chrome picks, a city of 3,000
+  buildings draws at 21 to 34 frames a second on WebGPU, against a 60 fps
+  target ([figures](engineering/performance-budget.md)). A building's
+  material uses all 8 vertex buffers WebGPU allows `[R-render-055]`: one
+  more instance attribute and buildings stop drawing.
 - A street laid in two drags down a hill can still be split by its own
   levelling where a deck lifted under 0.5 m lands: the network reads two
   roads, the grid one `[R-roads-099]`. On hills seed 7: row 78, x 3 to 27,
