@@ -1,0 +1,1027 @@
+{
+  "1-street": {
+    "rendererTriangles": 24282241,
+    "rendererTrianglesNoShadow": 12761979,
+    "drawCalls": 434,
+    "drawCallsNoShadow": 255,
+    "sceneMeshes": 1953,
+    "sceneTriangles": 20285589,
+    "sceneTrianglesInView": 1306339,
+    "byGroup": {
+      "other:untracked": {
+        "meshes": 1,
+        "instances": 1,
+        "inView": 1,
+        "trianglesSubmitted": 720,
+        "trianglesInView": 720,
+        "uncullable": 1
+      },
+      "terrain": {
+        "meshes": 260,
+        "instances": 260,
+        "inView": 25,
+        "trianglesSubmitted": 137216,
+        "trianglesInView": 13824,
+        "uncullable": 0
+      },
+      "water": {
+        "meshes": 1,
+        "instances": 1,
+        "inView": 1,
+        "trianglesSubmitted": 13544,
+        "trianglesInView": 13544,
+        "uncullable": 0
+      },
+      "sea": {
+        "meshes": 1,
+        "instances": 1,
+        "inView": 1,
+        "trianglesSubmitted": 46992,
+        "trianglesInView": 46992,
+        "uncullable": 0
+      },
+      "sky": {
+        "meshes": 3,
+        "instances": 40,
+        "inView": 0,
+        "trianglesSubmitted": 80,
+        "trianglesInView": 0,
+        "uncullable": 3
+      },
+      "trees": {
+        "meshes": 4,
+        "instances": 42889,
+        "inView": 1366,
+        "trianglesSubmitted": 2780654,
+        "trianglesInView": 88908,
+        "uncullable": 0
+      },
+      "buildings": {
+        "meshes": 684,
+        "instances": 202711,
+        "inView": 15535,
+        "trianglesSubmitted": 2961500,
+        "trianglesInView": 229178,
+        "uncullable": 1
+      },
+      "vehicles": {
+        "meshes": 17,
+        "instances": 30059,
+        "inView": 481,
+        "trianglesSubmitted": 5992344,
+        "trianglesInView": 96200,
+        "uncullable": 12
+      },
+      "other:ghosts": {
+        "meshes": 2,
+        "instances": 0,
+        "inView": 0,
+        "trianglesSubmitted": 0,
+        "trianglesInView": 0,
+        "uncullable": 0
+      },
+      "power": {
+        "meshes": 1,
+        "instances": 1,
+        "inView": 0,
+        "trianglesSubmitted": 0,
+        "trianglesInView": 0,
+        "uncullable": 0
+      },
+      "furniture": {
+        "meshes": 5,
+        "instances": 2077,
+        "inView": 160,
+        "trianglesSubmitted": 468380,
+        "trianglesInView": 35728,
+        "uncullable": 0
+      },
+      "roads": {
+        "meshes": 246,
+        "instances": 254,
+        "inView": 23,
+        "trianglesSubmitted": 3288364,
+        "trianglesInView": 370343,
+        "uncullable": 0
+      },
+      "lots": {
+        "meshes": 728,
+        "instances": 728,
+        "inView": 26,
+        "trianglesSubmitted": 4595795,
+        "trianglesInView": 410902,
+        "uncullable": 0
+      }
+    },
+    "top": [
+      {
+        "group": "vehicles",
+        "name": "BufferGeometry",
+        "instanced": true,
+        "instances": 16100,
+        "trianglesEach": 200,
+        "inView": 15,
+        "frustumCulled": true,
+        "castsShadow": true,
+        "submitted": 3220000
+      },
+      {
+        "group": "trees",
+        "name": "BufferGeometry",
+        "instanced": true,
+        "instances": 23314,
+        "trianglesEach": 92,
+        "inView": 756,
+        "frustumCulled": true,
+        "castsShadow": true,
+        "submitted": 2144888
+      },
+      {
+        "group": "vehicles",
+        "name": "BufferGeometry",
+        "instanced": true,
+        "instances": 4236,
+        "trianglesEach": 200,
+        "inView": 466,
+        "frustumCulled": true,
+        "castsShadow": true,
+        "submitted": 847200
+      },
+      {
+        "group": "buildings",
+        "name": "BoxGeometry",
+        "instanced": true,
+        "instances": 47849,
+        "trianglesEach": 10,
+        "inView": 5379,
+        "frustumCulled": true,
+        "castsShadow": true,
+        "submitted": 478490
+      },
+      {
+        "group": "buildings",
+        "name": "BufferGeometry",
+        "instanced": true,
+        "instances": 4953,
+        "trianglesEach": 92,
+        "inView": 536,
+        "frustumCulled": true,
+        "castsShadow": true,
+        "submitted": 455676
+      },
+      {
+        "group": "furniture",
+        "name": "BufferGeometry",
+        "instanced": true,
+        "instances": 1623,
+        "trianglesEach": 252,
+        "inView": 126,
+        "frustumCulled": true,
+        "castsShadow": false,
+        "submitted": 408996
+      },
+      {
+        "group": "trees",
+        "name": "BufferGeometry",
+        "instanced": true,
+        "instances": 13037,
+        "trianglesEach": 30,
+        "inView": 434,
+        "frustumCulled": true,
+        "castsShadow": true,
+        "submitted": 391110
+      },
+      {
+        "group": "vehicles",
+        "name": "BufferGeometry",
+        "instanced": true,
+        "instances": 1024,
+        "trianglesEach": 300,
+        "inView": 0,
+        "frustumCulled": false,
+        "castsShadow": true,
+        "submitted": 307200
+      }
+    ]
+  },
+  "2-oblique": {
+    "rendererTriangles": 24593998,
+    "rendererTrianglesNoShadow": 12843544,
+    "drawCalls": 615,
+    "drawCallsNoShadow": 358,
+    "sceneMeshes": 1953,
+    "sceneTriangles": 20285589,
+    "sceneTrianglesInView": 802932,
+    "byGroup": {
+      "other:untracked": {
+        "meshes": 1,
+        "instances": 1,
+        "inView": 1,
+        "trianglesSubmitted": 720,
+        "trianglesInView": 720,
+        "uncullable": 1
+      },
+      "terrain": {
+        "meshes": 260,
+        "instances": 260,
+        "inView": 28,
+        "trianglesSubmitted": 137216,
+        "trianglesInView": 18432,
+        "uncullable": 0
+      },
+      "water": {
+        "meshes": 1,
+        "instances": 1,
+        "inView": 1,
+        "trianglesSubmitted": 13544,
+        "trianglesInView": 13544,
+        "uncullable": 0
+      },
+      "sea": {
+        "meshes": 1,
+        "instances": 1,
+        "inView": 1,
+        "trianglesSubmitted": 46992,
+        "trianglesInView": 46992,
+        "uncullable": 0
+      },
+      "sky": {
+        "meshes": 3,
+        "instances": 40,
+        "inView": 0,
+        "trianglesSubmitted": 80,
+        "trianglesInView": 0,
+        "uncullable": 3
+      },
+      "trees": {
+        "meshes": 4,
+        "instances": 42889,
+        "inView": 387,
+        "trianglesSubmitted": 2780654,
+        "trianglesInView": 27366,
+        "uncullable": 0
+      },
+      "buildings": {
+        "meshes": 684,
+        "instances": 202711,
+        "inView": 2592,
+        "trianglesSubmitted": 2961500,
+        "trianglesInView": 40488,
+        "uncullable": 1
+      },
+      "vehicles": {
+        "meshes": 17,
+        "instances": 30059,
+        "inView": 364,
+        "trianglesSubmitted": 5992344,
+        "trianglesInView": 72800,
+        "uncullable": 12
+      },
+      "other:ghosts": {
+        "meshes": 2,
+        "instances": 0,
+        "inView": 0,
+        "trianglesSubmitted": 0,
+        "trianglesInView": 0,
+        "uncullable": 0
+      },
+      "power": {
+        "meshes": 1,
+        "instances": 1,
+        "inView": 0,
+        "trianglesSubmitted": 0,
+        "trianglesInView": 0,
+        "uncullable": 0
+      },
+      "furniture": {
+        "meshes": 5,
+        "instances": 2077,
+        "inView": 36,
+        "trianglesSubmitted": 468380,
+        "trianglesInView": 8040,
+        "uncullable": 0
+      },
+      "roads": {
+        "meshes": 246,
+        "instances": 254,
+        "inView": 19,
+        "trianglesSubmitted": 3288364,
+        "trianglesInView": 251375,
+        "uncullable": 0
+      },
+      "lots": {
+        "meshes": 728,
+        "instances": 728,
+        "inView": 29,
+        "trianglesSubmitted": 4595795,
+        "trianglesInView": 323175,
+        "uncullable": 0
+      }
+    },
+    "top": [
+      {
+        "group": "vehicles",
+        "name": "BufferGeometry",
+        "instanced": true,
+        "instances": 16100,
+        "trianglesEach": 200,
+        "inView": 310,
+        "frustumCulled": true,
+        "castsShadow": true,
+        "submitted": 3220000
+      },
+      {
+        "group": "trees",
+        "name": "BufferGeometry",
+        "instanced": true,
+        "instances": 23314,
+        "trianglesEach": 92,
+        "inView": 252,
+        "frustumCulled": true,
+        "castsShadow": true,
+        "submitted": 2144888
+      },
+      {
+        "group": "vehicles",
+        "name": "BufferGeometry",
+        "instanced": true,
+        "instances": 4236,
+        "trianglesEach": 200,
+        "inView": 54,
+        "frustumCulled": true,
+        "castsShadow": true,
+        "submitted": 847200
+      },
+      {
+        "group": "buildings",
+        "name": "BoxGeometry",
+        "instanced": true,
+        "instances": 47849,
+        "trianglesEach": 10,
+        "inView": 647,
+        "frustumCulled": true,
+        "castsShadow": true,
+        "submitted": 478490
+      },
+      {
+        "group": "buildings",
+        "name": "BufferGeometry",
+        "instanced": true,
+        "instances": 4953,
+        "trianglesEach": 92,
+        "inView": 61,
+        "frustumCulled": true,
+        "castsShadow": true,
+        "submitted": 455676
+      },
+      {
+        "group": "furniture",
+        "name": "BufferGeometry",
+        "instanced": true,
+        "instances": 1623,
+        "trianglesEach": 252,
+        "inView": 28,
+        "frustumCulled": true,
+        "castsShadow": false,
+        "submitted": 408996
+      },
+      {
+        "group": "trees",
+        "name": "BufferGeometry",
+        "instanced": true,
+        "instances": 13037,
+        "trianglesEach": 30,
+        "inView": 113,
+        "frustumCulled": true,
+        "castsShadow": true,
+        "submitted": 391110
+      },
+      {
+        "group": "vehicles",
+        "name": "BufferGeometry",
+        "instanced": true,
+        "instances": 1024,
+        "trianglesEach": 300,
+        "inView": 0,
+        "frustumCulled": false,
+        "castsShadow": true,
+        "submitted": 307200
+      }
+    ]
+  },
+  "3-overview": {
+    "rendererTriangles": 27699167,
+    "rendererTrianglesNoShadow": 15950213,
+    "drawCalls": 1016,
+    "drawCallsNoShadow": 767,
+    "sceneMeshes": 1953,
+    "sceneTriangles": 20285589,
+    "sceneTrianglesInView": 6551699,
+    "byGroup": {
+      "other:untracked": {
+        "meshes": 1,
+        "instances": 1,
+        "inView": 1,
+        "trianglesSubmitted": 720,
+        "trianglesInView": 720,
+        "uncullable": 1
+      },
+      "terrain": {
+        "meshes": 260,
+        "instances": 260,
+        "inView": 113,
+        "trianglesSubmitted": 137216,
+        "trianglesInView": 61952,
+        "uncullable": 0
+      },
+      "water": {
+        "meshes": 1,
+        "instances": 1,
+        "inView": 1,
+        "trianglesSubmitted": 13544,
+        "trianglesInView": 13544,
+        "uncullable": 0
+      },
+      "sea": {
+        "meshes": 1,
+        "instances": 1,
+        "inView": 1,
+        "trianglesSubmitted": 46992,
+        "trianglesInView": 46992,
+        "uncullable": 0
+      },
+      "sky": {
+        "meshes": 3,
+        "instances": 40,
+        "inView": 1,
+        "trianglesSubmitted": 80,
+        "trianglesInView": 2,
+        "uncullable": 3
+      },
+      "trees": {
+        "meshes": 4,
+        "instances": 42889,
+        "inView": 7077,
+        "trianglesSubmitted": 2780654,
+        "trianglesInView": 437068,
+        "uncullable": 0
+      },
+      "buildings": {
+        "meshes": 684,
+        "instances": 202711,
+        "inView": 62971,
+        "trianglesSubmitted": 2961500,
+        "trianglesInView": 986958,
+        "uncullable": 1
+      },
+      "vehicles": {
+        "meshes": 17,
+        "instances": 30059,
+        "inView": 6079,
+        "trianglesSubmitted": 5992344,
+        "trianglesInView": 1215800,
+        "uncullable": 12
+      },
+      "other:ghosts": {
+        "meshes": 2,
+        "instances": 0,
+        "inView": 0,
+        "trianglesSubmitted": 0,
+        "trianglesInView": 0,
+        "uncullable": 0
+      },
+      "power": {
+        "meshes": 1,
+        "instances": 1,
+        "inView": 0,
+        "trianglesSubmitted": 0,
+        "trianglesInView": 0,
+        "uncullable": 0
+      },
+      "furniture": {
+        "meshes": 5,
+        "instances": 2077,
+        "inView": 695,
+        "trianglesSubmitted": 468380,
+        "trianglesInView": 157036,
+        "uncullable": 0
+      },
+      "roads": {
+        "meshes": 246,
+        "instances": 254,
+        "inView": 111,
+        "trianglesSubmitted": 3288364,
+        "trianglesInView": 1544041,
+        "uncullable": 0
+      },
+      "lots": {
+        "meshes": 728,
+        "instances": 728,
+        "inView": 245,
+        "trianglesSubmitted": 4595795,
+        "trianglesInView": 2087586,
+        "uncullable": 0
+      }
+    },
+    "top": [
+      {
+        "group": "vehicles",
+        "name": "BufferGeometry",
+        "instanced": true,
+        "instances": 16100,
+        "trianglesEach": 200,
+        "inView": 4539,
+        "frustumCulled": true,
+        "castsShadow": true,
+        "submitted": 3220000
+      },
+      {
+        "group": "trees",
+        "name": "BufferGeometry",
+        "instanced": true,
+        "instances": 23314,
+        "trianglesEach": 92,
+        "inView": 3446,
+        "frustumCulled": true,
+        "castsShadow": true,
+        "submitted": 2144888
+      },
+      {
+        "group": "vehicles",
+        "name": "BufferGeometry",
+        "instanced": true,
+        "instances": 4236,
+        "trianglesEach": 200,
+        "inView": 1532,
+        "frustumCulled": true,
+        "castsShadow": true,
+        "submitted": 847200
+      },
+      {
+        "group": "buildings",
+        "name": "BoxGeometry",
+        "instanced": true,
+        "instances": 47849,
+        "trianglesEach": 10,
+        "inView": 16713,
+        "frustumCulled": true,
+        "castsShadow": true,
+        "submitted": 478490
+      },
+      {
+        "group": "buildings",
+        "name": "BufferGeometry",
+        "instanced": true,
+        "instances": 4953,
+        "trianglesEach": 92,
+        "inView": 1749,
+        "frustumCulled": true,
+        "castsShadow": true,
+        "submitted": 455676
+      },
+      {
+        "group": "furniture",
+        "name": "BufferGeometry",
+        "instanced": true,
+        "instances": 1623,
+        "trianglesEach": 252,
+        "inView": 551,
+        "frustumCulled": true,
+        "castsShadow": false,
+        "submitted": 408996
+      },
+      {
+        "group": "trees",
+        "name": "BufferGeometry",
+        "instanced": true,
+        "instances": 13037,
+        "trianglesEach": 30,
+        "inView": 2086,
+        "frustumCulled": true,
+        "castsShadow": true,
+        "submitted": 391110
+      },
+      {
+        "group": "vehicles",
+        "name": "BufferGeometry",
+        "instanced": true,
+        "instances": 1024,
+        "trianglesEach": 300,
+        "inView": 0,
+        "frustumCulled": false,
+        "castsShadow": true,
+        "submitted": 307200
+      }
+    ]
+  },
+  "4-oblique-night": {
+    "rendererTriangles": 24593998,
+    "rendererTrianglesNoShadow": 12843544,
+    "drawCalls": 615,
+    "drawCallsNoShadow": 358,
+    "sceneMeshes": 1946,
+    "sceneTriangles": 20285589,
+    "sceneTrianglesInView": 743332,
+    "byGroup": {
+      "other:untracked": {
+        "meshes": 1,
+        "instances": 1,
+        "inView": 1,
+        "trianglesSubmitted": 720,
+        "trianglesInView": 720,
+        "uncullable": 1
+      },
+      "terrain": {
+        "meshes": 260,
+        "instances": 260,
+        "inView": 28,
+        "trianglesSubmitted": 137216,
+        "trianglesInView": 18432,
+        "uncullable": 0
+      },
+      "water": {
+        "meshes": 1,
+        "instances": 1,
+        "inView": 1,
+        "trianglesSubmitted": 13544,
+        "trianglesInView": 13544,
+        "uncullable": 0
+      },
+      "sea": {
+        "meshes": 1,
+        "instances": 1,
+        "inView": 1,
+        "trianglesSubmitted": 46992,
+        "trianglesInView": 46992,
+        "uncullable": 0
+      },
+      "sky": {
+        "meshes": 3,
+        "instances": 40,
+        "inView": 0,
+        "trianglesSubmitted": 80,
+        "trianglesInView": 0,
+        "uncullable": 3
+      },
+      "trees": {
+        "meshes": 4,
+        "instances": 42889,
+        "inView": 387,
+        "trianglesSubmitted": 2780654,
+        "trianglesInView": 27366,
+        "uncullable": 0
+      },
+      "buildings": {
+        "meshes": 677,
+        "instances": 202711,
+        "inView": 2592,
+        "trianglesSubmitted": 2961500,
+        "trianglesInView": 40488,
+        "uncullable": 1
+      },
+      "vehicles": {
+        "meshes": 17,
+        "instances": 30059,
+        "inView": 66,
+        "trianglesSubmitted": 5992344,
+        "trianglesInView": 13200,
+        "uncullable": 12
+      },
+      "other:ghosts": {
+        "meshes": 2,
+        "instances": 0,
+        "inView": 0,
+        "trianglesSubmitted": 0,
+        "trianglesInView": 0,
+        "uncullable": 0
+      },
+      "power": {
+        "meshes": 1,
+        "instances": 1,
+        "inView": 0,
+        "trianglesSubmitted": 0,
+        "trianglesInView": 0,
+        "uncullable": 0
+      },
+      "furniture": {
+        "meshes": 5,
+        "instances": 2077,
+        "inView": 36,
+        "trianglesSubmitted": 468380,
+        "trianglesInView": 8040,
+        "uncullable": 0
+      },
+      "roads": {
+        "meshes": 246,
+        "instances": 254,
+        "inView": 19,
+        "trianglesSubmitted": 3288364,
+        "trianglesInView": 251375,
+        "uncullable": 0
+      },
+      "lots": {
+        "meshes": 728,
+        "instances": 728,
+        "inView": 29,
+        "trianglesSubmitted": 4595795,
+        "trianglesInView": 323175,
+        "uncullable": 0
+      }
+    },
+    "top": [
+      {
+        "group": "vehicles",
+        "name": "BufferGeometry",
+        "instanced": true,
+        "instances": 16100,
+        "trianglesEach": 200,
+        "inView": 12,
+        "frustumCulled": true,
+        "castsShadow": true,
+        "submitted": 3220000
+      },
+      {
+        "group": "trees",
+        "name": "BufferGeometry",
+        "instanced": true,
+        "instances": 23314,
+        "trianglesEach": 92,
+        "inView": 252,
+        "frustumCulled": true,
+        "castsShadow": true,
+        "submitted": 2144888
+      },
+      {
+        "group": "vehicles",
+        "name": "BufferGeometry",
+        "instanced": true,
+        "instances": 4236,
+        "trianglesEach": 200,
+        "inView": 54,
+        "frustumCulled": true,
+        "castsShadow": true,
+        "submitted": 847200
+      },
+      {
+        "group": "buildings",
+        "name": "BoxGeometry",
+        "instanced": true,
+        "instances": 47849,
+        "trianglesEach": 10,
+        "inView": 647,
+        "frustumCulled": true,
+        "castsShadow": true,
+        "submitted": 478490
+      },
+      {
+        "group": "buildings",
+        "name": "BufferGeometry",
+        "instanced": true,
+        "instances": 4953,
+        "trianglesEach": 92,
+        "inView": 61,
+        "frustumCulled": true,
+        "castsShadow": true,
+        "submitted": 455676
+      },
+      {
+        "group": "furniture",
+        "name": "BufferGeometry",
+        "instanced": true,
+        "instances": 1623,
+        "trianglesEach": 252,
+        "inView": 28,
+        "frustumCulled": true,
+        "castsShadow": false,
+        "submitted": 408996
+      },
+      {
+        "group": "trees",
+        "name": "BufferGeometry",
+        "instanced": true,
+        "instances": 13037,
+        "trianglesEach": 30,
+        "inView": 113,
+        "frustumCulled": true,
+        "castsShadow": true,
+        "submitted": 391110
+      },
+      {
+        "group": "vehicles",
+        "name": "BufferGeometry",
+        "instanced": true,
+        "instances": 1024,
+        "trianglesEach": 300,
+        "inView": 0,
+        "frustumCulled": false,
+        "castsShadow": true,
+        "submitted": 307200
+      }
+    ]
+  },
+  "5-water": {
+    "rendererTriangles": 24012617,
+    "rendererTrianglesNoShadow": 12272855,
+    "drawCalls": 444,
+    "drawCallsNoShadow": 225,
+    "sceneMeshes": 1946,
+    "sceneTriangles": 20285589,
+    "sceneTrianglesInView": 118155,
+    "byGroup": {
+      "other:untracked": {
+        "meshes": 1,
+        "instances": 1,
+        "inView": 1,
+        "trianglesSubmitted": 720,
+        "trianglesInView": 720,
+        "uncullable": 1
+      },
+      "terrain": {
+        "meshes": 260,
+        "instances": 260,
+        "inView": 5,
+        "trianglesSubmitted": 137216,
+        "trianglesInView": 4608,
+        "uncullable": 0
+      },
+      "water": {
+        "meshes": 1,
+        "instances": 1,
+        "inView": 1,
+        "trianglesSubmitted": 13544,
+        "trianglesInView": 13544,
+        "uncullable": 0
+      },
+      "sea": {
+        "meshes": 1,
+        "instances": 1,
+        "inView": 1,
+        "trianglesSubmitted": 46992,
+        "trianglesInView": 46992,
+        "uncullable": 0
+      },
+      "sky": {
+        "meshes": 3,
+        "instances": 40,
+        "inView": 0,
+        "trianglesSubmitted": 80,
+        "trianglesInView": 0,
+        "uncullable": 3
+      },
+      "trees": {
+        "meshes": 4,
+        "instances": 42889,
+        "inView": 26,
+        "trianglesSubmitted": 2780654,
+        "trianglesInView": 1032,
+        "uncullable": 0
+      },
+      "buildings": {
+        "meshes": 677,
+        "instances": 202711,
+        "inView": 37,
+        "trianglesSubmitted": 2961500,
+        "trianglesInView": 922,
+        "uncullable": 1
+      },
+      "vehicles": {
+        "meshes": 17,
+        "instances": 30059,
+        "inView": 0,
+        "trianglesSubmitted": 5992344,
+        "trianglesInView": 0,
+        "uncullable": 12
+      },
+      "other:ghosts": {
+        "meshes": 2,
+        "instances": 0,
+        "inView": 0,
+        "trianglesSubmitted": 0,
+        "trianglesInView": 0,
+        "uncullable": 0
+      },
+      "power": {
+        "meshes": 1,
+        "instances": 1,
+        "inView": 0,
+        "trianglesSubmitted": 0,
+        "trianglesInView": 0,
+        "uncullable": 0
+      },
+      "furniture": {
+        "meshes": 5,
+        "instances": 2077,
+        "inView": 3,
+        "trianglesSubmitted": 468380,
+        "trianglesInView": 532,
+        "uncullable": 0
+      },
+      "roads": {
+        "meshes": 246,
+        "instances": 254,
+        "inView": 5,
+        "trianglesSubmitted": 3288364,
+        "trianglesInView": 31156,
+        "uncullable": 0
+      },
+      "lots": {
+        "meshes": 728,
+        "instances": 728,
+        "inView": 2,
+        "trianglesSubmitted": 4595795,
+        "trianglesInView": 18649,
+        "uncullable": 0
+      }
+    },
+    "top": [
+      {
+        "group": "vehicles",
+        "name": "BufferGeometry",
+        "instanced": true,
+        "instances": 16100,
+        "trianglesEach": 200,
+        "inView": 0,
+        "frustumCulled": true,
+        "castsShadow": true,
+        "submitted": 3220000
+      },
+      {
+        "group": "trees",
+        "name": "BufferGeometry",
+        "instanced": true,
+        "instances": 23314,
+        "trianglesEach": 92,
+        "inView": 0,
+        "frustumCulled": true,
+        "castsShadow": true,
+        "submitted": 2144888
+      },
+      {
+        "group": "vehicles",
+        "name": "BufferGeometry",
+        "instanced": true,
+        "instances": 4236,
+        "trianglesEach": 200,
+        "inView": 0,
+        "frustumCulled": true,
+        "castsShadow": true,
+        "submitted": 847200
+      },
+      {
+        "group": "buildings",
+        "name": "BoxGeometry",
+        "instanced": true,
+        "instances": 47849,
+        "trianglesEach": 10,
+        "inView": 0,
+        "frustumCulled": true,
+        "castsShadow": true,
+        "submitted": 478490
+      },
+      {
+        "group": "buildings",
+        "name": "BufferGeometry",
+        "instanced": true,
+        "instances": 4953,
+        "trianglesEach": 92,
+        "inView": 0,
+        "frustumCulled": true,
+        "castsShadow": true,
+        "submitted": 455676
+      },
+      {
+        "group": "furniture",
+        "name": "BufferGeometry",
+        "instanced": true,
+        "instances": 1623,
+        "trianglesEach": 252,
+        "inView": 1,
+        "frustumCulled": true,
+        "castsShadow": false,
+        "submitted": 408996
+      },
+      {
+        "group": "trees",
+        "name": "BufferGeometry",
+        "instanced": true,
+        "instances": 13037,
+        "trianglesEach": 30,
+        "inView": 12,
+        "frustumCulled": true,
+        "castsShadow": true,
+        "submitted": 391110
+      },
+      {
+        "group": "vehicles",
+        "name": "BufferGeometry",
+        "instanced": true,
+        "instances": 1024,
+        "trianglesEach": 300,
+        "inView": 0,
+        "frustumCulled": false,
+        "castsShadow": true,
+        "submitted": 307200
+      }
+    ]
+  }
+}

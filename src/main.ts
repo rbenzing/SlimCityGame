@@ -94,6 +94,12 @@ import { CENTRED_ROUNDABOUT_CODE } from './shared/centredring';
 import { culDeSacCentre, culDeSacCodeOf, culDeSacTiles } from './shared/culdesac';
 import { isUnderground } from './shared/view';
 import { createRenderer, createWorldScene, timeOfDayColors } from './render/scene';
+import {
+  meshCensus,
+  setGroupHidden,
+  showAllGroups,
+  watchSceneOwners,
+} from './render/framecostprobe';
 import { createBloomPipeline, createScenePipeline, type BloomPipeline } from './render/bloom';
 import { CloudLayer } from './render/clouds';
 import { TerrainRenderer } from './render/terrain';
@@ -299,6 +305,7 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
   // --- renderer, scene, world ------------------------------------------------
   const handle = await createRenderer(viewport);
   const world = createWorldScene();
+  if (import.meta.env.DEV) watchSceneOwners(world.scene);
 
   const map = generateMap(generator, seed, MAP_NAME);
 
@@ -3572,10 +3579,48 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
   };
   // Dev check: draws every frame straight to the screen, as a demoted pipeline would.
   let forceDirectRender = false;
+  const frameJsMs: number[] = [];
+  const renderJsMs: number[] = [];
+  let framesRun = 0;
   if (import.meta.env.DEV) {
     const hook = (window as unknown as { __slimcity: Record<string, unknown> }).__slimcity;
     hook.setDirectRender = (on: boolean): void => {
       forceDirectRender = on;
+    };
+    // Frame-cost switches: each turns one cost off without rebuilding the scene.
+    hook.setGroupHidden = setGroupHidden;
+    hook.showAllGroups = showAllGroups;
+    hook.meshCensus = (): ReturnType<typeof meshCensus> => meshCensus(world.scene, camera);
+    // The sun's shadow: off skips the shadow pass; a size re-allocates the map.
+    hook.setShadows = (on: boolean, mapSize?: number): void => {
+      const sun = world.scene.children.find(
+        (o): o is THREE.DirectionalLight => o instanceof THREE.DirectionalLight,
+      );
+      if (!sun) return;
+      sun.castShadow = on;
+      handle.renderer.shadowMap.enabled = on;
+      if (mapSize !== undefined) {
+        sun.shadow.mapSize.set(mapSize, mapSize);
+        sun.shadow.map?.dispose();
+        sun.shadow.map = null;
+      }
+      sun.shadow.needsUpdate = true;
+    };
+    // Draw-buffer pixels per CSS pixel; the page's own rule is min(devicePixelRatio, 2).
+    hook.setPixelRatio = (ratio: number): void => {
+      const rect = viewport.getBoundingClientRect();
+      handle.renderer.setPixelRatio(ratio);
+      handle.renderer.setSize(Math.round(rect.width), Math.round(rect.height), false);
+    };
+    hook.setBloom = (on: boolean): void => {
+      useCityStore.getState().setSettings({ bloom: on });
+    };
+    // Main-thread milliseconds of the frame callback and of the render call inside it, since the last read.
+    hook.takeFrameJs = (): { frame: number[]; render: number[] } => {
+      const taken = { frame: frameJsMs.slice(), render: renderJsMs.slice() };
+      frameJsMs.length = 0;
+      renderJsMs.length = 0;
+      return taken;
     };
     // Which graphics backend draws the page: 'webgpu', or 'webgl2' on the fallback.
     hook.backend = (): string =>
@@ -3590,7 +3635,8 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
   // --- frame loop -------------------------------------------------------------------------
   let visualSeconds = 0; // elapsed visual time for the outline pulse / pin bob
   let signalSeconds = 0; // elapsed TRAFFIC time, which is what the signal cycle runs on
-  handle.start((dtMs) => {
+  const frameStep = (dtMs: number): void => {
+    const jsStart = import.meta.env.DEV ? performance.now() : 0;
     lastFrameMs = dtMs;
     flushDeferred();
     rig.update(dtMs);
@@ -3641,11 +3687,16 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       : bloomDisabled
         ? null
         : (scenePipeline ??= createScenePipelineGuarded());
+    const renderStart = import.meta.env.DEV ? performance.now() : 0;
     if (pipeline && !forceDirectRender) {
       if (pipeline === bloomPipeline) pipeline.setStrength(lastNightFactor * BLOOM_NIGHT_STRENGTH);
       pipeline.render();
     } else {
       handle.renderer.render(world.scene, camera);
+    }
+    if (import.meta.env.DEV) {
+      renderJsMs.push(performance.now() - renderStart);
+      if (renderJsMs.length > 2000) renderJsMs.shift();
     }
     water.setScreenRead(pipeline !== null && pipeline.isActive && !forceDirectRender);
     // The frame showing the last snapshot is drawn: the worker may post the next.
@@ -3654,7 +3705,31 @@ async function startGame(session: Extract<AppSession, { screen: 'playing' }>): P
       const applied: MainToWorker = { type: 'snapshotApplied' };
       worker.postMessage(applied);
     }
-  });
+    if (import.meta.env.DEV) {
+      frameJsMs.push(performance.now() - jsStart);
+      if (frameJsMs.length > 2000) frameJsMs.shift();
+      framesRun++;
+    }
+  };
+  handle.start(frameStep);
+  if (import.meta.env.DEV) {
+    // GPU time of the frames drawn since the last call, from timestamp queries: only on a page
+    // loaded with `?gputime` and a card that supports them (null otherwise).
+    const hook = (window as unknown as { __slimcity: Record<string, unknown> }).__slimcity;
+    hook.sampleGpuMs = async (samples: number): Promise<number[] | null> => {
+      if (!(handle.renderer.backend as { trackTimestamp?: boolean }).trackTimestamp) return null;
+      const out: number[] = [];
+      await handle.renderer.resolveTimestampsAsync('render');
+      for (let i = 0; i < samples; i++) {
+        framesRun = 0;
+        await new Promise<void>((done) => requestAnimationFrame(() => done()));
+        const frames = framesRun;
+        const ms = await handle.renderer.resolveTimestampsAsync('render');
+        if (typeof ms === 'number' && frames > 0) out.push(ms / frames);
+      }
+      return out;
+    };
+  }
 }
 
 async function main(): Promise<void> {

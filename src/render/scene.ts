@@ -29,7 +29,11 @@ export interface RendererHandle {
  * sizes it to `container` via ResizeObserver, and wires up an animation loop.
  */
 export async function createRenderer(container: HTMLElement): Promise<RendererHandle> {
-  const renderer = new WebGPURenderer({ antialias: true });
+  // Dev only: `?noaa` builds the renderer without antialiasing, to measure what it costs.
+  const antialias = !(import.meta.env.DEV && new URLSearchParams(location.search).has('noaa'));
+  // Dev only: `?gputime` asks for GPU timestamp queries, read through the `sampleGpuMs` hook.
+  const trackTimestamp = import.meta.env.DEV && new URLSearchParams(location.search).has('gputime');
+  const renderer = new WebGPURenderer({ antialias, trackTimestamp });
   await renderer.init();
   renderer.shadowMap.enabled = true;
   // Filmic tone mapping so the night city's emissive windows/

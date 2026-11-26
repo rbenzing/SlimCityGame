@@ -25,7 +25,7 @@ How to use it:
 | Architecture and the thread boundary   | [architecture.md](truths/architecture.md)     | 18    | `R-architecture-001` to `R-architecture-018` |
 | Rendering and art                      | [render.md](truths/render.md)                 | 55    | `R-render-001` to `R-render-055`     |
 | Game design and interface              | [design.md](truths/design.md)                 | 23    | `R-design-001` to `R-design-023`     |
-| Process                                | [process.md](truths/process.md)               | 11    | `R-process-001` to `R-process-011`   |
+| Process                                | [process.md](truths/process.md)               | 12    | `R-process-001` to `R-process-012`   |
 
 Read the file of every area a task touches, and nothing else of the truths.
 

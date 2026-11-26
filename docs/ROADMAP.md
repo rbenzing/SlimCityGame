@@ -25,7 +25,7 @@ current behavior only and carry no dates of their own._
 
 ## Status (2026-09-29)
 
-**Test suite:** 11,785 tests passing across 338 test files, run 2026-11-25.
+**Test suite:** 11,789 tests passing across 339 test files, run 2026-11-25.
 This is the only test count in the documentation set. When the suite changes
 again, update the figure here and nowhere else.
 
@@ -64,9 +64,12 @@ again, update the figure here and nowhere else.
   request:
   harbours and boats (marinas, docks, shipyards), deferred in
   [DESIGN.md](DESIGN.md).
-- On a laptop's integrated card, the one Chrome picks, a city of 3,000
-  buildings draws at 21 to 34 frames a second on WebGPU, against a 60 fps
-  target ([figures](engineering/performance-budget.md)). A building's
+- On a laptop's integrated card, the one Chrome picks, a city of 5,000
+  standing buildings draws at 29 to 50 frames a second, against a 60 fps
+  target; the cuts are proposed, not built ([spec](specs/frame-cost.md)).
+  Not known: the cost with the sim running, why the page takes 30 s to
+  settle after a build, the page's own time on that card; and the frame
+  probe stands under half the buildings it is asked for. A building's
   material uses all 8 vertex buffers WebGPU allows `[R-render-055]`: one
   more instance attribute and buildings stop drawing.
 - A street laid in two drags down a hill can still be split by its own

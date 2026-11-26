@@ -60,3 +60,8 @@ Back to [the index](../GROUND-TRUTHS.md).
   validation error fails the check. The bundled headless browser falls back
   to WebGL2 without saying so in the frame; the water shipped invisible on
   WebGPU that way. — [shot-runs.md](../engineering/standards/shot-runs.md)
+- [R-process-012] A frame-time figure names the buildings standing, the card, and that it
+  was read settled; rank a render cost by frame ms above the display's cap
+  and by GPU ms from timestamp queries below it. A probe target of 3,000
+  stood 1,396 and was read within 30 s of the build, and was published as a
+  city of 3,000. — [frame-cost.md](../specs/frame-cost.md)
