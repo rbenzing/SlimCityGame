@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.106.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.105.0...slimcity-v1.106.0) (2026-11-26)
+
+
+### Features
+
+* **probes:** --build-only reports the standing count ([d81d122](https://github.com/rbenzing/SlimCityGame/commit/d81d122435cf90d9f3e6a84d36795fcb8ce2e46d))
+* **probes:** frame-budget cost mode with ablation, census and CPU profile ([d16d392](https://github.com/rbenzing/SlimCityGame/commit/d16d392e3cb27c6f9e6de8b940c5d551c67cfe85))
+* **probes:** GPU timestamps, buffer-write counts and a settling trace for the cost mode ([2d2173e](https://github.com/rbenzing/SlimCityGame/commit/2d2173edd93e7833f982d7b0c093177d201ea2d7))
+* **render:** dev-only frame-cost switches and mesh census ([47b8274](https://github.com/rbenzing/SlimCityGame/commit/47b827496a5d396a52e90a0b2a0aae44a2c868c2))
+
+
+### Bug Fixes
+
+* **probes:** settle until render-call time stops falling; correct the gputime hook name ([6e19779](https://github.com/rbenzing/SlimCityGame/commit/6e197794710092fcf2404088f22b672e42f1f0e0))
+
 ## [1.105.0](https://github.com/rbenzing/SlimCityGame/compare/slimcity-v1.104.0...slimcity-v1.105.0) (2026-11-25)
 
 
